@@ -407,14 +407,14 @@ export async function getStockFinancialData(symbol: string): Promise<{
 
         // Obtener datos secundarios (solo los esenciales para evitar rate limiting)
         // Comentamos la mayoría de requests secundarios para reducir carga
-        const news = await Promise.resolve({ status: 'fulfilled' as const, value: [] }).catch(() => ({ status: 'fulfilled' as const, value: [] }));
-        const events = await Promise.resolve({ status: 'fulfilled' as const, value: [] }).catch(() => ({ status: 'fulfilled' as const, value: [] }));
+        const news = await Promise.resolve({ status: 'fulfilled' as const, value: [] as MarketNewsArticle[] }).catch(() => ({ status: 'fulfilled' as const, value: [] as MarketNewsArticle[] }));
+        const events = await Promise.resolve({ status: 'fulfilled' as const, value: [] as CompanyEvent[] }).catch(() => ({ status: 'fulfilled' as const, value: [] as CompanyEvent[] }));
         const analystRecommendations = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
         const targetPrice = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
         const technicalAnalysis = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
         const indexComparison = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
         const insiderTrading = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
-        const peersData = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
+        const peersData = await Promise.resolve({ status: 'fulfilled' as const, value: null as string[] | null }).catch(() => ({ status: 'fulfilled' as const, value: null as string[] | null }));
 
         // Procesar resultados
         const resolvedNews = news.status === 'fulfilled' ? news.value : [];
