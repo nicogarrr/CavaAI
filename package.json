@@ -1,13 +1,14 @@
 {
-  "name": "Openstock",
+  "name": "JLCavaAI",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:db": "node scripts/test-db.mjs"
+    "test:db": "node scripts/test-db.mjs",
+    "diagnose:db": "node scripts/diagnose-db.mjs"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",
@@ -15,7 +16,9 @@
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-progress": "^1.1.7",
     "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slider": "^1.3.6",
     "@radix-ui/react-slot": "^1.2.3",
     "better-auth": "^1.3.25",
     "class-variance-authority": "^0.7.1",
@@ -34,7 +37,10 @@
     "react-circle-flags": "^0.0.23",
     "react-dom": "19.1.0",
     "react-hook-form": "^7.63.0",
+    "react-markdown": "^10.1.0",
     "react-select-country-list": "^2.2.3",
+    "recharts": "^3.3.0",
+    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1"
   },
