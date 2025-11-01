@@ -12,9 +12,9 @@ const NavItems = ({initialStocks}: { initialStocks: StockWithWatchlistStatus[]})
 
     const isActive = (path: string) => {
         if (path ==='/') return pathname === '/'
-
-        return  pathname.startsWith(path);
+        return pathname.startsWith(path);
     }
+
     return (
         <ul className="flex flex-col sm:flex-row p-2 gap-3 sm:gap-10 font-medium">
             {NAV_ITEMS.map(({href, label}) => {
@@ -27,11 +27,17 @@ const NavItems = ({initialStocks}: { initialStocks: StockWithWatchlistStatus[]})
                         />
                     </li>
                 )
-                return <li key={href}>
-                    <Link href={href} className={`hover:text-teal-500 transition-colors ${isActive(href) ? 'text-gray-100' : ''}`}>
-                        {label}
-                    </Link>
-                </li>
+                return (
+                    <li key={href}>
+                        <Link 
+                            href={href} 
+                            prefetch={false}
+                            className={`hover:text-teal-500 transition-colors cursor-pointer ${isActive(href) ? 'text-gray-100' : 'text-gray-400'}`}
+                        >
+                            {label}
+                        </Link>
+                    </li>
+                )
             })}
         </ul>
     )

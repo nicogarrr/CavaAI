@@ -1,6 +1,8 @@
 export const NAV_ITEMS = [
     { href: '/', label: 'Dashboard' },
     { href: '/search', label: 'Search' },
+    { href: '/portfolio', label: 'Portfolio' },
+    { href: '/screener', label: 'Screener' },
     // { href: '/watchlist', label: 'Watchlist' },
 ];
 
@@ -38,65 +40,66 @@ export const CONDITION_OPTIONS = [
 
 // TradingView Charts
 export const MARKET_OVERVIEW_WIDGET_CONFIG = {
-    colorTheme: 'dark', // dark mode
-    dateRange: '12M', // last 12 months
-    locale: 'en', // language
-    largeChartUrl: '', // link to a large chart if needed
-    isTransparent: true, // makes background transparent
-    showFloatingTooltip: true, // show tooltip on hover
-    plotLineColorGrowing: '#0FEDBE', // line color when price goes up
-    plotLineColorFalling: '#0FEDBE', // line color when price falls
-    gridLineColor: 'rgba(240, 243, 250, 0)', // grid line color
-    scaleFontColor: '#DBDBDB', // font color for scale
-    belowLineFillColorGrowing: 'rgba(41, 98, 255, 0.12)', // fill under line when growing
-    belowLineFillColorFalling: 'rgba(41, 98, 255, 0.12)', // fill under line when falling
+    colorTheme: 'dark',
+    dateRange: '12M',
+    locale: 'en',
+    largeChartUrl: '',
+    isTransparent: true,
+    showFloatingTooltip: true,
+    plotLineColorGrowing: '#0FEDBE',
+    plotLineColorFalling: '#0FEDBE',
+    gridLineColor: 'rgba(240, 243, 250, 0)',
+    scaleFontColor: '#DBDBDB',
+    belowLineFillColorGrowing: 'rgba(41, 98, 255, 0.12)',
+    belowLineFillColorFalling: 'rgba(41, 98, 255, 0.12)',
     belowLineFillColorGrowingBottom: 'rgba(41, 98, 255, 0)',
     belowLineFillColorFallingBottom: 'rgba(41, 98, 255, 0)',
-    symbolActiveColor: 'rgba(15, 237, 190, 0.05)', // highlight color for active symbol
+    symbolActiveColor: 'rgba(15, 237, 190, 0.05)',
     tabs: [
         {
-            title: 'Financial',
+            title: 'Mi Cartera',
             symbols: [
-                { s: 'NYSE:JPM', d: 'JPMorgan Chase' },
-                { s: 'NYSE:WFC', d: 'Wells Fargo Co New' },
-                { s: 'NYSE:BAC', d: 'Bank Amer Corp' },
-                { s: 'NYSE:HSBC', d: 'Hsbc Hldgs Plc' },
-                { s: 'NYSE:C', d: 'Citigroup Inc' },
-                { s: 'NYSE:MA', d: 'Mastercard Incorporated' },
+                { s: 'AMEX:SPY', d: 'S&P 500 ETF' },
+                { s: 'AMEX:URTH', d: 'MSCI World ETF' },
+                { s: 'AMEX:VWO', d: 'Emerging Markets ETF' },
+                { s: 'AMEX:BITO', d: 'Bitcoin Strategy ETF' },
+                { s: 'AMEX:GLD', d: 'Gold ETF' },
+                { s: 'NASDAQ:PYPL', d: 'PayPal' },
             ],
         },
         {
-            title: 'Technology',
+            title: 'Tech & Chips',
             symbols: [
+                { s: 'NASDAQ:NVDA', d: 'NVIDIA' },
+                { s: 'NASDAQ:AMD', d: 'AMD' },
                 { s: 'NASDAQ:AAPL', d: 'Apple' },
-                { s: 'NASDAQ:GOOGL', d: 'Alphabet' },
                 { s: 'NASDAQ:MSFT', d: 'Microsoft' },
-                { s: 'NASDAQ:META', d: 'Meta Platforms' },
-                { s: 'NYSE:ORCL', d: 'Oracle Corp' },
-                { s: 'NASDAQ:INTC', d: 'Intel Corp' },
+                { s: 'NASDAQ:GOOGL', d: 'Alphabet' },
+                { s: 'NASDAQ:META', d: 'Meta' },
             ],
         },
         {
-            title: 'Services',
+            title: 'ETFs Globales',
             symbols: [
-                { s: 'NASDAQ:AMZN', d: 'Amazon' },
-                { s: 'NYSE:BABA', d: 'Alibaba Group Hldg Ltd' },
-                { s: 'NYSE:T', d: 'At&t Inc' },
-                { s: 'NYSE:WMT', d: 'Walmart' },
-                { s: 'NYSE:V', d: 'Visa' },
+                { s: 'AMEX:VT', d: 'Total World Stock' },
+                { s: 'AMEX:ACWI', d: 'MSCI ACWI' },
+                { s: 'AMEX:VSS', d: 'Small-Cap ex-US' },
+                { s: 'AMEX:EEM', d: 'Emerging Markets' },
+                { s: 'NASDAQ:QQQ', d: 'NASDAQ-100' },
+                { s: 'AMEX:VOO', d: 'S&P 500' },
             ],
         },
     ],
-    support_host: 'https://www.tradingview.com', // TradingView host
-    backgroundColor: '#141414', // background color
-    width: '100%', // full width
-    height: 600, // height in px
-    showSymbolLogo: true, // show logo next to symbols
-    showChart: true, // display mini chart
+    support_host: 'https://www.tradingview.com',
+    backgroundColor: '#141414',
+    width: '100%',
+    height: 600,
+    showSymbolLogo: true,
+    showChart: true,
 };
 
 export const HEATMAP_WIDGET_CONFIG = {
-    dataSource: 'SPX500',
+    dataSource: 'WORLD',
     blockSize: 'market_cap_basic',
     blockColor: 'change',
     grouping: 'sector',
@@ -116,17 +119,38 @@ export const HEATMAP_WIDGET_CONFIG = {
 
 export const TOP_STORIES_WIDGET_CONFIG = {
     displayMode: 'regular',
-    feedMode: 'market',
+    feedMode: 'symbol',
     colorTheme: 'dark',
     isTransparent: true,
     locale: 'en',
     market: 'stock',
+    symbol: 'AMEX:SPY',
+    // Símbolos adicionales para noticias personalizadas
+    symbols: [
+        ['AMEX:SPY', 'S&P 500'],
+        ['AMEX:URTH', 'MSCI World'],
+        ['AMEX:VWO', 'Emerging Markets'],
+        ['AMEX:BITO', 'Bitcoin ETF'],
+        ['AMEX:GLD', 'Gold'],
+        ['NASDAQ:PYPL', 'PayPal'],
+        ['NASDAQ:NVDA', 'NVIDIA'],
+        ['NASDAQ:AMD', 'AMD'],
+    ],
     width: '100%',
     height: '600',
 };
 
+// Símbolos para noticias personalizadas (sin prefijo de exchange)
+// Limitado a 3 símbolos para evitar rate limiting de la API
+export const NEWS_SYMBOLS = [
+    'AAPL',     // Apple (más popular, mejor cobertura)
+    'NVDA',     // NVIDIA (tecnología)
+    'MSFT',     // Microsoft (tecnología)
+    // Reducido de 10 a 3 para evitar límites de API
+];
+
 export const MARKET_DATA_WIDGET_CONFIG = {
-    title: 'Stocks',
+    title: 'Mi Seguimiento',
     width: '100%',
     height: 600,
     locale: 'en',
@@ -136,35 +160,36 @@ export const MARKET_DATA_WIDGET_CONFIG = {
     backgroundColor: '#0F0F0F',
     symbolsGroups: [
         {
-            name: 'Financial',
+            name: 'Índices & ETFs',
             symbols: [
-                { name: 'NYSE:JPM', displayName: 'JPMorgan Chase' },
-                { name: 'NYSE:WFC', displayName: 'Wells Fargo Co New' },
-                { name: 'NYSE:BAC', displayName: 'Bank Amer Corp' },
-                { name: 'NYSE:HSBC', displayName: 'Hsbc Hldgs Plc' },
-                { name: 'NYSE:C', displayName: 'Citigroup Inc' },
-                { name: 'NYSE:MA', displayName: 'Mastercard Incorporated' },
+                { name: 'AMEX:SPY', displayName: 'S&P 500' },
+                { name: 'AMEX:URTH', displayName: 'MSCI World' },
+                { name: 'AMEX:VWO', displayName: 'Emerging Markets' },
+                { name: 'AMEX:VSS', displayName: 'Small-Cap Global' },
+                { name: 'NASDAQ:QQQ', displayName: 'NASDAQ-100' },
+                { name: 'AMEX:VOO', displayName: 'S&P 500 Vanguard' },
             ],
         },
         {
-            name: 'Technology',
+            name: 'Crypto & Oro',
             symbols: [
+                { name: 'AMEX:BITO', displayName: 'Bitcoin Strategy ETF' },
+                { name: 'AMEX:GLD', displayName: 'Gold ETF' },
+                { name: 'NASDAQ:COIN', displayName: 'Coinbase' },
+                { name: 'NASDAQ:MARA', displayName: 'Marathon Digital' },
+                { name: 'AMEX:SLV', displayName: 'Silver ETF' },
+                { name: 'AMEX:IAU', displayName: 'iShares Gold' },
+            ],
+        },
+        {
+            name: 'Tech Favoritos',
+            symbols: [
+                { name: 'NASDAQ:NVDA', displayName: 'NVIDIA' },
+                { name: 'NASDAQ:AMD', displayName: 'AMD' },
+                { name: 'NASDAQ:PYPL', displayName: 'PayPal' },
                 { name: 'NASDAQ:AAPL', displayName: 'Apple' },
-                { name: 'NASDAQ:GOOGL', displayName: 'Alphabet' },
                 { name: 'NASDAQ:MSFT', displayName: 'Microsoft' },
-                { name: 'NASDAQ:FB', displayName: 'Meta Platforms' },
-                { name: 'NYSE:ORCL', displayName: 'Oracle Corp' },
-                { name: 'NASDAQ:INTC', displayName: 'Intel Corp' },
-            ],
-        },
-        {
-            name: 'Services',
-            symbols: [
-                { name: 'NASDAQ:AMZN', displayName: 'Amazon' },
-                { name: 'NYSE:BABA', displayName: 'Alibaba Group Hldg Ltd' },
-                { name: 'NYSE:T', displayName: 'At&t Inc' },
-                { name: 'NYSE:WMT', displayName: 'Walmart' },
-                { name: 'NYSE:V', displayName: 'Visa' },
+                { name: 'NASDAQ:GOOGL', displayName: 'Alphabet' },
             ],
         },
     ],

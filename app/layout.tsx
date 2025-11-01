@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OpenStock",
-  description: "OpenStock is an open-source alternative to expensive market platforms. Track real-time prices, set personalized alerts, and explore detailed company insights — built openly, for everyone, forever free.",
+  title: "JLCavaAI",
+  description: "JLCavaAI es una plataforma inteligente de seguimiento de mercados y gestión de carteras. Analiza precios en tiempo real, gestiona tu portfolio personalizado, y accede a insights detallados de empresas y ETFs — construido con tecnología de vanguardia.",
 };
 
 export default function RootLayout({

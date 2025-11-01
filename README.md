@@ -23,11 +23,11 @@
   </div>
 </div>
 
-# OpenStock
+# JLCavaAI
 
-OpenStock is an open-source alternative to expensive market platforms. Track real-time prices, set personalized alerts, and explore detailed company insights — built openly, for everyone, forever free.
+JLCavaAI es una plataforma inteligente de seguimiento de mercados y gestión de carteras. Analiza precios en tiempo real, gestiona tu portfolio personalizado, y accede a insights detallados de empresas y ETFs — construido con tecnología de vanguardia.
 
-Note: OpenStock is community-built and not a brokerage. Market data may be delayed based on provider rules and your configuration. Nothing here is financial advice.
+Nota: JLCavaAI es una herramienta educativa y de análisis. Los datos de mercado pueden tener retraso según las reglas del proveedor. Nada aquí constituye asesoramiento financiero.
 
 ## 📋 Table of Contents
 

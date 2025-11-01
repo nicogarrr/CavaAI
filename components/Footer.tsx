@@ -11,15 +11,14 @@ const Footer = () => {
                     <div className="col-span-1 md:col-span-2">
                         <Link href="/" className="flex items-center gap-2 mb-4">
                             <Image
-                                src="https://i.ibb.co/r28VWPjS/Screenshot-2025-10-04-123317-Picsart-Ai-Image-Enhancer-removebg-preview.png"
-                                alt="OpenStock"
+                                src="/assets/images/logo.png"
+                                alt="JLCavaAI"
                                 width={150}
                                 height={38}
-                                className="brightness-0 invert"
                             />
                         </Link>
                         <p className="text-gray-400 mb-10 max-w-md">
-                            OpenStock is an open-source alternative to expensive market platforms. Track real-time prices, set personalized alerts, and explore detailed company insights — built openly, for everyone, forever free.
+                            JLCavaAI es una plataforma inteligente de seguimiento de mercados y gestión de carteras. Analiza precios en tiempo real, gestiona tu portfolio personalizado, y accede a insights detallados de empresas y ETFs.
                         </p>
                         <div className="flex space-x-6">
                             <Link
@@ -63,17 +62,9 @@ const Footer = () => {
                         <h3 className="text-lg font-semibold mb-4">Resources</h3>
                         <ul className="space-y-2">
                             <li>
-                                <Link href="/api-docs" className="text-gray-400 hover:text-white transition-colors duration-200 relative group">
-                                    <span className="relative">
-                                        API Documentation
-                                        <span className="absolute left-0 bottom-0 w-0 h-0.5 bg-white transition-all duration-300 group-hover:w-full"></span>
-                                    </span>
-                                </Link>
-                            </li>
-                            <li>
                                 <Link href="/help" className="text-gray-400 hover:text-white transition-colors duration-200 relative group">
                                     <span className="relative">
-                                        Help Center
+                                        Help Center & API Docs
                                         <span className="absolute left-0 bottom-0 w-0 h-0.5 bg-white transition-all duration-300 group-hover:w-full"></span>
                                     </span>
                                 </Link>

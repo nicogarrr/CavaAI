@@ -14,7 +14,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
         <main className="auth-layout">
             <section className="auth-left-section scrollbar-hide-default">
                 <Link href="/" className="auth-logo flex items-center gap-2">
-                    <Image src="/assets/images/logo.png" alt="Openstock" width={200} height={50}/>
+                    <Image src="/assets/images/logo.png" alt="JLCavaAI" width={200} height={50}/>
                 </Link>
 
                 <div className="pb-6 lg:pb-8 flex-1">
@@ -24,7 +24,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
             <section className="auth-right-section">
                 <div className="z-10 relative lg:mt-4 lg:mb-16">
                     <blockquote className="auth-blockquote">
-                        “For me, OpenStock isn’t just another stock app. It’s about giving people clarity and control in the market, without barriers or subscriptions.”
+                        "JLCavaAI no es solo otra plataforma de inversión. Es una herramienta inteligente que te da claridad y control total sobre tus inversiones, con análisis en tiempo real y gestión personalizada."
                     </blockquote>
                     <div className="flex items-center justify-between">
                         <div>

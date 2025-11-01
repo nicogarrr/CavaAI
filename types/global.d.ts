@@ -215,6 +215,54 @@ declare global {
         threshold: number;
         changePercent?: number;
     };
+
+    type PortfolioPosition = {
+        symbol: string;
+        company: string;
+        shares: number;
+        avgPurchasePrice: number;
+        purchaseDate: Date;
+    };
+
+    type Portfolio = {
+        _id: string;
+        userId: string;
+        name: string;
+        description?: string;
+        positions: PortfolioPosition[];
+        createdAt: Date;
+        updatedAt: Date;
+    };
+
+    type PortfolioPositionWithData = PortfolioPosition & {
+        currentPrice: number;
+        invested: number;
+        currentValue: number;
+        profitLoss: number;
+        profitLossPercent: number;
+    };
+
+type PortfolioPerformance = {
+    portfolio: {
+        id: string;
+        name: string;
+        description?: string;
+    };
+    positions: PortfolioPositionWithData[];
+    summary: {
+        totalInvested: number;
+        totalCurrentValue: number;
+        totalProfitLoss: number;
+        totalProfitLossPercent: number;
+        positionCount: number;
+    };
+    status: {
+        hasApiKey: boolean;
+        isOnline: boolean;
+        mockDataCount: number;
+        totalPositions: number;
+    };
+};
 }
 
 export {};

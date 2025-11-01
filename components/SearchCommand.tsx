@@ -1,21 +1,25 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { CommandDialog, CommandEmpty, CommandInput, CommandList } from "@/components/ui/command"
 import {Button} from "@/components/ui/button";
-import {Loader2,  TrendingUp} from "lucide-react";
+import {Loader2,  TrendingUp, ExternalLink} from "lucide-react";
 import Link from "next/link";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
-import {useDebounce} from "@/hooks/useDebounce";
 
 export default function SearchCommand({ renderAs = 'button', label = 'Add stock', initialStocks }: SearchCommandProps) {
     const [open, setOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState("")
     const [loading, setLoading] = useState(false)
     const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks);
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const isSearchMode = !!searchTerm.trim();
-    const displayStocks = isSearchMode ? stocks : stocks?.slice(0, 10);
+    
+    const displayStocks = useMemo(() => {
+        return isSearchMode ? stocks : (stocks?.slice(0, 10) || []);
+    }, [isSearchMode, stocks]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -28,31 +32,97 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
         return () => window.removeEventListener("keydown", onKeyDown)
     }, [])
 
-    const handleSearch = async () => {
-        if(!isSearchMode) return setStocks(initialStocks);
-
-        setLoading(true)
-        try {
-            const results = await searchStocks(searchTerm.trim());
-            setStocks(results);
-        } catch {
-            setStocks([])
-        } finally {
-            setLoading(false)
+    const handleSearch = useCallback(async (query: string) => {
+        // Cancelar búsqueda anterior si existe
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
         }
-    }
 
-    const debouncedSearch = useDebounce(handleSearch, 300);
+        if (!query.trim()) {
+            setStocks(initialStocks);
+            setLoading(false);
+            return;
+        }
 
+        // Crear nuevo AbortController para esta búsqueda
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        setLoading(true);
+        try {
+            const results = await searchStocks(query.trim());
+            
+            // Solo actualizar si el request no fue cancelado
+            if (!controller.signal.aborted) {
+                setStocks(results || []);
+            }
+        } catch (error: any) {
+            // Ignorar errores de cancelación
+            if (error?.name !== 'AbortError' && !controller.signal.aborted) {
+                setStocks([]);
+            }
+        } finally {
+            if (!controller.signal.aborted) {
+                setLoading(false);
+            }
+        }
+    }, [initialStocks]);
+
+    // Debounce efectivo
     useEffect(() => {
-        debouncedSearch();
-    }, [searchTerm]);
+        // Limpiar timeout anterior
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
 
-    const handleSelectStock = () => {
+        // Cancelar request anterior
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        const trimmedQuery = searchTerm.trim();
+        
+        if (!trimmedQuery) {
+            setStocks(initialStocks);
+            setLoading(false);
+            return;
+        }
+
+        // Establecer nuevo timeout
+        searchTimeoutRef.current = setTimeout(() => {
+            handleSearch(trimmedQuery);
+        }, 300);
+
+        // Cleanup
+        return () => {
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
+    }, [searchTerm, handleSearch, initialStocks]);
+
+    // Limpiar cuando se cierra el diálogo
+    useEffect(() => {
+        if (!open) {
+            setSearchTerm("");
+            setStocks(initialStocks);
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        }
+    }, [open, initialStocks]);
+
+    const handleSelectStock = useCallback(() => {
         setOpen(false);
         setSearchTerm("");
         setStocks(initialStocks);
-    }
+    }, [initialStocks]);
 
     return (
         <>
@@ -87,15 +157,16 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                                 {isSearchMode ? 'Search results' : 'Popular stocks'}
                                 {` `}({displayStocks?.length || 0})
                             </div>
-                            {displayStocks?.map((stock, i) => (
+                            {displayStocks?.map((stock) => (
                                 <li key={stock.symbol} className="search-item">
                                     <Link
                                         href={`/stocks/${stock.symbol}`}
                                         onClick={handleSelectStock}
                                         className="search-item-link"
+                                        prefetch={false}
                                     >
                                         <TrendingUp className="h-4 w-4 text-gray-500" />
-                                        <div  className="flex-1">
+                                        <div className="flex-1">
                                             <div className="search-item-name">
                                                 {stock.name}
                                             </div>
@@ -103,7 +174,16 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                                                 {stock.symbol} | {stock.exchange } | {stock.type}
                                             </div>
                                         </div>
-
+                                    </Link>
+                                    <Link href={`/funds/${stock.symbol}`} prefetch={false}>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            title="Ver ficha detallada"
+                                        >
+                                            <ExternalLink className="h-4 w-4" />
+                                        </Button>
                                     </Link>
                                 </li>
                             ))}
