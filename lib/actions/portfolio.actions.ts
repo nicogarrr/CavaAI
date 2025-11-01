@@ -182,7 +182,8 @@ export async function getPortfolioPerformance(portfolioId: string): Promise<Port
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos timeout
 
-                    const response = await fetch(
+                    // Intentar con Finnhub primero
+                    let response = await fetch(
                         `https://finnhub.io/api/v1/quote?symbol=${pos.symbol}&token=${apiKey}`,
                         {
                             method: 'GET',
@@ -192,19 +193,76 @@ export async function getPortfolioPerformance(portfolioId: string): Promise<Port
                         }
                     );
 
+                    // Si Finnhub falla (403, 429), intentar con fallback
+                    if (!response.ok || response.status === 403 || response.status === 429) {
+                        // Intentar Alpha Vantage como fallback
+                        const alphaKey = process.env.ALPHA_VANTAGE_API_KEY;
+                        if (alphaKey) {
+                            try {
+                                response = await fetch(
+                                    `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${pos.symbol}&apikey=${alphaKey}`,
+                                    {
+                                        method: 'GET',
+                                        headers: { 'Accept': 'application/json' },
+                                        signal: controller.signal,
+                                        cache: 'no-store',
+                                    }
+                                );
+                            } catch (e) {
+                                // Si Alpha Vantage también falla, intentar Yahoo Finance (sin API key)
+                                response = await fetch(
+                                    `https://query1.finance.yahoo.com/v8/finance/chart/${pos.symbol}?interval=1d&range=1d`,
+                                    {
+                                        method: 'GET',
+                                        headers: { 'Accept': 'application/json' },
+                                        signal: controller.signal,
+                                        cache: 'no-store',
+                                    }
+                                );
+                            }
+                        } else {
+                            // Sin Alpha Vantage, usar Yahoo Finance directamente
+                            response = await fetch(
+                                `https://query1.finance.yahoo.com/v8/finance/chart/${pos.symbol}?interval=1d&range=1d`,
+                                {
+                                    method: 'GET',
+                                    headers: { 'Accept': 'application/json' },
+                                    signal: controller.signal,
+                                    cache: 'no-store',
+                                }
+                            );
+                        }
+                    }
+
                     clearTimeout(timeoutId);
 
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
 
-                    const quote = await response.json();
+                    const quoteData = await response.json();
+                    let currentPrice: number;
 
-                    if (quote.error || !quote.c || quote.c === 0) {
-                        throw new Error('Invalid price data');
+                    // Parsear respuesta según la fuente
+                    if (quoteData['Global Quote']) {
+                        // Alpha Vantage
+                        const quote = quoteData['Global Quote'];
+                        currentPrice = parseFloat(quote['05. price'] || '0');
+                    } else if (quoteData.chart?.result?.[0]?.meta) {
+                        // Yahoo Finance
+                        const meta = quoteData.chart.result[0].meta;
+                        currentPrice = meta.regularMarketPrice || meta.previousClose || 0;
+                    } else {
+                        // Finnhub (formato original)
+                        if (quoteData.error || !quoteData.c || quoteData.c === 0) {
+                            throw new Error('Invalid price data');
+                        }
+                        currentPrice = quoteData.c;
                     }
 
-                    const currentPrice = quote.c;
+                    if (!currentPrice || currentPrice === 0) {
+                        throw new Error('Invalid price data');
+                    }
                     const invested = pos.shares * pos.avgPurchasePrice;
                     const currentValue = pos.shares * currentPrice;
                     const profitLoss = currentValue - invested;
@@ -223,26 +281,57 @@ export async function getPortfolioPerformance(portfolioId: string): Promise<Port
                     // Si falla, intentar retry una vez
                     try {
                         await new Promise(resolve => setTimeout(resolve, 1000));
-                        const retryResponse = await fetch(
-                            `https://finnhub.io/api/v1/quote?symbol=${pos.symbol}&token=${apiKey}`,
-                            {
-                                method: 'GET',
-                                headers: { 'Accept': 'application/json' },
-                                cache: 'no-store',
-                            }
-                        );
+                        // Retry con fallback
+                        let retryResponse: Response | null = null;
                         
-                        if (retryResponse.ok) {
-                            const retryQuote = await retryResponse.json();
-                            if (retryQuote.c && retryQuote.c > 0) {
+                        // Intentar Alpha Vantage
+                        const alphaKey = process.env.ALPHA_VANTAGE_API_KEY;
+                        if (alphaKey) {
+                            retryResponse = await fetch(
+                                `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${pos.symbol}&apikey=${alphaKey}`,
+                                {
+                                    method: 'GET',
+                                    headers: { 'Accept': 'application/json' },
+                                    cache: 'no-store',
+                                }
+                            ).catch(() => null);
+                        }
+                        
+                        // Si Alpha Vantage falla, intentar Yahoo Finance
+                        if (!retryResponse || !retryResponse.ok) {
+                            retryResponse = await fetch(
+                                `https://query1.finance.yahoo.com/v8/finance/chart/${pos.symbol}?interval=1d&range=1d`,
+                                {
+                                    method: 'GET',
+                                    headers: { 'Accept': 'application/json' },
+                                    cache: 'no-store',
+                                }
+                            ).catch(() => null);
+                        }
+                        
+                        if (retryResponse && retryResponse.ok) {
+                            const retryData = await retryResponse.json();
+                            let retryPrice: number = 0;
+                            
+                            // Parsear según fuente
+                            if (retryData['Global Quote']) {
+                                retryPrice = parseFloat(retryData['Global Quote']['05. price'] || '0');
+                            } else if (retryData.chart?.result?.[0]?.meta) {
+                                const meta = retryData.chart.result[0].meta;
+                                retryPrice = meta.regularMarketPrice || meta.previousClose || 0;
+                            } else if (retryData.c && retryData.c > 0) {
+                                retryPrice = retryData.c;
+                            }
+                            
+                            if (retryPrice > 0) {
                                 const invested = pos.shares * pos.avgPurchasePrice;
-                                const currentValue = pos.shares * retryQuote.c;
+                                const currentValue = pos.shares * retryPrice;
                                 const profitLoss = currentValue - invested;
                                 const profitLossPercent = invested > 0 ? (profitLoss / invested) * 100 : 0;
                                 
                                 result = {
                                     ...pos,
-                                    currentPrice: retryQuote.c,
+                                    currentPrice: retryPrice,
                                     invested,
                                     currentValue,
                                     profitLoss,

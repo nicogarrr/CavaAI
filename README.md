@@ -237,11 +237,20 @@ MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>/<db>?retryWrites=true&w=majori
 BETTER_AUTH_SECRET=your_better_auth_secret
 BETTER_AUTH_URL=http://localhost:3000
 
-# Finnhub
+# Finnhub (primaria)
 FINNHUB_API_KEY=your_finnhub_key
 # Optional client-exposed variant if needed by client code:
 NEXT_PUBLIC_FINNHUB_API_KEY=
 FINNHUB_BASE_URL=https://finnhub.io/api/v1
+
+# Fuentes de datos alternativas (fallback automático cuando Finnhub falla)
+# Alpha Vantage (gratis: 5 llamadas/min, 500/día) - https://www.alphavantage.co/support/#api-key
+ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
+
+# Polygon.io (gratis con límites) - https://polygon.io/
+POLYGON_API_KEY=your_polygon_key
+
+# Nota: Yahoo Finance funciona sin API key como último recurso
 
 # Inngest AI (Gemini)
 GEMINI_API_KEY=your_gemini_api_key
