@@ -54,10 +54,10 @@ export interface AdvancedScoreData {
 /**
  * Calcula score avanzado de una acción comparándola con su sector
  */
-export function calculateAdvancedStockScore(
+export async function calculateAdvancedStockScore(
     financialData: any,
     historicalData?: { prices: number[]; dates: number[] }
-): AdvancedScoreData {
+): Promise<AdvancedScoreData> {
     const metrics = financialData.metrics?.metric || financialData.metrics || {};
     const profile = financialData.profile || {};
     const quote = financialData.quote || {};
