@@ -1,4 +1,4 @@
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';
 import NewsSection from "@/components/NewsSection";
 import LazyTradingViewWidget from "@/components/LazyTradingViewWidget";
 import {
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // Lazy load ProPicksSection solo cuando sea necesario
-const LazyProPicksSection = dynamic(
+const LazyProPicksSection = dynamicImport(
     () => import("@/components/proPicks/ProPicksSection"),
     {
         ssr: true,
