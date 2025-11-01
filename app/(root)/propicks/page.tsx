@@ -5,6 +5,10 @@ import { Button } from '@/components/ui/button';
 import { TrendingUp, Sparkles, ArrowRight } from 'lucide-react';
 import StrategySelector from '@/components/proPicks/StrategySelector';
 
+// Forzar renderizado dinámico porque requiere datos en tiempo real
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function ProPicksPage({ 
     searchParams 
 }: { 

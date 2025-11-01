@@ -3,6 +3,10 @@ import PortfolioList from '@/components/portfolio/PortfolioList';
 import CreatePortfolioButton from '@/components/portfolio/CreatePortfolioButton';
 import { redirect } from 'next/navigation';
 
+// Forzar renderizado dinámico porque requiere sesión del usuario
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function PortfolioPage() {
     const portfolios = await getUserPortfolios();
 

@@ -8,6 +8,10 @@ import {
     NEWS_SYMBOLS
 } from "@/lib/constants";
 
+// Forzar renderizado dinámico porque puede requerir datos de usuario
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Lazy load ProPicksSection solo cuando sea necesario
 const LazyProPicksSection = dynamic(
     () => import("@/components/proPicks/ProPicksSection"),

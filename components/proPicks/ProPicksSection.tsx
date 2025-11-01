@@ -6,8 +6,15 @@ import { ArrowRight, TrendingUp, Sparkles } from 'lucide-react';
 import SectorComparisonChart from './SectorComparisonChart';
 
 export default async function ProPicksSection() {
-    // Usar estrategia "beat-sp500" por defecto
-    const picks = await generateProPicks(10, 'beat-sp500');
+    // Manejar errores silenciosamente para evitar fallos en build
+    let picks;
+    try {
+        // Usar estrategia "beat-sp500" por defecto
+        picks = await generateProPicks(10, 'beat-sp500');
+    } catch (error) {
+        console.error('Error generating ProPicks:', error);
+        picks = []; // En caso de error, mostrar lista vacía
+    }
 
     if (picks.length === 0) {
         return (

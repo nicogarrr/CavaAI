@@ -11,6 +11,10 @@ import PortfolioAISummary from '@/components/portfolio/PortfolioAISummary';
 import PortfolioStatus from '@/components/portfolio/PortfolioStatus';
 import PortfolioNews from '@/components/portfolio/PortfolioNews';
 
+// Forzar renderizado dinámico porque requiere sesión del usuario
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type PortfolioDetailPageProps = {
     params: Promise<{
         id: string;
