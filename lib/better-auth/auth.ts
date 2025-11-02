@@ -41,8 +41,24 @@ export const getAuth = async () => {
                 return authInstance;
             }
             
-            // En runtime, si no hay conexión a MongoDB, lanzamos error
-            throw new Error("MongoDB connection not found!");
+            // En runtime, si no hay conexión a MongoDB, creamos una instancia sin base de datos como fallback
+            // Esto permite que la aplicación funcione aunque MongoDB no esté disponible
+            console.warn('⚠️ MongoDB connection not available, using memory adapter');
+            authInstance = betterAuth({
+                secret: process.env.BETTER_AUTH_SECRET || 'fallback-secret',
+                baseURL: process.env.BETTER_AUTH_URL || process.env.VERCEL_URL || 'http://localhost:3000',
+                emailAndPassword: {
+                    enabled: true,
+                    disableSignUp: false,
+                    requireEmailVerification: false,
+                    minPasswordLength: 8,
+                    maxPasswordLength: 128,
+                    autoSignIn: true,
+                },
+                plugins: [nextCookies()],
+            }) as any;
+            
+            return authInstance;
         }
 
         const db = mongoose.connection;
@@ -76,6 +92,24 @@ export const getAuth = async () => {
             console.error('   Para producción: agrega tu IP específica');
             console.error('6. Espera 1-2 minutos y vuelve a intentar\n');
             console.error('📄 Ver instrucciones completas en: MONGODB_SETUP.md\n');
+            
+            // En lugar de lanzar error, creamos una instancia fallback
+            console.warn('⚠️ Using fallback auth instance without MongoDB');
+            authInstance = betterAuth({
+                secret: process.env.BETTER_AUTH_SECRET || 'fallback-secret',
+                baseURL: process.env.BETTER_AUTH_URL || process.env.VERCEL_URL || 'http://localhost:3000',
+                emailAndPassword: {
+                    enabled: true,
+                    disableSignUp: false,
+                    requireEmailVerification: false,
+                    minPasswordLength: 8,
+                    maxPasswordLength: 128,
+                    autoSignIn: true,
+                },
+                plugins: [nextCookies()],
+            }) as any;
+            
+            return authInstance;
         }
         throw error;
     }
