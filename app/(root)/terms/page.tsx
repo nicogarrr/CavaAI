@@ -5,6 +5,9 @@ export const metadata: Metadata = {
   description: 'Fair terms of service - built on trust, transparency, and community values',
 };
 
+// Forzar renderizado dinámico
+export const dynamic = 'force-dynamic';
+
 export default function TermsPage() {
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">

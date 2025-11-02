@@ -5,6 +5,10 @@ import {headers} from "next/headers";
 import {redirect} from "next/navigation";
 import {getAuth} from "@/lib/better-auth/auth";
 
+// Forzar renderizado dinámico porque usa headers() para verificar sesión
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const Layout = async ({ children }: { children : React.ReactNode }) => {
     const auth = await getAuth();
     const session = await auth.api.getSession({headers: await headers()});

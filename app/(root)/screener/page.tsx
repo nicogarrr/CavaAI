@@ -5,6 +5,9 @@ import ScreenerHeader from '@/components/screener/ScreenerHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
+// Forzar renderizado dinámico
+export const dynamic = 'force-dynamic';
+
 export default function ScreenerPage() {
   return (
     <div className="flex min-h-screen flex-col p-6">
