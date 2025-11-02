@@ -37,7 +37,37 @@ const INITIAL_INVESTORS = [
 
 export async function getFamousInvestors(): Promise<FamousInvestor[]> {
     try {
-        await connectToDatabase();
+        // Durante el build, retornamos datos iniciales sin intentar conectar a MongoDB
+        const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                           process.env.NEXT_PHASE === 'phase-development-build';
+        
+        if (isBuildTime) {
+            // Durante el build, retornamos los datos iniciales formateados
+            return INITIAL_INVESTORS.map((investor, index) => ({
+                _id: `build-${index}`,
+                name: investor.name,
+                description: investor.description,
+                positions: investor.positions,
+                lastUpdated: new Date(),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            })) as FamousInvestor[];
+        }
+        
+        const mongoose = await connectToDatabase();
+        
+        // Si no hay conexión a MongoDB durante runtime, retornamos datos iniciales
+        if (!mongoose || !mongoose.connection) {
+            return INITIAL_INVESTORS.map((investor, index) => ({
+                _id: `fallback-${index}`,
+                name: investor.name,
+                description: investor.description,
+                positions: investor.positions,
+                lastUpdated: new Date(),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            })) as FamousInvestor[];
+        }
         
         let investors = await FamousInvestorModel.find().sort({ name: 1 }).lean();
 
@@ -50,19 +80,70 @@ export async function getFamousInvestors(): Promise<FamousInvestor[]> {
         return JSON.parse(JSON.stringify(investors));
     } catch (error) {
         console.error('Error getting famous investors:', error);
-        throw error;
+        // En caso de error, retornar datos iniciales como fallback
+        return INITIAL_INVESTORS.map((investor, index) => ({
+            _id: `error-${index}`,
+            name: investor.name,
+            description: investor.description,
+            positions: investor.positions,
+            lastUpdated: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        })) as FamousInvestor[];
     }
 }
 
 export async function getFamousInvestorById(investorId: string): Promise<FamousInvestor | null> {
     try {
-        await connectToDatabase();
+        // Durante el build, retornamos null o buscamos en datos iniciales
+        const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                           process.env.NEXT_PHASE === 'phase-development-build';
+        
+        if (isBuildTime) {
+            // Buscar en datos iniciales por ID
+            const index = parseInt(investorId.replace(/^(build-|fallback-|error-)/, ''));
+            if (!isNaN(index) && INITIAL_INVESTORS[index]) {
+                const investor = INITIAL_INVESTORS[index];
+                return {
+                    _id: investorId,
+                    name: investor.name,
+                    description: investor.description,
+                    positions: investor.positions,
+                    lastUpdated: new Date(),
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                } as FamousInvestor;
+            }
+            return null;
+        }
+        
+        const mongoose = await connectToDatabase();
+        
+        // Si no hay conexión a MongoDB durante runtime, buscar en datos iniciales
+        if (!mongoose || !mongoose.connection) {
+            const index = parseInt(investorId.replace(/^(fallback-|error-)/, ''));
+            if (!isNaN(index) && INITIAL_INVESTORS[index]) {
+                const investor = INITIAL_INVESTORS[index];
+                return {
+                    _id: investorId,
+                    name: investor.name,
+                    description: investor.description,
+                    positions: investor.positions,
+                    lastUpdated: new Date(),
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                } as FamousInvestor;
+            }
+            return null;
+        }
+        
         const investor = await FamousInvestorModel.findById(investorId).lean();
         
         return investor ? JSON.parse(JSON.stringify(investor)) : null;
     } catch (error) {
         console.error('Error getting famous investor:', error);
-        throw error;
+        // En caso de error, retornar null en lugar de lanzar error
+        return null;
     }
 }
 
