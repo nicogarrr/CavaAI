@@ -19,8 +19,7 @@ export const getAuth = async () => {
         // Esto permite que el build complete sin necesidad de MongoDB
         if (!mongoose || !mongoose.connection) {
             const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
-                               process.env.NEXT_PHASE === 'phase-development-build' ||
-                               (process.env.VERCEL && !process.env.MONGODB_URI);
+                               process.env.NEXT_PHASE === 'phase-development-build';
             
             if (isBuildTime) {
                 // Durante el build, creamos una instancia mock sin base de datos
@@ -42,6 +41,7 @@ export const getAuth = async () => {
                 return authInstance;
             }
             
+            // En runtime, si no hay conexión a MongoDB, lanzamos error
             throw new Error("MongoDB connection not found!");
         }
 
