@@ -2,7 +2,7 @@
 
 import { connectToDatabase } from '@/database/mongoose';
 import { AlertModel, type Alert } from '@/database/models/alert.model';
-import { auth } from '@/lib/better-auth/auth';
+import { getAuth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
 
 export interface CreateAlertInput {
@@ -16,6 +16,7 @@ export interface CreateAlertInput {
 
 export async function createAlert(input: CreateAlertInput): Promise<Alert | null> {
     try {
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         if (!session?.user?.id) throw new Error('Usuario no autenticado');
 
@@ -38,6 +39,7 @@ export async function createAlert(input: CreateAlertInput): Promise<Alert | null
 
 export async function getUserAlerts(): Promise<Alert[]> {
     try {
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         if (!session?.user?.id) throw new Error('Usuario no autenticado');
 
@@ -59,6 +61,7 @@ export async function getUserAlerts(): Promise<Alert[]> {
 
 export async function deleteAlert(alertId: string): Promise<void> {
     try {
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         if (!session?.user?.id) throw new Error('Usuario no autenticado');
 

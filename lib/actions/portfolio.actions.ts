@@ -2,7 +2,7 @@
 
 import { connectToDatabase } from '@/database/mongoose';
 import { PortfolioModel, type Portfolio, type PortfolioPosition } from '@/database/models/portfolio.model';
-import { auth } from '@/lib/better-auth/auth';
+import { getAuth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
 
 export type PortfolioPositionWithData = PortfolioPosition & {
@@ -68,6 +68,7 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2)
 export async function getUserPortfolios(): Promise<Portfolio[]> {
     try {
         await connectToDatabase();
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         
         if (!session?.user) {
@@ -85,6 +86,7 @@ export async function getUserPortfolios(): Promise<Portfolio[]> {
 export async function getPortfolioById(portfolioId: string): Promise<Portfolio | null> {
     try {
         await connectToDatabase();
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         
         if (!session?.user) {
@@ -110,6 +112,7 @@ export async function getPortfolioById(portfolioId: string): Promise<Portfolio |
 export async function getPortfolioPerformance(portfolioId: string): Promise<PortfolioPerformance | null> {
     try {
         await connectToDatabase();
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         
         if (!session?.user) {
@@ -407,6 +410,7 @@ export async function getPortfolioPerformance(portfolioId: string): Promise<Port
 export async function getPortfolioHistory(portfolioId: string, days = 365): Promise<{ t: number[]; v: number[] }> {
     try {
         await connectToDatabase();
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         
         if (!session?.user) {
@@ -434,6 +438,7 @@ export async function getPortfolioHistory(portfolioId: string, days = 365): Prom
 export async function createPortfolio(name: string, description?: string): Promise<Portfolio> {
     try {
         await connectToDatabase();
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         
         if (!session?.user) {
@@ -458,6 +463,7 @@ export async function createPortfolio(name: string, description?: string): Promi
 export async function deletePortfolio(portfolioId: string): Promise<void> {
     try {
         await connectToDatabase();
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         
         if (!session?.user) {
@@ -480,6 +486,7 @@ export async function addPosition(
 ): Promise<void> {
     try {
         await connectToDatabase();
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         
         if (!session?.user) {
@@ -511,6 +518,7 @@ export async function addPosition(
 export async function removePosition(portfolioId: string, positionIndex: number): Promise<void> {
     try {
         await connectToDatabase();
+        const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
         
         if (!session?.user) {
