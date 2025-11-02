@@ -5,6 +5,10 @@ import {redirect} from "next/navigation";
 import Footer from "@/components/Footer";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
 
+// Forzar renderizado dinámico porque usa headers() y requiere autenticación
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const Layout = async ({ children }: { children : React.ReactNode }) => {
     try {
         const auth = await getAuth();
