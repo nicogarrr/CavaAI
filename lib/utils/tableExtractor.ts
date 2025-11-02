@@ -13,6 +13,12 @@ export interface TableData {
  * Extrae datos de una tabla markdown
  */
 export function extractTableData(tableMarkdown: string): TableData | null {
+    // Validar que tableMarkdown es un string
+    if (typeof tableMarkdown !== 'string') {
+        console.error('extractTableData: tableMarkdown is not a string', typeof tableMarkdown);
+        return null;
+    }
+    
     const lines = tableMarkdown.trim().split('\n');
     
     if (lines.length < 2) return null;

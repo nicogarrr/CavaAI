@@ -17,6 +17,13 @@ export default function PaginatedContent({ content, itemsPerPage = 3000, childre
     const pages = useMemo(() => {
         if (!content) return [];
         
+        // Asegurar que content es un string
+        if (typeof content !== 'string') {
+            console.error('PaginatedContent: content is not a string', typeof content, content);
+            const stringContent = String(content);
+            return [stringContent];
+        }
+        
         const chunks: string[] = [];
         let currentIndex = 0;
         
