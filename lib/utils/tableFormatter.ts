@@ -13,6 +13,12 @@ interface TableBlock {
 }
 
 export function formatMarkdownTable(table: string): string {
+    // Validar que table es un string
+    if (typeof table !== 'string') {
+        console.error('formatMarkdownTable: table is not a string', typeof table);
+        return String(table || '');
+    }
+    
     const lines = table.trim().split('\n');
     
     // Detectar si es una tabla válida
@@ -95,6 +101,12 @@ function createTableSeparator(numColumns: number): string {
  * Encuentra y corrige todas las tablas en un texto markdown
  */
 export function fixAllMarkdownTables(content: string): string {
+    // Validar que content es un string
+    if (typeof content !== 'string') {
+        console.error('fixAllMarkdownTables: content is not a string', typeof content);
+        return String(content || '');
+    }
+    
     // Expresión regular para detectar tablas markdown
     // Busca líneas que empiecen con | y tengan al menos 2 filas
     const tableRegex = /(\|.*\|(?:\r?\n\|[:\-| ]+\|(?:\r?\n\|.*\|)+)?)/gm;
@@ -193,6 +205,12 @@ function extractTableBlock(content: string, startIndex: number): { start: number
  * Corrige tablas línea por línea (método más simple y robusto)
  */
 function fixTablesLineByLine(content: string): string {
+    // Validar que content es un string
+    if (typeof content !== 'string') {
+        console.error('fixTablesLineByLine: content is not a string', typeof content);
+        return String(content || '');
+    }
+    
     const lines = content.split('\n');
     const fixedLines: string[] = [];
     let inTable = false;
@@ -249,6 +267,12 @@ function fixTablesLineByLine(content: string): string {
  * Encuentra todas las tablas en un texto markdown y devuelve sus datos estructurados
  */
 export function findAllTables(content: string): TableData[] {
+    // Validar que content es un string
+    if (typeof content !== 'string') {
+        console.error('findAllTables: content is not a string', typeof content);
+        return [];
+    }
+    
     const tables: TableData[] = [];
     const lines = content.split('\n');
     
