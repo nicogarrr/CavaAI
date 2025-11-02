@@ -17,10 +17,9 @@ if (!cached){
 
 export const connectToDatabase = async () => {
     // Durante el build de Next.js, no intentamos conectarnos a MongoDB
-    // Detectamos build time verificando NEXT_PHASE o variables de entorno de CI
+    // NEXT_PHASE solo se establece durante el build, no en runtime
     const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
-                       process.env.NEXT_PHASE === 'phase-development-build' ||
-                       (process.env.VERCEL && !process.env.MONGODB_URI);
+                       process.env.NEXT_PHASE === 'phase-development-build';
     
     if(!MONGODB_URI){
         if (isBuildTime) {
@@ -28,6 +27,7 @@ export const connectToDatabase = async () => {
             // Esto permite que Next.js complete el build sin necesidad de MongoDB
             return null as any;
         }
+        // En runtime, si no hay MONGODB_URI, lanzamos error
         throw new Error("MongoDB URI is missing. Por favor, configura MONGODB_URI en tu archivo .env");
     }
 
