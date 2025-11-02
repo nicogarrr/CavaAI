@@ -1,12 +1,13 @@
 'use server';
 
-import { auth } from '@/lib/better-auth/auth';
+import { getAuth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
 
 export async function generatePortfolioSummary(input: {
   portfolio: PortfolioPerformance;
   history: { t: number[]; v: number[] };
 }): Promise<string> {
+  const auth = await getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) throw new Error('Usuario no autenticado');
 
@@ -62,6 +63,7 @@ export async function generateCombinedAnalysis(input: {
   financialData: any;
   currentPrice: number;
 }): Promise<string> {
+  const auth = await getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) throw new Error('Usuario no autenticado');
 
@@ -819,6 +821,7 @@ export async function generateInvestmentThesis(input: {
   financialData: any;
   currentPrice: number;
 }): Promise<string> {
+  const auth = await getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) throw new Error('Usuario no autenticado');
 

@@ -16,7 +16,18 @@ if (!cached){
 }
 
 export const connectToDatabase = async () => {
+    // Durante el build de Next.js, no intentamos conectarnos a MongoDB
+    // Detectamos build time verificando NEXT_PHASE o variables de entorno de CI
+    const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                       process.env.NEXT_PHASE === 'phase-development-build' ||
+                       (process.env.VERCEL && !process.env.MONGODB_URI);
+    
     if(!MONGODB_URI){
+        if (isBuildTime) {
+            // Durante el build, retornamos null en lugar de lanzar error
+            // Esto permite que Next.js complete el build sin necesidad de MongoDB
+            return null as any;
+        }
         throw new Error("MongoDB URI is missing. Por favor, configura MONGODB_URI en tu archivo .env");
     }
 
@@ -35,6 +46,14 @@ export const connectToDatabase = async () => {
     }
     catch(err: any){
         cached.promise = null;
+        
+        // Durante el build, no lanzamos error si no se puede conectar
+        const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                           process.env.NEXT_PHASE === 'phase-development-build';
+        
+        if (isBuildTime) {
+            return null as any;
+        }
         
         // Mensaje de error más descriptivo
         if(err?.name === 'MongooseServerSelectionError' || err?.message?.includes('could not connect')) {

@@ -14,11 +14,38 @@ export const getAuth = async () => {
 
     try {
         const mongoose = await connectToDatabase();
-        const db = mongoose.connection;
-
-        if (!db) {
+        
+        // Durante el build, si connectToDatabase retorna null, creamos una instancia sin base de datos
+        // Esto permite que el build complete sin necesidad de MongoDB
+        if (!mongoose || !mongoose.connection) {
+            const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                               process.env.NEXT_PHASE === 'phase-development-build' ||
+                               (process.env.VERCEL && !process.env.MONGODB_URI);
+            
+            if (isBuildTime) {
+                // Durante el build, creamos una instancia mock sin base de datos
+                // Esto permite que Next.js complete el build
+                authInstance = betterAuth({
+                    secret: process.env.BETTER_AUTH_SECRET || 'dummy-secret-for-build',
+                    baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+                    emailAndPassword: {
+                        enabled: true,
+                        disableSignUp: false,
+                        requireEmailVerification: false,
+                        minPasswordLength: 8,
+                        maxPasswordLength: 128,
+                        autoSignIn: true,
+                    },
+                    plugins: [nextCookies()],
+                }) as any;
+                
+                return authInstance;
+            }
+            
             throw new Error("MongoDB connection not found!");
         }
+
+        const db = mongoose.connection;
 
         authInstance = betterAuth({
             database: mongodbAdapter(db as any),
@@ -53,6 +80,3 @@ export const getAuth = async () => {
         throw error;
     }
 }
-
-// Inicializar auth (se ejecuta al importar el módulo)
-export const auth = await getAuth();
