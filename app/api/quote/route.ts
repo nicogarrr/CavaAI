@@ -47,9 +47,8 @@ export async function GET(request: NextRequest) {
             previousClose: quote.pc || 0,
         });
     } catch (error) {
-        console.error('Error fetching quote:', error);
         return NextResponse.json(
-            { error: 'Internal server error' },
+            { error: 'Failed to fetch quote data', details: error instanceof Error ? error.message : 'Unknown error' },
             { status: 500 }
         );
     }

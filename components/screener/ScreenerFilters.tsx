@@ -101,7 +101,7 @@ export default function ScreenerFilters() {
 
   const applyFilters = () => {
     // TODO: Implementar lógica de filtrado
-    console.log('Aplicando filtros:', filters);
+    onFiltersChange(filters);
   };
 
   const removeFilter = (filterKey: string) => {
