@@ -109,6 +109,16 @@ export const getETFHoldings = cache(async (symbol: string): Promise<FinnhubETFHo
 
 export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> {
     try {
+        // Use new multi-source news aggregation for better coverage
+        const { getNewsWithFallback } = await import('./newsSources.actions');
+        const news = await getNewsWithFallback(symbols, 6);
+        
+        // If multi-source returns results, use them
+        if (news && news.length > 0) {
+            return news;
+        }
+        
+        // Fallback to original Finnhub-only implementation
         const range = getDateRange(5);
         const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
         if (!token) {
@@ -197,6 +207,16 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
 
 export async function getCompanyNews(symbol: string, maxArticles = 20): Promise<MarketNewsArticle[]> {
     try {
+        // Use new multi-source news aggregation for better coverage
+        const { getCompanyNewsWithFallback } = await import('./newsSources.actions');
+        const news = await getCompanyNewsWithFallback(symbol, maxArticles);
+        
+        // If multi-source returns results, use them
+        if (news && news.length > 0) {
+            return news;
+        }
+        
+        // Fallback to original Finnhub-only implementation
         const range = getDateRange(30); // Últimos 30 días
         const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
         if (!token) {

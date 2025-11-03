@@ -4,13 +4,20 @@ This guide explains how to configure multiple data sources for maximum reliabili
 
 ## Overview
 
-CavaAI now supports **5 different data sources** with automatic fallback:
+CavaAI now supports **multiple data sources** with automatic fallback:
 
+### Market Data Sources:
 1. **Finnhub** (Primary) - High quality, real-time data
 2. **Twelve Data** (Secondary) - Good balance of limits and quality
 3. **Alpha Vantage** (Tertiary) - Free tier with reasonable limits
 4. **Polygon.io** (Quaternary) - Additional fallback option
 5. **Yahoo Finance** (Fallback) - No API key required
+
+### News Sources:
+1. **Finnhub** (Primary) - Company news and market news
+2. **Alpha Vantage** (Secondary) - News sentiment API
+3. **NewsAPI** (Tertiary) - General news aggregator
+4. **Marketaux** (Quaternary) - Financial news API
 
 ## Why Multiple Sources?
 
@@ -62,7 +69,7 @@ CavaAI now supports **5 different data sources** with automatic fallback:
    ALPHA_VANTAGE_API_KEY=your_alpha_vantage_api_key_here
    ```
 
-**Best for**: Fundamental data, company overviews, global quotes
+**Best for**: Fundamental data, company overviews, global quotes, news sentiment
 
 ### 4. Polygon.io (Optional)
 
@@ -87,6 +94,34 @@ No setup required - automatically used as last resort.
 
 **Best for**: Emergency fallback when all other sources fail
 
+### 6. NewsAPI (Optional - News Only)
+
+**Free Tier**: 100 requests/day
+**Features**: Access to thousands of news sources
+
+1. Sign up at [newsapi.org](https://newsapi.org/)
+2. Get your API key
+3. Add to `.env`:
+   ```env
+   NEWSAPI_KEY=your_newsapi_key_here
+   ```
+
+**Best for**: General market news, financial news aggregation
+
+### 7. Marketaux (Optional - News Only)
+
+**Free Tier**: 100 requests/day
+**Features**: Financial news specifically
+
+1. Sign up at [marketaux.com](https://www.marketaux.com/)
+2. Get your API key
+3. Add to `.env`:
+   ```env
+   MARKETAUX_API_KEY=your_marketaux_key_here
+   ```
+
+**Best for**: Stock-specific news, market analysis articles
+
 ## Recommended Configuration
 
 ### For Development
@@ -97,12 +132,17 @@ TWELVE_DATA_API_KEY=your_key
 ```
 
 ### For Production
-Use 3-4 sources for maximum reliability:
+Use 3-4 data sources and 2-3 news sources for maximum reliability:
 ```env
+# Market Data
 FINNHUB_API_KEY=your_key
 TWELVE_DATA_API_KEY=your_key
 ALPHA_VANTAGE_API_KEY=your_key
 POLYGON_API_KEY=your_key
+
+# News Sources
+NEWSAPI_KEY=your_key
+MARKETAUX_API_KEY=your_key
 ```
 
 ## Usage Priority
