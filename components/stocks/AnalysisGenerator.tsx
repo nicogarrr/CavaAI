@@ -131,27 +131,50 @@ export default function AnalysisGenerator({
 
         html = processedLines.join('\n');
 
-        // Convertir listas ordenadas
-        html = html.replace(/^(\d+)\.\s+(.+)$/gim, '<li>$2</li>');
-        
-        // Agrupar listas ordenadas
-        html = html.replace(/(<li>[\s\S]*?<\/li>)(?=\s*<li>|$)/g, (match) => {
-            if (match.includes('<li>') && !match.includes('<ol>')) {
-                return '<ol>' + match + '</ol>';
-            }
-            return match;
-        });
+        // Convertir listas ordenadas y no ordenadas (procesar línea por línea)
+        const listLines = html.split('\n');
+        let resultLines: string[] = [];
+        let currentList: string[] = [];
+        let currentListType: 'ol' | 'ul' | null = null;
 
-        // Convertir listas no ordenadas
-        html = html.replace(/^[-*]\s+(.+)$/gim, '<li>$1</li>');
-        
-        // Agrupar listas no ordenadas que no sean ordenadas
-        html = html.replace(/(<li>[\s\S]*?<\/li>)(?=\s*<li>|$)/g, (match) => {
-            if (match.includes('<li>') && !match.includes('<ol>') && !match.includes('<ul>')) {
-                return '<ul>' + match + '</ul>';
+        for (let i = 0; i < listLines.length; i++) {
+            const line = listLines[i];
+            const orderedMatch = line.match(/^(\d+)\.\s+(.+)$/);
+            const unorderedMatch = line.match(/^[-*]\s+(.+)$/);
+            
+            if (orderedMatch) {
+                // Si hay una lista diferente activa, cerrarla
+                if (currentListType && currentListType !== 'ol') {
+                    resultLines.push(`<${currentListType}>${currentList.join('')}</${currentListType}>`);
+                    currentList = [];
+                }
+                currentListType = 'ol';
+                currentList.push(`<li>${orderedMatch[2]}</li>`);
+            } else if (unorderedMatch) {
+                // Si hay una lista diferente activa, cerrarla
+                if (currentListType && currentListType !== 'ul') {
+                    resultLines.push(`<${currentListType}>${currentList.join('')}</${currentListType}>`);
+                    currentList = [];
+                }
+                currentListType = 'ul';
+                currentList.push(`<li>${unorderedMatch[1]}</li>`);
+            } else {
+                // Si hay lista activa, cerrarla
+                if (currentListType && currentList.length > 0) {
+                    resultLines.push(`<${currentListType}>${currentList.join('')}</${currentListType}>`);
+                    currentList = [];
+                    currentListType = null;
+                }
+                resultLines.push(line);
             }
-            return match;
-        });
+        }
+
+        // Cerrar lista si queda abierta
+        if (currentListType && currentList.length > 0) {
+            resultLines.push(`<${currentListType}>${currentList.join('')}</${currentListType}>`);
+        }
+
+        html = resultLines.join('\n');
 
         // Convertir links
         html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
