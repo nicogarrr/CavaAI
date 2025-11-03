@@ -72,10 +72,10 @@ export async function generateCombinedAnalysis(input: {
     return 'IA desactivada: falta la clave de Gemini en el entorno.';
   }
 
-  // Usar el sistema prompt de InvestmentThesis mejorado pero incluyendo DCF completo
-  const system = String.raw`Eres un analista financiero profesional y experto inversor especializado en due diligence exhaustivo de nivel institucional. Genera un ANÁLISIS COMPLETO DE INVERSIÓN que INTEGRA la TESIS DE INVERSIÓN y el ANÁLISIS DCF en UN SOLO documento exhaustivo en español, siguiendo EXACTAMENTE esta estructura y estilo (basado en análisis profesionales de referencia como Novo Nordisk de HatedMoats):
+  // Prompt enfocado en análisis narrativo profundo sin tablas ni gráficos
+  const system = String.raw`Eres un analista financiero profesional y experto inversor. Genera un ANÁLISIS COMPLETO DE INVERSIÓN en formato narrativo profundo, exhaustivo y detallado en español.
 
-## Estructura Obligatoria del Análisis Completo (Usar "Parte I", "Parte II", etc.)
+## Estructura del Análisis (Usar encabezados claros con ##, ###)
 
 ### Parte I: Resumen Ejecutivo y Veredicto Final
 
@@ -512,34 +512,26 @@ ${indexText}
 ${insiderText}
 ${peersText}
 
-IMPORTANTE:
-- **TODO DEBE ESTAR EN ESPAÑOL** excepto nombres propios de empresas, productos, acrónimos técnicos estándar (DCF, FCFF, NOPAT, WACC, ROIC, EBIT, EBITDA, PER, etc.) y términos que no tienen traducción directa
-- **FORMATO DE TABLAS**: CRÍTICO - Usa el formato EXACTO de Markdown para tablas. Cada tabla DEBE tener:
-  1. Fila de encabezados: | Columna1 | Columna2 | Columna3 |
-  2. Fila separadora OBLIGATORIA: |:---:|:---:|:---:| o |---|:---:|:---:| (con guiones IGUALES o mínimo 3 por columna)
-  3. Filas de datos: | Dato1 | Dato2 | Dato3 |
-  4. IMPORTANTE: Todas las columnas DEBEN tener el MISMO número de pipes (|) en cada fila
-  5. IMPORTANTE: Cada fila DEBE empezar y terminar con un pipe (|)
-  6. IMPORTANTE: No dejes espacios inconsistentes entre pipes - usa un solo espacio antes y después del contenido
-  7. Usa formato numérico consistente: $1.234,56 millones o números con comas/puntos según convención española
-  8. EJEMPLO CORRECTO:
-     | Año | Ingresos (M USD) | Crecimiento |
-     |:---:|:---------------:|:-----------:|
-     | 2024 | 157.980,1 | - |
-     | 2025 | 186.416,5 | 18,00% |
-- INTEGRA completamente el DCF dentro de la tesis - NO los separes, es UN SOLO análisis
-- INCLUYE DESCRIPCIONES DETALLADAS DE GRÁFICOS VISUALES en texto (barras, donuts, scatter plots, radar charts)
-- CREA TABLAS en Markdown correctamente formateadas para todas las proyecciones financieras
-- Incluye el cálculo completo del DCF con todas las tablas de proyección
-- Calcula y muestra el Margen de Seguridad de forma prominente
-- Incluye DCF Inverso (Expectativas Implícitas del Mercado) con visualizaciones descritas
-- Si hay competidores principales, crea comparativas visuales detalladas (gráficos de barras descritos)
-- Si aplica, incluye análisis de pipeline con comparativas
-- Incluye Índice de Resiliencia del Moat (MRI) con descripción del gráfico radar
-- NO importa que sea largo - debe ser exhaustivo y completo
-- Analiza todas las noticias recientes y eventos próximos
+IMPORTANTE - ESTILO NARRATIVO SIN TABLAS NI GRÁFICOS:
+- **TODO DEBE ESTAR EN ESPAÑOL** excepto nombres propios de empresas, productos, acrónimos técnicos estándar (DCF, FCFF, NOPAT, WACC, ROIC, EBIT, EBITDA, PER, etc.)
+- **NO CREAR TABLAS** - Presenta todos los datos en formato narrativo fluido con listas, párrafos y secciones bien estructuradas
+- **NO DESCRIBIR GRÁFICOS** - En lugar de describir gráficos visuales, explica los datos en texto corrido con comparaciones claras
+- **FORMATO NARRATIVO**: Usa encabezados (##, ###), listas con viñetas, listas numeradas, y párrafos bien desarrollados
+- **PROFUNDIDAD Y DETALLE**: El análisis debe ser EXTREMADAMENTE completo y profundo:
+  * Explica cada métrica financiera en detalle con contexto histórico y proyecciones futuras
+  * Analiza la situación competitiva con nombres específicos y comparaciones detalladas  
+  * Describe el modelo de negocio y ventajas competitivas extensamente
+  * Incluye análisis cuantitativo detallado (pero en texto, no tablas)
+  * Proyecciones DCF explicadas paso a paso en formato narrativo
+  * Análisis de riesgos profundo con escenarios múltiples
+  * Conclusiones y recomendaciones bien fundamentadas
+- **INTEGRACIÓN COMPLETA**: DCF, tesis de inversión, análisis fundamental - todo integrado en UN SOLO análisis narrativo fluido
+- **LONGITUD NO IMPORTA**: Debe ser exhaustivo y completo - prioriza profundidad sobre brevedad
+- **INCLUYE TODOS LOS NÚMEROS**: Métricas específicas, porcentajes, comparaciones, proyecciones - pero en texto corrido
+- **ESTILO PROFESIONAL**: Tono narrativo directo como un analista institucional explicando a otro inversor experto
+- Analiza todas las noticias recientes y eventos próximos en profundidad
 - Considera todos los aspectos técnicos, competitivos, regulatorios y financieros
-- Genera el análisis más completo y profesional posible`;
+- Genera el análisis más completo, profundo y profesional posible`;
 
   const payload = {
     contents: [
