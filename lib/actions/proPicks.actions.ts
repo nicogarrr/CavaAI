@@ -61,32 +61,48 @@ export async function generateProPicks(
             throw new Error(`Estrategia no encontrada: ${strategyId}`);
         }
 
-        // Universo de acciones más amplio (S&P 500 aproximado)
+        // Universo de acciones más amplio (S&P 500 aproximado) - Expandido para mejor diversificación
         const universeSymbols = [
-            // Tech
-            'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AMD', 'INTC', 'CRM',
-            // Financials
-            'JPM', 'BAC', 'WFC', 'GS', 'V', 'MA',
-            // Healthcare
-            'JNJ', 'PFE', 'UNH', 'ABBV', 'MRK',
-            // Consumer
-            'WMT', 'HD', 'NKE', 'MCD', 'SBUX', 'DIS', 'NFLX',
-            // Industrial
-            'BA', 'CAT', 'GE', 'HON',
-            // Energy
-            'XOM', 'CVX', 'COP',
-            // Others
-            'PG', 'KO', 'PEP', 'TMO', 'AVGO', 'QCOM', 'TXN',
+            // Technology (18)
+            'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA', 'AMD', 'INTC', 'CRM', 
+            'AVGO', 'QCOM', 'TXN', 'ADBE', 'ORCL', 'NOW', 'SNOW',
+            // Financials (12)
+            'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'V', 'MA', 'PYPL', 'AXP', 'COF', 'SCHW',
+            // Healthcare (15)
+            'JNJ', 'PFE', 'UNH', 'ABBV', 'MRK', 'LLY', 'TMO', 'ABT', 'DHR', 'ISRG', 'CI', 
+            'CVS', 'ELV', 'HCA', 'ZTS',
+            // Consumer Discretionary (12)
+            'WMT', 'HD', 'NKE', 'MCD', 'SBUX', 'DIS', 'NFLX', 'TJX', 'LOW', 'TGT', 'NKE', 'BKNG',
+            // Consumer Staples (10)
+            'PG', 'KO', 'PEP', 'WMT', 'COST', 'PM', 'MO', 'CL', 'EL', 'CLX',
+            // Industrial (12)
+            'BA', 'CAT', 'GE', 'HON', 'UNP', 'RTX', 'ETN', 'EMR', 'CMI', 'ITW', 'DE', 'PH',
+            // Energy (8)
+            'XOM', 'CVX', 'COP', 'SLB', 'MPC', 'VLO', 'PSX', 'EOG',
+            // Communication (6)
+            'VZ', 'T', 'CMCSA', 'DIS', 'NFLX', 'META',
+            // Utilities (5)
+            'NEE', 'DUK', 'SO', 'D', 'AEP',
+            // Materials (6)
+            'LIN', 'APD', 'ECL', 'SHW', 'PPG', 'FCX',
+            // Real Estate (5)
+            'AMT', 'PLD', 'EQIX', 'PSA', 'WELL',
+            // Others (3)
+            'TSM', 'ASML', 'BABA',
         ];
 
         const picks: ProPick[] = [];
-        const maxSymbols = Math.min(30, universeSymbols.length); // Evaluar hasta 30 para tener opciones
+        // Evaluar más símbolos para tener mejor diversificación sectorial
+        const maxSymbols = Math.min(60, universeSymbols.length); // Aumentado de 30 a 60
 
         // Contenedor para todas las acciones evaluadas (incluso si no pasan filtros)
         const allEvaluatedPicks: ProPick[] = [];
         
+        // Mapa para tracking de sectores en picks finales (para diversificación)
+        const sectorCount: Map<string, number> = new Map();
+        
         // Evaluar cada acción secuencialmente
-        for (let i = 0; i < maxSymbols && (picks.length < limit * 2 || allEvaluatedPicks.length < limit * 3); i++) {
+        for (let i = 0; i < maxSymbols && (picks.length < limit * 3 || allEvaluatedPicks.length < limit * 4); i++) {
             const symbol = universeSymbols[i];
             
             try {
@@ -179,10 +195,74 @@ export async function generateProPicks(
             }
         }
 
-        // Si tenemos picks que pasaron los filtros, usarlos
+        // Si tenemos picks que pasaron los filtros, aplicar diversificación sectorial
         if (picks.length > 0) {
-            // Ordenar por strategyScore (si está disponible) o por overallScore
-            const sortedPicks = picks.sort((a, b) => {
+            // Función para calcular score de diversificación (prioriza sectores menos representados)
+            const getDiversificationScore = (pick: ProPick, currentSectorCount: Map<string, number>): number => {
+                const sector = pick.sector || 'Unknown';
+                const currentCount = currentSectorCount.get(sector) || 0;
+                // Penalizar sectores ya representados (máximo 2-3 picks por sector)
+                const sectorPenalty = Math.min(currentCount * 5, 15); // Máximo 15 puntos de penalización
+                
+                // Bonus por comparación con sector (si está disponible)
+                const vsSectorBonus = pick.vsSector 
+                    ? (pick.vsSector.value + pick.vsSector.profitability + pick.vsSector.growth) / 30
+                    : 0;
+                
+                return (pick.strategyScore ?? pick.score) - sectorPenalty + vsSectorBonus;
+            };
+
+            // Ordenar picks considerando diversificación sectorial
+            const diversifiedPicks: ProPick[] = [];
+            const usedSectors = new Map<string, number>();
+            const remainingPicks = [...picks];
+
+            // Primera pasada: seleccionar el mejor pick de cada sector principal
+            const sectorGroups = new Map<string, ProPick[]>();
+            remainingPicks.forEach(pick => {
+                const sector = pick.sector || 'Unknown';
+                if (!sectorGroups.has(sector)) {
+                    sectorGroups.set(sector, []);
+                }
+                sectorGroups.get(sector)!.push(pick);
+            });
+
+            // Seleccionar top picks de cada sector (hasta 2 por sector)
+            sectorGroups.forEach((sectorPicks, sector) => {
+                const sorted = sectorPicks.sort((a, b) => {
+                    const scoreA = a.strategyScore ?? a.score;
+                    const scoreB = b.strategyScore ?? b.score;
+                    return scoreB - scoreA;
+                });
+                // Tomar hasta 2 del mismo sector
+                const topPicks = sorted.slice(0, 2);
+                topPicks.forEach(pick => {
+                    diversifiedPicks.push(pick);
+                    usedSectors.set(sector, (usedSectors.get(sector) || 0) + 1);
+                });
+            });
+
+            // Si aún no tenemos suficientes picks, completar con los mejores restantes
+            if (diversifiedPicks.length < limit) {
+                const remaining = remainingPicks
+                    .filter(p => !diversifiedPicks.includes(p))
+                    .sort((a, b) => {
+                        const divScoreA = getDiversificationScore(a, usedSectors);
+                        const divScoreB = getDiversificationScore(b, usedSectors);
+                        return divScoreB - divScoreA;
+                    });
+
+                const needed = limit - diversifiedPicks.length;
+                for (let i = 0; i < needed && i < remaining.length; i++) {
+                    const pick = remaining[i];
+                    diversifiedPicks.push(pick);
+                    const sector = pick.sector || 'Unknown';
+                    usedSectors.set(sector, (usedSectors.get(sector) || 0) + 1);
+                }
+            }
+
+            // Ordenar final por strategyScore (los que quedaron después de diversificación)
+            const sortedPicks = diversifiedPicks.sort((a, b) => {
                 const scoreA = a.strategyScore ?? a.score;
                 const scoreB = b.strategyScore ?? b.score;
                 return scoreB - scoreA;
