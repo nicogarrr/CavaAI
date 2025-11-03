@@ -1,6 +1,8 @@
 import dynamicImport from 'next/dynamic';
+import { Suspense } from 'react';
 import NewsSection from "@/components/NewsSection";
 import LazyTradingViewWidget from "@/components/LazyTradingViewWidget";
+import { NewsLoadingSkeleton } from "@/components/LoadingState";
 import {
     HEATMAP_WIDGET_CONFIG,
     MARKET_DATA_WIDGET_CONFIG,
@@ -72,7 +74,9 @@ const Home = () => {
                     />
                 </div>
                 <div className="h-full md:col-span-1 xl:col-span-1">
-                    <NewsSection symbols={NEWS_SYMBOLS} />
+                    <Suspense fallback={<NewsLoadingSkeleton />}>
+                        <NewsSection symbols={NEWS_SYMBOLS} />
+                    </Suspense>
                 </div>
             </section>
 
