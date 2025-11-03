@@ -82,12 +82,7 @@ export async function generateCombinedAnalysis(input: {
 
 ### Parte I: Resumen Ejecutivo y Veredicto Final
 
-#### 1. Título del Análisis
-- Formato: "[Nombre Empresa]: Análisis de Inversión Exhaustivo"
-- Subtítulo: "[Símbolo] - Valoración DCF y Tesis de Inversión"
-- Fecha de análisis
-
-#### 2. Veredicto Final Destacado (al inicio)
+#### 1. Veredicto Final Destacado (al inicio)
 **OBLIGATORIO: Crear visualización en texto de tres tarjetas lado a lado:**
 
 **Tarjeta 1: Precio vs Valor Intrínseco**
@@ -103,7 +98,6 @@ export async function generateCombinedAnalysis(input: {
 - Número prominente: "XX.X%"
 
 **Tarjeta 3: VEREDICTO FINAL**
-- Fondo verde (descrito en texto)
 - Verdicto en mayúsculas: "SEVERAMENTE INFRAVALORADA" / "JUSTAMENTE VALORADA" / "SOBREVALORADA"
 - Texto explicativo
 
@@ -250,14 +244,12 @@ Resultado: VP(VT) en millones
 **OBLIGATORIO: Visualización de Escenarios en tres tarjetas lado a lado**
 
 **Tarjeta 1: Escenario Bajista - El Umbral Bajo**
-- Color: Amarillo/Naranja
 - **Valor Intrínseco**: ≈$X (USD) / (Local: Y)
 - **Resumen**: "Solo X% por debajo del precio actual"
 - **Supuestos Clave**: 
   - Lista con iconos descritos (Competencia intensa, Márgenes comprimen a X%)
 
 **Tarjeta 2: Escenario Base - Valor Intrínseco**
-- Color: Verde
 - **Valor Intrínseco**: ≈$X (USD) / (Local: Y)
 - **Resumen**: "Perfil asimétrico favorable"
 - **Derivado De**:
@@ -265,7 +257,6 @@ Resultado: VP(VT) en millones
   - VP de Valor Terminal: $Y
 
 **Tarjeta 3: Escenario Alcista - Potencial Asimétrico**
-- Color: Azul
 - **Valor Intrínseco**: ≈$X (USD) / (Local: Y)
 - **Resumen**: "Inmensa optionalidad"
 - **Supuestos Clave**:
@@ -286,19 +277,17 @@ Resultado: VP(VT) en millones
 
 **Texto introductorio**: "El precio actual de $X por acción implica un futuro donde:"
 
-**OBLIGATORIO: Crear dos cajas lado a lado con borde rojo (expectativas negativas):**
+**OBLIGATORIO: Crear dos cajas lado a lado (expectativas negativas):**
 
 **Caja 1: "Colapso del Crecimiento"**
-- Icono: gráfico de línea descendente (descrito)
-- **Texto destacado en rojo**: "El crecimiento de ingresos cae de **>X%** a **bajo-dígito-simple** en 3-4 años"
+- **Texto destacado**: "El crecimiento de ingresos cae de **>X%** a **bajo-dígito-simple** en 3-4 años"
 - Sub-bullet: "El mercado espera desaceleración aguda"
 
 **Caja 2: "Colapso de Márgenes"**
-- Icono: gráfico de pastel con flecha descendente (descrito)
-- **Texto destacado en rojo**: "Los márgenes EBIT se contraen permanentemente a **X-Y%** (**>X puntos base de caída**)"
+- **Texto destacado**: "Los márgenes EBIT se contraen permanentemente a **X-Y%** (**>X puntos base de caída**)"
 - Sub-bullet: "Más de X puntos base de compresión"
 
-**Conclusión (caja verde):**
+**Conclusión:**
 - "Oportunidad de Inversión Atractiva"
 - "El mercado está valorando [Empresa] como si nuestro **Escenario Bajista** fuera el resultado más probable"
 - "Esta brecha entre expectativas bajas y nuestro más probable **Escenario Base** crea un margen de seguridad sustancial"
@@ -356,7 +345,7 @@ Si aplica a la industria, crear sección con:
 
 **Sección Derecha: [Competidor]**
 - Lista de candidatos clave del pipeline
-- Si hay datos decepcionantes, destacar en rojo
+- Si hay datos decepcionantes, destacar claramente
 
 #### 6.3. Panorama de Tecnología: Eficacia vs Conveniencia/Capacidad
 Si aplica, crear descripción de gráfico de dispersión:
@@ -403,7 +392,6 @@ Si aplica, crear descripción de gráfico de dispersión:
 - Fórmula: "1 - (Precio Actual / Valor Intrínseco) = X%"
 
 **Tarjeta 3: VEREDICTO FINAL**
-- Fondo verde (descrito)
 - Verdicto en mayúsculas: "SEVERAMENTE INFRAVALORADA" / "JUSTAMENTE VALORADA" / "SOBREVALORADA"
 - Texto: "Un margen de seguridad que excede X% indica una desconexión profunda entre la percepción del mercado y la realidad económica subyacente del negocio."
 
@@ -443,7 +431,7 @@ IMPORTANTE:
 
 La visualización muestra dos barras horizontales:
 - **Barra Izquierda (Gris Oscuro)**: Representa el 'Precio Actual' de $X, significativamente más corta
-- **Barra Derecha (Verde Vibrante)**: Representa el 'Valor Intrínseco' de $Y, aproximadamente X veces más alta
+- **Barra Derecha**: Representa el 'Valor Intrínseco' de $Y, aproximadamente X veces más alta
 
 Debajo del gráfico: 'El precio actual es significativamente menor que su valor intrínseco calculado.'"
 
