@@ -2,7 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
     devIndicators: false,
-  /* config options here */
+    /* Performance optimizations */
+    compress: true, // Enable gzip compression
+    productionBrowserSourceMaps: false, // Disable source maps in production for smaller bundle
+    
+    // Optimize images
     images: {
         remotePatterns: [
             {
@@ -12,10 +16,38 @@ const nextConfig: NextConfig = {
                 pathname: '/**',
             },
         ],
+        formats: ['image/webp', 'image/avif'], // Modern formats for better performance
+        deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+        imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     },
+    
+    // Optimize bundling
+    experimental: {
+        optimizePackageImports: ['lucide-react', 'recharts'], // Tree-shake large dependencies
+    },
+    
     typescript: {
         ignoreBuildErrors: true,
-    }
+    },
+    
+    // Headers for better caching
+    async headers() {
+        return [
+            {
+                source: '/:path*',
+                headers: [
+                    {
+                        key: 'X-DNS-Prefetch-Control',
+                        value: 'on'
+                    },
+                    {
+                        key: 'X-Frame-Options',
+                        value: 'SAMEORIGIN'
+                    },
+                ],
+            },
+        ];
+    },
 };
 
 export default nextConfig;
