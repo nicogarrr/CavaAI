@@ -47,9 +47,14 @@ export async function GET(request: NextRequest) {
             previousClose: quote.pc || 0,
         });
     } catch (error) {
-        console.error('Error fetching quote:', error);
+        // Log detailed error server-side for debugging
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Quote API Error:', error);
+        }
+        
+        // Return generic error to client to avoid leaking sensitive information
         return NextResponse.json(
-            { error: 'Internal server error' },
+            { error: 'Failed to fetch quote data. Please try again later.' },
             { status: 500 }
         );
     }

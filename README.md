@@ -25,7 +25,7 @@
 
 # JLCavaAI
 
-JLCavaAI es una plataforma inteligente de seguimiento de mercados y gestión de carteras. Analiza precios en tiempo real, gestiona tu portfolio personalizado, y accede a insights detallados de empresas y ETFs — construido con tecnología de vanguardia.
+JLCavaAI es una plataforma inteligente de seguimiento de mercados. Analiza precios en tiempo real y accede a insights detallados de empresas y ETFs — construido con tecnología de vanguardia.
 
 Nota: JLCavaAI es una herramienta educativa y de análisis. Los datos de mercado pueden tener retraso según las reglas del proveedor. Nada aquí constituye asesoramiento financiero.
 
