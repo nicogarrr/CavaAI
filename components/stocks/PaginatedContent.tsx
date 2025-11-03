@@ -13,28 +13,98 @@ interface PaginatedContentProps {
 export default function PaginatedContent({ content, itemsPerPage = 3000, children }: PaginatedContentProps) {
     const [currentPage, setCurrentPage] = useState(1);
 
-    // Dividir el contenido en chunks basado en longitud de caracteres
-    const pages = useMemo(() => {
-        if (!content) return [];
-        
-        // Asegurar que content es un string
-        if (typeof content !== 'string') {
-            console.error('PaginatedContent: content is not a string', typeof content, content);
-            const stringContent = String(content);
-            return [stringContent];
+  // Dividir el contenido de forma inteligente por secciones o párrafos
+  const pages = useMemo(() => {
+    if (!content) return [];
+    
+    // Asegurar que content es un string
+    if (typeof content !== 'string') {
+      console.error('PaginatedContent: content is not a string', typeof content, content);
+      const stringContent = String(content);
+      return [stringContent];
+    }
+    
+    const chunks: string[] = [];
+    const targetChunkSize = itemsPerPage;
+    let currentIndex = 0;
+    const contentLength = content.length;
+    
+    // Función para encontrar el próximo punto de corte inteligente
+    const findBreakPoint = (startIndex: number, maxLength: number): number => {
+      const endIndex = Math.min(startIndex + maxLength, contentLength);
+      
+      // 1. Intentar encontrar un encabezado de sección (## o ###)
+      const sectionHeaderRegex = /^#{2,3}\s+/gm;
+      let match;
+      let bestBreak = endIndex;
+      sectionHeaderRegex.lastIndex = startIndex;
+      
+      while ((match = sectionHeaderRegex.exec(content)) !== null && match.index < endIndex) {
+        // Si el encabezado está dentro del rango y no está demasiado cerca del inicio
+        if (match.index > startIndex + targetChunkSize * 0.3 && match.index < endIndex) {
+          bestBreak = match.index;
+          break; // Usar el primer encabezado encontrado en un buen punto
         }
-        
-        const chunks: string[] = [];
-        let currentIndex = 0;
-        
-        while (currentIndex < content.length) {
-            const chunk = content.slice(currentIndex, currentIndex + itemsPerPage);
-            chunks.push(chunk);
-            currentIndex += itemsPerPage;
+        // Si está más cerca del final, guardarlo como opción
+        if (match.index > startIndex && match.index < endIndex) {
+          bestBreak = match.index;
         }
+      }
+      
+      // 2. Si no hay sección cerca del final, buscar un doble salto de línea (párrafo)
+      if (bestBreak >= endIndex - 100) {
+        const paragraphRegex = /\n\n+/g;
+        paragraphRegex.lastIndex = startIndex;
+        let paraMatch;
         
-        return chunks;
-    }, [content, itemsPerPage]);
+        while ((paraMatch = paragraphRegex.exec(content)) !== null && paraMatch.index < endIndex) {
+          // Si el párrafo está dentro del rango y en un buen punto
+          if (paraMatch.index > startIndex + targetChunkSize * 0.3 && paraMatch.index < endIndex) {
+            bestBreak = paraMatch.index + paraMatch[0].length;
+            break; // Usar el primer párrafo encontrado en un buen punto
+          }
+          // Si está más cerca del final, guardarlo como opción
+          if (paraMatch.index > startIndex && paraMatch.index < endIndex) {
+            bestBreak = paraMatch.index + paraMatch[0].length;
+          }
+        }
+      }
+      
+      // 3. Si no hay párrafo cerca del final, buscar un salto de línea simple
+      if (bestBreak >= endIndex - 50) {
+        const lineBreakIndex = content.lastIndexOf('\n', endIndex);
+        if (lineBreakIndex > startIndex + targetChunkSize * 0.3) {
+          bestBreak = lineBreakIndex + 1;
+        }
+      }
+      
+      // 4. Como último recurso, buscar un espacio para no cortar palabras
+      if (bestBreak >= endIndex - 20) {
+        const spaceIndex = content.lastIndexOf(' ', endIndex);
+        if (spaceIndex > startIndex + targetChunkSize * 0.5) {
+          bestBreak = spaceIndex + 1;
+        }
+      }
+      
+      return Math.max(bestBreak, startIndex + targetChunkSize * 0.5); // Nunca cortar antes del 50%
+    };
+    
+    // Dividir el contenido de forma inteligente
+    while (currentIndex < contentLength) {
+      const breakPoint = findBreakPoint(currentIndex, targetChunkSize);
+      const chunk = content.slice(currentIndex, breakPoint);
+      chunks.push(chunk.trim());
+      currentIndex = breakPoint;
+      
+      // Prevenir bucles infinitos
+      if (breakPoint <= currentIndex - 1) {
+        currentIndex = Math.min(currentIndex + targetChunkSize, contentLength);
+      }
+    }
+    
+    // Filtrar chunks vacíos
+    return chunks.filter(chunk => chunk.length > 0);
+  }, [content, itemsPerPage]);
 
     const totalPages = pages.length;
     const currentContent = pages[currentPage - 1] || '';
