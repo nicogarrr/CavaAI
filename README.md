@@ -255,6 +255,13 @@ POLYGON_API_KEY=your_polygon_key
 
 # Nota: Yahoo Finance funciona sin API key como último recurso
 
+# Fuentes de noticias adicionales (opcionales, mejora la cobertura)
+# NewsAPI (gratis: 100 llamadas/día) - https://newsapi.org/
+NEWSAPI_KEY=your_newsapi_key
+
+# Marketaux (gratis: 100 llamadas/día) - https://www.marketaux.com/
+MARKETAUX_API_KEY=your_marketaux_key
+
 # Inngest AI (Gemini)
 GEMINI_API_KEY=your_gemini_api_key
 
