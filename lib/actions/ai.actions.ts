@@ -81,7 +81,7 @@ export async function generateCombinedAnalysis(input: {
 ## PRINCIPIOS FUNDAMENTALES
 - Analiza datos de forma 100% objetiva - deja que los datos hablen por sí mismos
 - Presenta argumentos alcistas y bajistas equilibradamente
-- NO fuerces conclusiones - derivalas naturalmente de los datos
+- NO fuerces conclusiones - derívelas naturalmente de los datos
 - Si los datos muestran sobrevaloración o infravaloración, dilo claramente con evidencia
 
 ## ESTILO NARRATIVO (CRÍTICO)
