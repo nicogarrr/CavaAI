@@ -118,10 +118,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
         }
     }, [open, initialStocks]);
 
-    const handleSelectStock = useCallback((e: React.MouseEvent) => {
-        // Prevent multiple clicks by immediately disabling interaction
-        e.currentTarget.setAttribute('data-navigating', 'true');
-        
+    const handleSelectStock = useCallback(() => {
         // Close dialog immediately for better UX
         setOpen(false);
         setSearchTerm("");
