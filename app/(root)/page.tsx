@@ -1,4 +1,3 @@
-import dynamicImport from 'next/dynamic';
 import { Suspense } from 'react';
 import NewsSection from "@/components/NewsSection";
 import LazyTradingViewWidget from "@/components/LazyTradingViewWidget";
@@ -13,27 +12,6 @@ import {
 // Forzar renderizado dinámico porque puede requerir datos de usuario
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-// Lazy load ProPicksSection solo cuando sea necesario
-const LazyProPicksSection = dynamicImport(
-    () => import("@/components/proPicks/ProPicksSection"),
-    {
-        ssr: true,
-        loading: () => (
-            <div className="w-full bg-gray-800 rounded-lg border border-gray-700 p-6">
-                <div className="animate-pulse space-y-4">
-                    <div className="h-8 bg-gray-700 rounded w-1/3"></div>
-                    <div className="h-4 bg-gray-700 rounded w-2/3"></div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                        {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="h-32 bg-gray-700 rounded"></div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        )
-    }
-);
 
 const Home = () => {
     const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
@@ -78,11 +56,6 @@ const Home = () => {
                         <NewsSection symbols={NEWS_SYMBOLS} />
                     </Suspense>
                 </div>
-            </section>
-
-            {/* ProPicks IA Section - Lazy load cuando esté en viewport */}
-            <section className="w-full mt-8">
-                <LazyProPicksSection />
             </section>
         </div>
     )
