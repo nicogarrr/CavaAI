@@ -251,7 +251,7 @@ export async function analyzeSocialSentiment(
 /**
  * Obtiene análisis de sentimiento combinado (noticias + redes sociales si disponible)
  */
-export async function getCombinedSentiment(
+export async function getCombinedSentimentAnalysis(
   symbol: string,
   companyName: string,
   newsArticles: Array<{
