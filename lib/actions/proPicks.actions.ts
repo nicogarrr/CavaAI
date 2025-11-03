@@ -1,6 +1,6 @@
 'use server';
 
-import { getStockFinancialData, getCandles } from './finnhub.actions';
+import { getStockFinancialData, getCandles, getProfile } from './finnhub.actions';
 import { calculateAdvancedStockScore } from '@/lib/utils/advancedStockScoring';
 import { 
     PROPICKS_STRATEGIES, 
@@ -8,6 +8,8 @@ import {
     passesStrategyFilters,
     type ProPickStrategy 
 } from '@/lib/utils/proPicksStrategies';
+import { getAuth } from '@/lib/better-auth/auth';
+import { headers } from 'next/headers';
 
 export interface ProPick {
     symbol: string;
@@ -39,13 +41,163 @@ export interface ProPick {
 }
 
 /**
+ * Usa Gemini IA para preseleccionar los mejores símbolos del universo
+ */
+async function selectBestCandidatesWithAI(
+    universeSymbols: string[],
+    strategy: ProPickStrategy,
+    limit: number
+): Promise<string[]> {
+    try {
+        const auth = await getAuth();
+        if (!auth) {
+            console.warn('No auth available, skipping AI preselection');
+            return universeSymbols.slice(0, Math.min(60, universeSymbols.length));
+        }
+        
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+        if (!apiKey) {
+            console.warn('No Gemini API key, skipping AI preselection');
+            return universeSymbols.slice(0, Math.min(60, universeSymbols.length));
+        }
+
+        // Obtener datos básicos de todos los símbolos (solo quote y profile)
+        console.log(`Obteniendo datos básicos de ${universeSymbols.length} símbolos para preselección IA...`);
+        const basicData: Array<{symbol: string; name?: string; price?: number; sector?: string; marketCap?: number}> = [];
+        
+        // Procesar en lotes para no saturar la API
+        const batchSize = 20;
+        for (let i = 0; i < Math.min(150, universeSymbols.length); i += batchSize) {
+            const batch = universeSymbols.slice(i, i + batchSize);
+            const promises = batch.map(async (symbol) => {
+                try {
+                    const profile = await getProfile(symbol);
+                    if (!profile) return null;
+                    
+                    // Obtener quote básico
+                    const token = process.env.FINNHUB_API_KEY || process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
+                    if (!token) return null;
+                    
+                    const quoteUrl = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+                    const quoteRes = await fetch(quoteUrl, { cache: 'no-store' });
+                    if (!quoteRes.ok) return null;
+                    const quote = await quoteRes.json();
+                    
+                    if (!quote.c || quote.c === 0) return null;
+                    
+                    return {
+                        symbol,
+                        name: profile.name || symbol,
+                        price: quote.c,
+                        sector: (profile as any)?.finnhubIndustry || (profile as any)?.industry || 'Unknown',
+                        marketCap: (profile as any)?.marketCapitalization || 0,
+                    };
+                } catch (e) {
+                    return null;
+                }
+            });
+            
+            const results = await Promise.all(promises);
+            basicData.push(...results.filter((r): r is NonNullable<typeof r> => r !== null));
+            
+            // Delay entre lotes
+            if (i + batchSize < universeSymbols.length) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        if (basicData.length === 0) {
+            return universeSymbols.slice(0, Math.min(60, universeSymbols.length));
+        }
+
+        // Preparar prompt para Gemini
+        const systemPrompt = `Eres un analista financiero experto. Analiza los datos básicos de acciones y selecciona las ${limit * 3} mejores candidatas según la estrategia de inversión especificada.
+
+Estrategia: ${strategy.name}
+Descripción: ${strategy.description}
+Categorías priorizadas: ${Object.entries(strategy.categoryWeights)
+    .filter(([_, weight]) => weight > 0.15)
+    .map(([cat, weight]) => `${cat} (${(weight * 100).toFixed(0)}%)`)
+    .join(', ')}
+
+Criterios de selección:
+1. Diversificación sectorial (máximo 2-3 por sector)
+2. Calidad de la empresa (nombre conocido, liquidez)
+3. Potencial según la estrategia
+4. Valor relativo (precio razonable vs mercado)
+5. Tamaño de mercado (preferir mid-cap a large-cap para mayor potencial)
+
+RESPONDE SOLO CON UNA LISTA DE SÍMBOLOS SEPARADOS POR COMAS, en el formato exacto:
+SYMBOL1,SYMBOL2,SYMBOL3,...
+
+NO incluyas explicaciones, solo los símbolos.`;
+
+        const dataText = basicData.map(d => 
+            `${d.symbol} (${d.name}): Precio $${d.price?.toFixed(2) || 'N/A'}, Sector: ${d.sector || 'Unknown'}, MarketCap: ${d.marketCap ? (d.marketCap / 1e9).toFixed(1) + 'B' : 'N/A'}`
+        ).join('\n');
+
+        const prompt = `${systemPrompt}\n\nDatos de acciones disponibles (${basicData.length} total):\n${dataText}\n\nSelecciona las ${limit * 3} mejores candidatas y responde SOLO con los símbolos separados por comas:`;
+
+        const payload = {
+            contents: [{
+                role: 'user',
+                parts: [{ text: prompt }],
+            }],
+        };
+
+        const model = 'gemini-2.5-flash';
+        const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            cache: 'no-store',
+        });
+
+        const json = await res.json().catch(() => ({} as any));
+        
+        if (!res.ok) {
+            console.warn('Gemini preselection failed, using fallback:', res.status);
+            return basicData
+                .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))
+                .slice(0, Math.min(limit * 3, basicData.length))
+                .map(d => d.symbol);
+        }
+
+        const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+            return basicData
+                .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))
+                .slice(0, Math.min(limit * 3, basicData.length))
+                .map(d => d.symbol);
+        }
+
+        // Extraer símbolos de la respuesta
+        const selectedSymbols = text
+            .split(/[,，\n]/)
+            .map(s => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''))
+            .filter(s => s.length >= 2 && s.length <= 5 && universeSymbols.includes(s))
+            .slice(0, limit * 3);
+
+        console.log(`IA preseleccionó ${selectedSymbols.length} símbolos de ${basicData.length} evaluados`);
+        return selectedSymbols.length > 0 ? selectedSymbols : basicData.slice(0, Math.min(limit * 3, basicData.length)).map(d => d.symbol);
+    } catch (error) {
+        console.error('Error en preselección IA, usando fallback:', error);
+        return universeSymbols.slice(0, Math.min(60, universeSymbols.length));
+    }
+}
+
+/**
  * ProPicks IA Mejorado - Similar a Investing Pro
  * 
  * Características:
+ * - Universo masivo expandido (~300+ símbolos)
+ * - Preselección con IA (Gemini) antes de evaluación completa
  * - Comparación con sector (crucial)
  * - Múltiples categorías de métricas
  * - Estrategias predefinidas
  * - Scoring avanzado
+ * - Diversificación sectorial forzada
  */
 export async function generateProPicks(
     limit: number = 10,
@@ -61,56 +213,88 @@ export async function generateProPicks(
             throw new Error(`Estrategia no encontrada: ${strategyId}`);
         }
 
-        // Universo de acciones más amplio (S&P 500 aproximado) - Expandido para mejor diversificación
+        // Universo expandido masivo - ~300+ símbolos
         const universeSymbols = [
-            // Technology (18)
+            // Technology (50+)
             'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA', 'AMD', 'INTC', 'CRM', 
-            'AVGO', 'QCOM', 'TXN', 'ADBE', 'ORCL', 'NOW', 'SNOW',
-            // Financials (12)
+            'AVGO', 'QCOM', 'TXN', 'ADBE', 'ORCL', 'NOW', 'SNOW', 'PANW', 'CRWD', 'ZS', 'NET', 
+            'DDOG', 'FROG', 'ESTC', 'MNDY', 'DOCN', 'ASAN', 'DOCU', 'COUP', 'OKTA', 'ZM', 'TEAM',
+            'WDAY', 'VEEV', 'SPLK', 'MDB', 'AKAM', 'FFIV', 'FTNT', 'CHKP', 'QLYS', 'RPD',
+            'TYL', 'EPAM', 'GTLB', 'PD', 'U', 'RBLX', 'GME', 'HOOD',
+            // Financials (40+)
             'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'V', 'MA', 'PYPL', 'AXP', 'COF', 'SCHW',
-            // Healthcare (15)
+            'BLK', 'BX', 'KKR', 'APO', 'TROW', 'BEN', 'IVZ', 'SOFI', 'NU', 'UPST', 'LC', 
+            'AFRM', 'SQ', 'FISV', 'FIS', 'JKHY', 'FLYW', 'PAYO', 'BILL', 'COIN', 'MARA', 
+            'RIOT', 'GBTC', 'ETHE', 'HIVE', 'BITF', 'HUT',
+            // Healthcare (60+)
             'JNJ', 'PFE', 'UNH', 'ABBV', 'MRK', 'LLY', 'TMO', 'ABT', 'DHR', 'ISRG', 'CI', 
-            'CVS', 'ELV', 'HCA', 'ZTS',
-            // Consumer Discretionary (12)
-            'WMT', 'HD', 'NKE', 'MCD', 'SBUX', 'DIS', 'NFLX', 'TJX', 'LOW', 'TGT', 'NKE', 'BKNG',
-            // Consumer Staples (10)
-            'PG', 'KO', 'PEP', 'WMT', 'COST', 'PM', 'MO', 'CL', 'EL', 'CLX',
-            // Industrial (12)
+            'CVS', 'ELV', 'HCA', 'ZTS', 'NVO', 'NVS', 'SNY', 'RHHBY', 'TAK', 'GSK', 'AZN',
+            'BMY', 'BIIB', 'GILD', 'REGN', 'VRTX', 'BMRN', 'ALNY', 'ARWR', 'FOLD', 'IONS',
+            'PTCT', 'RNA', 'SGMO', 'BLUE', 'RGNX', 'AGIO', 'AGEN', 'ALKS', 'ALLO', 'AMGN',
+            'BHVN', 'BPMC', 'CDMO', 'CERE', 'CLVS', 'CRSP', 'CRVS', 'CTLT', 'DCPH', 'EDIT',
+            'FGEN', 'GOSS', 'IMGN', 'IOVA', 'KYMR', 'LGND', 'LYEL', 'MRUS', 'NTLA',
+            // Consumer Discretionary (50+)
+            'WMT', 'HD', 'NKE', 'MCD', 'SBUX', 'DIS', 'NFLX', 'TJX', 'LOW', 'TGT', 'BKNG',
+            'EXPE', 'ABNB', 'TRIP', 'MAR', 'HLT', 'HYATT', 'WH', 'CHH', 'MGM', 'LVS',
+            'WYNN', 'CZR', 'PENN', 'DKNG', 'FAND', 'EA', 'ATVI', 'TTWO', 'BBY', 'GPS', 
+            'ANF', 'AEO', 'DKS', 'HIBB', 'ASO', 'WSM', 'RH', 'PTON', 'LULU', 'ONON', 
+            'HOKA', 'DECK', 'VFC', 'COLM',
+            // Consumer Staples (25+)
+            'PG', 'KO', 'PEP', 'COST', 'PM', 'MO', 'CL', 'EL', 'CLX', 'CHD', 'NWL', 'ENR',
+            'KMB', 'SJM', 'CPB', 'GIS', 'HSY', 'HRL', 'TAP', 'SAM', 'BUD', 'STZ', 'TPB',
+            'DEO', 'BF.B', 'HEINY',
+            // Industrial (40+)
             'BA', 'CAT', 'GE', 'HON', 'UNP', 'RTX', 'ETN', 'EMR', 'CMI', 'ITW', 'DE', 'PH',
-            // Energy (8)
-            'XOM', 'CVX', 'COP', 'SLB', 'MPC', 'VLO', 'PSX', 'EOG',
-            // Communication (6)
-            'VZ', 'T', 'CMCSA', 'DIS', 'NFLX', 'META',
-            // Utilities (5)
-            'NEE', 'DUK', 'SO', 'D', 'AEP',
-            // Materials (6)
-            'LIN', 'APD', 'ECL', 'SHW', 'PPG', 'FCX',
-            // Real Estate (5)
-            'AMT', 'PLD', 'EQIX', 'PSA', 'WELL',
-            // Others (3)
-            'TSM', 'ASML', 'BABA',
+            'AME', 'ROK', 'DOV', 'GGG', 'NOC', 'LMT', 'GD', 'HWM', 'TXT', 'FTV', 'IR',
+            'XRAY', 'BDX', 'BSX', 'EW', 'ZBH', 'BAX', 'ALGN', 'INVH', 'ALG', 'APOG',
+            'AXON', 'BECN', 'BLDR', 'CSWI', 'DY', 'FAST', 'FIX', 'GFF', 'HDS', 'HEES',
+            // Energy (30+)
+            'XOM', 'CVX', 'COP', 'SLB', 'MPC', 'VLO', 'PSX', 'EOG', 'DVN', 'FANG', 'MRO',
+            'OVV', 'SWN', 'CTRA', 'NOV', 'OXY', 'APA', 'HAL', 'BKR', 'LBRT', 'WTTR',
+            'CLB', 'NBR', 'PTEN', 'SPN', 'WTI', 'CRK', 'TALO', 'SM', 'PDC', 'MTDR',
+            // Communication (20+)
+            'VZ', 'T', 'CMCSA', 'SPOT', 'WMG', 'LYV', 'LIVE', 'EGHT', 'BAND', 'TWLO',
+            'VZIO', 'FYBR', 'ASTS', 'GSAT', 'ATEX', 'CALL', 'COMM', 'INFN', 'NTNX', 
+            'OTEX', 'RPD', 'VIAV',
+            // Utilities (20+)
+            'NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC', 'SRE', 'XEL', 'PEG', 'ED', 'ES',
+            'ETR', 'FE', 'AES', 'NRG', 'VST', 'CEG', 'CNP', 'NI', 'OGE', 'PNW',
+            // Materials (25+)
+            'LIN', 'APD', 'ECL', 'SHW', 'PPG', 'FCX', 'NEM', 'GOLD', 'AU', 'AG', 'SLV',
+            'AA', 'CLF', 'STLD', 'X', 'NUE', 'CMC', 'RS', 'RYI', 'TX', 'ZEUS', 'AMR',
+            'MT', 'PKX', 'PBR', 'VALE',
+            // Real Estate (25+)
+            'AMT', 'PLD', 'EQIX', 'PSA', 'WELL', 'PEAK', 'VTR', 'VICI', 'EXPI', 'RDFN',
+            'Z', 'OPEN', 'RKT', 'COMP', 'REAX', 'ACRE', 'ACHR', 'ADC', 'AKR', 'ALEX',
+            'BRT', 'BRX', 'BTI', 'BXP', 'CDP', 'CIO', 'CLI', 'CMCT',
+            // International (30+)
+            'TSM', 'ASML', 'BABA', 'JD', 'PDD', 'TME', 'BILI', 'NIO', 'XPEV', 'LI', 'SE',
+            'GRAB', 'DIDI', 'BIDU', 'WB', 'NTES', 'TAL', 'EDU', 'YMM', 'TUYA', 'ACH',
+            'VIPS', 'YQ', 'TIGR', 'FUTU', 'GSX', 'LAIX', 'LX', 'MOMO', 'QTT',
+            // Others / Emerging (20+)
+            'HOOD', 'SOFI', 'UPST', 'AFRM', 'LC', 'NU', 'PAGS', 'STNE', 'MELI', 'ARCE',
+            'DESP', 'PAM', 'IRDM', 'ORBC', 'SATS', 'VSAT',
         ];
 
-        const picks: ProPick[] = [];
-        // Evaluar más símbolos para tener mejor diversificación sectorial
-        const maxSymbols = Math.min(60, universeSymbols.length); // Aumentado de 30 a 60
+        // Paso 1: Usar IA para preseleccionar los mejores candidatos
+        console.log(`Preseleccionando mejores candidatos de ${universeSymbols.length} símbolos usando IA...`);
+        const preselectedSymbols = await selectBestCandidatesWithAI(universeSymbols, strategy, limit);
+        
+        console.log(`Evaluando ${preselectedSymbols.length} símbolos preseleccionados con scoring completo...`);
 
-        // Contenedor para todas las acciones evaluadas (incluso si no pasan filtros)
+        const picks: ProPick[] = [];
         const allEvaluatedPicks: ProPick[] = [];
         
-        // Mapa para tracking de sectores en picks finales (para diversificación)
-        const sectorCount: Map<string, number> = new Map();
-        
-        // Evaluar cada acción secuencialmente
-        for (let i = 0; i < maxSymbols && (picks.length < limit * 3 || allEvaluatedPicks.length < limit * 4); i++) {
-            const symbol = universeSymbols[i];
+        // Paso 2: Evaluar solo los preseleccionados con scoring completo
+        for (let i = 0; i < preselectedSymbols.length; i++) {
+            const symbol = preselectedSymbols[i];
             
             try {
-                // Obtener datos financieros
+                // Obtener datos financieros completos
                 const financialData = await getStockFinancialData(symbol);
                 
                 if (!financialData || !financialData.profile) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await new Promise(resolve => setTimeout(resolve, 300));
                     continue;
                 }
 
@@ -118,11 +302,11 @@ export async function generateProPicks(
                 const currentPrice = financialData.quote?.c || financialData.quote?.price || 0;
                 const marketCap = (financialData.profile as any)?.marketCapitalization || 0;
 
-                // Obtener datos históricos para momentum (si es posible, sino usar quote)
+                // Obtener datos históricos para momentum
                 let historicalData;
                 try {
                     const to = Math.floor(Date.now() / 1000);
-                    const from = to - (365 * 24 * 60 * 60); // 1 año
+                    const from = to - (365 * 24 * 60 * 60);
                     const candles = await getCandles(symbol, from, to, 'D', 3600);
                     if (candles.s === 'ok' && candles.c.length > 0) {
                         historicalData = {
@@ -131,10 +315,10 @@ export async function generateProPicks(
                         };
                     }
                 } catch (e) {
-                    // Si falla, continuar sin datos históricos
+                    // Continuar sin datos históricos
                 }
 
-                // Calcular score avanzado (con comparación sectorial)
+                // Calcular score avanzado
                 const advancedScore = await calculateAdvancedStockScore(
                     financialData, 
                     historicalData || undefined
@@ -168,28 +352,25 @@ export async function generateProPicks(
                     vsSector: advancedScore.sectorComparison?.vsSector,
                 };
 
-                // Guardar todos los picks evaluados
                 allEvaluatedPicks.push(pick);
 
-                // Si pasa los filtros de la estrategia, agregarlo a picks
+                // Si pasa los filtros de la estrategia, agregarlo
                 if (passesStrategyFilters(advancedScore, strategy, sector, currentPrice, marketCap)) {
                     picks.push(pick);
                 }
 
-                // Delay reducido entre requests
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // Delay entre requests
+                await new Promise(resolve => setTimeout(resolve, 300));
             } catch (error: any) {
-                // Si es error 429, parar completamente
                 if (error?.message?.includes('429') || error?.message?.includes('limit')) {
                     console.warn(`Rate limit reached, stopping at ${picks.length} picks`);
                     break;
                 }
                 console.error(`Error evaluating ${symbol}:`, error);
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 300));
                 continue;
             }
 
-            // Si ya tenemos suficientes picks de calidad, podemos parar antes
             if (picks.length >= limit * 1.5) {
                 break;
             }
@@ -197,14 +378,12 @@ export async function generateProPicks(
 
         // Si tenemos picks que pasaron los filtros, aplicar diversificación sectorial
         if (picks.length > 0) {
-            // Función para calcular score de diversificación (prioriza sectores menos representados)
+            // Función para calcular score de diversificación
             const getDiversificationScore = (pick: ProPick, currentSectorCount: Map<string, number>): number => {
                 const sector = pick.sector || 'Unknown';
                 const currentCount = currentSectorCount.get(sector) || 0;
-                // Penalizar sectores ya representados (máximo 2-3 picks por sector)
-                const sectorPenalty = Math.min(currentCount * 5, 15); // Máximo 15 puntos de penalización
+                const sectorPenalty = Math.min(currentCount * 5, 15);
                 
-                // Bonus por comparación con sector (si está disponible)
                 const vsSectorBonus = pick.vsSector 
                     ? (pick.vsSector.value + pick.vsSector.profitability + pick.vsSector.growth) / 30
                     : 0;
@@ -217,7 +396,7 @@ export async function generateProPicks(
             const usedSectors = new Map<string, number>();
             const remainingPicks = [...picks];
 
-            // Primera pasada: seleccionar el mejor pick de cada sector principal
+            // Agrupar por sector
             const sectorGroups = new Map<string, ProPick[]>();
             remainingPicks.forEach(pick => {
                 const sector = pick.sector || 'Unknown';
@@ -234,7 +413,6 @@ export async function generateProPicks(
                     const scoreB = b.strategyScore ?? b.score;
                     return scoreB - scoreA;
                 });
-                // Tomar hasta 2 del mismo sector
                 const topPicks = sorted.slice(0, 2);
                 topPicks.forEach(pick => {
                     diversifiedPicks.push(pick);
@@ -242,7 +420,7 @@ export async function generateProPicks(
                 });
             });
 
-            // Si aún no tenemos suficientes picks, completar con los mejores restantes
+            // Completar si faltan picks
             if (diversifiedPicks.length < limit) {
                 const remaining = remainingPicks
                     .filter(p => !diversifiedPicks.includes(p))
@@ -261,7 +439,7 @@ export async function generateProPicks(
                 }
             }
 
-            // Ordenar final por strategyScore (los que quedaron después de diversificación)
+            // Ordenar final por strategyScore
             const sortedPicks = diversifiedPicks.sort((a, b) => {
                 const scoreA = a.strategyScore ?? a.score;
                 const scoreB = b.strategyScore ?? b.score;
@@ -271,28 +449,22 @@ export async function generateProPicks(
             return sortedPicks.slice(0, limit);
         }
 
-        // Si no hay picks que pasaron los filtros, usar los mejores evaluados
-        // (Estrategia de fallback para asegurar que siempre hay picks)
+        // Fallback: usar los mejores evaluados
         if (allEvaluatedPicks.length > 0) {
             console.warn(`No se encontraron picks que pasen todos los filtros, usando los mejores evaluados`);
             
-            // Ordenar todos los picks evaluados por strategyScore o overallScore
             const sortedAllPicks = allEvaluatedPicks.sort((a, b) => {
                 const scoreA = a.strategyScore ?? a.score;
                 const scoreB = b.strategyScore ?? b.score;
                 return scoreB - scoreA;
             });
 
-            // Retornar los mejores aunque no pasen todos los filtros
             return sortedAllPicks.slice(0, limit);
         }
 
-        // Si no hay picks en absoluto, retornar array vacío
         return [];
     } catch (error) {
         console.error('Error generating ProPicks:', error);
-        // Si no hay datos disponibles, devolver array vacío
-        // Los componentes UI mostrarán mensaje apropiado
         return [];
     }
 }
