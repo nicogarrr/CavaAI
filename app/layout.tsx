@@ -1,10 +1,26 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {Toaster} from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "JLCavaAI",
-  description: "JLCavaAI es una plataforma inteligente de seguimiento de mercados y gestión de carteras. Analiza precios en tiempo real, gestiona tu portfolio personalizado, y accede a insights detallados de empresas y ETFs — construido con tecnología de vanguardia.",
+  title: {
+    default: "JLCavaAI - Plataforma de Análisis de Mercados",
+    template: "%s | JLCavaAI"
+  },
+  description: "JLCavaAI es una plataforma inteligente de seguimiento de mercados. Analiza precios en tiempo real y accede a insights detallados de empresas y ETFs — construido con tecnología de vanguardia.",
+  keywords: ["stock analysis", "market data", "financial analysis", "ETF analysis", "real-time prices"],
+  authors: [{ name: "JLCavaAI Team" }],
+  creator: "JLCavaAI",
+  robots: {
+    index: true,
+    follow: true,
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({

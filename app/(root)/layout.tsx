@@ -36,8 +36,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
             </main>
         )
     } catch (error) {
-        console.error('Error in layout:', error);
-        // Si hay error, redirigir a sign-in
+        // If authentication fails, redirect to sign-in
         redirect('/sign-in');
     }
 }
