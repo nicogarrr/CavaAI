@@ -114,9 +114,9 @@ export async function generateProPicks(
                     continue;
                 }
 
-                const sector = financialData.profile.finnhubIndustry || 'Unknown';
+                const sector = (financialData.profile as any)?.finnhubIndustry || (financialData.profile as any)?.industry || 'Unknown';
                 const currentPrice = financialData.quote?.c || financialData.quote?.price || 0;
-                const marketCap = financialData.profile.marketCapitalization || 0;
+                const marketCap = (financialData.profile as any)?.marketCapitalization || 0;
 
                 // Obtener datos históricos para momentum (si es posible, sino usar quote)
                 let historicalData;
