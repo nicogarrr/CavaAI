@@ -107,7 +107,7 @@ async function getNewsFinnhub(symbols?: string[], maxArticles = 6): Promise<Mark
             if (unique.length >= 20) break;
         }
 
-        return unique.slice(0, maxArticles).map((a, idx) => formatArticle(a, false, undefined, idx));
+        return unique.slice(0, maxArticles).map((a, idx) => formatArticle(a, false, '', idx));
     } catch (err) {
         console.error('Finnhub news error:', err);
         return [];
@@ -148,17 +148,18 @@ async function getNewsAlphaVantage(symbols?: string[], maxArticles = 6): Promise
             .slice(0, maxArticles)
             .map((item: any, idx: number) => {
                 const timestamp = new Date(item.time_published).getTime() / 1000;
+                // Use hash of URL for shorter, safer IDs
+                const urlHash = item.url ? item.url.split('/').pop()?.slice(0, 20) || idx : idx;
                 return {
-                    id: `av-${item.url}`,
+                    id: `av-${urlHash}-${idx}`,
                     headline: item.title || '',
                     summary: item.summary || '',
                     source: item.source || 'Alpha Vantage',
                     url: item.url || '',
                     image: item.banner_image || '',
                     datetime: timestamp,
-                    related: symbols && symbols.length > 0 ? symbols[0] : undefined,
+                    related: symbols && symbols.length > 0 ? symbols[0] : '',
                     category: 'general',
-                    sortKey: `${timestamp}-${idx}`,
                 };
             })
             .filter((art: MarketNewsArticle) => art.headline && art.url);
@@ -205,17 +206,18 @@ async function getNewsFromNewsAPI(symbols?: string[], maxArticles = 6): Promise<
             .slice(0, maxArticles)
             .map((item: any, idx: number) => {
                 const timestamp = new Date(item.publishedAt).getTime() / 1000;
+                // Use hash of URL for shorter, safer IDs
+                const urlHash = item.url ? item.url.split('/').pop()?.slice(0, 20) || idx : idx;
                 return {
-                    id: `newsapi-${item.url}`,
+                    id: `newsapi-${urlHash}-${idx}`,
                     headline: item.title || '',
                     summary: item.description || item.content || '',
                     source: item.source?.name || 'NewsAPI',
                     url: item.url || '',
                     image: item.urlToImage || '',
                     datetime: timestamp,
-                    related: symbols && symbols.length > 0 ? symbols[0] : undefined,
+                    related: symbols && symbols.length > 0 ? symbols[0] : '',
                     category: 'general',
-                    sortKey: `${timestamp}-${idx}`,
                 };
             })
             .filter((art: MarketNewsArticle) => art.headline && art.url);
@@ -261,17 +263,17 @@ async function getNewsMarketaux(symbols?: string[], maxArticles = 6): Promise<Ma
             .slice(0, maxArticles)
             .map((item: any, idx: number) => {
                 const timestamp = new Date(item.published_at).getTime() / 1000;
+                // Use UUID from API as it's already a unique identifier
                 return {
-                    id: `marketaux-${item.uuid}`,
+                    id: `marketaux-${item.uuid || idx}`,
                     headline: item.title || '',
                     summary: item.description || item.snippet || '',
                     source: item.source || 'Marketaux',
                     url: item.url || '',
                     image: item.image_url || '',
                     datetime: timestamp,
-                    related: symbols && symbols.length > 0 ? symbols[0] : undefined,
+                    related: symbols && symbols.length > 0 ? symbols[0] : '',
                     category: 'general',
-                    sortKey: `${timestamp}-${idx}`,
                 };
             })
             .filter((art: MarketNewsArticle) => art.headline && art.url);
