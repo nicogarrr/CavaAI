@@ -174,13 +174,13 @@
         @apply w-full max-lg:border-t max-lg:border-gray-700/50 lg:w-[55%] lg:h-screen bg-gray-800/50 px-8 py-6 md:p-8 lg:py-16 lg:px-20 flex flex-col justify-start;
     }
     .auth-blockquote {
-        @apply text-sm md:text-xl lg:text-2xl font-medium text-gray-400 mb-1 md:mb-6 lg:mb-8;
+        @apply text-sm md:text-xl lg:text-2xl font-medium text-gray-300 mb-1 md:mb-6 lg:mb-8 leading-relaxed;
     }
     .auth-testimonial-author {
-        @apply text-xs md:text-lg font-bold text-gray-400 not-italic;
+        @apply text-xs md:text-lg font-semibold text-gray-300 not-italic;
     }
     .auth-dashboard-preview {
-        @apply border-6 border-gray-800 left-0 hidden w-[1024px] h-auto max-w-none lg:block rounded-xl shadow-2xl;
+        @apply border-4 border-gray-700/30 left-0 hidden w-[1024px] h-auto max-w-none lg:block rounded-xl shadow-xl;
     }
     .form-title {
         @apply text-3xl font-bold text-gray-100 mb-12 tracking-tight;
@@ -255,10 +255,10 @@
         @apply w-full grid-cols-1 gap-6 xl:grid-cols-3 space-y-6 sm:space-y-8;
     }
     .watchlist-btn {
-        @apply bg-teal-500 text-base hover:bg-teal-500 text-gray-900 w-full rounded h-11 font-semibold cursor-pointer;
+        @apply bg-teal-400 text-base hover:bg-teal-500 text-gray-900 w-full rounded-lg h-11 font-semibold cursor-pointer transition-all duration-200;
     }
     .watchlist-remove {
-        @apply bg-red-500! hover:bg-red-500! text-gray-900!
+        @apply bg-red-500! hover:bg-red-600! text-gray-900! transition-all! duration-200!
     }
     .watchlist-empty-container {
         @apply container gap-8 flex-col items-center md:mt-10 p-6 text-center;
@@ -270,10 +270,10 @@
         @apply h-16 w-16 text-gray-500 mb-4;
     }
     .empty-title {
-        @apply text-xl font-semibold text-gray-400 mb-2;
+        @apply text-xl font-semibold text-gray-300 mb-2;
     }
     .empty-description {
-        @apply text-gray-500 mb-6 max-w-md;
+        @apply text-gray-500 mb-6 max-w-md leading-relaxed;
     }
     .watchlist-container {
         @apply flex flex-col-reverse lg:grid lg:grid-cols-3 gap-8;
@@ -285,13 +285,13 @@
         @apply items-start gap-6 h-full flex-col w-full lg:col-span-1;
     }
     .watchlist-icon-btn {
-        @apply w-fit cursor-pointer hover:bg-transparent! text-gray-400 hover:text-teal-500;
+        @apply w-fit cursor-pointer hover:bg-transparent! text-gray-400 hover:text-teal-400 transition-all duration-200;
     }
     .watchlist-icon-added {
-        @apply !text-teal-500 hover:!text-teal-600;
+        @apply !text-teal-400 hover:!text-teal-500;
     }
     .watchlist-icon {
-        @apply w-8 h-8 rounded-full flex items-center justify-center bg-gray-700/50;
+        @apply w-8 h-8 rounded-full flex items-center justify-center bg-gray-700/30 transition-all duration-200;
     }
     .trash-icon {
         @apply h-4 w-4 text-gray-400 hover:text-red-400;
@@ -318,7 +318,7 @@
         @apply font-medium text-base
     }
     .add-alert {
-        @apply flex text-sm items-center whitespace-nowrap gap-1.5 px-3 w-fit py-2 text-teal-600 border border-teal-600/20 rounded font-medium bg-transparent hover:bg-transparent cursor-pointer transition-colors;
+        @apply flex text-sm items-center whitespace-nowrap gap-1.5 px-3 w-fit py-2 text-teal-400 border border-teal-400/20 rounded-lg font-medium bg-transparent hover:bg-teal-400/10 cursor-pointer transition-all duration-200;
     }
     .watchlist-news {
         @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
@@ -327,10 +327,10 @@
         @apply bg-gray-800/50 rounded-lg border w-full border-gray-700/50 p-5 duration-200 hover:border-gray-600 hover:bg-gray-800/70 cursor-pointer transition-all;
     }
     .news-tag {
-        @apply inline-block w-fit px-2 py-1 mb-5 rounded bg-gray-600/60 text-green-500 text-sm font-mono font-medium;
+        @apply inline-block w-fit px-2.5 py-1 mb-5 rounded-md bg-gray-700/40 text-teal-400 text-xs font-medium tracking-wide uppercase;
     }
     .news-title {
-        @apply text-lg  font-semibold text-gray-100 leading-tight mb-3 line-clamp-2;
+        @apply text-lg font-semibold text-gray-100 leading-tight mb-3 line-clamp-2;
     }
     .news-meta {
         @apply flex items-center text-sm text-gray-500 mb-1;
@@ -339,7 +339,7 @@
         @apply text-gray-400 flex-1 text-base leading-relaxed mb-3 line-clamp-3;
     }
     .news-cta {
-        @apply text-sm align-bottom text-teal-500 hover:text-gray-400;
+        @apply text-sm align-bottom text-teal-400 hover:text-teal-500 transition-all duration-200;
     }
     .alert-dialog {
         @apply bg-gray-800 border-gray-700/50 text-gray-400 max-w-md;
@@ -357,10 +357,10 @@
         @apply p-4 rounded-lg bg-gray-700/50 border border-gray-700/50;
     }
     .alert-name {
-        @apply mb-2 text-lg text-teal-500 font-semibold;
+        @apply mb-2 text-lg text-teal-400 font-semibold;
     }
     .alert-details {
-        @apply flex border-b pb-3 items-center justify-between gap-3 mb-2;
+        @apply flex border-b border-gray-700/50 pb-3 items-center justify-between gap-3 mb-2;
     }
     .alert-company {
         @apply text-gray-400 text-base;
@@ -372,10 +372,10 @@
         @apply flex items-end justify-between;
     }
     .alert-update-btn {
-        @apply text-gray-400 rounded-full bg-transparent hover:bg-green-500/15 cursor-pointer;
+        @apply text-gray-400 rounded-full bg-transparent hover:bg-teal-400/10 hover:text-teal-400 cursor-pointer transition-all duration-200;
     }
     .alert-delete-btn {
-        @apply text-gray-400 rounded-full hover:bg-red-600/15 bg-transparent cursor-pointer transition-colors;
+        @apply text-gray-400 rounded-full hover:bg-red-500/10 hover:text-red-400 bg-transparent cursor-pointer transition-all duration-200;
     }
 }
 
@@ -392,30 +392,30 @@
 /* TradingView Advanced Chart Widget Styles */
 .tradingview-widget-container {
     position: relative;
-    background-color: #141414 !important;
-    border-radius: 8px !important;
+    background-color: #18181b !important;
+    border-radius: 0.5rem !important;
     overflow: hidden !important;
 }
 
 .tv-embed-widget-wrapper__body {
-    background-color: #141414 !important;
+    background-color: #18181b !important;
 }
 
 .tradingview-widget-container__widget {
-    background-color: #141414 !important;
+    background-color: #18181b !important;
     height: 100% !important;
 
 }
 
 .widget-stock-heatmap-container .screenerMapWrapper-BBVfGP0b {
     overflow: hidden !important;
-    background: #141414 !important;
-    background-color: #141414 !important;
+    background: #18181b !important;
+    background-color: #18181b !important;
 }
 
 .canvasContainer-tyaAU8aH {
-    background: #141414 !important;
-    background-color: #141414 !important;
+    background: #18181b !important;
+    background-color: #18181b !important;
 }
 
 .tv-site-widget--bg_none {
@@ -442,18 +442,18 @@
 }
 
 .tv-embed-widget-wrapper .tv-embed-widget-wrapper__body {
-    background: #141414 !important;
-    background-color: #141414 !important;
+    background: #18181b !important;
+    background-color: #18181b !important;
 }
 
 .tradingview-widget-container iframe {
-    background-color: #141414 !important;
+    background-color: #18181b !important;
     width: 100% !important;
 }
 
 .custom-chart.tradingview-widget-container iframe {
-    border: 1px solid #30333A;
-    border-radius: 8px !important;
+    border: 1px solid rgba(63, 63, 70, 0.5);
+    border-radius: 0.5rem !important;
     overflow: hidden !important;
 }
 
@@ -464,7 +464,7 @@
 }
 
 .scrollbar-hide-default::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
 }
 
 .scrollbar-hide-default::-webkit-scrollbar-track {
@@ -473,18 +473,18 @@
 
 .scrollbar-hide-default::-webkit-scrollbar-thumb {
     background-color: transparent;
-    border-radius: 4px;
-    transition: background-color 0.3s ease;
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
 }
 
 .scrollbar-hide-default:hover {
-    scrollbar-color: #30333A transparent;
+    scrollbar-color: rgba(63, 63, 70, 0.5) transparent;
 }
 
 .scrollbar-hide-default:hover::-webkit-scrollbar-thumb {
-    background-color: #30333A;
+    background-color: rgba(63, 63, 70, 0.5);
 }
 
 .scrollbar-hide-default::-webkit-scrollbar-thumb:hover {
-    background-color: #9095A1;
+    background-color: rgba(161, 161, 170, 0.5);
 }
