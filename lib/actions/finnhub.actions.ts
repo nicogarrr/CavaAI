@@ -8,7 +8,9 @@ const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';
 
 async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T> {
-    const options: RequestInit & { next?: { revalidate?: number } } = revalidateSeconds
+    // Para datos críticos como precios y noticias, usar cache mínimo (30-60 segundos)
+    // Para datos estáticos como perfiles, permitir cache más largo
+    const options: RequestInit & { next?: { revalidate?: number } } = revalidateSeconds && revalidateSeconds > 0
         ? { cache: 'force-cache', next: { revalidate: revalidateSeconds } }
         : { cache: 'no-store' };
 
@@ -50,7 +52,7 @@ export { fetchJSON };
 
 export type FinnhubCandles = { s: 'ok' | 'no_data'; c: number[]; t: number[]; o: number[]; h: number[]; l: number[]; v: number[] };
 
-export async function getCandles(symbol: string, from: number, to: number, resolution: 'D' | 'W' | 'M' | '60' = 'D', revalidateSeconds = 3600): Promise<FinnhubCandles> {
+export async function getCandles(symbol: string, from: number, to: number, resolution: 'D' | 'W' | 'M' | '60' = 'D', revalidateSeconds = 1800): Promise<FinnhubCandles> {
     const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
     if (!token) {
         // Sin API key, devolver datos vacíos en lugar de lanzar error
@@ -127,7 +129,8 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
             for (const sym of limitedSymbols) {
                 try {
                     const url = `${FINNHUB_BASE_URL}/company-news?symbol=${encodeURIComponent(sym)}&from=${range.from}&to=${range.to}&token=${token}`;
-                    const articles = await fetchJSON<RawNewsArticle[]>(url, 300);
+                    // Noticias siempre frescas - máximo 60 segundos de cache
+                    const articles = await fetchJSON<RawNewsArticle[]>(url, 60);
                     perSymbolArticles[sym] = (articles || []).filter(validateArticle);
                     
                     // Delay de 200ms entre requests para evitar rate limiting
@@ -168,8 +171,9 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
         }
 
         // General market news fallback or when no symbols provided
+        // Noticias siempre frescas - máximo 60 segundos de cache
         const generalUrl = `${FINNHUB_BASE_URL}/news?category=general&token=${token}`;
-        const general = await fetchJSON<RawNewsArticle[]>(generalUrl, 300);
+        const general = await fetchJSON<RawNewsArticle[]>(generalUrl, 60);
 
         const seen = new Set<string>();
         const unique: RawNewsArticle[] = [];
@@ -200,7 +204,8 @@ export async function getCompanyNews(symbol: string, maxArticles = 20): Promise<
         }
 
         const url = `${FINNHUB_BASE_URL}/company-news?symbol=${encodeURIComponent(symbol)}&from=${range.from}&to=${range.to}&token=${token}`;
-        const articles = await fetchJSON<RawNewsArticle[]>(url, 300).catch(() => []);
+        // Noticias siempre frescas - máximo 60 segundos de cache
+        const articles = await fetchJSON<RawNewsArticle[]>(url, 60).catch(() => []);
 
         if (!Array.isArray(articles)) {
             return [];
@@ -393,42 +398,96 @@ export async function getStockFinancialData(symbol: string): Promise<{
         if (!token) return null;
 
         // Obtener datos críticos secuencialmente con delays para evitar rate limiting
-        const quote = await fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 300).catch(() => null);
+        // Precios siempre frescos - máximo 60 segundos de cache
+        const quote = await fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null);
         
         // Delay pequeño entre requests
         await new Promise(resolve => setTimeout(resolve, 150));
         
+        // Perfil cambia poco, pero mantener actualizado - 1 hora máximo
         const profile = await fetchJSON<FinnhubProfile2>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 3600).catch(() => null);
         
         // Delay pequeño entre requests
         await new Promise(resolve => setTimeout(resolve, 150));
         
+        // Métricas financieras - datos reales actualizados cada hora
         const metrics = await fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 3600).catch(() => ({ metric: {} }));
 
-        // Obtener datos secundarios (solo los esenciales para evitar rate limiting)
-        // Comentamos la mayoría de requests secundarios para reducir carga
-        const news = await Promise.resolve({ status: 'fulfilled' as const, value: [] as MarketNewsArticle[] }).catch(() => ({ status: 'fulfilled' as const, value: [] as MarketNewsArticle[] }));
-        const events = await Promise.resolve({ status: 'fulfilled' as const, value: [] as CompanyEvent[] }).catch(() => ({ status: 'fulfilled' as const, value: [] as CompanyEvent[] }));
-        const analystRecommendations = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
-        const targetPrice = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
-        const technicalAnalysis = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
-        const indexComparison = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
-        const insiderTrading = await Promise.resolve({ status: 'fulfilled' as const, value: null }).catch(() => ({ status: 'fulfilled' as const, value: null }));
-        const peersData = await Promise.resolve({ status: 'fulfilled' as const, value: null as string[] | null }).catch(() => ({ status: 'fulfilled' as const, value: null as string[] | null }));
-
-        // Procesar resultados
-        const resolvedNews = news.status === 'fulfilled' ? news.value : [];
-        const resolvedEvents = events.status === 'fulfilled' ? events.value : [];
-        const resolvedAnalystRecs = analystRecommendations.status === 'fulfilled' ? analystRecommendations.value : null;
-        const resolvedTargetPrice = targetPrice.status === 'fulfilled' ? targetPrice.value : null;
-        const resolvedTechnical = technicalAnalysis.status === 'fulfilled' ? technicalAnalysis.value : null;
-        const resolvedIndex = indexComparison.status === 'fulfilled' ? indexComparison.value : null;
-        const resolvedInsider = insiderTrading.status === 'fulfilled' ? insiderTrading.value : null;
-        const resolvedPeersData = peersData.status === 'fulfilled' ? peersData.value : null;
+        // Obtener noticias reales actualizadas (máximo 60 segundos de cache)
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const newsArticles = await getCompanyNews(symbol, 10).catch(() => []);
+        
+        // Obtener eventos reales actualizados
+        await new Promise(resolve => setTimeout(resolve, 150));
+        let events: CompanyEvent[] = [];
+        try {
+            const eventsUrl = `${FINNHUB_BASE_URL}/stock/earnings-calendar?symbol=${encodeURIComponent(symbol)}&from=${Math.floor(Date.now() / 1000) - (90 * 24 * 60 * 60)}&to=${Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60)}&token=${token}`;
+            const eventsData = await fetchJSON<any>(eventsUrl, 3600).catch(() => null);
+            if (eventsData && Array.isArray(eventsData.earningsCalendar)) {
+                events = eventsData.earningsCalendar.map((e: any) => ({
+                    date: e.date || '',
+                    event: e.event || 'Earnings',
+                    description: `EPS Estimate: ${e.epsEstimate || 'N/A'}, EPS Actual: ${e.epsActual || 'N/A'}`,
+                    importance: 'high' as const,
+                }));
+            }
+        } catch (e) {
+            console.warn(`Error fetching events for ${symbol}:`, e);
+        }
+        
+        // Obtener recomendaciones de analistas reales
+        await new Promise(resolve => setTimeout(resolve, 150));
+        let analystRecommendations: any = null;
+        let targetPrice: any = null;
+        try {
+            const recUrl = `${FINNHUB_BASE_URL}/stock/recommendation?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+            const recData = await fetchJSON<any>(recUrl, 3600).catch(() => null);
+            if (recData && Array.isArray(recData) && recData.length > 0) {
+                analystRecommendations = recData[0]; // Más reciente
+            }
+            
+            // Target price desde recommendation o buscar en otra fuente
+            if (recData && recData.length > 0 && recData[0].targetMeanPrice) {
+                targetPrice = {
+                    targetMeanPrice: recData[0].targetMeanPrice,
+                    targetHigh: recData[0].targetHigh,
+                    targetLow: recData[0].targetLow,
+                };
+            }
+        } catch (e) {
+            console.warn(`Error fetching analyst recommendations for ${symbol}:`, e);
+        }
+        
+        // Obtener comparación con índices real
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const indexComparison = await getIndexComparison(symbol).catch(() => null);
+        
+        // Obtener peers reales
+        await new Promise(resolve => setTimeout(resolve, 150));
+        let peers: string[] = [];
+        try {
+            const peersUrl = `${FINNHUB_BASE_URL}/stock/peers?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+            const peersData = await fetchJSON<string[]>(peersUrl, 3600).catch(() => null);
+            if (Array.isArray(peersData)) {
+                peers = peersData.filter(p => p && p !== symbol).slice(0, 10);
+            }
+        } catch (e) {
+            console.warn(`Error fetching peers for ${symbol}:`, e);
+        }
+        
+        // Insider trading (si está disponible en el plan)
+        await new Promise(resolve => setTimeout(resolve, 150));
+        let insiderTrading: any = null;
+        try {
+            const insiderUrl = `${FINNHUB_BASE_URL}/stock/insider-transactions?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+            insiderTrading = await fetchJSON<any>(insiderUrl, 3600).catch(() => null);
+        } catch (e) {
+            // Silenciar error si no está disponible en el plan
+        }
 
         // Si hay IPO date en el profile, agregarlo como evento
         if (profile?.ipo) {
-            resolvedEvents.push({
+            events.push({
                 date: profile.ipo,
                 event: 'IPO Date',
                 description: `Initial Public Offering date`,
@@ -436,24 +495,18 @@ export async function getStockFinancialData(symbol: string): Promise<{
             });
         }
 
-        // Procesar peers
-        let peers: string[] = [];
-        if (Array.isArray(resolvedPeersData)) {
-            peers = resolvedPeersData.filter(p => p && p !== symbol).slice(0, 10);
-        }
-
         return { 
             quote, 
             profile, 
             metrics, 
-            news: resolvedNews,
-            events: resolvedEvents,
-            analystRecommendations: resolvedAnalystRecs || resolvedTargetPrice,
+            news: newsArticles,
+            events,
+            analystRecommendations: analystRecommendations || targetPrice,
             peers,
-            technicalAnalysis: resolvedTechnical,
-            indexComparison: resolvedIndex,
-            insiderTrading: resolvedInsider,
-            esgData: null, // Placeholder para futuras implementaciones
+            technicalAnalysis: null, // No disponible directamente en Finnhub
+            indexComparison,
+            insiderTrading,
+            esgData: null, // No disponible en plan gratuito
         };
     } catch (error) {
         console.error('Error fetching financial data for', symbol, error);

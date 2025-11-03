@@ -1251,3 +1251,192 @@ IMPORTANTE:
     return 'Error al generar la tesis de inversión con IA.';
   }
 }
+
+/**
+ * Estima Health Score usando IA cuando faltan datos reales
+ * Usa Gemini para analizar todos los datos disponibles y estimar Growth y Stability
+ */
+export async function estimateHealthScoreWithAI(
+  symbol: string,
+  companyName: string,
+  financialData: any,
+  missingCategories: string[] // ej: ['growth', 'stability']
+): Promise<{ growth?: number; stability?: number }> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    console.warn('No Gemini API key, returning empty estimates');
+    return {};
+  }
+
+  try {
+    // Extraer todos los datos disponibles
+    const metrics = financialData.metrics?.metric || financialData.metrics || {};
+    const profile = financialData.profile || {};
+    const quote = financialData.quote || {};
+    const news = financialData.news || [];
+
+    // Preparar datos para la IA
+    const availableData = {
+      symbol,
+      companyName,
+      quote: {
+        currentPrice: quote.c,
+        previousClose: quote.pc,
+        change: quote.d,
+        changePercent: quote.dp,
+      },
+      profile: {
+        sector: profile.finnhubIndustry || profile.sector,
+        country: profile.country,
+        exchange: profile.exchange,
+        marketCap: profile.marketCapitalization,
+      },
+      metrics: {
+        // Rentabilidad (si está disponible)
+        netMargin: metrics.netProfitMarginTTM || metrics.netProfitMargin,
+        roe: metrics.roeTTM || metrics.roe,
+        roa: metrics.roaTTM || metrics.roa,
+        // Eficiencia (si está disponible)
+        operatingMargin: metrics.operatingMarginTTM || metrics.operatingMargin,
+        assetTurnover: metrics.assetTurnoverTTM || metrics.assetTurnover,
+        // Valuación (si está disponible)
+        pe: metrics.peTTM || metrics.pe,
+        pb: metrics.pbTTM || metrics.pb,
+        ps: metrics.psTTM || metrics.ps,
+        // Datos parciales de Growth y Stability si existen
+        revenue: metrics.revenueTTM || metrics.revenue,
+        revenueGrowth: metrics.revenueGrowthTTM || metrics.revenueGrowth,
+        debtToEquity: metrics.debtToEquityTTM || metrics.debtToEquity,
+        currentRatio: metrics.currentRatioTTM || metrics.currentRatio,
+        quickRatio: metrics.quickRatioTTM || metrics.quickRatio,
+      },
+      recentNews: news.slice(0, 5).map((n: any) => ({
+        headline: n.headline,
+        summary: n.summary,
+        datetime: n.datetime,
+      })),
+    };
+
+    const systemPrompt = `Eres un analista financiero experto. Analiza TODOS los datos financieros reales disponibles y estima las categorías faltantes del Health Score.
+
+CATEGORÍAS A ESTIMAR:
+${missingCategories.map(c => `- ${c.charAt(0).toUpperCase() + c.slice(1)}`).join('\n')}
+
+METODOLOGÍA:
+1. Analiza TODOS los datos reales disponibles (métricas financieras, perfil, noticias recientes)
+2. Usa datos indirectos como:
+   - Cambios de precio (quote.dp) pueden indicar crecimiento percibido
+   - Rentabilidad y eficiencia pueden correlacionar con crecimiento
+   - Noticias recientes pueden indicar tendencias
+   - Múltiplos de valuación pueden reflejar expectativas de crecimiento
+3. Estima valores conservadores basados en datos reales disponibles
+4. Si NO hay suficientes datos para estimar, usa valores neutrales (50/100)
+
+RESPONDE EN FORMATO JSON EXACTO:
+{
+  "growth": número entre 0-100 (solo si "growth" está en missingCategories),
+  "stability": número entre 0-100 (solo si "stability" está en missingCategories)
+}
+
+IMPORTANTE:
+- Si una categoría NO está en missingCategories, NO la incluyas en la respuesta
+- Los valores deben ser realistas basados en los datos disponibles
+- Usa valores conservadores si hay incertidumbre
+- Compara con promedios del sector si es posible`;
+
+    const dataText = `DATOS DISPONIBLES PARA ${symbol} (${companyName}):
+
+PERFIL:
+- Sector: ${availableData.profile.sector || 'N/A'}
+- País: ${availableData.profile.country || 'N/A'}
+- Exchange: ${availableData.profile.exchange || 'N/A'}
+- Market Cap: ${availableData.profile.marketCap || 'N/A'}
+
+COTIZACIÓN ACTUAL:
+- Precio: $${availableData.quote.currentPrice || 'N/A'}
+- Cambio: ${availableData.quote.changePercent?.toFixed(2) || 'N/A'}%
+- Precio Anterior: $${availableData.quote.previousClose || 'N/A'}
+
+MÉTRICAS FINANCIERAS DISPONIBLES:
+- Margen Neto: ${availableData.metrics.netMargin || 'N/A'}
+- ROE: ${availableData.metrics.roe || 'N/A'}
+- ROA: ${availableData.metrics.roa || 'N/A'}
+- Margen Operativo: ${availableData.metrics.operatingMargin || 'N/A'}
+- Rotación de Activos: ${availableData.metrics.assetTurnover || 'N/A'}
+- PER: ${availableData.metrics.pe || 'N/A'}
+- P/B: ${availableData.metrics.pb || 'N/A'}
+- P/S: ${availableData.metrics.ps || 'N/A'}
+- Ingresos: ${availableData.metrics.revenue || 'N/A'}
+- Crecimiento Ingresos: ${availableData.metrics.revenueGrowth || 'N/A'}
+- Deuda/Capital: ${availableData.metrics.debtToEquity || 'N/A'}
+- Ratio Corriente: ${availableData.metrics.currentRatio || 'N/A'}
+- Quick Ratio: ${availableData.metrics.quickRatio || 'N/A'}
+
+NOTICIAS RECIENTES (${availableData.recentNews.length}):
+${availableData.recentNews.map((n: any, idx: number) => 
+  `${idx + 1}. [${new Date(n.datetime * 1000).toLocaleDateString('es-ES')}] ${n.headline}\n   ${n.summary?.substring(0, 100) || ''}...`
+).join('\n\n')}
+
+CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
+
+    const prompt = `${systemPrompt}\n\n${dataText}\n\nEstima las categorías faltantes basándote en TODOS estos datos reales disponibles.`;
+
+    const payload = {
+      contents: [{
+        role: 'user',
+        parts: [{ text: prompt }],
+      }],
+    };
+
+    const model = 'gemini-2.5-flash';
+    const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+
+    const json = await res.json().catch(() => ({} as any));
+    
+    if (!res.ok) {
+      console.warn('Gemini Health Score estimation failed:', res.status);
+      return {};
+    }
+
+    const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      return {};
+    }
+
+    // Extraer JSON de la respuesta
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('No JSON found in Gemini response');
+      return {};
+    }
+
+    try {
+      const estimates = JSON.parse(jsonMatch[0]);
+      
+      // Validar y ajustar valores
+      const result: { growth?: number; stability?: number } = {};
+      
+      if (missingCategories.includes('growth') && typeof estimates.growth === 'number') {
+        result.growth = Math.max(0, Math.min(100, Math.round(estimates.growth)));
+      }
+      
+      if (missingCategories.includes('stability') && typeof estimates.stability === 'number') {
+        result.stability = Math.max(0, Math.min(100, Math.round(estimates.stability)));
+      }
+
+      return result;
+    } catch (e) {
+      console.error('Error parsing Gemini Health Score response:', e);
+      return {};
+    }
+  } catch (error) {
+    console.error('Error estimating Health Score with AI:', error);
+    return {};
+  }
+}
