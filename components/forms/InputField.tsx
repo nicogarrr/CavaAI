@@ -8,7 +8,8 @@ const InputField = ({name, label, placeholder, type ="text", register, error, va
     const getAutoComplete = () => {
         if (autoComplete) return autoComplete;
         if (type === 'password') return 'current-password';
-        if (type === 'email') return 'email';
+        if (type === 'email' || name.toLowerCase() === 'email') return 'username';
+        if (name.toLowerCase().includes('name')) return 'name';
         return undefined;
     };
     
