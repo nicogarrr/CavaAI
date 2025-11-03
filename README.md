@@ -244,6 +244,9 @@ NEXT_PUBLIC_FINNHUB_API_KEY=
 FINNHUB_BASE_URL=https://finnhub.io/api/v1
 
 # Fuentes de datos alternativas (fallback automático cuando Finnhub falla)
+# Twelve Data (gratis: 8 llamadas/min, 800/día) - https://twelvedata.com/
+TWELVE_DATA_API_KEY=your_twelve_data_key
+
 # Alpha Vantage (gratis: 5 llamadas/min, 500/día) - https://www.alphavantage.co/support/#api-key
 ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
 

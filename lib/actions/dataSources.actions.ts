@@ -254,7 +254,16 @@ async function getQuotePolygon(symbol: string): Promise<QuoteData | null> {
         if (!apiKey) return null;
 
         const url = `https://api.polygon.io/v2/aggs/ticker/${symbol}/prev?adjusted=true&apikey=${apiKey}`;
-        const response = await fetch(url, { next: { revalidate: 60 } });
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(url, { 
+            next: { revalidate: 60 },
+            signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
 
         if (!response.ok) return null;
 
@@ -266,10 +275,10 @@ async function getQuotePolygon(symbol: string): Promise<QuoteData | null> {
         const price = result.c; // Close price
         const previousClose = result.o; // Open price
 
-        if (!price) return null;
+        if (!price || price <= 0) return null;
 
         const change = price - previousClose;
-        const changePercent = (change / previousClose) * 100;
+        const changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
 
         return {
             symbol: symbol,
@@ -284,8 +293,129 @@ async function getQuotePolygon(symbol: string): Promise<QuoteData | null> {
             timestamp: result.t || Date.now(),
             source: DataSource.POLYGON,
         };
-    } catch (error) {
-        console.error(`Polygon error for ${symbol}:`, error);
+    } catch (error: any) {
+        if (error.name === 'AbortError') {
+            console.warn(`Polygon timeout for ${symbol}`);
+        } else {
+            console.error(`Polygon error for ${symbol}:`, error);
+        }
+        return null;
+    }
+}
+
+// ========== TWELVE DATA ==========
+
+/**
+ * Obtiene cotización de Twelve Data (gratis: 8 llamadas/min, 800/día)
+ * https://twelvedata.com/
+ */
+async function getQuoteTwelveData(symbol: string): Promise<QuoteData | null> {
+    try {
+        const apiKey = process.env.TWELVE_DATA_API_KEY;
+        if (!apiKey) return null;
+
+        const url = `https://api.twelvedata.com/quote?symbol=${symbol}&apikey=${apiKey}`;
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(url, { 
+            next: { revalidate: 60 },
+            signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            console.warn(`Twelve Data HTTP error for ${symbol}:`, response.status);
+            return null;
+        }
+
+        const data = await response.json();
+
+        // Check for API errors
+        if (data.status === 'error' || data.code) {
+            console.warn(`Twelve Data API error for ${symbol}:`, data.message || data.code);
+            return null;
+        }
+
+        const price = parseFloat(data.close);
+        if (isNaN(price) || price <= 0) {
+            console.warn(`Twelve Data invalid price for ${symbol}:`, data.close);
+            return null;
+        }
+
+        const previousClose = parseFloat(data.previous_close) || price;
+        const change = parseFloat(data.change) || (price - previousClose);
+        const changePercent = parseFloat(data.percent_change) || ((change / previousClose) * 100);
+
+        return {
+            symbol: data.symbol || symbol,
+            currentPrice: price,
+            previousClose,
+            change,
+            changePercent,
+            high: data.high ? parseFloat(data.high) : undefined,
+            low: data.low ? parseFloat(data.low) : undefined,
+            open: data.open ? parseFloat(data.open) : undefined,
+            volume: data.volume ? parseFloat(data.volume) : undefined,
+            timestamp: data.timestamp ? new Date(data.timestamp * 1000).getTime() : Date.now(),
+            source: DataSource.TWELVE_DATA,
+        };
+    } catch (error: any) {
+        if (error.name === 'AbortError') {
+            console.warn(`Twelve Data timeout for ${symbol}`);
+        } else {
+            console.error(`Twelve Data error for ${symbol}:`, error);
+        }
+        return null;
+    }
+}
+
+/**
+ * Obtiene perfil de empresa de Twelve Data
+ */
+async function getProfileTwelveData(symbol: string): Promise<CompanyProfile | null> {
+    try {
+        const apiKey = process.env.TWELVE_DATA_API_KEY;
+        if (!apiKey) return null;
+
+        const url = `https://api.twelvedata.com/profile?symbol=${symbol}&apikey=${apiKey}`;
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(url, { 
+            next: { revalidate: 3600 },
+            signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+
+        if (!response.ok) return null;
+
+        const data = await response.json();
+
+        if (!data || data.status === 'error' || !data.name) return null;
+
+        return {
+            symbol: data.symbol || symbol,
+            name: data.name,
+            description: data.description || undefined,
+            sector: data.sector || undefined,
+            industry: data.industry || undefined,
+            exchange: data.exchange || undefined,
+            marketCap: data.market_cap ? parseInt(data.market_cap) : undefined,
+            website: data.website || undefined,
+            country: data.country || undefined,
+            source: DataSource.TWELVE_DATA,
+        };
+    } catch (error: any) {
+        if (error.name === 'AbortError') {
+            console.warn(`Twelve Data profile timeout for ${symbol}`);
+        } else {
+            console.error(`Twelve Data profile error for ${symbol}:`, error);
+        }
         return null;
     }
 }
@@ -294,19 +424,30 @@ async function getQuotePolygon(symbol: string): Promise<QuoteData | null> {
 
 /**
  * Obtiene cotización con fallback automático a múltiples fuentes
+ * Optimizado con timeouts y mejor manejo de errores para fluidez
  */
 export async function getQuoteWithFallback(symbol: string): Promise<QuoteData | null> {
     // Orden de prioridad:
     // 1. Finnhub (si está disponible)
-    // 2. Alpha Vantage
-    // 3. Polygon
-    // 4. Yahoo Finance (último recurso)
+    // 2. Twelve Data (buen balance de límites y calidad)
+    // 3. Alpha Vantage
+    // 4. Polygon
+    // 5. Yahoo Finance (último recurso, sin API key)
 
     // Intentar Finnhub primero (si está configurado)
     if (process.env.FINNHUB_API_KEY) {
         try {
             const finnhubUrl = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`;
-            const response = await fetch(finnhubUrl, { next: { revalidate: 60 } });
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            
+            const response = await fetch(finnhubUrl, { 
+                next: { revalidate: 60 },
+                signal: controller.signal,
+            });
+            
+            clearTimeout(timeoutId);
 
             if (response.ok) {
                 const data = await response.json();
@@ -330,6 +471,10 @@ export async function getQuoteWithFallback(symbol: string): Promise<QuoteData | 
         }
     }
 
+    // Intentar Twelve Data (buen servicio, buenos límites)
+    const twelveQuote = await getQuoteTwelveData(symbol);
+    if (twelveQuote) return twelveQuote;
+
     // Intentar Alpha Vantage
     const alphaQuote = await getQuoteAlphaVantage(symbol);
     if (alphaQuote) return alphaQuote;
@@ -347,13 +492,23 @@ export async function getQuoteWithFallback(symbol: string): Promise<QuoteData | 
 
 /**
  * Obtiene perfil de empresa con fallback
+ * Optimizado con timeouts para mejor fluidez
  */
 export async function getProfileWithFallback(symbol: string): Promise<CompanyProfile | null> {
     // Intentar Finnhub primero
     if (process.env.FINNHUB_API_KEY) {
         try {
             const finnhubUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`;
-            const response = await fetch(finnhubUrl, { next: { revalidate: 3600 } });
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            
+            const response = await fetch(finnhubUrl, { 
+                next: { revalidate: 3600 },
+                signal: controller.signal,
+            });
+            
+            clearTimeout(timeoutId);
 
             if (response.ok) {
                 const data = await response.json();
@@ -377,6 +532,10 @@ export async function getProfileWithFallback(symbol: string): Promise<CompanyPro
             console.warn(`Finnhub profile fallback for ${symbol}:`, error);
         }
     }
+
+    // Intentar Twelve Data
+    const twelveProfile = await getProfileTwelveData(symbol);
+    if (twelveProfile) return twelveProfile;
 
     // Intentar Alpha Vantage
     const alphaProfile = await getProfileAlphaVantage(symbol);
