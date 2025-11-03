@@ -44,14 +44,14 @@ export default function PaginatedNews({ articles, itemsPerPage = 3 }: PaginatedN
     const goToPrevious = () => {
         if (currentPage > 1) {
             setCurrentPage(currentPage - 1);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // Mantener posición de scroll al cambiar de página
         }
     };
 
     const goToNext = () => {
         if (currentPage < totalPages) {
             setCurrentPage(currentPage + 1);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // Mantener posición de scroll al cambiar de página
         }
     };
 
