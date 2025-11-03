@@ -8,12 +8,18 @@ export const metadata: Metadata = {
     template: "%s | JLCavaAI"
   },
   description: "JLCavaAI es una plataforma inteligente de seguimiento de mercados. Analiza precios en tiempo real y accede a insights detallados de empresas y ETFs — construido con tecnología de vanguardia.",
-  keywords: ["stock analysis", "market data", "financial analysis", "ETF analysis", "real-time prices"],
+  keywords: ["stock analysis", "market data", "financial analysis", "ETF analysis", "real-time prices", "análisis de acciones", "datos de mercado"],
   authors: [{ name: "JLCavaAI Team" }],
   creator: "JLCavaAI",
   robots: {
     index: true,
     follow: true,
+  },
+  alternates: {
+    languages: {
+      'es': '/',
+      'en': '/',
+    },
   },
 };
 
@@ -29,7 +35,7 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en" className="dark">
+        <html lang="es" className="dark">
             <body className="antialiased">
                 {children}
                 <Toaster/>

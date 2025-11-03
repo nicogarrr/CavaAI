@@ -12,6 +12,8 @@ export const revalidate = 0;
 const Layout = async ({ children }: { children : React.ReactNode }) => {
     try {
         const auth = await getAuth();
+        if (!auth) redirect('/sign-in');
+        
         const session = await auth.api.getSession({ headers: await headers() });
 
         if(!session?.user) redirect('/sign-in');
@@ -36,6 +38,10 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
             </main>
         )
     } catch (error) {
+        // Log authentication errors for debugging while protecting user experience
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Authentication error in layout:', error);
+        }
         // If authentication fails, redirect to sign-in
         redirect('/sign-in');
     }
