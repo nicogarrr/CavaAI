@@ -1,13 +1,11 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import PaginatedContent from './PaginatedContent';
-import TableVisualization from './TableVisualization';
-import { fixAllMarkdownTables, findAllTables } from '@/lib/utils/tableFormatter';
 
 interface CombinedAnalysisProps {
     analysis: string | null;
@@ -22,34 +20,6 @@ export default function CombinedAnalysis({ analysis, isLoading }: CombinedAnalys
         setIsMounted(true);
     }, []);
     
-    // Corregir tablas mal formateadas antes de renderizar
-    const correctedAnalysis = useMemo(() => {
-        if (!analysis) return null;
-        
-        // Asegurar que analysis es un string
-        if (typeof analysis !== 'string') {
-            console.error('CombinedAnalysis: analysis is not a string', typeof analysis, analysis);
-            return String(analysis);
-        }
-        
-        try {
-            return fixAllMarkdownTables(analysis);
-        } catch (error) {
-            console.error('Error fixing markdown tables:', error);
-            return analysis; // Retornar análisis original si hay error
-        }
-    }, [analysis]);
-    
-    // Extraer todas las tablas para visualizaciones
-    const tables = useMemo(() => {
-        if (!correctedAnalysis) return [];
-        try {
-            return findAllTables(correctedAnalysis);
-        } catch (error) {
-            console.error('Error finding tables:', error);
-            return [];
-        }
-    }, [correctedAnalysis]);
     
     // Mostrar skeleton mientras se monta o está cargando
     if (!isMounted || isLoading) {
@@ -67,15 +37,14 @@ export default function CombinedAnalysis({ analysis, isLoading }: CombinedAnalys
         );
     }
 
-    if (!analysis || !correctedAnalysis) {
+    if (!analysis) {
         return null;
     }
 
     return (
-        <div className="space-y-6">
-            <Card className="p-6 rounded-lg border border-gray-700 bg-gray-800/50">
-                <div className="prose prose-invert max-w-none text-foreground">
-                    <PaginatedContent content={correctedAnalysis} itemsPerPage={3000}>
+        <Card className="p-6 rounded-lg border border-gray-700 bg-gray-800/50">
+            <div className="prose prose-invert max-w-none text-foreground">
+                <PaginatedContent content={analysis} itemsPerPage={3000}>
                         {(content) => (
                             <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
@@ -141,35 +110,6 @@ export default function CombinedAnalysis({ analysis, isLoading }: CombinedAnalys
                         </PaginatedContent>
                     </div>
                 </Card>
-            
-            {/* Visualizaciones de tablas */}
-            {tables.length > 0 && (
-                <div className="space-y-6">
-                    {tables.map((table, index) => {
-                        if (table.headers.length < 2 || table.rows.length === 0) return null;
-                        
-                        // Determinar tipo de gráfico basado en los headers
-                        let chartType: 'bar' | 'line' | 'pie' = 'bar';
-                        const headers = table.headers.map(h => h.toLowerCase());
-                        
-                        if (headers.some(h => h.includes('año') || h.includes('year') || h.includes('tiempo'))) {
-                            chartType = 'line';
-                        } else if (table.rows.length <= 10) {
-                            chartType = 'bar';
-                        }
-                        
-                        return (
-                            <TableVisualization
-                                key={index}
-                                tableMarkdown={table.raw}
-                                title={table.headers[0] || `Tabla ${index + 1}`}
-                                chartType={chartType}
-                            />
-                        );
-                    })}
-                </div>
-            )}
-        </div>
     );
 }
 

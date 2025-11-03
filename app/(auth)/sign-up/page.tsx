@@ -85,6 +85,7 @@ const SignUp = () => {
                     label="Password"
                     placeholder="Enter a strong password"
                     type="password"
+                    autoComplete="new-password"
                     register={register}
                     error={errors.password}
                     validation={{ required: 'Password is required', minLength: 8 }}
