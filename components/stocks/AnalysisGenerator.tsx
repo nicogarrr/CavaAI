@@ -68,12 +68,135 @@ export default function AnalysisGenerator({
         }
     };
 
+    // Función para convertir markdown a HTML
+    const markdownToHtml = (markdown: string): string => {
+        if (!markdown) return '';
+
+        let html = markdown;
+
+        // Convertir code blocks primero (antes de otros procesamientos)
+        html = html.replace(/```[\s\S]*?```/g, (match) => {
+            const codeContent = match.replace(/```/g, '').trim();
+            return `<pre><code>${codeContent}</code></pre>`;
+        });
+
+        // Convertir inline code (después de code blocks)
+        html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+        // Convertir headers (procesar de más específico a menos específico)
+        html = html.replace(/^#### (.*?)$/gim, '<h4>$1</h4>');
+        html = html.replace(/^### (.*?)$/gim, '<h3>$1</h3>');
+        html = html.replace(/^## (.*?)$/gim, '<h2>$1</h2>');
+        html = html.replace(/^# (.*?)$/gim, '<h1>$1</h1>');
+
+        // Convertir blockquotes
+        html = html.replace(/^>\s+(.*?)$/gim, '<blockquote>$1</blockquote>');
+
+        // Convertir tablas markdown
+        const lines = html.split('\n');
+        let inTable = false;
+        let tableRows: string[] = [];
+        let processedLines: string[] = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const isTableRow = line.trim().match(/^\|.+\|$/);
+            const isTableSeparator = line.trim().match(/^\|[\s\-:]+\|$/);
+
+            if (isTableRow && !isTableSeparator) {
+                if (!inTable) {
+                    inTable = true;
+                    tableRows = [];
+                }
+                const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
+                const isHeader = i > 0 && lines[i - 1].trim().match(/^\|[\s\-:]+\|$/);
+                const rowTag = isHeader ? 'th' : 'td';
+                tableRows.push(`<tr>${cells.map(cell => `<${rowTag}>${cell}</${rowTag}>`).join('')}</tr>`);
+            } else if (isTableSeparator) {
+                // Ignorar separadores
+                continue;
+            } else {
+                if (inTable) {
+                    processedLines.push(`<table><thead>${tableRows[0]}</thead><tbody>${tableRows.slice(1).join('')}</tbody></table>`);
+                    tableRows = [];
+                    inTable = false;
+                }
+                processedLines.push(line);
+            }
+        }
+
+        if (inTable && tableRows.length > 0) {
+            processedLines.push(`<table><thead>${tableRows[0]}</thead><tbody>${tableRows.slice(1).join('')}</tbody></table>`);
+        }
+
+        html = processedLines.join('\n');
+
+        // Convertir listas ordenadas
+        html = html.replace(/^(\d+)\.\s+(.+)$/gim, '<li>$2</li>');
+        
+        // Agrupar listas ordenadas
+        html = html.replace(/(<li>[\s\S]*?<\/li>)(?=\s*<li>|$)/g, (match) => {
+            if (match.includes('<li>') && !match.includes('<ol>')) {
+                return '<ol>' + match + '</ol>';
+            }
+            return match;
+        });
+
+        // Convertir listas no ordenadas
+        html = html.replace(/^[-*]\s+(.+)$/gim, '<li>$1</li>');
+        
+        // Agrupar listas no ordenadas que no sean ordenadas
+        html = html.replace(/(<li>[\s\S]*?<\/li>)(?=\s*<li>|$)/g, (match) => {
+            if (match.includes('<li>') && !match.includes('<ol>') && !match.includes('<ul>')) {
+                return '<ul>' + match + '</ul>';
+            }
+            return match;
+        });
+
+        // Convertir links
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+        // Convertir bold (después de code para evitar conflictos)
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+        // Convertir italic (después de bold)
+        html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
+
+        // Convertir saltos de línea a párrafos
+        const paragraphs = html.split(/\n\n+/);
+        html = paragraphs
+            .map((para) => {
+                const trimmed = para.trim();
+                if (!trimmed) return '';
+                // Si ya es un elemento HTML de bloque, no envolver en <p>
+                if (trimmed.match(/^<(h[1-6]|ul|ol|blockquote|table|pre|li)/i)) {
+                    return trimmed;
+                }
+                // Si tiene contenido, envolver en <p> y convertir saltos de línea simples a <br>
+                return '<p>' + trimmed.replace(/\n(?!\n)/g, '<br>') + '</p>';
+            })
+            .filter(p => p.length > 0)
+            .join('\n\n');
+
+        // Limpiar espacios en blanco excesivos
+        html = html.replace(/\n{3,}/g, '\n\n');
+
+        // Escapar HTML restante que no debería estar ahí (solo texto plano)
+        // Pero mantener el HTML que ya generamos
+        return html;
+    };
+
     const handleDownloadPDF = () => {
         if (!analysis) return;
 
         // Crear un nuevo documento HTML para el PDF
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
+
+        // Convertir markdown a HTML
+        const htmlAnalysis = markdownToHtml(analysis);
 
         const htmlContent = `
 <!DOCTYPE html>
@@ -141,14 +264,26 @@ export default function AnalysisGenerator({
             margin-bottom: 15px;
             line-height: 1.8;
             color: #333;
+            text-align: justify;
+        }
+        br {
+            line-height: 1.8;
         }
         ul, ol {
             margin-bottom: 15px;
             margin-left: 30px;
+            padding-left: 20px;
+        }
+        ul {
+            list-style-type: disc;
+        }
+        ol {
+            list-style-type: decimal;
         }
         li {
             margin-bottom: 8px;
             line-height: 1.7;
+            padding-left: 10px;
         }
         strong {
             font-weight: 600;
@@ -160,6 +295,20 @@ export default function AnalysisGenerator({
             border-radius: 3px;
             font-family: 'Courier New', monospace;
             font-size: 0.9em;
+            display: inline-block;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            overflow-x: auto;
+            border-left: 4px solid #0FEDBE;
+        }
+        pre code {
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
         }
         table {
             width: 100%;
@@ -211,9 +360,19 @@ export default function AnalysisGenerator({
             font-size: 0.9em;
             margin-top: 10px;
         }
+        .content {
+            max-width: 100%;
+            word-wrap: break-word;
+        }
+        .content > *:first-child {
+            margin-top: 0;
+        }
         @media print {
             .no-print {
                 display: none;
+            }
+            body {
+                padding: 20px;
             }
         }
     </style>
@@ -230,7 +389,9 @@ export default function AnalysisGenerator({
             minute: '2-digit'
         })}</div>
     </div>
-    ${analysis.replace(/\n/g, '\n    ')}
+    <div class="content">
+        ${htmlAnalysis}
+    </div>
 </body>
 </html>
         `;
