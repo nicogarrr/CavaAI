@@ -430,7 +430,7 @@ IMPORTANTE:
 "**Gráfico de Barras: Precio vs Valor Intrínseco**
 
 La visualización muestra dos barras horizontales:
-- **Barra Izquierda (Gris Oscuro)**: Representa el 'Precio Actual' de $X, significativamente más corta
+- **Barra Izquierda**: Representa el 'Precio Actual' de $X, significativamente más corta
 - **Barra Derecha**: Representa el 'Valor Intrínseco' de $Y, aproximadamente X veces más alta
 
 Debajo del gráfico: 'El precio actual es significativamente menor que su valor intrínseco calculado.'"
