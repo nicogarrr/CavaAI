@@ -33,7 +33,8 @@ export async function generatePortfolioSummary(input: {
   };
 
   try {
-    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    // Forzar uso de gemini-2.5-flash (eliminar variables de entorno obsoletas)
+    const model = 'gemini-2.5-flash';
     // Usar endpoint v1 (v1beta puede no soportar el modelo)
     const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
@@ -549,7 +550,8 @@ IMPORTANTE - ESTILO NARRATIVO SIN TABLAS NI GRÁFICOS:
   };
 
   try {
-    const model = process.env.GEMINI_MODEL_THESIS || 'gemini-2.5-flash';
+    // Forzar uso de gemini-2.5-flash (eliminar variables de entorno obsoletas)
+    const model = 'gemini-2.5-flash';
     const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -786,8 +788,8 @@ IMPORTANTE:
   };
 
   try {
-    // Usar un modelo más potente para análisis complejos (Gemini 2.5)
-    const model = process.env.GEMINI_MODEL_DCF || 'gemini-2.5-flash';
+    // Forzar uso de gemini-2.5-flash (eliminar variables de entorno obsoletas)
+    const model = 'gemini-2.5-flash';
     const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -1238,8 +1240,8 @@ IMPORTANTE:
   };
 
   try {
-    // Usar modelo Pro para análisis complejos (Gemini 2.5)
-    const model = process.env.GEMINI_MODEL_THESIS || 'gemini-2.5-flash';
+    // Forzar uso de gemini-2.5-flash (eliminar variables de entorno obsoletas)
+    const model = 'gemini-2.5-flash';
     const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
