@@ -402,3 +402,69 @@ export async function getAvailableStrategies() {
         description: s.description,
     }));
 }
+
+export interface EnhancedProPicksFilters {
+    timePeriod?: 'week' | 'month' | 'quarter' | 'year';
+    limit?: number;
+    minScore?: number;
+    sector?: string;
+    sortBy?: 'score' | 'momentum' | 'value' | 'growth' | 'profitability';
+}
+
+// Buffer multiplier for initial picks generation to ensure enough options after filtering
+const FILTER_BUFFER_MULTIPLIER = 3;
+
+/**
+ * Genera ProPicks con filtros avanzados (similar a Investing Pro)
+ * Soporta filtrado por período, sector, score mínimo y ordenamiento personalizado
+ */
+export async function generateEnhancedProPicks(
+    filters: EnhancedProPicksFilters = {}
+): Promise<ProPick[]> {
+    const {
+        timePeriod = 'month',
+        limit = 20,
+        minScore = 70,
+        sector = 'all',
+        sortBy = 'score'
+    } = filters;
+
+    try {
+        // Generar picks base con limite más alto para tener opciones para filtrar
+        // Usamos un multiplicador buffer para asegurar suficientes resultados post-filtrado
+        const basePicks = await generateProPicks(Math.min(limit * FILTER_BUFFER_MULTIPLIER, 100));
+        
+        // Filtrar por score mínimo
+        let filteredPicks = basePicks.filter(pick => pick.score >= minScore);
+        
+        // Filtrar por sector si se especifica
+        if (sector !== 'all') {
+            filteredPicks = filteredPicks.filter(pick => 
+                pick.sector?.toLowerCase() === sector.toLowerCase()
+            );
+        }
+        
+        // Ordenar según el criterio seleccionado
+        filteredPicks.sort((a, b) => {
+            switch (sortBy) {
+                case 'momentum':
+                    return b.categoryScores.momentum - a.categoryScores.momentum;
+                case 'value':
+                    return b.categoryScores.value - a.categoryScores.value;
+                case 'growth':
+                    return b.categoryScores.growth - a.categoryScores.growth;
+                case 'profitability':
+                    return b.categoryScores.profitability - a.categoryScores.profitability;
+                case 'score':
+                default:
+                    return (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score);
+            }
+        });
+        
+        // Aplicar límite final
+        return filteredPicks.slice(0, limit);
+    } catch (error) {
+        console.error('Error generating enhanced ProPicks:', error);
+        return [];
+    }
+}
