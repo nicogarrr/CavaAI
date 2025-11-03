@@ -12,6 +12,7 @@ import { generateEnhancedProPicks, type ProPick } from '@/lib/actions/proPicks.a
 export default function EnhancedProPicksContent({ initialPicks }: { initialPicks: ProPick[] }) {
     const [picks, setPicks] = useState<ProPick[]>(initialPicks);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [filters, setFilters] = useState<ProPicksFilters>({
         timePeriod: 'month',
         limit: 20,
@@ -22,11 +23,13 @@ export default function EnhancedProPicksContent({ initialPicks }: { initialPicks
 
     const handleApplyFilters = async () => {
         setLoading(true);
+        setError(null);
         try {
             const newPicks = await generateEnhancedProPicks(filters);
             setPicks(newPicks);
         } catch (error) {
             console.error('Error applying filters:', error);
+            setError('Error al aplicar los filtros. Por favor, intenta de nuevo.');
         } finally {
             setLoading(false);
         }
@@ -112,6 +115,12 @@ export default function EnhancedProPicksContent({ initialPicks }: { initialPicks
                         }
                     </p>
                 </div>
+
+                {error && (
+                    <Card className="p-6 rounded-lg border border-red-700 bg-red-900/20 mb-4">
+                        <p className="text-red-400 text-center">{error}</p>
+                    </Card>
+                )}
 
                 {picks.length === 0 ? (
                     <Card className="p-8 rounded-lg border border-gray-700 bg-gray-800/50 text-center">
