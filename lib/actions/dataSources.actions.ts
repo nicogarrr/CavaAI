@@ -47,26 +47,64 @@ export interface CompanyProfile {
 
 /**
  * Obtiene cotización de Alpha Vantage (gratis hasta 5 llamadas/min, 500/día)
+ * Mejorado con mejor manejo de errores, validación y timeout
  */
 async function getQuoteAlphaVantage(symbol: string): Promise<QuoteData | null> {
     try {
         const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
-        if (!apiKey) return null;
+        if (!apiKey) {
+            console.warn('Alpha Vantage API key no configurada');
+            return null;
+        }
 
         const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
-        const response = await fetch(url, { next: { revalidate: 60 } });
+        
+        // Timeout de 10 segundos para evitar bloqueos
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(url, { 
+            next: { revalidate: 60 },
+            signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
 
-        if (!response.ok) return null;
+        if (!response.ok) {
+            console.warn(`Alpha Vantage HTTP error for ${symbol}:`, response.status);
+            return null;
+        }
 
         const data = await response.json();
+
+        // Verificar errores de API (rate limiting, invalid API key, etc.)
+        if (data['Error Message']) {
+            console.warn(`Alpha Vantage API error for ${symbol}:`, data['Error Message']);
+            return null;
+        }
+
+        if (data['Note']) {
+            // Rate limit alcanzado
+            console.warn(`Alpha Vantage rate limit for ${symbol}`);
+            return null;
+        }
+
         const quote = data['Global Quote'];
 
-        if (!quote || !quote['05. price']) return null;
+        if (!quote || !quote['05. price']) {
+            console.warn(`Alpha Vantage no data for ${symbol}`);
+            return null;
+        }
 
         const price = parseFloat(quote['05. price']);
+        if (isNaN(price) || price <= 0) {
+            console.warn(`Alpha Vantage invalid price for ${symbol}:`, quote['05. price']);
+            return null;
+        }
+
         const change = parseFloat(quote['09. change']) || 0;
-        const changePercent = parseFloat(quote['10. change percent']?.replace('%', '')) || 0;
-        const previousClose = parseFloat(quote['08. previous close']) || 0;
+        const changePercent = parseFloat(quote['10. change percent']?.replace('%', '').replace(',', '.')) || 0;
+        const previousClose = parseFloat(quote['08. previous close']) || price - change;
 
         return {
             symbol: quote['01. symbol'] || symbol,
@@ -74,15 +112,19 @@ async function getQuoteAlphaVantage(symbol: string): Promise<QuoteData | null> {
             previousClose,
             change,
             changePercent,
-            high: parseFloat(quote['03. high']) || undefined,
-            low: parseFloat(quote['04. low']) || undefined,
-            open: parseFloat(quote['02. open']) || undefined,
-            volume: parseFloat(quote['06. volume']) || undefined,
+            high: quote['03. high'] ? parseFloat(quote['03. high']) : undefined,
+            low: quote['04. low'] ? parseFloat(quote['04. low']) : undefined,
+            open: quote['02. open'] ? parseFloat(quote['02. open']) : undefined,
+            volume: quote['06. volume'] ? parseFloat(quote['06. volume']) : undefined,
             timestamp: Date.now(),
             source: DataSource.ALPHA_VANTAGE,
         };
-    } catch (error) {
-        console.error(`Alpha Vantage error for ${symbol}:`, error);
+    } catch (error: any) {
+        if (error.name === 'AbortError') {
+            console.warn(`Alpha Vantage timeout for ${symbol}`);
+        } else {
+            console.error(`Alpha Vantage error for ${symbol}:`, error);
+        }
         return null;
     }
 }
@@ -125,28 +167,62 @@ async function getProfileAlphaVantage(symbol: string): Promise<CompanyProfile | 
 
 /**
  * Obtiene cotización de Yahoo Finance (gratis, sin API key, pero menos confiable)
+ * Mejorado con múltiples endpoints y mejor manejo de errores
  */
 async function getQuoteYahooFinance(symbol: string): Promise<QuoteData | null> {
     try {
         // Usar yfinance API no oficial o endpoint público
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
-        const response = await fetch(url, { next: { revalidate: 60 } });
+        const response = await fetch(url, { 
+            next: { revalidate: 60 },
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+        });
 
-        if (!response.ok) return null;
+        if (!response.ok) {
+            // Intentar endpoint alternativo
+            try {
+                const altUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+                const altResponse = await fetch(altUrl, { 
+                    next: { revalidate: 60 },
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    },
+                });
+                
+                if (!altResponse.ok) return null;
+                return parseYahooFinanceResponse(await altResponse.json(), symbol);
+            } catch {
+                return null;
+            }
+        }
 
         const data = await response.json();
+        return parseYahooFinanceResponse(data, symbol);
+    } catch (error) {
+        console.error(`Yahoo Finance error for ${symbol}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Parsea la respuesta de Yahoo Finance
+ */
+function parseYahooFinanceResponse(data: any, symbol: string): QuoteData | null {
+    try {
         const result = data.chart?.result?.[0];
 
         if (!result || !result.meta) return null;
 
         const meta = result.meta;
-        const price = meta.regularMarketPrice || meta.previousClose;
+        const price = meta.regularMarketPrice || meta.previousClose || meta.chartPreviousClose;
 
-        if (!price) return null;
+        if (!price || price <= 0) return null;
 
-        const previousClose = meta.previousClose || price;
+        const previousClose = meta.previousClose || meta.chartPreviousClose || price;
         const change = price - previousClose;
-        const changePercent = (change / previousClose) * 100;
+        const changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
 
         return {
             symbol: meta.symbol || symbol,
@@ -154,15 +230,15 @@ async function getQuoteYahooFinance(symbol: string): Promise<QuoteData | null> {
             previousClose,
             change,
             changePercent,
-            high: meta.regularMarketDayHigh || undefined,
-            low: meta.regularMarketDayLow || undefined,
-            open: meta.regularMarketPrice || undefined,
-            volume: meta.regularMarketVolume || undefined,
-            timestamp: meta.regularMarketTime || Date.now(),
+            high: meta.regularMarketDayHigh || meta.chartPreviousClose,
+            low: meta.regularMarketDayLow || meta.chartPreviousClose,
+            open: meta.regularMarketOpen || meta.regularMarketPrice,
+            volume: meta.regularMarketVolume,
+            timestamp: meta.regularMarketTime ? meta.regularMarketTime * 1000 : Date.now(),
             source: DataSource.YAHOO_FINANCE,
         };
     } catch (error) {
-        console.error(`Yahoo Finance error for ${symbol}:`, error);
+        console.error('Error parsing Yahoo Finance response:', error);
         return null;
     }
 }
@@ -308,6 +384,7 @@ export async function getProfileWithFallback(symbol: string): Promise<CompanyPro
 
     return null;
 }
+
 
 
 
