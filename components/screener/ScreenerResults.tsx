@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +11,29 @@ import { TrendingUp, TrendingDown, ExternalLink, Star } from 'lucide-react';
 import Link from 'next/link';
 import { screenStocks, ScreenerFilters, ScreenerResult } from '@/lib/actions/screener.actions';
 
+const defaultFilters: ScreenerFilters = {
+  marketCapMin: 0,
+  marketCapMax: 1000000000000,
+  priceMin: 0,
+  priceMax: 10000,
+  peMin: 0,
+  peMax: 100,
+  pbMin: 0,
+  pbMax: 10,
+  roeMin: 0,
+  roeMax: 100,
+  volumeMin: 0,
+  betaMin: 0,
+  betaMax: 3,
+  sector: 'all',
+  exchange: 'all',
+  assetType: 'all',
+  sortBy: 'marketCap',
+  sortOrder: 'desc',
+};
+
 export default function ScreenerResults() {
+  const searchParams = useSearchParams();
   const [results, setResults] = useState<ScreenerResult[]>([]);
   const [loading, setLoading] = useState(false);
   // Pesos de scoring (0-100) -> normalizados internamente
@@ -20,26 +43,25 @@ export default function ScreenerResults() {
     momentum: 20,    // Cambio % reciente
     size: 20,        // Market Cap (preferencia configurable)
   });
-  const [filters, setFilters] = useState<ScreenerFilters>({
-    marketCapMin: 0,
-    marketCapMax: 1000000000000,
-    priceMin: 0,
-    priceMax: 10000,
-    peMin: 0,
-    peMax: 100,
-    pbMin: 0,
-    pbMax: 10,
-    roeMin: 0,
-    roeMax: 100,
-    volumeMin: 0,
-    betaMin: 0,
-    betaMax: 3,
-    sector: 'all',
-    exchange: 'all',
-    assetType: 'all',
-    sortBy: 'marketCap',
-    sortOrder: 'desc',
-  });
+  const [filters, setFilters] = useState<ScreenerFilters>(defaultFilters);
+
+  // Update filters from URL params
+  useEffect(() => {
+    const newFilters = { ...defaultFilters };
+    
+    searchParams.forEach((value, key) => {
+      if (key in defaultFilters) {
+        const parsedValue = key.includes('Min') || key.includes('Max') || key === 'volumeMin'
+          ? Number(value)
+          : key === 'sortOrder'
+          ? value as 'asc' | 'desc'
+          : value;
+        (newFilters as any)[key] = parsedValue;
+      }
+    });
+    
+    setFilters(newFilters);
+  }, [searchParams]);
 
   const loadResults = useCallback(async () => {
     setLoading(true);
@@ -58,10 +80,47 @@ export default function ScreenerResults() {
     // Debounce para evitar demasiadas llamadas
     const timeoutId = setTimeout(() => {
       loadResults();
-    }, 500);
+    }, 300);
     
     return () => clearTimeout(timeoutId);
   }, [loadResults]);
+
+  // Export functionality
+  useEffect(() => {
+    const handleExport = () => {
+      if (results.length === 0) return;
+      
+      // Generate CSV
+      const headers = ['Symbol', 'Name', 'Price', 'Change%', 'Market Cap', 'P/E', 'P/B', 'ROE%', 'Volume', 'Beta', 'Sector'];
+      const rows = results.map(r => [
+        r.symbol,
+        `"${r.name}"`,
+        r.price.toFixed(2),
+        r.changePercent.toFixed(2),
+        r.marketCap.toFixed(0),
+        r.pe.toFixed(2),
+        r.pb.toFixed(2),
+        r.roe.toFixed(2),
+        r.volume.toFixed(0),
+        r.beta.toFixed(2),
+        r.sector
+      ]);
+      
+      const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+      
+      // Download file
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `screener-results-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    };
+    
+    window.addEventListener('exportScreenerResults', handleExport);
+    return () => window.removeEventListener('exportScreenerResults', handleExport);
+  }, [results]);
 
   const formatMarketCap = (value: number) => {
     if (value >= 1000000000000) return `$${(value / 1000000000000).toFixed(2)}T`;
