@@ -92,14 +92,19 @@ export default function PaginatedContent({ content, itemsPerPage = 3000, childre
     // Dividir el contenido de forma inteligente
     while (currentIndex < contentLength) {
       const breakPoint = findBreakPoint(currentIndex, targetChunkSize);
-      const chunk = content.slice(currentIndex, breakPoint);
-      chunks.push(chunk.trim());
-      currentIndex = breakPoint;
       
-      // Prevenir bucles infinitos
-      if (breakPoint <= currentIndex - 1) {
+      // Prevenir bucles infinitos: asegurar progreso mínimo
+      if (breakPoint <= currentIndex) {
+        // Si no hay progreso, forzar avance
         currentIndex = Math.min(currentIndex + targetChunkSize, contentLength);
+        continue;
       }
+      
+      const chunk = content.slice(currentIndex, breakPoint);
+      if (chunk.trim().length > 0) {
+        chunks.push(chunk.trim());
+      }
+      currentIndex = breakPoint;
     }
     
     // Filtrar chunks vacíos
