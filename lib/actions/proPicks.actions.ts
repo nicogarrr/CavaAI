@@ -90,8 +90,8 @@ async function selectBestPicksWithAI(
             };
         });
 
-        // Prompt para Gemini
-        const systemPrompt = `Eres un analista financiero experto. Analiza los datos REALES COMPLETOS de ${evaluatedPicks.length} acciones ya evaluadas y selecciona las ${limit} MEJORES opciones de inversión en este momento basándote en:
+        // Prompt para Gemini - 100% IMPARCIAL
+        const systemPrompt = `Eres un analista financiero experto e IMPARCIAL. Analiza los datos REALES COMPLETOS de ${evaluatedPicks.length} acciones ya evaluadas y selecciona las ${limit} MEJORES opciones de inversión en este momento basándote ÚNICAMENTE en datos reales y objetivos, sin sesgos ni preconcepciones:
 
 DATOS REALES DISPONIBLES:
 - Score general (0-100)
@@ -101,12 +101,13 @@ DATOS REALES DISPONIBLES:
 - Razones específicas de cada acción
 - Sector de cada empresa
 
-CRITERIOS DE SELECCIÓN:
-1. **Score general alto** (priorizar scores >70)
-2. **Comparación favorable con sector** (acciones que están mejor que su sector promedio)
-3. **Balance entre categorías** (no solo una categoría alta, sino balance general)
-4. **Diversificación sectorial** (máximo 2-3 por sector si es posible)
-5. **Razones sólidas** (fortalezas claras y oportunidades reales)
+CRITERIOS DE SELECCIÓN OBJETIVOS (basados SOLO en datos reales):
+1. **Score general alto basado en datos reales** (priorizar scores >70, pero evalúa objetivamente todos los scores)
+2. **Comparación objetiva con sector** (evalúa si están mejor o peor que su sector promedio según datos reales)
+3. **Balance entre categorías** (evalúa objetivamente si hay balance o desequilibrio según datos reales)
+4. **Diversificación sectorial** (máximo 2-3 por sector si es posible, pero no fuerces diversificación si los datos muestran concentración)
+5. **Razones sólidas basadas en datos reales** (fortalezas y oportunidades reales identificadas en los datos, no asumidas)
+6. **IMPARCIALIDAD**: NO favorezcas acciones por sector o nombre - selecciona basándote SOLO en los datos reales proporcionados
 
 RESPONDE SOLO CON UNA LISTA DE SÍMBOLOS SEPARADOS POR COMAS, en el formato exacto:
 SYMBOL1,SYMBOL2,SYMBOL3,...

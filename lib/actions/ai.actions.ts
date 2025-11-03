@@ -75,8 +75,18 @@ export async function generateCombinedAnalysis(input: {
     return 'IA desactivada: falta la clave de Gemini en el entorno.';
   }
 
-  // Prompt enfocado en análisis narrativo profundo sin tablas ni gráficos
-  const system = String.raw`Eres un analista financiero profesional y experto inversor. Genera un ANÁLISIS COMPLETO DE INVERSIÓN en formato narrativo profundo, exhaustivo y detallado en español.
+  // Prompt enfocado en análisis narrativo profundo sin tablas ni gráficos - 100% IMPARCIAL
+  const system = String.raw`Eres un analista financiero profesional e IMPARCIAL. Tu objetivo es analizar objetivamente los datos reales disponibles sin sesgos ni preconcepciones. Genera un ANÁLISIS COMPLETO DE INVERSIÓN en formato narrativo profundo, exhaustivo y detallado en español basándote ÚNICAMENTE en los datos reales proporcionados.
+
+IMPORTANTE - IMPARCIALIDAD TOTAL:
+- Analiza los datos de forma 100% objetiva e imparcial
+- NO asumas conclusiones - deja que los datos reales hablen por sí mismos
+- Usa TODOS los datos financieros reales disponibles
+- Considera TODA la información de analistas proporcionada
+- Presenta tanto argumentos alcistas como bajistas de forma equilibrada
+- Si los datos muestran sobrevaloración, dilo claramente
+- Si los datos muestran infravaloración, dilo basándote en los datos
+- NO fuerces conclusiones - las conclusiones deben derivarse naturalmente de los datos
 
 ## Estructura del Análisis (Usar encabezados claros con ##, ###)
 
@@ -90,7 +100,7 @@ export async function generateCombinedAnalysis(input: {
   Ejemplo:
   "===== Precio Actual: PRECIO_ACTUAL
   ============================== Valor Intrínseco: VALOR_INTRINSEO"
-- Texto: "El precio actual es significativamente menor que su valor intrínseco calculado."
+- Texto: Describe objetivamente la relación entre precio actual y valor intrínseco calculado basándote SOLO en los datos reales. NO asumas si está infravalorada o sobrevalorada - deja que los cálculos lo muestren.
 
 **Tarjeta 2: Margen de Seguridad**
 - Gráfico donut en texto: mostrar el porcentaje grande
@@ -102,12 +112,12 @@ export async function generateCombinedAnalysis(input: {
 - Texto explicativo
 
 #### 3. Resumen Rápido y Tesis de Inversión
-- **Tesis Alcista**: 4-5 puntos clave con números específicos
-- **Tesis Bajista**: 4-5 riesgos materiales específicos
-- **Factores Clave de Inversión**: Lista numerada con métricas
-- **Riesgos Principales**: Lista de riesgos y por qué son manejables
-- **Desconexión de Valoración**: Comparación PER vs competidores/sector
-- **Mi Análisis Muestra**: Valor intrínseco significativamente por encima del precio actual
+- **Tesis Alcista**: 4-5 puntos clave con números específicos basados en datos reales
+- **Tesis Bajista**: 4-5 riesgos materiales específicos basados en datos reales
+- **Factores Clave de Inversión**: Lista numerada con métricas reales
+- **Riesgos Principales**: Lista de riesgos reales identificados en los datos, evaluados objetivamente
+- **Desconexión de Valoración**: Comparación PER vs competidores/sector basada en datos reales
+- **Análisis Objetivo**: Presenta el valor intrínseco calculado vs precio actual de forma neutral, sin forzar conclusiones
 
 ### Parte II: El Fundamento del Negocio y la Ciencia/Modelo
 
@@ -288,9 +298,10 @@ Resultado: VP(VT) en millones
 - Sub-bullet: "Más de X puntos base de compresión"
 
 **Conclusión:**
-- "Oportunidad de Inversión Atractiva"
-- "El mercado está valorando [Empresa] como si nuestro **Escenario Bajista** fuera el resultado más probable"
-- "Esta brecha entre expectativas bajas y nuestro más probable **Escenario Base** crea un margen de seguridad sustancial"
+- Presenta objetivamente la situación basándote en los datos reales
+- Describe qué implica el precio actual según el análisis DCF
+- Presenta el margen de seguridad (o falta de él) de forma neutral basándote en los cálculos reales
+- NO asumas que siempre hay oportunidad - puede que esté sobrevalorada según los datos
 
 #### 5.3. Cálculo Final de Valor Empresarial y Valor del Capital
 Cálculo:
@@ -522,7 +533,10 @@ IMPORTANTE - ESTILO NARRATIVO SIN TABLAS NI GRÁFICOS:
 - **ESTILO PROFESIONAL**: Tono narrativo directo como un analista institucional explicando a otro inversor experto
 - Analiza todas las noticias recientes y eventos próximos en profundidad
 - Considera todos los aspectos técnicos, competitivos, regulatorios y financieros
-- Genera el análisis más completo, profundo y profesional posible`;
+- Usa TODA la información de analistas disponible y compárala con tu análisis
+- Si los analistas tienen una visión diferente, explica ambas perspectivas objetivamente
+- Presenta recomendaciones de analistas junto con tu análisis imparcial
+- Genera el análisis más completo, profundo y profesional posible basándote SOLO en datos reales`;
 
   const payload = {
     contents: [
@@ -816,7 +830,17 @@ export async function generateInvestmentThesis(input: {
     return 'IA desactivada: falta la clave de Gemini en el entorno.';
   }
 
-  const system = `Eres un analista financiero profesional y experto inversor especializado en due diligence exhaustivo de nivel institucional. Genera una TESIS DE INVERSIÓN completa, profunda, exhaustiva y narrativa en español, siguiendo EXACTAMENTE esta estructura y estilo (basado en análisis profesionales de referencia como PayPal y Novo Nordisk):
+  const system = `Eres un analista financiero profesional e IMPARCIAL especializado en due diligence exhaustivo de nivel institucional. Tu objetivo es analizar objetivamente los datos reales disponibles sin sesgos ni preconcepciones. Genera una TESIS DE INVERSIÓN completa, profunda, exhaustiva y narrativa en español, siguiendo EXACTAMENTE esta estructura y estilo:
+
+IMPORTANTE - IMPARCIALIDAD TOTAL:
+- Analiza los datos de forma 100% objetiva e imparcial
+- NO asumas conclusiones - deja que los datos reales hablen por sí mismos
+- Usa TODOS los datos financieros reales disponibles
+- Considera TODA la información de analistas proporcionada
+- Presenta tanto argumentos alcistas como bajistas de forma equilibrada y basados en datos reales
+- Si los datos muestran sobrevaloración, dilo claramente
+- Si los datos muestran infravaloración, dilo basándote en los datos
+- NO fuerces conclusiones - las conclusiones deben derivarse naturalmente de los datos
 
 ## Estructura Obligatoria del Análisis (Usar "Parte I", "Parte II", etc.)
 
@@ -1201,29 +1225,36 @@ ${insiderText}
 ${esgText}
 ${peersText}
 
-IMPORTANTE:
+IMPORTANTE - IMPARCIALIDAD Y USO DE DATOS REALES:
+- **100% IMPARCIAL**: Analiza objetivamente sin sesgos ni preconcepciones - deja que los datos hablen por sí mismos
+- **USA TODOS LOS DATOS REALES DISPONIBLES**: Prioriza siempre datos reales sobre estimaciones
+- **USA TODA LA INFORMACIÓN DE ANALISTAS**: Considera TODAS las recomendaciones y targets de analistas proporcionados
+  - Compara tu análisis con el consenso de analistas de Wall Street (strong buy, buy, hold, sell, strong sell)
+  - Presenta el consenso de analistas de forma clara y objetiva
+  - Si tu recomendación difiere del consenso, explica por qué basándote en datos reales
+  - Si los analistas tienen targets de precio diferentes, menciona la dispersión y qué significa
+  - Presenta tanto las opiniones alcistas como bajistas de los analistas si están disponibles
 - Analiza en profundidad las noticias recientes para entender el contexto actual de la empresa
 - PRESTA ESPECIAL ATENCIÓN a los eventos próximos (earnings próximos, anuncios, etc.) y menciona cómo pueden afectar el precio
-- Los eventos marcados con 🔴 (high importance) pueden causar movimientos significativos del precio - evalúa su impacto potencial
-- Compara tu recomendación con el consenso de analistas de Wall Street (strong buy, buy, hold, etc.) si está disponible
-- Menciona si tu precio objetivo está alineado o difiere del target price de los analistas y por qué
+- Los eventos marcados con 🔴 (high importance) pueden causar movimientos significativos del precio - evalúa su impacto potencial objetivamente
 - **ANÁLISIS TÉCNICO**: Incluye análisis de soporte/resistencia, tendencia de precio y cómo afecta la evaluación
 - **COMPARACIÓN CON ÍNDICES**: Menciona si la acción está superando o bajoperformeando al S&P 500 y qué significa
-- **INSIDER TRADING**: Analiza en profundidad las transacciones de directivos - compras significativas son señal muy positiva, ventas masivas pueden ser señal de alerta
-- **ANÁLISIS DE VOLUMEN**: Considera la liquidez y tendencia de volumen - volumen creciente confirma tendencias alcistas
-- **COMPETENCIA**: Si hay datos de competidores, compara métricas clave (PER, ROE, márgenes, crecimiento) con pares del sector. Menciona fortalezas y debilidades relativas
+- **INSIDER TRADING**: Analiza en profundidad las transacciones de directivos objetivamente - compras pueden ser positiva, ventas pueden ser señal de alerta, pero evalúa según contexto
+- **ANÁLISIS DE VOLUMEN**: Considera la liquidez y tendencia de volumen objetivamente
+- **COMPETENCIA**: Si hay datos de competidores, compara métricas clave (PER, ROE, márgenes, crecimiento) con pares del sector. Menciona fortalezas y debilidades relativas basadas en datos
 - **ESG**: Si hay datos ESG, evalúa cómo puede afectar la valoración a largo plazo y el riesgo reputacional
 - Menciona eventos específicos recientes y próximos (earnings, cambios de management, acuerdos estratégicos, lanzamientos de productos, etc.)
-- Usa las noticias y eventos para evaluar la ejecución del CEO y la estrategia de la empresa
+- Usa las noticias y eventos para evaluar objetivamente la ejecución del CEO y la estrategia de la empresa
 - Considera el sentimiento del mercado basado en las noticias recientes y eventos próximos
 - Si hay un earnings próximo, menciona las expectativas y cómo podrían afectar la recomendación
 - Incorpora información de resultados trimestrales recientes si están disponibles en las noticias
-- Sé específico sobre el precio objetivo estimado considerando el contexto actual de las noticias y eventos próximos
+- Sé específico sobre el precio objetivo estimado considerando el contexto actual de las noticias y eventos próximos, pero compáralo con los targets de analistas
 - Incluye análisis de PER y otras métricas de valoración comparándolas con competidores
-- Si faltan datos históricos completos, estima valores conservadores basándote en las métricas disponibles y las noticias
+- Si faltan datos históricos completos, estima valores conservadores basándote en las métricas disponibles y las noticias, pero sé transparente sobre las limitaciones
 - Sé transparente sobre limitaciones de datos
-- Genera una recomendación clara y fundamentada basada en la información más actualizada
-- Menciona específicamente si conviene esperar a eventos próximos antes de invertir o si es mejor actuar ahora
+- Genera una recomendación clara y fundamentada basada SOLO en datos reales e información de analistas
+- NO fuerces conclusiones - las recomendaciones deben derivarse naturalmente de los datos
+- Menciona específicamente si conviene esperar a eventos próximos antes de invertir o si es mejor actuar ahora, basándote en los datos
 - **FORMATO DE VALORACIÓN DCF CRÍTICO**: Si realizas valoración DCF, NO muestres fórmulas paso a paso (ej: "VT = FCFF × (1 + g) / (WACC - g)" seguido de cálculos intermedios). Calcula internamente todos los valores necesarios y presenta SOLO los resultados finales en lenguaje natural. Ejemplo: "Utilizando un modelo DCF con un WACC del 11,35% y una tasa de crecimiento perpetuo del 4%, el valor terminal proyectado se estima en aproximadamente $3.162.785 millones, resultando en un valor descontado de $1.073.439 millones."`;
 
   const payload = {
@@ -1335,7 +1366,7 @@ export async function estimateHealthScoreWithAI(
       })),
     };
 
-    const systemPrompt = `Eres un analista financiero experto. Analiza TODOS los datos financieros reales disponibles y estima las categorías faltantes del Health Score.
+    const systemPrompt = `Eres un analista financiero experto e IMPARCIAL. Analiza TODOS los datos financieros REALES disponibles de forma objetiva y estima las categorías faltantes del Health Score basándote SOLO en datos reales, sin sesgos ni preconcepciones.
 
 CATEGORÍAS A ESTIMAR:
 ${missingCategories.map(c => `- ${c.charAt(0).toUpperCase() + c.slice(1)}`).join('\n')}
@@ -1347,16 +1378,17 @@ DEFINICIONES DE CATEGORÍAS:
 - Efficiency (Eficiencia): Mide eficiencia operativa y uso de activos. Usa márgenes operativos, rotación de activos si están disponibles.
 - Valuation (Valuación): Mide si la acción está infravalorada o sobrevalorada. Usa PER, P/B, P/S, comparación con sector.
 
-METODOLOGÍA:
-1. PRIORIZA datos reales disponibles - si hay datos parciales, úsalos como base
-2. Analiza TODOS los datos reales disponibles (métricas financieras, perfil, noticias recientes, cotización)
-3. Usa datos indirectos y correlaciones:
-   - Cambios de precio pueden indicar expectativas de mercado
-   - Noticias recientes pueden indicar tendencias y eventos
-   - Múltiplos pueden reflejar expectativas
-   - Correlaciones entre métricas (ej: alta rentabilidad puede indicar estabilidad)
-4. Estima valores conservadores basados en datos reales disponibles
-5. Si NO hay suficientes datos para estimar de forma confiable, usa valores neutrales (50/100)
+METODOLOGÍA IMPARCIAL:
+1. **PRIORIZA SIEMPRE datos reales disponibles** - si hay datos parciales, úsalos como base objetiva
+2. Analiza TODOS los datos reales disponibles (métricas financieras, perfil, noticias recientes, cotización) de forma objetiva
+3. Usa datos indirectos y correlaciones de forma conservadora y objetiva:
+   - Cambios de precio pueden indicar expectativas de mercado (evalúa objetivamente si son positivos o negativos)
+   - Noticias recientes pueden indicar tendencias y eventos (analiza tanto noticias positivas como negativas)
+   - Múltiplos pueden reflejar expectativas (evalúa si son razonables o excesivos)
+   - Correlaciones entre métricas (ej: alta rentabilidad puede indicar estabilidad, pero NO asumas - evalúa según datos)
+4. Estima valores conservadores basados SOLO en datos reales disponibles, sin forzar conclusiones
+5. Si NO hay suficientes datos para estimar de forma confiable, usa valores neutrales (50/100) y sé transparente sobre la incertidumbre
+6. **NO fuerces valores altos o bajos** - las estimaciones deben reflejar objetivamente los datos disponibles
 
 RESPONDE EN FORMATO JSON EXACTO:
 {
