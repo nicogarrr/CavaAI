@@ -82,8 +82,11 @@ export async function generateProPicks(
         const picks: ProPick[] = [];
         const maxSymbols = Math.min(30, universeSymbols.length); // Evaluar hasta 30 para tener opciones
 
+        // Contenedor para todas las acciones evaluadas (incluso si no pasan filtros)
+        const allEvaluatedPicks: ProPick[] = [];
+        
         // Evaluar cada acción secuencialmente
-        for (let i = 0; i < maxSymbols && picks.length < limit * 2; i++) {
+        for (let i = 0; i < maxSymbols && (picks.length < limit * 2 || allEvaluatedPicks.length < limit * 3); i++) {
             const symbol = universeSymbols[i];
             
             try {
@@ -91,7 +94,7 @@ export async function generateProPicks(
                 const financialData = await getStockFinancialData(symbol);
                 
                 if (!financialData || !financialData.profile) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await new Promise(resolve => setTimeout(resolve, 500));
                     continue;
                 }
 
@@ -121,12 +124,6 @@ export async function generateProPicks(
                     historicalData || undefined
                 );
 
-                // Verificar si pasa los filtros de la estrategia
-                if (!passesStrategyFilters(advancedScore, strategy, sector, currentPrice, marketCap)) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    continue;
-                }
-
                 // Calcular score según estrategia
                 const strategyScore = calculateStrategyScore(advancedScore, strategy);
 
@@ -136,7 +133,7 @@ export async function generateProPicks(
                     ...advancedScore.reasons.opportunities,
                 ].slice(0, 5);
 
-                picks.push({
+                const pick: ProPick = {
                     symbol,
                     company: financialData.profile.name || symbol,
                     score: advancedScore.overallScore,
@@ -153,10 +150,18 @@ export async function generateProPicks(
                     sector,
                     exchange: financialData.profile.exchange || undefined,
                     vsSector: advancedScore.sectorComparison?.vsSector,
-                });
+                };
 
-                // Delay entre requests
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Guardar todos los picks evaluados
+                allEvaluatedPicks.push(pick);
+
+                // Si pasa los filtros de la estrategia, agregarlo a picks
+                if (passesStrategyFilters(advancedScore, strategy, sector, currentPrice, marketCap)) {
+                    picks.push(pick);
+                }
+
+                // Delay reducido entre requests
+                await new Promise(resolve => setTimeout(resolve, 500));
             } catch (error: any) {
                 // Si es error 429, parar completamente
                 if (error?.message?.includes('429') || error?.message?.includes('limit')) {
@@ -164,7 +169,7 @@ export async function generateProPicks(
                     break;
                 }
                 console.error(`Error evaluating ${symbol}:`, error);
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 500));
                 continue;
             }
 
@@ -174,14 +179,36 @@ export async function generateProPicks(
             }
         }
 
-        // Ordenar por strategyScore (si está disponible) o por overallScore
-        const sortedPicks = picks.sort((a, b) => {
-            const scoreA = a.strategyScore ?? a.score;
-            const scoreB = b.strategyScore ?? b.score;
-            return scoreB - scoreA;
-        });
+        // Si tenemos picks que pasaron los filtros, usarlos
+        if (picks.length > 0) {
+            // Ordenar por strategyScore (si está disponible) o por overallScore
+            const sortedPicks = picks.sort((a, b) => {
+                const scoreA = a.strategyScore ?? a.score;
+                const scoreB = b.strategyScore ?? b.score;
+                return scoreB - scoreA;
+            });
 
-        return sortedPicks.slice(0, limit);
+            return sortedPicks.slice(0, limit);
+        }
+
+        // Si no hay picks que pasaron los filtros, usar los mejores evaluados
+        // (Estrategia de fallback para asegurar que siempre hay picks)
+        if (allEvaluatedPicks.length > 0) {
+            console.warn(`No se encontraron picks que pasen todos los filtros, usando los mejores evaluados`);
+            
+            // Ordenar todos los picks evaluados por strategyScore o overallScore
+            const sortedAllPicks = allEvaluatedPicks.sort((a, b) => {
+                const scoreA = a.strategyScore ?? a.score;
+                const scoreB = b.strategyScore ?? b.score;
+                return scoreB - scoreA;
+            });
+
+            // Retornar los mejores aunque no pasen todos los filtros
+            return sortedAllPicks.slice(0, limit);
+        }
+
+        // Si no hay picks en absoluto, retornar array vacío
+        return [];
     } catch (error) {
         console.error('Error generating ProPicks:', error);
         // Si no hay datos disponibles, devolver array vacío

@@ -126,11 +126,13 @@ export function fixAllMarkdownTables(content: string): string {
         // Extraer el bloque completo de la tabla
         const tableBlock = extractTableBlock(content, tableStart);
         
-        if (tableBlock) {
-            const fixedTable = formatMarkdownTable(tableBlock);
+        if (tableBlock && tableBlock.content) {
+            // Asegurar que tableBlock.content es un string
+            const tableContent = typeof tableBlock.content === 'string' ? tableBlock.content : String(tableBlock.content || '');
+            const fixedTable = formatMarkdownTable(tableContent);
             
             // Reemplazar solo si hay cambios
-            if (fixedTable !== tableBlock) {
+            if (fixedTable !== tableContent) {
                 const beforeFix = content.substring(0, tableBlock.start);
                 const afterFix = content.substring(tableBlock.end);
                 fixedContent = beforeFix + fixedTable + afterFix;
@@ -187,6 +189,11 @@ function extractTableBlock(content: string, startIndex: number): { start: number
     const tableLines = lines.slice(currentLine, endLine + 1);
     const tableContent = tableLines.join('\n');
     
+    // Asegurar que tableContent es un string válido
+    if (typeof tableContent !== 'string' || !tableContent) {
+        return null;
+    }
+    
     // Calcular índices reales
     let start = 0;
     for (let i = 0; i < currentLine; i++) {
@@ -198,7 +205,7 @@ function extractTableBlock(content: string, startIndex: number): { start: number
         end += lines[i].length + 1;
     }
     
-    return { start, end: end - 1, content: tableContent };
+    return { start, end: end - 1, content: String(tableContent) };
 }
 
 /**
