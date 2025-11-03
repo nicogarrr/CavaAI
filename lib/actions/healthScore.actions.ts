@@ -12,8 +12,12 @@ export async function getStockHealthScore(symbol: string): Promise<HealthScoreDa
         // Calcular Health Score con datos reales
         const healthScore = calculateHealthScore(financialData);
 
-        // Detectar categorías faltantes (score 0 indica que no hay datos reales)
+        // Detectar TODAS las categorías faltantes (score 0 indica que no hay datos reales)
         const missingCategories: string[] = [];
+        
+        if (healthScore.breakdown.profitability === 0) {
+            missingCategories.push('profitability');
+        }
         
         if (healthScore.breakdown.growth === 0) {
             missingCategories.push('growth');
@@ -21,6 +25,14 @@ export async function getStockHealthScore(symbol: string): Promise<HealthScoreDa
         
         if (healthScore.breakdown.stability === 0) {
             missingCategories.push('stability');
+        }
+        
+        if (healthScore.breakdown.efficiency === 0) {
+            missingCategories.push('efficiency');
+        }
+        
+        if (healthScore.breakdown.valuation === 0) {
+            missingCategories.push('valuation');
         }
 
         // Si faltan categorías, usar IA para estimarlas basándose en todos los datos disponibles
@@ -34,13 +46,25 @@ export async function getStockHealthScore(symbol: string): Promise<HealthScoreDa
                     missingCategories
                 );
 
-                // Aplicar estimaciones de IA y recalcular score total
+                // Aplicar todas las estimaciones de IA y recalcular score total
+                if (aiEstimates.profitability !== undefined) {
+                    healthScore.breakdown.profitability = aiEstimates.profitability;
+                }
+                
                 if (aiEstimates.growth !== undefined) {
                     healthScore.breakdown.growth = aiEstimates.growth;
                 }
                 
                 if (aiEstimates.stability !== undefined) {
                     healthScore.breakdown.stability = aiEstimates.stability;
+                }
+                
+                if (aiEstimates.efficiency !== undefined) {
+                    healthScore.breakdown.efficiency = aiEstimates.efficiency;
+                }
+                
+                if (aiEstimates.valuation !== undefined) {
+                    healthScore.breakdown.valuation = aiEstimates.valuation;
                 }
 
                 // Recalcular score total con todas las categorías actualizadas
