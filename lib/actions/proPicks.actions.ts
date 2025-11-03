@@ -411,6 +411,9 @@ export interface EnhancedProPicksFilters {
     sortBy?: 'score' | 'momentum' | 'value' | 'growth' | 'profitability';
 }
 
+// Buffer multiplier for initial picks generation to ensure enough options after filtering
+const FILTER_BUFFER_MULTIPLIER = 3;
+
 /**
  * Genera ProPicks con filtros avanzados (similar a Investing Pro)
  * Soporta filtrado por período, sector, score mínimo y ordenamiento personalizado
@@ -428,7 +431,8 @@ export async function generateEnhancedProPicks(
 
     try {
         // Generar picks base con limite más alto para tener opciones para filtrar
-        const basePicks = await generateProPicks(Math.min(limit * 3, 100));
+        // Usamos un multiplicador buffer para asegurar suficientes resultados post-filtrado
+        const basePicks = await generateProPicks(Math.min(limit * FILTER_BUFFER_MULTIPLIER, 100));
         
         // Filtrar por score mínimo
         let filteredPicks = basePicks.filter(pick => pick.score >= minScore);
