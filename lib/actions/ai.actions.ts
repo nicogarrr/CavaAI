@@ -8,6 +8,7 @@ export async function generatePortfolioSummary(input: {
   history: { t: number[]; v: number[] };
 }): Promise<string> {
   const auth = await getAuth();
+  if (!auth) throw new Error('Error de autenticación: no se pudo inicializar el sistema de autenticación');
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) throw new Error('Usuario no autenticado');
 
@@ -64,6 +65,7 @@ export async function generateCombinedAnalysis(input: {
   currentPrice: number;
 }): Promise<string> {
   const auth = await getAuth();
+  if (!auth) throw new Error('Error de autenticación: no se pudo inicializar el sistema de autenticación');
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) throw new Error('Usuario no autenticado');
 
@@ -579,6 +581,7 @@ export async function generateDCFAnalysis(input: {
   try {
     const { getAuth } = await import('@/lib/better-auth/auth');
     const auth = await getAuth();
+    if (!auth) throw new Error('Error de autenticación: no se pudo inicializar el sistema de autenticación');
     const session = await auth.api.getSession({ headers: await headers() });
     if (!session?.user) throw new Error('Usuario no autenticado');
   } catch (error: any) {
@@ -814,6 +817,7 @@ export async function generateInvestmentThesis(input: {
   currentPrice: number;
 }): Promise<string> {
   const auth = await getAuth();
+  if (!auth) throw new Error('Error de autenticación: no se pudo inicializar el sistema de autenticación');
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) throw new Error('Usuario no autenticado');
 
