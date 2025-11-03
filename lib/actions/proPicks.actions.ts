@@ -41,102 +41,88 @@ export interface ProPick {
 }
 
 /**
- * Usa Gemini IA para preseleccionar los mejores símbolos del universo
+ * Usa Gemini IA para seleccionar las mejores acciones basándose en datos reales completos
  */
-async function selectBestCandidatesWithAI(
-    universeSymbols: string[],
-    strategy: ProPickStrategy,
+async function selectBestPicksWithAI(
+    evaluatedPicks: ProPick[],
     limit: number
-): Promise<string[]> {
+): Promise<ProPick[]> {
     try {
-        const auth = await getAuth();
-        if (!auth) {
-            console.warn('No auth available, skipping AI preselection');
-            return universeSymbols.slice(0, Math.min(60, universeSymbols.length));
-        }
-        
         const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
         if (!apiKey) {
-            console.warn('No Gemini API key, skipping AI preselection');
-            return universeSymbols.slice(0, Math.min(60, universeSymbols.length));
+            console.warn('No Gemini API key, usando selección por score');
+            return evaluatedPicks
+                .sort((a, b) => (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score))
+                .slice(0, limit);
         }
 
-        // Obtener datos básicos de todos los símbolos (solo quote y profile)
-        console.log(`Obteniendo datos básicos de ${universeSymbols.length} símbolos para preselección IA...`);
-        const basicData: Array<{symbol: string; name?: string; price?: number; sector?: string; marketCap?: number}> = [];
-        
-        // Procesar en lotes para no saturar la API
-        const batchSize = 20;
-        for (let i = 0; i < Math.min(150, universeSymbols.length); i += batchSize) {
-            const batch = universeSymbols.slice(i, i + batchSize);
-            const promises = batch.map(async (symbol) => {
-                try {
-                    const profile = await getProfile(symbol);
-                    if (!profile) return null;
-                    
-                    // Obtener quote básico
-                    const token = process.env.FINNHUB_API_KEY || process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
-                    if (!token) return null;
-                    
-                    const quoteUrl = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`;
-                    const quoteRes = await fetch(quoteUrl, { cache: 'no-store' });
-                    if (!quoteRes.ok) return null;
-                    const quote = await quoteRes.json();
-                    
-                    if (!quote.c || quote.c === 0) return null;
-                    
-                    return {
-                        symbol,
-                        name: profile.name || symbol,
-                        price: quote.c,
-                        sector: (profile as any)?.finnhubIndustry || (profile as any)?.industry || 'Unknown',
-                        marketCap: (profile as any)?.marketCapitalization || 0,
-                    };
-                } catch (e) {
-                    return null;
-                }
-            });
-            
-            const results = await Promise.all(promises);
-            basicData.push(...results.filter((r): r is NonNullable<typeof r> => r !== null));
-            
-            // Delay entre lotes
-            if (i + batchSize < universeSymbols.length) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
+        if (evaluatedPicks.length === 0) {
+            return [];
         }
 
-        if (basicData.length === 0) {
-            return universeSymbols.slice(0, Math.min(60, universeSymbols.length));
-        }
+        // Preparar datos completos para la IA
+        const picksData = evaluatedPicks.map(pick => {
+            const vsSector = pick.vsSector || {
+                value: 0,
+                growth: 0,
+                profitability: 0,
+                cashFlow: 0,
+                momentum: 0,
+                debtLiquidity: 0,
+            };
+            return {
+                symbol: pick.symbol,
+                company: pick.company,
+                score: pick.score,
+                grade: pick.grade,
+                strategyScore: pick.strategyScore || pick.score,
+                sector: pick.sector || 'Unknown',
+                price: pick.currentPrice,
+                categoryScores: pick.categoryScores,
+                vsSector: {
+                    value: vsSector.value || 0,
+                    profitability: vsSector.profitability || 0,
+                    growth: vsSector.growth || 0,
+                    cashFlow: vsSector.cashFlow || 0,
+                    momentum: vsSector.momentum || 0,
+                },
+                reasons: pick.reasons,
+            };
+        });
 
-        // Preparar prompt para Gemini
-        const systemPrompt = `Eres un analista financiero experto. Analiza los datos básicos de acciones y selecciona las ${limit * 3} mejores candidatas según la estrategia de inversión especificada.
+        // Prompt para Gemini
+        const systemPrompt = `Eres un analista financiero experto. Analiza los datos REALES COMPLETOS de ${evaluatedPicks.length} acciones ya evaluadas y selecciona las ${limit} MEJORES opciones de inversión en este momento basándote en:
 
-Estrategia: ${strategy.name}
-Descripción: ${strategy.description}
-Categorías priorizadas: ${Object.entries(strategy.categoryWeights)
-    .filter(([_, weight]) => weight > 0.15)
-    .map(([cat, weight]) => `${cat} (${(weight * 100).toFixed(0)}%)`)
-    .join(', ')}
+DATOS REALES DISPONIBLES:
+- Score general (0-100)
+- Grade (A+ a F)
+- Scores por categoría: Valor, Crecimiento, Rentabilidad, Flujo de Caja, Momentum, Deuda/Liquidez
+- Comparación con sector (si está mejor o peor que el promedio)
+- Razones específicas de cada acción
+- Sector de cada empresa
 
-Criterios de selección:
-1. Diversificación sectorial (máximo 2-3 por sector)
-2. Calidad de la empresa (nombre conocido, liquidez)
-3. Potencial según la estrategia
-4. Valor relativo (precio razonable vs mercado)
-5. Tamaño de mercado (preferir mid-cap a large-cap para mayor potencial)
+CRITERIOS DE SELECCIÓN:
+1. **Score general alto** (priorizar scores >70)
+2. **Comparación favorable con sector** (acciones que están mejor que su sector promedio)
+3. **Balance entre categorías** (no solo una categoría alta, sino balance general)
+4. **Diversificación sectorial** (máximo 2-3 por sector si es posible)
+5. **Razones sólidas** (fortalezas claras y oportunidades reales)
 
 RESPONDE SOLO CON UNA LISTA DE SÍMBOLOS SEPARADOS POR COMAS, en el formato exacto:
 SYMBOL1,SYMBOL2,SYMBOL3,...
 
-NO incluyas explicaciones, solo los símbolos.`;
+Selecciona las ${limit} mejores opciones basándote en los datos reales actuales. NO incluyas explicaciones, solo los símbolos.`;
 
-        const dataText = basicData.map(d => 
-            `${d.symbol} (${d.name}): Precio $${d.price?.toFixed(2) || 'N/A'}, Sector: ${d.sector || 'Unknown'}, MarketCap: ${d.marketCap ? (d.marketCap / 1e9).toFixed(1) + 'B' : 'N/A'}`
-        ).join('\n');
+        const dataText = picksData.map(p => {
+            const sectorStatus = p.vsSector.value > 0 && p.vsSector.profitability > 0 ? 'Mejor que sector' : 'Promedio sector';
+            return `${p.symbol} (${p.company}): Score ${p.score} (${p.grade}), StrategyScore ${p.strategyScore}, Sector: ${p.sector}
+  Categorías: Valor ${p.categoryScores.value}, Crecimiento ${p.categoryScores.growth}, Rentabilidad ${p.categoryScores.profitability}, CashFlow ${p.categoryScores.cashFlow}, Momentum ${p.categoryScores.momentum}
+  ${sectorStatus}: Valor ${p.vsSector.value > 0 ? '+' : ''}${p.vsSector.value.toFixed(1)}, Profitability ${p.vsSector.profitability > 0 ? '+' : ''}${p.vsSector.profitability.toFixed(1)}, Growth ${p.vsSector.growth > 0 ? '+' : ''}${p.vsSector.growth.toFixed(1)}
+  Razones: ${p.reasons.slice(0, 3).join('; ')}
+  Precio: $${p.price?.toFixed(2) || 'N/A'}`;
+        }).join('\n\n');
 
-        const prompt = `${systemPrompt}\n\nDatos de acciones disponibles (${basicData.length} total):\n${dataText}\n\nSelecciona las ${limit * 3} mejores candidatas y responde SOLO con los símbolos separados por comas:`;
+        const prompt = `${systemPrompt}\n\nDatos completos de acciones evaluadas:\n\n${dataText}\n\nSelecciona las ${limit} mejores opciones de inversión basándote en TODOS estos datos reales y responde SOLO con los símbolos separados por comas:`;
 
         const payload = {
             contents: [{
@@ -157,61 +143,70 @@ NO incluyas explicaciones, solo los símbolos.`;
         const json = await res.json().catch(() => ({} as any));
         
         if (!res.ok) {
-            console.warn('Gemini preselection failed, using fallback:', res.status);
-            return basicData
-                .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))
-                .slice(0, Math.min(limit * 3, basicData.length))
-                .map(d => d.symbol);
+            console.warn('Gemini selection failed, using score-based fallback:', res.status);
+            return evaluatedPicks
+                .sort((a, b) => (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score))
+                .slice(0, limit);
         }
 
         const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) {
-            return basicData
-                .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))
-                .slice(0, Math.min(limit * 3, basicData.length))
-                .map(d => d.symbol);
+            return evaluatedPicks
+                .sort((a, b) => (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score))
+                .slice(0, limit);
         }
 
         // Extraer símbolos de la respuesta
         const selectedSymbols = text
             .split(/[,，\n]/)
             .map(s => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''))
-            .filter(s => s.length >= 2 && s.length <= 5 && universeSymbols.includes(s))
-            .slice(0, limit * 3);
+            .filter(s => s.length >= 2 && s.length <= 5)
+            .slice(0, limit);
 
-        console.log(`IA preseleccionó ${selectedSymbols.length} símbolos de ${basicData.length} evaluados`);
-        return selectedSymbols.length > 0 ? selectedSymbols : basicData.slice(0, Math.min(limit * 3, basicData.length)).map(d => d.symbol);
+        // Mapear símbolos seleccionados a ProPick completos
+        const selectedPicks = selectedSymbols
+            .map(symbol => evaluatedPicks.find(p => p.symbol === symbol))
+            .filter((p): p is ProPick => p !== undefined);
+
+        console.log(`IA seleccionó ${selectedPicks.length} picks de ${evaluatedPicks.length} evaluados`);
+        
+        // Si la IA no seleccionó suficientes, completar con los mejores restantes
+        if (selectedPicks.length < limit) {
+            const remaining = evaluatedPicks
+                .filter(p => !selectedSymbols.includes(p.symbol))
+                .sort((a, b) => (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score))
+                .slice(0, limit - selectedPicks.length);
+            
+            return [...selectedPicks, ...remaining].slice(0, limit);
+        }
+
+        return selectedPicks.slice(0, limit);
     } catch (error) {
-        console.error('Error en preselección IA, usando fallback:', error);
-        return universeSymbols.slice(0, Math.min(60, universeSymbols.length));
+        console.error('Error en selección IA, usando fallback:', error);
+        return evaluatedPicks
+            .sort((a, b) => (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score))
+            .slice(0, limit);
     }
 }
 
 /**
- * ProPicks IA Mejorado - Similar a Investing Pro
+ * ProPicks IA Adaptativo - La IA selecciona las mejores acciones según datos reales actuales
  * 
  * Características:
  * - Universo masivo expandido (~300+ símbolos)
- * - Preselección con IA (Gemini) antes de evaluación completa
+ * - Evaluación completa de datos financieros reales
+ * - Selección final con IA (Gemini) basándose en TODOS los datos reales
+ * - Sin estrategias predefinidas - la IA decide las mejores opciones en cada momento
  * - Comparación con sector (crucial)
- * - Múltiples categorías de métricas
- * - Estrategias predefinidas
- * - Scoring avanzado
- * - Diversificación sectorial forzada
+ * - Diversificación sectorial inteligente
  */
 export async function generateProPicks(
-    limit: number = 10,
+    limit: number = 5,
     strategyId?: string
 ): Promise<ProPick[]> {
     try {
-        // Seleccionar estrategia o usar estrategia por defecto
-        const strategy = strategyId 
-            ? PROPICKS_STRATEGIES.find(s => s.id === strategyId)
-            : PROPICKS_STRATEGIES[0]; // 'beat-sp500' por defecto
-
-        if (!strategy) {
-            throw new Error(`Estrategia no encontrada: ${strategyId}`);
-        }
+        // Usar única estrategia adaptativa
+        const strategy = PROPICKS_STRATEGIES[0]; // Siempre la estrategia adaptativa
 
         // Universo expandido masivo - ~300+ símbolos
         const universeSymbols = [
@@ -276,18 +271,15 @@ export async function generateProPicks(
             'DESP', 'PAM', 'IRDM', 'ORBC', 'SATS', 'VSAT',
         ];
 
-        // Paso 1: Usar IA para preseleccionar los mejores candidatos
-        console.log(`Preseleccionando mejores candidatos de ${universeSymbols.length} símbolos usando IA...`);
-        const preselectedSymbols = await selectBestCandidatesWithAI(universeSymbols, strategy, limit);
-        
-        console.log(`Evaluando ${preselectedSymbols.length} símbolos preseleccionados con scoring completo...`);
+        // Evaluar múltiples símbolos del universo (máximo 80 para tener buenas opciones)
+        const symbolsToEvaluate = universeSymbols.slice(0, Math.min(80, universeSymbols.length));
+        console.log(`Evaluando ${symbolsToEvaluate.length} símbolos con datos completos...`);
 
-        const picks: ProPick[] = [];
         const allEvaluatedPicks: ProPick[] = [];
         
-        // Paso 2: Evaluar solo los preseleccionados con scoring completo
-        for (let i = 0; i < preselectedSymbols.length; i++) {
-            const symbol = preselectedSymbols[i];
+        // Evaluar cada símbolo con datos completos
+        for (let i = 0; i < symbolsToEvaluate.length; i++) {
+            const symbol = symbolsToEvaluate[i];
             
             try {
                 // Obtener datos financieros completos
@@ -324,7 +316,7 @@ export async function generateProPicks(
                     historicalData || undefined
                 );
 
-                // Calcular score según estrategia
+                // Calcular score según estrategia (para referencia, pero la IA decidirá)
                 const strategyScore = calculateStrategyScore(advancedScore, strategy);
 
                 // Combinar razones
@@ -352,117 +344,37 @@ export async function generateProPicks(
                     vsSector: advancedScore.sectorComparison?.vsSector,
                 };
 
+                // Guardar todos los evaluados (la IA seleccionará después)
                 allEvaluatedPicks.push(pick);
-
-                // Si pasa los filtros de la estrategia, agregarlo
-                if (passesStrategyFilters(advancedScore, strategy, sector, currentPrice, marketCap)) {
-                    picks.push(pick);
-                }
 
                 // Delay entre requests
                 await new Promise(resolve => setTimeout(resolve, 300));
             } catch (error: any) {
                 if (error?.message?.includes('429') || error?.message?.includes('limit')) {
-                    console.warn(`Rate limit reached, stopping at ${picks.length} picks`);
+                    console.warn(`Rate limit reached, stopping evaluation`);
                     break;
                 }
                 console.error(`Error evaluating ${symbol}:`, error);
                 await new Promise(resolve => setTimeout(resolve, 300));
                 continue;
             }
-
-            if (picks.length >= limit * 1.5) {
-                break;
-            }
         }
 
-        // Si tenemos picks que pasaron los filtros, aplicar diversificación sectorial
-        if (picks.length > 0) {
-            // Función para calcular score de diversificación
-            const getDiversificationScore = (pick: ProPick, currentSectorCount: Map<string, number>): number => {
-                const sector = pick.sector || 'Unknown';
-                const currentCount = currentSectorCount.get(sector) || 0;
-                const sectorPenalty = Math.min(currentCount * 5, 15);
-                
-                const vsSectorBonus = pick.vsSector 
-                    ? (pick.vsSector.value + pick.vsSector.profitability + pick.vsSector.growth) / 30
-                    : 0;
-                
-                return (pick.strategyScore ?? pick.score) - sectorPenalty + vsSectorBonus;
-            };
+        // Filtrar picks con score mínimo razonable
+        const qualifiedPicks = allEvaluatedPicks.filter(p => p.score >= 60);
 
-            // Ordenar picks considerando diversificación sectorial
-            const diversifiedPicks: ProPick[] = [];
-            const usedSectors = new Map<string, number>();
-            const remainingPicks = [...picks];
-
-            // Agrupar por sector
-            const sectorGroups = new Map<string, ProPick[]>();
-            remainingPicks.forEach(pick => {
-                const sector = pick.sector || 'Unknown';
-                if (!sectorGroups.has(sector)) {
-                    sectorGroups.set(sector, []);
-                }
-                sectorGroups.get(sector)!.push(pick);
-            });
-
-            // Seleccionar top picks de cada sector (hasta 2 por sector)
-            sectorGroups.forEach((sectorPicks, sector) => {
-                const sorted = sectorPicks.sort((a, b) => {
-                    const scoreA = a.strategyScore ?? a.score;
-                    const scoreB = b.strategyScore ?? b.score;
-                    return scoreB - scoreA;
-                });
-                const topPicks = sorted.slice(0, 2);
-                topPicks.forEach(pick => {
-                    diversifiedPicks.push(pick);
-                    usedSectors.set(sector, (usedSectors.get(sector) || 0) + 1);
-                });
-            });
-
-            // Completar si faltan picks
-            if (diversifiedPicks.length < limit) {
-                const remaining = remainingPicks
-                    .filter(p => !diversifiedPicks.includes(p))
-                    .sort((a, b) => {
-                        const divScoreA = getDiversificationScore(a, usedSectors);
-                        const divScoreB = getDiversificationScore(b, usedSectors);
-                        return divScoreB - divScoreA;
-                    });
-
-                const needed = limit - diversifiedPicks.length;
-                for (let i = 0; i < needed && i < remaining.length; i++) {
-                    const pick = remaining[i];
-                    diversifiedPicks.push(pick);
-                    const sector = pick.sector || 'Unknown';
-                    usedSectors.set(sector, (usedSectors.get(sector) || 0) + 1);
-                }
-            }
-
-            // Ordenar final por strategyScore
-            const sortedPicks = diversifiedPicks.sort((a, b) => {
-                const scoreA = a.strategyScore ?? a.score;
-                const scoreB = b.strategyScore ?? b.score;
-                return scoreB - scoreA;
-            });
-
-            return sortedPicks.slice(0, limit);
+        if (qualifiedPicks.length === 0) {
+            console.warn('No hay picks con score suficiente');
+            return allEvaluatedPicks
+                .sort((a, b) => (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score))
+                .slice(0, limit);
         }
 
-        // Fallback: usar los mejores evaluados
-        if (allEvaluatedPicks.length > 0) {
-            console.warn(`No se encontraron picks que pasen todos los filtros, usando los mejores evaluados`);
-            
-            const sortedAllPicks = allEvaluatedPicks.sort((a, b) => {
-                const scoreA = a.strategyScore ?? a.score;
-                const scoreB = b.strategyScore ?? b.score;
-                return scoreB - scoreA;
-            });
+        // Paso 2: Usar IA para seleccionar las mejores basándose en TODOS los datos reales
+        console.log(`Usando IA para seleccionar las ${limit} mejores opciones de ${qualifiedPicks.length} evaluadas...`);
+        const finalPicks = await selectBestPicksWithAI(qualifiedPicks, limit);
 
-            return sortedAllPicks.slice(0, limit);
-        }
-
-        return [];
+        return finalPicks;
     } catch (error) {
         console.error('Error generating ProPicks:', error);
         return [];

@@ -9,8 +9,8 @@ export default async function ProPicksSection() {
     // Manejar errores silenciosamente para evitar fallos en build
     let picks;
     try {
-        // Usar estrategia "beat-sp500" por defecto
-        picks = await generateProPicks(10, 'beat-sp500');
+        // Usar estrategia adaptativa IA (por defecto 5 picks)
+        picks = await generateProPicks(5);
     } catch (error) {
         console.error('Error generating ProPicks:', error);
         picks = []; // En caso de error, mostrar lista vacía
