@@ -119,6 +119,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
     }, [open, initialStocks]);
 
     const handleSelectStock = useCallback(() => {
+        // Close dialog immediately for better UX
         setOpen(false);
         setSearchTerm("");
         setStocks(initialStocks);
@@ -163,7 +164,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                                         href={`/stocks/${stock.symbol}`}
                                         onClick={handleSelectStock}
                                         className="search-item-link"
-                                        prefetch={false}
+                                        prefetch={true}
                                     >
                                         <TrendingUp className="h-4 w-4 text-gray-500" />
                                         <div className="flex-1">
@@ -175,7 +176,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                                             </div>
                                         </div>
                                     </Link>
-                                    <Link href={`/funds/${stock.symbol}`} prefetch={false}>
+                                    <Link href={`/funds/${stock.symbol}`} prefetch={true}>
                                         <Button
                                             variant="ghost"
                                             size="icon"
