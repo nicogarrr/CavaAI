@@ -5,22 +5,32 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Filter, Download, Save, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function ScreenerHeader() {
+  const router = useRouter();
   const [savedCriteria, setSavedCriteria] = useState(false);
 
   const handleSaveCriteria = () => {
+    // Save current URL params to localStorage for quick access
+    const currentUrl = window.location.search;
+    const savedScreeners = JSON.parse(localStorage.getItem('savedScreeners') || '[]');
+    const name = `Screener ${new Date().toLocaleDateString()}`;
+    savedScreeners.push({ name, params: currentUrl, date: new Date().toISOString() });
+    localStorage.setItem('savedScreeners', JSON.stringify(savedScreeners));
+    
     setSavedCriteria(true);
     setTimeout(() => setSavedCriteria(false), 2000);
   };
 
   const handleExportResults = () => {
-    // TODO: Implementar exportación
-    // Export functionality to be implemented
+    // Get current results from the page and export as CSV
+    const currentUrl = window.location.href;
+    window.dispatchEvent(new CustomEvent('exportScreenerResults'));
   };
 
   const handleResetFilters = () => {
-    // TODO: Implement reset filters functionality
+    router.push('/screener');
   };
 
   return (

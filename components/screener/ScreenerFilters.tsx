@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -40,7 +41,7 @@ type FilterCriteria = {
   sortOrder: 'asc' | 'desc';
 };
 
-const defaultFilters: FilterCriteria = {
+export const defaultFilters: FilterCriteria = {
   marketCapMin: 0,
   marketCapMax: 1000000000000, // 1T
   priceMin: 0,
@@ -87,8 +88,46 @@ const sortOptions = [
 ];
 
 export default function ScreenerFilters() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [filters, setFilters] = useState<FilterCriteria>(defaultFilters);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
+
+  // Load filters from URL on mount
+  useEffect(() => {
+    const newFilters = { ...defaultFilters };
+    let hasActiveFilters = false;
+    
+    searchParams.forEach((value, key) => {
+      if (key in defaultFilters) {
+        const parsedValue = key.includes('Min') || key.includes('Max') || key.includes('Min') || key === 'volumeMin' 
+          ? Number(value) 
+          : value;
+        (newFilters as any)[key] = parsedValue;
+        
+        // Check if filter is different from default
+        if (JSON.stringify(parsedValue) !== JSON.stringify((defaultFilters as any)[key])) {
+          hasActiveFilters = true;
+        }
+      }
+    });
+    
+    setFilters(newFilters);
+    if (hasActiveFilters) {
+      updateActiveFilters(newFilters);
+    }
+  }, []);
+
+  const updateActiveFilters = (currentFilters: FilterCriteria) => {
+    const active: string[] = [];
+    Object.keys(currentFilters).forEach(key => {
+      const filterKey = key as keyof FilterCriteria;
+      if (JSON.stringify(currentFilters[filterKey]) !== JSON.stringify(defaultFilters[filterKey])) {
+        active.push(key);
+      }
+    });
+    setActiveFilters(active);
+  };
 
   const updateFilter = (key: keyof FilterCriteria, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -97,19 +136,39 @@ export default function ScreenerFilters() {
   const resetFilters = () => {
     setFilters(defaultFilters);
     setActiveFilters([]);
+    router.push('/screener');
   };
 
   const applyFilters = () => {
-    // TODO: Implementar lógica de filtrado con los filtros actuales
-    // Esta funcionalidad será implementada cuando se integre con el backend
+    // Build URL search params from filters
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      // Only add if different from default
+      if (JSON.stringify(value) !== JSON.stringify((defaultFilters as any)[key])) {
+        params.set(key, String(value));
+      }
+    });
+    
+    updateActiveFilters(filters);
+    router.push(`/screener?${params.toString()}`);
   };
 
   const removeFilter = (filterKey: string) => {
-    setActiveFilters(prev => prev.filter(f => f !== filterKey));
-    // Reset specific filter to default
     const key = filterKey as keyof FilterCriteria;
     if (key in defaultFilters) {
-      updateFilter(key, defaultFilters[key]);
+      const newFilters = { ...filters, [key]: defaultFilters[key] };
+      setFilters(newFilters);
+      
+      // Update URL
+      const params = new URLSearchParams();
+      Object.entries(newFilters).forEach(([k, value]) => {
+        if (JSON.stringify(value) !== JSON.stringify((defaultFilters as any)[k])) {
+          params.set(k, String(value));
+        }
+      });
+      
+      setActiveFilters(prev => prev.filter(f => f !== filterKey));
+      router.push(`/screener?${params.toString()}`);
     }
   };
 
