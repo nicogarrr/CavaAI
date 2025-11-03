@@ -1048,7 +1048,15 @@ Si aplica (farmacéutica/biotecnología/tech):
 - **Precio Objetivo Consensus**: Persigue al precio al alza, implica rendimiento modesto del Z%
 - **Recomendaciones**: Mayoría "Comprar/Mantener", pocos "Vender" (dificultad de apostar contra historia poderosa)
 
-#### 7.4. El Problema de la Valoración
+#### 7.4. Valoración DCF y Análisis de Múltiplos
+**IMPORTANTE - FORMATO DE VALORACIÓN:**
+- **NO muestres fórmulas paso a paso** como "VT = FCFF × (1 + g) / (WACC - g)" seguido de cálculos intermedios
+- **NO muestres tablas extensas** con cada paso del cálculo de DCF
+- **SÍ calcula internamente** todos los valores (FCFF, WACC, tasa de crecimiento perpetuo, valor terminal, etc.)
+- **SÍ presenta los resultados finales** de forma narrativa en lenguaje natural
+- **Ejemplo CORRECTO**: "Utilizando un modelo DCF con un WACC del 11,35% y una tasa de crecimiento perpetuo del 4%, el valor terminal proyectado para 2034 se estima en aproximadamente $3.162.785 millones. Descontando este valor al presente, obtenemos un valor terminal descontado de $1.073.439 millones, que representa aproximadamente el [X%] del valor total estimado de la empresa."
+- **Ejemplo INCORRECTO**: NO hagas esto - NO muestres fórmulas paso a paso como "VT = FCFF_año_final × (1 + g) / (WACC - g)" seguido de FCFF_2034 = $223.523,73 M USD, g = 4,00%, WACC = 11,35%, y luego cálculos intermedios VT = $223.523,73 × (1 + 0,04) / (0,1135 - 0,04) = $3.162.784,88 M USD. Esto es lo que DEBES EVITAR.
+
 - P/E a futuro (NTM) de [Empresa]: Xx
 - Sector tradicional: promedio de Yx
 - **Por qué existe esta prima masiva**: El mercado NO valora a [Empresa] como [sector tradicional]. Las empresas tradicionales cotizan a múltiplos bajos porque [razón].
@@ -1092,12 +1100,15 @@ IMPORTANTE:
 - Escribe en un tono narrativo, directo y profesional (como un inversor institucional explicando a otro)
 - Usa emojis estratégicamente (✅, 📈, ⚠️, 💰, 🔴, etc.) pero con moderación y solo para énfasis
 - **Incluye números específicos SIEMPRE** cuando estén disponibles (montos en $, porcentajes, múltiplos)
+- **NO muestres fórmulas paso a paso ni cálculos intermedios** - calcula internamente y presenta solo los resultados finales en lenguaje natural
+- **NO uses tablas para mostrar cálculos de DCF paso a paso** - usa tablas solo para comparaciones (métricas entre empresas, previsiones, etc.)
+- **SÍ presenta los valores calculados** (FCFF, WACC, valor terminal, precio objetivo) pero de forma narrativa, explicando qué significan
 - Sé específico sobre estrategia y ejecución
 - Compara con períodos anteriores ("hace dos años vs ahora")
 - Menciona decisiones del management/CEO cuando sea relevante
 - **Estructura con encabezados claros (##, ###) y usa "Parte I", "Parte II", etc.**
 - Usa listas numeradas (1️⃣, 2️⃣, 3️⃣) para puntos clave
-- **CREA TABLAS en Markdown** cuando sea apropiado (Tabla 1, Tabla 2, etc.)
+- **CREA TABLAS en Markdown** cuando sea apropiado (Tabla 1, Tabla 2, etc.) - pero solo para comparaciones y resúmenes, NO para cálculos paso a paso
 - **FORMATO DE TABLAS CRÍTICO**: 
   * Formato: | Col1 | Col2 | Col3 |
   * Fila separadora OBLIGATORIA: |:---:|:---:|:---:|
@@ -1212,7 +1223,8 @@ IMPORTANTE:
 - Si faltan datos históricos completos, estima valores conservadores basándote en las métricas disponibles y las noticias
 - Sé transparente sobre limitaciones de datos
 - Genera una recomendación clara y fundamentada basada en la información más actualizada
-- Menciona específicamente si conviene esperar a eventos próximos antes de invertir o si es mejor actuar ahora`;
+- Menciona específicamente si conviene esperar a eventos próximos antes de invertir o si es mejor actuar ahora
+- **FORMATO DE VALORACIÓN DCF CRÍTICO**: Si realizas valoración DCF, NO muestres fórmulas paso a paso (ej: "VT = FCFF × (1 + g) / (WACC - g)" seguido de cálculos intermedios). Calcula internamente todos los valores necesarios y presenta SOLO los resultados finales en lenguaje natural. Ejemplo: "Utilizando un modelo DCF con un WACC del 11,35% y una tasa de crecimiento perpetuo del 4%, el valor terminal proyectado se estima en aproximadamente $3.162.785 millones, resultando en un valor descontado de $1.073.439 millones."`;
 
   const payload = {
     contents: [
