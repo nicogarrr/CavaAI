@@ -1266,14 +1266,20 @@ IMPORTANTE:
 
 /**
  * Estima Health Score usando IA cuando faltan datos reales
- * Usa Gemini para analizar todos los datos disponibles y estimar Growth y Stability
+ * Usa Gemini para analizar todos los datos disponibles y estimar cualquier categoría faltante
  */
 export async function estimateHealthScoreWithAI(
   symbol: string,
   companyName: string,
   financialData: any,
-  missingCategories: string[] // ej: ['growth', 'stability']
-): Promise<{ growth?: number; stability?: number }> {
+  missingCategories: string[] // ej: ['growth', 'stability', 'profitability', 'efficiency', 'valuation']
+): Promise<{ 
+  profitability?: number; 
+  growth?: number; 
+  stability?: number; 
+  efficiency?: number; 
+  valuation?: number; 
+}> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     console.warn('No Gemini API key, returning empty estimates');
@@ -1334,27 +1340,35 @@ export async function estimateHealthScoreWithAI(
 CATEGORÍAS A ESTIMAR:
 ${missingCategories.map(c => `- ${c.charAt(0).toUpperCase() + c.slice(1)}`).join('\n')}
 
+DEFINICIONES DE CATEGORÍAS:
+- Profitability (Rentabilidad): Mide la capacidad de generar beneficios. Usa ROE, ROA, márgenes netos si están disponibles indirectamente.
+- Growth (Crecimiento): Mide el crecimiento de ingresos y beneficios. Usa tendencias de precio, noticias, múltiplos de crecimiento.
+- Stability (Estabilidad): Mide estabilidad financiera y solidez. Usa ratios de deuda, liquidez, volatilidad si están disponibles.
+- Efficiency (Eficiencia): Mide eficiencia operativa y uso de activos. Usa márgenes operativos, rotación de activos si están disponibles.
+- Valuation (Valuación): Mide si la acción está infravalorada o sobrevalorada. Usa PER, P/B, P/S, comparación con sector.
+
 METODOLOGÍA:
-1. Analiza TODOS los datos reales disponibles (métricas financieras, perfil, noticias recientes)
-2. Usa datos indirectos como:
-   - Cambios de precio (quote.dp) pueden indicar crecimiento percibido
-   - Rentabilidad y eficiencia pueden correlacionar con crecimiento
-   - Noticias recientes pueden indicar tendencias
-   - Múltiplos de valuación pueden reflejar expectativas de crecimiento
-3. Estima valores conservadores basados en datos reales disponibles
-4. Si NO hay suficientes datos para estimar, usa valores neutrales (50/100)
+1. PRIORIZA datos reales disponibles - si hay datos parciales, úsalos como base
+2. Analiza TODOS los datos reales disponibles (métricas financieras, perfil, noticias recientes, cotización)
+3. Usa datos indirectos y correlaciones:
+   - Cambios de precio pueden indicar expectativas de mercado
+   - Noticias recientes pueden indicar tendencias y eventos
+   - Múltiplos pueden reflejar expectativas
+   - Correlaciones entre métricas (ej: alta rentabilidad puede indicar estabilidad)
+4. Estima valores conservadores basados en datos reales disponibles
+5. Si NO hay suficientes datos para estimar de forma confiable, usa valores neutrales (50/100)
 
 RESPONDE EN FORMATO JSON EXACTO:
 {
-  "growth": número entre 0-100 (solo si "growth" está en missingCategories),
-  "stability": número entre 0-100 (solo si "stability" está en missingCategories)
+  ${missingCategories.map(c => `"${c}": número entre 0-100`).join(',\n  ')}
 }
 
 IMPORTANTE:
 - Si una categoría NO está en missingCategories, NO la incluyas en la respuesta
 - Los valores deben ser realistas basados en los datos disponibles
 - Usa valores conservadores si hay incertidumbre
-- Compara con promedios del sector si es posible`;
+- Compara con promedios del sector si es posible
+- PRIORIZA siempre datos reales cuando estén disponibles sobre estimaciones`;
 
     const dataText = `DATOS DISPONIBLES PARA ${symbol} (${companyName}):
 
@@ -1431,8 +1445,18 @@ CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
     try {
       const estimates = JSON.parse(jsonMatch[0]);
       
-      // Validar y ajustar valores
-      const result: { growth?: number; stability?: number } = {};
+      // Validar y ajustar valores para TODAS las categorías solicitadas
+      const result: { 
+        profitability?: number; 
+        growth?: number; 
+        stability?: number; 
+        efficiency?: number; 
+        valuation?: number; 
+      } = {};
+      
+      if (missingCategories.includes('profitability') && typeof estimates.profitability === 'number') {
+        result.profitability = Math.max(0, Math.min(100, Math.round(estimates.profitability)));
+      }
       
       if (missingCategories.includes('growth') && typeof estimates.growth === 'number') {
         result.growth = Math.max(0, Math.min(100, Math.round(estimates.growth)));
@@ -1440,6 +1464,14 @@ CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
       
       if (missingCategories.includes('stability') && typeof estimates.stability === 'number') {
         result.stability = Math.max(0, Math.min(100, Math.round(estimates.stability)));
+      }
+      
+      if (missingCategories.includes('efficiency') && typeof estimates.efficiency === 'number') {
+        result.efficiency = Math.max(0, Math.min(100, Math.round(estimates.efficiency)));
+      }
+      
+      if (missingCategories.includes('valuation') && typeof estimates.valuation === 'number') {
+        result.valuation = Math.max(0, Math.min(100, Math.round(estimates.valuation)));
       }
 
       return result;
