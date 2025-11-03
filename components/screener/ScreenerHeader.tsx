@@ -16,12 +16,11 @@ export default function ScreenerHeader() {
 
   const handleExportResults = () => {
     // TODO: Implementar exportación
-    console.log('Exportando resultados...');
+    // Export functionality to be implemented
   };
 
   const handleResetFilters = () => {
-    // TODO: Implementar reset de filtros
-    console.log('Reseteando filtros...');
+    // TODO: Implement reset filters functionality
   };
 
   return (

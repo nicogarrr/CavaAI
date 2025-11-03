@@ -100,8 +100,8 @@ export default function ScreenerFilters() {
   };
 
   const applyFilters = () => {
-    // TODO: Implementar lógica de filtrado
-    console.log('Aplicando filtros:', filters);
+    // TODO: Implementar lógica de filtrado con los filtros actuales
+    // Esta funcionalidad será implementada cuando se integre con el backend
   };
 
   const removeFilter = (filterKey: string) => {
