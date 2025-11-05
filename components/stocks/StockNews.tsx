@@ -8,6 +8,18 @@ interface StockNewsProps {
 export default async function StockNews({ symbol }: StockNewsProps) {
     const news = await getCompanyNews(symbol, 20);
 
-    return <PaginatedNews articles={news} itemsPerPage={5} />;
+    // Convertir MarketNewsArticle[] a NewsArticle[] (id: number -> id: string)
+    const convertedNews = news.map((article) => ({
+        id: String(article.id),
+        headline: article.headline,
+        summary: article.summary,
+        url: article.url,
+        source: article.source,
+        datetime: article.datetime,
+        image: article.image,
+        related: article.related,
+    }));
+
+    return <PaginatedNews articles={convertedNews} itemsPerPage={5} />;
 }
 
