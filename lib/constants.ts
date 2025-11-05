@@ -141,63 +141,73 @@ export const MARKET_OVERVIEW_WIDGET_CONFIG = {
 } as const;
 
 // TradingView Widget Config Functions (for symbol-specific widgets)
-export const SYMBOL_INFO_WIDGET_CONFIG = (symbol: string) => ({
-  symbol: symbol.toUpperCase(),
-  colorTheme: 'dark',
-  locale: 'en',
-  isTransparent: false,
-  displayMode: 'regular',
-  largeChartUrl: '',
-});
+export function SYMBOL_INFO_WIDGET_CONFIG(symbol: string) {
+  return {
+    symbol: symbol.toUpperCase(),
+    colorTheme: 'dark',
+    locale: 'en',
+    isTransparent: false,
+    displayMode: 'regular',
+    largeChartUrl: '',
+  };
+}
 
-export const CANDLE_CHART_WIDGET_CONFIG = (symbol: string) => ({
-  symbol: symbol.toUpperCase(),
-  interval: 'D',
-  container_id: 'tradingview_chart',
-  datafeed: 'https://demo_feed.tradingview.com',
-  library_path: '/charting_library/',
-  locale: 'en',
-  disabled_features: ['use_localstorage_for_settings'],
-  enabled_features: ['study_templates'],
-  charts_storage_url: 'https://saveload.tradingview.com',
-  charts_storage_api_version: '1.1',
-  client_id: 'tradingview.com',
-  user_id: 'public_user_id',
-  fullscreen: false,
-  autosize: true,
-  studies_overrides: {},
-  colorTheme: 'dark',
-});
+export function CANDLE_CHART_WIDGET_CONFIG(symbol: string) {
+  return {
+    symbol: symbol.toUpperCase(),
+    interval: 'D',
+    container_id: 'tradingview_chart',
+    datafeed: 'https://demo_feed.tradingview.com',
+    library_path: '/charting_library/',
+    locale: 'en',
+    disabled_features: ['use_localstorage_for_settings'],
+    enabled_features: ['study_templates'],
+    charts_storage_url: 'https://saveload.tradingview.com',
+    charts_storage_api_version: '1.1',
+    client_id: 'tradingview.com',
+    user_id: 'public_user_id',
+    fullscreen: false,
+    autosize: true,
+    studies_overrides: {},
+    colorTheme: 'dark',
+  };
+}
 
-export const TECHNICAL_ANALYSIS_WIDGET_CONFIG = (symbol: string) => ({
-  symbol: symbol.toUpperCase(),
-  interval: '1M',
-  container_id: 'tradingview_technical_analysis',
-  locale: 'en',
-  colorTheme: 'dark',
-  autosize: true,
-  showVolume: false,
-  hide_side_toolbar: false,
-  allow_symbol_change: true,
-  studies: [
-    'MASimple@tv-basicstudies',
-  ],
-  support_host: 'https://www.tradingview.com',
-});
+export function TECHNICAL_ANALYSIS_WIDGET_CONFIG(symbol: string) {
+  return {
+    symbol: symbol.toUpperCase(),
+    interval: '1M',
+    container_id: 'tradingview_technical_analysis',
+    locale: 'en',
+    colorTheme: 'dark',
+    autosize: true,
+    showVolume: false,
+    hide_side_toolbar: false,
+    allow_symbol_change: true,
+    studies: [
+      'MASimple@tv-basicstudies',
+    ],
+    support_host: 'https://www.tradingview.com',
+  };
+}
 
-export const COMPANY_PROFILE_WIDGET_CONFIG = (symbol: string) => ({
-  symbol: symbol.toUpperCase(),
-  colorTheme: 'dark',
-  isTransparent: false,
-  locale: 'en',
-});
+export function COMPANY_PROFILE_WIDGET_CONFIG(symbol: string) {
+  return {
+    symbol: symbol.toUpperCase(),
+    colorTheme: 'dark',
+    isTransparent: false,
+    locale: 'en',
+  };
+}
 
-export const COMPANY_FINANCIALS_WIDGET_CONFIG = (symbol: string) => ({
-  symbol: symbol.toUpperCase(),
-  colorTheme: 'dark',
-  isTransparent: false,
-  locale: 'en',
-});
+export function COMPANY_FINANCIALS_WIDGET_CONFIG(symbol: string) {
+  return {
+    symbol: symbol.toUpperCase(),
+    colorTheme: 'dark',
+    isTransparent: false,
+    locale: 'en',
+  };
+}
 
 // News and Popular Symbols
 export const NEWS_SYMBOLS = [
