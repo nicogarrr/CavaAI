@@ -98,12 +98,12 @@ IMPORTANTE:
     }
 
     const json = await response.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const responseText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    if (!text) return null;
+    if (!responseText) return null;
 
     // Extraer JSON de la respuesta
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
 
     const result = JSON.parse(jsonMatch[0]);
