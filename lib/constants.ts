@@ -210,7 +210,7 @@ export function COMPANY_FINANCIALS_WIDGET_CONFIG(symbol: string) {
 }
 
 // News and Popular Symbols
-export const NEWS_SYMBOLS = [
+export const NEWS_SYMBOLS: string[] = [
   'AAPL',
   'MSFT',
   'GOOGL',
@@ -221,9 +221,9 @@ export const NEWS_SYMBOLS = [
   'JPM',
   'V',
   'JNJ',
-] as const;
+];
 
-export const POPULAR_STOCK_SYMBOLS = [
+export const POPULAR_STOCK_SYMBOLS: string[] = [
   'AAPL',
   'MSFT',
   'GOOGL',
@@ -244,7 +244,7 @@ export const POPULAR_STOCK_SYMBOLS = [
   'ADBE',
   'NFLX',
   'CRM',
-] as const;
+];
 
 // Form Options
 export const INVESTMENT_GOALS = [
