@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 export function NewsLoadingSkeleton() {
     return (
-        <div className="w-full h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-6">
+        <div className="w-full h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-6" role="status" aria-live="polite" aria-label="Cargando noticias">
             <Skeleton className="h-8 w-48 mb-6" />
             <div className="space-y-4">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -36,7 +36,7 @@ export function NewsLoadingSkeleton() {
 
 export function StockCardSkeleton() {
     return (
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-4" role="status" aria-live="polite" aria-label="Cargando tarjeta de acción">
             <div className="flex justify-between items-start mb-4">
                 <div className="space-y-2">
                     <Skeleton className="h-6 w-32" />
@@ -54,7 +54,7 @@ export function StockCardSkeleton() {
 
 export function ChartLoadingSkeleton() {
     return (
-        <div className="w-full bg-gray-800 rounded-lg border border-gray-700 p-6">
+        <div className="w-full bg-gray-800 rounded-lg border border-gray-700 p-6" role="status" aria-live="polite" aria-label="Cargando gráfico">
             <Skeleton className="h-8 w-48 mb-4" />
             <Skeleton className="h-64 w-full" />
         </div>
@@ -63,7 +63,7 @@ export function ChartLoadingSkeleton() {
 
 export function TableLoadingSkeleton({ rows = 5 }: { rows?: number }) {
     return (
-        <div className="w-full bg-gray-800 rounded-lg border border-gray-700 p-4">
+        <div className="w-full bg-gray-800 rounded-lg border border-gray-700 p-4" role="status" aria-live="polite" aria-label="Cargando tabla">
             <div className="space-y-3">
                 <div className="flex gap-4 pb-2 border-b border-gray-700">
                     <Skeleton className="h-5 w-32" />

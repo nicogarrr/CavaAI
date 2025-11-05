@@ -5,9 +5,16 @@ import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import { cache } from 'react';
 import { requestCache } from '@/lib/cache/requestCache';
 
-const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
-const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';
+import { env } from '@/lib/env';
+import { TIMEOUTS } from '@/lib/constants';
+import { ExternalAPIError, RateLimitError, toAppError } from '@/lib/types/errors';
 
+const FINNHUB_BASE_URL = env.FINNHUB_BASE_URL;
+
+/**
+ * Función helper para fetch con manejo de errores apropiado
+ * Lanza errores tipados en lugar de retornar arrays vacíos silenciosamente
+ */
 async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T> {
     // Para datos críticos como precios y noticias, usar cache mínimo (30-60 segundos)
     // Para datos estáticos como perfiles, permitir cache más largo
@@ -15,37 +22,58 @@ async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T>
         ? { cache: 'force-cache', next: { revalidate: revalidateSeconds } }
         : { cache: 'no-store' };
 
-    // Timeout de 10 segundos para evitar que fetch bloquee indefinidamente
+    // Timeout usando constante centralizada
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.API_REQUEST);
 
     try {
         const res = await fetch(url, { ...options, signal: controller.signal });
         clearTimeout(timeoutId);
         
         if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            // Si es error 429, retornar array vacío en lugar de lanzar error
+            // Lanzar errores apropiados en lugar de retornar arrays vacíos
             if (res.status === 429) {
-                console.warn('API rate limit reached, returning empty result');
-                return [] as T;
+                throw new RateLimitError(`API rate limit reached for ${url}`);
             }
-            // Para otros errores, también retornar array vacío en lugar de lanzar error
-            // para evitar que bloquee la navegación
-            console.warn(`Fetch failed ${res.status} for ${url}, returning empty result`);
-            return [] as T;
+            
+            if (res.status >= 500) {
+                throw new ExternalAPIError(
+                    `External API error (${res.status}) for ${url}`,
+                    'finnhub',
+                    { status: res.status, statusText: res.statusText }
+                );
+            }
+            
+            throw new ExternalAPIError(
+                `Failed to fetch ${url}: ${res.status} ${res.statusText}`,
+                'finnhub',
+                { status: res.status }
+            );
         }
         return (await res.json()) as T;
-    } catch (error: any) {
+    } catch (error: unknown) {
         clearTimeout(timeoutId);
-        // Si es aborto por timeout o cualquier otro error, retornar array vacío
-        // para evitar que bloquee la navegación
-        if (error.name === 'AbortError') {
-            console.warn(`Fetch timeout for ${url}, returning empty result`);
-        } else {
-            console.warn(`Fetch error for ${url}:`, error.message || error, 'returning empty result');
+        
+        // Si es un error de nuestra aplicación, re-lanzarlo
+        if (error instanceof RateLimitError || error instanceof ExternalAPIError) {
+            throw error;
         }
-        return [] as T;
+        
+        // Manejar otros errores
+        const appError = toAppError(error);
+        if (appError.message.includes('AbortError') || appError.message.includes('aborted')) {
+            throw new ExternalAPIError(
+                `Request timeout for ${url}`,
+                'finnhub',
+                appError
+            );
+        }
+        
+        throw new ExternalAPIError(
+            `Unexpected error fetching ${url}`,
+            'finnhub',
+            appError
+        );
     }
 }
 
@@ -54,7 +82,7 @@ export { fetchJSON };
 export type FinnhubCandles = { s: 'ok' | 'no_data'; c: number[]; t: number[]; o: number[]; h: number[]; l: number[]; v: number[] };
 
 export async function getCandles(symbol: string, from: number, to: number, resolution: 'D' | 'W' | 'M' | '60' = 'D', revalidateSeconds = 1800): Promise<FinnhubCandles> {
-    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    const token = env.FINNHUB_API_KEY;
     if (!token) {
         // Sin API key, devolver datos vacíos en lugar de lanzar error
         return { s: 'no_data', c: [], t: [], o: [], h: [], l: [], v: [] };
@@ -76,7 +104,7 @@ export async function getCandles(symbol: string, from: number, to: number, resol
 export type FinnhubProfile2 = { ticker?: string; name?: string; exchange?: string; currency?: string; country?: string; ipo?: string; logo?: string; weburl?: string };
 export const getProfile = cache(async (symbol: string): Promise<FinnhubProfile2 | null> => {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = env.FINNHUB_API_KEY;
         if (!token) return null;
         const url = `${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`;
         const result = await fetchJSON<FinnhubProfile2>(url, 3600);
@@ -93,7 +121,7 @@ export const getProfile = cache(async (symbol: string): Promise<FinnhubProfile2 
 export type FinnhubETFHoldings = { holdings?: Array<{ symbol?: string; name?: string; percent?: number }> };
 export const getETFHoldings = cache(async (symbol: string): Promise<FinnhubETFHoldings> => {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = env.FINNHUB_API_KEY;
         if (!token) return { holdings: [] };
         const url = `${FINNHUB_BASE_URL}/etf/holdings?symbol=${encodeURIComponent(symbol)}&token=${token}`;
         const result = await fetchJSON<FinnhubETFHoldings>(url, 6 * 3600);
@@ -120,7 +148,7 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
         
         // Fallback to original Finnhub-only implementation
         const range = getDateRange(5);
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = env.FINNHUB_API_KEY;
         if (!token) {
             throw new Error('FINNHUB API key is not configured');
         }
@@ -218,7 +246,7 @@ export async function getCompanyNews(symbol: string, maxArticles = 20): Promise<
         
         // Fallback to original Finnhub-only implementation
         const range = getDateRange(30); // Últimos 30 días
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = env.FINNHUB_API_KEY;
         if (!token) {
             console.warn('FINNHUB API key not configured, returning empty news');
             return [];
@@ -254,7 +282,7 @@ export type CompanyEvent = {
 
 export async function getCompanyEvents(symbol: string): Promise<CompanyEvent[]> {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = env.FINNHUB_API_KEY;
         if (!token) return [];
 
         const events: CompanyEvent[] = [];
@@ -303,7 +331,7 @@ export async function getTechnicalAnalysis(symbol: string, days = 252): Promise<
     volumeTrend?: 'increasing' | 'decreasing' | 'stable';
 } | null> {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = env.FINNHUB_API_KEY;
         if (!token) return null;
 
         const to = Math.floor(Date.now() / 1000);
@@ -356,7 +384,7 @@ export async function getIndexComparison(symbol: string): Promise<{
     vsSector?: { change: number; sector: string };
 } | null> {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = env.FINNHUB_API_KEY;
         if (!token) return null;
 
         // Obtener datos de S&P 500 y la acción
@@ -415,7 +443,7 @@ export async function getStockFinancialData(symbol: string): Promise<{
     esgData?: any;
 } | null> {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = env.FINNHUB_API_KEY;
         if (!token) return null;
 
         // Obtener datos críticos secuencialmente con delays para evitar rate limiting
@@ -537,7 +565,7 @@ export async function getStockFinancialData(symbol: string): Promise<{
 
 export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = env.FINNHUB_API_KEY;
         if (!token) {
             // If no token, log and return empty to avoid throwing per requirements
             console.error('Error in stock search:', new Error('FINNHUB API key is not configured'));

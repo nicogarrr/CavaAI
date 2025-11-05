@@ -4,6 +4,8 @@ import {headers} from "next/headers";
 import {redirect} from "next/navigation";
 import Footer from "@/components/Footer";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
+import React from "react";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 // Forzar renderizado dinámico porque usa headers() y requiere autenticación
 export const dynamic = 'force-dynamic';
@@ -26,8 +28,19 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
 
         const initialStocks = await searchStocks().catch(() => []);
 
+        const OnlineBanner = () => {
+            const online = useOnlineStatus();
+            if (online) return null;
+            return (
+                <div role="status" aria-live="polite" className="w-full bg-yellow-100 text-yellow-800 text-sm py-2 px-4 text-center">
+                    You are offline. Some data may be outdated until the connection is restored.
+                </div>
+            );
+        };
+
         return (
             <main className="min-h-screen text-gray-400">
+                <OnlineBanner />
                 <Header user={user} initialStocks={initialStocks} />
 
                 <div className="container py-10">

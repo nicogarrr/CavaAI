@@ -132,11 +132,12 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                     type="button"
                     onClick={() => setOpen(true)}
                     className="search-text"
+                    aria-label="Abrir buscador"
                 >
                     {label}
                 </button>
             ): (
-                <Button onClick={() => setOpen(true)} className="search-btn">
+                <Button onClick={() => setOpen(true)} className="search-btn" aria-label="Abrir buscador">
                     {label}
                 </Button>
             )}

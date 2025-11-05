@@ -28,6 +28,9 @@ const PortfolioTransactionSchema = new Schema<PortfolioTransaction>(
 PortfolioTransactionSchema.index({ userId: 1, symbol: 1 });
 PortfolioTransactionSchema.index({ userId: 1, date: -1 });
 
+// Índices adicionales recomendados
+PortfolioTransactionSchema.index({ userId: 1, updatedAt: -1 });
+
 export const PortfolioTransaction: Model<PortfolioTransaction> =
     (models?.PortfolioTransaction as Model<PortfolioTransaction>) || 
     model<PortfolioTransaction>('PortfolioTransaction', PortfolioTransactionSchema);
