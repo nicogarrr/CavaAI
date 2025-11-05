@@ -6,7 +6,7 @@ import {NAV_ITEMS} from "@/lib/constants";
 import Link from "next/link";
 import {usePathname} from "next/navigation";
 
-const NavItems = ({initialStocks}: { initialStocks: StockWithWatchlistStatus[]}) => {
+const NavItems = () => {
     const pathname = usePathname()
 
     const isActive = (path: string) => {
