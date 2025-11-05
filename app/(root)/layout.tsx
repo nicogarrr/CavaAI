@@ -5,7 +5,7 @@ import {redirect} from "next/navigation";
 import Footer from "@/components/Footer";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
 import React from "react";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import OnlineBanner from "@/components/OnlineBanner";
 
 // Forzar renderizado dinámico porque usa headers() y requiere autenticación
 export const dynamic = 'force-dynamic';
@@ -28,16 +28,6 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
 
         const initialStocks = await searchStocks().catch(() => []);
 
-        const OnlineBanner = () => {
-            const online = useOnlineStatus();
-            if (online) return null;
-            return (
-                <div role="status" aria-live="polite" className="w-full bg-yellow-100 text-yellow-800 text-sm py-2 px-4 text-center">
-                    You are offline. Some data may be outdated until the connection is restored.
-                </div>
-            );
-        };
-
         return (
             <main className="min-h-screen text-gray-400">
                 <OnlineBanner />
@@ -52,11 +42,26 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
         )
     } catch (error) {
         // Log authentication errors for debugging while protecting user experience
-        if (process.env.NODE_ENV === 'development') {
-            console.error('Authentication error in layout:', error);
-        }
+        console.error('Error in layout:', error);
+        
         // If authentication fails, redirect to sign-in
-        redirect('/sign-in');
+        // Usar try-catch adicional para evitar errores si redirect falla
+        try {
+            redirect('/sign-in');
+        } catch (redirectError) {
+            // Si redirect falla, retornar un layout básico de error
+            return (
+                <main className="min-h-screen text-gray-400 flex items-center justify-center">
+                    <div className="text-center">
+                        <h1 className="text-2xl font-bold mb-4">Error de autenticación</h1>
+                        <p className="text-gray-500 mb-4">Por favor, inicia sesión nuevamente.</p>
+                        <a href="/sign-in" className="text-teal-400 hover:text-teal-500">
+                            Ir a inicio de sesión
+                        </a>
+                    </div>
+                </main>
+            );
+        }
     }
 }
 export default Layout
