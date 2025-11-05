@@ -21,7 +21,7 @@ export const getAllUsersForNewsEmail = async () => {
             { projection: { _id: 1, id: 1, email: 1, name: 1, country:1 }}
         ).toArray() as UserDocument[];
 
-        return users.filter((user) => user.email && user.name).map((user) => ({
+        return users.filter((user: any) => user.email && user.name).map((user: any) => ({
             id: user.id || user._id?.toString() || '',
             email: user.email as string,
             name: user.name as string

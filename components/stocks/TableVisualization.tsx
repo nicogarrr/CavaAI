@@ -139,6 +139,9 @@ export default function TableVisualization({
                                     const { name, value, percent } = props;
                                     return `${name}: ${(value as number).toFixed(1)} (${((percent as number) * 100).toFixed(0)}%)`;
                                 }}
+                                label={(props: any) => 
+                                    `${props.name}: ${(props.value as number).toFixed(1)} (${((props.percent as number) * 100).toFixed(0)}%)`
+                                }
                                 outerRadius={80}
                                 fill="#8884d8"
                                 dataKey="value"
