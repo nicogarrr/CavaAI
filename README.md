@@ -37,14 +37,15 @@ Nota: JLCavaAI es una herramienta educativa y de análisis. Los datos de mercado
 4. 🔋 [Features](#features)
 5. 🤸 [Quick Start](#quick-start)
 6. 🐳 [Docker Setup](#docker-setup)
-7. 🔐 [Environment Variables](#environment-variables)
-8. 🧱 [Project Structure](#project-structure)
-9. 📡 [Data & Integrations](#data--integrations)
-10. 🧪 [Scripts & Tooling](#scripts--tooling)
-11. 🤝 [Contributing](#contributing)
-12. 🛡️ [Security](#security)
-13. 📜 [License](#license)
-14. 🙏 [Acknowledgements](#acknowledgements)
+7. 🚀 [Vercel Deployment](#vercel-deployment)
+8. 🔐 [Environment Variables](#environment-variables)
+9. 🧱 [Project Structure](#project-structure)
+10. 📡 [Data & Integrations](#data--integrations)
+11. 🧪 [Scripts & Tooling](#scripts--tooling)
+12. 🤝 [Contributing](#contributing)
+13. 🛡️ [Security](#security)
+14. 📜 [License](#license)
+15. 🙏 [Acknowledgements](#acknowledgements)
 
 ## ✨ Introduction
 
@@ -220,6 +221,44 @@ services:
 volumes:
   mongo-data:
 ```
+
+## 🚀 Vercel Deployment
+
+Deploy JLCavaAI to Vercel in minutes:
+
+### Quick Fix for 500 Error
+
+If you're seeing a 500 Internal Server Error on your Vercel deployment, follow these steps:
+
+1. **Check health status**: Visit `https://your-app.vercel.app/api/health`
+2. **Configure environment variables**: Add required variables in Vercel Dashboard
+3. **Redeploy**: Trigger a new deployment
+
+📖 **Quick Fix Guide**: See [QUICK_FIX.md](./QUICK_FIX.md) for step-by-step instructions to resolve the 500 error.
+
+### Full Deployment Guide
+
+For a complete guide including MongoDB setup, API keys, and troubleshooting:
+
+📚 **Comprehensive Guide**: See [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md)
+
+### Minimum Required Configuration
+
+To deploy to Vercel, you need these environment variables:
+
+```env
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/db?retryWrites=true&w=majority
+BETTER_AUTH_SECRET=<generate with: openssl rand -base64 32>
+BETTER_AUTH_URL=https://your-app.vercel.app
+NODE_ENV=production
+```
+
+### Health Check
+
+After deployment, verify your configuration:
+- **Health endpoint**: `/api/health`
+- Returns `200 OK` if all critical services are configured
+- Returns `503` with details if configuration is incomplete
 
 ## 🔐 Environment Variables
 

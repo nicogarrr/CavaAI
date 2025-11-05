@@ -17,7 +17,12 @@ export const getAuth = async () => {
     try {
         // Validar que BETTER_AUTH_SECRET existe y no es un valor por defecto inseguro
         if (!env.BETTER_AUTH_SECRET) {
-            throw new Error('BETTER_AUTH_SECRET is required. Please configure it in your .env file.');
+            throw new Error('BETTER_AUTH_SECRET is required. Please configure it in your .env file. Generate one with: openssl rand -base64 32');
+        }
+        
+        // Validar BETTER_AUTH_URL en producción
+        if (env.NODE_ENV === 'production' && !env.BETTER_AUTH_URL && !env.VERCEL_URL) {
+            throw new Error('BETTER_AUTH_URL or VERCEL_URL is required in production. Set BETTER_AUTH_URL to your deployment URL (e.g., https://your-app.vercel.app)');
         }
 
         const mongoose = await connectToDatabase();
@@ -31,9 +36,12 @@ export const getAuth = async () => {
             if (isBuildTime) {
                 // Durante el build, creamos una instancia mock sin base de datos
                 // Esto permite que Next.js complete el build
+                const buildBaseURL = env.BETTER_AUTH_URL || 
+                                    (env.VERCEL_URL ? `https://${env.VERCEL_URL}` : 'http://localhost:3000');
+                
                 authInstance = betterAuth({
                     secret: env.BETTER_AUTH_SECRET,
-                    baseURL: env.BETTER_AUTH_URL || 'http://localhost:3000',
+                    baseURL: buildBaseURL,
                     emailAndPassword: {
                         enabled: true,
                         disableSignUp: false,
@@ -55,9 +63,12 @@ export const getAuth = async () => {
             }
             
             console.warn('⚠️ MongoDB connection not available, using memory adapter (development only)');
+            const devBaseURL = env.BETTER_AUTH_URL || 
+                              (env.VERCEL_URL ? `https://${env.VERCEL_URL}` : 'http://localhost:3000');
+            
             authInstance = betterAuth({
                 secret: env.BETTER_AUTH_SECRET,
-                baseURL: env.BETTER_AUTH_URL || env.VERCEL_URL || 'http://localhost:3000',
+                baseURL: devBaseURL,
                 emailAndPassword: {
                     enabled: true,
                     disableSignUp: false,
@@ -74,10 +85,14 @@ export const getAuth = async () => {
 
         const db = mongoose.connection;
 
+        // Determine base URL with fallback to VERCEL_URL
+        const baseURL = env.BETTER_AUTH_URL || 
+                       (env.VERCEL_URL ? `https://${env.VERCEL_URL}` : 'http://localhost:3000');
+
         authInstance = betterAuth({
             database: mongodbAdapter(db),
             secret: env.BETTER_AUTH_SECRET,
-            baseURL: env.BETTER_AUTH_URL,
+            baseURL: baseURL,
             emailAndPassword: {
                 enabled: true,
                 disableSignUp: false,
