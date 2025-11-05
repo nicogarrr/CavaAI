@@ -50,7 +50,13 @@ const WatchlistButton = ({
     }
 
     return (
-        <button className={`watchlist-btn ${added ? "watchlist-remove" : ""}`} onClick={handleClick}>
+        <button
+            className={`watchlist-btn ${added ? "watchlist-remove" : ""}`}
+            onClick={handleClick}
+            aria-pressed={added}
+            aria-label={added ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`}
+            type="button"
+        >
             {showTrashIcon && added ? (
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
