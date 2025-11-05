@@ -134,6 +134,11 @@ export default function TableVisualization({
                                 cx="50%"
                                 cy="50%"
                                 labelLine={false}
+                                label={(props: any) => {
+                                    // Using any here due to recharts type mismatch with PieLabelRenderProps
+                                    const { name, value, percent } = props;
+                                    return `${name}: ${(value as number).toFixed(1)} (${((percent as number) * 100).toFixed(0)}%)`;
+                                }}
                                 label={(props: any) => 
                                     `${props.name}: ${(props.value as number).toFixed(1)} (${((props.percent as number) * 100).toFixed(0)}%)`
                                 }
