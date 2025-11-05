@@ -1,4 +1,4 @@
-import { generateProPicks, getAvailableStrategies } from '@/lib/actions/proPicks.actions';
+import { generateProPicks, getAvailableStrategies, type ProPick } from '@/lib/actions/proPicks.actions';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -7,7 +7,7 @@ import SectorComparisonChart from './SectorComparisonChart';
 
 export default async function ProPicksSection() {
     // Manejar errores silenciosamente para evitar fallos en build
-    let picks;
+    let picks: ProPick[] = [];
     try {
         // Usar estrategia adaptativa IA (por defecto 5 picks)
         picks = await generateProPicks(5);
