@@ -9,7 +9,7 @@ import { RATE_LIMITS } from "@/lib/constants";
  */
 export async function middleware(request: NextRequest) {
     // Rate limiting para prevenir abuso
-    const ip = request.ip || request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
     const rateLimitResult = rateLimit(
         ip,
         60 * 1000, // 1 minuto
