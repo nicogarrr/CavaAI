@@ -13,8 +13,8 @@ const envSchema = z.object({
   // Database - Requerido en runtime, opcional en build
   MONGODB_URI: z.string().min(1).optional(),
   
-  // Better Auth - Requerido en producción
-  BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET debe tener al menos 32 caracteres'),
+  // Better Auth - Requerido en producción (pero opcional en build)
+  BETTER_AUTH_SECRET: z.string().optional(),
   BETTER_AUTH_URL: z.string().url().optional(),
   
   // Finnhub - Opcional (hay fallback)
@@ -79,7 +79,10 @@ function validateEnv() {
 export const env = validateEnv();
 
 // Validar que BETTER_AUTH_SECRET sea seguro en producción
-if (env.NODE_ENV === 'production') {
+const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                   process.env.NEXT_PHASE === 'phase-development-build';
+
+if (env.NODE_ENV === 'production' && !isBuildTime) {
   if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) {
     throw new Error(
       '❌ BETTER_AUTH_SECRET debe tener al menos 32 caracteres en producción. ' +

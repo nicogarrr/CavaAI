@@ -32,7 +32,7 @@ export const signUpWithEmail = async ({ email, password, fullName, country, inve
         const appError = toAppError(error);
         
         // Mensajes de error más específicos
-        let errorMessage = ERROR_MESSAGES.AUTH_FAILED;
+        let errorMessage: string = ERROR_MESSAGES.AUTH_FAILED;
         
         if (appError.message.includes('email') || appError.message.includes('Email')) {
             errorMessage = 'This email is already registered. Please sign in instead.';
@@ -63,7 +63,7 @@ export const signInWithEmail = async ({ email, password }: SignInFormData): Prom
         const appError = toAppError(error);
         
         // Mensajes de error más específicos
-        let errorMessage = ERROR_MESSAGES.AUTH_FAILED;
+        let errorMessage: string = ERROR_MESSAGES.AUTH_FAILED;
         
         if (appError.message.includes('Invalid') || appError.message.includes('invalid')) {
             errorMessage = 'Invalid email or password. Please check your credentials and try again.';
