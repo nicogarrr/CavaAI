@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Target, TrendingUp, TrendingDown, Building2, Percent, DollarSign } from 'lucide-react';
-import { getValuationData, type RatiosTTM, type DCFData, type EnterpriseValueData } from '@/lib/actions/fmp.actions';
+import { Loader2, Target, TrendingUp, TrendingDown, Building2, Percent, DollarSign, Landmark } from 'lucide-react';
+import { getValuationData, getTreasuryRates, type RatiosTTM, type DCFData, type EnterpriseValueData, type TreasuryRate } from '@/lib/actions/fmp.actions';
 
 interface StockValuationProps {
     symbol: string;
@@ -34,6 +34,7 @@ export default function StockValuation({ symbol, currentPrice }: StockValuationP
     const [ratios, setRatios] = useState<RatiosTTM | null>(null);
     const [dcf, setDcf] = useState<DCFData | null>(null);
     const [ev, setEv] = useState<EnterpriseValueData | null>(null);
+    const [treasuryRate, setTreasuryRate] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -41,12 +42,20 @@ export default function StockValuation({ symbol, currentPrice }: StockValuationP
         async function fetchData() {
             try {
                 setLoading(true);
-                const data = await getValuationData(symbol);
+                const [data, rates] = await Promise.all([
+                    getValuationData(symbol),
+                    getTreasuryRates()
+                ]);
 
                 // Extract first item from arrays
                 if (data.ratios?.ratios?.[0]) setRatios(data.ratios.ratios[0]);
                 if (data.dcf?.dcf?.[0]) setDcf(data.dcf.dcf[0]);
                 if (data.ev?.enterpriseValue?.[0]) setEv(data.ev.enterpriseValue[0]);
+
+                // Get 10Y Treasury Rate for WACC context
+                if (rates?.treasuryRates?.[0]) {
+                    setTreasuryRate(rates.treasuryRates[0].year10);
+                }
             } catch (err) {
                 setError('Error loading valuation data');
                 console.error(err);
@@ -142,6 +151,17 @@ export default function StockValuation({ symbol, currentPrice }: StockValuationP
                                 <span>Undervalued</span>
                             </div>
                         </div>
+
+                        {/* Treasury Rate Info */}
+                        {treasuryRate && (
+                            <div className="mt-4 pt-4 border-t border-gray-700 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Landmark className="h-4 w-4 text-blue-400" />
+                                    <span className="text-xs text-gray-400">10Y Treasury (Risk-Free Rate)</span>
+                                </div>
+                                <span className="text-sm font-bold text-blue-400">{treasuryRate.toFixed(2)}%</span>
+                            </div>
+                        )}
                     </div>
                 )}
 

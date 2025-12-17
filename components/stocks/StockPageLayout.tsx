@@ -42,6 +42,16 @@ const StockNews = dynamic(() => import('./StockNews'), {
     ssr: false,
 });
 
+const InsiderTradingPanel = dynamic(() => import('./InsiderTradingPanel'), {
+    loading: () => <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+
+const AnalystEstimatesPanel = dynamic(() => import('./AnalystEstimatesPanel'), {
+    loading: () => <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+
 function TabSkeleton() {
     return (
         <div className="space-y-4">
@@ -81,13 +91,13 @@ export default function StockPageLayout({
                 {/* Mobile Tab Selector */}
                 <div className="md:hidden mb-4 overflow-x-auto">
                     <div className="flex gap-2 pb-2">
-                        {(['resumen', 'valoracion', 'calidad', 'fundamentales', 'analisis', 'noticias'] as StockTab[]).map((tab) => (
+                        {(['resumen', 'valoracion', 'calidad', 'fundamentales', 'insiders', 'estimaciones', 'analisis', 'noticias'] as StockTab[]).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
                                 className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition-colors ${activeTab === tab
-                                        ? 'bg-blue-600 text-white'
-                                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                                     }`}
                             >
                                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -118,6 +128,14 @@ export default function StockPageLayout({
 
                     {activeTab === 'fundamentales' && (
                         <FundamentalesTab symbol={upperSymbol} />
+                    )}
+
+                    {activeTab === 'insiders' && (
+                        <InsidersTab symbol={upperSymbol} />
+                    )}
+
+                    {activeTab === 'estimaciones' && (
+                        <EstimacionesTab symbol={upperSymbol} />
                     )}
 
                     {activeTab === 'analisis' && (
@@ -202,6 +220,24 @@ function FundamentalesTab({ symbol }: { symbol: string }) {
         <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-100">Fundamentales</h2>
             <StockFundamentals symbol={symbol} />
+        </div>
+    );
+}
+
+function InsidersTab({ symbol }: { symbol: string }) {
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-100">Insider Trading</h2>
+            <InsiderTradingPanel symbol={symbol} />
+        </div>
+    );
+}
+
+function EstimacionesTab({ symbol }: { symbol: string }) {
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-100">Estimaciones de Analistas</h2>
+            <AnalystEstimatesPanel symbol={symbol} />
         </div>
     );
 }
