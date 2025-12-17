@@ -20,7 +20,18 @@ from modules.fmp import (
     fetch_insider_trading,
     fetch_treasury_rates,
     fetch_analyst_estimates,
-    fetch_press_releases
+    fetch_treasury_rates,
+    fetch_analyst_estimates,
+    fetch_press_releases,
+    # Market Movers & Screener
+    fetch_biggest_gainers,
+    fetch_biggest_losers,
+    fetch_most_actives,
+    fetch_stock_screener,
+    fetch_earnings_transcripts_list,
+    fetch_earnings_transcript,
+    fetch_fmp_articles,
+    fetch_general_news
 )
 
 app = FastAPI(title="FMP Data Engine", version="1.0.0")
@@ -252,11 +263,130 @@ async def get_press_releases(
     try:
         data = fetch_press_releases(symbol, limit)
         if isinstance(data, dict) and 'error' in data:
-            raise HTTPException(status_code=500, detail=data['error'])
+            print(f"Error fetching press releases for {symbol}: {data['error']}")
+            return {"symbol": symbol, "pressReleases": []}
+        
+        # Ensure data is a list. If it's a dict (like an error message from FMP without 'error' key), treat as empty
+        if not isinstance(data, list):
+            print(f"Unexpected response format for press releases {symbol}: {data}")
+            return {"symbol": symbol, "pressReleases": []}
+
         return {"symbol": symbol, "pressReleases": data}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Exception in get_press_releases: {str(e)}")
+        return {"symbol": symbol, "pressReleases": []}
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/market-movers/gainers")
+async def get_biggest_gainers():
+    """Get Biggest Stock Gainers"""
+    try:
+        data = fetch_biggest_gainers()
+        if isinstance(data, dict) and 'error' in data:
+            raise HTTPException(status_code=500, detail=data['error'])
+        return {"gainers": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/market-movers/losers")
+async def get_biggest_losers():
+    """Get Biggest Stock Losers"""
+    try:
+        data = fetch_biggest_losers()
+        if isinstance(data, dict) and 'error' in data:
+            raise HTTPException(status_code=500, detail=data['error'])
+        return {"losers": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/market-movers/active")
+async def get_most_actives():
+    """Get Most Active Stocks"""
+    try:
+        data = fetch_most_actives()
+        if isinstance(data, dict) and 'error' in data:
+            raise HTTPException(status_code=500, detail=data['error'])
+        return {"actives": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/screener")
+async def get_screener_stocks(
+    marketCapMoreThan: Optional[int] = Query(None, description="Market Cap greater than"),
+    sector: Optional[str] = Query(None, description="Sector filter"),
+    limit: int = Query(20, description="Limit results")
+):
+    """Get Stocks via Screener"""
+    try:
+        data = fetch_stock_screener(marketCapMoreThan, sector, limit)
+        if isinstance(data, dict) and 'error' in data:
+            raise HTTPException(status_code=500, detail=data['error'])
+        return {"screener": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# EARNINGS & NEWS ENDPOINTS
+# ============================================================================
+
+@app.get("/earnings-transcript-list/{symbol}")
+async def get_earnings_transcripts_list(symbol: str):
+    """Get list of available earnings transcripts"""
+    symbol = symbol.upper()
+    try:
+        data = fetch_earnings_transcripts_list(symbol)
+        if isinstance(data, dict) and 'error' in data:
+            # Return empty list gracefully if it fails (restricted etc)
+            print(f"Error fetching transcripts list for {symbol}: {data['error']}")
+            return {"symbol": symbol, "transcripts": []}
+        return {"symbol": symbol, "transcripts": data}
+    except Exception as e:
+        print(f"Exception in get_earnings_transcripts_list: {str(e)}")
+        return {"symbol": symbol, "transcripts": []}
+
+@app.get("/earnings-transcript/{symbol}")
+async def get_earnings_transcript_content(
+    symbol: str, 
+    year: int = Query(..., description="Year"), 
+    quarter: int = Query(..., description="Quarter")
+):
+    """Get content of specific transcript"""
+    symbol = symbol.upper()
+    try:
+        data = fetch_earnings_transcript(symbol, year, quarter)
+        if isinstance(data, dict) and 'error' in data:
+            raise HTTPException(status_code=404, detail=data['error'])
+        return {"symbol": symbol, "transcript": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/news/fmp-articles")
+async def get_fmp_articles_endpoint(
+    page: int = Query(0, description="Page number"),
+    limit: int = Query(20, description="Limit results")
+):
+    """Get FMP Articles"""
+    try:
+        data = fetch_fmp_articles(page, limit)
+        if isinstance(data, dict) and 'error' in data:
+             return []
+        return data
+    except Exception:
+        return []
+
+@app.get("/news/general")
+async def get_general_news_endpoint(
+    page: int = Query(0, description="Page number"),
+    limit: int = Query(20, description="Limit results")
+):
+    """Get General News"""
+    try:
+        data = fetch_general_news(page, limit)
+        if isinstance(data, dict) and 'error' in data:
+             return []
+        return data
+    except Exception:
+        return []

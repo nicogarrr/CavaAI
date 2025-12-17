@@ -13,6 +13,7 @@ import {
     ChevronRight,
     Users,
     Target,
+    FileText,
 } from 'lucide-react';
 
 export type StockTab =
@@ -23,6 +24,7 @@ export type StockTab =
     | 'insiders'
     | 'estimaciones'
     | 'analisis'
+    | 'transcripciones'
     | 'noticias';
 
 interface NavItem {
@@ -74,6 +76,12 @@ const navItems: NavItem[] = [
         label: 'Análisis',
         icon: <Brain size={20} />,
         description: 'AI Checklist, Patterns'
+    },
+    {
+        id: 'transcripciones',
+        label: 'Transcripciones',
+        icon: <FileText size={20} />,
+        description: 'Earnings Calls'
     },
     {
         id: 'noticias',

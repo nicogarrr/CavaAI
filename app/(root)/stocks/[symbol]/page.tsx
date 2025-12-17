@@ -1,5 +1,6 @@
 import WatchlistButton from "@/components/WatchlistButton";
 import StockPageLayout from "@/components/stocks/StockPageLayout";
+import StockHeaderPrice from "@/components/stocks/StockHeaderPrice";
 import { getProfile, getStockQuote } from "@/lib/actions/finnhub.actions";
 
 export default async function StockDetails({ params }: StockDetailsPageProps) {
@@ -50,16 +51,12 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
 
                 <div className="flex items-center gap-6">
                     {/* Price Display */}
-                    {currentPrice > 0 && (
-                        <div className="text-right">
-                            <p className="text-2xl font-bold text-gray-100">
-                                ${currentPrice.toFixed(2)}
-                            </p>
-                            <p className={`text-sm font-medium ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)} ({priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%)
-                            </p>
-                        </div>
-                    )}
+                    <StockHeaderPrice
+                        symbol={symbol}
+                        initialPrice={currentPrice}
+                        initialChange={priceChange}
+                        initialChangePercent={priceChangePercent}
+                    />
                     <WatchlistButton
                         symbol={upperSymbol}
                         company={companyName}
