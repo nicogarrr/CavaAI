@@ -7,8 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Wallet, ArrowRight, Eye, Calendar, Newspaper, Brain, Sparkles, Loader2 } from 'lucide-react';
 import { getPortfolioSummary, getPortfolioScores, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
-import { getCompanyNews } from '@/lib/actions/finnhub.actions';
-import { getStockFinancialData } from '@/lib/actions/finnhub.actions';
+import { getCompanyNews, getStockFinancialData, getUpcomingEarnings, type EarningsEvent } from '@/lib/actions/finnhub.actions';
 
 interface PersonalizedOverviewProps {
     userId: string;
@@ -26,6 +25,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
     const [news, setNews] = useState<any[]>([]);
+    const [upcomingEarnings, setUpcomingEarnings] = useState<EarningsEvent[]>([]);
     const [aiInsight, setAiInsight] = useState('');
 
     useEffect(() => {
@@ -60,20 +60,29 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 }
                 setWatchlist(watchlistWithPrices);
 
-                // Cargar noticias de acciones del usuario
-                const allSymbols = [
-                    ...summary.holdings.map(h => h.symbol),
-                    ...watchlistItems.slice(0, 3).map(w => w.symbol)
-                ].slice(0, 5);
+                // Collect all symbols for News and Earnings
+                const portfolioSymbols = summary.holdings.map(h => h.symbol);
+                const watchlistSymbols = watchlistItems.slice(0, 5).map(w => w.symbol);
+                const allUniqueSymbols = Array.from(new Set([...portfolioSymbols, ...watchlistSymbols]));
 
+                // Cargar noticias (limitado a top 5)
+                const newsSymbols = allUniqueSymbols.slice(0, 5);
                 const allNews: any[] = [];
-                for (const symbol of allSymbols) {
+                for (const symbol of newsSymbols) {
                     try {
                         const symbolNews = await getCompanyNews(symbol, 2);
                         allNews.push(...symbolNews);
                     } catch { }
                 }
                 setNews(allNews.slice(0, 6));
+
+                // Cargar Earnings (Real Data)
+                try {
+                    const earnings = await getUpcomingEarnings(allUniqueSymbols);
+                    setUpcomingEarnings(earnings.slice(0, 3)); // Top 3 próximos
+                } catch (e) {
+                    console.error("Failed to load earnings", e);
+                }
 
                 // Generar insight IA
                 if (summary.holdings.length > 0) {
@@ -109,7 +118,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-100">👋 Bienvenido</h1>
+                    <h1 className="text-3xl font-bold text-gray-100">Bienvenido</h1>
                     <p className="text-gray-400 mt-1">Tu resumen personalizado de inversiones</p>
                 </div>
                 <Badge className="bg-teal-600 text-white px-4 py-2">
@@ -279,32 +288,51 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 </CardContent>
             </Card>
 
-            {/* Eventos Próximos */}
+            {/* Eventos Próximos (Earnings) */}
             <Card className="bg-gray-800/50 border-gray-700">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
                         <Calendar className="h-5 w-5 text-yellow-400" />
-                        Próximos Eventos
+                        Próximos Resultados (Earnings)
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {portfolioSummary && portfolioSummary.holdings.length > 0 ? (
+                    {upcomingEarnings.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {portfolioSummary.holdings.slice(0, 3).map((h) => (
-                                <div key={h.symbol} className="p-4 bg-gray-900/50 rounded-lg">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <span className="text-white font-medium">{h.symbol}</span>
-                                        <Badge className="bg-yellow-600/30 text-yellow-300 text-xs">Próximo</Badge>
+                            {upcomingEarnings.map((event) => (
+                                <Link
+                                    key={`${event.symbol}-${event.date}`}
+                                    href={`/stocks/${event.symbol}`}
+                                    className="p-4 bg-gray-900/50 rounded-lg hover:bg-gray-900 transition-colors block"
+                                >
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-white font-bold text-lg">{event.symbol}</span>
+                                            <Badge className="bg-yellow-600/30 text-yellow-300 text-xs px-1.5 py-0.5 border border-yellow-600/50">
+                                                Q{event.quarter} {event.year}
+                                            </Badge>
+                                        </div>
                                     </div>
-                                    <p className="text-sm text-gray-400">Earnings pendientes</p>
-                                    <p className="text-xs text-gray-500 mt-1">Consulta el calendario de earnings</p>
-                                </div>
+                                    <div className="space-y-1">
+                                        <p className="text-sm text-gray-300 flex items-center gap-1">
+                                            📅 {new Date(event.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                                        </p>
+                                        {event.epsEstimate !== null && (
+                                            <p className="text-xs text-gray-500">
+                                                Estimación EPS: <span className="text-gray-300">${event.epsEstimate.toFixed(2)}</span>
+                                            </p>
+                                        )}
+                                        <p className="text-xs text-teal-400 mt-2 flex items-center gap-1">
+                                            Ver análisis <ArrowRight className="w-3 h-3" />
+                                        </p>
+                                    </div>
+                                </Link>
                             ))}
                         </div>
                     ) : (
                         <div className="text-center py-6">
                             <Calendar className="h-10 w-10 mx-auto text-gray-600 mb-2" />
-                            <p className="text-gray-400 text-sm">Añade acciones a tu cartera para ver eventos</p>
+                            <p className="text-gray-400 text-sm">No hay eventos de resultados próximos en tu cartera/watchlist.</p>
                         </div>
                     )}
                 </CardContent>
