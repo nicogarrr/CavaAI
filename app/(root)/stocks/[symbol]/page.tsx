@@ -23,6 +23,11 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
     const profile = await getProfile(symbol);
     const financialData = await getStockFinancialData(symbol);
 
+    // Obtener estado de watchlist
+    const { getWatchlist } = await import("@/lib/actions/watchlist.actions");
+    const watchlist = await getWatchlist();
+    const isInWatchlist = watchlist.some((item) => item.symbol === symbol.toUpperCase());
+
     const companyName = profile?.name || symbol;
     const currentPrice = financialData?.quote?.c || financialData?.quote?.price || 0;
     const upperSymbol = symbol.toUpperCase();
@@ -44,7 +49,7 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                     <WatchlistButton
                         symbol={upperSymbol}
                         company={companyName}
-                        isInWatchlist={false}
+                        isInWatchlist={isInWatchlist}
                     />
                 </div>
             </div>
