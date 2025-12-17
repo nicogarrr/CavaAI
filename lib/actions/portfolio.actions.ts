@@ -339,3 +339,18 @@ export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Pr
         return holdings;
     }
 }
+
+// Actualizar TODO el portfolio: posiciones + KPIs (para botón de refresco completo)
+export async function updateAllPortfolioPrices(userId: string): Promise<{
+    summary: PortfolioSummary;
+    scores: { quality: number; growth: number; value: number; dividend: number; cagr3y: number }
+}> {
+    // Force fresh fetch of everything - no cache
+    const [summary, scores] = await Promise.all([
+        getPortfolioSummary(userId),
+        getPortfolioScores(userId)
+    ]);
+
+    return { summary, scores };
+}
+

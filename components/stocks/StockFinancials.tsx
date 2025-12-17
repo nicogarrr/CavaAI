@@ -1,16 +1,60 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { DollarSign, Percent, Activity, TrendingUp } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Activity, Loader2 } from 'lucide-react';
 import { getStockFinancialData } from "@/lib/actions/finnhub.actions";
 
 interface StockFinancialsProps {
     symbol: string;
 }
 
-export default async function StockFinancials({ symbol }: StockFinancialsProps) {
-    const data = await getStockFinancialData(symbol);
-    const metrics = data?.metrics?.metric || data?.metrics || {};
+interface Metrics {
+    peTTM?: number;
+    peBasicExclExtraTTM?: number;
+    peExclExtraTTM?: number;
+    epsTTM?: number;
+    epsBasicExclExtraTTM?: number;
+    epsExclExtraTTM?: number;
+    marketCapitalization?: number;
+    dividendYieldIndicatedAnnual?: number;
+    dividendYield?: number;
+    grossMarginTTM?: number;
+    grossMargin5Y?: number;
+    operatingMarginTTM?: number;
+    operatingMargin5Y?: number;
+    netProfitMarginTTM?: number;
+    netProfitMargin5Y?: number;
+    currentRatioTTM?: number;
+    currentRatioQuarterly?: number;
+    currentRatioAnnual?: number;
+    totalDebtToEquityTTM?: number;
+    totalDebtToEquityQuarterly?: number;
+    totalDebtToEquityAnnual?: number;
+}
+
+export default function StockFinancials({ symbol }: StockFinancialsProps) {
+    const [metrics, setMetrics] = useState<Metrics>({});
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function fetchData() {
+            try {
+                setLoading(true);
+                const data = await getStockFinancialData(symbol);
+                const m = data?.metrics?.metric || data?.metrics || {};
+                setMetrics(m);
+            } catch (err) {
+                console.error('Error fetching financials:', err);
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchData();
+    }, [symbol]);
 
     // Helper to format large numbers
     const formatNumber = (num: number | undefined | null, suffix = '') => {
@@ -19,10 +63,27 @@ export default async function StockFinancials({ symbol }: StockFinancialsProps) 
     };
 
     // Color helpers
-    const getScoreColor = (score: number, threshold = 50) => score >= threshold ? 'text-green-400' : 'text-red-400';
     const getProgressColor = (val: number) => val >= 20 ? 'bg-green-500' : val >= 10 ? 'bg-yellow-500' : 'bg-red-500';
 
-    // Data Extraction - Add fallbacks
+    if (loading) {
+        return (
+            <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader>
+                    <CardTitle className="text-gray-100 flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-teal-400" />
+                        Estados Financieros
+                        <Loader2 className="h-4 w-4 text-gray-400 animate-spin ml-auto" />
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <Skeleton className="h-20 w-full bg-gray-700" />
+                    <Skeleton className="h-16 w-full bg-gray-700" />
+                </CardContent>
+            </Card>
+        );
+    }
+
+    // Data Extraction with fallbacks
     const pe = metrics.peTTM || metrics.peBasicExclExtraTTM || metrics.peExclExtraTTM || null;
     const eps = metrics.epsTTM || metrics.epsBasicExclExtraTTM || metrics.epsExclExtraTTM || 0;
     const marketCap = metrics.marketCapitalization || 0;
@@ -33,7 +94,7 @@ export default async function StockFinancials({ symbol }: StockFinancialsProps) 
     const operatingMargin = metrics.operatingMarginTTM || metrics.operatingMargin5Y || 0;
     const netMargin = metrics.netProfitMarginTTM || metrics.netProfitMargin5Y || 0;
 
-    // Health - Add Annual/Quarterly fallbacks
+    // Health
     const currentRatio = metrics.currentRatioTTM || metrics.currentRatioQuarterly || metrics.currentRatioAnnual || null;
     const debtToEquity = metrics.totalDebtToEquityTTM || metrics.totalDebtToEquityQuarterly || metrics.totalDebtToEquityAnnual || null;
 
@@ -96,14 +157,14 @@ export default async function StockFinancials({ symbol }: StockFinancialsProps) 
                     </div>
                 </div>
 
-                {/* 3. Financial Health Helpers */}
+                {/* 3. Financial Health */}
                 <div className="space-y-3 pt-2">
                     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Salud Financiera</h4>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                             <div className="flex justify-between text-xs">
                                 <span className="text-gray-300">Current Ratio</span>
-                                <Badge variant="outline" className={`text-xs ${currentRatio >= 1.5 ? 'border-green-800 text-green-400' : currentRatio >= 1 ? 'border-yellow-800 text-yellow-400' : 'border-red-800 text-red-400'}`}>
+                                <Badge variant="outline" className={`text-xs ${currentRatio && currentRatio >= 1.5 ? 'border-green-800 text-green-400' : currentRatio && currentRatio >= 1 ? 'border-yellow-800 text-yellow-400' : 'border-red-800 text-red-400'}`}>
                                     {formatNumber(currentRatio)}
                                 </Badge>
                             </div>
@@ -112,7 +173,7 @@ export default async function StockFinancials({ symbol }: StockFinancialsProps) 
                         <div className="space-y-1">
                             <div className="flex justify-between text-xs">
                                 <span className="text-gray-300">Debt to Equity</span>
-                                <Badge variant="outline" className={`text-xs ${debtToEquity <= 50 ? 'border-green-800 text-green-400' : debtToEquity <= 100 ? 'border-yellow-800 text-yellow-400' : 'border-red-800 text-red-400'}`}>
+                                <Badge variant="outline" className={`text-xs ${debtToEquity && debtToEquity <= 50 ? 'border-green-800 text-green-400' : debtToEquity && debtToEquity <= 100 ? 'border-yellow-800 text-yellow-400' : 'border-red-800 text-red-400'}`}>
                                     {formatNumber(debtToEquity)}%
                                 </Badge>
                             </div>
@@ -125,3 +186,4 @@ export default async function StockFinancials({ symbol }: StockFinancialsProps) 
         </Card>
     );
 }
+
