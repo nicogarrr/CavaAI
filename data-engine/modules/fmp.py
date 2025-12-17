@@ -344,36 +344,64 @@ def fetch_stock_screener(market_cap_more_than=None, sector=None, limit=20):
 
 def fetch_earnings_transcripts_list(symbol):
     """Fetch list of available earnings transcripts dates for a symbol"""
-    # Using v4 endpoint as it is often more reliable for lists
-    url = f'{BASE_URL.replace("stable", "v4")}/earning-call-transcript?symbol={symbol}&apikey={FMP_API_KEY}'
+    # Use 'earning-call-transcript-dates' endpoint which returns a simple list of dates [ "2021-10-28 17:00:00", ... ] usually
+    # v4 endpoint
+    url = f'{BASE_URL.replace("stable", "v4")}/earning-call-transcript-dates?symbol={symbol}&apikey={FMP_API_KEY}'
     cache_key = f'transcripts_list_{symbol}'
     cached = get_cached_data(symbol, cache_key, 86400) # 24h cache
     if cached: return cached
     try:
-        res = requests.get(url, timeout=15)
+        # Allow redirects=False to catch 3xx or 402 without looping
+        res = requests.get(url, timeout=10, allow_redirects=True)
+        
+        if res.status_code == 402 or res.status_code == 403:
+             return [] # Restricted
+        if res.status_code != 200:
+             return {'error': f"API Status: {res.status_code}"}
+
         try:
             data = res.json()
+            # If returns list of [ [date, q, y], ... ] - adapt
+            # FMP v4 dates usually returns nested arrays or objects.
+            # If data is list of strings (dates), we map to object
+            if isinstance(data, list) and len(data) > 0:
+                if isinstance(data[0], list):
+                    # date, q, y, ...
+                    data = [ {"date": d[0], "quarter": d[1], "year": d[2]} for d in data ]
+                elif isinstance(data[0], str):
+                    # just dates
+                     data = [ {"date": d, "quarter": None, "year": None} for d in data ]
         except:
              return {'error': f"JSON Error"}
+        
         save_to_cache(symbol, cache_key, data)
         return data
+    except requests.exceptions.TooManyRedirects:
+        return {'error': "API Redirect Loop (Likely Restricted)"}
     except Exception as e:
         return {'error': str(e)}
 
 def fetch_earnings_transcript(symbol, year, quarter):
     """Fetch specific earnings transcript"""
+    # v3 endpoint for content
     url = f'{BASE_URL.replace("stable", "v3")}/earning_call_transcript/{symbol}?year={year}&quarter={quarter}&apikey={FMP_API_KEY}'
     cache_key = f'transcript_{symbol}_{year}_{quarter}'
     cached = get_cached_data(symbol, cache_key, 604800) # 7 days cache (static content)
     if cached: return cached
     try:
-        res = requests.get(url, timeout=15)
+        res = requests.get(url, timeout=15, allow_redirects=True)
+         
+        if res.status_code == 402 or res.status_code == 403:
+             return {'error': "Restricted Endpoint"}
+        
         try:
             data = res.json()
         except:
              return {'error': f"JSON Error"}
         save_to_cache(symbol, cache_key, data)
         return data
+    except requests.exceptions.TooManyRedirects:
+        return {'error': "API Redirect Loop"}
     except Exception as e:
         return {'error': str(e)}
 
