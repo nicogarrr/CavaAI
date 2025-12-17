@@ -1805,12 +1805,17 @@ Responde con JSON válido únicamente.`;
 // Importar Cartera desde Captura de Pantalla (IA Vision)
 // ============================================
 
+// Tipo de cambio EUR/USD aproximado (actualizar periódicamente)
+const EUR_TO_USD_RATE = 1.05;
+
 export interface ExtractedPosition {
   symbol: string;
   name: string;
   currentPrice: number;
+  currentPriceUSD: number; // Precio convertido a USD
   change: number;
   changePercent: number;
+  currency: 'EUR' | 'USD'; // Moneda detectada
   // Calculado: si tenemos rentabilidad, calculamos precio de compra
   estimatedBuyPrice?: number;
   shares?: number;
@@ -1821,6 +1826,7 @@ export async function extractPortfolioFromImage(imageBase64: string): Promise<{
   success: boolean;
   positions: ExtractedPosition[];
   summary: string;
+  detectedCurrency: 'EUR' | 'USD';
   error?: string;
 }> {
   // Permitir en desarrollo
@@ -1829,32 +1835,38 @@ export async function extractPortfolioFromImage(imageBase64: string): Promise<{
     if (auth) {
       const session = await auth.api.getSession({ headers: await headers() });
       if (!session?.user && process.env.NODE_ENV !== 'development') {
-        return { success: false, positions: [], summary: '', error: 'Usuario no autenticado' };
+        return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Usuario no autenticado' };
       }
     }
   } catch (authError: any) {
     if (process.env.NODE_ENV !== 'development') {
-      return { success: false, positions: [], summary: '', error: 'Usuario no autenticado' };
+      return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Usuario no autenticado' };
     }
   }
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
-    return { success: false, positions: [], summary: '', error: 'Falta API key de Gemini' };
+    return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Falta API key de Gemini' };
   }
 
   const system = `Eres un experto en análisis de imágenes de carteras de inversión. Analiza esta captura de pantalla de un broker/app de inversión y extrae TODAS las posiciones que veas.
 
+IMPORTANTE: Detecta la moneda de los precios:
+- Si ves símbolo € o "EUR" → currency = "EUR"
+- Si ves símbolo $ o "USD" → currency = "USD"
+- Los brokers europeos (Trade Republic, DEGIRO, etc.) suelen mostrar precios en EUR
+
 Para cada posición, intenta extraer:
-- Símbolo (ticker) - IMPORTANTE: Convierte símbolos europeos a US (ej: 2PP = PYPL, AMZ = AMZN, ADB = ADBE, UNH = UNH, UT8 = UBER, NOVC = NVO, RACE = RACE)
+- Símbolo (ticker) - Convierte símbolos europeos a US (ej: 2PP = PYPL, AMZ = AMZN, ADB = ADBE, UNH = UNH, UT8 = UBER, NOVC = NVO, RACE = RACE)
 - Nombre de la empresa
-- Precio actual
-- Cambio del día (€ o $)
+- Precio actual (en la moneda original de la captura)
+- Cambio del día
 - Cambio porcentual (%)
-- Si ves rentabilidad total, úsala para estimar el precio de compra
+- Moneda detectada (EUR o USD)
 
 RESPONDE SOLO CON JSON VÁLIDO en este formato:
 {
+  "currency": "EUR",
   "positions": [
     {
       "symbol": "PYPL",
@@ -1862,10 +1874,10 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
       "currentPrice": 474.66,
       "change": -82.27,
       "changePercent": -14.77,
-      "estimatedBuyPrice": null
+      "currency": "EUR"
     }
   ],
-  "summary": "Cartera con X posiciones. Sectores principales: Tech, Healthcare. Rendimiento general: positivo/negativo."
+  "summary": "Cartera con X posiciones en EUR. Sectores principales: Tech, Healthcare."
 }`;
 
   // Preparar payload con imagen
@@ -1904,22 +1916,26 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
         success: false,
         positions: [],
         summary: '',
+        detectedCurrency: 'USD',
         error: `Error de API: ${res.status}`
       };
     }
 
     const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
-      return { success: false, positions: [], summary: '', error: 'Sin respuesta de la IA' };
+      return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Sin respuesta de la IA' };
     }
 
     // Extraer JSON de la respuesta
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return { success: false, positions: [], summary: '', error: 'Formato de respuesta inválido' };
+      return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Formato de respuesta inválido' };
     }
 
     const result = JSON.parse(jsonMatch[0]);
+
+    // Detectar moneda de la respuesta
+    const detectedCurrency: 'EUR' | 'USD' = result.currency === 'EUR' ? 'EUR' : 'USD';
 
     // Mapear símbolos europeos a US
     const symbolMap: Record<string, string> = {
@@ -1944,13 +1960,21 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
     const positions: ExtractedPosition[] = (result.positions || []).map((p: any) => {
       const rawSymbol = (p.symbol || '').toUpperCase().replace(/\s/g, '');
       const mappedSymbol = symbolMap[rawSymbol] || rawSymbol;
+      const priceInOriginalCurrency = parseFloat(p.currentPrice) || 0;
+
+      // Convertir a USD si está en EUR
+      const priceInUSD = detectedCurrency === 'EUR'
+        ? priceInOriginalCurrency * EUR_TO_USD_RATE
+        : priceInOriginalCurrency;
 
       return {
         symbol: mappedSymbol,
         name: p.name || mappedSymbol,
-        currentPrice: parseFloat(p.currentPrice) || 0,
+        currentPrice: priceInOriginalCurrency,
+        currentPriceUSD: priceInUSD,
         change: parseFloat(p.change) || 0,
         changePercent: parseFloat(p.changePercent) || 0,
+        currency: detectedCurrency,
         estimatedBuyPrice: p.estimatedBuyPrice ? parseFloat(p.estimatedBuyPrice) : undefined,
         shares: p.shares ? parseFloat(p.shares) : undefined,
         marketValue: p.marketValue ? parseFloat(p.marketValue) : undefined,
@@ -1960,10 +1984,11 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
     return {
       success: true,
       positions,
-      summary: result.summary || `${positions.length} posiciones encontradas`
+      summary: result.summary || `${positions.length} posiciones encontradas${detectedCurrency === 'EUR' ? ' (convertidas a USD)' : ''}`,
+      detectedCurrency
     };
   } catch (e) {
     console.error('Gemini Vision error', e);
-    return { success: false, positions: [], summary: '', error: 'Error de conexión' };
+    return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Error de conexión' };
   }
 }
