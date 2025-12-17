@@ -132,7 +132,7 @@ Selecciona las ${limit} mejores opciones basándote en los datos reales actuales
             }],
         };
 
-        const model = 'gemini-2.5-flash';
+        const model = 'gemini-3-pro-preview';
         const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
         const res = await fetch(endpoint, {
             method: 'POST',

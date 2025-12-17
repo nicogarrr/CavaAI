@@ -3,6 +3,8 @@ import WatchlistButton from "@/components/WatchlistButton";
 import AnalysisWrapper from "@/components/stocks/AnalysisWrapper";
 import StockNews from "@/components/stocks/StockNews";
 import HealthScore from "@/components/stocks/HealthScore";
+import AIChecklistSection from "@/components/stocks/AIChecklistSection";
+import PatternAnalysisSection from "@/components/stocks/PatternAnalysisSection";
 import { getProfile, getStockFinancialData } from "@/lib/actions/finnhub.actions";
 import {
     SYMBOL_INFO_WIDGET_CONFIG,
@@ -19,7 +21,7 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
     // Obtener datos de la empresa para el análisis DCF
     const profile = await getProfile(symbol);
     const financialData = await getStockFinancialData(symbol);
-    
+
     const companyName = profile?.name || symbol;
     const currentPrice = financialData?.quote?.c || financialData?.quote?.price || 0;
     const upperSymbol = symbol.toUpperCase();
@@ -38,10 +40,10 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                             <p className="text-2xl font-semibold text-gray-100">${currentPrice.toFixed(2)}</p>
                         </div>
                     )}
-                    <WatchlistButton 
-                        symbol={upperSymbol} 
-                        company={companyName} 
-                        isInWatchlist={false} 
+                    <WatchlistButton
+                        symbol={upperSymbol}
+                        company={companyName}
+                        isInWatchlist={false}
                     />
                 </div>
             </div>
@@ -106,6 +108,26 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                         />
                     </div>
                 </div>
+            </section>
+
+            {/* AI Checklist Section - Full Width */}
+            <section className="w-full">
+                <AIChecklistSection
+                    symbol={upperSymbol}
+                    companyName={companyName}
+                    financialData={financialData}
+                    currentPrice={currentPrice}
+                />
+            </section>
+
+            {/* Pattern Analysis Section - Full Width */}
+            <section className="w-full">
+                <PatternAnalysisSection
+                    symbol={upperSymbol}
+                    companyName={companyName}
+                    financialData={financialData}
+                    currentPrice={currentPrice}
+                />
             </section>
 
             {/* Analysis Section - Full Width */}

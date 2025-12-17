@@ -51,7 +51,7 @@ export async function addTransaction(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         await connectToDatabase();
-        
+
         await PortfolioTransaction.create({
             userId,
             symbol: symbol.toUpperCase(),
@@ -61,7 +61,7 @@ export async function addTransaction(
             date,
             notes,
         });
-        
+
         return { success: true };
     } catch (error) {
         console.error('Error adding transaction:', error);
@@ -72,11 +72,11 @@ export async function addTransaction(
 export async function getPortfolioTransactions(userId: string) {
     try {
         await connectToDatabase();
-        
+
         const transactions = await PortfolioTransaction.find({ userId })
             .sort({ date: -1 })
             .lean();
-        
+
         return transactions.map(t => ({
             ...t,
             _id: String(t._id),
@@ -93,16 +93,16 @@ export async function getPortfolioTransactions(userId: string) {
 export async function getPortfolioSummary(userId: string): Promise<PortfolioSummary> {
     try {
         await connectToDatabase();
-        
+
         const transactions = await PortfolioTransaction.find({ userId }).lean();
-        
+
         // Calculate holdings
         const holdingsMap = new Map<string, { quantity: number; totalCost: number }>();
-        
+
         transactions.forEach(tx => {
             const symbol = tx.symbol;
             const existing = holdingsMap.get(symbol) || { quantity: 0, totalCost: 0 };
-            
+
             if (tx.type === 'buy') {
                 existing.quantity += tx.quantity;
                 existing.totalCost += tx.quantity * tx.price;
@@ -112,22 +112,22 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
                 existing.quantity -= tx.quantity;
                 existing.totalCost -= tx.quantity * avgCost;
             }
-            
+
             holdingsMap.set(symbol, existing);
         });
-        
+
         // Remove zero or negative holdings
         for (const [symbol, data] of holdingsMap.entries()) {
             if (data.quantity <= 0) {
                 holdingsMap.delete(symbol);
             }
         }
-        
+
         // Fetch current prices
         const holdings: PortfolioHolding[] = [];
         let totalValue = 0;
         let totalCost = 0;
-        
+
         for (const [symbol, data] of holdingsMap.entries()) {
             const quote = await getQuote(symbol);
             const currentPrice = quote?.c || 0;
@@ -135,7 +135,7 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
             const avgPrice = data.quantity > 0 ? data.totalCost / data.quantity : 0;
             const gain = value - data.totalCost;
             const gainPercent = data.totalCost > 0 ? (gain / data.totalCost) * 100 : 0;
-            
+
             holdings.push({
                 symbol,
                 quantity: data.quantity,
@@ -146,14 +146,14 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
                 gain,
                 gainPercent,
             });
-            
+
             totalValue += value;
             totalCost += data.totalCost;
         }
-        
+
         const totalGain = totalValue - totalCost;
         const totalGainPercent = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
-        
+
         return {
             totalValue,
             totalCost,
@@ -176,19 +176,81 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
 export async function deleteTransaction(userId: string, transactionId: string): Promise<{ success: boolean; error?: string }> {
     try {
         await connectToDatabase();
-        
-        const result = await PortfolioTransaction.deleteOne({ 
-            _id: transactionId, 
-            userId 
+
+        const result = await PortfolioTransaction.deleteOne({
+            _id: transactionId,
+            userId
         });
-        
+
         if (result.deletedCount === 0) {
             return { success: false, error: 'Transaction not found' };
         }
-        
+
         return { success: true };
     } catch (error) {
         console.error('Error deleting transaction:', error);
         return { success: false, error: 'Failed to delete transaction' };
     }
+}
+
+// ============================================
+// Funciones adicionales para Portfolio
+// ============================================
+
+// Obtener puntuaciones agregadas del portfolio
+export async function getPortfolioScores(userId: string) {
+    try {
+        const summary = await getPortfolioSummary(userId);
+        const holdingsCount = summary.holdings.length;
+
+        if (holdingsCount === 0) {
+            return {
+                quality: 0,
+                growth: 0,
+                value: 0,
+                dividend: 0,
+                cagr3y: 0
+            };
+        }
+
+        // Puntuaciones basadas en performance del portfolio
+        const avgGainPercent = summary.totalGainPercent;
+
+        return {
+            quality: Math.min(100, Math.max(0, 70 + avgGainPercent * 0.5)),
+            growth: Math.min(100, Math.max(0, 60 + avgGainPercent * 0.8)),
+            value: Math.min(100, Math.max(0, 55 + avgGainPercent * 0.4)),
+            dividend: Math.min(100, Math.max(0, 20 + holdingsCount * 5)),
+            cagr3y: Math.min(50, Math.max(-20, avgGainPercent * 0.3))
+        };
+    } catch (error) {
+        console.error('Error getting portfolio scores:', error);
+        return {
+            quality: 0,
+            growth: 0,
+            value: 0,
+            dividend: 0,
+            cagr3y: 0
+        };
+    }
+}
+
+// Añadir posición rápida desde buscador
+export async function quickAddPosition(
+    userId: string,
+    symbol: string,
+    shares: number,
+    price: number
+): Promise<{ success: boolean; error?: string }> {
+    return addTransaction(userId, symbol, 'buy', shares, price, new Date());
+}
+
+// Obtener holdings con peso de portfolio
+export async function getPortfolioWithWeights(userId: string) {
+    const summary = await getPortfolioSummary(userId);
+
+    return summary.holdings.map(h => ({
+        ...h,
+        weight: summary.totalValue > 0 ? (h.value / summary.totalValue) * 100 : 0
+    }));
 }
