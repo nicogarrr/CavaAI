@@ -142,7 +142,7 @@ export default function AIChecklistSection({
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        🤖 Análisis Value Investing - {symbol}
+                        🤖 Análisis Value Investing (IA)
                     </h2>
                 </div>
                 <div className="text-right flex items-center gap-4">

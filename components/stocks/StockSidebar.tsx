@@ -11,6 +11,8 @@ import {
     Newspaper,
     ChevronLeft,
     ChevronRight,
+    Users,
+    Target,
 } from 'lucide-react';
 
 export type StockTab =
@@ -18,6 +20,8 @@ export type StockTab =
     | 'valoracion'
     | 'calidad'
     | 'fundamentales'
+    | 'insiders'
+    | 'estimaciones'
     | 'analisis'
     | 'noticias';
 
@@ -52,6 +56,18 @@ const navItems: NavItem[] = [
         label: 'Fundamentales',
         icon: <BarChart3 size={20} />,
         description: 'Revenue, Margins, Debt'
+    },
+    {
+        id: 'insiders',
+        label: 'Insiders',
+        icon: <Users size={20} />,
+        description: 'Compras/Ventas ejecutivos'
+    },
+    {
+        id: 'estimaciones',
+        label: 'Estimaciones',
+        icon: <Target size={20} />,
+        description: 'EPS, Revenue proyectado'
     },
     {
         id: 'analisis',

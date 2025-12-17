@@ -103,7 +103,7 @@ export default function PatternAnalysisSection({
         <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6 space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">📊 Análisis Técnico - {symbol}</h2>
+                <h2 className="text-xl font-bold text-white">📊 Análisis Técnico</h2>
                 <Button onClick={loadAnalysis} variant="outline" size="sm">
                     🔄 Regenerar
                 </Button>
