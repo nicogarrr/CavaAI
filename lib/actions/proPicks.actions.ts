@@ -2,11 +2,11 @@
 
 import { getStockFinancialData, getCandles, getProfile } from './finnhub.actions';
 import { calculateAdvancedStockScore } from '@/lib/utils/advancedStockScoring';
-import { 
-    PROPICKS_STRATEGIES, 
-    calculateStrategyScore, 
+import {
+    PROPICKS_STRATEGIES,
+    calculateStrategyScore,
     passesStrategyFilters,
-    type ProPickStrategy 
+    type ProPickStrategy
 } from '@/lib/utils/proPicksStrategies';
 import { getAuth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
@@ -133,7 +133,7 @@ Selecciona las ${limit} mejores opciones basándote en los datos reales actuales
         };
 
         const model = 'gemini-3-pro-preview';
-        const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         const res = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -142,7 +142,7 @@ Selecciona las ${limit} mejores opciones basándote en los datos reales actuales
         });
 
         const json = await res.json().catch(() => ({} as any));
-        
+
         if (!res.ok) {
             console.warn('Gemini selection failed, using score-based fallback:', res.status);
             return evaluatedPicks
@@ -170,14 +170,14 @@ Selecciona las ${limit} mejores opciones basándote en los datos reales actuales
             .filter((p): p is ProPick => p !== undefined);
 
         console.log(`IA seleccionó ${selectedPicks.length} picks de ${evaluatedPicks.length} evaluados`);
-        
+
         // Si la IA no seleccionó suficientes, completar con los mejores restantes
         if (selectedPicks.length < limit) {
             const remaining = evaluatedPicks
                 .filter(p => !selectedSymbols.includes(p.symbol))
                 .sort((a, b) => (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score))
                 .slice(0, limit - selectedPicks.length);
-            
+
             return [...selectedPicks, ...remaining].slice(0, limit);
         }
 
@@ -212,18 +212,18 @@ export async function generateProPicks(
         // Universo expandido masivo - ~300+ símbolos
         const universeSymbols = [
             // Technology (50+)
-            'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA', 'AMD', 'INTC', 'CRM', 
-            'AVGO', 'QCOM', 'TXN', 'ADBE', 'ORCL', 'NOW', 'SNOW', 'PANW', 'CRWD', 'ZS', 'NET', 
+            'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA', 'AMD', 'INTC', 'CRM',
+            'AVGO', 'QCOM', 'TXN', 'ADBE', 'ORCL', 'NOW', 'SNOW', 'PANW', 'CRWD', 'ZS', 'NET',
             'DDOG', 'FROG', 'ESTC', 'MNDY', 'DOCN', 'ASAN', 'DOCU', 'COUP', 'OKTA', 'ZM', 'TEAM',
             'WDAY', 'VEEV', 'SPLK', 'MDB', 'AKAM', 'FFIV', 'FTNT', 'CHKP', 'QLYS', 'RPD',
             'TYL', 'EPAM', 'GTLB', 'PD', 'U', 'RBLX', 'GME', 'HOOD',
             // Financials (40+)
             'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'V', 'MA', 'PYPL', 'AXP', 'COF', 'SCHW',
-            'BLK', 'BX', 'KKR', 'APO', 'TROW', 'BEN', 'IVZ', 'SOFI', 'NU', 'UPST', 'LC', 
-            'AFRM', 'SQ', 'FISV', 'FIS', 'JKHY', 'FLYW', 'PAYO', 'BILL', 'COIN', 'MARA', 
+            'BLK', 'BX', 'KKR', 'APO', 'TROW', 'BEN', 'IVZ', 'SOFI', 'NU', 'UPST', 'LC',
+            'AFRM', 'SQ', 'FISV', 'FIS', 'JKHY', 'FLYW', 'PAYO', 'BILL', 'COIN', 'MARA',
             'RIOT', 'GBTC', 'ETHE', 'HIVE', 'BITF', 'HUT',
             // Healthcare (60+)
-            'JNJ', 'PFE', 'UNH', 'ABBV', 'MRK', 'LLY', 'TMO', 'ABT', 'DHR', 'ISRG', 'CI', 
+            'JNJ', 'PFE', 'UNH', 'ABBV', 'MRK', 'LLY', 'TMO', 'ABT', 'DHR', 'ISRG', 'CI',
             'CVS', 'ELV', 'HCA', 'ZTS', 'NVO', 'NVS', 'SNY', 'RHHBY', 'TAK', 'GSK', 'AZN',
             'BMY', 'BIIB', 'GILD', 'REGN', 'VRTX', 'BMRN', 'ALNY', 'ARWR', 'FOLD', 'IONS',
             'PTCT', 'RNA', 'SGMO', 'BLUE', 'RGNX', 'AGIO', 'AGEN', 'ALKS', 'ALLO', 'AMGN',
@@ -232,8 +232,8 @@ export async function generateProPicks(
             // Consumer Discretionary (50+)
             'WMT', 'HD', 'NKE', 'MCD', 'SBUX', 'DIS', 'NFLX', 'TJX', 'LOW', 'TGT', 'BKNG',
             'EXPE', 'ABNB', 'TRIP', 'MAR', 'HLT', 'HYATT', 'WH', 'CHH', 'MGM', 'LVS',
-            'WYNN', 'CZR', 'PENN', 'DKNG', 'FAND', 'EA', 'ATVI', 'TTWO', 'BBY', 'GPS', 
-            'ANF', 'AEO', 'DKS', 'HIBB', 'ASO', 'WSM', 'RH', 'PTON', 'LULU', 'ONON', 
+            'WYNN', 'CZR', 'PENN', 'DKNG', 'FAND', 'EA', 'ATVI', 'TTWO', 'BBY', 'GPS',
+            'ANF', 'AEO', 'DKS', 'HIBB', 'ASO', 'WSM', 'RH', 'PTON', 'LULU', 'ONON',
             'HOKA', 'DECK', 'VFC', 'COLM',
             // Consumer Staples (25+)
             'PG', 'KO', 'PEP', 'COST', 'PM', 'MO', 'CL', 'EL', 'CLX', 'CHD', 'NWL', 'ENR',
@@ -250,7 +250,7 @@ export async function generateProPicks(
             'CLB', 'NBR', 'PTEN', 'SPN', 'WTI', 'CRK', 'TALO', 'SM', 'PDC', 'MTDR',
             // Communication (20+)
             'VZ', 'T', 'CMCSA', 'SPOT', 'WMG', 'LYV', 'LIVE', 'EGHT', 'BAND', 'TWLO',
-            'VZIO', 'FYBR', 'ASTS', 'GSAT', 'ATEX', 'CALL', 'COMM', 'INFN', 'NTNX', 
+            'VZIO', 'FYBR', 'ASTS', 'GSAT', 'ATEX', 'CALL', 'COMM', 'INFN', 'NTNX',
             'OTEX', 'RPD', 'VIAV',
             // Utilities (20+)
             'NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC', 'SRE', 'XEL', 'PEG', 'ED', 'ES',
@@ -277,15 +277,15 @@ export async function generateProPicks(
         console.log(`Evaluando ${symbolsToEvaluate.length} símbolos con datos completos...`);
 
         const allEvaluatedPicks: ProPick[] = [];
-        
+
         // Evaluar cada símbolo con datos completos
         for (let i = 0; i < symbolsToEvaluate.length; i++) {
             const symbol = symbolsToEvaluate[i];
-            
+
             try {
                 // Obtener datos financieros completos
                 const financialData = await getStockFinancialData(symbol);
-                
+
                 if (!financialData || !financialData.profile) {
                     await new Promise(resolve => setTimeout(resolve, 300));
                     continue;
@@ -313,7 +313,7 @@ export async function generateProPicks(
 
                 // Calcular score avanzado
                 const advancedScore = await calculateAdvancedStockScore(
-                    financialData, 
+                    financialData,
                     historicalData || undefined
                 );
 
@@ -433,17 +433,17 @@ export async function generateEnhancedProPicks(
         // Generar picks base con limite más alto para tener opciones para filtrar
         // Usamos un multiplicador buffer para asegurar suficientes resultados post-filtrado
         const basePicks = await generateProPicks(Math.min(limit * FILTER_BUFFER_MULTIPLIER, 100));
-        
+
         // Filtrar por score mínimo
         let filteredPicks = basePicks.filter(pick => pick.score >= minScore);
-        
+
         // Filtrar por sector si se especifica
         if (sector !== 'all') {
-            filteredPicks = filteredPicks.filter(pick => 
+            filteredPicks = filteredPicks.filter(pick =>
                 pick.sector?.toLowerCase() === sector.toLowerCase()
             );
         }
-        
+
         // Ordenar según el criterio seleccionado
         filteredPicks.sort((a, b) => {
             switch (sortBy) {
@@ -460,7 +460,7 @@ export async function generateEnhancedProPicks(
                     return (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score);
             }
         });
-        
+
         // Aplicar límite final
         return filteredPicks.slice(0, limit);
     } catch (error) {

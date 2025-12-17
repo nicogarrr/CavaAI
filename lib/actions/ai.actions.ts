@@ -1565,3 +1565,238 @@ Responde con JSON válido únicamente.`;
     };
   }
 }
+
+// ============================================
+// Alternativas IA - Comparar con competidores del sector
+// ============================================
+
+// Mapa de competidores por sector/industria
+const SECTOR_COMPETITORS: Record<string, string[]> = {
+  // Pagos
+  'V': ['MA', 'PYPL', 'AXP', 'SQ', 'AFRM'],
+  'MA': ['V', 'PYPL', 'AXP', 'SQ', 'AFRM'],
+  'PYPL': ['V', 'MA', 'SQ', 'AFRM', 'COIN'],
+  'SQ': ['PYPL', 'V', 'MA', 'AFRM', 'COIN'],
+  // Tech Giants
+  'AAPL': ['MSFT', 'GOOGL', 'AMZN', 'META'],
+  'MSFT': ['AAPL', 'GOOGL', 'AMZN', 'ORCL', 'CRM'],
+  'GOOGL': ['AAPL', 'MSFT', 'META', 'AMZN'],
+  'AMZN': ['MSFT', 'GOOGL', 'AAPL', 'WMT', 'TGT'],
+  'META': ['GOOGL', 'SNAP', 'PINS', 'TWTR'],
+  // Semiconductores
+  'NVDA': ['AMD', 'INTC', 'AVGO', 'QCOM', 'TSM'],
+  'AMD': ['NVDA', 'INTC', 'AVGO', 'QCOM'],
+  'INTC': ['NVDA', 'AMD', 'AVGO', 'TXN'],
+  // Cloud/SaaS
+  'CRM': ['ORCL', 'NOW', 'WDAY', 'SAP'],
+  'NOW': ['CRM', 'ORCL', 'WDAY', 'SNOW'],
+  // Retail
+  'WMT': ['TGT', 'COST', 'AMZN', 'HD', 'LOW'],
+  'TGT': ['WMT', 'COST', 'AMZN', 'HD'],
+  'COST': ['WMT', 'TGT', 'BJ', 'KR'],
+  'HD': ['LOW', 'WMT', 'TGT', 'MCD'],
+  'LOW': ['HD', 'WMT', 'TGT'],
+  // Banca
+  'JPM': ['BAC', 'WFC', 'GS', 'MS', 'C'],
+  'BAC': ['JPM', 'WFC', 'C', 'USB'],
+  'GS': ['MS', 'JPM', 'C'],
+  'MS': ['GS', 'JPM', 'SCHW'],
+  // Healthcare
+  'JNJ': ['PFE', 'MRK', 'ABBV', 'UNH'],
+  'PFE': ['JNJ', 'MRK', 'ABBV', 'BMY'],
+  'UNH': ['CVS', 'CI', 'ELV', 'HUM'],
+  // Consumer
+  'KO': ['PEP', 'MNST', 'KDP'],
+  'PEP': ['KO', 'MNST', 'KDP'],
+  'NKE': ['LULU', 'ADDYY', 'UAA', 'DECK'],
+  'MCD': ['SBUX', 'CMG', 'YUM', 'DPZ'],
+  'SBUX': ['MCD', 'CMG', 'DNKN'],
+  // Streaming
+  'NFLX': ['DIS', 'WBD', 'PARA', 'CMCSA'],
+  'DIS': ['NFLX', 'WBD', 'PARA', 'CMCSA'],
+  // Auto EV
+  'TSLA': ['F', 'GM', 'RIVN', 'NIO', 'LCID'],
+  // Default fallback
+  'default': []
+};
+
+// Obtener competidores de un símbolo
+function getCompetitors(symbol: string): string[] {
+  const upperSymbol = symbol.toUpperCase();
+  return SECTOR_COMPETITORS[upperSymbol] || SECTOR_COMPETITORS['default'];
+}
+
+// Función principal: Obtener sugerencias de alternativas
+export async function getAlternativeSuggestions(input: {
+  symbol: string;
+  companyName: string;
+  sector?: string;
+  financialData: any;
+  currentPrice: number;
+}): Promise<{
+  currentStock: {
+    symbol: string;
+    name: string;
+    score: number;
+    strengths: string[];
+    weaknesses: string[];
+  };
+  alternatives: {
+    symbol: string;
+    name: string;
+    score: number;
+    reason: string;
+    isBetter: boolean;
+  }[];
+  recommendation: string;
+  summary: string;
+}> {
+  // Permitir en desarrollo
+  try {
+    const auth = await getAuth();
+    if (auth) {
+      const session = await auth.api.getSession({ headers: await headers() });
+      if (!session?.user && process.env.NODE_ENV !== 'development') {
+        throw new Error('Usuario no autenticado');
+      }
+    }
+  } catch (authError: any) {
+    if (process.env.NODE_ENV !== 'development') {
+      throw new Error('Usuario no autenticado');
+    }
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    return {
+      currentStock: { symbol: input.symbol, name: input.companyName, score: 0, strengths: [], weaknesses: [] },
+      alternatives: [],
+      recommendation: 'IA desactivada',
+      summary: 'Falta API key de Gemini'
+    };
+  }
+
+  // Obtener competidores
+  const competitors = getCompetitors(input.symbol);
+  if (competitors.length === 0) {
+    return {
+      currentStock: { symbol: input.symbol, name: input.companyName, score: 75, strengths: ['Datos disponibles'], weaknesses: [] },
+      alternatives: [],
+      recommendation: `${input.symbol} es una buena opción`,
+      summary: 'No hay competidores directos en nuestra base de datos para comparar.'
+    };
+  }
+
+  const system = `Eres un analista financiero experto. Evalúa si la acción seleccionada es la mejor opción de su sector o si hay alternativas mejores.
+
+RESPONDE SOLO CON JSON VÁLIDO en este formato:
+{
+  "currentStock": {
+    "score": número 0-100,
+    "strengths": ["fortaleza1", "fortaleza2", "fortaleza3"],
+    "weaknesses": ["debilidad1", "debilidad2"]
+  },
+  "alternatives": [
+    {
+      "symbol": "SIMBOLO",
+      "name": "Nombre empresa",
+      "score": número 0-100,
+      "reason": "Por qué podría ser mejor o peor",
+      "isBetter": true/false
+    }
+  ],
+  "recommendation": "MANTENER|CONSIDERAR_ALTERNATIVAS|MEJOR_OPCION",
+  "summary": "Resumen ejecutivo de 2-3 líneas"
+}`;
+
+  const metrics = input.financialData?.metrics || {};
+  const prompt = `Compara ${input.companyName} (${input.symbol}) con sus competidores: ${competitors.join(', ')}
+
+DATOS DE ${input.symbol}:
+- Precio actual: $${input.currentPrice}
+- Sector: ${input.sector || 'N/A'}
+- P/E Ratio: ${metrics.peRatio || 'N/A'}
+- P/B Ratio: ${metrics.pbRatio || 'N/A'}
+- ROE: ${metrics.roe || 'N/A'}
+- ROA: ${metrics.roa || 'N/A'}
+- Margen operativo: ${metrics.operatingMargin || 'N/A'}
+- Deuda/Equity: ${metrics.debtToEquity || 'N/A'}
+- Crecimiento ingresos: ${metrics.revenueGrowth || 'N/A'}
+
+Evalúa:
+1. ¿Es ${input.symbol} la mejor opción de su sector?
+2. ¿Tiene el mayor moat (ventaja competitiva)?
+3. ¿Cuáles son sus fortalezas y debilidades?
+4. ¿Algún competidor podría ser mejor inversión ahora?
+
+Responde con JSON válido únicamente.`;
+
+  const payload = {
+    contents: [{ role: 'user', parts: [{ text: `${system}\n\n${prompt}` }] }],
+  };
+
+  try {
+    const model = 'gemini-3-pro-preview';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+
+    const json = await res.json().catch(() => ({} as any));
+
+    if (!res.ok) {
+      console.error('Gemini Alternatives API error', res.status);
+      return {
+        currentStock: { symbol: input.symbol, name: input.companyName, score: 70, strengths: [], weaknesses: [] },
+        alternatives: [],
+        recommendation: 'Error',
+        summary: 'Error al generar análisis de alternativas'
+      };
+    }
+
+    const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      return {
+        currentStock: { symbol: input.symbol, name: input.companyName, score: 70, strengths: [], weaknesses: [] },
+        alternatives: [],
+        recommendation: 'N/A',
+        summary: 'Sin respuesta del análisis'
+      };
+    }
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return {
+        currentStock: { symbol: input.symbol, name: input.companyName, score: 70, strengths: [], weaknesses: [] },
+        alternatives: [],
+        recommendation: 'N/A',
+        summary: 'Formato de respuesta inválido'
+      };
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+    return {
+      currentStock: {
+        symbol: input.symbol,
+        name: input.companyName,
+        score: result.currentStock?.score || 70,
+        strengths: result.currentStock?.strengths || [],
+        weaknesses: result.currentStock?.weaknesses || []
+      },
+      alternatives: result.alternatives || [],
+      recommendation: result.recommendation || 'N/A',
+      summary: result.summary || ''
+    };
+  } catch (e) {
+    console.error('Gemini alternatives error', e);
+    return {
+      currentStock: { symbol: input.symbol, name: input.companyName, score: 70, strengths: [], weaknesses: [] },
+      alternatives: [],
+      recommendation: 'Error',
+      summary: 'Error de conexión'
+    };
+  }
+}
