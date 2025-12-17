@@ -52,12 +52,17 @@ const AnalystEstimatesPanel = dynamic(() => import('./AnalystEstimatesPanel'), {
     ssr: false,
 });
 
+const EarningsTranscriptsPanel = dynamic(() => import('./EarningsTranscriptsPanel'), {
+    loading: () => <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+
 function TabSkeleton() {
     return (
-        <div className="space-y-4">
+        <div className="space-y-4" >
             <Skeleton className="h-[200px] w-full rounded-lg bg-gray-800/50" />
             <Skeleton className="h-[300px] w-full rounded-lg bg-gray-800/50" />
-        </div>
+        </div >
     );
 }
 
@@ -91,7 +96,7 @@ export default function StockPageLayout({
                 {/* Mobile Tab Selector */}
                 <div className="md:hidden mb-4 overflow-x-auto">
                     <div className="flex gap-2 pb-2">
-                        {(['resumen', 'valoracion', 'calidad', 'fundamentales', 'insiders', 'estimaciones', 'analisis', 'noticias'] as StockTab[]).map((tab) => (
+                        {(['resumen', 'valoracion', 'calidad', 'fundamentales', 'insiders', 'estimaciones', 'transcripciones', 'analisis', 'noticias'] as StockTab[]).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
@@ -136,6 +141,10 @@ export default function StockPageLayout({
 
                     {activeTab === 'estimaciones' && (
                         <EstimacionesTab symbol={upperSymbol} />
+                    )}
+
+                    {activeTab === 'transcripciones' && (
+                        <TranscripcionesTab symbol={upperSymbol} />
                     )}
 
                     {activeTab === 'analisis' && (
@@ -238,6 +247,17 @@ function EstimacionesTab({ symbol }: { symbol: string }) {
         <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-100">Estimaciones de Analistas</h2>
             <AnalystEstimatesPanel symbol={symbol} />
+        </div>
+    );
+}
+
+
+
+function TranscripcionesTab({ symbol }: { symbol: string }) {
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-100">Transcripciones de Resultados</h2>
+            <EarningsTranscriptsPanel symbol={symbol} />
         </div>
     );
 }

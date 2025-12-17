@@ -107,19 +107,19 @@ export default function AnalystEstimatesPanel({ symbol }: AnalystEstimatesPanelP
                                         <span className="text-gray-100 font-semibold">{getYear(est.date)}</span>
                                     </td>
                                     <td className="py-3 px-2 text-right">
-                                        <div className="text-gray-100">{formatRevenue(est.estimatedRevenueAvg)}</div>
+                                        <div className="text-gray-100">{formatRevenue(est.revenueAvg)}</div>
                                         <div className="text-xs text-gray-500">
-                                            {formatRevenue(est.estimatedRevenueLow)} - {formatRevenue(est.estimatedRevenueHigh)}
+                                            {formatRevenue(est.revenueLow)} - {formatRevenue(est.revenueHigh)}
                                         </div>
                                     </td>
                                     <td className="py-3 px-2 text-right">
-                                        <div className="text-teal-400 font-semibold">{formatEps(est.estimatedEpsAvg)}</div>
+                                        <div className="text-teal-400 font-semibold">{formatEps(est.epsAvg)}</div>
                                         <div className="text-xs text-gray-500">
-                                            {formatEps(est.estimatedEpsLow)} - {formatEps(est.estimatedEpsHigh)}
+                                            {formatEps(est.epsLow)} - {formatEps(est.epsHigh)}
                                         </div>
                                     </td>
                                     <td className="py-3 px-2 text-right">
-                                        <span className="text-gray-300">{est.numberAnalystsEstimatedEps || est.numberAnalystEstimatedRevenue}</span>
+                                        <span className="text-gray-300">{est.numAnalystsEps || est.numAnalystsRevenue}</span>
                                     </td>
                                 </tr>
                             ))}
@@ -132,12 +132,12 @@ export default function AnalystEstimatesPanel({ symbol }: AnalystEstimatesPanelP
                     <h4 className="text-xs font-semibold text-gray-400 uppercase mb-3">Tendencia EPS Proyectado</h4>
                     <div className="flex items-end justify-between gap-2 h-24">
                         {estimates.slice().reverse().map((est, idx) => {
-                            const maxEps = Math.max(...estimates.map(e => e.estimatedEpsAvg || 0));
-                            const height = maxEps > 0 ? ((est.estimatedEpsAvg || 0) / maxEps) * 100 : 0;
+                            const maxEps = Math.max(...estimates.map(e => e.epsAvg || 0));
+                            const height = maxEps > 0 ? ((est.epsAvg || 0) / maxEps) * 100 : 0;
                             return (
                                 <div key={idx} className="flex-1 flex flex-col items-center gap-1">
                                     <span className="text-xs text-teal-400 font-medium">
-                                        {formatEps(est.estimatedEpsAvg)}
+                                        {formatEps(est.epsAvg)}
                                     </span>
                                     <div
                                         className="w-full bg-gradient-to-t from-teal-600 to-teal-400 rounded-t"

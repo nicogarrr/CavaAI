@@ -8,7 +8,8 @@ import { TrendingUp, TrendingDown, Wallet, ArrowRight, Eye, Calendar, Newspaper,
 import { getPortfolioSummary, getPortfolioScores, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getCompanyNews, getStockFinancialData, getUpcomingEarnings, getStockQuote, type EarningsEvent } from '@/lib/actions/finnhub.actions';
-import { getValuationData } from '@/lib/actions/fmp.actions';
+import { getValuationData, getScreenerStocks } from '@/lib/actions/fmp.actions';
+import { MarketMovers } from '@/components/MarketMovers';
 
 interface PersonalizedOverviewProps {
     userId: string;
@@ -37,7 +38,7 @@ interface UndervaluedStock {
     upside: number;
 }
 
-const POPULAR_STOCKS_FOR_OPPORTUNITIES = ['GOOGL', 'AMZN', 'META', 'PYPL', 'CRM', 'ADBE', 'INTC', 'DIS'];
+
 
 export default function PersonalizedOverview({ userId }: PersonalizedOverviewProps) {
     const [loading, setLoading] = useState(true);
@@ -66,23 +67,32 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 // 3. Cargar Watchlist
                 const watchlistProm = getWatchlist();
 
-                // 4. Buscar Oportunidades (DCF)
+                // 4. Buscar Oportunidades (Screener + DCF)
+                const screenerRes = await getScreenerStocks({
+                    marketCapMoreThan: 10000000000,
+                    sector: 'Technology',
+                    limit: 30
+                });
+                const candidates = screenerRes?.map((s: any) => s.symbol) || ['GOOGL', 'AMZN', 'META', 'AMD', 'NVDA'];
+
                 const opportunitiesProm = Promise.all(
-                    POPULAR_STOCKS_FOR_OPPORTUNITIES.map(async (sym) => {
+                    candidates.map(async (sym: string) => {
                         try {
                             const valData = await getValuationData(sym);
-                            const quote = await getStockQuote(sym); // Necesitamos precio real actual
-                            const dcf = valData?.dcf?.dcf?.[0]?.dcf;
+                            const quote = await getStockQuote(sym);
+                            // valData.dcf is { symbol: string, dcf: [...] }
+                            // We need to access the inner dcf array, then the first item's dcf value
+                            const dcfValue = valData?.dcf?.dcf?.[0]?.dcf;
                             const currentPrice = quote?.c || 0;
 
-                            if (dcf && currentPrice > 0) {
-                                const upside = ((dcf - currentPrice) / currentPrice) * 100;
-                                if (upside > 5) { // Solo mostrar si tiene > 5% upside
+                            if (dcfValue && currentPrice > 0) {
+                                const upside = ((dcfValue - currentPrice) / currentPrice) * 100;
+                                if (upside > 5) {
                                     return {
                                         symbol: sym,
-                                        name: sym, // Simplificación por velocidad
+                                        name: sym,
                                         price: currentPrice,
-                                        fairValue: dcf,
+                                        fairValue: dcfValue,
                                         upside: upside
                                     };
                                 }
@@ -237,6 +247,11 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         </CardContent>
                     </Card>
                 ))}
+            </div>
+
+            {/* Market Movers Section */}
+            <div className="mb-8">
+                <MarketMovers />
             </div>
 
             {/* Main Content Grid */}

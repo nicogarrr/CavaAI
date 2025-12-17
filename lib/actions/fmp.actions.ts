@@ -396,21 +396,24 @@ export interface TreasuryRate {
 export interface AnalystEstimate {
     symbol: string;
     date: string;
-    estimatedRevenueAvg: number;
-    estimatedRevenueHigh: number;
-    estimatedRevenueLow: number;
-    estimatedEpsAvg: number;
-    estimatedEpsHigh: number;
-    estimatedEpsLow: number;
-    numberAnalystEstimatedRevenue: number;
-    numberAnalystsEstimatedEps: number;
+    revenueAvg: number;
+    revenueHigh: number;
+    revenueLow: number;
+    epsAvg: number;
+    epsHigh: number;
+    epsLow: number;
+    numAnalystsRevenue: number;
+    numAnalystsEps: number;
 }
 
 export interface PressRelease {
     symbol: string;
-    date: string;
+    publishedDate: string;
     title: string;
     text: string;
+    image?: string;
+    url?: string;
+    site?: string;
 }
 
 /**
@@ -490,4 +493,111 @@ export const getAIContextData = cache(async (symbol: string) => {
     ]);
 
     return { transcript, insiderTrades, estimates };
+});
+
+// ============================================================================
+// MARKET MOVERS & SCREENER ACTIONS
+// ============================================================================
+
+/**
+ * Fetch Market Movers (Gainers, Losers, Active)
+ */
+/**
+ * Fetch Market Movers (Gainers, Losers, Active)
+ */
+export const getMarketMovers = cache(async (type: 'gainers' | 'losers' | 'active'): Promise<any[] | null> => {
+    const data = await fetchFromBackend<any>(`/market-movers/${type}`);
+    // Backend returns { gainers: [...] } or { losers: [...] } etc.
+    if (!data) return [];
+    if (type === 'gainers') return data.gainers || [];
+    if (type === 'losers') return data.losers || [];
+    if (type === 'active') return data.actives || [];
+    return [];
+});
+
+export interface ScreenerFilters {
+    marketCapMoreThan?: number;
+    sector?: string;
+    limit?: number;
+}
+
+/**
+ * Fetch Stocks via Screener
+ */
+export const getScreenerStocks = cache(async (filters: ScreenerFilters): Promise<any[] | null> => {
+    const { marketCapMoreThan, sector, limit = 20 } = filters;
+    const params = new URLSearchParams();
+    if (marketCapMoreThan) params.append('marketCapMoreThan', marketCapMoreThan.toString());
+    if (sector) params.append('sector', sector || '');
+    params.append('limit', limit.toString());
+
+    const data = await fetchFromBackend<{ screener: any[] }>(`/screener?${params.toString()}`);
+    return data?.screener || [];
+});
+
+// ============================================================================
+// EARNINGS & NEWS ACTIONS
+// ============================================================================
+
+export interface FmpArticle {
+    title: string;
+    date: string;
+    content: string;
+    tickers: string;
+    image: string;
+    link: string;
+    author: string;
+    site: string;
+}
+
+export interface GeneralNewsArticle {
+    symbol: string | null;
+    publishedDate: string;
+    publisher: string;
+    title: string;
+    image: string;
+    site: string;
+    text: string;
+    url: string;
+}
+
+export interface EarningsTranscript {
+    symbol: string;
+    quarter: number;
+    year: number;
+    date: string;
+    content: string;
+}
+
+/**
+ * Fetch Earnings Transcripts List
+ */
+export const getEarningsTranscriptsList = cache(async (symbol: string): Promise<any[]> => {
+    const data = await fetchFromBackend<{ transcripts: any[] }>(`/earnings-transcript-list/${symbol}`);
+    return data?.transcripts || [];
+});
+
+/**
+ * Fetch specific Earnings Transcript
+ */
+export const getEarningsTranscriptContent = cache(async (symbol: string, year: number, quarter: number): Promise<EarningsTranscript | null> => {
+    const data = await fetchFromBackend<{ transcript: EarningsTranscript[] }>(`/earnings-transcript/${symbol}?year=${year}&quarter=${quarter}`);
+    // API returns array of 1
+    return data?.transcript?.[0] || null;
+});
+
+/**
+ * Fetch FMP Articles
+ */
+export const getFmpArticles = cache(async (page: number = 0, limit: number = 20): Promise<FmpArticle[]> => {
+    const data = await fetchFromBackend<FmpArticle[]>(`/news/fmp-articles?page=${page}&limit=${limit}`);
+    return data || [];
+});
+
+/**
+ * Fetch General News
+ */
+export const getGeneralNews = cache(async (page: number = 0, limit: number = 20): Promise<GeneralNewsArticle[]> => {
+    const data = await fetchFromBackend<GeneralNewsArticle[]>(`/news/general?page=${page}&limit=${limit}`);
+    return data || [];
 });
