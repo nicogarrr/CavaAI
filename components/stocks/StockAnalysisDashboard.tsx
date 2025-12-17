@@ -1,27 +1,76 @@
-import { Suspense } from 'react';
+'use client';
+
+import { useEffect, useState } from 'react';
 import { getStockFinancialData } from "@/lib/actions/finnhub.actions";
-import AIChecklistSection from "@/components/stocks/AIChecklistSection";
-import PatternAnalysisSection from "@/components/stocks/PatternAnalysisSection";
-import AlternativesSection from "@/components/stocks/AlternativesSection";
-import AnalysisWrapper from "@/components/stocks/AnalysisWrapper";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+// Lazy load heavy child components
+const AIChecklistSection = dynamic(() => import("@/components/stocks/AIChecklistSection"), {
+    loading: () => <Skeleton className="h-[200px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+const PatternAnalysisSection = dynamic(() => import("@/components/stocks/PatternAnalysisSection"), {
+    loading: () => <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+const AlternativesSection = dynamic(() => import("@/components/stocks/AlternativesSection"), {
+    loading: () => <Skeleton className="h-[300px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+const AnalysisWrapper = dynamic(() => import("@/components/stocks/AnalysisWrapper"), {
+    loading: () => <Skeleton className="h-[600px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
 
 interface StockAnalysisDashboardProps {
     symbol: string;
     companyName: string;
     currentPrice: number;
-    // We pass basic info that we already have to avoid refetching if possible, 
-    // but the heavy lifting is done here.
 }
 
-export default async function StockAnalysisDashboard({
+export default function StockAnalysisDashboard({
     symbol,
     companyName,
     currentPrice
 }: StockAnalysisDashboardProps) {
-    // This is the heavy fetch that we want to stream
-    const financialData = await getStockFinancialData(symbol);
+    const [financialData, setFinancialData] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
 
-    if (!financialData) {
+    useEffect(() => {
+        async function fetchData() {
+            try {
+                setLoading(true);
+                setError(false);
+                const data = await getStockFinancialData(symbol);
+                setFinancialData(data);
+            } catch (err) {
+                console.error('Error fetching financial data:', err);
+                setError(true);
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchData();
+    }, [symbol]);
+
+    if (loading) {
+        return (
+            <div className="flex flex-col gap-6 w-full">
+                <div className="flex items-center gap-2 text-gray-400">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Cargando análisis avanzado...</span>
+                </div>
+                <Skeleton className="h-[200px] w-full rounded-lg bg-gray-800/50" />
+                <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />
+                <Skeleton className="h-[300px] w-full rounded-lg bg-gray-800/50" />
+            </div>
+        );
+    }
+
+    if (error || !financialData) {
         return (
             <div className="p-4 rounded-lg bg-red-900/20 border border-red-800 text-red-200">
                 No se pudieron cargar los datos financieros completos para el análisis.
@@ -29,8 +78,6 @@ export default async function StockAnalysisDashboard({
         );
     }
 
-    // Refresh currentPrice from financialData if available (more defined) 
-    // or keep the one passed from prop (which comes from quote)
     const livePrice = financialData.quote?.c || currentPrice;
     const upperSymbol = symbol.toUpperCase();
     const sector = (financialData.profile as any)?.finnhubIndustry || (financialData.profile as any)?.industry || '';
@@ -79,3 +126,4 @@ export default async function StockAnalysisDashboard({
         </div>
     );
 }
+

@@ -1,10 +1,28 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import { getStockHealthScore } from '@/lib/actions/healthScore.actions';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { TrendingUp, TrendingDown, Shield, DollarSign, Activity } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { TrendingUp, TrendingDown, Shield, DollarSign, Activity, Loader2 } from 'lucide-react';
 
 interface HealthScoreProps {
     symbol: string;
+}
+
+interface HealthScoreData {
+    score: number;
+    grade: string;
+    breakdown: {
+        profitability: number;
+        growth: number;
+        stability: number;
+        efficiency: number;
+        valuation: number;
+    };
+    strengths: string[];
+    weaknesses: string[];
 }
 
 const getScoreColor = (score: number) => {
@@ -22,10 +40,46 @@ const getGradeColor = (grade: string) => {
     return 'bg-red-500';
 };
 
-export default async function HealthScore({ symbol }: HealthScoreProps) {
-    const healthScore = await getStockHealthScore(symbol);
+export default function HealthScore({ symbol }: HealthScoreProps) {
+    const [healthScore, setHealthScore] = useState<HealthScoreData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
 
-    if (!healthScore) {
+    useEffect(() => {
+        async function fetchData() {
+            try {
+                setLoading(true);
+                setError(false);
+                const data = await getStockHealthScore(symbol);
+                setHealthScore(data);
+            } catch (err) {
+                console.error('Error fetching health score:', err);
+                setError(true);
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchData();
+    }, [symbol]);
+
+    if (loading) {
+        return (
+            <Card className="p-6 rounded-lg border border-gray-700 bg-gray-800/50">
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-lg font-semibold text-gray-200">Health Score</h2>
+                    <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                </div>
+                <div className="space-y-4">
+                    <Skeleton className="h-4 w-full bg-gray-700" />
+                    <Skeleton className="h-4 w-3/4 bg-gray-700" />
+                    <Skeleton className="h-4 w-5/6 bg-gray-700" />
+                    <Skeleton className="h-4 w-2/3 bg-gray-700" />
+                </div>
+            </Card>
+        );
+    }
+
+    if (error || !healthScore) {
         return (
             <Card className="p-6 rounded-lg border border-gray-700 bg-gray-800/50">
                 <h2 className="text-lg font-semibold mb-4 text-gray-200">Health Score</h2>
@@ -140,4 +194,3 @@ export default async function HealthScore({ symbol }: HealthScoreProps) {
         </Card>
     );
 }
-

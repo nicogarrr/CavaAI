@@ -661,19 +661,20 @@ export async function getUpcomingEarnings(symbols: string[]): Promise<EarningsEv
         const fromDate = today.toISOString().split('T')[0];
         const toDate = nextYear.toISOString().split('T')[0];
 
-        // Fetch earnings for all symbols concurrently
-        const earningsPromises = symbols.map(async (symbol) => {
+        // Limit symbols to avoid rate limiting (max 8 symbols)
+        const limitedSymbols = symbols.slice(0, 8);
+        const allEarnings: EarningsEvent[] = [];
+
+        // Fetch earnings SEQUENTIALLY with delay to avoid rate limiting
+        for (let i = 0; i < limitedSymbols.length; i++) {
+            const symbol = limitedSymbols[i];
             try {
-                // Check Finnhub docs: earnings-calendar supports 'from' and 'to' but typically per symbol or all.
-                // If checking per symbol: /stock/earnings-calendar?symbol=...
-                // Ideally we want to batch this, but Finnhub's /calendar/earnings without symbol returns huge list (premium only sometimes).
-                // Safe bet: fetch per symbol.
                 const url = `${FINNHUB_BASE_URL}/stock/earnings-calendar?symbol=${encodeURIComponent(symbol)}&from=${fromDate}&to=${toDate}&token=${token}`;
                 const data = await fetchJSON<any>(url, 3600); // 1 hour cache
 
                 if (data && Array.isArray(data.earningsCalendar)) {
                     // Filter for future dates only
-                    return data.earningsCalendar
+                    const events = data.earningsCalendar
                         .filter((e: any) => e.date >= fromDate)
                         .map((e: any) => ({
                             symbol: e.symbol,
@@ -683,17 +684,27 @@ export async function getUpcomingEarnings(symbols: string[]): Promise<EarningsEv
                             epsEstimate: e.epsEstimate || null,
                             hour: e.hour || '',
                         }));
+                    allEarnings.push(...events);
                 }
-                return [];
-            } catch (e) {
-                console.error(`Error fetching earnings for ${symbol}`, e);
-                return [];
-            }
-        });
 
-        const results = await Promise.all(earningsPromises);
-        // Flatten and sort by date
-        const allEarnings = results.flat().sort((a, b) => a.date.localeCompare(b.date));
+                // Add delay between requests to avoid rate limiting (300ms)
+                // Skip delay for the last symbol
+                if (i < limitedSymbols.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+            } catch (e: any) {
+                // If we hit rate limit, stop making more requests
+                if (e?.message?.includes('429') || e?.message?.includes('limit') || e?.message?.includes('DOCTYPE')) {
+                    console.warn(`Rate limit hit after ${i + 1} symbols, stopping earnings fetch`);
+                    break;
+                }
+                // For other errors, just log and continue
+                console.error(`Error fetching earnings for ${symbol}`, e);
+            }
+        }
+
+        // Sort by date
+        allEarnings.sort((a, b) => a.date.localeCompare(b.date));
 
         return allEarnings;
     } catch (error) {
