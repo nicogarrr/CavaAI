@@ -173,6 +173,43 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
     }
 }
 
+// Actualizar transacción existente
+export async function updateTransaction(
+    userId: string,
+    transactionId: string,
+    symbol: string,
+    type: 'buy' | 'sell',
+    quantity: number,
+    price: number,
+    date: Date,
+    notes?: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        await connectToDatabase();
+
+        const result = await PortfolioTransaction.updateOne(
+            { _id: transactionId, userId },
+            {
+                symbol: symbol.toUpperCase(),
+                type,
+                quantity,
+                price,
+                date,
+                notes,
+            }
+        );
+
+        if (result.matchedCount === 0) {
+            return { success: false, error: 'Transaction not found' };
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error('Error updating transaction:', error);
+        return { success: false, error: 'Failed to update transaction' };
+    }
+}
+
 export async function deleteTransaction(userId: string, transactionId: string): Promise<{ success: boolean; error?: string }> {
     try {
         await connectToDatabase();
@@ -190,6 +227,27 @@ export async function deleteTransaction(userId: string, transactionId: string): 
     } catch (error) {
         console.error('Error deleting transaction:', error);
         return { success: false, error: 'Failed to delete transaction' };
+    }
+}
+
+// Eliminar todas las transacciones de un símbolo (eliminar posición)
+export async function deleteHolding(userId: string, symbol: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await connectToDatabase();
+
+        const result = await PortfolioTransaction.deleteMany({
+            symbol: symbol.toUpperCase(),
+            userId
+        });
+
+        if (result.deletedCount === 0) {
+            return { success: false, error: 'Holding not found' };
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting holding:', error);
+        return { success: false, error: 'Failed to delete holding' };
     }
 }
 

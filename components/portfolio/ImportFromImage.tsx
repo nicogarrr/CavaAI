@@ -33,38 +33,62 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
     const [importing, setImporting] = useState(false);
 
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
 
-        // Crear preview
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            const base64 = event.target?.result as string;
+        setLoading(true);
+        setError('');
+
+        let allPositions: ExtractedPosition[] = [];
+        let summaryText = '';
+        let detectedCurr: 'EUR' | 'USD' = 'USD';
+
+        // Procesar cada archivo secuencialmente
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+
+            // Crear promesa para leer el archivo
+            const base64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (event) => resolve(event.target?.result as string);
+                reader.readAsDataURL(file);
+            });
+
+            // Mostrar preview del último (o podríamos hacer un carrusel, pero por simplicidad el último)
             setImagePreview(base64);
 
-            // Extraer posiciones con IA
-            setLoading(true);
-            setError('');
-
             try {
+                // Actualizar estado para mostrar progreso
+                // (Podríamos agregar un estado de progreso UI si fuera necesario)
+
                 const result = await extractPortfolioFromImage(base64);
 
                 if (result.success) {
-                    setExtractedPositions(result.positions);
-                    setSummary(result.summary);
-                    setDetectedCurrency(result.detectedCurrency);
-                    // Seleccionar todas por defecto
-                    setSelectedPositions(new Set(result.positions.map(p => p.symbol)));
+                    allPositions = [...allPositions, ...result.positions];
+                    summaryText = result.summary; // Usamos el último resumen o concatenamos
+                    detectedCurr = result.detectedCurrency;
                 } else {
-                    setError(result.error || 'Error al procesar la imagen');
+                    console.error(`Error en archivo ${i + 1}:`, result.error);
                 }
             } catch (err) {
-                setError('Error al conectar con la IA');
+                console.error(`Excepción en archivo ${i + 1}`, err);
             }
+        }
 
-            setLoading(false);
-        };
-        reader.readAsDataURL(file);
+        if (allPositions.length > 0) {
+            setExtractedPositions(prev => [...prev, ...allPositions]); // Añadir a las existentes? O reemplazar? Mejor reemplazar para evitar duplicados de intentos previos, pero el usuario pidió "lotes", tal vez quiera añadir. Resetear antes.
+            // Decisión: Reemplazar lo anterior para un flujo limpio.
+            // Espera, el usuario dijo "añadir mas de una captura en lotes".
+            // Si subo 2, quiero ver todas.
+            setExtractedPositions(allPositions);
+            setSummary(`Procesadas ${files.length} imágenes. ${summaryText}`);
+            setDetectedCurrency(detectedCurr);
+            setSelectedPositions(new Set(allPositions.map(p => p.symbol)));
+        } else {
+            setError('No se pudieron extraer posiciones de las imágenes.');
+        }
+
+        setLoading(false);
     };
 
     const togglePosition = (symbol: string) => {
@@ -83,14 +107,54 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
         const positionsToImport = extractedPositions.filter(p => selectedPositions.has(p.symbol));
 
         for (const pos of positionsToImport) {
-            // Usar precio en USD (ya convertido si era EUR)
-            const buyPrice = pos.currentPriceUSD || pos.currentPrice;
+            let quantity = pos.shares || 0;
+            let buyPrice = pos.currentPriceUSD || pos.currentPrice; // Por defecto
+
+            // Si no tenemos cantidad (o es dudosa con precio muy alto), intentamos calcularla
+            // O si el precio importado parece ser el valor total
+            if (!quantity || quantity === 0) {
+                try {
+                    // Importar dinámicamente para no cargar en el cliente si no se usa
+                    const { getStockQuote } = await import('@/lib/actions/finnhub.actions');
+                    const quote = await getStockQuote(pos.symbol);
+
+                    if (quote && quote.c > 0) {
+                        const realPrice = quote.c;
+
+                        // Si el precio importado es mucho mayor que el real (ej: > 2x), asumimos que es el VALOR TOTAL
+                        // O si no tenemos shares definidos, asumimos que el valor capturado es el Market Value
+                        // (En capturas de resumen suele ser Market Value)
+
+                        // Calculamos shares basados en el valor total capturado / precio real
+                        const detectedValue = pos.marketValue || pos.currentPriceUSD || 0;
+
+                        if (detectedValue > 0) {
+                            quantity = detectedValue / realPrice;
+
+                            // AHORA: Calcular el precio de compra original (Average Price)
+                            // Fórmula: Precio Compra = Precio Actual / (1 + (Porcentaje Ganancia / 100))
+                            // Usamos el % de la captura que representa la rentabilidad total
+                            if (pos.changePercent && pos.changePercent !== 0) {
+                                buyPrice = realPrice / (1 + (pos.changePercent / 100));
+                            } else {
+                                // Si no hay porcentaje, usamos el precio actual (G/P será 0)
+                                buyPrice = realPrice;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error fetching quote for calculation:', e);
+                }
+            }
+
+            // Fallback si falla el cálculo
+            if (quantity === 0) quantity = 1;
 
             await addTransaction(
                 userId,
                 pos.symbol,
                 'buy',
-                1, // 1 acción por defecto (el usuario puede editar después)
+                quantity,
                 buyPrice,
                 new Date(),
                 `Importado desde captura - ${pos.name}`
@@ -123,7 +187,7 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
                 <DialogHeader>
                     <DialogTitle className="text-gray-100">📷 Importar Cartera desde Captura</DialogTitle>
                     <DialogDescription className="text-gray-400">
-                        Sube una captura de tu broker y la IA extraerá tus posiciones automáticamente
+                        Sube una o varias capturas de tu broker y la IA extraerá tus posiciones automáticamente
                     </DialogDescription>
                 </DialogHeader>
 
@@ -133,12 +197,13 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
                         className="border-2 border-dashed border-gray-600 rounded-lg p-12 text-center cursor-pointer hover:border-teal-500 transition-colors"
                     >
                         <Upload className="h-12 w-12 mx-auto text-gray-500 mb-4" />
-                        <p className="text-gray-300 mb-2">Haz click o arrastra una imagen</p>
-                        <p className="text-gray-500 text-sm">PNG, JPG hasta 10MB</p>
+                        <p className="text-gray-300 mb-2">Haz click o arrastra tus imágenes</p>
+                        <p className="text-gray-500 text-sm">Puedes seleccionar múltiples archivos</p>
                         <input
                             ref={fileInputRef}
                             type="file"
                             accept="image/*"
+                            multiple
                             onChange={handleFileSelect}
                             className="hidden"
                         />

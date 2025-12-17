@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { deleteTransaction } from '@/lib/actions/portfolio.actions';
 import { useRouter } from 'next/navigation';
+import EditTransactionDialog from './EditTransactionDialog';
 
 type Transaction = {
   _id: string;
@@ -30,10 +31,10 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
 
   const handleDelete = async (transactionId: string) => {
     if (!confirm('¿Estás seguro de eliminar esta transacción?')) return;
-    
+
     setDeleting(transactionId);
     const result = await deleteTransaction(userId, transactionId);
-    
+
     if (result.success) {
       router.refresh();
     } else {
@@ -90,15 +91,18 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
                       ${(tx.quantity * tx.price).toFixed(2)}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(tx._id)}
-                        disabled={deleting === tx._id}
-                        className="text-red-400 hover:text-red-300 hover:bg-red-950/20"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex justify-center gap-1">
+                        <EditTransactionDialog transaction={tx} userId={userId} />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(tx._id)}
+                          disabled={deleting === tx._id}
+                          className="text-red-400 hover:text-red-300 hover:bg-red-950/20"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

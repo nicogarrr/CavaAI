@@ -69,7 +69,7 @@ export default function AIChecklistSection({
             const data = await generateChecklistWithAI({
                 symbol,
                 companyName,
-                financialData,
+                // financialData, // Evitar enviar payload gigante al server action
                 currentPrice
             });
             setResult(data);

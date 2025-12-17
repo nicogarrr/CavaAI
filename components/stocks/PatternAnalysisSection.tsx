@@ -40,7 +40,7 @@ export default function PatternAnalysisSection({
             const data = await generatePatternAnalysis({
                 symbol,
                 companyName,
-                financialData,
+                // financialData, // Evitar payload grande
                 currentPrice
             });
             setResult(data);

@@ -76,7 +76,7 @@ export default async function PortfolioPage() {
       {/* Holdings and Transactions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
-          <PortfolioHoldings holdings={summary.holdings} />
+          <PortfolioHoldings holdings={summary.holdings} userId={userId} />
         </div>
         <div>
           <PortfolioTransactions transactions={transactions} userId={userId} />
