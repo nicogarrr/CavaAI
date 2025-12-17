@@ -64,7 +64,8 @@ export async function getWatchlist(): Promise<{ symbol: string; addedAt: Date }[
 }
 
 // Añadir a watchlist
-export async function addToWatchlist(symbol: string): Promise<{ success: boolean }> {
+// Añadir a watchlist
+export async function addToWatchlist(symbol: string, company?: string): Promise<{ success: boolean }> {
     try {
         const userId = await getUserId();
         if (!userId) return { success: false };
@@ -77,7 +78,13 @@ export async function addToWatchlist(symbol: string): Promise<{ success: boolean
             return { success: true }; // Ya existe
         }
 
-        await Watchlist.create({ userId, symbol: symbol.toUpperCase() });
+        const companyName = company || symbol; // Fallback
+
+        await Watchlist.create({
+            userId,
+            symbol: symbol.toUpperCase(),
+            company: companyName
+        });
         revalidatePath('/watchlist');
         return { success: true };
     } catch (error) {
