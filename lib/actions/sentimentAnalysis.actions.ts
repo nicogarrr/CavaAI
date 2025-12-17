@@ -82,7 +82,7 @@ IMPORTANTE:
       }],
     };
 
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-3-pro-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
     
     const response = await fetch(endpoint, {
@@ -326,4 +326,5 @@ export async function getCombinedSentimentAnalysis(
     combined,
   };
 }
+
 

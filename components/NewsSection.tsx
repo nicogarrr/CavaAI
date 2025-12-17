@@ -12,16 +12,16 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
         return (
             <div className="w-full h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-6 overflow-y-auto">
                 <h2 className="text-2xl font-bold text-white mb-6">Top Stories</h2>
-                
+
                 {news.length === 0 ? (
                     <div className="flex items-center justify-center h-64 text-gray-500">
                         <p>No hay noticias disponibles en este momento.</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {news.map((article) => (
+                        {news.map((article, index) => (
                             <a
-                                key={article.id}
+                                key={`${article.id}-${index}`}
                                 href={article.url}
                                 target="_blank"
                                 rel="noopener noreferrer"

@@ -1,25 +1,33 @@
 "use client"
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { CommandDialog, CommandEmpty, CommandInput, CommandList } from "@/components/ui/command"
-import {Button} from "@/components/ui/button";
-import {Loader2,  TrendingUp, ExternalLink} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, TrendingUp, ExternalLink, Search } from "lucide-react";
 import Link from "next/link";
-import {searchStocks} from "@/lib/actions/finnhub.actions";
+import { searchStocks } from "@/lib/actions/finnhub.actions";
 
 export default function SearchCommand({ renderAs = 'button', label = 'Add stock', initialStocks }: SearchCommandProps) {
+    const router = useRouter();
     const [open, setOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState("")
     const [loading, setLoading] = useState(false)
     const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks);
+    const [mounted, setMounted] = useState(false);
+    const [navigating, setNavigating] = useState(false);
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
     const isSearchMode = !!searchTerm.trim();
-    
+
     const displayStocks = useMemo(() => {
         return isSearchMode ? stocks : (stocks?.slice(0, 10) || []);
     }, [isSearchMode, stocks]);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -51,7 +59,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
         setLoading(true);
         try {
             const results = await searchStocks(query.trim());
-            
+
             // Solo actualizar si el request no fue cancelado
             if (!controller.signal.aborted) {
                 setStocks(results || []);
@@ -81,7 +89,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
         }
 
         const trimmedQuery = searchTerm.trim();
-        
+
         if (!trimmedQuery) {
             setStocks(initialStocks);
             setLoading(false);
@@ -118,12 +126,24 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
         }
     }, [open, initialStocks]);
 
-    const handleSelectStock = useCallback(() => {
-        // Close dialog immediately for better UX
+    const handleSelectStock = useCallback((symbol: string) => {
+        // Close dialog and navigate immediately
         setOpen(false);
+        setNavigating(true);
         setSearchTerm("");
         setStocks(initialStocks);
-    }, [initialStocks]);
+        // Use router.push for faster navigation
+        router.push(`/stocks/${symbol}`);
+    }, [initialStocks, router]);
+
+    // Evitar hydration mismatch
+    if (!mounted) {
+        return (
+            <Button className="search-btn" aria-label="Abrir buscador">
+                {label}
+            </Button>
+        );
+    }
 
     return (
         <>
@@ -136,10 +156,18 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                 >
                     {label}
                 </button>
-            ): (
-                <Button onClick={() => setOpen(true)} className="search-btn" aria-label="Abrir buscador">
-                    {label}
-                </Button>
+            ) : (
+                <button
+                    onClick={() => setOpen(true)}
+                    className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-gray-400 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700 rounded-lg transition-all duration-200 backdrop-blur-sm"
+                    aria-label="Abrir buscador"
+                >
+                    <Search className="w-4 h-4 text-gray-500" />
+                    <span className="flex-1 text-left">Buscar acciones...</span>
+                    <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 bg-gray-900/50 border border-gray-600 rounded">
+                        Ctrl+K
+                    </kbd>
+                </button>
             )}
             <CommandDialog open={open} onOpenChange={setOpen} className="search-dialog">
                 <div className="search-field">
@@ -159,13 +187,11 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                                 {isSearchMode ? 'Search results' : 'Popular stocks'}
                                 {` `}({displayStocks?.length || 0})
                             </div>
-                            {displayStocks?.map((stock) => (
-                                <li key={stock.symbol} className="search-item">
-                                    <Link
-                                        href={`/stocks/${stock.symbol}`}
-                                        onClick={handleSelectStock}
-                                        className="search-item-link"
-                                        prefetch={true}
+                            {displayStocks?.map((stock, index) => (
+                                <li key={`${stock.symbol}-${index}`} className="search-item">
+                                    <button
+                                        onClick={() => handleSelectStock(stock.symbol)}
+                                        className="search-item-link w-full text-left"
                                     >
                                         <TrendingUp className="h-4 w-4 text-gray-500" />
                                         <div className="flex-1">
@@ -173,25 +199,14 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                                                 {stock.name}
                                             </div>
                                             <div className="text-sm text-gray-500">
-                                                {stock.symbol} | {stock.exchange } | {stock.type}
+                                                {stock.symbol} | {stock.exchange} | {stock.type}
                                             </div>
                                         </div>
-                                    </Link>
-                                    <Link href={`/funds/${stock.symbol}`} prefetch={true}>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8"
-                                            title="Ver ficha detallada"
-                                        >
-                                            <ExternalLink className="h-4 w-4" />
-                                        </Button>
-                                    </Link>
+                                    </button>
                                 </li>
                             ))}
                         </ul>
-                    )
-                    }
+                    )}
                 </CommandList>
             </CommandDialog>
         </>

@@ -33,10 +33,10 @@ export async function generatePortfolioSummary(input: {
   };
 
   try {
-    // Forzar uso de gemini-2.5-flash (eliminar variables de entorno obsoletas)
-    const model = 'gemini-2.5-flash';
+    // Forzar uso de gemini-3-pro-preview (eliminar variables de entorno obsoletas)
+    const model = 'gemini-3-pro-preview';
     // Usar endpoint v1 (v1beta puede no soportar el modelo)
-    const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -203,20 +203,20 @@ Narra los posibles desenlaces con probabilidades (sin tabla)
 
   // Obtener todos los datos financieros y contextuales
   const news = input.financialData?.news || [];
-  const newsText = news.length > 0 
-    ? `\n\nNOTICIAS ACTUALES SOBRE LA EMPRESA (Últimos 30 días):\n${news.map((article: any, idx: number) => 
-        `${idx + 1}. [${new Date(article.datetime * 1000).toLocaleDateString('es-ES')}] ${article.headline}\n   ${article.summary || ''}\n   Fuente: ${article.source}\n`
-      ).join('\n')}`
+  const newsText = news.length > 0
+    ? `\n\nNOTICIAS ACTUALES SOBRE LA EMPRESA (Últimos 30 días):\n${news.map((article: any, idx: number) =>
+      `${idx + 1}. [${new Date(article.datetime * 1000).toLocaleDateString('es-ES')}] ${article.headline}\n   ${article.summary || ''}\n   Fuente: ${article.source}\n`
+    ).join('\n')}`
     : '\n\nNOTICIAS: No se encontraron noticias recientes disponibles.';
 
   const events = input.financialData?.events || [];
   const eventsText = events.length > 0
     ? `\n\n📅 EVENTOS IMPORTANTES PRÓXIMOS:\n${events.map((event: any, idx: number) => {
-        const eventDate = new Date(event.date);
-        const daysUntil = Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-        const importanceEmoji = event.importance === 'high' ? '🔴' : event.importance === 'medium' ? '🟡' : '🟢';
-        return `${importanceEmoji} ${eventDate.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })} (${daysUntil > 0 ? `En ${daysUntil} días` : daysUntil === 0 ? 'HOY' : `${Math.abs(daysUntil)} días atrás`})\n   ${event.event}\n   ${event.description || ''}\n`;
-      }).join('\n')}`
+      const eventDate = new Date(event.date);
+      const daysUntil = Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      const importanceEmoji = event.importance === 'high' ? '🔴' : event.importance === 'medium' ? '🟡' : '🟢';
+      return `${importanceEmoji} ${eventDate.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })} (${daysUntil > 0 ? `En ${daysUntil} días` : daysUntil === 0 ? 'HOY' : `${Math.abs(daysUntil)} días atrás`})\n   ${event.event}\n   ${event.description || ''}\n`;
+    }).join('\n')}`
     : '';
 
   const analystData = input.financialData?.analystRecommendations;
@@ -237,11 +237,11 @@ Narra los posibles desenlaces con probabilidades (sin tabla)
   const insiderData = input.financialData?.insiderTrading;
   const insiderText = insiderData && Array.isArray(insiderData.data) && insiderData.data.length > 0
     ? `\n\n👔 INSIDER TRADING:\n${insiderData.data.slice(0, 10).map((trans: any, idx: number) => {
-        const date = trans.transactionDate ? new Date(trans.transactionDate * 1000).toLocaleDateString('es-ES') : 'N/A';
-        const type = trans.transactionCode === 'P' ? '✅ Compra' : trans.transactionCode === 'S' ? '❌ Venta' : 'N/A';
-        const shares = trans.shares ? trans.shares.toLocaleString() : 'N/A';
-        return `${idx + 1}. [${date}] ${trans.name || 'N/A'}: ${type} de ${shares} acciones a $${trans.price?.toFixed(2) || 'N/A'}`;
-      }).join('\n')}`
+      const date = trans.transactionDate ? new Date(trans.transactionDate * 1000).toLocaleDateString('es-ES') : 'N/A';
+      const type = trans.transactionCode === 'P' ? '✅ Compra' : trans.transactionCode === 'S' ? '❌ Venta' : 'N/A';
+      const shares = trans.shares ? trans.shares.toLocaleString() : 'N/A';
+      return `${idx + 1}. [${date}] ${trans.name || 'N/A'}: ${type} de ${shares} acciones a $${trans.price?.toFixed(2) || 'N/A'}`;
+    }).join('\n')}`
     : '';
 
   const peers = input.financialData?.peers || [];
@@ -290,9 +290,9 @@ INSTRUCCIONES:
   };
 
   try {
-    // Forzar uso de gemini-2.5-flash (eliminar variables de entorno obsoletas)
-    const model = 'gemini-2.5-flash';
-    const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    // Forzar uso de gemini-3-pro-preview (eliminar variables de entorno obsoletas)
+    const model = 'gemini-3-pro-preview';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -425,21 +425,21 @@ IMPORTANTE:
 
   // Obtener noticias actuales de la empresa
   const news = input.financialData?.news || [];
-  const newsText = news.length > 0 
-    ? `\n\nNOTICIAS ACTUALES SOBRE LA EMPRESA (Últimos 30 días):\n${news.map((article: any, idx: number) => 
-        `${idx + 1}. [${new Date(article.datetime * 1000).toLocaleDateString('es-ES')}] ${article.headline}\n   ${article.summary || ''}\n   Fuente: ${article.source}\n`
-      ).join('\n')}`
+  const newsText = news.length > 0
+    ? `\n\nNOTICIAS ACTUALES SOBRE LA EMPRESA (Últimos 30 días):\n${news.map((article: any, idx: number) =>
+      `${idx + 1}. [${new Date(article.datetime * 1000).toLocaleDateString('es-ES')}] ${article.headline}\n   ${article.summary || ''}\n   Fuente: ${article.source}\n`
+    ).join('\n')}`
     : '\n\nNOTICIAS: No se encontraron noticias recientes disponibles.';
 
   // Obtener eventos importantes de la empresa
   const events = input.financialData?.events || [];
   const eventsText = events.length > 0
     ? `\n\nEVENTOS IMPORTANTES PRÓXIMOS DE LA EMPRESA:\n${events.map((event: any, idx: number) => {
-        const eventDate = new Date(event.date);
-        const daysUntil = Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-        const importanceEmoji = event.importance === 'high' ? '🔴' : event.importance === 'medium' ? '🟡' : '🟢';
-        return `${importanceEmoji} ${idx + 1}. ${eventDate.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })} (${daysUntil > 0 ? `En ${daysUntil} días` : daysUntil === 0 ? 'Hoy' : `${Math.abs(daysUntil)} días atrás`})\n   ${event.event}\n   ${event.description || ''}\n`;
-      }).join('\n')}`
+      const eventDate = new Date(event.date);
+      const daysUntil = Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      const importanceEmoji = event.importance === 'high' ? '🔴' : event.importance === 'medium' ? '🟡' : '🟢';
+      return `${importanceEmoji} ${idx + 1}. ${eventDate.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })} (${daysUntil > 0 ? `En ${daysUntil} días` : daysUntil === 0 ? 'Hoy' : `${Math.abs(daysUntil)} días atrás`})\n   ${event.event}\n   ${event.description || ''}\n`;
+    }).join('\n')}`
     : '\n\nEVENTOS: No se encontraron eventos próximos programados.';
 
   // Obtener recomendaciones de analistas
@@ -464,11 +464,11 @@ IMPORTANTE:
   const insiderData = input.financialData?.insiderTrading;
   const insiderText = insiderData && Array.isArray(insiderData.data) && insiderData.data.length > 0
     ? `\n\n👔 INSIDER TRADING (Actividad de Directivos):\n${insiderData.data.slice(0, 10).map((trans: any, idx: number) => {
-        const date = trans.transactionDate ? new Date(trans.transactionDate * 1000).toLocaleDateString('es-ES') : 'N/A';
-        const type = trans.transactionCode === 'P' ? 'Compra' : trans.transactionCode === 'S' ? 'Venta' : trans.transactionCode || 'N/A';
-        const shares = trans.shares ? trans.shares.toLocaleString() : 'N/A';
-        return `${idx + 1}. [${date}] ${trans.name || 'N/A'}: ${type} de ${shares} acciones a $${trans.price?.toFixed(2) || 'N/A'}`;
-      }).join('\n')}`
+      const date = trans.transactionDate ? new Date(trans.transactionDate * 1000).toLocaleDateString('es-ES') : 'N/A';
+      const type = trans.transactionCode === 'P' ? 'Compra' : trans.transactionCode === 'S' ? 'Venta' : trans.transactionCode || 'N/A';
+      const shares = trans.shares ? trans.shares.toLocaleString() : 'N/A';
+      return `${idx + 1}. [${date}] ${trans.name || 'N/A'}: ${type} de ${shares} acciones a $${trans.price?.toFixed(2) || 'N/A'}`;
+    }).join('\n')}`
     : '';
 
   // Obtener datos ESG
@@ -528,9 +528,9 @@ IMPORTANTE:
   };
 
   try {
-    // Forzar uso de gemini-2.5-flash (eliminar variables de entorno obsoletas)
-    const model = 'gemini-2.5-flash';
-    const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    // Forzar uso de gemini-3-pro-preview (eliminar variables de entorno obsoletas)
+    const model = 'gemini-3-pro-preview';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -889,22 +889,22 @@ La inversión ya no es una simple apuesta por el crecimiento evidente del mercad
 
   // Obtener noticias actuales de la empresa
   const news = input.financialData?.news || [];
-  const newsText = news.length > 0 
-    ? `\n\nNOTICIAS ACTUALES SOBRE LA EMPRESA (Últimos 30 días):\n${news.map((article: any, idx: number) => 
-        `${idx + 1}. [${new Date(article.datetime * 1000).toLocaleDateString('es-ES')}] ${article.headline}\n   ${article.summary || ''}\n   Fuente: ${article.source}\n`
-      ).join('\n')}`
+  const newsText = news.length > 0
+    ? `\n\nNOTICIAS ACTUALES SOBRE LA EMPRESA (Últimos 30 días):\n${news.map((article: any, idx: number) =>
+      `${idx + 1}. [${new Date(article.datetime * 1000).toLocaleDateString('es-ES')}] ${article.headline}\n   ${article.summary || ''}\n   Fuente: ${article.source}\n`
+    ).join('\n')}`
     : '\n\nNOTICIAS: No se encontraron noticias recientes disponibles.';
 
   // Obtener eventos importantes de la empresa
   const events = input.financialData?.events || [];
   const eventsText = events.length > 0
     ? `\n\n📅 EVENTOS IMPORTANTES PRÓXIMOS DE LA EMPRESA:\n${events.map((event: any, idx: number) => {
-        const eventDate = new Date(event.date);
-        const daysUntil = Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-        const importanceEmoji = event.importance === 'high' ? '🔴' : event.importance === 'medium' ? '🟡' : '🟢';
-        const urgencyText = daysUntil <= 30 ? `⚠️ PRÓXIMO - ` : '';
-        return `${importanceEmoji} ${urgencyText}${eventDate.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })} (${daysUntil > 0 ? `En ${daysUntil} días` : daysUntil === 0 ? 'HOY' : `${Math.abs(daysUntil)} días atrás`})\n   📊 ${event.event}\n   ${event.description || ''}\n`;
-      }).join('\n')}\n\n⚠️ IMPORTANTE: Los eventos con 🔴 pueden causar volatilidad significativa en el precio de la acción.`
+      const eventDate = new Date(event.date);
+      const daysUntil = Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      const importanceEmoji = event.importance === 'high' ? '🔴' : event.importance === 'medium' ? '🟡' : '🟢';
+      const urgencyText = daysUntil <= 30 ? `⚠️ PRÓXIMO - ` : '';
+      return `${importanceEmoji} ${urgencyText}${eventDate.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })} (${daysUntil > 0 ? `En ${daysUntil} días` : daysUntil === 0 ? 'HOY' : `${Math.abs(daysUntil)} días atrás`})\n   📊 ${event.event}\n   ${event.description || ''}\n`;
+    }).join('\n')}\n\n⚠️ IMPORTANTE: Los eventos con 🔴 pueden causar volatilidad significativa en el precio de la acción.`
     : '\n\n📅 EVENTOS: No se encontraron eventos próximos programados.';
 
   // Obtener recomendaciones de analistas
@@ -929,11 +929,11 @@ La inversión ya no es una simple apuesta por el crecimiento evidente del mercad
   const insiderData = input.financialData?.insiderTrading;
   const insiderText = insiderData && Array.isArray(insiderData.data) && insiderData.data.length > 0
     ? `\n\n👔 INSIDER TRADING (Actividad de Directivos):\n${insiderData.data.slice(0, 10).map((trans: any, idx: number) => {
-        const date = trans.transactionDate ? new Date(trans.transactionDate * 1000).toLocaleDateString('es-ES') : 'N/A';
-        const type = trans.transactionCode === 'P' ? '✅ Compra' : trans.transactionCode === 'S' ? '❌ Venta' : trans.transactionCode || 'N/A';
-        const shares = trans.shares ? trans.shares.toLocaleString() : 'N/A';
-        return `${idx + 1}. [${date}] ${trans.name || 'N/A'}: ${type} de ${shares} acciones a $${trans.price?.toFixed(2) || 'N/A'}`;
-      }).join('\n')}\n\n⚠️ IMPORTANTE: Compras de directivos suelen ser señal positiva, ventas masivas pueden indicar preocupación.`
+      const date = trans.transactionDate ? new Date(trans.transactionDate * 1000).toLocaleDateString('es-ES') : 'N/A';
+      const type = trans.transactionCode === 'P' ? '✅ Compra' : trans.transactionCode === 'S' ? '❌ Venta' : trans.transactionCode || 'N/A';
+      const shares = trans.shares ? trans.shares.toLocaleString() : 'N/A';
+      return `${idx + 1}. [${date}] ${trans.name || 'N/A'}: ${type} de ${shares} acciones a $${trans.price?.toFixed(2) || 'N/A'}`;
+    }).join('\n')}\n\n⚠️ IMPORTANTE: Compras de directivos suelen ser señal positiva, ventas masivas pueden indicar preocupación.`
     : '';
 
   // Obtener datos ESG
@@ -1009,9 +1009,9 @@ IMPORTANTE - IMPARCIALIDAD Y USO DE DATOS REALES:
   };
 
   try {
-    // Forzar uso de gemini-2.5-flash (eliminar variables de entorno obsoletas)
-    const model = 'gemini-2.5-flash';
-    const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    // Forzar uso de gemini-3-pro-preview (eliminar variables de entorno obsoletas)
+    const model = 'gemini-3-pro-preview';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1042,12 +1042,12 @@ export async function estimateHealthScoreWithAI(
   companyName: string,
   financialData: any,
   missingCategories: string[] // ej: ['growth', 'stability', 'profitability', 'efficiency', 'valuation']
-): Promise<{ 
-  profitability?: number; 
-  growth?: number; 
-  stability?: number; 
-  efficiency?: number; 
-  valuation?: number; 
+): Promise<{
+  profitability?: number;
+  growth?: number;
+  stability?: number;
+  efficiency?: number;
+  valuation?: number;
 }> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
@@ -1169,9 +1169,9 @@ MÉTRICAS FINANCIERAS DISPONIBLES:
 - Quick Ratio: ${availableData.metrics.quickRatio || 'N/A'}
 
 NOTICIAS RECIENTES (${availableData.recentNews.length}):
-${availableData.recentNews.map((n: any, idx: number) => 
-  `${idx + 1}. [${new Date(n.datetime * 1000).toLocaleDateString('es-ES')}] ${n.headline}\n   ${n.summary?.substring(0, 100) || ''}...`
-).join('\n\n')}
+${availableData.recentNews.map((n: any, idx: number) =>
+      `${idx + 1}. [${new Date(n.datetime * 1000).toLocaleDateString('es-ES')}] ${n.headline}\n   ${n.summary?.substring(0, 100) || ''}...`
+    ).join('\n\n')}
 
 CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
 
@@ -1184,8 +1184,8 @@ CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
       }],
     };
 
-    const model = 'gemini-2.5-flash';
-    const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    const model = 'gemini-3-pro-preview';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1194,7 +1194,7 @@ CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
     });
 
     const json = await res.json().catch(() => ({} as any));
-    
+
     if (!res.ok) {
       console.warn('Gemini Health Score estimation failed:', res.status);
       return {};
@@ -1214,32 +1214,32 @@ CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
 
     try {
       const estimates = JSON.parse(jsonMatch[0]);
-      
+
       // Validar y ajustar valores para TODAS las categorías solicitadas
-      const result: { 
-        profitability?: number; 
-        growth?: number; 
-        stability?: number; 
-        efficiency?: number; 
-        valuation?: number; 
+      const result: {
+        profitability?: number;
+        growth?: number;
+        stability?: number;
+        efficiency?: number;
+        valuation?: number;
       } = {};
-      
+
       if (missingCategories.includes('profitability') && typeof estimates.profitability === 'number') {
         result.profitability = Math.max(0, Math.min(100, Math.round(estimates.profitability)));
       }
-      
+
       if (missingCategories.includes('growth') && typeof estimates.growth === 'number') {
         result.growth = Math.max(0, Math.min(100, Math.round(estimates.growth)));
       }
-      
+
       if (missingCategories.includes('stability') && typeof estimates.stability === 'number') {
         result.stability = Math.max(0, Math.min(100, Math.round(estimates.stability)));
       }
-      
+
       if (missingCategories.includes('efficiency') && typeof estimates.efficiency === 'number') {
         result.efficiency = Math.max(0, Math.min(100, Math.round(estimates.efficiency)));
       }
-      
+
       if (missingCategories.includes('valuation') && typeof estimates.valuation === 'number') {
         result.valuation = Math.max(0, Math.min(100, Math.round(estimates.valuation)));
       }
@@ -1252,5 +1252,316 @@ CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
   } catch (error) {
     console.error('Error estimating Health Score with AI:', error);
     return {};
+  }
+}
+
+// Función para generar respuestas del checklist automáticamente con IA
+export async function generateChecklistWithAI(input: {
+  symbol: string;
+  companyName: string;
+  financialData: any;
+  currentPrice: number;
+}): Promise<{
+  answers: { questionId: string; answer: 'yes' | 'no' | 'maybe'; explanation: string }[];
+  overallScore: number;
+  recommendation: string;
+  summary: string;
+}> {
+  // Verificar autenticación (permitir en desarrollo sin MongoDB)
+  try {
+    const auth = await getAuth();
+    if (auth) {
+      const session = await auth.api.getSession({ headers: await headers() });
+      if (!session?.user && process.env.NODE_ENV !== 'development') {
+        throw new Error('Usuario no autenticado');
+      }
+    }
+  } catch (authError: any) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('⚠️ Generando checklist sin autenticación (modo desarrollo)');
+    } else {
+      throw new Error('Usuario no autenticado');
+    }
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    return {
+      answers: [],
+      overallScore: 0,
+      recommendation: 'No disponible - falta API key',
+      summary: 'IA desactivada: falta la clave de Gemini.'
+    };
+  }
+
+  const CHECKLIST_QUESTIONS = [
+    { id: 'understand_business', question: '¿Entiendo cómo gana dinero esta empresa?', weight: 1 },
+    { id: 'competitive_moat', question: '¿Tiene una ventaja competitiva duradera (moat)?', weight: 2 },
+    { id: 'pricing_power', question: '¿Puede subir precios sin perder clientes?', weight: 1.5 },
+    { id: 'recurring_revenue', question: '¿Tiene ingresos recurrentes o predecibles?', weight: 1.5 },
+    { id: 'management_quality', question: '¿El equipo directivo es honesto y competente?', weight: 1.5 },
+    { id: 'skin_in_game', question: '¿Los directivos tienen participación significativa?', weight: 1 },
+    { id: 'debt_level', question: '¿El nivel de deuda es manejable (Debt/EBITDA < 3)?', weight: 1.5 },
+    { id: 'free_cash_flow', question: '¿Genera Free Cash Flow positivo y consistente?', weight: 2 },
+    { id: 'return_on_capital', question: '¿El ROIC/ROE es superior al 15% sostenido?', weight: 1.5 },
+    { id: 'margin_of_safety', question: '¿El precio actual ofrece margen de seguridad (>25%)?', weight: 2 },
+    { id: 'growth_potential', question: '¿Tiene potencial de crecimiento para los próximos 5 años?', weight: 1 },
+    { id: 'industry_tailwinds', question: '¿El sector tiene vientos de cola favorables?', weight: 1 },
+    { id: 'no_major_risks', question: '¿Están identificados y son manejables los principales riesgos?', weight: 1.5 },
+    { id: 'capital_allocation', question: '¿La empresa asigna bien el capital (dividendos, recompras, M&A)?', weight: 1 },
+    { id: 'would_hold_10_years', question: '¿Mantendría esta acción durante 10 años sin mirar el precio?', weight: 2 }
+  ];
+
+  const questionsText = CHECKLIST_QUESTIONS.map((q, i) => `${i + 1}. [${q.id}] ${q.question}`).join('\n');
+
+  const system = `Eres un analista de inversión value investing experto. Analiza los datos financieros proporcionados y responde a las 15 preguntas del checklist de inversión de forma objetiva y basada en datos.
+
+Para cada pregunta, responde con:
+- "yes" si los datos apoyan claramente una respuesta positiva
+- "no" si los datos indican claramente una respuesta negativa  
+- "maybe" si hay evidencia mixta o insuficiente
+
+IMPORTANTE: Sé objetivo y basado en datos reales. No fuerces respuestas positivas.
+
+Responde SOLO con un JSON válido en este formato exacto:
+{
+  "answers": [
+    {"questionId": "understand_business", "answer": "yes|no|maybe", "explanation": "Explicación breve de 1-2 líneas"},
+    ...para cada una de las 15 preguntas
+  ],
+  "overallScore": número del 0-100,
+  "recommendation": "COMPRA FUERTE|COMPRAR|MANTENER|EVITAR|EVITAR FUERTE",
+  "summary": "Resumen ejecutivo de 2-3 frases sobre la calidad de la inversión"
+}`;
+
+  const prompt = `Analiza ${input.companyName} (${input.symbol}) a $${input.currentPrice.toFixed(2)} y responde estas 15 preguntas:
+
+${questionsText}
+
+DATOS FINANCIEROS:
+${JSON.stringify(input.financialData, null, 2)}
+
+Responde con JSON válido únicamente.`;
+
+  const payload = {
+    contents: [{ role: 'user', parts: [{ text: `${system}\n\n${prompt}` }] }],
+  };
+
+  try {
+    const model = 'gemini-3-pro-preview';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+
+    const json = await res.json().catch(() => ({} as any));
+
+    if (!res.ok) {
+      console.error('Gemini API error', res.status);
+      return { answers: [], overallScore: 0, recommendation: 'Error', summary: 'Error al generar análisis' };
+    }
+
+    const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      return { answers: [], overallScore: 0, recommendation: 'Error', summary: 'Sin respuesta' };
+    }
+
+    // Extraer JSON
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return { answers: [], overallScore: 0, recommendation: 'Error', summary: 'Formato inválido' };
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+    return {
+      answers: result.answers || [],
+      overallScore: result.overallScore || 0,
+      recommendation: result.recommendation || 'N/A',
+      summary: result.summary || ''
+    };
+  } catch (e) {
+    console.error('Gemini checklist error', e);
+    return { answers: [], overallScore: 0, recommendation: 'Error', summary: 'Error de conexión' };
+  }
+}
+
+// Función para análisis de patrones técnicos con IA
+export async function generatePatternAnalysis(input: {
+  symbol: string;
+  companyName: string;
+  financialData: any;
+  currentPrice: number;
+}): Promise<{
+  patterns: {
+    name: string;
+    type: 'bullish' | 'bearish' | 'neutral';
+    confidence: number;
+    description: string;
+    priceTarget?: number;
+  }[];
+  elliottWave: {
+    currentWave: string;
+    position: string;
+    nextMove: string;
+    confidence: number;
+  };
+  supportResistance: {
+    supports: number[];
+    resistances: number[];
+    keyLevel: number;
+    trend: 'bullish' | 'bearish' | 'sideways';
+  };
+  summary: string;
+}> {
+  // Verificar autenticación (permitir en desarrollo)
+  try {
+    const auth = await getAuth();
+    if (auth) {
+      const session = await auth.api.getSession({ headers: await headers() });
+      if (!session?.user && process.env.NODE_ENV !== 'development') {
+        throw new Error('Usuario no autenticado');
+      }
+    }
+  } catch (authError: any) {
+    if (process.env.NODE_ENV !== 'development') {
+      throw new Error('Usuario no autenticado');
+    }
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    return {
+      patterns: [],
+      elliottWave: { currentWave: 'N/A', position: 'N/A', nextMove: 'N/A', confidence: 0 },
+      supportResistance: { supports: [], resistances: [], keyLevel: 0, trend: 'sideways' },
+      summary: 'IA desactivada: falta API key'
+    };
+  }
+
+  const system = `Eres un analista técnico experto especializado en:
+- Patrones chartistas (cabeza-hombros, triángulos, banderas, cuñas, doble techo/suelo, etc.)
+- Ondas de Elliott
+- Niveles de soporte y resistencia
+- Fibonacci
+
+Analiza los datos proporcionados y detecta patrones técnicos.
+
+Responde SOLO con JSON válido en este formato:
+{
+  "patterns": [
+    {
+      "name": "Nombre del patrón (ej: Bandera Alcista, Cabeza y Hombros Invertido)",
+      "type": "bullish|bearish|neutral",
+      "confidence": número 0-100,
+      "description": "Explicación breve del patrón y su implicación",
+      "priceTarget": número objetivo de precio si aplica
+    }
+  ],
+  "elliottWave": {
+    "currentWave": "1|2|3|4|5|A|B|C o N/A si no hay patrón claro",
+    "position": "Inicio|Mitad|Final de la onda",
+    "nextMove": "Descripción del próximo movimiento esperado",
+    "confidence": número 0-100
+  },
+  "supportResistance": {
+    "supports": [array de niveles de soporte en orden descendente],
+    "resistances": [array de niveles de resistencia en orden ascendente],
+    "keyLevel": nivel más importante actual,
+    "trend": "bullish|bearish|sideways"
+  },
+  "summary": "Resumen ejecutivo de 2-3 líneas del análisis técnico"
+}`;
+
+  const technicalData = input.financialData?.technicalAnalysis;
+  const quote = input.financialData?.quote;
+
+  const prompt = `Analiza técnicamente ${input.companyName} (${input.symbol}) a $${input.currentPrice.toFixed(2)}
+
+DATOS TÉCNICOS DISPONIBLES:
+- Precio actual: $${input.currentPrice}
+- Precio apertura: $${quote?.o || 'N/A'}
+- Precio cierre anterior: $${quote?.pc || 'N/A'}
+- Máximo 52 semanas: $${quote?.h52 || technicalData?.resistance || 'N/A'}
+- Mínimo 52 semanas: $${quote?.l52 || technicalData?.support || 'N/A'}
+- Soporte estimado: $${technicalData?.support || 'N/A'}
+- Resistencia estimada: $${technicalData?.resistance || 'N/A'}
+- Tendencia: ${technicalData?.trend || 'N/A'}
+- Volumen promedio: ${technicalData?.avgVolume || 'N/A'}
+
+MÉTRICAS FINANCIERAS:
+${JSON.stringify(input.financialData?.metrics || {}, null, 2)}
+
+Identifica:
+1. Patrones chartistas visibles
+2. Posible conteo de ondas de Elliott
+3. Niveles clave de soporte y resistencia
+4. Tendencia general
+
+Responde con JSON válido únicamente.`;
+
+  const payload = {
+    contents: [{ role: 'user', parts: [{ text: `${system}\n\n${prompt}` }] }],
+  };
+
+  try {
+    const model = 'gemini-3-pro-preview';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+
+    const json = await res.json().catch(() => ({} as any));
+
+    if (!res.ok) {
+      console.error('Gemini Pattern API error', res.status);
+      return {
+        patterns: [],
+        elliottWave: { currentWave: 'Error', position: '', nextMove: '', confidence: 0 },
+        supportResistance: { supports: [], resistances: [], keyLevel: input.currentPrice, trend: 'sideways' },
+        summary: 'Error al generar análisis de patrones'
+      };
+    }
+
+    const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      return {
+        patterns: [],
+        elliottWave: { currentWave: 'N/A', position: '', nextMove: '', confidence: 0 },
+        supportResistance: { supports: [], resistances: [], keyLevel: input.currentPrice, trend: 'sideways' },
+        summary: 'Sin respuesta del análisis'
+      };
+    }
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return {
+        patterns: [],
+        elliottWave: { currentWave: 'N/A', position: '', nextMove: '', confidence: 0 },
+        supportResistance: { supports: [], resistances: [], keyLevel: input.currentPrice, trend: 'sideways' },
+        summary: 'Formato de respuesta inválido'
+      };
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+    return {
+      patterns: result.patterns || [],
+      elliottWave: result.elliottWave || { currentWave: 'N/A', position: '', nextMove: '', confidence: 0 },
+      supportResistance: result.supportResistance || { supports: [], resistances: [], keyLevel: input.currentPrice, trend: 'sideways' },
+      summary: result.summary || ''
+    };
+  } catch (e) {
+    console.error('Gemini pattern analysis error', e);
+    return {
+      patterns: [],
+      elliottWave: { currentWave: 'Error', position: '', nextMove: '', confidence: 0 },
+      supportResistance: { supports: [], resistances: [], keyLevel: input.currentPrice, trend: 'sideways' },
+      summary: 'Error de conexión'
+    };
   }
 }

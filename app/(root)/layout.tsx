@@ -1,24 +1,24 @@
 import Header from "@/components/Header";
-import {getAuth} from "@/lib/better-auth/auth";
-import {headers} from "next/headers";
-import {redirect} from "next/navigation";
+import { getAuth } from "@/lib/better-auth/auth";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import Footer from "@/components/Footer";
-import {searchStocks} from "@/lib/actions/finnhub.actions";
+import { searchStocks } from "@/lib/actions/finnhub.actions";
 import React from "react";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import OnlineBanner from "@/components/OnlineBanner";
 
 // Forzar renderizado dinámico porque usa headers() y requiere autenticación
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const Layout = async ({ children }: { children : React.ReactNode }) => {
+const Layout = async ({ children }: { children: React.ReactNode }) => {
     try {
         const auth = await getAuth();
         if (!auth) redirect('/sign-in');
-        
+
         const session = await auth.api.getSession({ headers: await headers() });
 
-        if(!session?.user) redirect('/sign-in');
+        if (!session?.user) redirect('/sign-in');
 
         const user = {
             id: session.user.id,
@@ -27,16 +27,6 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
         }
 
         const initialStocks = await searchStocks().catch(() => []);
-
-        const OnlineBanner = () => {
-            const online = useOnlineStatus();
-            if (online) return null;
-            return (
-                <div role="status" aria-live="polite" className="w-full bg-yellow-100 text-yellow-800 text-sm py-2 px-4 text-center">
-                    You are offline. Some data may be outdated until the connection is restored.
-                </div>
-            );
-        };
 
         return (
             <main className="min-h-screen text-gray-400">
