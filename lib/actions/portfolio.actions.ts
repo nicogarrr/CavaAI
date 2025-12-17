@@ -312,3 +312,30 @@ export async function getPortfolioWithWeights(userId: string) {
         weight: summary.totalValue > 0 ? (h.value / summary.totalValue) * 100 : 0
     }));
 }
+
+// Actualizar precios de holdings existentes (para refresco cliente)
+export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Promise<PortfolioHolding[]> {
+    try {
+        const updatedHoldings = await Promise.all(holdings.map(async (h) => {
+            const quote = await getQuote(h.symbol);
+            const currentPrice = quote?.c || h.currentPrice; // Use old price if fetch fails
+
+            const value = h.quantity * currentPrice;
+            const gain = value - h.cost; // h.cost is totalCost
+            const gainPercent = h.cost > 0 ? (gain / h.cost) * 100 : 0;
+
+            return {
+                ...h,
+                currentPrice,
+                value,
+                gain,
+                gainPercent
+            };
+        }));
+
+        return updatedHoldings;
+    } catch (error) {
+        console.error('Error refreshing portfolio holdings:', error);
+        return holdings;
+    }
+}

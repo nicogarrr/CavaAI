@@ -446,95 +446,59 @@ export async function getStockFinancialData(symbol: string): Promise<{
         const token = env.FINNHUB_API_KEY;
         if (!token) return null;
 
-        // Obtener datos críticos secuencialmente con delays para evitar rate limiting
-        // Precios siempre frescos - máximo 60 segundos de cache
-        const quote = await fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null);
+        // Start all requests in parallel
+        const quotePromise = fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null);
+        const profilePromise = fetchJSON<FinnhubProfile2>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 86400).catch(() => null);
+        const metricsPromise = fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 86400).catch(() => ({ metric: {} }));
+        const newsPromise = getCompanyNews(symbol, 10).catch(() => []);
 
-        // Delay pequeño entre requests
-        await new Promise(resolve => setTimeout(resolve, 150));
+        const eventsUrl = `${FINNHUB_BASE_URL}/stock/earnings-calendar?symbol=${encodeURIComponent(symbol)}&from=${Math.floor(Date.now() / 1000) - (90 * 24 * 60 * 60)}&to=${Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60)}&token=${token}`;
+        const eventsPromise = fetchJSON<any>(eventsUrl, 86400).catch(() => null);
 
-        // Perfil cambia poco, pero mantener actualizado - 1 hora máximo
-        const profile = await fetchJSON<FinnhubProfile2>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 3600).catch(() => null);
+        const recUrl = `${FINNHUB_BASE_URL}/stock/recommendation?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+        const recPromise = fetchJSON<any>(recUrl, 86400).catch(() => null);
 
-        // Delay pequeño entre requests
-        await new Promise(resolve => setTimeout(resolve, 150));
+        const indexComparisonPromise = getIndexComparison(symbol).catch(() => null);
 
-        // Métricas financieras - datos reales actualizados cada hora
-        const metrics = await fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 3600).catch(() => ({ metric: {} }));
+        const peersUrl = `${FINNHUB_BASE_URL}/stock/peers?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+        const peersPromise = fetchJSON<string[]>(peersUrl, 86400).catch(() => null);
 
-        // Obtener noticias reales actualizadas (máximo 60 segundos de cache)
-        await new Promise(resolve => setTimeout(resolve, 150));
-        const newsArticles = await getCompanyNews(symbol, 10).catch(() => []);
+        const insiderUrl = `${FINNHUB_BASE_URL}/stock/insider-transactions?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+        const insiderPromise = fetchJSON<any>(insiderUrl, 86400).catch(() => null);
 
-        // Obtener eventos reales actualizados
-        await new Promise(resolve => setTimeout(resolve, 150));
+        // Await all promises
+        const [
+            quote,
+            profile,
+            metrics,
+            newsArticles,
+            eventsData,
+            recData,
+            indexComparison,
+            peersData,
+            insiderTrading
+        ] = await Promise.all([
+            quotePromise,
+            profilePromise,
+            metricsPromise,
+            newsPromise,
+            eventsPromise,
+            recPromise,
+            indexComparisonPromise,
+            peersPromise,
+            insiderPromise
+        ]);
+
+        // Process Events
         let events: CompanyEvent[] = [];
-        try {
-            const eventsUrl = `${FINNHUB_BASE_URL}/stock/earnings-calendar?symbol=${encodeURIComponent(symbol)}&from=${Math.floor(Date.now() / 1000) - (90 * 24 * 60 * 60)}&to=${Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60)}&token=${token}`;
-            const eventsData = await fetchJSON<any>(eventsUrl, 3600).catch(() => null);
-            if (eventsData && Array.isArray(eventsData.earningsCalendar)) {
-                events = eventsData.earningsCalendar.map((e: any) => ({
-                    date: e.date || '',
-                    event: e.event || 'Earnings',
-                    description: `EPS Estimate: ${e.epsEstimate || 'N/A'}, EPS Actual: ${e.epsActual || 'N/A'}`,
-                    importance: 'high' as const,
-                }));
-            }
-        } catch (e) {
-            console.warn(`Error fetching events for ${symbol}:`, e);
+        if (eventsData && Array.isArray(eventsData.earningsCalendar)) {
+            events = eventsData.earningsCalendar.map((e: any) => ({
+                date: e.date || '',
+                event: e.event || 'Earnings',
+                description: `EPS Estimate: ${e.epsEstimate || 'N/A'}, EPS Actual: ${e.epsActual || 'N/A'}`,
+                importance: 'high' as const,
+            }));
         }
-
-        // Obtener recomendaciones de analistas reales
-        await new Promise(resolve => setTimeout(resolve, 150));
-        let analystRecommendations: any = null;
-        let targetPrice: any = null;
-        try {
-            const recUrl = `${FINNHUB_BASE_URL}/stock/recommendation?symbol=${encodeURIComponent(symbol)}&token=${token}`;
-            const recData = await fetchJSON<any>(recUrl, 3600).catch(() => null);
-            if (recData && Array.isArray(recData) && recData.length > 0) {
-                analystRecommendations = recData[0]; // Más reciente
-            }
-
-            // Target price desde recommendation o buscar en otra fuente
-            if (recData && recData.length > 0 && recData[0].targetMeanPrice) {
-                targetPrice = {
-                    targetMeanPrice: recData[0].targetMeanPrice,
-                    targetHigh: recData[0].targetHigh,
-                    targetLow: recData[0].targetLow,
-                };
-            }
-        } catch (e) {
-            console.warn(`Error fetching analyst recommendations for ${symbol}:`, e);
-        }
-
-        // Obtener comparación con índices real
-        await new Promise(resolve => setTimeout(resolve, 150));
-        const indexComparison = await getIndexComparison(symbol).catch(() => null);
-
-        // Obtener peers reales
-        await new Promise(resolve => setTimeout(resolve, 150));
-        let peers: string[] = [];
-        try {
-            const peersUrl = `${FINNHUB_BASE_URL}/stock/peers?symbol=${encodeURIComponent(symbol)}&token=${token}`;
-            const peersData = await fetchJSON<string[]>(peersUrl, 3600).catch(() => null);
-            if (Array.isArray(peersData)) {
-                peers = peersData.filter(p => p && p !== symbol).slice(0, 10);
-            }
-        } catch (e) {
-            console.warn(`Error fetching peers for ${symbol}:`, e);
-        }
-
-        // Insider trading (si está disponible en el plan)
-        await new Promise(resolve => setTimeout(resolve, 150));
-        let insiderTrading: any = null;
-        try {
-            const insiderUrl = `${FINNHUB_BASE_URL}/stock/insider-transactions?symbol=${encodeURIComponent(symbol)}&token=${token}`;
-            insiderTrading = await fetchJSON<any>(insiderUrl, 3600).catch(() => null);
-        } catch (e) {
-            // Silenciar error si no está disponible en el plan
-        }
-
-        // Si hay IPO date en el profile, agregarlo como evento
         if (profile?.ipo) {
             events.push({
                 date: profile.ipo,
@@ -542,6 +506,26 @@ export async function getStockFinancialData(symbol: string): Promise<{
                 description: `Initial Public Offering date`,
                 importance: 'low',
             });
+        }
+
+        // Process Recommendations
+        let analystRecommendations: any = null;
+        let targetPrice: any = null;
+        if (recData && Array.isArray(recData) && recData.length > 0) {
+            analystRecommendations = recData[0]; // Recent
+            if (recData[0].targetMeanPrice) {
+                targetPrice = {
+                    targetMeanPrice: recData[0].targetMeanPrice,
+                    targetHigh: recData[0].targetHigh,
+                    targetLow: recData[0].targetLow,
+                };
+            }
+        }
+
+        // Process Peers
+        let peers: string[] = [];
+        if (Array.isArray(peersData)) {
+            peers = peersData.filter(p => p && p !== symbol).slice(0, 10);
         }
 
         return {
@@ -552,10 +536,10 @@ export async function getStockFinancialData(symbol: string): Promise<{
             events,
             analystRecommendations: analystRecommendations || targetPrice,
             peers,
-            technicalAnalysis: null, // No disponible directamente en Finnhub
+            technicalAnalysis: null,
             indexComparison,
             insiderTrading,
-            esgData: null, // No disponible en plan gratuito
+            esgData: null,
         };
     } catch (error) {
         console.error('Error fetching financial data for', symbol, error);
@@ -653,5 +637,67 @@ export async function getStockQuote(symbol: string): Promise<{ c: number; d: num
         return await fetchJSON<any>(url, 60);
     } catch {
         return null;
+    }
+}
+
+export type EarningsEvent = {
+    symbol: string;
+    date: string;
+    quarter: number;
+    year: number;
+    epsEstimate: number | null;
+    hour: string;
+};
+
+export async function getUpcomingEarnings(symbols: string[]): Promise<EarningsEvent[]> {
+    try {
+        const token = env.FINNHUB_API_KEY;
+        if (!token) return [];
+
+        const today = new Date();
+        const nextYear = new Date();
+        nextYear.setDate(today.getDate() + 365); // Look ahead 1 year to ensure we find next events
+
+        const fromDate = today.toISOString().split('T')[0];
+        const toDate = nextYear.toISOString().split('T')[0];
+
+        // Fetch earnings for all symbols concurrently
+        const earningsPromises = symbols.map(async (symbol) => {
+            try {
+                // Check Finnhub docs: earnings-calendar supports 'from' and 'to' but typically per symbol or all.
+                // If checking per symbol: /stock/earnings-calendar?symbol=...
+                // Ideally we want to batch this, but Finnhub's /calendar/earnings without symbol returns huge list (premium only sometimes).
+                // Safe bet: fetch per symbol.
+                const url = `${FINNHUB_BASE_URL}/stock/earnings-calendar?symbol=${encodeURIComponent(symbol)}&from=${fromDate}&to=${toDate}&token=${token}`;
+                const data = await fetchJSON<any>(url, 3600); // 1 hour cache
+
+                if (data && Array.isArray(data.earningsCalendar)) {
+                    // Filter for future dates only
+                    return data.earningsCalendar
+                        .filter((e: any) => e.date >= fromDate)
+                        .map((e: any) => ({
+                            symbol: e.symbol,
+                            date: e.date,
+                            quarter: e.quarter,
+                            year: e.year,
+                            epsEstimate: e.epsEstimate || null,
+                            hour: e.hour || '',
+                        }));
+                }
+                return [];
+            } catch (e) {
+                console.error(`Error fetching earnings for ${symbol}`, e);
+                return [];
+            }
+        });
+
+        const results = await Promise.all(earningsPromises);
+        // Flatten and sort by date
+        const allEarnings = results.flat().sort((a, b) => a.date.localeCompare(b.date));
+
+        return allEarnings;
+    } catch (error) {
+        console.error('Error fetching upcoming earnings:', error);
+        return [];
     }
 }
