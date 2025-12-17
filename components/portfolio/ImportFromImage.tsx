@@ -28,6 +28,7 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
     const [extractedPositions, setExtractedPositions] = useState<ExtractedPosition[]>([]);
     const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set());
     const [summary, setSummary] = useState('');
+    const [detectedCurrency, setDetectedCurrency] = useState<'EUR' | 'USD'>('USD');
     const [error, setError] = useState('');
     const [importing, setImporting] = useState(false);
 
@@ -51,6 +52,7 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
                 if (result.success) {
                     setExtractedPositions(result.positions);
                     setSummary(result.summary);
+                    setDetectedCurrency(result.detectedCurrency);
                     // Seleccionar todas por defecto
                     setSelectedPositions(new Set(result.positions.map(p => p.symbol)));
                 } else {
@@ -81,14 +83,8 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
         const positionsToImport = extractedPositions.filter(p => selectedPositions.has(p.symbol));
 
         for (const pos of positionsToImport) {
-            // Calcular precio de compra estimado si tenemos rentabilidad
-            let buyPrice = pos.currentPrice;
-            if (pos.changePercent && pos.currentPrice) {
-                // Si tenemos cambio %, asumimos que es el cambio total desde compra
-                // buyPrice = currentPrice / (1 + changePercent/100)
-                // Pero como el cambio es del día, usamos el precio actual
-                buyPrice = pos.estimatedBuyPrice || pos.currentPrice;
-            }
+            // Usar precio en USD (ya convertido si era EUR)
+            const buyPrice = pos.currentPriceUSD || pos.currentPrice;
 
             await addTransaction(
                 userId,
@@ -111,6 +107,7 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
         setExtractedPositions([]);
         setSelectedPositions(new Set());
         setSummary('');
+        setDetectedCurrency('USD');
         setError('');
     };
 
@@ -196,8 +193,8 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
                                             key={pos.symbol}
                                             onClick={() => togglePosition(pos.symbol)}
                                             className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${selectedPositions.has(pos.symbol)
-                                                    ? 'bg-teal-900/40 border border-teal-600'
-                                                    : 'bg-gray-800 border border-gray-700'
+                                                ? 'bg-teal-900/40 border border-teal-600'
+                                                : 'bg-gray-800 border border-gray-700'
                                                 }`}
                                         >
                                             <div className="flex items-center gap-3">
@@ -211,7 +208,10 @@ export default function ImportFromImage({ userId }: ImportFromImageProps) {
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <div className="text-white">${pos.currentPrice.toFixed(2)}</div>
+                                                <div className="text-white flex items-center gap-1">
+                                                    {pos.currency === 'EUR' && <span className="text-xs text-yellow-400">€{pos.currentPrice.toFixed(2)} →</span>}
+                                                    ${pos.currentPriceUSD?.toFixed(2) || pos.currentPrice.toFixed(2)}
+                                                </div>
                                                 <div className={`text-sm ${pos.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                                     {pos.changePercent >= 0 ? '+' : ''}{pos.changePercent.toFixed(2)}%
                                                 </div>

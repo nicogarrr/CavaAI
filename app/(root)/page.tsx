@@ -1,64 +1,41 @@
 import { Suspense } from 'react';
-import NewsSection from "@/components/NewsSection";
-import LazyTradingViewWidget from "@/components/LazyTradingViewWidget";
-import { NewsLoadingSkeleton } from "@/components/LoadingState";
-import {
-    HEATMAP_WIDGET_CONFIG,
-    MARKET_DATA_WIDGET_CONFIG,
-    MARKET_OVERVIEW_WIDGET_CONFIG,
-    NEWS_SYMBOLS
-} from "@/lib/constants";
+import { getAuth } from '@/lib/better-auth/auth';
+import { headers } from 'next/headers';
+import PersonalizedOverview from '@/components/PersonalizedOverview';
+import { Loader2 } from 'lucide-react';
 
-// Forzar renderizado dinámico porque puede requerir datos de usuario
+// Forzar renderizado dinámico porque requiere datos de usuario
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const Home = () => {
-    const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
-
-    return (
-        <div className="flex min-h-screen home-wrapper">
-            <section className="grid w-full gap-8 home-section">
-                <div className="md:col-span-1 xl:col-span-1">
-                    {/* Carga inmediatamente (prioridad) */}
-                    <LazyTradingViewWidget
-                        title="Market Overview"
-                        scriptUrl={`${scriptUrl}market-overview.js`}
-                        config={MARKET_OVERVIEW_WIDGET_CONFIG}
-                        className="custom-chart"
-                        height={600}
-                        priority={true}
-                    />
-                </div>
-                <div className="md-col-span xl:col-span-2">
-                    {/* Lazy load cuando esté en viewport */}
-                    <LazyTradingViewWidget
-                        title="Stock Heatmap"
-                        scriptUrl={`${scriptUrl}stock-heatmap.js`}
-                        config={HEATMAP_WIDGET_CONFIG}
-                        height={600}
-                        priority={false}
-                    />
-                </div>
-            </section>
-            <section className="grid w-full gap-8 home-section">
-                <div className="h-full md:col-span-1 xl:col-span-2">
-                    {/* Lazy load cuando esté en viewport */}
-                    <LazyTradingViewWidget
-                        scriptUrl={`${scriptUrl}market-quotes.js`}
-                        config={MARKET_DATA_WIDGET_CONFIG}
-                        height={600}
-                        priority={false}
-                    />
-                </div>
-                <div className="h-full md:col-span-1 xl:col-span-1">
-                    <Suspense fallback={<NewsLoadingSkeleton />}>
-                        <NewsSection symbols={NEWS_SYMBOLS} />
-                    </Suspense>
-                </div>
-            </section>
-        </div>
-    )
+async function getUserId(): Promise<string> {
+    try {
+        const auth = await getAuth();
+        if (!auth) return 'dev-user-123';
+        const session = await auth.api.getSession({ headers: await headers() });
+        return session?.user?.id || 'dev-user-123';
+    } catch {
+        return 'dev-user-123';
+    }
 }
 
-export default Home;
+function LoadingSkeleton() {
+    return (
+        <div className="flex items-center justify-center min-h-[400px]">
+            <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
+            <span className="ml-3 text-gray-400">Cargando tu dashboard...</span>
+        </div>
+    );
+}
+
+export default async function Home() {
+    const userId = await getUserId();
+
+    return (
+        <div className="flex min-h-screen flex-col p-6">
+            <Suspense fallback={<LoadingSkeleton />}>
+                <PersonalizedOverview userId={userId} />
+            </Suspense>
+        </div>
+    );
+}
