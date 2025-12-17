@@ -29,13 +29,13 @@ async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T>
     try {
         const res = await fetch(url, { ...options, signal: controller.signal });
         clearTimeout(timeoutId);
-        
+
         if (!res.ok) {
             // Lanzar errores apropiados en lugar de retornar arrays vacíos
             if (res.status === 429) {
                 throw new RateLimitError(`API rate limit reached for ${url}`);
             }
-            
+
             if (res.status >= 500) {
                 throw new ExternalAPIError(
                     `External API error (${res.status}) for ${url}`,
@@ -43,7 +43,7 @@ async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T>
                     { status: res.status, statusText: res.statusText }
                 );
             }
-            
+
             throw new ExternalAPIError(
                 `Failed to fetch ${url}: ${res.status} ${res.statusText}`,
                 'finnhub',
@@ -53,12 +53,12 @@ async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T>
         return (await res.json()) as T;
     } catch (error: unknown) {
         clearTimeout(timeoutId);
-        
+
         // Si es un error de nuestra aplicación, re-lanzarlo
         if (error instanceof RateLimitError || error instanceof ExternalAPIError) {
             throw error;
         }
-        
+
         // Manejar otros errores
         const appError = toAppError(error);
         if (appError.message.includes('AbortError') || appError.message.includes('aborted')) {
@@ -68,7 +68,7 @@ async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T>
                 appError
             );
         }
-        
+
         throw new ExternalAPIError(
             `Unexpected error fetching ${url}`,
             'finnhub',
@@ -140,12 +140,12 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
         // Use new multi-source news aggregation for better coverage
         const { getNewsWithFallback } = await import('./newsSources.actions');
         const news = await getNewsWithFallback(symbols, 6);
-        
+
         // If multi-source returns results, use them
         if (news && news.length > 0) {
             return news;
         }
-        
+
         // Fallback to original Finnhub-only implementation
         const range = getDateRange(5);
         const token = env.FINNHUB_API_KEY;
@@ -171,7 +171,7 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
                     // Noticias siempre frescas - máximo 60 segundos de cache
                     const articles = await fetchJSON<RawNewsArticle[]>(url, 60);
                     perSymbolArticles[sym] = (articles || []).filter(validateArticle);
-                    
+
                     // Delay de 200ms entre requests para evitar rate limiting
                     if (limitedSymbols.indexOf(sym) < limitedSymbols.length - 1) {
                         await new Promise(resolve => setTimeout(resolve, 200));
@@ -238,12 +238,12 @@ export async function getCompanyNews(symbol: string, maxArticles = 20): Promise<
         // Use new multi-source news aggregation for better coverage
         const { getCompanyNewsWithFallback } = await import('./newsSources.actions');
         const news = await getCompanyNewsWithFallback(symbol, maxArticles);
-        
+
         // If multi-source returns results, use them
         if (news && news.length > 0) {
             return news;
         }
-        
+
         // Fallback to original Finnhub-only implementation
         const range = getDateRange(30); // Últimos 30 días
         const token = env.FINNHUB_API_KEY;
@@ -293,7 +293,7 @@ export async function getCompanyEvents(symbol: string): Promise<CompanyEvent[]> 
         try {
             const earningsUrl = `${FINNHUB_BASE_URL}/calendar/earnings?symbol=${encodeURIComponent(symbol)}&from=${today.toISOString().split('T')[0]}&to=${nextYear.toISOString().split('T')[0]}&token=${token}`;
             const earnings = await fetchJSON<any>(earningsUrl, 3600).catch(() => null);
-            
+
             if (earnings?.earningsCalendar && Array.isArray(earnings.earningsCalendar)) {
                 earnings.earningsCalendar.slice(0, 8).forEach((item: any) => {
                     if (item.date) {
@@ -336,9 +336,9 @@ export async function getTechnicalAnalysis(symbol: string, days = 252): Promise<
 
         const to = Math.floor(Date.now() / 1000);
         const from = to - (days * 24 * 60 * 60);
-        
+
         const candles = await getCandles(symbol, from, to, 'D', 3600);
-        
+
         if (!candles || candles.s === 'no_data' || candles.c.length === 0) {
             return null;
         }
@@ -352,7 +352,7 @@ export async function getTechnicalAnalysis(symbol: string, days = 252): Promise<
         const recentPrices = prices.slice(-60);
         const recentHighs = highs.slice(-60);
         const recentLows = lows.slice(-60);
-        
+
         const support = Math.min(...recentLows);
         const resistance = Math.max(...recentHighs);
 
@@ -449,23 +449,23 @@ export async function getStockFinancialData(symbol: string): Promise<{
         // Obtener datos críticos secuencialmente con delays para evitar rate limiting
         // Precios siempre frescos - máximo 60 segundos de cache
         const quote = await fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null);
-        
+
         // Delay pequeño entre requests
         await new Promise(resolve => setTimeout(resolve, 150));
-        
+
         // Perfil cambia poco, pero mantener actualizado - 1 hora máximo
         const profile = await fetchJSON<FinnhubProfile2>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 3600).catch(() => null);
-        
+
         // Delay pequeño entre requests
         await new Promise(resolve => setTimeout(resolve, 150));
-        
+
         // Métricas financieras - datos reales actualizados cada hora
         const metrics = await fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 3600).catch(() => ({ metric: {} }));
 
         // Obtener noticias reales actualizadas (máximo 60 segundos de cache)
         await new Promise(resolve => setTimeout(resolve, 150));
         const newsArticles = await getCompanyNews(symbol, 10).catch(() => []);
-        
+
         // Obtener eventos reales actualizados
         await new Promise(resolve => setTimeout(resolve, 150));
         let events: CompanyEvent[] = [];
@@ -483,7 +483,7 @@ export async function getStockFinancialData(symbol: string): Promise<{
         } catch (e) {
             console.warn(`Error fetching events for ${symbol}:`, e);
         }
-        
+
         // Obtener recomendaciones de analistas reales
         await new Promise(resolve => setTimeout(resolve, 150));
         let analystRecommendations: any = null;
@@ -494,7 +494,7 @@ export async function getStockFinancialData(symbol: string): Promise<{
             if (recData && Array.isArray(recData) && recData.length > 0) {
                 analystRecommendations = recData[0]; // Más reciente
             }
-            
+
             // Target price desde recommendation o buscar en otra fuente
             if (recData && recData.length > 0 && recData[0].targetMeanPrice) {
                 targetPrice = {
@@ -506,11 +506,11 @@ export async function getStockFinancialData(symbol: string): Promise<{
         } catch (e) {
             console.warn(`Error fetching analyst recommendations for ${symbol}:`, e);
         }
-        
+
         // Obtener comparación con índices real
         await new Promise(resolve => setTimeout(resolve, 150));
         const indexComparison = await getIndexComparison(symbol).catch(() => null);
-        
+
         // Obtener peers reales
         await new Promise(resolve => setTimeout(resolve, 150));
         let peers: string[] = [];
@@ -523,7 +523,7 @@ export async function getStockFinancialData(symbol: string): Promise<{
         } catch (e) {
             console.warn(`Error fetching peers for ${symbol}:`, e);
         }
-        
+
         // Insider trading (si está disponible en el plan)
         await new Promise(resolve => setTimeout(resolve, 150));
         let insiderTrading: any = null;
@@ -544,10 +544,10 @@ export async function getStockFinancialData(symbol: string): Promise<{
             });
         }
 
-        return { 
-            quote, 
-            profile, 
-            metrics, 
+        return {
+            quote,
+            profile,
+            metrics,
             news: newsArticles,
             events,
             analystRecommendations: analystRecommendations || targetPrice,
@@ -643,3 +643,15 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
         return [];
     }
 });
+
+// Helper para obtener solo la cotización (más ligero que getStockFinancialData)
+export async function getStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
+    try {
+        const token = env.FINNHUB_API_KEY;
+        if (!token) return null;
+        const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+        return await fetchJSON<any>(url, 60);
+    } catch {
+        return null;
+    }
+}

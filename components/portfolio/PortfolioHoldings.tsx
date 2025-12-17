@@ -6,12 +6,34 @@ import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import Link from 'next/link';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
+import { deleteHolding } from '@/lib/actions/portfolio.actions';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Trash2 } from 'lucide-react';
 
 type Props = {
   holdings: PortfolioHolding[];
+  userId: string;
 };
 
-export default function PortfolioHoldings({ holdings }: Props) {
+export default function PortfolioHoldings({ holdings, userId }: Props) {
+  const router = useRouter();
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const handleDelete = async (symbol: string) => {
+    if (!confirm(`¿Estás seguro de eliminar toda la posición en ${symbol}? Esto borrará todas las transacciones asociadas.`)) return;
+
+    setDeleting(symbol);
+    const result = await deleteHolding(userId, symbol);
+
+    if (result.success) {
+      router.refresh();
+    } else {
+      alert('Error al eliminar la posición');
+    }
+    setDeleting(null);
+  };
   return (
     <Card className="bg-gray-800/50 border-gray-700">
       <CardHeader>
@@ -34,6 +56,7 @@ export default function PortfolioHoldings({ holdings }: Props) {
                   <TableHead className="text-right">Precio Actual</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead className="text-right">G/P</TableHead>
+                  <TableHead className="text-center">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -42,7 +65,7 @@ export default function PortfolioHoldings({ holdings }: Props) {
                   return (
                     <TableRow key={holding.symbol}>
                       <TableCell>
-                        <Link 
+                        <Link
                           href={`/stocks/${holding.symbol}`}
                           className="font-mono font-bold text-teal-400 hover:text-teal-300 transition-colors"
                         >
@@ -66,13 +89,25 @@ export default function PortfolioHoldings({ holdings }: Props) {
                           <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
                             {isPositive ? '+' : ''}${holding.gain.toFixed(2)}
                           </span>
-                          <Badge 
+                          <Badge
                             variant={isPositive ? 'default' : 'destructive'}
                             className="text-xs"
                           >
                             {isPositive ? '+' : ''}{holding.gainPercent.toFixed(2)}%
                           </Badge>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(holding.symbol)}
+                          disabled={deleting === holding.symbol}
+                          className="text-red-400 hover:text-red-300 hover:bg-red-950/20"
+                          title="Eliminar posición completa"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );

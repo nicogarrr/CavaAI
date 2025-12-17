@@ -1259,7 +1259,7 @@ CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
 export async function generateChecklistWithAI(input: {
   symbol: string;
   companyName: string;
-  financialData: any;
+  financialData?: any;
   currentPrice: number;
 }): Promise<{
   answers: { questionId: string; answer: 'yes' | 'no' | 'maybe'; explanation: string }[];
@@ -1281,6 +1281,18 @@ export async function generateChecklistWithAI(input: {
       console.warn('⚠️ Generando checklist sin autenticación (modo desarrollo)');
     } else {
       throw new Error('Usuario no autenticado');
+    }
+  }
+
+  // Obtener datos financieros si no se proporcionan
+  let financialData = input.financialData;
+  if (!financialData) {
+    try {
+      const { getStockFinancialData } = await import('./finnhub.actions');
+      financialData = await getStockFinancialData(input.symbol);
+    } catch (error) {
+      console.error('Error fetching financial data server-side:', error);
+      // Continuar con lo que tengamos o fallar controladamente
     }
   }
 
@@ -1339,7 +1351,7 @@ Responde SOLO con un JSON válido en este formato exacto:
 ${questionsText}
 
 DATOS FINANCIEROS:
-${JSON.stringify(input.financialData, null, 2)}
+${JSON.stringify(financialData, null, 2)}
 
 Responde con JSON válido únicamente.`;
 
@@ -1392,7 +1404,7 @@ Responde con JSON válido únicamente.`;
 export async function generatePatternAnalysis(input: {
   symbol: string;
   companyName: string;
-  financialData: any;
+  financialData?: any;
   currentPrice: number;
 }): Promise<{
   patterns: {
@@ -1856,13 +1868,26 @@ IMPORTANTE: Detecta la moneda de los precios:
 - Si ves símbolo $ o "USD" → currency = "USD"
 - Los brokers europeos (Trade Republic, DEGIRO, etc.) suelen mostrar precios en EUR
 
-Para cada posición, intenta extraer:
+IMPORTANTE SOBRE VALORES:
+- En los resúmenes de cartera, el número grande suele ser el VALOR TOTAL DE LA POSICIÓN (Market Value), NO el precio por acción.
+- El precio por acción y la cantidad (shares) suelen estar en letra más pequeña.
+- Intenta deducir la cantidad (shares) si es posible.
+
+IMPORTANTE SOBRE SIGNOS (+/-):
+- Fíjate en el COLOR del porcentaje de cambio:
+- ROJO = NEGATIVO (Añade un signo "-" si no lo tiene)
+- VERDE = POSITIVO
+- Si ves una flecha hacia abajo (↓), es NEGATIVO.
+- Si ves una flecha hacia arriba (↑), es POSITIVO.
+
+Para cada posición, extrae:
 - Símbolo (ticker) - Convierte símbolos europeos a US (ej: 2PP = PYPL, AMZ = AMZN, ADB = ADBE, UNH = UNH, UT8 = UBER, NOVC = NVO, RACE = RACE)
 - Nombre de la empresa
-- Precio actual (en la moneda original de la captura)
-- Cambio del día
-- Cambio porcentual (%)
-- Moneda detectada (EUR o USD)
+- marketValue: Valor total de la posición (el número principal) en la moneda detectada
+- sharePrice: Precio de una acción individual (si es visible o deducible) en la moneda detectada
+- shares: Cantidad de acciones (si es visible)
+- changePercent: Cambio porcentual (%)
+- currency: Moneda detectada (EUR o USD)
 
 RESPONDE SOLO CON JSON VÁLIDO en este formato:
 {
@@ -1871,13 +1896,13 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
     {
       "symbol": "PYPL",
       "name": "PayPal Holdings Inc",
-      "currentPrice": 474.66,
-      "change": -82.27,
-      "changePercent": -14.77,
-      "currency": "EUR"
+      "marketValue": 474.66,
+      "sharePrice": null, 
+      "shares": null,
+      "changePercent": -14.77
     }
   ],
-  "summary": "Cartera con X posiciones en EUR. Sectores principales: Tech, Healthcare."
+  "summary": "Cartera con X posiciones en EUR."
 }`;
 
   // Preparar payload con imagen
@@ -1960,24 +1985,34 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
     const positions: ExtractedPosition[] = (result.positions || []).map((p: any) => {
       const rawSymbol = (p.symbol || '').toUpperCase().replace(/\s/g, '');
       const mappedSymbol = symbolMap[rawSymbol] || rawSymbol;
-      const priceInOriginalCurrency = parseFloat(p.currentPrice) || 0;
+
+      const marketValue = parseFloat(p.marketValue) || parseFloat(p.currentPrice) || 0;
+      const sharePrice = parseFloat(p.sharePrice) || 0;
+      const shares = parseFloat(p.shares) || 0;
+
+      // Usar sharePrice si existe, si no, usar marketValue temporalmente pero marcando que es marketValue
+      const effectivePrice = sharePrice > 0 ? sharePrice : marketValue;
 
       // Convertir a USD si está en EUR
       const priceInUSD = detectedCurrency === 'EUR'
-        ? priceInOriginalCurrency * EUR_TO_USD_RATE
-        : priceInOriginalCurrency;
+        ? effectivePrice * EUR_TO_USD_RATE
+        : effectivePrice;
+
+      const marketValueInUSD = detectedCurrency === 'EUR'
+        ? marketValue * EUR_TO_USD_RATE
+        : marketValue;
 
       return {
         symbol: mappedSymbol,
         name: p.name || mappedSymbol,
-        currentPrice: priceInOriginalCurrency,
+        currentPrice: effectivePrice,
         currentPriceUSD: priceInUSD,
         change: parseFloat(p.change) || 0,
         changePercent: parseFloat(p.changePercent) || 0,
         currency: detectedCurrency,
-        estimatedBuyPrice: p.estimatedBuyPrice ? parseFloat(p.estimatedBuyPrice) : undefined,
-        shares: p.shares ? parseFloat(p.shares) : undefined,
-        marketValue: p.marketValue ? parseFloat(p.marketValue) : undefined,
+        estimatedBuyPrice: undefined,
+        shares: shares > 0 ? shares : (sharePrice > 0 ? marketValue / sharePrice : undefined),
+        marketValue: marketValue,
       };
     });
 
