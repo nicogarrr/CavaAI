@@ -5,6 +5,7 @@ import StockNews from "@/components/stocks/StockNews";
 import HealthScore from "@/components/stocks/HealthScore";
 import AIChecklistSection from "@/components/stocks/AIChecklistSection";
 import PatternAnalysisSection from "@/components/stocks/PatternAnalysisSection";
+import AlternativesSection from "@/components/stocks/AlternativesSection";
 import { getProfile, getStockFinancialData } from "@/lib/actions/finnhub.actions";
 import {
     SYMBOL_INFO_WIDGET_CONFIG,
@@ -125,6 +126,17 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                 <PatternAnalysisSection
                     symbol={upperSymbol}
                     companyName={companyName}
+                    financialData={financialData}
+                    currentPrice={currentPrice}
+                />
+            </section>
+
+            {/* Alternatives Section - Full Width */}
+            <section className="w-full">
+                <AlternativesSection
+                    symbol={upperSymbol}
+                    companyName={companyName}
+                    sector={(financialData?.profile as any)?.finnhubIndustry || (financialData?.profile as any)?.industry || ''}
                     financialData={financialData}
                     currentPrice={currentPrice}
                 />
