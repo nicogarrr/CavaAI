@@ -1800,3 +1800,170 @@ Responde con JSON válido únicamente.`;
     };
   }
 }
+
+// ============================================
+// Importar Cartera desde Captura de Pantalla (IA Vision)
+// ============================================
+
+export interface ExtractedPosition {
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  change: number;
+  changePercent: number;
+  // Calculado: si tenemos rentabilidad, calculamos precio de compra
+  estimatedBuyPrice?: number;
+  shares?: number;
+  marketValue?: number;
+}
+
+export async function extractPortfolioFromImage(imageBase64: string): Promise<{
+  success: boolean;
+  positions: ExtractedPosition[];
+  summary: string;
+  error?: string;
+}> {
+  // Permitir en desarrollo
+  try {
+    const auth = await getAuth();
+    if (auth) {
+      const session = await auth.api.getSession({ headers: await headers() });
+      if (!session?.user && process.env.NODE_ENV !== 'development') {
+        return { success: false, positions: [], summary: '', error: 'Usuario no autenticado' };
+      }
+    }
+  } catch (authError: any) {
+    if (process.env.NODE_ENV !== 'development') {
+      return { success: false, positions: [], summary: '', error: 'Usuario no autenticado' };
+    }
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    return { success: false, positions: [], summary: '', error: 'Falta API key de Gemini' };
+  }
+
+  const system = `Eres un experto en análisis de imágenes de carteras de inversión. Analiza esta captura de pantalla de un broker/app de inversión y extrae TODAS las posiciones que veas.
+
+Para cada posición, intenta extraer:
+- Símbolo (ticker) - IMPORTANTE: Convierte símbolos europeos a US (ej: 2PP = PYPL, AMZ = AMZN, ADB = ADBE, UNH = UNH, UT8 = UBER, NOVC = NVO, RACE = RACE)
+- Nombre de la empresa
+- Precio actual
+- Cambio del día (€ o $)
+- Cambio porcentual (%)
+- Si ves rentabilidad total, úsala para estimar el precio de compra
+
+RESPONDE SOLO CON JSON VÁLIDO en este formato:
+{
+  "positions": [
+    {
+      "symbol": "PYPL",
+      "name": "PayPal Holdings Inc",
+      "currentPrice": 474.66,
+      "change": -82.27,
+      "changePercent": -14.77,
+      "estimatedBuyPrice": null
+    }
+  ],
+  "summary": "Cartera con X posiciones. Sectores principales: Tech, Healthcare. Rendimiento general: positivo/negativo."
+}`;
+
+  // Preparar payload con imagen
+  const payload = {
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: system },
+        {
+          inline_data: {
+            mime_type: 'image/jpeg',
+            data: imageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '')
+          }
+        }
+      ]
+    }]
+  };
+
+  try {
+    // Usar modelo con vision
+    const model = 'gemini-2.0-flash';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+
+    const json = await res.json().catch(() => ({} as any));
+
+    if (!res.ok) {
+      console.error('Gemini Vision API error', res.status, json);
+      return {
+        success: false,
+        positions: [],
+        summary: '',
+        error: `Error de API: ${res.status}`
+      };
+    }
+
+    const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      return { success: false, positions: [], summary: '', error: 'Sin respuesta de la IA' };
+    }
+
+    // Extraer JSON de la respuesta
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return { success: false, positions: [], summary: '', error: 'Formato de respuesta inválido' };
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+
+    // Mapear símbolos europeos a US
+    const symbolMap: Record<string, string> = {
+      '2PP': 'PYPL', 'PYPL': 'PYPL',
+      'AMZ': 'AMZN', 'AMZN': 'AMZN',
+      'ADB': 'ADBE', 'ADBE': 'ADBE',
+      'UNH': 'UNH',
+      'UT8': 'UBER', 'UBER': 'UBER',
+      'NOVC': 'NVO', 'NVO': 'NVO',
+      'RACE': 'RACE',
+      'AAPL': 'AAPL',
+      'MSFT': 'MSFT',
+      'GOOGL': 'GOOGL', 'GOOG': 'GOOGL',
+      'META': 'META',
+      'NVDA': 'NVDA',
+      'TSLA': 'TSLA',
+      'V': 'V', 'VISA': 'V',
+      'MA': 'MA',
+      'JPM': 'JPM',
+    };
+
+    const positions: ExtractedPosition[] = (result.positions || []).map((p: any) => {
+      const rawSymbol = (p.symbol || '').toUpperCase().replace(/\s/g, '');
+      const mappedSymbol = symbolMap[rawSymbol] || rawSymbol;
+
+      return {
+        symbol: mappedSymbol,
+        name: p.name || mappedSymbol,
+        currentPrice: parseFloat(p.currentPrice) || 0,
+        change: parseFloat(p.change) || 0,
+        changePercent: parseFloat(p.changePercent) || 0,
+        estimatedBuyPrice: p.estimatedBuyPrice ? parseFloat(p.estimatedBuyPrice) : undefined,
+        shares: p.shares ? parseFloat(p.shares) : undefined,
+        marketValue: p.marketValue ? parseFloat(p.marketValue) : undefined,
+      };
+    });
+
+    return {
+      success: true,
+      positions,
+      summary: result.summary || `${positions.length} posiciones encontradas`
+    };
+  } catch (e) {
+    console.error('Gemini Vision error', e);
+    return { success: false, positions: [], summary: '', error: 'Error de conexión' };
+  }
+}
