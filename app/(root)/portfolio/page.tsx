@@ -8,6 +8,7 @@ import PortfolioHoldings from '@/components/portfolio/PortfolioHoldings';
 import PortfolioTransactions from '@/components/portfolio/PortfolioTransactions';
 import PortfolioScores from '@/components/portfolio/PortfolioScores';
 import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
+import ImportFromImage from '@/components/portfolio/ImportFromImage';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Wallet } from 'lucide-react';
@@ -55,7 +56,10 @@ export default async function PortfolioPage() {
               </p>
             </div>
           </div>
-          <AddTransactionButton userId={userId} />
+          <div className="flex items-center gap-2">
+            <ImportFromImage userId={userId} />
+            <AddTransactionButton userId={userId} />
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
-import { getQuote, getProfile } from '@/lib/actions/finnhub.actions';
+import { getStockFinancialData } from '@/lib/actions/finnhub.actions';
 import { Eye, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import WatchlistRemoveButton from '@/components/watchlist/WatchlistRemoveButton';
@@ -23,17 +23,14 @@ export default async function WatchlistPage() {
     const watchlistStocks: WatchlistStock[] = await Promise.all(
         watchlistItems.map(async (item) => {
             try {
-                const [quote, profile] = await Promise.all([
-                    getQuote(item.symbol),
-                    getProfile(item.symbol)
-                ]);
+                const financialData = await getStockFinancialData(item.symbol);
 
                 return {
                     symbol: item.symbol,
-                    name: profile?.name || item.symbol,
-                    price: quote?.c || 0,
-                    change: quote?.d || 0,
-                    changePercent: quote?.dp || 0,
+                    name: financialData?.profile?.name || item.symbol,
+                    price: financialData?.quote?.c || 0,
+                    change: financialData?.quote?.d || 0,
+                    changePercent: financialData?.quote?.dp || 0,
                     addedAt: item.addedAt
                 };
             } catch {
