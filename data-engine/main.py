@@ -1,3 +1,5 @@
+import os
+# Force reload trigger
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
@@ -396,6 +398,25 @@ async def get_stock_peers_endpoint(symbol: str):
     symbol = symbol.upper()
     data = fetch_stock_peers(symbol)
     return data
+
+# ============================================================================
+# STRATEGIES
+# ============================================================================
+
+from modules.garp import run_garp_strategy
+
+@app.get("/strategies/garp")
+async def get_garp_strategy(limit: int = 10):
+    """
+    Get generic GARP strategy (ROE > 15%, Price > SMA200, PEG < 1.5).
+    Scrapes S&P 500 and filters via yfinance.
+    """
+    try:
+        # Increase limit internally to find candidates, then slice
+        data = run_garp_strategy(limit=limit)
+        return {"strategy": "GARP Top 12 Months", "count": len(data), "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================
 # KNOWLEDGE BASE - RAG Value Investing Agent

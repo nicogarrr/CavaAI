@@ -644,3 +644,34 @@ export const getStockPeers = cache(async (symbol: string): Promise<PeerCompany |
         return null;
     }
 });
+
+/**
+ * Fetch GARP Strategy Picks
+ */
+export interface GarpStock {
+    symbol: string;
+    companyName: string;
+    price: number;
+    doe: number; // ROE
+    peg: number;
+    sma200: number;
+    sector: string;
+    industry: string;
+}
+
+export const getGarpStrategy = cache(async (limit: number = 20): Promise<{ strategy: string; count: number; data: GarpStock[] } | null> => {
+    // Force no-store to ensure we get fresh data from the python backend every time
+    // This is crucial for strategies that might change daily/hourly
+    try {
+        const response = await fetch(`${FMP_BACKEND_URL}/strategies/garp?limit=${limit}`, {
+            cache: 'no-store',
+            next: { revalidate: 0 }
+        });
+
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (error) {
+        console.error("Error fetching GARP strategy:", error);
+        return null;
+    }
+});

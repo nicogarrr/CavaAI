@@ -285,86 +285,91 @@ export async function generateProPicks(
 
         const allEvaluatedPicks: ProPick[] = [];
 
-        // Evaluar cada símbolo con datos completos
-        for (let i = 0; i < symbolsToEvaluate.length; i++) {
-            const symbol = symbolsToEvaluate[i];
+        // Optimización: Procesamiento en paralelo con control de concurrencia
+        const BATCH_SIZE = 5; // Procesar de 5 en 5 para no saturar la API
+        const DELAY_BETWEEN_BATCHES = 1000; // 1 segundo entre lotes
 
-            try {
-                // Obtener datos financieros completos
-                const financialData = await getStockFinancialData(symbol);
+        for (let i = 0; i < symbolsToEvaluate.length; i += BATCH_SIZE) {
+            const batch = symbolsToEvaluate.slice(i, i + BATCH_SIZE);
+            console.log(`Procesando lote ${i / BATCH_SIZE + 1} de ${Math.ceil(symbolsToEvaluate.length / BATCH_SIZE)}: ${batch.join(', ')}`);
 
-                if (!financialData || !financialData.profile) {
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                    continue;
-                }
-
-                const sector = (financialData.profile as any)?.finnhubIndustry || (financialData.profile as any)?.industry || 'Unknown';
-                const currentPrice = financialData.quote?.c || financialData.quote?.price || 0;
-                const marketCap = (financialData.profile as any)?.marketCapitalization || 0;
-
-                // Obtener datos históricos para momentum
-                let historicalData;
+            const batchPromises = batch.map(async (symbol) => {
                 try {
-                    const to = Math.floor(Date.now() / 1000);
-                    const from = to - (365 * 24 * 60 * 60);
-                    const candles = await getCandles(symbol, from, to, 'D', 3600);
-                    if (candles.s === 'ok' && candles.c.length > 0) {
-                        historicalData = {
-                            prices: candles.c,
-                            dates: candles.t,
-                        };
+                    // Obtener datos financieros completos
+                    const financialData = await getStockFinancialData(symbol);
+
+                    if (!financialData || !financialData.profile) return null;
+
+                    const sector = (financialData.profile as any)?.finnhubIndustry || (financialData.profile as any)?.industry || 'Unknown';
+                    const currentPrice = financialData.quote?.c || financialData.quote?.price || 0;
+
+                    // Obtener datos históricos para momentum
+                    let historicalData;
+                    try {
+                        const to = Math.floor(Date.now() / 1000);
+                        const from = to - (365 * 24 * 60 * 60);
+                        const candles = await getCandles(symbol, from, to, 'D', 3600);
+                        if (candles.s === 'ok' && candles.c.length > 0) {
+                            historicalData = {
+                                prices: candles.c,
+                                dates: candles.t,
+                            };
+                        }
+                    } catch (e) {
+                        // Continuar sin datos históricos
                     }
-                } catch (e) {
-                    // Continuar sin datos históricos
+
+                    // Calcular score avanzado
+                    const advancedScore = await calculateAdvancedStockScore(
+                        financialData,
+                        historicalData || undefined
+                    );
+
+                    // Calcular score según estrategia
+                    const strategyScore = calculateStrategyScore(advancedScore, strategy);
+
+                    // Combinar razones
+                    const allReasons = [
+                        ...advancedScore.reasons.strengths,
+                        ...advancedScore.reasons.opportunities,
+                    ].slice(0, 5);
+
+                    return {
+                        symbol,
+                        company: financialData.profile.name || symbol,
+                        score: advancedScore.overallScore,
+                        grade: advancedScore.grade,
+                        strategyScore,
+                        strategy: strategy.id,
+                        categoryScores: advancedScore.categoryScores,
+                        reasons: allReasons.length > 0 ? allReasons : [
+                            'Fundamentos sólidos',
+                            'Buena salud financiera',
+                            'Potencial de crecimiento',
+                        ],
+                        currentPrice,
+                        sector,
+                        exchange: financialData.profile.exchange || undefined,
+                        vsSector: advancedScore.sectorComparison?.vsSector,
+                    } as ProPick;
+
+                } catch (error: any) {
+                    console.error(`Error evaluating ${symbol}:`, error);
+                    return null;
                 }
+            });
 
-                // Calcular score avanzado
-                const advancedScore = await calculateAdvancedStockScore(
-                    financialData,
-                    historicalData || undefined
-                );
+            // Esperar a que termine el lote actual
+            const batchResults = await Promise.all(batchPromises);
 
-                // Calcular score según estrategia (para referencia, pero la IA decidirá)
-                const strategyScore = calculateStrategyScore(advancedScore, strategy);
+            // Filtrar nulos y agregar a resultados
+            batchResults.forEach(res => {
+                if (res) allEvaluatedPicks.push(res);
+            });
 
-                // Combinar razones
-                const allReasons = [
-                    ...advancedScore.reasons.strengths,
-                    ...advancedScore.reasons.opportunities,
-                ].slice(0, 5);
-
-                const pick: ProPick = {
-                    symbol,
-                    company: financialData.profile.name || symbol,
-                    score: advancedScore.overallScore,
-                    grade: advancedScore.grade,
-                    strategyScore,
-                    strategy: strategy.id,
-                    categoryScores: advancedScore.categoryScores,
-                    reasons: allReasons.length > 0 ? allReasons : [
-                        'Fundamentos sólidos',
-                        'Buena salud financiera',
-                        'Potencial de crecimiento',
-                    ],
-                    currentPrice,
-                    sector,
-                    exchange: financialData.profile.exchange || undefined,
-                    vsSector: advancedScore.sectorComparison?.vsSector,
-                };
-
-                // Guardar todos los evaluados (la IA seleccionará después)
-                allEvaluatedPicks.push(pick);
-
-                // Delay entre requests
-                await new Promise(resolve => setTimeout(resolve, 300));
-            } catch (error: any) {
-                if (error?.message?.includes('429') || error?.message?.includes('limit')) {
-                    console.warn(`Rate limit reached, stopping evaluation`);
-                    break;
-                }
-                console.error(`Error evaluating ${symbol}:`, error);
-                await new Promise(resolve => setTimeout(resolve, 300));
-                continue;
+            // Delay entre lotes para respetar rate limits
+            if (i + BATCH_SIZE < symbolsToEvaluate.length) {
+                await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
             }
         }
 
