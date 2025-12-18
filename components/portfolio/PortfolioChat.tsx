@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Brain, MessageSquare, X, Send, User, Bot, Loader2 } from 'lucide-react';
+import { Brain, MessageSquare, X, Send, User, Bot, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { chatWithPortfolio } from '@/lib/actions/chat.actions';
+import ReactMarkdown from 'react-markdown';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -19,6 +20,7 @@ interface PortfolioChatProps {
 
 export function PortfolioChat({ userId }: PortfolioChatProps) {
     const [isOpen, setIsOpen] = useState(false);
+    const [isMaximized, setIsMaximized] = useState(false); // State for maximize
     const [messages, setMessages] = useState<Message[]>([
         { role: 'assistant', content: '¡Hola! Soy CavaAI. Pregúntame sobre tu cartera, tus tesis de inversión o conceptos de Value Investing.' }
     ]);
@@ -30,7 +32,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
         if (scrollRef.current) {
             scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
         }
-    }, [messages, isOpen]);
+    }, [messages, isOpen, isMaximized]);
 
     async function handleSend() {
         if (!input.trim() || loading) return;
@@ -45,7 +47,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
             if (result.success) {
                 setMessages(prev => [...prev, { role: 'assistant', content: result.message }]);
             } else {
-                setMessages(prev => [...prev, { role: 'assistant', content: "Lo siento, hubo un error. Inténtalo de nuevo." }]);
+                setMessages(prev => [...prev, { role: 'assistant', content: result.message || "Lo siento, hubo un error desconocido." }]);
             }
         } catch (error) {
             setMessages(prev => [...prev, { role: 'assistant', content: "Error de conexión." }]);
@@ -68,32 +70,55 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
 
     // Chat Window
     return (
-        <Card className="fixed bottom-6 right-6 w-[350px] md:w-[400px] h-[500px] shadow-2xl z-50 flex flex-col border-indigo-500/30 bg-slate-950/95 backdrop-blur-md">
-            <CardHeader className="p-4 border-b border-indigo-500/20 flex flex-row items-center justify-between bg-indigo-900/20">
+        <Card className={`fixed z-50 flex flex-col border-indigo-500/30 bg-slate-950/95 backdrop-blur-md shadow-2xl transition-all duration-300 ${isMaximized
+            ? 'top-4 bottom-4 left-4 right-4 w-auto h-auto'
+            : 'bottom-6 right-6 w-[350px] md:w-[450px] h-[600px]'
+            }`}>
+            <CardHeader className="p-4 border-b border-indigo-500/20 flex flex-row items-center justify-between bg-indigo-900/20 cursor-move">
                 <div className="flex items-center gap-2">
                     <div className="p-2 bg-indigo-500/20 rounded-full">
                         <Brain className="h-4 w-4 text-indigo-400" />
                     </div>
                     <CardTitle className="text-sm font-medium">CavaAI Assistant</CardTitle>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="h-6 w-6 text-slate-400 hover:text-white">
-                    <X className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => setIsMaximized(!isMaximized)} className="h-6 w-6 text-slate-400 hover:text-white">
+                        {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="h-6 w-6 text-slate-400 hover:text-white">
+                        <X className="h-4 w-4" />
+                    </Button>
+                </div>
             </CardHeader>
 
             <CardContent className="flex-1 p-0 overflow-hidden relative">
                 <div ref={scrollRef} className="h-full overflow-y-auto p-4 space-y-4">
                     {messages.map((m, i) => (
                         <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`flex items-start gap-2 max-w-[80%] ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                            <div className={`flex items-start gap-2 max-w-[90%] ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
                                 <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-blue-600' : 'bg-indigo-600'}`}>
                                     {m.role === 'user' ? <User className="h-3 w-3 text-white" /> : <Bot className="h-3 w-3 text-white" />}
                                 </div>
-                                <div className={`p-3 rounded-lg text-sm ${m.role === 'user'
-                                        ? 'bg-blue-600 text-white rounded-tr-none'
-                                        : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-tl-none'
+                                <div className={`p-3 rounded-lg text-sm overflow-hidden ${m.role === 'user'
+                                    ? 'bg-blue-600 text-white rounded-tr-none'
+                                    : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-tl-none'
                                     }`}>
-                                    {m.content}
+                                    {m.role === 'assistant' ? (
+                                        <div className="prose prose-invert prose-sm max-w-none [&>h3]:text-indigo-400 [&>h3]:font-bold [&>h3]:mt-2 [&>h3]:mb-1 [&>ul]:list-disc [&>ul]:pl-4 [&>strong]:text-white">
+                                            <ReactMarkdown
+                                                components={{
+                                                    h3: ({ node, ...props }) => <h3 className="text-base font-bold text-indigo-300 mt-2 mb-1" {...props} />,
+                                                    ul: ({ node, ...props }) => <ul className="list-disc pl-4 space-y-1" {...props} />,
+                                                    li: ({ node, ...props }) => <li className="text-slate-300" {...props} />,
+                                                    strong: ({ node, ...props }) => <strong className="font-semibold text-white bg-indigo-500/10 px-1 rounded" {...props} />
+                                                }}
+                                            >
+                                                {m.content}
+                                            </ReactMarkdown>
+                                        </div>
+                                    ) : (
+                                        m.content
+                                    )}
                                 </div>
                             </div>
                         </div>
