@@ -64,16 +64,16 @@ export async function calculateAdvancedStockScore(
     const indexComparison = financialData.indexComparison || {};
 
     const sector = profile.finnhubIndustry || profile.industry || 'Unknown';
-    
+
     // Obtener promedios reales del sector desde la API
     // IMPORTANTE: Si no hay datos disponibles, no inventamos valores
     const sectorData = await getSectorAverages(sector);
-    
+
     if (!sectorData) {
         // Sin datos del sector, usar valores neutrales pero indicarlo
         console.warn(`No hay datos disponibles del sector ${sector} para comparación`);
     }
-    
+
     const sectorAverages = sectorData?.averages || {
         value: 50, // Neutral - sin comparación
         growth: 50,
@@ -82,7 +82,7 @@ export async function calculateAdvancedStockScore(
         momentum: 50,
         debtLiquidity: 50,
     };
-    
+
     // Usar métricas promedio del sector para comparaciones más precisas
     // Solo usar si están disponibles
     const sectorMetrics = sectorData?.metrics;
@@ -127,21 +127,21 @@ export async function calculateAdvancedStockScore(
         const sectorPE = sectorMetrics?.avgPE || 25; // PE promedio del sector real
         const peScore = pe < sectorPE * 0.8 ? 30 : pe < sectorPE ? 25 : pe < sectorPE * 1.2 ? 20 : 15;
         categoryScores.value += peScore;
-        
+
         if (pe < sectorPE * 0.7) {
             strengths.push(`PER bajo vs sector (${pe.toFixed(1)} vs ${sectorPE.toFixed(1)})`);
         } else if (pe > sectorPE * 1.5) {
             weaknesses.push(`PER alto vs sector (${pe.toFixed(1)} vs ${sectorPE.toFixed(1)})`);
         }
     }
-    
+
     // PB comparado con sector
     if (pb !== null && pb > 0) {
         if (sectorMetrics?.avgPB) {
             const sectorPB = sectorMetrics.avgPB;
             const pbScore = pb < sectorPB * 0.8 ? 25 : pb < sectorPB ? 20 : pb < sectorPB * 1.2 ? 15 : 10;
             categoryScores.value += pbScore;
-            
+
             if (pb < sectorPB * 0.7) {
                 strengths.push(`P/B bajo vs sector (${pb.toFixed(1)} vs ${sectorPB.toFixed(1)})`);
             }
@@ -163,19 +163,19 @@ export async function calculateAdvancedStockScore(
     categoryScores.value = Math.min(100, categoryScores.value);
 
     // ========== 2. GROWTH (Crecimiento) ==========
-    const revenueGrowth = getMetric('revenueGrowthTTM', 'revenueGrowth', 'salesGrowth');
-    const epsGrowth = getMetric('epsGrowthTTM', 'epsGrowth', 'earningsGrowth');
-    const ebitdaGrowth = getMetric('ebitdaGrowthTTM', 'ebitdaGrowth');
+    const revenueGrowth = getMetric('revenueGrowthTTMYoy', 'revenueGrowth3Y', 'revenueGrowthTTM', 'revenueGrowth');
+    const epsGrowth = getMetric('epsGrowthTTMYoy', 'epsGrowth3Y', 'epsGrowthTTM', 'epsGrowth');
+    const ebitdaGrowth = getMetric('ebitdaCagr5Y', 'ebitdaGrowthTTM');
 
     if (revenueGrowth !== null) {
         let growth = revenueGrowth / 100;
         if (Math.abs(growth) > 1) growth = growth / 100;
-        
+
         // Comparar con sector (crecimiento típico del sector)
         const sectorGrowth = (sectorMetrics?.avgRevenueGrowth || 0.15);
         const growthScore = growth > sectorGrowth * 1.5 ? 40 : growth > sectorGrowth ? 35 : growth > 0 ? 25 : 10;
         categoryScores.growth += growthScore;
-        
+
         if (growth > sectorGrowth * 1.3) {
             strengths.push(`Crecimiento superior al sector (${(growth * 100).toFixed(1)}% vs ${(sectorGrowth * 100).toFixed(1)}%)`);
         }
@@ -204,7 +204,7 @@ export async function calculateAdvancedStockScore(
         const sectorMargin = sectorMetrics?.avgNetMargin || 0.15; // Margen promedio del sector real
         const marginScore = margin > sectorMargin * 1.3 ? 35 : margin > sectorMargin ? 30 : margin > 0.1 ? 25 : margin > 0 ? 15 : 0;
         categoryScores.profitability += marginScore;
-        
+
         if (margin > sectorMargin * 1.2) {
             strengths.push(`Margen neto superior al sector (${(margin * 100).toFixed(1)}% vs ${(sectorMargin * 100).toFixed(1)}%)`);
         }
@@ -221,32 +221,30 @@ export async function calculateAdvancedStockScore(
     categoryScores.profitability = Math.min(100, categoryScores.profitability);
 
     // ========== 4. CASH FLOW (Flujo de Caja) ==========
-    // Nota: Finnhub puede no tener FCF directamente, usar aproximaciones
-    const operatingCashFlow = getMetric('operatingCashFlowTTM', 'operatingCashFlow');
-    const freeCashFlow = getMetric('freeCashFlowTTM', 'freeCashFlow', 'fcfTTM');
-    
-    // Calcular FCF aproximado si no está disponible
-    let fcf = freeCashFlow;
-    if (!fcf && operatingCashFlow) {
-        // FCF ≈ Operating Cash Flow - CapEx (aproximación)
-        const capex = getMetric('capitalExpenditureTTM', 'capex');
-        fcf = capex ? operatingCashFlow - Math.abs(capex) : operatingCashFlow * 0.7; // Estimación conservadora
-    }
+    // Nota: Finnhub Basic devuelve ratios por acción o precios
+    const cashFlowPerShare = getMetric('cashFlowPerShareTTM', 'cashFlowPerShareQuarterly');
+    const priceToFcf = getMetric('pfcfShareTTM', 'pfcfShareAnnual'); // Price / FCF per share
 
-    if (fcf !== null && fcf > 0) {
-        const currentPrice = quote.c || quote.price || 0;
-        if (currentPrice > 0) {
-            const fcfYield = fcf / (currentPrice * 1000000); // Aproximación
-            categoryScores.cashFlow += fcfYield > 0.05 ? 40 : fcfYield > 0.03 ? 35 : fcfYield > 0 ? 25 : 10;
-            if (fcfYield > 0.05) strengths.push('Alto flujo de caja libre');
-        }
-    }
+    // Calcular FCF Yield = 1 / PriceToFCF
+    let fcfYield = priceToFcf ? (1 / priceToFcf) : null;
 
-    if (operatingCashFlow !== null && operatingCashFlow > 0) {
+    // Si tenemos FCF yield directo
+    const evFcf = getMetric('currentEv/freeCashFlowTTM');
+    if (evFcf && !fcfYield) fcfYield = 1 / evFcf;
+
+    if (fcfYield !== null && fcfYield > 0) {
+        categoryScores.cashFlow += fcfYield > 0.05 ? 40 : fcfYield > 0.03 ? 35 : fcfYield > 0 ? 25 : 10;
+        if (fcfYield > 0.05) strengths.push('Alto rendimiento de flujo de caja libre (Yield)');
+    } else if (priceToFcf && priceToFcf < 15) {
+        // Si yield falla pero P/FCF es bueno
         categoryScores.cashFlow += 30;
-        strengths.push('Flujo de caja operativo positivo');
-    } else if (operatingCashFlow !== null && operatingCashFlow < 0) {
-        weaknesses.push('Flujo de caja operativo negativo');
+    }
+
+    if (cashFlowPerShare !== null && cashFlowPerShare > 0) {
+        categoryScores.cashFlow += 30;
+        strengths.push('Flujo de caja por acción positivo');
+    } else if (cashFlowPerShare !== null && cashFlowPerShare < 0) {
+        weaknesses.push('Flujo de caja por acción negativo');
     }
 
     categoryScores.cashFlow = Math.min(100, categoryScores.cashFlow);
@@ -256,7 +254,7 @@ export async function calculateAdvancedStockScore(
     if (historicalData && historicalData.prices.length > 0) {
         const prices = historicalData.prices;
         const currentPrice = prices[prices.length - 1];
-        
+
         // Retorno a 3 meses (aprox 63 días)
         if (prices.length > 63) {
             const price3M = prices[prices.length - 63];
@@ -284,7 +282,7 @@ export async function calculateAdvancedStockScore(
             const max52W = Math.max(...last52W);
             const proximityTo52W = (currentPrice / max52W) * 100;
             categoryScores.momentum += proximityTo52W > 95 ? 20 : proximityTo52W > 90 ? 15 : proximityTo52W > 80 ? 10 : 5;
-            
+
             if (proximityTo52W > 95) {
                 opportunities.push('Cerca del máximo de 52 semanas');
             }
@@ -301,7 +299,7 @@ export async function calculateAdvancedStockScore(
     if (indexComparison.vsSP500) {
         const vsSP500 = indexComparison.vsSP500.change || 0;
         categoryScores.momentum += vsSP500 > 5 ? 20 : vsSP500 > 0 ? 15 : vsSP500 > -5 ? 10 : 5;
-        
+
         if (vsSP500 > 5) {
             strengths.push(`Supera al S&P 500 (+${vsSP500.toFixed(1)}%)`);
         } else if (vsSP500 < -10) {
@@ -312,22 +310,22 @@ export async function calculateAdvancedStockScore(
     categoryScores.momentum = Math.min(100, categoryScores.momentum);
 
     // ========== 6. DEBT & LIQUIDITY (Deuda y Liquidez) ==========
-    const debtToEquity = getMetric('debtToEquityTTM', 'debtToEquity', 'totalDebtToEquity');
-    const currentRatio = getMetric('currentRatioTTM', 'currentRatio');
-    const quickRatio = getMetric('quickRatioTTM', 'quickRatio');
-    const interestCoverage = getMetric('interestCoverageTTM', 'interestCoverage');
+    const debtToEquity = getMetric('totalDebt/totalEquityQuarterly', 'totalDebt/totalEquityAnnual', 'longTermDebt/equityQuarterly');
+    const currentRatio = getMetric('currentRatioQuarterly', 'currentRatioAnnual', 'currentRatioTTM');
+    const quickRatio = getMetric('quickRatioQuarterly', 'quickRatioAnnual', 'quickRatioTTM');
+    const interestCoverage = getMetric('netInterestCoverageTTM', 'netInterestCoverageAnnual');
 
     // Comparar D/E con sector (importante: diferentes sectores tienen diferentes niveles normales)
     if (debtToEquity !== null) {
         const dte = Math.abs(debtToEquity);
-        
+
         // Usar D/E promedio real del sector
         const sectorNormalDte = sectorMetrics?.avgDebtToEquity || (
-            sector === 'Financial Services' ? 8.0 : 
-            sector === 'Energy' ? 3.0 : 
-            sector === 'Technology' ? 0.5 : 1.5
+            sector === 'Financial Services' ? 8.0 :
+                sector === 'Energy' ? 3.0 :
+                    sector === 'Technology' ? 0.5 : 1.5
         );
-        
+
         if (dte < sectorNormalDte * 0.7) {
             categoryScores.debtLiquidity += 35;
             strengths.push(`Baja deuda vs sector (D/E: ${dte.toFixed(2)} vs ${sectorNormalDte.toFixed(1)})`);

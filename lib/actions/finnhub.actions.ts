@@ -444,7 +444,11 @@ export async function getStockFinancialData(symbol: string): Promise<{
 } | null> {
     try {
         const token = env.FINNHUB_API_KEY;
-        if (!token) return null;
+        // console.log("DEBUG: getStockFinancialData token present?", !!token);
+        if (!token) {
+            console.error("DEBUG: No Finnhub token found in env");
+            return null;
+        }
 
         // Start all requests in parallel
         const quotePromise = fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null);
