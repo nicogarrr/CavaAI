@@ -15,6 +15,10 @@ import {
     Target,
     FileText,
     DollarSign,
+    Building2,
+    Leaf,
+    Building,
+    Activity,
 } from 'lucide-react';
 
 export type StockTab =
@@ -27,7 +31,11 @@ export type StockTab =
     | 'estimaciones'
     | 'analisis'
     | 'transcripciones'
-    | 'noticias';
+    | 'noticias'
+    | 'congreso'
+    | 'esg'
+    | 'institucional'
+    | 'tecnicos';
 
 interface NavItem {
     id: StockTab;
@@ -96,6 +104,30 @@ const navItems: NavItem[] = [
         label: 'Noticias',
         icon: <Newspaper size={20} />,
         description: 'Últimas noticias'
+    },
+    {
+        id: 'congreso',
+        label: 'Congreso',
+        icon: <Building2 size={20} />,
+        description: 'Trading de políticos'
+    },
+    {
+        id: 'esg',
+        label: 'ESG',
+        icon: <Leaf size={20} />,
+        description: 'Sostenibilidad'
+    },
+    {
+        id: 'institucional',
+        label: 'Institucional',
+        icon: <Building size={20} />,
+        description: 'Holdings 13F'
+    },
+    {
+        id: 'tecnicos',
+        label: 'Técnicos',
+        icon: <Activity size={20} />,
+        description: 'RSI, MACD, Bollinger'
     },
 ];
 

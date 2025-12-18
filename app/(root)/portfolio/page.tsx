@@ -10,6 +10,7 @@ import PortfolioScores from '@/components/portfolio/PortfolioScores';
 import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import ImportFromImage from '@/components/portfolio/ImportFromImage';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
+import { PortfolioStrategyInsight } from '@/components/portfolio/PortfolioStrategyInsight';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Wallet } from 'lucide-react';
@@ -73,6 +74,11 @@ export default async function PortfolioPage() {
       {/* Scores */}
       <div className="mb-6">
         <PortfolioScores scores={scores} />
+      </div>
+
+      {/* Strategy Analysis */}
+      <div className="mb-6">
+        <PortfolioStrategyInsight portfolioSummary={summary} />
       </div>
 
       {/* Holdings and Transactions */}

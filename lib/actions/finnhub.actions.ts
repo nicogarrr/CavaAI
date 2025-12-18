@@ -712,3 +712,204 @@ export async function getUpcomingEarnings(symbols: string[]): Promise<EarningsEv
         return [];
     }
 }
+
+// ============================================================================
+// NEW FEATURES: Congress Trading, ESG Scores, Institutional Holdings
+// ============================================================================
+
+/**
+ * Congress Trading - Track stock trades by US Congress members
+ */
+export type CongressTrade = {
+    symbol: string;
+    name: string;
+    transactionDate: string;
+    transactionType: 'buy' | 'sell' | 'exchange';
+    amount: string;
+    assetDescription: string;
+    ownerType: string;
+    congress: 'senate' | 'house';
+};
+
+export async function getCongressTrading(symbol?: string): Promise<CongressTrade[]> {
+    try {
+        const token = env.FINNHUB_API_KEY;
+        if (!token) return [];
+
+        // Get date range (last 365 days)
+        const to = new Date().toISOString().split('T')[0];
+        const fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - 365);
+        const from = fromDate.toISOString().split('T')[0];
+
+        let url: string;
+        if (symbol) {
+            url = `${FINNHUB_BASE_URL}/stock/congressional-trading?symbol=${encodeURIComponent(symbol)}&from=${from}&to=${to}&token=${token}`;
+        } else {
+            url = `${FINNHUB_BASE_URL}/stock/congressional-trading?from=${from}&to=${to}&token=${token}`;
+        }
+
+        const data = await fetchJSON<any>(url, 3600); // Cache 1 hour
+
+        if (!data || !Array.isArray(data.data)) {
+            return [];
+        }
+
+        return data.data.map((trade: any) => ({
+            symbol: trade.symbol || '',
+            name: trade.name || '',
+            transactionDate: trade.transactionDate || '',
+            transactionType: trade.transactionType?.toLowerCase() || 'buy',
+            amount: trade.amount || '',
+            assetDescription: trade.assetDescription || '',
+            ownerType: trade.ownerType || 'N/A',
+            congress: trade.congress || 'senate',
+        })).slice(0, 100); // Limit to 100 most recent
+    } catch (error) {
+        console.error('Error fetching congress trading:', error);
+        return [];
+    }
+}
+
+/**
+ * ESG Scores - Environmental, Social, and Governance ratings
+ */
+export type ESGScore = {
+    symbol: string;
+    totalESG: number;
+    environmentalScore: number;
+    socialScore: number;
+    governanceScore: number;
+    lastRefreshDate: string;
+    level: string;
+    peersCount: number;
+    percentile: number;
+};
+
+export async function getESGScores(symbol: string): Promise<ESGScore | null> {
+    try {
+        const token = env.FINNHUB_API_KEY;
+        if (!token) return null;
+
+        const url = `${FINNHUB_BASE_URL}/stock/esg?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+        const data = await fetchJSON<any>(url, 86400); // Cache 24 hours (ESG scores don't change often)
+
+        if (!data || !data.totalESG) {
+            return null;
+        }
+
+        return {
+            symbol: symbol,
+            totalESG: data.totalESG || 0,
+            environmentalScore: data.environmentalScore || 0,
+            socialScore: data.socialScore || 0,
+            governanceScore: data.governanceScore || 0,
+            lastRefreshDate: data.lastRefreshDate || '',
+            level: data.level || 'N/A',
+            peersCount: data.peersCount || 0,
+            percentile: data.percentile || 0,
+        };
+    } catch (error) {
+        console.error('Error fetching ESG scores for', symbol, error);
+        return null;
+    }
+}
+
+/**
+ * Institutional Holdings (13F) - Track what major funds are holding
+ */
+export type InstitutionalHolder = {
+    name: string;
+    share: number;
+    change: number;
+    filingDate: string;
+    value: number;
+};
+
+export type InstitutionalOwnership = {
+    symbol: string;
+    holders: InstitutionalHolder[];
+    ownershipPercent: number;
+};
+
+export async function getInstitutionalHoldings(symbol: string): Promise<InstitutionalOwnership | null> {
+    try {
+        const token = env.FINNHUB_API_KEY;
+        if (!token) return null;
+
+        const url = `${FINNHUB_BASE_URL}/stock/ownership?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+        const data = await fetchJSON<any>(url, 86400); // Cache 24 hours
+
+        if (!data || !Array.isArray(data.ownership)) {
+            return null;
+        }
+
+        const holders: InstitutionalHolder[] = data.ownership
+            .slice(0, 20) // Top 20 holders
+            .map((h: any) => ({
+                name: h.name || 'Unknown',
+                share: h.share || 0,
+                change: h.change || 0,
+                filingDate: h.filingDate || '',
+                value: h.value || 0,
+            }));
+
+        // Calculate total ownership percent
+        const totalShares = holders.reduce((sum, h) => sum + h.share, 0);
+        const ownershipPercent = data.ownershipPercent || 0;
+
+        return {
+            symbol,
+            holders,
+            ownershipPercent,
+        };
+    } catch (error) {
+        console.error('Error fetching institutional holdings for', symbol, error);
+        return null;
+    }
+}
+
+/**
+ * Senate Lobbying - Track lobbying activities
+ */
+export type LobbyingActivity = {
+    symbol: string;
+    year: number;
+    quarter: number;
+    income: number;
+    expenses: number;
+    documentUrl: string;
+    name: string;
+};
+
+export async function getLobbyingData(symbol: string): Promise<LobbyingActivity[]> {
+    try {
+        const token = env.FINNHUB_API_KEY;
+        if (!token) return [];
+
+        const to = new Date().toISOString().split('T')[0];
+        const fromDate = new Date();
+        fromDate.setFullYear(fromDate.getFullYear() - 2); // Last 2 years
+        const from = fromDate.toISOString().split('T')[0];
+
+        const url = `${FINNHUB_BASE_URL}/stock/lobbying?symbol=${encodeURIComponent(symbol)}&from=${from}&to=${to}&token=${token}`;
+        const data = await fetchJSON<any>(url, 86400);
+
+        if (!data || !Array.isArray(data.data)) {
+            return [];
+        }
+
+        return data.data.map((item: any) => ({
+            symbol: item.symbol || symbol,
+            year: item.year || 0,
+            quarter: item.quarter || 0,
+            income: item.income || 0,
+            expenses: item.expenses || 0,
+            documentUrl: item.documentUrl || '',
+            name: item.name || '',
+        })).slice(0, 20);
+    } catch (error) {
+        console.error('Error fetching lobbying data for', symbol, error);
+        return [];
+    }
+}

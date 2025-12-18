@@ -354,3 +354,93 @@ export async function updateAllPortfolioPrices(userId: string): Promise<{
     return { summary, scores };
 }
 
+// ============================================
+// Sincronización Inteligente de Cartera (Diffing)
+// ============================================
+
+import { ExtractedPosition } from './ai.actions';
+
+export async function syncPortfolioHoldings(
+    userId: string,
+    extractedPositions: ExtractedPosition[]
+): Promise<{ success: boolean; actions: string[]; error?: string }> {
+    try {
+        const actions: string[] = [];
+
+        // Estrategia: "Snapshot Replacement" (Reemplazo por Captura)
+        // Para cada símbolo detectado en la captura, eliminamos la posición antigua y creamos una nueva
+        // que refleje EXACTAMENTE la captura. Esto evita duplicados y drift.
+
+        for (const pos of extractedPositions) {
+            const symbol = pos.symbol.toUpperCase();
+
+            // 1. Convertir todo a USD si es necesario (el extractor ya hace parte, pero aseguramos)
+            const isEur = pos.currency === 'EUR';
+            const rate = isEur ? 1.05 : 1.0; // Rate fijo por ahora, idealmente dinámico
+
+            // Precio Actual en USD
+            let currentPriceUSD = pos.currentPriceUSD;
+            if (!currentPriceUSD || currentPriceUSD === 0) {
+                const quote = await getQuote(symbol);
+                currentPriceUSD = quote?.c || 0;
+            }
+
+            // Valor de Mercado en USD
+            // Si pos.marketValue viene en EUR, convertir.
+            let marketValueUSD = pos.marketValue || 0; // Default to 0 if undefined
+            if (isEur) {
+                marketValueUSD = (pos.marketValue || 0) * rate;
+            }
+
+            // 2. Calcular Acciones (Shares)
+            // Si viene en la imagen, genial. Si no, MarketValue / Precio
+            let shares = pos.shares || 0;
+            if (shares === 0 && currentPriceUSD > 0 && marketValueUSD > 0) {
+                shares = marketValueUSD / currentPriceUSD;
+            }
+            // Redondear a 4 decimales
+            shares = Math.round(shares * 10000) / 10000;
+
+            if (shares <= 0) continue; // No podemos importar 0 acciones
+
+            // 3. Calcular Precio de Compra Original (Cost Basis)
+            // Usamos el ChangePercent para ingeniería inversa:
+            // CurrentValue = CostBasis * (1 + Change%)
+            // CostBasis = CurrentValue / (1 + Change%)
+            // BuyPrice = CostBasis / Shares
+
+            // ChangePercent viene como -18.25 para -18.25%
+            const changeFactor = 1 + (pos.changePercent / 100);
+
+            let totalCostUSD = 0;
+            if (changeFactor !== 0) {
+                totalCostUSD = marketValueUSD / changeFactor;
+            } else {
+                totalCostUSD = marketValueUSD; // Fallback si error math
+            }
+
+            const buyPriceUSD = totalCostUSD / shares;
+
+            // 4. ELIMINAR posición existente para este símbolo (Wipe)
+            await deleteHolding(userId, symbol);
+
+            // 5. CREAR nueva posición (Recreate)
+            await addTransaction(
+                userId,
+                symbol,
+                'buy',
+                shares,
+                buyPriceUSD,
+                new Date(), // Fecha hoy
+                `Importado desde captura de pantalla (Snapshot). Rentabilidad preservada: ${pos.changePercent}%`
+            );
+
+            actions.push(`SYNC: ${symbol} -> ${shares} acciones @ $${buyPriceUSD.toFixed(2)} (Calc)`);
+        }
+
+        return { success: true, actions };
+    } catch (error) {
+        console.error('Error syncing portfolio holdings:', error);
+        return { success: false, actions: [], error: 'Failed to sync holdings' };
+    }
+}
