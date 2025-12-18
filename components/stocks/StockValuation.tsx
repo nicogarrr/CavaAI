@@ -1,303 +1,158 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Loader2, Target, TrendingUp, TrendingDown, Building2, Percent, DollarSign, Landmark } from 'lucide-react';
-import { getValuationData, getTreasuryRates, type RatiosTTM, type DCFData, type EnterpriseValueData, type TreasuryRate } from '@/lib/actions/fmp.actions';
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { FinancialScore, PeerCompany, getFinancialScores, getStockPeers } from "@/lib/actions/fmp.actions";
+import { Gauge, Users, ArrowUpRight } from "lucide-react";
+import Link from "next/link";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface StockValuationProps {
     symbol: string;
-    currentPrice?: number;
 }
 
-const formatNumber = (num: number | undefined | null, decimals = 2) => {
-    if (num === undefined || num === null || isNaN(num)) return 'N/A';
-    return num.toLocaleString('en-US', { maximumFractionDigits: decimals });
-};
-
-const formatPercent = (num: number | undefined | null) => {
-    if (num === undefined || num === null || isNaN(num)) return 'N/A';
-    return `${(num * 100).toFixed(1)}%`;
-};
-
-const formatBillions = (num: number | undefined | null) => {
-    if (num === undefined || num === null || isNaN(num)) return 'N/A';
-    if (Math.abs(num) >= 1e12) return `$${(num / 1e12).toFixed(1)}T`;
-    if (Math.abs(num) >= 1e9) return `$${(num / 1e9).toFixed(1)}B`;
-    if (Math.abs(num) >= 1e6) return `$${(num / 1e6).toFixed(1)}M`;
-    return `$${num.toFixed(0)}`;
-};
-
-export default function StockValuation({ symbol, currentPrice }: StockValuationProps) {
-    const [ratios, setRatios] = useState<RatiosTTM | null>(null);
-    const [dcf, setDcf] = useState<DCFData | null>(null);
-    const [ev, setEv] = useState<EnterpriseValueData | null>(null);
-    const [treasuryRate, setTreasuryRate] = useState<number | null>(null);
+export default function StockValuation({ symbol }: StockValuationProps) {
+    const [scoreData, setScoreData] = useState<FinancialScore | null>(null);
+    const [peerData, setPeerData] = useState<PeerCompany | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        async function fetchData() {
+        const fetchData = async () => {
+            setLoading(true);
             try {
-                setLoading(true);
-                const [data, rates] = await Promise.all([
-                    getValuationData(symbol),
-                    getTreasuryRates()
+                const [scores, peers] = await Promise.all([
+                    getFinancialScores(symbol),
+                    getStockPeers(symbol)
                 ]);
-
-                // Extract first item from arrays
-                if (data.ratios?.ratios?.[0]) setRatios(data.ratios.ratios[0]);
-                if (data.dcf?.dcf?.[0]) setDcf(data.dcf.dcf[0]);
-                if (data.ev?.enterpriseValue?.[0]) setEv(data.ev.enterpriseValue[0]);
-
-                // Get 10Y Treasury Rate for WACC context
-                if (rates?.treasuryRates?.[0]) {
-                    setTreasuryRate(rates.treasuryRates[0].year10);
-                }
-            } catch (err) {
-                setError('Error loading valuation data');
-                console.error(err);
+                setScoreData(scores);
+                setPeerData(peers);
+            } catch (error) {
+                console.error("Failed to fetch valuation data", error);
             } finally {
                 setLoading(false);
             }
+        };
+
+        if (symbol) {
+            fetchData();
         }
-        fetchData();
     }, [symbol]);
+
+    // Helpers for Score Colors
+    const getAltmanColor = (score: number) => {
+        if (score > 3) return "text-green-500";
+        if (score > 1.8) return "text-yellow-500";
+        return "text-red-500";
+    };
+
+    const getPiotroskiColor = (score: number) => {
+        if (score >= 7) return "text-green-500"; // Strong
+        if (score >= 4) return "text-yellow-500"; // Average
+        return "text-red-500"; // Weak
+    };
 
     if (loading) {
         return (
-            <Card className="bg-gray-800/50 border-gray-700">
-                <CardContent className="flex items-center justify-center h-[300px]">
-                    <Loader2 className="h-8 w-8 animate-spin text-teal-400" />
-                </CardContent>
-            </Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Skeleton className="h-[200px] w-full rounded-lg bg-gray-800/50" />
+                <Skeleton className="h-[200px] w-full rounded-lg bg-gray-800/50" />
+                <Skeleton className="h-[200px] w-full rounded-lg bg-gray-800/50 col-span-full" />
+            </div>
         );
     }
 
-    if (error || (!ratios && !dcf && !ev)) {
-        return (
-            <Card className="bg-gray-800/50 border-gray-700">
-                <CardContent className="flex items-center justify-center h-[300px]">
-                    <p className="text-gray-400">{error || 'No valuation data available'}</p>
-                </CardContent>
-            </Card>
-        );
-    }
-
-    // Calculate upside/downside for DCF
-    const stockPrice = dcf?.stockPrice || currentPrice || 0;
-    const intrinsicValue = dcf?.dcf || 0;
-    const upside = stockPrice > 0 ? ((intrinsicValue - stockPrice) / stockPrice) * 100 : 0;
-    const isUndervalued = upside > 0;
+    // Handle peer data safely
+    const peerList = peerData?.peersList || [];
 
     return (
-        <Card className="bg-gray-800/50 border-gray-700">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-gray-100 flex items-center gap-2">
-                    <Target className="h-5 w-5 text-purple-400" />
-                    Métricas de Valoración
-                    <Badge variant="outline" className="ml-2 text-xs border-purple-500/30 text-purple-400">
-                        FMP TTM
-                    </Badge>
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-
-                {/* DCF Valuation Card */}
-                {dcf && (
-                    <div className="bg-gradient-to-br from-gray-900/60 to-gray-800/40 rounded-xl p-4 border border-gray-700">
-                        <div className="flex items-center gap-2 mb-3">
-                            <DollarSign className="h-4 w-4 text-amber-400" />
-                            <span className="text-sm font-semibold text-gray-200">DCF Intrinsic Value</span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="text-center">
-                                <p className="text-xs text-gray-500 mb-1">Stock Price</p>
-                                <p className="text-xl font-bold text-gray-100">${formatNumber(stockPrice)}</p>
-                            </div>
-                            <div className="text-center">
-                                <p className="text-xs text-gray-500 mb-1">Intrinsic Value</p>
-                                <p className="text-xl font-bold text-amber-400">${formatNumber(intrinsicValue)}</p>
-                            </div>
-                            <div className="text-center">
-                                <p className="text-xs text-gray-500 mb-1">Upside/Downside</p>
-                                <div className="flex items-center justify-center gap-1">
-                                    {isUndervalued ? (
-                                        <TrendingUp className="h-4 w-4 text-green-400" />
-                                    ) : (
-                                        <TrendingDown className="h-4 w-4 text-red-400" />
-                                    )}
-                                    <p className={`text-xl font-bold ${isUndervalued ? 'text-green-400' : 'text-red-400'}`}>
-                                        {upside > 0 ? '+' : ''}{formatNumber(upside)}%
-                                    </p>
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Altman Z-Score */}
+                <Card className="bg-gray-900 border-gray-800">
+                    <CardHeader>
+                        <CardTitle className="text-gray-100 flex items-center gap-2">
+                            <Gauge className="h-5 w-5 text-purple-500" />
+                            Altman Z-Score
+                        </CardTitle>
+                        <CardDescription className="text-gray-400">
+                            Predicción de riesgo de quiebra
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {scoreData ? (
+                            <div className="text-center py-6">
+                                <div className={`text-5xl font-bold mb-2 ${getAltmanColor(scoreData.altmanZScore)}`}>
+                                    {scoreData.altmanZScore.toFixed(2)}
                                 </div>
-                            </div>
-                        </div>
-
-                        {/* Visual Bar */}
-                        <div className="mt-4">
-                            <div className="relative h-3 bg-gray-700 rounded-full overflow-hidden">
-                                <div
-                                    className={`absolute h-full ${isUndervalued ? 'bg-gradient-to-r from-green-600 to-green-400' : 'bg-gradient-to-r from-red-600 to-red-400'}`}
-                                    style={{ width: `${Math.min(100, Math.abs(upside))}%` }}
-                                />
-                            </div>
-                            <div className="flex justify-between mt-1 text-[10px] text-gray-500">
-                                <span>Overvalued</span>
-                                <span>Fair Value</span>
-                                <span>Undervalued</span>
-                            </div>
-                        </div>
-
-                        {/* Treasury Rate Info */}
-                        {treasuryRate && (
-                            <div className="mt-4 pt-4 border-t border-gray-700 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Landmark className="h-4 w-4 text-blue-400" />
-                                    <span className="text-xs text-gray-400">10Y Treasury (Risk-Free Rate)</span>
+                                <div className="text-sm text-gray-400 mb-4">
+                                    {scoreData.altmanZScore > 3 ? "Zona Segura (Bajo Riesgo)" :
+                                        scoreData.altmanZScore > 1.8 ? "Zona Gris (Riesgo Moderado)" : "Zona de Peligro (Alto Riesgo)"}
                                 </div>
-                                <span className="text-sm font-bold text-blue-400">{treasuryRate.toFixed(2)}%</span>
+                                <Progress value={Math.min(scoreData.altmanZScore * 10, 100)} className="h-2 w-full bg-gray-800" />
                             </div>
+                        ) : (
+                            <p className="text-gray-500 text-center py-10">No disponible</p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Piotroski Score */}
+                <Card className="bg-gray-900 border-gray-800">
+                    <CardHeader>
+                        <CardTitle className="text-gray-100 flex items-center gap-2">
+                            <Gauge className="h-5 w-5 text-blue-500" />
+                            Piotroski F-Score
+                        </CardTitle>
+                        <CardDescription className="text-gray-400">
+                            Fortaleza financiera (0-9)
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {scoreData ? (
+                            <div className="text-center py-6">
+                                <div className={`text-5xl font-bold mb-2 ${getPiotroskiColor(scoreData.piotroskiScore)}`}>
+                                    {scoreData.piotroskiScore}/9
+                                </div>
+                                <div className="text-sm text-gray-400 mb-4">
+                                    {scoreData.piotroskiScore >= 7 ? "Muy Fuerte" :
+                                        scoreData.piotroskiScore >= 4 ? "Estable" : "Débil"}
+                                </div>
+                                <Progress value={(scoreData.piotroskiScore / 9) * 100} className="h-2 w-full bg-gray-800" />
+                            </div>
+                        ) : (
+                            <p className="text-gray-500 text-center py-10">No disponible</p>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Peers */}
+            <Card className="bg-gray-900 border-gray-800">
+                <CardHeader>
+                    <CardTitle className="text-gray-100 flex items-center gap-2">
+                        <Users className="h-5 w-5 text-orange-500" />
+                        Competidores y Pares
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-wrap gap-3">
+                        {peerList.length > 0 ? (
+                            peerList.map((peer, i) => (
+                                <Link key={i} href={`/stocks/${peer}`}>
+                                    <Badge variant="outline" className="text-base py-2 px-4 border-gray-700 hover:bg-gray-800 hover:text-white transition-colors cursor-pointer flex items-center gap-2">
+                                        {peer}
+                                        <ArrowUpRight className="h-3 w-3 text-gray-500" />
+                                    </Badge>
+                                </Link>
+                            ))
+                        ) : (
+                            <p className="text-gray-500">No se encontraron competidores.</p>
                         )}
                     </div>
-                )}
-
-                {/* Ratios TTM Grid */}
-                {ratios && (
-                    <div className="space-y-3">
-                        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                            <Percent className="h-3 w-3" />
-                            Ratios TTM
-                        </h4>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            <MetricCard
-                                label="P/E Ratio"
-                                value={formatNumber(ratios.peRatioTTM)}
-                                suffix="x"
-                                color={ratios.peRatioTTM < 25 ? 'green' : ratios.peRatioTTM < 40 ? 'yellow' : 'red'}
-                            />
-                            <MetricCard
-                                label="PEG Ratio"
-                                value={formatNumber(ratios.pegRatioTTM)}
-                                suffix="x"
-                                color={ratios.pegRatioTTM < 1 ? 'green' : ratios.pegRatioTTM < 2 ? 'yellow' : 'red'}
-                            />
-                            <MetricCard
-                                label="P/S Ratio"
-                                value={formatNumber(ratios.priceToSalesRatioTTM)}
-                                suffix="x"
-                                color={ratios.priceToSalesRatioTTM < 5 ? 'green' : ratios.priceToSalesRatioTTM < 10 ? 'yellow' : 'red'}
-                            />
-                            <MetricCard
-                                label="P/B Ratio"
-                                value={formatNumber(ratios.priceToBookRatioTTM)}
-                                suffix="x"
-                                color={ratios.priceToBookRatioTTM < 3 ? 'green' : ratios.priceToBookRatioTTM < 5 ? 'yellow' : 'red'}
-                            />
-                            <MetricCard
-                                label="ROE"
-                                value={formatNumber(ratios.returnOnEquityTTM * 100)}
-                                suffix="%"
-                                color={ratios.returnOnEquityTTM > 0.15 ? 'green' : ratios.returnOnEquityTTM > 0.10 ? 'yellow' : 'red'}
-                            />
-                            <MetricCard
-                                label="ROIC"
-                                value={formatNumber(ratios.returnOnCapitalEmployedTTM * 100)}
-                                suffix="%"
-                                color={ratios.returnOnCapitalEmployedTTM > 0.12 ? 'green' : ratios.returnOnCapitalEmployedTTM > 0.08 ? 'yellow' : 'red'}
-                            />
-                        </div>
-                    </div>
-                )}
-
-                {/* Enterprise Value Metrics */}
-                {ev && (
-                    <div className="space-y-3">
-                        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                            <Building2 className="h-3 w-3" />
-                            Enterprise Value
-                        </h4>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-gray-900/40 p-3 rounded-lg border border-gray-700">
-                                <p className="text-xs text-gray-500 mb-1">Market Cap</p>
-                                <p className="text-lg font-bold text-gray-100">{formatBillions(ev.marketCapitalization)}</p>
-                            </div>
-                            <div className="bg-gray-900/40 p-3 rounded-lg border border-gray-700">
-                                <p className="text-xs text-gray-500 mb-1">Enterprise Value</p>
-                                <p className="text-lg font-bold text-purple-400">{formatBillions(ev.enterpriseValue)}</p>
-                            </div>
-                            <div className="bg-gray-900/40 p-3 rounded-lg border border-gray-700">
-                                <p className="text-xs text-gray-500 mb-1">Total Debt</p>
-                                <p className="text-lg font-bold text-red-400">{formatBillions(ev.addTotalDebt)}</p>
-                            </div>
-                            <div className="bg-gray-900/40 p-3 rounded-lg border border-gray-700">
-                                <p className="text-xs text-gray-500 mb-1">Cash & Equivalents</p>
-                                <p className="text-lg font-bold text-green-400">{formatBillions(Math.abs(ev.minusCashAndCashEquivalents))}</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Profitability Margins from Ratios */}
-                {ratios && (
-                    <div className="space-y-3">
-                        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                            Profitability Margins
-                        </h4>
-
-                        <div className="space-y-2">
-                            <MarginBar label="Gross Margin" value={ratios.grossProfitMarginTTM} />
-                            <MarginBar label="Operating Margin" value={ratios.operatingProfitMarginTTM} />
-                            <MarginBar label="Net Margin" value={ratios.netProfitMarginTTM} />
-                        </div>
-                    </div>
-                )}
-
-            </CardContent>
-        </Card>
-    );
-}
-
-// Helper Components
-function MetricCard({ label, value, suffix, color }: { label: string; value: string; suffix?: string; color: 'green' | 'yellow' | 'red' }) {
-    const colorClasses = {
-        green: 'text-green-400 border-green-800/50',
-        yellow: 'text-yellow-400 border-yellow-800/50',
-        red: 'text-red-400 border-red-800/50',
-    };
-
-    return (
-        <div className={`bg-gray-900/40 p-3 rounded-lg border ${colorClasses[color]} hover:border-opacity-100 transition-colors`}>
-            <p className="text-xs text-gray-500 mb-1">{label}</p>
-            <p className={`text-lg font-bold ${colorClasses[color].split(' ')[0]}`}>
-                {value}{suffix}
-            </p>
-        </div>
-    );
-}
-
-function MarginBar({ label, value }: { label: string; value: number }) {
-    const percent = (value || 0) * 100;
-    const displayValue = percent.toFixed(1);
-
-    return (
-        <div className="space-y-1">
-            <div className="flex justify-between text-xs">
-                <span className="text-gray-300">{label}</span>
-                <span className="font-mono text-gray-100">{displayValue}%</span>
-            </div>
-            <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-                <div
-                    className={`h-full rounded-full transition-all ${percent >= 20 ? 'bg-green-500' : percent >= 10 ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}
-                    style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-                />
-            </div>
+                </CardContent>
+            </Card>
         </div>
     );
 }
