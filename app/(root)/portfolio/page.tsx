@@ -11,6 +11,8 @@ import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import ImportFromImage from '@/components/portfolio/ImportFromImage';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
 import { PortfolioStrategyInsight } from '@/components/portfolio/PortfolioStrategyInsight';
+import { PortfolioRiskSimulator } from '@/components/portfolio/PortfolioRiskSimulator';
+import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Wallet } from 'lucide-react';
@@ -77,8 +79,9 @@ export default async function PortfolioPage() {
       </div>
 
       {/* Strategy Analysis */}
-      <div className="mb-6">
+      <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <PortfolioStrategyInsight portfolioSummary={summary} />
+        <PortfolioRiskSimulator portfolioSummary={summary} />
       </div>
 
       {/* Holdings and Transactions */}
@@ -90,6 +93,8 @@ export default async function PortfolioPage() {
           <PortfolioTransactions transactions={transactions} userId={userId} />
         </div>
       </div>
+
+      <PortfolioChat userId={userId} />
     </div>
   );
 }

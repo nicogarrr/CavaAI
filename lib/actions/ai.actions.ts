@@ -18,7 +18,7 @@ export async function getRAGContext(symbol: string, companyName: string): Promis
     const res = await fetch(`${KB_API_URL}/knowledge/context`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbol, company_name: companyName }),
+      body: JSON.stringify({ query: symbol, symbol: symbol, company_name: companyName }),
       cache: 'no-store',
     });
 
