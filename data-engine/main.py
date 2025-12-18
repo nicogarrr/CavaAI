@@ -659,24 +659,31 @@ async def upload_files(
 # FUNDS & ETF RANKING
 # ============================================================================
 
-from modules.funds import get_fund_ranking, scrape_all_categories
+from modules.funds import get_fund_ranking, scrape_all_categories, init_db
+
+# Initialize database on startup
+init_db()
 
 @app.get("/funds/ranking")
-async def get_ranking(category: str = "default", limit: int = 10):
+async def get_ranking(category: str = "default", limit: int = 10, indexed: str = "all"):
     """
     Get top funds ranking by category.
     Category can be a short code ('world', 'tech', 'sp500', 'oro', etc.)
     The category is mapped to Finect category names in the funds module.
+    
+    Args:
+        indexed: 'all' for both, 'true' for indexed/passive, 'false' for active
     """
     try:
-        print(f"DEBUG API: Received category={category}, limit={limit}")
+        print(f"DEBUG API: Received category={category}, limit={limit}, indexed={indexed}")
         
         # Call the module - it handles category mapping via CATEGORY_FILTER_MAP
-        ranking = get_fund_ranking(category, limit=limit)
+        ranking = get_fund_ranking(category, limit=limit, indexed=indexed)
         
         return {
             "success": True, 
-            "category": category, 
+            "category": category,
+            "indexed": indexed,
             "count": len(ranking),
             "data": ranking
         }

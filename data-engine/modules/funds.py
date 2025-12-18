@@ -11,14 +11,123 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-import json
+import sqlite3
 import os
 import datetime
+import json
 import re
 import time
 
 CACHE_FILE = "funds_cache.json"
+DB_FILE = "funds.db"
 CACHE_DURATION_SECONDS = 30 * 24 * 3600  # 30 días
+
+def init_db():
+    """Initializes the SQLite database schema if it doesn't exist."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Create funds table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS funds (
+        isin TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT,
+        return1Y REAL,
+        return5Y REAL,
+        indexed INTEGER, -- 0 for false, 1 for true
+        gestion TEXT,
+        url TEXT,
+        timestamp REAL
+    )
+    ''')
+    
+    # Create indexes for performance
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_category ON funds(category)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_indexed ON funds(indexed)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_return1Y ON funds(return1Y)")
+    
+    conn.commit()
+    conn.close()
+
+def save_to_db(funds):
+    """Saves a list of funds to the SQLite database (bulk upsert)."""
+    if not funds:
+        return
+        
+    init_db()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    timestamp = datetime.datetime.now().timestamp()
+    
+    # Prepare data for bulk insert
+    data = []
+    for f in funds:
+        data.append((
+            f.get('isin'),
+            f.get('name'),
+            f.get('category'),
+            f.get('return1Y', 0),
+            f.get('return5Y', 0),
+            1 if f.get('indexed') else 0,
+            f.get('gestion'),
+            f.get('url'),
+            timestamp
+        ))
+        
+    # Bulk upsert using the isin as unique key
+    cursor.executemany('''
+    INSERT OR REPLACE INTO funds 
+    (isin, name, category, return1Y, return5Y, indexed, gestion, url, timestamp) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', data)
+    
+    conn.commit()
+    conn.close()
+    print(f"DEBUG DB: Saved {len(funds)} funds to database")
+
+def get_funds_from_db(category_code="default", indexed="all", limit=10):
+    """
+    Retrieves funds from SQLite using filters.
+    indexed: 'all', 'true', 'false'
+    """
+    init_db()
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    query = "SELECT * FROM funds WHERE 1=1"
+    params = []
+    
+    # Apply indexed filter
+    if indexed == "true":
+        query += " AND indexed = 1"
+    elif indexed == "false":
+        query += " AND indexed = 0"
+        
+    # Apply category filter
+    filter_term = CATEGORY_FILTER_MAP.get(category_code.lower() if category_code else 'default', category_code)
+    if filter_term and filter_term != 'default':
+        query += " AND category LIKE ?"
+        params.append(f"%{filter_term}%")
+        
+    # Order by 1Y return and apply limit
+    query += " ORDER BY return1Y DESC LIMIT ?"
+    params.append(limit)
+    
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    
+    # Convert rows to dicts
+    funds = []
+    for row in rows:
+        f = dict(row)
+        f['indexed'] = bool(f['indexed'])
+        funds.append(f)
+        
+    conn.close()
+    return funds
 
 # Mapping of frontend category codes to Finect category name search terms
 # Based on actual Finect category names extracted via Selenium (1166 funds, 65+ RV categories)
@@ -102,29 +211,52 @@ def parse_percentage(text: str) -> float:
         pass
     return 0.0
 
+def save_categories_to_db(categories):
+    """Saves fund categories to a separate table for fast retrieval."""
+    if not categories:
+        return
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, url TEXT, timestamp REAL)')
+    
+    timestamp = time.time()
+    data = [(c.get('id'), c.get('name'), c.get('url'), timestamp) for c in categories]
+    cursor.executemany('INSERT OR REPLACE INTO categories VALUES (?, ?, ?, ?)', data)
+    conn.commit()
+    conn.close()
+
+def get_categories_from_db():
+    """Retrieves categories from DB if not expired."""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='categories'")
+        if not cursor.fetchone():
+            conn.close()
+            return None
+            
+        cursor.execute("SELECT id, name, url, timestamp FROM categories")
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if rows:
+            # Check expiry (30 days)
+            if time.time() - rows[0][3] < CACHE_DURATION_SECONDS:
+                return [{"id": r[0], "name": r[1], "url": r[2]} for r in rows]
+    except:
+        pass
+    return None
+
 def scrape_all_categories() -> list:
     """
-    Scrapes all fund categories from Finect's categories page.
-    Returns list of category dictionaries with id, name, and url.
-    Results are cached for 30 days.
+    Scrapes or retrieves from DB all available fund categories from Finect.
     """
-    cache = {}
-    cache_key = "_categories"
-    
-    # Try loading from cache
-    if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE, 'r', encoding='utf-8') as f:
-                cache = json.load(f)
-                cached = cache.get(cache_key)
-                if cached:
-                    ts = cached.get('timestamp', 0)
-                    if (datetime.datetime.now().timestamp() - ts) < CACHE_DURATION_SECONDS:
-                        print("DEBUG: Serving categories from cache")
-                        return cached['data']
-        except:
-            pass
-    
+    # Try DB first
+    cached = get_categories_from_db()
+    if cached:
+        print(f"DEBUG DB: Loaded {len(cached)} categories from database")
+        return cached
+
     driver = None
     try:
         print("DEBUG: Scraping all categories from Finect...")
@@ -168,19 +300,14 @@ def scrape_all_categories() -> list:
         
         print(f"DEBUG: Found {len(categories)} categories")
         
-        # Save to cache
-        cache[cache_key] = {
-            "timestamp": datetime.datetime.now().timestamp(),
-            "data": categories
-        }
-        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(cache, f, ensure_ascii=False)
-        
+        if categories:
+            save_categories_to_db(categories)
+            
         return categories
         
     except Exception as e:
         print(f"Error scraping categories: {e}")
-        # Return default categories
+        # Return fallback basics if scraper fails
         return [
             {"id": "393", "name": "RV Global", "url": "https://www.finect.com/fondos-inversion/listado?categories=393&order=-M12"},
             {"id": "410", "name": "RV USA", "url": "https://www.finect.com/fondos-inversion/listado?categories=410&order=-M12"},
@@ -369,59 +496,72 @@ def get_all_funds_cached() -> list:
         except:
             pass
     
-    # Need to scrape all funds
+    # Need to scrape all funds (both indexed and non-indexed)
     print("DEBUG: Master cache expired/missing, scraping all funds...")
-    url = "https://www.finect.com/fondos-inversion/listado?company=77ab51c2,77ed42dd,76bfbad1,7860f2cb,77353b3c,785ffa11,78e9c382,77da1bc2,776f9ac2,786f2610,7735e497,76b95390,775ffb5d&order=-M12"
     
-    # Scrape with many scrolls to get all 1000+ funds (~40 scrolls)
-    all_funds = scrape_finect_selenium(url, limit=1200, category_id=None)
+    # Base URL with major gestoras filter
+    base_url = "https://www.finect.com/fondos-inversion/listado?company=77ab51c2,77ed42dd,76bfbad1,7860f2cb,77353b3c,785ffa11,78e9c382,77da1bc2,776f9ac2,786f2610,7735e497,76b95390,775ffb5d"
+    
+    # URLs for indexed (passive) and non-indexed (active) funds
+    url_indexed = f"{base_url}&indexed=eq+true&order=-M12"
+    url_active = f"{base_url}&indexed=ne+true&order=-M12"
+    
+    all_funds = []
+    
+    # Scrape indexed funds (gestión pasiva) - ~130 total
+    print("DEBUG: Scraping INDEXED funds (gestión pasiva)...")
+    indexed_funds = scrape_finect_selenium(url_indexed, limit=500, category_id=None)
+    for fund in indexed_funds:
+        fund['indexed'] = True
+        fund['gestion'] = 'Pasiva'
+    all_funds.extend(indexed_funds)
+    print(f"DEBUG: Scraped {len(indexed_funds)} indexed funds")
+    
+    # Scrape non-indexed funds (gestión activa) - ~1073 total
+    print("DEBUG: Scraping ACTIVE funds (gestión activa)...")
+    active_funds = scrape_finect_selenium(url_active, limit=1200, category_id=None)
+    for fund in active_funds:
+        fund['indexed'] = False
+        fund['gestion'] = 'Activa'
+    all_funds.extend(active_funds)
+    print(f"DEBUG: Scraped {len(active_funds)} active funds")
+    
+    print(f"DEBUG: Total funds scraped: {len(all_funds)}")
+    
+    print(f"DEBUG: Total funds scraped: {len(all_funds)}")
     
     if all_funds:
-        # Save to master cache
-        cache[cache_key] = {
-            "timestamp": datetime.datetime.now().timestamp(),
-            "data": all_funds
-        }
-        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(cache, f, ensure_ascii=False)
-        print(f"DEBUG: Saved {len(all_funds)} funds to master cache")
+        # Save to database (replaces JSON cache for performance)
+        save_to_db(all_funds)
     
     return all_funds
 
-def get_fund_ranking(category_name: str = "default", limit: int = 10) -> list:
+def get_fund_ranking(category_name: str = "default", limit: int = 10, indexed: str = "all") -> list:
     """
-    Get top funds for a category from master cached fund list.
-    Filters by category name from CATEGORY_FILTER_MAP.
+    Get top funds ranking using SQLite.
+    Performance optimized.
     """
     try:
-        # Get all funds from cache (or scrape if needed)
-        all_funds = get_all_funds_cached()
+        # Check if database is empty or expired
+        init_db()
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT MIN(timestamp) FROM funds")
+        min_ts = cursor.fetchone()[0]
+        conn.close()
         
-        if not all_funds:
-            print("DEBUG: No funds available")
-            return []
+        # If no data or older than 30 days, re-scrape
+        if not min_ts or (datetime.datetime.now().timestamp() - min_ts) > CACHE_DURATION_SECONDS:
+            print("DEBUG: DB empty or expired, re-scraping...")
+            all_funds = get_all_funds_cached() # This now saves to DB
         
-        # Apply category filter
-        filter_term = CATEGORY_FILTER_MAP.get(category_name.lower() if category_name else 'default', category_name)
+        # Query results using indexed search
+        ranking = get_funds_from_db(category_name, indexed, limit)
         
-        filtered_funds = all_funds
-        if filter_term and filter_term != 'default' and filter_term is not None:
-            search_lower = filter_term.lower()
-            filtered = [f for f in all_funds if search_lower in f.get('category', '').lower()]
-            if filtered:
-                filtered_funds = filtered
-                print(f"DEBUG: Filtered to {len(filtered)} funds by category: {filter_term}")
-            else:
-                print(f"DEBUG: No funds found for category {filter_term}, showing all")
-        
-        # Sort by 12M return (descending)
-        filtered_funds.sort(key=lambda x: x.get('return1Y', 0), reverse=True)
-        
-        # Take top N and assign ranks
-        ranking = filtered_funds[:limit]
+        # Assign ranks
         for i, fund in enumerate(ranking):
             fund['rank'] = i + 1
-        
+            
         return ranking
     
     except Exception as e:

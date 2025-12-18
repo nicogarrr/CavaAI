@@ -45,6 +45,7 @@ interface Category {
 
 export function FundRankingTable() {
     const [selectedCategory, setSelectedCategory] = useState("default");
+    const [selectedIndexed, setSelectedIndexed] = useState("all"); // 'all', 'true', 'false'
     const [loading, setLoading] = useState(false);
     const [loadingCategories, setLoadingCategories] = useState(true);
     const [funds, setFunds] = useState<Fund[]>([]);
@@ -57,14 +58,14 @@ export function FundRankingTable() {
         setLoadingCategories(false);
     }, []);
 
-    // Load funds when category changes
+    // Load funds when category or indexed filter changes
     useEffect(() => {
         fetchFunds();
-    }, [selectedCategory]);
+    }, [selectedCategory, selectedIndexed]);
 
     async function fetchFunds() {
         setLoading(true);
-        const res = await getFundRanking(selectedCategory);
+        const res = await getFundRanking(selectedCategory, 10, selectedIndexed);
         if (res.success) {
             setFunds(res.data || []);
         } else {
@@ -88,7 +89,7 @@ export function FundRankingTable() {
 
                 <div className="flex items-center gap-2">
                     <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                        <SelectTrigger className="w-[280px] bg-slate-900 border-slate-700 text-slate-200">
+                        <SelectTrigger className="w-[200px] bg-slate-900 border-slate-700 text-slate-200">
                             <SelectValue placeholder="Selecciona Categoría" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-slate-700 text-slate-200 max-h-[300px]">
@@ -97,6 +98,18 @@ export function FundRankingTable() {
                             ))}
                         </SelectContent>
                     </Select>
+
+                    <Select value={selectedIndexed} onValueChange={setSelectedIndexed}>
+                        <SelectTrigger className="w-[150px] bg-slate-900 border-slate-700 text-slate-200">
+                            <SelectValue placeholder="Gestión" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-700 text-slate-200">
+                            <SelectItem value="all">Todas</SelectItem>
+                            <SelectItem value="true">Pasiva (Indexados)</SelectItem>
+                            <SelectItem value="false">Activa</SelectItem>
+                        </SelectContent>
+                    </Select>
+
                     <Button
                         variant="outline"
                         size="icon"
