@@ -132,14 +132,15 @@ async def get_key_metrics_ttm(symbol: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/financial-scores/{symbol}")
-async def get_financial_scores(symbol: str):
+async def get_financial_scores_endpoint(symbol: str):
     """Get Financial Scores (Altman Z-Score + Piotroski Score)"""
     symbol = symbol.upper()
     try:
         data = fetch_financial_scores(symbol)
         if isinstance(data, dict) and 'error' in data:
             raise HTTPException(status_code=500, detail=data['error'])
-        return {"symbol": symbol, "scores": data}
+        # Return data directly (array) as frontend expects
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -378,15 +379,21 @@ async def get_fmp_articles_endpoint(
         return []
 
 @app.get("/news/general")
-async def get_general_news_endpoint(
-    page: int = Query(0, description="Page number"),
-    limit: int = Query(20, description="Limit results")
-):
-    """Get General News"""
-    try:
-        data = fetch_general_news(page, limit)
-        if isinstance(data, dict) and 'error' in data:
-             return []
-        return data
-    except Exception:
-        return []
+async def get_general_news(page: int = 0, limit: int = 20):
+    data = fetch_general_news(page, limit)
+    return data
+
+from modules.fmp import fetch_dividends
+
+@app.get("/dividends/{symbol}")
+async def get_dividends(symbol: str):
+    symbol = symbol.upper()
+    data = fetch_dividends(symbol)
+    return data
+
+@app.get("/stock-peers/{symbol}")
+async def get_stock_peers_endpoint(symbol: str):
+    symbol = symbol.upper()
+    data = fetch_stock_peers(symbol)
+    return data
+

@@ -238,18 +238,7 @@ export interface KeyMetricsTTM {
     capexPerShareTTM: number;
 }
 
-export interface FinancialScores {
-    symbol: string;
-    altmanZScore: number;
-    piotroskiScore: number;
-    workingCapital: number;
-    totalAssets: number;
-    retainedEarnings: number;
-    ebit: number;
-    marketCap: number;
-    totalLiabilities: number;
-    revenue: number;
-}
+
 
 export interface OwnerEarnings {
     symbol: string;
@@ -279,10 +268,7 @@ export interface GradesConsensus {
     consensus: string;
 }
 
-export interface StockPeers {
-    symbol: string;
-    peersList: string[];
-}
+
 
 // ============================================================================
 // NEW SERVER ACTIONS
@@ -299,10 +285,7 @@ export const getKeyMetricsTTM = cache(async (symbol: string): Promise<{ symbol: 
 /**
  * Fetch Financial Scores (Altman Z-Score + Piotroski Score)
  */
-export const getFinancialScores = cache(async (symbol: string): Promise<{ symbol: string; scores: FinancialScores[] } | null> => {
-    const data = await fetchFromBackend<{ symbol: string; scores: FinancialScores[] }>(`/financial-scores/${symbol}`);
-    return data;
-});
+
 
 /**
  * Fetch Owner Earnings (Buffett's preferred metric)
@@ -331,10 +314,7 @@ export const getGrades = cache(async (symbol: string): Promise<{ symbol: string;
 /**
  * Fetch Stock Peers for comparison
  */
-export const getStockPeers = cache(async (symbol: string): Promise<{ symbol: string; peers: StockPeers[] } | null> => {
-    const data = await fetchFromBackend<{ symbol: string; peers: StockPeers[] }>(`/peers/${symbol}`);
-    return data;
-});
+
 
 /**
  * Get comprehensive analysis data in one call (optimized for StockAnalysis component)
@@ -600,4 +580,67 @@ export const getFmpArticles = cache(async (page: number = 0, limit: number = 20)
 export const getGeneralNews = cache(async (page: number = 0, limit: number = 20): Promise<GeneralNewsArticle[]> => {
     const data = await fetchFromBackend<GeneralNewsArticle[]>(`/news/general?page=${page}&limit=${limit}`);
     return data || [];
+});
+
+export interface Dividend {
+    date: string;
+    label: string;
+    adjDividend: number;
+    dividend: number;
+    recordDate: string;
+    paymentDate: string;
+    declarationDate: string;
+}
+
+export const getDividends = cache(async (symbol: string): Promise<Dividend[]> => {
+    try {
+        const data = await fetchFromBackend<Dividend[] | { error: string }>(`/dividends/${symbol}`);
+        // Handle error responses or non-array data
+        if (!data || !Array.isArray(data)) {
+            return [];
+        }
+        return data;
+    } catch (error) {
+        console.error("Error fetching dividends:", error);
+        return [];
+    }
+});
+
+export interface FinancialScore {
+    symbol: string;
+    altmanZScore: number;
+    piotroskiScore: number;
+    workingCapital: number;
+    totalAssets: number;
+    retainedEarnings: number;
+    ebit: number;
+    marketCap: number;
+    totalLiabilities: number;
+    revenue: number;
+}
+
+export const getFinancialScores = cache(async (symbol: string): Promise<FinancialScore | null> => {
+    try {
+        const data = await fetchFromBackend<FinancialScore[]>(`/financial-scores/${symbol}`);
+        return data && data.length > 0 ? data[0] : null;
+    } catch (error) {
+        console.error("Error fetching financial scores:", error);
+        return null;
+    }
+});
+
+export interface PeerCompany {
+    symbol: string;
+    peersList: string[];
+}
+
+export const getStockPeers = cache(async (symbol: string): Promise<PeerCompany | null> => {
+    try {
+        const data = await fetchFromBackend<PeerCompany[]>(`/stock-peers/${symbol}`);
+        return data && data.length > 0 ? data[0] : null;
+        // FMP stock-peers returns [ { symbol: 'AAPL', peersList: [...] } ] usually
+    } catch (error) {
+        console.error("Error fetching peers:", error);
+        return null;
+    }
 });

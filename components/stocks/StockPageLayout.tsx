@@ -57,6 +57,12 @@ const EarningsTranscriptsPanel = dynamic(() => import('./EarningsTranscriptsPane
     ssr: false,
 });
 
+const StockDividends = dynamic(() => import('./StockDividends'), {
+    loading: () => <TabSkeleton />,
+    ssr: false,
+});
+
+
 function TabSkeleton() {
     return (
         <div className="space-y-4" >
@@ -96,7 +102,8 @@ export default function StockPageLayout({
                 {/* Mobile Tab Selector */}
                 <div className="md:hidden mb-4 overflow-x-auto">
                     <div className="flex gap-2 pb-2">
-                        {(['resumen', 'valoracion', 'calidad', 'fundamentales', 'insiders', 'estimaciones', 'transcripciones', 'analisis', 'noticias'] as StockTab[]).map((tab) => (
+                        {(['resumen', 'valoracion', 'dividendos', 'calidad', 'fundamentales', 'insiders', 'estimaciones', 'transcripciones', 'analisis', 'noticias'] as StockTab[]).map((tab) => (
+
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
@@ -111,53 +118,56 @@ export default function StockPageLayout({
                     </div>
                 </div>
 
-                {/* Tab Content - Only renders active tab */}
+                {/* Tab Content - Uses CSS visibility to preserve state */}
                 <div className="space-y-6">
-                    {activeTab === 'resumen' && (
+                    <div className={activeTab === 'resumen' ? 'block' : 'hidden'}>
                         <ResumenTab
                             symbol={upperSymbol}
                             scriptUrl={scriptUrl}
                         />
-                    )}
+                    </div>
 
-                    {activeTab === 'valoracion' && (
+                    <div className={activeTab === 'valoracion' ? 'block' : 'hidden'}>
                         <ValoracionTab
                             symbol={upperSymbol}
-                            currentPrice={currentPrice}
                         />
-                    )}
+                    </div>
 
-                    {activeTab === 'calidad' && (
+                    <div className={activeTab === 'calidad' ? 'block' : 'hidden'}>
                         <CalidadTab symbol={upperSymbol} />
-                    )}
+                    </div>
 
-                    {activeTab === 'fundamentales' && (
+                    <div className={activeTab === 'fundamentales' ? 'block' : 'hidden'}>
                         <FundamentalesTab symbol={upperSymbol} />
-                    )}
+                    </div>
 
-                    {activeTab === 'insiders' && (
+                    <div className={activeTab === 'insiders' ? 'block' : 'hidden'}>
                         <InsidersTab symbol={upperSymbol} />
-                    )}
+                    </div>
 
-                    {activeTab === 'estimaciones' && (
+                    <div className={activeTab === 'estimaciones' ? 'block' : 'hidden'}>
                         <EstimacionesTab symbol={upperSymbol} />
-                    )}
+                    </div>
 
-                    {activeTab === 'transcripciones' && (
+                    <div className={activeTab === 'transcripciones' ? 'block' : 'hidden'}>
                         <TranscripcionesTab symbol={upperSymbol} />
-                    )}
+                    </div>
 
-                    {activeTab === 'analisis' && (
+                    <div className={activeTab === 'dividendos' ? 'block' : 'hidden'}>
+                        <DividendosTab symbol={upperSymbol} />
+                    </div>
+
+                    <div className={activeTab === 'analisis' ? 'block' : 'hidden'}>
                         <AnalisisTab
                             symbol={upperSymbol}
                             companyName={companyName}
                             currentPrice={currentPrice}
                         />
-                    )}
+                    </div>
 
-                    {activeTab === 'noticias' && (
+                    <div className={activeTab === 'noticias' ? 'block' : 'hidden'}>
                         <NoticiasTab symbol={upperSymbol} />
-                    )}
+                    </div>
                 </div>
             </main>
         </div>
@@ -203,14 +213,24 @@ function ResumenTab({ symbol, scriptUrl }: { symbol: string; scriptUrl: string }
     );
 }
 
-function ValoracionTab({ symbol, currentPrice }: { symbol: string; currentPrice: number }) {
+function ValoracionTab({ symbol }: { symbol: string }) {
     return (
         <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-100">Valoración</h2>
-            <StockValuation symbol={symbol} currentPrice={currentPrice} />
+            <StockValuation symbol={symbol} />
         </div>
     );
 }
+
+function DividendosTab({ symbol }: { symbol: string }) {
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-100">Dividendos</h2>
+            <StockDividends symbol={symbol} />
+        </div>
+    );
+}
+
 
 function CalidadTab({ symbol }: { symbol: string }) {
     return (

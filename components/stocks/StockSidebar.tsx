@@ -14,11 +14,13 @@ import {
     Users,
     Target,
     FileText,
+    DollarSign,
 } from 'lucide-react';
 
 export type StockTab =
     | 'resumen'
     | 'valoracion'
+    | 'dividendos'
     | 'calidad'
     | 'fundamentales'
     | 'insiders'
@@ -46,6 +48,12 @@ const navItems: NavItem[] = [
         label: 'Valoración',
         icon: <TrendingUp size={20} />,
         description: 'DCF, Ratios, EV'
+    },
+    {
+        id: 'dividendos',
+        label: 'Dividendos',
+        icon: <DollarSign size={20} />,
+        description: 'Historial y Rendimiento'
     },
     {
         id: 'calidad',

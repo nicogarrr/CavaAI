@@ -185,6 +185,20 @@ def fetch_stock_peers(symbol):
     except Exception as e:
         return {'error': str(e)}
 
+def fetch_dividends(symbol, limit=20):
+    """Fetch Stock Dividends History"""
+    url = f'{BASE_URL}/dividends?symbol={symbol}&limit={limit}&apikey={FMP_API_KEY}'
+    cache_key = f'dividends_{symbol}'
+    cached = get_cached_data(symbol, cache_key, 86400) # 24h cache
+    if cached: return cached
+    try:
+        res = requests.get(url, timeout=15)
+        data = res.json()
+        save_to_cache(symbol, cache_key, data)
+        return data
+    except Exception as e:
+        return {'error': str(e)}
+
 # ============================================================================
 # PRIORITY APIs - AI/RAG, Trading Signals, WACC
 # ============================================================================
