@@ -73,15 +73,9 @@ export default async function PortfolioPage() {
         <PortfolioSummary summary={summary} />
       </div>
 
-      {/* Scores */}
-      <div className="mb-6">
-        <PortfolioScores scores={scores} />
-      </div>
-
       {/* Strategy Analysis */}
-      <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="mb-6">
         <PortfolioStrategyInsight portfolioSummary={summary} />
-        <PortfolioRiskSimulator portfolioSummary={summary} />
       </div>
 
       {/* Holdings and Transactions */}
