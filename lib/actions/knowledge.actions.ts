@@ -1,6 +1,6 @@
 'use server';
 
-const KB_API_URL = 'http://127.0.0.1:8000';
+const KB_API_URL = 'http://127.0.0.1:8001';
 
 /**
  * Get knowledge base statistics

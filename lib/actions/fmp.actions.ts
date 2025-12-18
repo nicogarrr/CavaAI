@@ -2,7 +2,7 @@
 
 import { cache } from 'react';
 
-const FMP_BACKEND_URL = process.env.FMP_BACKEND_URL || 'http://localhost:8000';
+const FMP_BACKEND_URL = process.env.FMP_BACKEND_URL || 'http://localhost:8001';
 
 /**
  * Generic fetch helper for FMP backend

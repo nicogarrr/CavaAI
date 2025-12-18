@@ -71,6 +71,7 @@ export const NAV_ITEMS = [
   { href: '/', label: 'Home' },
   { href: '/portfolio', label: 'Cartera' },
   { href: '/watchlist', label: 'Watchlist' },
+  { href: '/funds', label: 'Fondos' },
 ] as const;
 
 // TradingView Widget Configurations
