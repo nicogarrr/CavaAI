@@ -62,6 +62,27 @@ const StockDividends = dynamic(() => import('./StockDividends'), {
     ssr: false,
 });
 
+// NEW: Congress Trading, ESG, Institutional, Technical
+const CongressTradingPanel = dynamic(() => import('./CongressTradingPanel'), {
+    loading: () => <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+
+const ESGScorePanel = dynamic(() => import('./ESGScorePanel'), {
+    loading: () => <Skeleton className="h-[300px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+
+const InstitutionalHoldingsPanel = dynamic(() => import('./InstitutionalHoldingsPanel'), {
+    loading: () => <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+
+const TechnicalIndicatorsPanel = dynamic(() => import('./TechnicalIndicatorsPanel'), {
+    loading: () => <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
+
 
 function TabSkeleton() {
     return (
@@ -102,7 +123,7 @@ export default function StockPageLayout({
                 {/* Mobile Tab Selector */}
                 <div className="md:hidden mb-4 overflow-x-auto">
                     <div className="flex gap-2 pb-2">
-                        {(['resumen', 'valoracion', 'dividendos', 'calidad', 'fundamentales', 'insiders', 'estimaciones', 'transcripciones', 'analisis', 'noticias'] as StockTab[]).map((tab) => (
+                        {(['resumen', 'valoracion', 'dividendos', 'calidad', 'fundamentales', 'insiders', 'estimaciones', 'transcripciones', 'analisis', 'noticias', 'congreso', 'esg', 'institucional', 'tecnicos'] as StockTab[]).map((tab) => (
 
                             <button
                                 key={tab}
@@ -167,6 +188,23 @@ export default function StockPageLayout({
 
                     <div className={activeTab === 'noticias' ? 'block' : 'hidden'}>
                         <NoticiasTab symbol={upperSymbol} />
+                    </div>
+
+                    {/* NEW TABS */}
+                    <div className={activeTab === 'congreso' ? 'block' : 'hidden'}>
+                        <CongresoTab symbol={upperSymbol} />
+                    </div>
+
+                    <div className={activeTab === 'esg' ? 'block' : 'hidden'}>
+                        <ESGTab symbol={upperSymbol} />
+                    </div>
+
+                    <div className={activeTab === 'institucional' ? 'block' : 'hidden'}>
+                        <InstitucionalTab symbol={upperSymbol} />
+                    </div>
+
+                    <div className={activeTab === 'tecnicos' ? 'block' : 'hidden'}>
+                        <TecnicosTab symbol={upperSymbol} />
                     </div>
                 </div>
             </main>
@@ -308,6 +346,58 @@ function NoticiasTab({ symbol }: { symbol: string }) {
         <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-100">Noticias</h2>
             <StockNews symbol={symbol} />
+        </div>
+    );
+}
+
+// ============================================================================
+// NEW TABS: Congress, ESG, Institutional, Technical Indicators
+// ============================================================================
+
+function CongresoTab({ symbol }: { symbol: string }) {
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-100">Trading del Congreso</h2>
+            <p className="text-gray-400 text-sm">
+                Transacciones de acciones por senadores y congresistas de EE.UU.
+            </p>
+            <CongressTradingPanel symbol={symbol} />
+        </div>
+    );
+}
+
+function ESGTab({ symbol }: { symbol: string }) {
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-100">Puntuación ESG</h2>
+            <p className="text-gray-400 text-sm">
+                Environmental, Social & Governance - Métricas de sostenibilidad
+            </p>
+            <ESGScorePanel symbol={symbol} />
+        </div>
+    );
+}
+
+function InstitucionalTab({ symbol }: { symbol: string }) {
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-100">Propiedad Institucional (13F)</h2>
+            <p className="text-gray-400 text-sm">
+                Principales fondos y gestores que poseen acciones de esta empresa
+            </p>
+            <InstitutionalHoldingsPanel symbol={symbol} />
+        </div>
+    );
+}
+
+function TecnicosTab({ symbol }: { symbol: string }) {
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-100">Indicadores Técnicos</h2>
+            <p className="text-gray-400 text-sm">
+                RSI, MACD, Bollinger Bands, SMA, EMA y más
+            </p>
+            <TechnicalIndicatorsPanel symbol={symbol} />
         </div>
     );
 }

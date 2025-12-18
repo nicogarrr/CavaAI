@@ -10,6 +10,7 @@ import {
 } from '@/lib/utils/proPicksStrategies';
 import { getAuth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
+import { getRAGContext } from './ai.actions';
 
 export interface ProPick {
     symbol: string;
@@ -91,6 +92,11 @@ async function selectBestPicksWithAI(
         });
 
         // Prompt para Gemini - 100% IMPARCIAL
+
+        // 🧠 RAG: Obtener criterios de inversión generales del usuario
+        // Usamos un símbolo genérico para recuperar documentos de estrategia/criterios
+        const ragContext = await getRAGContext('ESTRATEGIA', 'Criterios de Inversión Personal');
+
         const systemPrompt = `Eres un analista financiero experto e IMPARCIAL. Analiza los datos REALES COMPLETOS de ${evaluatedPicks.length} acciones ya evaluadas y selecciona las ${limit} MEJORES opciones de inversión en este momento basándote ÚNICAMENTE en datos reales y objetivos, sin sesgos ni preconcepciones:
 
 DATOS REALES DISPONIBLES:
@@ -100,6 +106,7 @@ DATOS REALES DISPONIBLES:
 - Comparación con sector (si está mejor o peor que el promedio)
 - Razones específicas de cada acción
 - Sector de cada empresa
+${ragContext ? '\n' + ragContext + '\n\nIMPORTANTE: Usa los criterios de inversión de la BASE DE CONOCIMIENTO (arriba) para filtrar y priorizar las acciones que mejor se ajusten a la filosofía del usuario.' : ''}
 
 CRITERIOS DE SELECCIÓN OBJETIVOS (basados SOLO en datos reales):
 1. **Score general alto basado en datos reales** (priorizar scores >70, pero evalúa objetivamente todos los scores)
@@ -132,7 +139,7 @@ Selecciona las ${limit} mejores opciones basándote en los datos reales actuales
             }],
         };
 
-        const model = 'gemini-3-pro-preview';
+        const model = 'gemini-3-flash-preview';
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         const res = await fetch(endpoint, {
             method: 'POST',

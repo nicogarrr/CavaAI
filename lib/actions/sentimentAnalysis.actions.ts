@@ -1,5 +1,7 @@
 'use server';
 
+import { getRAGContext } from './ai.actions';
+
 /**
  * Análisis de sentimiento de noticias y menciones
  * Usa Gemini AI para analizar sentimiento de texto
@@ -45,7 +47,8 @@ export interface NewsSentimentAnalysis {
 async function analyzeNewsSentimentWithAI(
   symbol: string,
   headline: string,
-  summary?: string
+  summary?: string,
+  ragContext?: string
 ): Promise<SentimentScore | null> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
@@ -55,11 +58,13 @@ async function analyzeNewsSentimentWithAI(
 
   try {
     const text = summary || headline;
-    
+
     const prompt = `Eres un analista de sentimiento financiero. Analiza el siguiente texto sobre ${symbol} y determina el sentimiento.
 
 TEXTO:
 "${text}"
+
+${ragContext ? `CONTEXTO ADICIONAL (Preferencia de Usuario/Análisis Previos):\n${ragContext}\n` : ''}
 
 RESPONDE EN FORMATO JSON EXACTO:
 {
@@ -82,9 +87,9 @@ IMPORTANTE:
       }],
     };
 
-    const model = 'gemini-3-pro-preview';
+    const model = 'gemini-3-flash-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,23 +103,23 @@ IMPORTANTE:
     }
 
     const json = await response.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!text) return null;
+    const responseText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!responseText) return null;
 
     // Extraer JSON de la respuesta
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
 
     const result = JSON.parse(jsonMatch[0]);
-    
+
     return {
       symbol,
       sentiment: result.sentiment || 'neutral',
       score: result.score || 0,
       confidence: result.confidence || 0.5,
       source: 'news',
-      analyzedText: text,
+      analyzedText: responseText,
       keyPhrases: result.keyPhrases || [],
       timestamp: new Date().toISOString(),
     };
@@ -146,14 +151,18 @@ export async function analyzeNewsSentiment(
     const articlesToAnalyze = newsArticles.slice(0, 10);
     const sentimentScores: SentimentScore[] = [];
 
+    // 🧠 RAG: Obtener contexto para el análisis de sentimiento
+    const ragContext = await getRAGContext(symbol, companyName);
+
     // Analizar cada noticia (con límite de rate para no sobrecargar API)
     for (const article of articlesToAnalyze) {
       const sentiment = await analyzeNewsSentimentWithAI(
         symbol,
         article.headline,
-        article.summary
+        article.summary,
+        ragContext
       );
-      
+
       if (sentiment) {
         sentimentScores.push(sentiment);
       }
@@ -190,7 +199,7 @@ export async function analyzeNewsSentiment(
     // Formatear artículos analizados
     const articles = sentimentScores.map((sentiment, idx) => {
       const article = articlesToAnalyze[idx];
-      const date = article.datetime 
+      const date = article.datetime
         ? new Date(article.datetime * 1000).toISOString()
         : new Date().toISOString();
 
@@ -293,7 +302,7 @@ export async function getCombinedSentimentAnalysis(
     const newsWeight = socialScore !== null ? 0.7 : 1.0;
     const socialWeight = socialScore !== null ? 0.3 : 0.0;
 
-    const combinedScore = (newsSentiment.overallScore * newsWeight) + 
+    const combinedScore = (newsSentiment.overallScore * newsWeight) +
       (socialScore !== null ? socialScore * socialWeight : 0);
 
     let overallSentiment: 'positive' | 'negative' | 'neutral';
@@ -305,10 +314,10 @@ export async function getCombinedSentimentAnalysis(
       overallSentiment = 'neutral';
     }
 
-    const confidence = newsSentiment.articleCount > 5 
-      ? 0.8 
-      : newsSentiment.articleCount > 2 
-        ? 0.6 
+    const confidence = newsSentiment.articleCount > 5
+      ? 0.8
+      : newsSentiment.articleCount > 2
+        ? 0.6
         : 0.4;
 
     combined = {

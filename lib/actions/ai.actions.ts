@@ -3,6 +3,153 @@
 import { getAuth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
 
+// ============================================================================
+// RAG CONTEXT RETRIEVAL - Knowledge Base Integration
+// ============================================================================
+
+/**
+ * Retrieves relevant context from the knowledge base for stock analysis
+ * This adds your personal investment criteria, past analyses, and references
+ */
+export async function getRAGContext(symbol: string, companyName: string): Promise<string> {
+  try {
+    const KB_API_URL = 'http://127.0.0.1:8000';
+
+    const res = await fetch(`${KB_API_URL}/knowledge/context`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, company_name: companyName }),
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      console.warn('RAG context fetch failed:', res.status);
+      return '';
+    }
+
+    const data = await res.json();
+
+    if (data.success && data.context) {
+      return `\n\n📚 MI BASE DE CONOCIMIENTO (Análisis Previos y Criterios Personales):\n${data.context}\n`;
+    }
+
+    return '';
+  } catch (error) {
+    console.warn('RAG context unavailable:', error);
+    return '';
+  }
+}
+
+// ============================================
+// Analista de Estrategia de Cartera (AI Strategy Analyst)
+// ============================================
+
+export async function generatePortfolioStrategyAnalysis(portfolioSummary: any): Promise<{
+  alignmentScore: number;
+  warnings: string[];
+  opportunities: string[];
+  strengths: string[];
+  summary: string;
+}> {
+  try {
+    const auth = await getAuth();
+    if (!auth) throw new Error('Error de autenticación');
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) throw new Error('Usuario no autenticado');
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      return {
+        alignmentScore: 0,
+        warnings: ['API Key no configurada'],
+        opportunities: [],
+        strengths: [],
+        summary: 'Error de configuración de IA'
+      };
+    }
+
+    // 1. Obtener contexto de estrategia personal
+    const strategyContext = await getRAGContext('ESTRATEGIA', 'Reglas de Inversión y Gestión de Riesgo');
+
+    // 2. Preparar datos de la cartera para el prompt
+    const portfolioData = {
+      totalValue: portfolioSummary.totalValue,
+      totalGainPercent: portfolioSummary.totalGainPercent,
+      holdingsCount: portfolioSummary.holdings.length,
+      topHoldings: portfolioSummary.holdings.slice(0, 5).map((h: any) => ({
+        symbol: h.symbol,
+        weight: ((h.value / portfolioSummary.totalValue) * 100).toFixed(1) + '%',
+        gain: h.gainPercent.toFixed(1) + '%'
+      })),
+      sectorAllocation: "Calculado por IA basado en holdings" // Gemini puede inferir esto o podríamos calcularlo si tuviéramos datos
+    };
+
+    const prompt = `Eres el Analista de Estrategia Personal del usuario. Tu trabajo es AUDITAR su cartera actual contra sus PROPIAS reglas de inversión definidas en su base de conocimiento.
+
+CONTEXTO DE ESTRATEGIA (RAG - Reglas del Usuario):
+${strategyContext || "No se encontraron documentos de estrategia específicos. Usa principios generales de Value Investing y Gestión de Riesgo prudente."}
+
+CARTERA ACTUAL:
+${JSON.stringify(portfolioData, null, 2)}
+
+TAREA:
+Analiza si la cartera cumple con la estrategia del usuario.
+1. Calcula un "Score de Alineación" (0-100). 100 = Cumple todas las reglas perfectamente.
+2. Identifica "Warnings": Violaciones de reglas (ej: mucha concentración, sector prohibido, falta de liquidez si se menciona).
+3. Identifica "Strengths": Puntos fuertes donde se respeta la estrategia.
+4. Identifica "Opportunities": Sugerencias basadas en sus reglas (ej: "Tu estrategia dice rebalancear si X sube mucho").
+
+RESPONDE EN JSON EXACTO:
+{
+  "alignmentScore": number,
+  "warnings": ["warning1", "warning2"],
+  "opportunities": ["opp1", "opp2"],
+  "strengths": ["str1", "str2"],
+  "summary": "Breve resumen ejecutivo de 2 líneas"
+}`;
+
+    const payload = {
+      contents: [{
+        role: 'user',
+        parts: [{ text: prompt }]
+      }]
+    };
+
+    const model = 'gemini-2.0-flash'; // Usar modelo rápido y capaz
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store'
+    });
+
+    if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+
+    const json = await res.json();
+    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!text) throw new Error('Empty response from AI');
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Invalid JSON format');
+
+    return JSON.parse(jsonMatch[0]);
+
+  } catch (error) {
+    console.error('Error generating strategy analysis:', error);
+    return {
+      alignmentScore: 50,
+      warnings: ['Error al analizar la estrategia'],
+      opportunities: [],
+      strengths: [],
+      summary: 'No se pudo completar el análisis de estrategia en este momento.'
+    };
+  }
+}
+
+
 export async function generatePortfolioSummary(input: {
   portfolio: PortfolioPerformance;
   history: { t: number[]; v: number[] };
@@ -17,7 +164,19 @@ export async function generatePortfolioSummary(input: {
     return 'IA desactivada: falta la clave de Gemini en el entorno.';
   }
 
-  const system = `Eres un analista financiero. Resume claramente en español: distribución, rendimiento reciente, riesgos y 2 recomendaciones accionables.`;
+  // 🧠 RAG: Obtener contexto para las acciones de la cartera
+  const portfolioSymbols = input.portfolio.positions?.map(p => p.symbol) || [];
+  let ragContext = '';
+  if (portfolioSymbols.length > 0) {
+    // Buscar contexto para los primeros 5 símbolos más grandes
+    const topSymbols = portfolioSymbols.slice(0, 5);
+    const contextPromises = topSymbols.map(s => getRAGContext(s, s));
+    const contexts = await Promise.all(contextPromises);
+    ragContext = contexts.filter(c => c).join('\n');
+  }
+
+  const system = `Eres un analista financiero experto. Resume claramente en español: distribución, rendimiento reciente, riesgos y 2 recomendaciones accionables.
+${ragContext ? '\n\nUSA ESTE CONOCIMIENTO PERSONAL DEL USUARIO PARA PERSONALIZAR TU ANÁLISIS:' + ragContext : ''}`;
 
   const payload = {
     contents: [
@@ -33,8 +192,8 @@ export async function generatePortfolioSummary(input: {
   };
 
   try {
-    // Forzar uso de gemini-3-pro-preview (eliminar variables de entorno obsoletas)
-    const model = 'gemini-3-pro-preview';
+    // Forzar uso de gemini-3-flash-preview (eliminar variables de entorno obsoletas)
+    const model = 'gemini-3-flash-preview';
     // Usar endpoint v1 (v1beta puede no soportar el modelo)
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
@@ -249,6 +408,9 @@ Narra los posibles desenlaces con probabilidades (sin tabla)
     ? `\n\n🏢 COMPETIDORES DEL SECTOR:\n${peers.join(', ')}`
     : '';
 
+  // 🧠 RAG: Obtener contexto de tu base de conocimiento personal
+  const ragContext = await getRAGContext(input.symbol, input.companyName);
+
   const prompt = `Escribe un ANÁLISIS COMPLETO DE INVERSIÓN estilo Substack (narrativo, ameno, profesional) para ${input.companyName} (${input.symbol}).
 
 PRECIO ACTUAL: $${input.currentPrice.toFixed(2)}
@@ -262,6 +424,7 @@ ${technicalText}
 ${indexText}
 ${insiderText}
 ${peersText}
+${ragContext}
 
 INSTRUCCIONES:
 - Escribe en PROSA FLUIDA, como artículo de Substack profesional
@@ -273,7 +436,7 @@ INSTRUCCIONES:
 - Analiza noticias, eventos 🔴, análisis técnico, insider trading, consenso de analistas
 - Compara con competidores del sector de forma narrativa
 - Español (excepto acrónimos: DCF, WACC, ROIC, EBIT, PER)
-- 2000-3500 palabras - profundo pero ameno y legible
+- 2000 palabras - profundo pero ameno y legible
 - 100% objetivo, basado en datos reales, sin forzar conclusiones`;
 
   const payload = {
@@ -290,8 +453,8 @@ INSTRUCCIONES:
   };
 
   try {
-    // Forzar uso de gemini-3-pro-preview (eliminar variables de entorno obsoletas)
-    const model = 'gemini-3-pro-preview';
+    // Forzar uso de gemini-3-flash-preview (eliminar variables de entorno obsoletas)
+    const model = 'gemini-3-flash-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -483,6 +646,9 @@ IMPORTANTE:
     ? `\n\n🏢 COMPETIDORES DEL SECTOR:\n${peers.join(', ')}`
     : '';
 
+  // 🧠 RAG: Obtener contexto de la base de conocimiento del usuario
+  const ragContext = await getRAGContext(input.symbol, input.companyName);
+
   const prompt = `Genera un análisis DCF completo para ${input.companyName} (${input.symbol}).
 
 PRECIO ACTUAL: $${input.currentPrice.toFixed(2)}
@@ -497,6 +663,7 @@ ${indexText}
 ${insiderText}
 ${esgText}
 ${peersText}
+${ragContext}
 
 IMPORTANTE:
 - Analiza las noticias recientes para entender el contexto actual de la empresa
@@ -528,8 +695,8 @@ IMPORTANTE:
   };
 
   try {
-    // Forzar uso de gemini-3-pro-preview (eliminar variables de entorno obsoletas)
-    const model = 'gemini-3-pro-preview';
+    // Forzar uso de gemini-3-flash-preview (eliminar variables de entorno obsoletas)
+    const model = 'gemini-3-flash-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -948,6 +1115,9 @@ La inversión ya no es una simple apuesta por el crecimiento evidente del mercad
     ? `\n\n🏢 COMPETIDORES DEL SECTOR:\n${peers.join(', ')}`
     : '';
 
+  // 🧠 RAG: Obtener contexto de la base de conocimiento del usuario
+  const ragContext = await getRAGContext(input.symbol, input.companyName);
+
   const prompt = `Genera una TESIS DE INVERSIÓN completa para ${input.companyName} (${input.symbol}).
 
 PRECIO ACTUAL: $${input.currentPrice.toFixed(2)}
@@ -962,6 +1132,7 @@ ${indexText}
 ${insiderText}
 ${esgText}
 ${peersText}
+${ragContext}
 
 IMPORTANTE - IMPARCIALIDAD Y USO DE DATOS REALES:
 - **100% IMPARCIAL**: Analiza objetivamente sin sesgos ni preconcepciones - deja que los datos hablen por sí mismos
@@ -1009,8 +1180,8 @@ IMPORTANTE - IMPARCIALIDAD Y USO DE DATOS REALES:
   };
 
   try {
-    // Forzar uso de gemini-3-pro-preview (eliminar variables de entorno obsoletas)
-    const model = 'gemini-3-pro-preview';
+    // Forzar uso de gemini-3-flash-preview (eliminar variables de entorno obsoletas)
+    const model = 'gemini-3-flash-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -1175,7 +1346,10 @@ ${availableData.recentNews.map((n: any, idx: number) =>
 
 CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
 
-    const prompt = `${systemPrompt}\n\n${dataText}\n\nEstima las categorías faltantes basándote en TODOS estos datos reales disponibles.`;
+    // 🧠 RAG: Obtener contexto para la estimación (notas del usuario sobre la calidad del negocio)
+    const ragContext = await getRAGContext(symbol, companyName);
+
+    const prompt = `${systemPrompt}\n\n${dataText}\n\n${ragContext}\n\nEstima las categorías faltantes basándote en TODOS estos datos reales disponibles.`;
 
     const payload = {
       contents: [{
@@ -1184,7 +1358,7 @@ CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
       }],
     };
 
-    const model = 'gemini-3-pro-preview';
+    const model = 'gemini-3-flash-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -1346,12 +1520,16 @@ Responde SOLO con un JSON válido en este formato exacto:
   "summary": "Resumen ejecutivo de 2-3 frases sobre la calidad de la inversión"
 }`;
 
+  // 🧠 RAG: Obtener criterios personales del usuario
+  const ragContext = await getRAGContext(input.symbol, input.companyName);
+
   const prompt = `Analiza ${input.companyName} (${input.symbol}) a $${input.currentPrice.toFixed(2)} y responde estas 15 preguntas:
 
 ${questionsText}
 
 DATOS FINANCIEROS:
 ${JSON.stringify(financialData, null, 2)}
+${ragContext}
 
 Responde con JSON válido únicamente.`;
 
@@ -1360,7 +1538,7 @@ Responde con JSON válido únicamente.`;
   };
 
   try {
-    const model = 'gemini-3-pro-preview';
+    const model = 'gemini-3-flash-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -1490,6 +1668,9 @@ Responde SOLO con JSON válido en este formato:
   const technicalData = input.financialData?.technicalAnalysis;
   const quote = input.financialData?.quote;
 
+  // 🧠 RAG: Obtener contexto técnico preferido del usuario
+  const ragContext = await getRAGContext(input.symbol, input.companyName);
+
   const prompt = `Analiza técnicamente ${input.companyName} (${input.symbol}) a $${input.currentPrice.toFixed(2)}
 
 DATOS TÉCNICOS DISPONIBLES:
@@ -1505,6 +1686,7 @@ DATOS TÉCNICOS DISPONIBLES:
 
 MÉTRICAS FINANCIERAS:
 ${JSON.stringify(input.financialData?.metrics || {}, null, 2)}
+${ragContext} 
 
 Identifica:
 1. Patrones chartistas visibles
@@ -1519,7 +1701,7 @@ Responde con JSON válido únicamente.`;
   };
 
   try {
-    const model = 'gemini-3-pro-preview';
+    const model = 'gemini-3-flash-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -1722,11 +1904,16 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
 }`;
 
   const metrics = input.financialData?.metrics || {};
+
+  // 🧠 RAG: Obtener preferencias de inversión del usuario para sugerencias alineadas
+  const ragContext = await getRAGContext(input.symbol, input.companyName);
+
   const prompt = `Compara ${input.companyName} (${input.symbol}) con sus competidores: ${competitors.join(', ')}
 
 DATOS DE ${input.symbol}:
 - Precio actual: $${input.currentPrice}
 - Sector: ${input.sector || 'N/A'}
+${ragContext}
 - P/E Ratio: ${metrics.peRatio || 'N/A'}
 - P/B Ratio: ${metrics.pbRatio || 'N/A'}
 - ROE: ${metrics.roe || 'N/A'}
@@ -1748,7 +1935,7 @@ Responde con JSON válido únicamente.`;
   };
 
   try {
-    const model = 'gemini-3-pro-preview';
+    const model = 'gemini-3-flash-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',

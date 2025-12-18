@@ -397,3 +397,268 @@ async def get_stock_peers_endpoint(symbol: str):
     data = fetch_stock_peers(symbol)
     return data
 
+# ============================================================================
+# KNOWLEDGE BASE - RAG Value Investing Agent
+# ============================================================================
+
+from pydantic import BaseModel
+from typing import List, Optional as OptionalType
+
+class DocumentUpload(BaseModel):
+    collection: str
+    content: str
+    title: OptionalType[str] = None
+    symbol: OptionalType[str] = None
+    tags: OptionalType[List[str]] = None
+
+class SearchQuery(BaseModel):
+    query: str
+    collections: OptionalType[List[str]] = None
+    n_results: int = 5
+
+class ContextRequest(BaseModel):
+    symbol: str
+    company_name: str
+
+@app.get("/knowledge/stats")
+async def get_knowledge_stats():
+    """Get statistics about the knowledge base"""
+    try:
+        from modules.knowledge_base import get_knowledge_base, reset_knowledge_base
+        # Forzar reinicio para asegurar nueva configuración
+        reset_knowledge_base()
+        kb = get_knowledge_base()
+        stats = kb.get_stats()
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge/upload")
+async def upload_document(doc: DocumentUpload):
+    """Upload a document to the knowledge base"""
+    try:
+        from modules.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        
+        metadata = {}
+        if doc.title:
+            metadata["title"] = doc.title
+        if doc.symbol:
+            metadata["symbol"] = doc.symbol.upper()
+        if doc.tags:
+            metadata["tags"] = ",".join(doc.tags)
+        
+        # Colección unificada - ignoramos doc.collection
+        result = kb.add_document(
+            content=doc.content,
+            metadata=metadata if metadata else None
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge/search")
+async def search_knowledge(query: SearchQuery):
+    """Search the knowledge base"""
+    try:
+        from modules.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        
+        # Colección unificada - ignoramos query.collections
+        results = kb.search(
+            query=query.query,
+            n_results=query.n_results
+        )
+        return {"success": True, "results": results, "count": len(results)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge/context")
+async def get_analysis_context(req: ContextRequest):
+    """Get relevant context for analyzing a specific stock"""
+    try:
+        from modules.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        
+        context = kb.get_context_for_analysis(
+            symbol=req.symbol.upper(),
+            company_name=req.company_name
+        )
+        return {"success": True, "context": context, "symbol": req.symbol.upper()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/knowledge/list/{collection}")
+async def list_documents(collection: str, limit: int = 50):
+    """List documents in a collection"""
+    try:
+        from modules.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        
+        docs = kb.list_documents(limit=limit)
+        return {"success": True, "documents": docs, "count": len(docs)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/knowledge/delete/{collection}/{document_id}")
+async def delete_document(collection: str, document_id: str):
+    """Delete a document from the knowledge base"""
+    try:
+        from modules.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        
+        success = kb.delete_document(collection, document_id)
+        return {"success": success}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# BATCH PDF UPLOAD
+# ============================================================================
+
+from fastapi import File, UploadFile
+from typing import List as ListType
+
+@app.post("/knowledge/upload-files")
+async def upload_files(
+    collection: str = "analyses",
+    files: ListType[UploadFile] = File(...)
+):
+    """
+    Upload multiple PDF/TXT files to the knowledge base
+    Extracts text from PDFs and stores in ChromaDB
+    """
+    from modules.knowledge_base import get_knowledge_base
+    import io
+    
+    kb = get_knowledge_base()
+    results = []
+    
+    for file in files:
+        try:
+            filename = file.filename or "unknown"
+            content_type = file.content_type or ""
+            file_bytes = await file.read()
+            
+            # Extract text based on file type
+            text_content = ""
+            
+            if filename.lower().endswith('.pdf') or 'pdf' in content_type.lower():
+                # PDF extraction
+                try:
+                    from PyPDF2 import PdfReader
+                    pdf_reader = PdfReader(io.BytesIO(file_bytes))
+                    text_parts = []
+                    for page in pdf_reader.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text_parts.append(page_text)
+                    text_content = "\n\n".join(text_parts)
+                except Exception as pdf_error:
+                    results.append({
+                        "filename": filename,
+                        "success": False,
+                        "error": f"PDF parse error: {str(pdf_error)}"
+                    })
+                    continue
+            
+            elif filename.lower().endswith(('.xlsx', '.xls')):
+                # Excel extraction
+                try:
+                    from openpyxl import load_workbook
+                    wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
+                    text_parts = []
+                    for sheet in wb.sheetnames:
+                        ws = wb[sheet]
+                        sheet_text = f"=== Hoja: {sheet} ===\n"
+                        for row in ws.iter_rows(values_only=True):
+                            row_text = " | ".join([str(cell) if cell is not None else "" for cell in row])
+                            if row_text.strip():
+                                sheet_text += row_text + "\n"
+                        text_parts.append(sheet_text)
+                    text_content = "\n\n".join(text_parts)
+                except Exception as excel_error:
+                    results.append({
+                        "filename": filename,
+                        "success": False,
+                        "error": f"Excel parse error: {str(excel_error)}"
+                    })
+                    continue
+            
+            elif filename.lower().endswith('.docx'):
+                # Word extraction
+                try:
+                    from docx import Document
+                    doc = Document(io.BytesIO(file_bytes))
+                    text_parts = []
+                    for para in doc.paragraphs:
+                        if para.text.strip():
+                            text_parts.append(para.text)
+                    # También extraer tablas
+                    for table in doc.tables:
+                        for row in table.rows:
+                            row_text = " | ".join([cell.text for cell in row.cells])
+                            if row_text.strip():
+                                text_parts.append(row_text)
+                    text_content = "\n\n".join(text_parts)
+                except Exception as docx_error:
+                    results.append({
+                        "filename": filename,
+                        "success": False,
+                        "error": f"Word parse error: {str(docx_error)}"
+                    })
+                    continue
+                    
+            elif filename.lower().endswith(('.txt', '.md')):
+                # Plain text files
+                try:
+                    text_content = file_bytes.decode('utf-8')
+                except UnicodeDecodeError:
+                    text_content = file_bytes.decode('latin-1')
+            else:
+                results.append({
+                    "filename": filename,
+                    "success": False,
+                    "error": "Tipo no soportado. Usa PDF, Excel, Word, TXT o MD."
+                })
+                continue
+            
+            # Skip empty files
+            if not text_content.strip():
+                results.append({
+                    "filename": filename,
+                    "success": False,
+                    "error": "File is empty or could not extract text"
+                })
+                continue
+            
+            # Add to knowledge base (colección unificada)
+            result = kb.add_document(
+                content=text_content,
+                metadata={"title": filename, "source": "file_upload"}
+            )
+            
+            results.append({
+                "filename": filename,
+                "success": True,
+                "document_id": result.get("document_id"),
+                "chunks_added": result.get("chunks_added", 0)
+            })
+            
+        except Exception as e:
+            results.append({
+                "filename": file.filename or "unknown",
+                "success": False,
+                "error": str(e)
+            })
+    
+    successful = sum(1 for r in results if r.get("success"))
+    return {
+        "success": True,
+        "total_files": len(files),
+        "successful": successful,
+        "failed": len(files) - successful,
+        "results": results
+    }

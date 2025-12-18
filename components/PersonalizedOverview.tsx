@@ -9,7 +9,7 @@ import { getPortfolioSummary, getPortfolioScores, type PortfolioSummary } from '
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getCompanyNews, getStockFinancialData, getUpcomingEarnings, getStockQuote, type EarningsEvent } from '@/lib/actions/finnhub.actions';
 import { getValuationData, getScreenerStocks } from '@/lib/actions/fmp.actions';
-import { MarketMovers } from '@/components/MarketMovers';
+
 
 interface PersonalizedOverviewProps {
     userId: string;
@@ -247,11 +247,6 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         </CardContent>
                     </Card>
                 ))}
-            </div>
-
-            {/* Market Movers Section */}
-            <div className="mb-8">
-                <MarketMovers />
             </div>
 
             {/* Main Content Grid */}
