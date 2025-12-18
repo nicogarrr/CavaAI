@@ -654,11 +654,53 @@ async def upload_files(
                 "error": str(e)
             })
     
-    successful = sum(1 for r in results if r.get("success"))
-    return {
-        "success": True,
-        "total_files": len(files),
-        "successful": successful,
-        "failed": len(files) - successful,
-        "results": results
-    }
+
+# ============================================================================
+# FUNDS & ETF RANKING
+# ============================================================================
+
+from modules.funds import get_fund_ranking, scrape_all_categories
+
+@app.get("/funds/ranking")
+async def get_ranking(category: str = "default", limit: int = 10):
+    """
+    Get top funds ranking by category.
+    Category can be a short code ('world', 'tech', 'sp500', 'oro', etc.)
+    The category is mapped to Finect category names in the funds module.
+    """
+    try:
+        print(f"DEBUG API: Received category={category}, limit={limit}")
+        
+        # Call the module - it handles category mapping via CATEGORY_FILTER_MAP
+        ranking = get_fund_ranking(category, limit=limit)
+        
+        return {
+            "success": True, 
+            "category": category, 
+            "count": len(ranking),
+            "data": ranking
+        }
+    except Exception as e:
+        print(f"Error in /funds/ranking: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/test")
+async def test_endpoint():
+    return {"status": "ok"}
+
+@app.get("/funds/categories")
+async def get_fund_categories():
+    """
+    Get all available fund categories from Finect.
+    Returns list of categories with their IDs and URLs for fund listings.
+    """
+    try:
+        categories = scrape_all_categories()
+        return {
+            "success": True,
+            "count": len(categories),
+            "data": categories
+        }
+    except Exception as e:
+        print(f"Error in /funds/categories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
