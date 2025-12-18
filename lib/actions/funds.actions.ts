@@ -5,7 +5,7 @@ import { headers } from 'next/headers';
 
 const API_URL = 'http://127.0.0.1:8001';
 
-export async function getFundRanking(category: string, limit: number = 10) {
+export async function getFundRanking(category: string, limit: number = 10, indexed: string = "all") {
     try {
         const auth = await getAuth();
         const session = await auth.api.getSession({ headers: await headers() });
@@ -13,7 +13,7 @@ export async function getFundRanking(category: string, limit: number = 10) {
         // Optional: Require auth to fetch
         // if (!session) return { success: false, error: "Unauthorized" };
 
-        const res = await fetch(`${API_URL}/funds/ranking?category=${encodeURIComponent(category)}&limit=${limit}`, {
+        const res = await fetch(`${API_URL}/funds/ranking?category=${encodeURIComponent(category)}&limit=${limit}&indexed=${indexed}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
             cache: 'no-store' // Always fresh data
