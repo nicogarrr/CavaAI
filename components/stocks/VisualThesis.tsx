@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, Sparkles, TrendingUp, TrendingDown, Target, Wallet, Database, RefreshCw, Brain } from 'lucide-react';
-import { generateThesisCommentary } from '@/lib/actions/ai.actions';
+import { Loader2, Sparkles, TrendingUp, TrendingDown, Target, Wallet, Database, RefreshCw, Brain, AlertTriangle } from 'lucide-react';
+import { generateThesisCommentary, estimateIntrinsicValueWithAI } from '@/lib/actions/ai.actions';
 import {
     getDCF,
     getFundamentals,
@@ -21,6 +21,7 @@ import {
     generateScenarios,
     estimateBeta,
     estimateTaxRate,
+    isDCFValueSane,
     type ThesisValuation,
     type WACCInputs
 } from '@/lib/calculations/dcf';
@@ -43,6 +44,8 @@ interface ThesisData {
     lastFCF: number;
     revenueGrowth: number;
     fcfYield: number;
+    valueSource: 'FMP_API' | 'AI_ESTIMATED';
+    aiReasoning?: string;
 }
 
 export default function VisualThesis({ symbol, companyName, currentPrice }: VisualThesisProps) {
@@ -122,20 +125,60 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                 // Terminal Value with real data
                 const terminalValue = calculateTerminalValue(projectedFCFs[4] || lastFCF, wacc, 0.025);
 
-                // Use FMP's DCF value (professionally calculated) as primary
-                const intrinsicValue = intrinsicValueFromFMP > 0 ? intrinsicValueFromFMP :
+                // Get analyst price target for reference
+                const priceTargetData = await getPriceTarget(symbol);
+                const analystTarget = priceTargetData?.priceTarget?.[0]?.targetConsensus || 0;
+
+                // Primary: Use FMP's DCF value
+                let intrinsicValue = intrinsicValueFromFMP > 0 ? intrinsicValueFromFMP :
                     (terminalValue / sharesOutstanding) + (cash - totalDebt) / sharesOutstanding;
+
+                // SANITY CHECK: Is the DCF value reasonable?
+                let valueSource: 'FMP_API' | 'AI_ESTIMATED' = 'FMP_API';
+                let aiReasoning: string | undefined;
+
+                if (!isDCFValueSane(stockPrice, intrinsicValue)) {
+                    console.warn(`DCF sanity check failed for ${symbol}: $${intrinsicValue.toFixed(2)} vs price $${stockPrice.toFixed(2)}`);
+
+                    // Fallback to AI estimation
+                    try {
+                        const aiEstimate = await estimateIntrinsicValueWithAI({
+                            symbol,
+                            companyName,
+                            currentPrice: stockPrice,
+                            fcfLastYear: lastFCF,
+                            revenueGrowth: 0, // Will be calculated after
+                            marketCap,
+                            analystTargetPrice: analystTarget > 0 ? analystTarget : undefined,
+                            wacc,
+                            sector
+                        });
+
+                        intrinsicValue = aiEstimate.estimatedValue;
+                        valueSource = 'AI_ESTIMATED';
+                        aiReasoning = aiEstimate.reasoning;
+                        console.log(`AI estimated intrinsic value for ${symbol}: $${intrinsicValue.toFixed(2)}`);
+                    } catch (aiErr) {
+                        console.error('AI fallback failed:', aiErr);
+                        // Use analyst target as last resort
+                        if (analystTarget > 0) {
+                            intrinsicValue = analystTarget;
+                            valueSource = 'AI_ESTIMATED';
+                            aiReasoning = 'Basado en precio objetivo de analistas';
+                        }
+                    }
+                }
 
                 // Margin of Safety & Verdict
                 const marginOfSafety = calculateMarginOfSafety(stockPrice, intrinsicValue);
                 const verdict = getValuationVerdict(marginOfSafety);
 
-                // Generate scenarios based on FMP's intrinsic value
+                // Generate scenarios based on intrinsic value
                 const scenarios = generateScenarios(intrinsicValue, stockPrice, wacc);
 
                 // Revenue growth from REAL income statements
                 const incomeStatements = fundamentals?.income || [];
-                const revenueGrowth = incomeStatements.length >= 2
+                const revenueGrowthCalc = incomeStatements.length >= 2
                     ? ((incomeStatements[0].revenue - incomeStatements[1].revenue) / incomeStatements[1].revenue) * 100
                     : 0;
 
@@ -159,8 +202,10 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                     riskFreeRate: realRiskFreeRate,
                     debtToEquity,
                     lastFCF,
-                    revenueGrowth,
-                    fcfYield: fcfYield * 100
+                    revenueGrowth: revenueGrowthCalc,
+                    fcfYield: fcfYield * 100,
+                    valueSource,
+                    aiReasoning
                 });
 
             } catch (err) {
@@ -249,11 +294,29 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                         <p className="text-sm text-gray-400">{companyName}</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded-full">
-                    <Database className="h-3.5 w-3.5 text-green-400" />
-                    <span className="text-xs text-green-400 font-medium">Datos en vivo via FMP + Finnhub</span>
-                </div>
+                {thesisData.valueSource === 'AI_ESTIMATED' ? (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/30 rounded-full">
+                        <Brain className="h-3.5 w-3.5 text-purple-400" />
+                        <span className="text-xs text-purple-400 font-medium">Valor estimado por IA</span>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/30 rounded-full">
+                        <Database className="h-3.5 w-3.5 text-green-400" />
+                        <span className="text-xs text-green-400 font-medium">Datos en vivo via FMP + Finnhub</span>
+                    </div>
+                )}
             </div>
+
+            {/* AI Reasoning Alert (when AI estimated) */}
+            {thesisData.valueSource === 'AI_ESTIMATED' && thesisData.aiReasoning && (
+                <div className="flex items-start gap-3 p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl">
+                    <AlertTriangle className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <p className="text-sm text-purple-300 font-medium">DCF de FMP no pasó validación</p>
+                        <p className="text-xs text-gray-400">{thesisData.aiReasoning}</p>
+                    </div>
+                </div>
+            )}
 
             {/* Card Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -262,7 +325,9 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             <h3 className="text-lg font-semibold text-white">{symbol}: Valuation Analysis</h3>
-                            <p className="text-xs text-gray-500">DCF via Financial Modeling Prep API</p>
+                            <p className="text-xs text-gray-500">
+                                {thesisData.valueSource === 'AI_ESTIMATED' ? 'Estimación IA + RAG' : 'DCF via Financial Modeling Prep API'}
+                            </p>
                         </div>
                         <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center text-white font-bold text-xs shadow-inner">
                             {symbol.slice(0, 4)}
@@ -565,8 +630,8 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                     </div>
                     {aiCommentary && (
                         <span className={`text-[10px] px-2 py-1 rounded ${aiCommentary.confidence === 'high' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                                aiCommentary.confidence === 'medium' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                                    'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+                            aiCommentary.confidence === 'medium' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                                'bg-gray-500/20 text-gray-400 border border-gray-500/30'
                             }`}>
                             Confianza: {aiCommentary.confidence === 'high' ? 'Alta' : aiCommentary.confidence === 'medium' ? 'Media' : 'Baja'}
                         </span>

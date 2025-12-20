@@ -2345,3 +2345,125 @@ Responde en formato JSON:
     };
   }
 }
+
+// ============================================
+// DCF Sanity Check + AI Fallback Estimation
+// ============================================
+
+export interface AIIntrinsicValueInput {
+  symbol: string;
+  companyName: string;
+  currentPrice: number;
+  fcfLastYear: number;        // Free Cash Flow
+  revenueGrowth: number;      // YoY %
+  marketCap: number;
+  analystTargetPrice?: number; // From FMP price targets
+  wacc: number;
+  sector?: string;
+}
+
+/**
+ * Estimates intrinsic value using AI + RAG when FMP DCF fails sanity check
+ */
+export async function estimateIntrinsicValueWithAI(input: AIIntrinsicValueInput): Promise<{
+  estimatedValue: number;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+  source: 'AI_ESTIMATED';
+}> {
+  try {
+    const auth = await getAuth();
+    if (!auth) throw new Error('Auth error');
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) throw new Error('No auth');
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      // Fallback: simple FCF multiple estimation
+      const fcfMultiple = 25; // Conservative P/FCF
+      const estimatedValue = (input.fcfLastYear * fcfMultiple) / (input.marketCap / input.currentPrice);
+      return {
+        estimatedValue: Math.max(estimatedValue, input.currentPrice * 0.5),
+        confidence: 'low',
+        reasoning: 'Estimación básica por múltiplo FCF (API Key no disponible)',
+        source: 'AI_ESTIMATED'
+      };
+    }
+
+    // Get RAG context
+    const ragContext = await getRAGContext(input.symbol, input.companyName);
+
+    const prompt = `Eres un analista financiero experto. Necesito que estimes el VALOR INTRÍNSECO por acción de ${input.symbol} (${input.companyName}).
+
+DATOS DISPONIBLES:
+- Precio actual: $${input.currentPrice.toFixed(2)}
+- Free Cash Flow (último año): $${(input.fcfLastYear / 1e9).toFixed(2)}B
+- Crecimiento revenue YoY: ${input.revenueGrowth.toFixed(1)}%
+- Market Cap: $${(input.marketCap / 1e9).toFixed(1)}B
+- WACC calculado: ${(input.wacc * 100).toFixed(1)}%
+${input.analystTargetPrice ? `- Precio objetivo analistas: $${input.analystTargetPrice.toFixed(2)}` : ''}
+${input.sector ? `- Sector: ${input.sector}` : ''}
+
+${ragContext ? `CONTEXTO ADICIONAL (RAG):\n${ragContext}` : ''}
+
+INSTRUCCIONES:
+1. Usa métodos de valoración apropiados (DCF simplificado, múltiplos de FCF, comparables)
+2. Considera el crecimiento esperado y el riesgo del sector
+3. Si hay precio objetivo de analistas, úsalo como referencia
+4. Sé conservador pero realista
+
+Responde SOLO en JSON:
+{
+  "estimatedValue": <número - valor intrínseco por acción en USD>,
+  "confidence": "high|medium|low",
+  "reasoning": "<explicación breve de 1-2 oraciones>"
+}`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 400 },
+        }),
+      }
+    );
+
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const estimated = parseFloat(parsed.estimatedValue) || input.currentPrice;
+
+      // Sanity check on AI estimate too
+      const finalValue = Math.min(Math.max(estimated, input.currentPrice * 0.3), input.currentPrice * 3);
+
+      return {
+        estimatedValue: finalValue,
+        confidence: parsed.confidence || 'medium',
+        reasoning: parsed.reasoning || 'Estimación basada en análisis de fundamentales',
+        source: 'AI_ESTIMATED'
+      };
+    }
+
+    throw new Error('Failed to parse AI response');
+
+  } catch (error) {
+    console.error('AI intrinsic value estimation error:', error);
+
+    // Ultimate fallback: use analyst target or price-based estimate
+    const fallbackValue = input.analystTargetPrice || input.currentPrice * 1.1;
+    return {
+      estimatedValue: fallbackValue,
+      confidence: 'low',
+      reasoning: 'Estimación de respaldo basada en precio objetivo de analistas o precio actual',
+      source: 'AI_ESTIMATED'
+    };
+  }
+}

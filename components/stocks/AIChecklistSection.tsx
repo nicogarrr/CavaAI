@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { generateChecklistWithAI } from '@/lib/actions/ai.actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Loader2, RefreshCw } from 'lucide-react';
 
 interface AIChecklistSectionProps {
     symbol: string;
@@ -43,9 +44,9 @@ const ANSWER_COLORS = {
 };
 
 const ANSWER_LABELS = {
-    yes: '✅ Sí',
-    no: '❌ No',
-    maybe: '⚠️ Quizás'
+    yes: 'Sí',
+    no: 'No',
+    maybe: 'Quizás'
 };
 
 export default function AIChecklistSection({
@@ -54,14 +55,14 @@ export default function AIChecklistSection({
     financialData,
     currentPrice
 }: AIChecklistSectionProps) {
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [result, setResult] = useState<{
         answers: ChecklistAnswer[];
         overallScore: number;
         recommendation: string;
         summary: string;
     } | null>(null);
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(true);
 
     const loadChecklist = async () => {
         setLoading(true);
@@ -69,16 +70,19 @@ export default function AIChecklistSection({
             const data = await generateChecklistWithAI({
                 symbol,
                 companyName,
-                // financialData, // Evitar enviar payload gigante al server action
                 currentPrice
             });
             setResult(data);
-            setExpanded(true);
         } catch (error) {
             console.error('Error loading AI checklist:', error);
         }
         setLoading(false);
     };
+
+    // Auto-execute on mount
+    useEffect(() => {
+        loadChecklist();
+    }, [symbol]);
 
     const getScoreColor = (score: number) => {
         if (score >= 80) return 'text-green-400';
@@ -102,36 +106,21 @@ export default function AIChecklistSection({
     const noCount = result?.answers.filter(a => a.answer === 'no').length || 0;
     const maybeCount = result?.answers.filter(a => a.answer === 'maybe').length || 0;
 
-    if (!result && !loading) {
+    if (loading) {
         return (
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                            🤖 Análisis Value Investing (IA)
-                        </h2>
-                        <p className="text-gray-400 text-sm mt-1">
-                            15 preguntas clave respondidas automáticamente por IA basándose en datos financieros reales
-                        </p>
-                    </div>
-                    <Button
-                        onClick={loadChecklist}
-                        className="bg-blue-600 hover:bg-blue-700"
-                    >
-                        ✨ Generar Análisis
-                    </Button>
+                <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                    <span className="ml-3 text-gray-400">Analizando las 15 preguntas clave...</span>
                 </div>
             </div>
         );
     }
 
-    if (loading) {
+    if (!result) {
         return (
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6">
-                <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                    <span className="ml-3 text-gray-400">Analizando con IA las 15 preguntas clave...</span>
-                </div>
+                <p className="text-gray-400">No se pudo cargar el análisis</p>
             </div>
         );
     }
@@ -142,7 +131,7 @@ export default function AIChecklistSection({
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        🤖 Análisis Value Investing (IA)
+                        Análisis Value Investing (IA)
                     </h2>
                 </div>
                 <div className="text-right flex items-center gap-4">
@@ -167,9 +156,9 @@ export default function AIChecklistSection({
 
             {/* Quick Stats */}
             <div className="flex gap-4 text-sm">
-                <span className="text-green-400">✅ {yesCount} Sí</span>
-                <span className="text-yellow-400">⚠️ {maybeCount} Quizás</span>
-                <span className="text-red-400">❌ {noCount} No</span>
+                <span className="text-green-400">{yesCount} Sí</span>
+                <span className="text-yellow-400">{maybeCount} Quizás</span>
+                <span className="text-red-400">{noCount} No</span>
             </div>
 
             {/* Detailed Answers */}
@@ -201,7 +190,7 @@ export default function AIChecklistSection({
                     variant="outline"
                     size="sm"
                 >
-                    🔄 Regenerar Análisis
+                    <RefreshCw className="h-4 w-4 mr-1" /> Regenerar
                 </Button>
             </div>
         </div>

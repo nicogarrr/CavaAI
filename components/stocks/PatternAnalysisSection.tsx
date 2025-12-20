@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { generatePatternAnalysis } from '@/lib/actions/ai.actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Loader2, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface PatternAnalysisSectionProps {
     symbol: string;
@@ -26,7 +27,7 @@ export default function PatternAnalysisSection({
     financialData,
     currentPrice
 }: PatternAnalysisSectionProps) {
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [result, setResult] = useState<{
         patterns: Pattern[];
         elliottWave: { currentWave: string; position: string; nextMove: string; confidence: number };
@@ -40,7 +41,6 @@ export default function PatternAnalysisSection({
             const data = await generatePatternAnalysis({
                 symbol,
                 companyName,
-                // financialData, // Evitar payload grande
                 currentPrice
             });
             setResult(data);
@@ -50,16 +50,21 @@ export default function PatternAnalysisSection({
         setLoading(false);
     };
 
+    // Auto-execute on mount
+    useEffect(() => {
+        loadAnalysis();
+    }, [symbol]);
+
     const getTypeColor = (type: string) => {
         if (type === 'bullish') return 'bg-green-600';
         if (type === 'bearish') return 'bg-red-600';
         return 'bg-gray-600';
     };
 
-    const getTypeEmoji = (type: string) => {
-        if (type === 'bullish') return '📈';
-        if (type === 'bearish') return '📉';
-        return '➡️';
+    const getTypeIcon = (type: string) => {
+        if (type === 'bullish') return <TrendingUp className="h-5 w-5 text-green-400" />;
+        if (type === 'bearish') return <TrendingDown className="h-5 w-5 text-red-400" />;
+        return <Minus className="h-5 w-5 text-gray-400" />;
     };
 
     const getTrendColor = (trend: string) => {
@@ -68,33 +73,21 @@ export default function PatternAnalysisSection({
         return 'text-yellow-400';
     };
 
-    if (!result && !loading) {
+    if (loading) {
         return (
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                            📊 Análisis de Patrones Técnicos (IA)
-                        </h2>
-                        <p className="text-gray-400 text-sm mt-1">
-                            Ondas de Elliott, patrones chartistas, soportes y resistencias
-                        </p>
-                    </div>
-                    <Button onClick={loadAnalysis} className="bg-purple-600 hover:bg-purple-700">
-                        ✨ Analizar Patrones
-                    </Button>
+                <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+                    <span className="ml-3 text-gray-400">Analizando patrones técnicos...</span>
                 </div>
             </div>
         );
     }
 
-    if (loading) {
+    if (!result) {
         return (
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6">
-                <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
-                    <span className="ml-3 text-gray-400">Analizando patrones técnicos con IA...</span>
-                </div>
+                <p className="text-gray-400">No se pudo cargar el análisis de patrones</p>
             </div>
         );
     }
@@ -103,9 +96,9 @@ export default function PatternAnalysisSection({
         <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6 space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">📊 Análisis Técnico</h2>
+                <h2 className="text-xl font-bold text-white">Análisis Técnico</h2>
                 <Button onClick={loadAnalysis} variant="outline" size="sm">
-                    🔄 Regenerar
+                    <RefreshCw className="h-4 w-4 mr-1" /> Regenerar
                 </Button>
             </div>
 
@@ -119,7 +112,7 @@ export default function PatternAnalysisSection({
                 {/* Elliott Wave */}
                 <div className="p-4 bg-gray-900 rounded-lg">
                     <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                        🌊 Ondas de Elliott
+                        Ondas de Elliott
                     </h3>
                     <div className="space-y-2">
                         <div className="flex justify-between">
@@ -144,14 +137,14 @@ export default function PatternAnalysisSection({
                 {/* Support/Resistance */}
                 <div className="p-4 bg-gray-900 rounded-lg">
                     <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                        📏 Soportes y Resistencias
+                        Soportes y Resistencias
                     </h3>
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
                             <span className="text-gray-400">Tendencia:</span>
                             <span className={`font-bold ${getTrendColor(result?.supportResistance.trend || '')}`}>
-                                {result?.supportResistance.trend === 'bullish' ? '📈 Alcista' :
-                                    result?.supportResistance.trend === 'bearish' ? '📉 Bajista' : '➡️ Lateral'}
+                                {result?.supportResistance.trend === 'bullish' ? 'Alcista' :
+                                    result?.supportResistance.trend === 'bearish' ? 'Bajista' : 'Lateral'}
                             </span>
                         </div>
                         <div className="flex justify-between">
@@ -183,11 +176,11 @@ export default function PatternAnalysisSection({
             {/* Patterns */}
             {result?.patterns && result.patterns.length > 0 && (
                 <div>
-                    <h3 className="text-lg font-semibold text-white mb-3">🔍 Patrones Detectados</h3>
+                    <h3 className="text-lg font-semibold text-white mb-3">Patrones Detectados</h3>
                     <div className="space-y-3">
                         {result.patterns.map((pattern, i) => (
                             <div key={i} className="p-4 bg-gray-900 rounded-lg flex items-start gap-4">
-                                <span className="text-2xl">{getTypeEmoji(pattern.type)}</span>
+                                {getTypeIcon(pattern.type)}
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2">
                                         <span className="text-white font-semibold">{pattern.name}</span>
@@ -199,7 +192,7 @@ export default function PatternAnalysisSection({
                                     <p className="text-gray-400 text-sm mt-1">{pattern.description}</p>
                                     {pattern.priceTarget && (
                                         <p className="text-yellow-400 text-sm mt-1">
-                                            🎯 Objetivo: ${pattern.priceTarget.toFixed(2)}
+                                            Objetivo: ${pattern.priceTarget.toFixed(2)}
                                         </p>
                                     )}
                                 </div>
