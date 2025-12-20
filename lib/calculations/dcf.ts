@@ -202,3 +202,16 @@ export function estimateTaxRate(country: string = 'US'): number {
 
     return taxRates[country] || 0.25;
 }
+
+/**
+ * Sanity check for DCF values
+ * Returns true if value seems reasonable, false if suspicious
+ */
+export function isDCFValueSane(currentPrice: number, intrinsicValue: number): boolean {
+    if (intrinsicValue <= 0) return false;
+    if (intrinsicValue < currentPrice * 0.1) return false;  // Less than 10% of price
+    if (intrinsicValue > currentPrice * 10) return false;   // More than 10x price
+    const marginOfSafety = ((intrinsicValue - currentPrice) / intrinsicValue) * 100;
+    if (Math.abs(marginOfSafety) > 500) return false;       // Over 500% margin
+    return true;
+}

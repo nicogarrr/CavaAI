@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getAlternativeSuggestions } from '@/lib/actions/ai.actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { ArrowRight, TrendingUp, TrendingDown, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
+import { ArrowRight, TrendingUp, TrendingDown, CheckCircle, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 
 interface AlternativesSectionProps {
     symbol: string;
@@ -22,7 +22,7 @@ export default function AlternativesSection({
     financialData,
     currentPrice
 }: AlternativesSectionProps) {
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [result, setResult] = useState<{
         currentStock: { symbol: string; name: string; score: number; strengths: string[]; weaknesses: string[] };
         alternatives: { symbol: string; name: string; score: number; reason: string; isBetter: boolean }[];
@@ -47,40 +47,33 @@ export default function AlternativesSection({
         setLoading(false);
     };
 
+    // Auto-execute on mount
+    useEffect(() => {
+        loadAnalysis();
+    }, [symbol]);
+
     const getRecommendationStyle = (rec: string) => {
-        if (rec === 'MEJOR_OPCION') return { bg: 'bg-green-600', icon: CheckCircle, text: '✅ Mejor Opción del Sector' };
-        if (rec === 'MANTENER') return { bg: 'bg-blue-600', icon: CheckCircle, text: '👍 Buena Opción - Mantener' };
-        if (rec === 'CONSIDERAR_ALTERNATIVAS') return { bg: 'bg-yellow-600', icon: AlertTriangle, text: '⚠️ Considerar Alternativas' };
+        if (rec === 'MEJOR_OPCION') return { bg: 'bg-green-600', icon: CheckCircle, text: 'Mejor Opción del Sector' };
+        if (rec === 'MANTENER') return { bg: 'bg-blue-600', icon: CheckCircle, text: 'Buena Opción - Mantener' };
+        if (rec === 'CONSIDERAR_ALTERNATIVAS') return { bg: 'bg-yellow-600', icon: AlertTriangle, text: 'Considerar Alternativas' };
         return { bg: 'bg-gray-600', icon: CheckCircle, text: rec };
     };
-
-    if (!result && !loading) {
-        return (
-            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                            🎯 ¿Es la mejor opción? (IA)
-                        </h2>
-                        <p className="text-gray-400 text-sm mt-1">
-                            Compara con competidores del sector: moat, métricas, valoración
-                        </p>
-                    </div>
-                    <Button onClick={loadAnalysis} className="bg-teal-600 hover:bg-teal-700">
-                        🔍 Comparar Alternativas
-                    </Button>
-                </div>
-            </div>
-        );
-    }
 
     if (loading) {
         return (
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6">
                 <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500"></div>
+                    <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
                     <span className="ml-3 text-gray-400">Analizando competidores del sector...</span>
                 </div>
+            </div>
+        );
+    }
+
+    if (!result) {
+        return (
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6">
+                <p className="text-gray-400">No se pudo cargar el análisis de alternativas</p>
             </div>
         );
     }
@@ -91,9 +84,9 @@ export default function AlternativesSection({
         <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6 space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">🎯 Análisis de Alternativas - {symbol}</h2>
+                <h2 className="text-xl font-bold text-white">Análisis de Alternativas - {symbol}</h2>
                 <Button onClick={loadAnalysis} variant="outline" size="sm">
-                    🔄 Regenerar
+                    <RefreshCw className="h-4 w-4 mr-1" /> Regenerar
                 </Button>
             </div>
 
@@ -125,7 +118,7 @@ export default function AlternativesSection({
                         <ul className="space-y-1">
                             {result?.currentStock.strengths.map((s, i) => (
                                 <li key={i} className="text-sm text-gray-300 flex items-start gap-2">
-                                    <span className="text-green-400">✓</span> {s}
+                                    <span className="text-green-400">+</span> {s}
                                 </li>
                             ))}
                         </ul>
@@ -139,7 +132,7 @@ export default function AlternativesSection({
                         <ul className="space-y-1">
                             {result?.currentStock.weaknesses.map((w, i) => (
                                 <li key={i} className="text-sm text-gray-300 flex items-start gap-2">
-                                    <span className="text-red-400">✗</span> {w}
+                                    <span className="text-red-400">-</span> {w}
                                 </li>
                             ))}
                         </ul>
@@ -161,9 +154,9 @@ export default function AlternativesSection({
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         {alt.isBetter ? (
-                                            <Badge className="bg-green-600">⬆️ Mejor</Badge>
+                                            <Badge className="bg-green-600">Mejor</Badge>
                                         ) : (
-                                            <Badge className="bg-gray-600">➡️ Similar</Badge>
+                                            <Badge className="bg-gray-600">Similar</Badge>
                                         )}
                                         <div>
                                             <span className="text-white font-semibold">{alt.symbol}</span>
