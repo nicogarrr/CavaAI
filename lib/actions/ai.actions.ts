@@ -13,7 +13,7 @@ import { headers } from 'next/headers';
  */
 export async function getRAGContext(symbol: string, companyName: string): Promise<string> {
   try {
-    const KB_API_URL = 'http://127.0.0.1:8001';
+    const KB_API_URL = 'http://127.0.0.1:8000';
 
     const res = await fetch(`${KB_API_URL}/knowledge/context`, {
       method: 'POST',

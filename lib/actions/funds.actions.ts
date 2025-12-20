@@ -3,7 +3,7 @@
 import { getAuth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
 
-const API_URL = 'http://127.0.0.1:8001';
+const API_URL = 'http://127.0.0.1:8000';
 
 export async function getFundRanking(category: string, limit: number = 10, indexed: string = "all") {
     try {
