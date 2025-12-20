@@ -2578,6 +2578,8 @@ export async function generateAIDrivenValuation(input: {
     operatingMargin?: number;
     roe?: number;
     roic?: number;
+    // NUEVO: Noticias recientes para contexto
+    recentNews?: { headline: string; summary: string; date: string; source: string }[];
   };
 }): Promise<AIValuationResult> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
@@ -2634,12 +2636,17 @@ ${apiData.roic ? `- ROIC: ${(apiData.roic * 100).toFixed(1)}%` : ''}
 
 ${ragContext ? `MI BASE DE CONOCIMIENTO:\n${ragContext}` : ''}
 
+${apiData.recentNews && apiData.recentNews.length > 0 ? `NOTICIAS RECIENTES (últimos días):
+${apiData.recentNews.slice(0, 8).map((n, i) => `${i + 1}. [${n.source}] ${n.headline}
+   ${n.summary}`).join('\n\n')}` : ''}
+
 INSTRUCCIONES CRÍTICAS:
 1. ANALIZA si el DCF de FMP ($${apiData.fmpDcf?.toFixed(2) || 'N/A'}) tiene sentido
 2. Si crees que es muy conservador o agresivo, GENERA TU PROPIO VALOR
 3. Justifica por qué ajustas (o no) el DCF
-4. Genera escenarios Bear/Base/Bull realistas
-5. Sé honesto sobre tu nivel de confianza
+4. CONSIDERA las noticias recientes: ¿hay catalizadores positivos/negativos?
+5. Genera escenarios Bear/Base/Bull realistas
+6. Sé honesto sobre tu nivel de confianza
 
 RESPONDE SOLO EN JSON VÁLIDO:
 {

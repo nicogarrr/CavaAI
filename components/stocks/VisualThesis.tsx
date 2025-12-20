@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, Sparkles, TrendingUp, TrendingDown, Target, Wallet, Brain, AlertTriangle, Info, RefreshCw } from 'lucide-react';
+import { Loader2, Sparkles, TrendingUp, TrendingDown, Target, Wallet, Brain, AlertTriangle, Info, RefreshCw, Newspaper } from 'lucide-react';
 import { generateAIDrivenValuation, type AIValuationResult } from '@/lib/actions/ai.actions';
 import {
     getDCF,
@@ -10,9 +10,10 @@ import {
     getEnterpriseValue,
     getTreasuryRates,
     getPriceTarget,
-    getRatiosTTM
+    getRatiosTTM,
+    getPressReleases
 } from '@/lib/actions/fmp.actions';
-import { getProfile, getStockQuote } from '@/lib/actions/finnhub.actions';
+import { getProfile, getStockQuote, getCompanyNews } from '@/lib/actions/finnhub.actions';
 
 interface VisualThesisProps {
     symbol: string;
@@ -24,7 +25,7 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [aiValuation, setAiValuation] = useState<AIValuationResult | null>(null);
-    const [apiContext, setApiContext] = useState<{ beta: number; riskFreeRate: number; lastFCF: number } | null>(null);
+    const [apiContext, setApiContext] = useState<{ beta: number; riskFreeRate: number; lastFCF: number; newsCount: number } | null>(null);
 
     useEffect(() => {
         async function fetchAndAnalyze() {
@@ -32,8 +33,8 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                 setLoading(true);
                 setError(null);
 
-                // 1. Fetch all API data (como CONTEXTO para la IA)
-                const [dcfData, fundamentals, keyMetrics, evData, treasuryData, profile, quote, priceTarget, ratios] = await Promise.all([
+                // 1. Fetch all API data (como CONTEXTO para la IA) + NOTICIAS
+                const [dcfData, fundamentals, keyMetrics, evData, treasuryData, profile, quote, priceTarget, ratios, companyNews, pressReleases] = await Promise.all([
                     getDCF(symbol),
                     getFundamentals(symbol, 'annual'),
                     getKeyMetricsTTM(symbol),
@@ -42,7 +43,9 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                     getProfile(symbol),
                     getStockQuote(symbol),
                     getPriceTarget(symbol),
-                    getRatiosTTM(symbol)
+                    getRatiosTTM(symbol),
+                    getCompanyNews(symbol, 10),           // Noticias de Finnhub
+                    getPressReleases(symbol, 5)           // Press Releases de FMP
                 ]);
 
                 // Extract API values as CONTEXT
@@ -71,10 +74,29 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                 const operatingMargin = ratiosTTM?.operatingProfitMarginTTM;
                 const roe = ratiosTTM?.returnOnEquityTTM;
 
-                // Store context for display
-                setApiContext({ beta: realBeta, riskFreeRate, lastFCF });
+                // Procesar noticias para el contexto de la IA
+                const finnhubNews = (companyNews || []).map((n: any) => ({
+                    headline: n.headline || '',
+                    summary: n.summary || '',
+                    date: n.datetime ? new Date(n.datetime * 1000).toISOString().split('T')[0] : '',
+                    source: n.source || 'Finnhub'
+                }));
 
-                // 2. Call AI to generate valuation (IA-FIRST approach)
+                const fmpNews = (pressReleases?.pressReleases || []).map((p: any) => ({
+                    headline: p.title || '',
+                    summary: p.text?.substring(0, 200) || '',
+                    date: p.publishedDate?.split('T')[0] || '',
+                    source: 'Press Release'
+                }));
+
+                const recentNews = [...finnhubNews, ...fmpNews]
+                    .filter(n => n.headline)
+                    .slice(0, 10);
+
+                // Store context for display
+                setApiContext({ beta: realBeta, riskFreeRate, lastFCF, newsCount: recentNews.length });
+
+                // 2. Call AI to generate valuation (IA-FIRST approach) CON NOTICIAS
                 const aiResult = await generateAIDrivenValuation({
                     symbol,
                     companyName,
@@ -92,7 +114,8 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                         grossMargin,
                         operatingMargin,
                         roe,
-                        roic: km?.roicTTM
+                        roic: km?.roicTTM,
+                        recentNews  // NOTICIAS para contexto IA
                     }
                 });
 
@@ -160,8 +183,8 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
             {/* AI Feedback about FMP DCF */}
             {apiFeedback.fmpDcf && apiFeedback.aiAgreement !== 'agree' && (
                 <div className={`flex items-start gap-3 p-3 rounded-xl border ${apiFeedback.aiAgreement === 'disagree_low'
-                        ? 'bg-orange-500/10 border-orange-500/30'
-                        : 'bg-blue-500/10 border-blue-500/30'
+                    ? 'bg-orange-500/10 border-orange-500/30'
+                    : 'bg-blue-500/10 border-blue-500/30'
                     }`}>
                     <Info className={`h-5 w-5 flex-shrink-0 mt-0.5 ${apiFeedback.aiAgreement === 'disagree_low' ? 'text-orange-400' : 'text-blue-400'
                         }`} />
@@ -185,8 +208,8 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                             <p className="text-xs text-gray-500">Estimación propia basada en análisis integral</p>
                         </div>
                         <div className={`px-2 py-1 rounded text-xs font-medium ${confidence === 'high' ? 'bg-green-500/20 text-green-400' :
-                                confidence === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                                    'bg-gray-500/20 text-gray-400'
+                            confidence === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-gray-500/20 text-gray-400'
                             }`}>
                             Confianza: {confidence === 'high' ? 'Alta' : confidence === 'medium' ? 'Media' : 'Baja'}
                         </div>
@@ -259,8 +282,8 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
 
                     {/* Verdict */}
                     <div className={`rounded-xl p-4 flex items-center justify-between border ${isUndervalued ? 'bg-gradient-to-r from-purple-500/20 to-green-500/10 border-purple-500/30' :
-                            isOvervalued ? 'bg-gradient-to-r from-red-500/20 to-orange-500/10 border-red-500/30' :
-                                'bg-gradient-to-r from-yellow-500/20 to-amber-500/10 border-yellow-500/30'
+                        isOvervalued ? 'bg-gradient-to-r from-red-500/20 to-orange-500/10 border-red-500/30' :
+                            'bg-gradient-to-r from-yellow-500/20 to-amber-500/10 border-yellow-500/30'
                         }`}>
                         <div>
                             <p className="text-xs text-gray-400 mb-1 font-medium">VEREDICTO IA</p>
@@ -344,22 +367,22 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                             <div
                                 key={scenario.name}
                                 className={`rounded-xl p-5 transition-all duration-300 hover:scale-[1.02] ${scenario.name === 'bear'
-                                        ? 'bg-gradient-to-br from-red-500/15 to-red-900/10 border border-red-800/50'
-                                        : scenario.name === 'base'
-                                            ? 'bg-gradient-to-br from-purple-500/15 to-purple-900/10 border border-purple-500/50'
-                                            : 'bg-gradient-to-br from-green-500/15 to-green-900/10 border border-green-800/50'
+                                    ? 'bg-gradient-to-br from-red-500/15 to-red-900/10 border border-red-800/50'
+                                    : scenario.name === 'base'
+                                        ? 'bg-gradient-to-br from-purple-500/15 to-purple-900/10 border border-purple-500/50'
+                                        : 'bg-gradient-to-br from-green-500/15 to-green-900/10 border border-green-800/50'
                                     }`}
                             >
                                 <p className={`text-xs mb-2 flex items-center gap-1 font-medium ${scenario.name === 'bear' ? 'text-red-400' :
-                                        scenario.name === 'base' ? 'text-purple-300' :
-                                            'text-green-400'
+                                    scenario.name === 'base' ? 'text-purple-300' :
+                                        'text-green-400'
                                     }`}>
                                     {scenario.name === 'bear' ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
                                     {scenario.label}
                                 </p>
                                 <p className={`text-4xl font-bold mb-2 ${scenario.name === 'bear' ? 'text-red-400' :
-                                        scenario.name === 'base' ? 'text-purple-400' :
-                                            'text-green-400'
+                                    scenario.name === 'base' ? 'text-purple-400' :
+                                        'text-green-400'
                                     }`}>
                                     ${scenario.data.price.toFixed(0)}
                                 </p>
@@ -367,8 +390,8 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                                     Probabilidad: {scenario.data.probability}%
                                 </p>
                                 <div className={`pt-3 border-t ${scenario.name === 'bear' ? 'border-red-800/50' :
-                                        scenario.name === 'base' ? 'border-purple-700/50' :
-                                            'border-green-800/50'
+                                    scenario.name === 'base' ? 'border-purple-700/50' :
+                                        'border-green-800/50'
                                     }`}>
                                     <div className="flex justify-between items-center">
                                         <span className="text-[10px] text-gray-500">vs Precio Actual</span>
