@@ -28,9 +28,9 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
     const upperSymbol = symbol.toUpperCase();
 
     return (
-        <div className="flex flex-col min-h-screen">
+        <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden">
             {/* Header Section - Always visible */}
-            <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 px-6 pt-4 border-b border-gray-700/50 bg-gray-900/50 backdrop-blur-sm sticky top-0 z-10">
+            <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 px-6 pt-4 border-b border-gray-700/50 bg-gray-900/50 backdrop-blur-sm shrink-0">
                 <div className="flex items-center gap-4">
                     {/* Company Logo/Icon */}
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shrink-0">
@@ -65,12 +65,14 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                 </div>
             </header>
 
-            {/* Main Content with Sidebar */}
-            <StockPageLayout
-                symbol={upperSymbol}
-                companyName={companyName}
-                currentPrice={currentPrice}
-            />
+            {/* Main Content with Sidebar - Flex-1 para ocupar el resto */}
+            <div className="flex-1 overflow-hidden">
+                <StockPageLayout
+                    symbol={upperSymbol}
+                    companyName={companyName}
+                    currentPrice={currentPrice}
+                />
+            </div>
         </div>
     );
 }

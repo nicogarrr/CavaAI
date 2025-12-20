@@ -109,8 +109,8 @@ export default function StockPageLayout({
     const upperSymbol = symbol.toUpperCase();
 
     return (
-        <div className="flex h-[calc(100vh-180px)] overflow-hidden">
-            {/* Sidebar */}
+        <div className="flex h-full overflow-hidden">
+            {/* Sidebar - Scroll oculto estéticamente */}
             <StockSidebar
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -118,12 +118,12 @@ export default function StockPageLayout({
                 className="shrink-0 hidden md:flex"
             />
 
-            {/* Main Content Area */}
-            <main className="flex-1 overflow-y-auto p-6">
+            {/* Main Content Area - Único scroll visible */}
+            <main className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
                 {/* Mobile Tab Selector */}
                 <div className="md:hidden mb-4 overflow-x-auto">
                     <div className="flex gap-2 pb-2">
-                        {(['resumen', 'valoracion', 'dividendos', 'calidad', 'fundamentales', 'insiders', 'estimaciones', 'transcripciones', 'analisis', 'noticias', 'congreso', 'esg', 'institucional', 'tecnicos'] as StockTab[]).map((tab) => (
+                        {(['resumen', 'valoracion', 'dividendos', 'calidad', 'fundamentales', 'insiders', 'estimaciones', 'transcripciones', 'analisis', 'noticias', 'tecnicos'] as StockTab[]).map((tab) => (
 
                             <button
                                 key={tab}
@@ -190,19 +190,6 @@ export default function StockPageLayout({
                         <NoticiasTab symbol={upperSymbol} />
                     </div>
 
-                    {/* NEW TABS */}
-                    <div className={activeTab === 'congreso' ? 'block' : 'hidden'}>
-                        <CongresoTab symbol={upperSymbol} />
-                    </div>
-
-                    <div className={activeTab === 'esg' ? 'block' : 'hidden'}>
-                        <ESGTab symbol={upperSymbol} />
-                    </div>
-
-                    <div className={activeTab === 'institucional' ? 'block' : 'hidden'}>
-                        <InstitucionalTab symbol={upperSymbol} />
-                    </div>
-
                     <div className={activeTab === 'tecnicos' ? 'block' : 'hidden'}>
                         <TecnicosTab symbol={upperSymbol} />
                     </div>
@@ -228,13 +215,13 @@ function ResumenTab({ symbol, scriptUrl }: { symbol: string; scriptUrl: string }
                 />
             </div>
 
-            {/* Main Chart */}
-            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 min-h-[500px]">
+            {/* Main Chart - Altura adaptativa al viewport */}
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 h-[calc(100vh-450px)] min-h-[350px]">
                 <TradingViewWidget
                     scriptUrl={`${scriptUrl}advanced-chart.js`}
                     config={CANDLE_CHART_WIDGET_CONFIG(symbol)}
-                    className="custom-chart"
-                    height={500}
+                    className="custom-chart h-full"
+                    height={400}
                 />
             </div>
 

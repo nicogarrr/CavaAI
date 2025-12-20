@@ -32,9 +32,6 @@ export type StockTab =
     | 'analisis'
     | 'transcripciones'
     | 'noticias'
-    | 'congreso'
-    | 'esg'
-    | 'institucional'
     | 'tecnicos';
 
 interface NavItem {
@@ -106,24 +103,6 @@ const navItems: NavItem[] = [
         description: 'Últimas noticias'
     },
     {
-        id: 'congreso',
-        label: 'Congreso',
-        icon: <Building2 size={20} />,
-        description: 'Trading de políticos'
-    },
-    {
-        id: 'esg',
-        label: 'ESG',
-        icon: <Leaf size={20} />,
-        description: 'Sostenibilidad'
-    },
-    {
-        id: 'institucional',
-        label: 'Institucional',
-        icon: <Building size={20} />,
-        description: 'Holdings 13F'
-    },
-    {
         id: 'tecnicos',
         label: 'Técnicos',
         icon: <Activity size={20} />,
@@ -173,8 +152,8 @@ export default function StockSidebar({
                 </div>
             </div>
 
-            {/* Navigation */}
-            <nav className="flex-1 py-4 space-y-1 px-2">
+            {/* Navigation - Scroll oculto */}
+            <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto scrollbar-none">
                 {navItems.map((item) => (
                     <button
                         key={item.id}
