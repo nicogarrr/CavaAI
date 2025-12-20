@@ -2525,6 +2525,214 @@ Responde SOLO en JSON:
 }
 
 // ============================================
+// AI-DRIVEN VALUATION - IA como fuente principal
+// ============================================
+
+export interface AIValuationResult {
+  // Valores generados por IA
+  intrinsicValue: number;
+  marginOfSafety: number;
+  verdict: 'UNDERVALUED' | 'FAIRLY_VALUED' | 'OVERVALUED';
+
+  // WACC y componentes (generados/ajustados por IA)
+  wacc: number;
+  costOfEquity: number;
+  terminalValue: number;
+
+  // Escenarios
+  scenarios: {
+    bear: { price: number; probability: number };
+    base: { price: number; probability: number };
+    bull: { price: number; probability: number };
+  };
+
+  // Feedback sobre datos de API
+  apiFeedback: {
+    fmpDcf: number | null;      // DCF de FMP (referencia)
+    aiAgreement: 'agree' | 'disagree_low' | 'disagree_high';
+    adjustmentReason: string;    // Por qué la IA ajustó el valor
+  };
+
+  // Metadata
+  reasoning: string;
+  confidence: 'high' | 'medium' | 'low';
+  keyInsight: string;
+}
+
+export async function generateAIDrivenValuation(input: {
+  symbol: string;
+  companyName: string;
+  currentPrice: number;
+  // Datos de APIs como CONTEXTO (no verdad absoluta)
+  apiData: {
+    fmpDcf: number | null;
+    analystTarget: number | null;
+    fcfLastYear: number;
+    revenueGrowth: number;
+    marketCap: number;
+    beta: number;
+    riskFreeRate: number;
+    debtToEquity: number;
+    sector: string;
+    grossMargin?: number;
+    operatingMargin?: number;
+    roe?: number;
+    roic?: number;
+  };
+}): Promise<AIValuationResult> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+  const defaultResult: AIValuationResult = {
+    intrinsicValue: input.currentPrice,
+    marginOfSafety: 0,
+    verdict: 'FAIRLY_VALUED',
+    wacc: 9,
+    costOfEquity: 10,
+    terminalValue: 0,
+    scenarios: {
+      bear: { price: input.currentPrice * 0.7, probability: 25 },
+      base: { price: input.currentPrice, probability: 50 },
+      bull: { price: input.currentPrice * 1.3, probability: 25 }
+    },
+    apiFeedback: {
+      fmpDcf: input.apiData.fmpDcf,
+      aiAgreement: 'agree',
+      adjustmentReason: 'Análisis no disponible'
+    },
+    reasoning: 'Análisis no disponible',
+    confidence: 'low',
+    keyInsight: ''
+  };
+
+  if (!apiKey) return defaultResult;
+
+  try {
+    // Obtener contexto RAG
+    const ragContext = await getRAGContext(input.symbol, input.companyName);
+
+    const { apiData } = input;
+
+    const system = `Eres Warren Buffett analizando ${input.companyName} (${input.symbol}).
+
+TU TRABAJO: Generar TU PROPIA valoración basándote en todos los datos disponibles. Los datos de APIs son REFERENCIA, no verdad absoluta. Si crees que el DCF de FMP es incorrecto, CORRÍGELO.
+
+DATOS DE APIs (REFERENCIA):
+- Precio actual: $${input.currentPrice.toFixed(2)}
+- DCF de FMP API: ${apiData.fmpDcf ? `$${apiData.fmpDcf.toFixed(2)}` : 'No disponible'}
+- Precio objetivo analistas: ${apiData.analystTarget ? `$${apiData.analystTarget.toFixed(2)}` : 'No disponible'}
+- FCF último año: $${(apiData.fcfLastYear / 1e9).toFixed(2)}B
+- Crecimiento revenue: ${apiData.revenueGrowth.toFixed(1)}%
+- Market Cap: $${(apiData.marketCap / 1e9).toFixed(1)}B
+- Beta: ${apiData.beta.toFixed(2)}
+- Risk-Free Rate: ${apiData.riskFreeRate.toFixed(2)}%
+- Debt/Equity: ${apiData.debtToEquity.toFixed(2)}
+- Sector: ${apiData.sector}
+${apiData.grossMargin ? `- Margen Bruto: ${(apiData.grossMargin * 100).toFixed(1)}%` : ''}
+${apiData.operatingMargin ? `- Margen Operativo: ${(apiData.operatingMargin * 100).toFixed(1)}%` : ''}
+${apiData.roe ? `- ROE: ${(apiData.roe * 100).toFixed(1)}%` : ''}
+${apiData.roic ? `- ROIC: ${(apiData.roic * 100).toFixed(1)}%` : ''}
+
+${ragContext ? `MI BASE DE CONOCIMIENTO:\n${ragContext}` : ''}
+
+INSTRUCCIONES CRÍTICAS:
+1. ANALIZA si el DCF de FMP ($${apiData.fmpDcf?.toFixed(2) || 'N/A'}) tiene sentido
+2. Si crees que es muy conservador o agresivo, GENERA TU PROPIO VALOR
+3. Justifica por qué ajustas (o no) el DCF
+4. Genera escenarios Bear/Base/Bull realistas
+5. Sé honesto sobre tu nivel de confianza
+
+RESPONDE SOLO EN JSON VÁLIDO:
+{
+  "intrinsicValue": <tu estimación del valor intrínseco por acción>,
+  "wacc": <WACC que usarías en %>,
+  "costOfEquity": <costo de equity en %>,
+  "terminalValue": <valor terminal en miles de millones>,
+  "scenarios": {
+    "bear": {"price": <precio caso pesimista>, "probability": <% probabilidad>},
+    "base": {"price": <precio caso base>, "probability": <% probabilidad>},
+    "bull": {"price": <precio caso optimista>, "probability": <% probabilidad>}
+  },
+  "apiFeedback": {
+    "aiAgreement": "agree|disagree_low|disagree_high",
+    "adjustmentReason": "<explicación de por qué ajustaste o no el DCF de FMP>"
+  },
+  "reasoning": "<tu análisis completo en 2-3 oraciones>",
+  "confidence": "high|medium|low",
+  "keyInsight": "<el insight más importante en 1 oración>"
+}`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: system }] }],
+          generationConfig: { temperature: 0.4, maxOutputTokens: 1500 },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      console.error('AI Valuation API error:', res.status);
+      return defaultResult;
+    }
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      const intrinsicValue = parseFloat(parsed.intrinsicValue) || input.currentPrice;
+      const marginOfSafety = ((intrinsicValue - input.currentPrice) / intrinsicValue) * 100;
+
+      let verdict: 'UNDERVALUED' | 'FAIRLY_VALUED' | 'OVERVALUED';
+      if (marginOfSafety > 15) verdict = 'UNDERVALUED';
+      else if (marginOfSafety < -15) verdict = 'OVERVALUED';
+      else verdict = 'FAIRLY_VALUED';
+
+      return {
+        intrinsicValue,
+        marginOfSafety,
+        verdict,
+        wacc: parsed.wacc || 9,
+        costOfEquity: parsed.costOfEquity || 10,
+        terminalValue: (parsed.terminalValue || 0) * 1e9,
+        scenarios: {
+          bear: {
+            price: parsed.scenarios?.bear?.price || input.currentPrice * 0.7,
+            probability: parsed.scenarios?.bear?.probability || 25
+          },
+          base: {
+            price: parsed.scenarios?.base?.price || intrinsicValue,
+            probability: parsed.scenarios?.base?.probability || 50
+          },
+          bull: {
+            price: parsed.scenarios?.bull?.price || input.currentPrice * 1.4,
+            probability: parsed.scenarios?.bull?.probability || 25
+          }
+        },
+        apiFeedback: {
+          fmpDcf: apiData.fmpDcf,
+          aiAgreement: parsed.apiFeedback?.aiAgreement || 'agree',
+          adjustmentReason: parsed.apiFeedback?.adjustmentReason || ''
+        },
+        reasoning: parsed.reasoning || '',
+        confidence: parsed.confidence || 'medium',
+        keyInsight: parsed.keyInsight || ''
+      };
+    }
+
+    return defaultResult;
+  } catch (error) {
+    console.error('AI-Driven Valuation error:', error);
+    return defaultResult;
+  }
+}
+
+// ============================================
 // RED FLAGS DETECTOR - Señales de Peligro
 // ============================================
 
