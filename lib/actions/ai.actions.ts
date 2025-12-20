@@ -2214,3 +2214,134 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
     return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Error de conexión' };
   }
 }
+
+// ============================================
+// Visual Investment Thesis - AI Commentary
+// ============================================
+
+export interface ThesisCommentaryInput {
+  symbol: string;
+  companyName: string;
+  currentPrice: number;
+  intrinsicValue: number;
+  marginOfSafety: number;
+  verdict: string;
+  wacc: number;
+  costOfEquity: number;
+  fcfLastYear: number;
+  revenueGrowth: number;
+  debtToEquity: number;
+  beta: number;
+  scenarios: { name: string; targetPrice: number }[];
+}
+
+/**
+ * Generates a concise AI commentary interpreting the DCF valuation
+ * Uses RAG context + financial data to provide nuanced analysis
+ */
+export async function generateThesisCommentary(input: ThesisCommentaryInput): Promise<{
+  commentary: string;
+  confidence: 'high' | 'medium' | 'low';
+  keyInsight: string;
+}> {
+  try {
+    const auth = await getAuth();
+    if (!auth) throw new Error('Auth error');
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) throw new Error('No auth');
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      return {
+        commentary: 'API Key no configurada para análisis IA.',
+        confidence: 'low',
+        keyInsight: 'Sin análisis disponible'
+      };
+    }
+
+    // Get RAG context for this company
+    const ragContext = await getRAGContext(input.symbol, input.companyName);
+
+    const prompt = `Eres un analista de inversiones senior. Analiza brevemente esta valoración DCF y da tu opinión en 2-3 oraciones MÁXIMO.
+
+DATOS DE ${input.symbol} (${input.companyName}):
+- Precio actual: $${input.currentPrice.toFixed(2)}
+- Valor intrínseco DCF: $${input.intrinsicValue.toFixed(2)}
+- Margen de seguridad: ${input.marginOfSafety.toFixed(1)}%
+- Veredicto: ${input.verdict}
+- WACC: ${input.wacc.toFixed(1)}%
+- Costo de Equity: ${input.costOfEquity.toFixed(1)}%
+- FCF último año: $${(input.fcfLastYear / 1e9).toFixed(2)}B
+- Crecimiento revenue: ${input.revenueGrowth.toFixed(1)}%
+- Deuda/Equity: ${input.debtToEquity.toFixed(2)}
+- Beta: ${input.beta.toFixed(2)}
+- Escenarios: Bear $${input.scenarios[0]?.targetPrice.toFixed(0)}, Base $${input.scenarios[1]?.targetPrice.toFixed(0)}, Bull $${input.scenarios[2]?.targetPrice.toFixed(0)}
+
+${ragContext ? `CONTEXTO ADICIONAL DE MI BASE DE CONOCIMIENTO:\n${ragContext}` : ''}
+
+INSTRUCCIONES:
+1. ¿El DCF de $${input.intrinsicValue.toFixed(2)} tiene sentido dado los fundamentales?
+2. ¿Qué riesgos o catalizadores podrían afectar esta valoración?
+3. Sé directo y conciso. Máximo 2-3 oraciones.
+
+Responde en formato JSON:
+{
+  "commentary": "Tu análisis en 2-3 oraciones...",
+  "confidence": "high|medium|low",
+  "keyInsight": "Una frase clave de 10 palabras máximo"
+}`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 300,
+          },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      console.error('Gemini API error:', res.status);
+      return {
+        commentary: `El DCF sugiere que ${input.symbol} está ${input.verdict === 'UNDERVALUED' ? 'infravalorada' : input.verdict === 'OVERVALUED' ? 'sobrevalorada' : 'cerca de su valor justo'} con un margen del ${Math.abs(input.marginOfSafety).toFixed(0)}%.`,
+        confidence: 'medium',
+        keyInsight: input.verdict === 'UNDERVALUED' ? 'Potencial oportunidad de valor' : 'Valoración ajustada'
+      };
+    }
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        commentary: parsed.commentary || 'Sin comentario disponible.',
+        confidence: parsed.confidence || 'medium',
+        keyInsight: parsed.keyInsight || 'Análisis completado'
+      };
+    }
+
+    // Fallback if JSON parsing fails
+    return {
+      commentary: text.slice(0, 300) || 'Análisis no disponible.',
+      confidence: 'medium',
+      keyInsight: 'Ver análisis completo'
+    };
+
+  } catch (error) {
+    console.error('Thesis commentary error:', error);
+    return {
+      commentary: `Basándose en el DCF, ${input.symbol} muestra un margen de ${Math.abs(input.marginOfSafety).toFixed(0)}% respecto a su valor intrínseco estimado de $${input.intrinsicValue.toFixed(2)}.`,
+      confidence: 'low',
+      keyInsight: 'Análisis básico disponible'
+    };
+  }
+}

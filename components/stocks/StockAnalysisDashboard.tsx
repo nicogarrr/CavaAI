@@ -6,20 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
-// Lazy load heavy child components
-const AIChecklistSection = dynamic(() => import("@/components/stocks/AIChecklistSection"), {
-    loading: () => <Skeleton className="h-[200px] w-full rounded-lg bg-gray-800/50" />,
-    ssr: false,
-});
-const PatternAnalysisSection = dynamic(() => import("@/components/stocks/PatternAnalysisSection"), {
-    loading: () => <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />,
-    ssr: false,
-});
-const AlternativesSection = dynamic(() => import("@/components/stocks/AlternativesSection"), {
-    loading: () => <Skeleton className="h-[300px] w-full rounded-lg bg-gray-800/50" />,
-    ssr: false,
-});
-const AnalysisWrapper = dynamic(() => import("@/components/stocks/AnalysisWrapper"), {
+// Lazy load the Analysis Hub
+const AnalysisHub = dynamic(() => import("@/components/stocks/AnalysisHub"), {
     loading: () => <Skeleton className="h-[600px] w-full rounded-lg bg-gray-800/50" />,
     ssr: false,
 });
@@ -61,11 +49,9 @@ export default function StockAnalysisDashboard({
             <div className="flex flex-col gap-6 w-full">
                 <div className="flex items-center gap-2 text-gray-400">
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Cargando análisis avanzado...</span>
+                    <span>Cargando Hub de Análisis...</span>
                 </div>
-                <Skeleton className="h-[200px] w-full rounded-lg bg-gray-800/50" />
-                <Skeleton className="h-[400px] w-full rounded-lg bg-gray-800/50" />
-                <Skeleton className="h-[300px] w-full rounded-lg bg-gray-800/50" />
+                <Skeleton className="h-[600px] w-full rounded-lg bg-gray-800/50" />
             </div>
         );
     }
@@ -83,47 +69,14 @@ export default function StockAnalysisDashboard({
     const sector = (financialData.profile as any)?.finnhubIndustry || (financialData.profile as any)?.industry || '';
 
     return (
-        <div className="flex flex-col gap-6 w-full">
-            {/* AI Checklist Section - Full Width */}
-            <section className="w-full">
-                <AIChecklistSection
-                    symbol={upperSymbol}
-                    companyName={companyName}
-                    financialData={financialData}
-                    currentPrice={livePrice}
-                />
-            </section>
-
-            {/* Pattern Analysis Section - Full Width */}
-            <section className="w-full">
-                <PatternAnalysisSection
-                    symbol={upperSymbol}
-                    companyName={companyName}
-                    financialData={financialData}
-                    currentPrice={livePrice}
-                />
-            </section>
-
-            {/* Alternatives Section - Full Width */}
-            <section className="w-full">
-                <AlternativesSection
-                    symbol={upperSymbol}
-                    companyName={companyName}
-                    sector={sector}
-                    financialData={financialData}
-                    currentPrice={livePrice}
-                />
-            </section>
-
-            {/* Analysis Section - Full Width */}
-            <section className="w-full">
-                <AnalysisWrapper
-                    symbol={upperSymbol}
-                    companyName={companyName}
-                    currentPrice={livePrice}
-                />
-            </section>
+        <div className="w-full">
+            <AnalysisHub
+                symbol={upperSymbol}
+                companyName={companyName}
+                currentPrice={livePrice}
+                financialData={financialData}
+                sector={sector}
+            />
         </div>
     );
 }
-
