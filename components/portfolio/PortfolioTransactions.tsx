@@ -44,70 +44,71 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
   };
 
   return (
-    <Card className="bg-gray-800/50 border-gray-700">
-      <CardHeader>
-        <CardTitle className="text-gray-100">Historial de Transacciones</CardTitle>
+    <Card className="bg-[#111111] border-gray-800 h-full flex flex-col">
+      <CardHeader className="pb-3 pt-5 border-b border-gray-800/50">
+        <CardTitle className="text-gray-100 text-base font-medium flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+          Actividad Reciente
+        </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0 flex-1 overflow-hidden">
         {transactions.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-gray-400">No hay transacciones registradas</p>
+          <div className="text-center py-12 px-4">
+            <div className="h-10 w-10 bg-gray-800/50 rounded-full flex items-center justify-center mx-auto mb-3">
+              <span className="text-gray-500">?</span>
+            </div>
+            <p className="text-gray-500 text-sm">Sin actividad reciente</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Símbolo</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead className="text-right">Cantidad</TableHead>
-                  <TableHead className="text-right">Precio</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-center">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.map((tx) => (
-                  <TableRow key={tx._id}>
-                    <TableCell className="text-gray-300">
-                      {new Date(tx.date).toLocaleDateString('es-ES')}
-                    </TableCell>
-                    <TableCell className="font-mono font-bold text-gray-100">
-                      {tx.symbol}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={tx.type === 'buy' ? 'default' : 'secondary'}>
-                        {tx.type === 'buy' ? 'Compra' : 'Venta'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right text-gray-300">
-                      {tx.quantity}
-                    </TableCell>
-                    <TableCell className="text-right text-gray-300">
-                      ${tx.price.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold text-gray-100">
-                      ${(tx.quantity * tx.price).toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex justify-center gap-1">
-                        <EditTransactionDialog transaction={tx} userId={userId} />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(tx._id)}
-                          disabled={deleting === tx._id}
-                          className="text-red-400 hover:text-red-300 hover:bg-red-950/20"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+          <div className="overflow-y-auto h-full max-h-[400px] scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
+            <div className="divide-y divide-gray-800/50">
+              {transactions.map((tx) => (
+                <div key={tx._id} className="p-4 hover:bg-gray-800/30 transition-colors group">
+                  <div className="flex items-start justify-between mb-1">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center ${tx.type === 'buy' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-500'
+                        }`}>
+                        {tx.type === 'buy' ? '+' : '-'}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-200">{tx.symbol}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${tx.type === 'buy' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                            }`}>
+                            {tx.type === 'buy' ? 'Compra' : 'Venta'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {new Date(tx.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-gray-200">
+                        ${(tx.quantity * tx.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {tx.quantity} acc @ ${tx.price.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Acciones flotantes (solo visibles en hover) */}
+                  <div className="flex justify-end gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <EditTransactionDialog transaction={tx} userId={userId} />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(tx._id)}
+                      disabled={deleting === tx._id}
+                      className="h-7 w-7 p-0 text-gray-500 hover:text-red-400 hover:bg-red-950/20"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </CardContent>
