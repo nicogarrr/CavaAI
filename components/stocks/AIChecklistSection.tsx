@@ -20,20 +20,32 @@ interface ChecklistAnswer {
 }
 
 const QUESTION_LABELS: Record<string, string> = {
-    understand_business: '¿Entiendo cómo gana dinero?',
+    // Negocio y Moat
+    understand_business: '¿Entiendo el modelo de negocio?',
     competitive_moat: '¿Tiene ventaja competitiva (moat)?',
-    pricing_power: '¿Puede subir precios?',
+    pricing_power: '¿Poder de fijación de precios?',
     recurring_revenue: '¿Ingresos recurrentes?',
+    // Management
     management_quality: '¿Management competente?',
     skin_in_game: '¿Directivos con participación?',
-    debt_level: '¿Deuda manejable?',
+    insider_buying: '¿Compras de insiders recientes?',
+    capital_allocation: '¿Buena asignación de capital?',
+    // Calidad Financiera
+    earnings_quality: '¿Calidad de beneficios (FCF/NI)?',
     free_cash_flow: '¿Free Cash Flow positivo?',
-    return_on_capital: '¿ROIC/ROE > 15%?',
-    margin_of_safety: '¿Margen de seguridad > 25%?',
+    return_on_capital: '¿ROIC > 12%?',
+    margin_stability: '¿Márgenes estables/crecientes?',
+    // Balance y Riesgo
+    debt_level: '¿Deuda manejable (< 2x EBITDA)?',
+    strong_balance: '¿Balance sólido?',
+    no_major_risks: '¿Riesgos manejables?',
+    // Valoración
+    margin_of_safety: '¿Margen de seguridad > 20%?',
+    valuation_vs_history: '¿Valoración < media histórica?',
+    // Crecimiento y Sector
     growth_potential: '¿Potencial de crecimiento?',
     industry_tailwinds: '¿Sector favorable?',
-    no_major_risks: '¿Riesgos manejables?',
-    capital_allocation: '¿Buena asignación de capital?',
+    // Convicción
     would_hold_10_years: '¿Mantendría 10 años?'
 };
 
@@ -111,7 +123,7 @@ export default function AIChecklistSection({
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-6">
                 <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                    <span className="ml-3 text-gray-400">Analizando las 15 preguntas clave...</span>
+                    <span className="ml-3 text-gray-400">Analizando las 20 preguntas clave del value investing...</span>
                 </div>
             </div>
         );
