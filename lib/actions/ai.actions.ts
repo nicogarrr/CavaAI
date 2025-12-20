@@ -2523,3 +2523,290 @@ Responde SOLO en JSON:
     };
   }
 }
+
+// ============================================
+// RED FLAGS DETECTOR - Señales de Peligro
+// ============================================
+
+export interface RedFlag {
+  id: string;
+  severity: 'critical' | 'warning' | 'info';
+  category: string;
+  title: string;
+  description: string;
+  metric?: string;
+  value?: string;
+}
+
+export interface RedFlagsAnalysis {
+  flags: RedFlag[];
+  overallRisk: 'low' | 'medium' | 'high' | 'critical';
+  riskScore: number; // 0-100, lower is better
+  summary: string;
+}
+
+export async function generateRedFlagsAnalysis(input: {
+  symbol: string;
+  companyName: string;
+  financialData: any;
+  currentPrice: number;
+}): Promise<RedFlagsAnalysis> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+  const defaultResult: RedFlagsAnalysis = {
+    flags: [],
+    overallRisk: 'low',
+    riskScore: 0,
+    summary: 'Análisis no disponible'
+  };
+
+  if (!apiKey) return defaultResult;
+
+  try {
+    const metrics = input.financialData?.metrics?.metric || input.financialData?.metrics || {};
+    const profile = input.financialData?.profile || {};
+    const quote = input.financialData?.quote || {};
+
+    const system = `Eres un auditor financiero experto en detectar RED FLAGS y señales de peligro en empresas. Analiza los datos proporcionados buscando PROBLEMAS y RIESGOS, no fortalezas.
+
+CATEGORÍAS DE RED FLAGS A DETECTAR:
+1. DILUCIÓN ACCIONARIAL - shares outstanding aumentando significativamente
+2. CALIDAD DE EARNINGS - diferencia entre net income y cash flow operativo
+3. INSIDER SELLING - ventas masivas de insiders
+4. DETERIORO DE MÁRGENES - márgenes cayendo trimestre a trimestre
+5. APALANCAMIENTO EXCESIVO - deuda creciendo más rápido que ingresos
+6. GOODWILL/INTANGIBLES - activos intangibles > 30% de total assets
+7. REVENUE RECOGNITION - crecimiento de receivables > crecimiento ventas
+8. INVENTARIO - inventario creciendo más rápido que ventas
+9. CONCENTRACIÓN - dependencia excesiva de clientes/productos
+10. GOVERNANCE - cambios de auditor, restatements, CFO turnover
+
+SEVERIDAD:
+- "critical": Riesgo inmediato, evitar inversión
+- "warning": Riesgo material, requiere monitoreo
+- "info": Señal menor, tener en cuenta
+
+RESPONDE CON JSON VÁLIDO:
+{
+  "flags": [
+    {
+      "id": "dilution_1",
+      "severity": "warning",
+      "category": "Dilución",
+      "title": "Aumento de acciones en circulación",
+      "description": "Explicación específica con datos",
+      "metric": "Shares Outstanding",
+      "value": "+15% YoY"
+    }
+  ],
+  "overallRisk": "low|medium|high|critical",
+  "riskScore": número 0-100 (0=sin riesgo, 100=máximo riesgo),
+  "summary": "Resumen ejecutivo de 1-2 líneas"
+}`;
+
+    const keyData = {
+      roe: metrics.roeTTM || metrics.roe,
+      roa: metrics.roaTTM || metrics.roa,
+      debtToEquity: metrics.debtToEquityTTM || metrics.totalDebtToEquity,
+      currentRatio: metrics.currentRatioTTM || metrics.currentRatio,
+      grossMargin: metrics.grossMarginTTM || metrics.grossMargin,
+      operatingMargin: metrics.operatingMarginTTM || metrics.operatingMargin,
+      netMargin: metrics.netProfitMarginTTM || metrics.netMargin,
+      fcfMargin: metrics.fcfMarginTTM,
+      revenueGrowth: metrics.revenueGrowthTTMYoy,
+      epsGrowth: metrics.epsGrowthTTMYoy,
+      sharesChange: metrics.sharesChangeYoy || metrics.weightedAverageSharesOutstandingGrowth,
+      receivablesTurnover: metrics.receivablesTurnoverTTM,
+      inventoryTurnover: metrics.inventoryTurnoverTTM,
+      sector: profile.finnhubIndustry || profile.industry,
+    };
+
+    const prompt = `Analiza ${input.companyName} (${input.symbol}) a $${input.currentPrice} buscando RED FLAGS:
+
+MÉTRICAS CLAVE:
+${JSON.stringify(keyData, null, 2)}
+
+DATOS COMPLETOS:
+${JSON.stringify(input.financialData, null, 2)}
+
+Identifica TODOS los problemas potenciales. Sé crítico y objetivo. Si no hay datos suficientes para evaluar un área, indica [DATOS INSUFICIENTES].
+
+Responde con JSON válido.`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${system}\n\n${prompt}` }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
+        }),
+      }
+    );
+
+    if (!res.ok) return defaultResult;
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        flags: parsed.flags || [],
+        overallRisk: parsed.overallRisk || 'low',
+        riskScore: parsed.riskScore || 0,
+        summary: parsed.summary || ''
+      };
+    }
+
+    return defaultResult;
+  } catch (error) {
+    console.error('Red Flags analysis error:', error);
+    return defaultResult;
+  }
+}
+
+// ============================================
+// CATALYST TIMELINE - Próximos Catalizadores
+// ============================================
+
+export interface Catalyst {
+  id: string;
+  date: string; // ISO date or "Q1 2025" format
+  type: 'earnings' | 'dividend' | 'conference' | 'product' | 'regulatory' | 'ma' | 'other';
+  title: string;
+  description: string;
+  impact: 'positive' | 'negative' | 'neutral' | 'unknown';
+  importance: 'high' | 'medium' | 'low';
+}
+
+export interface CatalystTimeline {
+  catalysts: Catalyst[];
+  nextMajorEvent: Catalyst | null;
+  summary: string;
+}
+
+export async function generateCatalystTimeline(input: {
+  symbol: string;
+  companyName: string;
+  financialData: any;
+  currentPrice: number;
+}): Promise<CatalystTimeline> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+  const defaultResult: CatalystTimeline = {
+    catalysts: [],
+    nextMajorEvent: null,
+    summary: 'Timeline no disponible'
+  };
+
+  if (!apiKey) return defaultResult;
+
+  try {
+    const profile = input.financialData?.profile || {};
+    const news = input.financialData?.news || [];
+    const earnings = input.financialData?.earnings || {};
+    const events = input.financialData?.upcomingEvents || [];
+
+    const system = `Eres un analista financiero experto en identificar CATALIZADORES próximos que pueden mover el precio de una acción.
+
+TIPOS DE CATALIZADORES:
+- earnings: Reportes trimestrales/anuales
+- dividend: Ex-dividend dates, dividend increases
+- conference: Investor days, conferences
+- product: Lanzamientos de productos, expansiones
+- regulatory: Aprobaciones FDA, decisiones regulatorias
+- ma: M&A, spinoffs, reestructuraciones
+- other: Otros eventos relevantes
+
+IMPORTANCIA:
+- high: Puede mover el precio +/-5% o más
+- medium: Puede mover el precio +/-2-5%
+- low: Impacto menor pero relevante
+
+IMPACTO ESPERADO:
+- positive: Se espera reacción positiva
+- negative: Se espera reacción negativa
+- neutral: Impacto incierto
+- unknown: Imposible determinar
+
+Usa fechas reales cuando estén disponibles, o estimadas (Q1 2025, H1 2025).
+
+RESPONDE CON JSON VÁLIDO:
+{
+  "catalysts": [
+    {
+      "id": "earnings_q4_2024",
+      "date": "2025-01-28",
+      "type": "earnings",
+      "title": "Resultados Q4 2024",
+      "description": "Reporte trimestral con guidance 2025",
+      "impact": "positive",
+      "importance": "high"
+    }
+  ],
+  "nextMajorEvent": { mismo formato que catalyst individual },
+  "summary": "Resumen de 1-2 líneas sobre próximos catalizadores"
+}`;
+
+    const contextData = {
+      sector: profile.finnhubIndustry || profile.industry,
+      recentNews: news.slice(0, 5).map((n: any) => ({
+        headline: n.headline,
+        date: n.datetime ? new Date(n.datetime * 1000).toISOString().split('T')[0] : 'Unknown'
+      })),
+      earningsHistory: earnings.earningsCalendar?.slice(0, 2) || [],
+      upcomingEvents: events.slice(0, 5) || [],
+      currentDate: new Date().toISOString().split('T')[0]
+    };
+
+    const prompt = `Identifica los próximos CATALIZADORES para ${input.companyName} (${input.symbol}):
+
+CONTEXTO:
+${JSON.stringify(contextData, null, 2)}
+
+DATOS COMPLETOS:
+${JSON.stringify(input.financialData, null, 2)}
+
+Fecha actual: ${contextData.currentDate}
+
+Identifica eventos de los próximos 3-6 meses. Sé específico con fechas cuando sea posible.
+
+Responde con JSON válido.`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${system}\n\n${prompt}` }] }],
+          generationConfig: { temperature: 0.4, maxOutputTokens: 2000 },
+        }),
+      }
+    );
+
+    if (!res.ok) return defaultResult;
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        catalysts: parsed.catalysts || [],
+        nextMajorEvent: parsed.nextMajorEvent || (parsed.catalysts?.[0] || null),
+        summary: parsed.summary || ''
+      };
+    }
+
+    return defaultResult;
+  } catch (error) {
+    console.error('Catalyst Timeline error:', error);
+    return defaultResult;
+  }
+}
+

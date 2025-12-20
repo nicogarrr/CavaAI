@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { BarChart3, CheckCircle, TrendingUp, GitCompare, Brain, FileText } from 'lucide-react';
+import { BarChart3, CheckCircle, TrendingUp, GitCompare, Brain, FileText, Microscope } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -26,6 +26,10 @@ const AnalysisWrapper = dynamic(() => import('@/components/stocks/AnalysisWrappe
     loading: () => <Skeleton className="h-[600px] w-full rounded-lg bg-gray-800/50" />,
     ssr: false,
 });
+const DeepAnalysisSection = dynamic(() => import('@/components/stocks/DeepAnalysisSection'), {
+    loading: () => <Skeleton className="h-[500px] w-full rounded-lg bg-gray-800/50" />,
+    ssr: false,
+});
 
 interface AnalysisHubProps {
     symbol: string;
@@ -35,13 +39,14 @@ interface AnalysisHubProps {
     sector: string;
 }
 
-type TabType = 'dcf' | 'checklist' | 'technical' | 'competitors' | 'thesis';
+type TabType = 'dcf' | 'checklist' | 'technical' | 'competitors' | 'deepdive' | 'thesis';
 
 const TABS: { id: TabType; label: string; icon: React.ReactNode; description: string }[] = [
     { id: 'dcf', label: 'DCF Visual', icon: <BarChart3 className="h-4 w-4" />, description: 'Valoración por descuento de flujos' },
     { id: 'checklist', label: 'Checklist', icon: <CheckCircle className="h-4 w-4" />, description: '20 preguntas clave value investing' },
     { id: 'technical', label: 'Técnico', icon: <TrendingUp className="h-4 w-4" />, description: 'Patrones y soportes/resistencias' },
     { id: 'competitors', label: 'Competidores', icon: <GitCompare className="h-4 w-4" />, description: 'Comparación con el sector' },
+    { id: 'deepdive', label: 'Deep Dive', icon: <Microscope className="h-4 w-4" />, description: 'Red Flags, Catalizadores, Owner Earnings' },
     { id: 'thesis', label: 'Tesis', icon: <FileText className="h-4 w-4" />, description: 'Documento completo de inversión' },
 ];
 
@@ -126,6 +131,15 @@ export default function AnalysisHub({
                         symbol={symbol}
                         companyName={companyName}
                         sector={sector}
+                        financialData={financialData}
+                        currentPrice={currentPrice}
+                    />
+                )}
+
+                {activeTab === 'deepdive' && (
+                    <DeepAnalysisSection
+                        symbol={symbol}
+                        companyName={companyName}
                         financialData={financialData}
                         currentPrice={currentPrice}
                     />
