@@ -1480,58 +1480,114 @@ export async function generateChecklistWithAI(input: {
     };
   }
 
+  // Preguntas mejoradas del checklist value investing (20 preguntas)
   const CHECKLIST_QUESTIONS = [
-    { id: 'understand_business', question: '¿Entiendo cómo gana dinero esta empresa?', weight: 1 },
-    { id: 'competitive_moat', question: '¿Tiene una ventaja competitiva duradera (moat)?', weight: 2 },
-    { id: 'pricing_power', question: '¿Puede subir precios sin perder clientes?', weight: 1.5 },
-    { id: 'recurring_revenue', question: '¿Tiene ingresos recurrentes o predecibles?', weight: 1.5 },
-    { id: 'management_quality', question: '¿El equipo directivo es honesto y competente?', weight: 1.5 },
-    { id: 'skin_in_game', question: '¿Los directivos tienen participación significativa?', weight: 1 },
-    { id: 'debt_level', question: '¿El nivel de deuda es manejable (Debt/EBITDA < 3)?', weight: 1.5 },
-    { id: 'free_cash_flow', question: '¿Genera Free Cash Flow positivo y consistente?', weight: 2 },
-    { id: 'return_on_capital', question: '¿El ROIC/ROE es superior al 15% sostenido?', weight: 1.5 },
-    { id: 'margin_of_safety', question: '¿El precio actual ofrece margen de seguridad (>25%)?', weight: 2 },
-    { id: 'growth_potential', question: '¿Tiene potencial de crecimiento para los próximos 5 años?', weight: 1 },
-    { id: 'industry_tailwinds', question: '¿El sector tiene vientos de cola favorables?', weight: 1 },
-    { id: 'no_major_risks', question: '¿Están identificados y son manejables los principales riesgos?', weight: 1.5 },
-    { id: 'capital_allocation', question: '¿La empresa asigna bien el capital (dividendos, recompras, M&A)?', weight: 1 },
-    { id: 'would_hold_10_years', question: '¿Mantendría esta acción durante 10 años sin mirar el precio?', weight: 2 }
+    // NEGOCIO Y MOAT
+    { id: 'understand_business', question: '¿Entiendo cómo gana dinero esta empresa y su modelo de negocio?', weight: 1, threshold: null },
+    { id: 'competitive_moat', question: '¿Tiene ventaja competitiva duradera (marca, patentes, efectos de red, costes de cambio)?', weight: 2, threshold: 'ROIC > 15% durante 5+ años' },
+    { id: 'pricing_power', question: '¿Puede subir precios por encima de la inflación sin perder clientes?', weight: 1.5, threshold: 'Margen bruto estable/creciente' },
+    { id: 'recurring_revenue', question: '¿Tiene ingresos recurrentes, suscripciones o contratos a largo plazo?', weight: 1.5, threshold: 'Ingresos predecibles' },
+    // MANAGEMENT
+    { id: 'management_quality', question: '¿El equipo directivo tiene track record de ejecución y transparencia?', weight: 1.5, threshold: 'Historial de cumplir guidance' },
+    { id: 'skin_in_game', question: '¿Los directivos poseen acciones significativas (>1% o >$10M)?', weight: 1.5, threshold: '> 1% insider ownership' },
+    { id: 'insider_buying', question: '¿Hay compras de insiders recientes (últimos 6 meses)?', weight: 1.5, threshold: 'Compras netas > ventas' },
+    { id: 'capital_allocation', question: '¿La empresa asigna bien el capital (M&A, recompras, dividendos)?', weight: 1.5, threshold: 'ROIC > WACC' },
+    // CALIDAD FINANCIERA
+    { id: 'earnings_quality', question: '¿Los beneficios son de alta calidad (FCF/Net Income > 80%)?', weight: 2, threshold: 'FCF/NI > 0.8' },
+    { id: 'free_cash_flow', question: '¿Genera Free Cash Flow positivo y creciente consistentemente?', weight: 2, threshold: 'FCF positivo 5 años' },
+    { id: 'return_on_capital', question: '¿El ROIC es superior al 12% de forma sostenida (mejor si > 20%)?', weight: 2, threshold: 'ROIC > 12%' },
+    { id: 'margin_stability', question: '¿Los márgenes operativos se han mantenido o expandido en 5 años?', weight: 1.5, threshold: 'Margen estable 5Y' },
+    // BALANCE Y RIESGO
+    { id: 'debt_level', question: '¿La deuda es manejable (Deuda Neta/EBITDA < 2x)?', weight: 1.5, threshold: 'Net Debt/EBITDA < 2x' },
+    { id: 'strong_balance', question: '¿Tiene balance sólido (caja > deuda CP, current ratio > 1.5)?', weight: 1.5, threshold: 'Current Ratio > 1.5' },
+    { id: 'no_major_risks', question: '¿Los riesgos principales están identificados y son manejables?', weight: 1.5, threshold: 'Sin red flags' },
+    // VALORACIÓN
+    { id: 'margin_of_safety', question: '¿El precio ofrece margen de seguridad vs valor intrínseco (>20%)?', weight: 2, threshold: 'Upside > 20%' },
+    { id: 'valuation_vs_history', question: '¿Cotiza por debajo de su media histórica de P/E o EV/EBITDA?', weight: 1.5, threshold: 'P/E < media 5Y' },
+    // CRECIMIENTO Y SECTOR
+    { id: 'growth_potential', question: '¿Tiene runway de crecimiento para los próximos 5-10 años?', weight: 1, threshold: 'Crecimiento > inflación + 5%' },
+    { id: 'industry_tailwinds', question: '¿El sector tiene vientos de cola seculares favorables?', weight: 1, threshold: 'Tendencias macro positivas' },
+    // CONVICCIÓN
+    { id: 'would_hold_10_years', question: '¿Mantendría esta acción 10 años sin mirar el precio diariamente?', weight: 2, threshold: 'Test final Buffett' }
   ];
 
-  const questionsText = CHECKLIST_QUESTIONS.map((q, i) => `${i + 1}. [${q.id}] ${q.question}`).join('\n');
+  const questionsText = CHECKLIST_QUESTIONS.map((q, i) => `${i + 1}. [${q.id}] ${q.question} (Umbral: ${q.threshold || 'Cualitativo'})`).join('\n');
 
-  const system = `Eres un analista de inversión value investing experto. Analiza los datos financieros proporcionados y responde a las 15 preguntas del checklist de inversión de forma objetiva y basada en datos.
+  const system = `Eres un analista de inversión value investing experto al estilo Warren Buffett y Charlie Munger. Analiza los datos financieros proporcionados y responde a las 20 preguntas del checklist de forma OBJETIVA y con DATOS ESPECÍFICOS.
 
-Para cada pregunta, responde con:
-- "yes" si los datos apoyan claramente una respuesta positiva
-- "no" si los datos indican claramente una respuesta negativa  
-- "maybe" si hay evidencia mixta o insuficiente
+REGLAS CRÍTICAS PARA LAS EXPLICACIONES:
+1. SIEMPRE incluye métricas reales con formato: [MÉTRICA: valor] (ej: [ROE: 18.5%], [Debt/EBITDA: 1.2x], [FCF: $2.3B])
+2. Compara con umbrales específicos (ej: "ROE de 18.5% > umbral de 15%")
+3. Si hay tendencia histórica, menciónala (ej: "Margen creciendo del 15% al 19% en 5 años")
+4. Si falta el dato, indica [DATO NO DISPONIBLE] y responde "maybe"
+5. Sé conciso pero específico - máximo 2 líneas por explicación
+6. NO inventes datos - si no están en los datos proporcionados, marca como no disponible
 
-IMPORTANTE: Sé objetivo y basado en datos reales. No fuerces respuestas positivas.
+Para cada pregunta responde:
+- "yes" si los datos apoyan CLARAMENTE una respuesta positiva (cumple umbral)
+- "no" si los datos indican CLARAMENTE una respuesta negativa (no cumple umbral)
+- "maybe" si hay evidencia mixta, insuficiente, o el dato no está disponible
 
-Responde SOLO con un JSON válido en este formato exacto:
+FORMATO DE RESPUESTA - JSON VÁLIDO:
 {
   "answers": [
-    {"questionId": "understand_business", "answer": "yes|no|maybe", "explanation": "Explicación breve de 1-2 líneas"},
-    ...para cada una de las 15 preguntas
+    {"questionId": "id_pregunta", "answer": "yes|no|maybe", "explanation": "Explicación con [MÉTRICA: valor] específicos"},
+    ...para cada una de las 20 preguntas
   ],
-  "overallScore": número del 0-100,
+  "overallScore": número 0-100 (basado en pesos de cada pregunta),
   "recommendation": "COMPRA FUERTE|COMPRAR|MANTENER|EVITAR|EVITAR FUERTE",
-  "summary": "Resumen ejecutivo de 2-3 frases sobre la calidad de la inversión"
+  "summary": "Resumen ejecutivo de 2-3 frases con métricas clave destacadas"
 }`;
 
   // 🧠 RAG: Obtener criterios personales del usuario
   const ragContext = await getRAGContext(input.symbol, input.companyName);
 
-  const prompt = `Analiza ${input.companyName} (${input.symbol}) a $${input.currentPrice.toFixed(2)} y responde estas 15 preguntas:
+  // Extraer métricas clave para facilitar el análisis
+  const metrics = financialData?.metrics?.metric || financialData?.metrics || {};
+  const quote = financialData?.quote || {};
+  const profile = financialData?.profile || {};
+
+  const keyMetrics = {
+    // Rentabilidad
+    roe: metrics.roeTTM || metrics.roe || metrics.returnOnEquityTTM,
+    roic: metrics.roicTTM || metrics.roic,
+    roa: metrics.roaTTM || metrics.roa,
+    // Márgenes
+    grossMargin: metrics.grossMarginTTM || metrics.grossMargin,
+    operatingMargin: metrics.operatingMarginTTM || metrics.operatingMargin,
+    netMargin: metrics.netProfitMarginTTM || metrics.netMargin,
+    // Deuda
+    debtToEquity: metrics.debtToEquityTTM || metrics.totalDebtToEquity,
+    debtToEbitda: metrics.netDebtToEBITDA || metrics.totalDebtToEBITDA,
+    currentRatio: metrics.currentRatioTTM || metrics.currentRatio,
+    // Valoración
+    pe: metrics.peTTM || metrics.peRatio || quote.pe,
+    pb: metrics.pbTTM || metrics.priceToBook,
+    ps: metrics.psTTM || metrics.priceToSales,
+    evEbitda: metrics.evToEbitda || metrics.enterpriseValueOverEBITDA,
+    // Crecimiento
+    revenueGrowth: metrics.revenueGrowthTTMYoy || metrics.revenueGrowth3Y,
+    epsGrowth: metrics.epsGrowthTTMYoy || metrics.epsGrowth3Y,
+    // FCF
+    fcf: metrics.freeCashFlowTTM || metrics.freeCashFlow,
+    fcfMargin: metrics.fcfMarginTTM || metrics.freeCashFlowMargin,
+    // Dividendos
+    dividendYield: metrics.dividendYieldIndicatedAnnual || metrics.dividendYield,
+    payoutRatio: metrics.payoutRatioTTM || metrics.payoutRatio
+  };
+
+  const prompt = `Analiza ${input.companyName} (${input.symbol}) a $${input.currentPrice.toFixed(2)} y responde estas 20 preguntas:
 
 ${questionsText}
 
-DATOS FINANCIEROS:
+===== MÉTRICAS CLAVE EXTRAÍDAS =====
+${JSON.stringify(keyMetrics, null, 2)}
+
+===== DATOS FINANCIEROS COMPLETOS =====
 ${JSON.stringify(financialData, null, 2)}
 ${ragContext}
 
-Responde con JSON válido únicamente.`;
+RECUERDA: Incluye [MÉTRICA: valor] en cada explicación. Responde con JSON válido únicamente.`;
 
   const payload = {
     contents: [{ role: 'user', parts: [{ text: `${system}\n\n${prompt}` }] }],
