@@ -155,6 +155,9 @@ export default function TermsPage() {
           <p className="text-gray-300 text-sm">
             Gracias por ser parte de nuestra comunidad. 🚀
           </p>
+          <p className="text-gray-500 text-xs mt-4">
+            © 2025 Nicolas Iglesias Garcia. Todos los derechos reservados.
+          </p>
         </div>
       </div>
     </div>
