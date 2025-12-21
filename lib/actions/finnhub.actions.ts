@@ -551,6 +551,38 @@ export async function getStockFinancialData(symbol: string): Promise<{
     }
 }
 
+/**
+ * Lightweight version of getStockFinancialData for ProPicks
+ * Only fetches essential data (quote, profile, metrics) - skips news, events, peers etc.
+ * Much faster for bulk operations like ProPicks
+ */
+export async function getStockFinancialDataLight(symbol: string): Promise<{
+    quote: any;
+    profile: FinnhubProfile2 | null;
+    metrics: any;
+    priceTarget: any;
+} | null> {
+    try {
+        const token = env.FINNHUB_API_KEY;
+        if (!token) {
+            return null;
+        }
+
+        // Only fetch essential data - no news, events, peers etc.
+        const [quote, profile, metrics, priceTarget] = await Promise.all([
+            fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null),
+            fetchJSON<FinnhubProfile2>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 86400).catch(() => null),
+            fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 86400).catch(() => ({ metric: {} })),
+            fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/price-target?symbol=${encodeURIComponent(symbol)}&token=${token}`, 86400).catch(() => null),
+        ]);
+
+        return { quote, profile, metrics, priceTarget };
+    } catch (error) {
+        // Silently fail for light version
+        return null;
+    }
+}
+
 export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
     try {
         const token = env.FINNHUB_API_KEY;
