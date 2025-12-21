@@ -10,11 +10,6 @@ const nextConfig: NextConfig = {
     // Necesario para evitar error de build con config webpack legacy
     turbopack: {},
     
-    // Aumentar límite de tamaño para Server Actions (PDFs grandes)
-    serverActions: {
-        bodySizeLimit: '10mb',
-    },
-    
     // Optimize images
     images: {
         remotePatterns: [
@@ -33,6 +28,9 @@ const nextConfig: NextConfig = {
     // Optimize bundling
     experimental: {
         optimizePackageImports: ['lucide-react', 'recharts'], // Tree-shake large dependencies
+        serverActions: {
+            bodySizeLimit: '20mb', // Máximo que soporta Gemini API
+        },
     },
     
     typescript: {
