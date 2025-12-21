@@ -98,35 +98,35 @@ export default function AnalysisHub({
                 </p>
             </div>
 
-            {/* Tab Content */}
+            {/* Tab Content - Todos montados, solo visible el activo (para mantener caché) */}
             <div className="min-h-[500px]">
-                {activeTab === 'dcf' && (
+                <div className={activeTab === 'dcf' ? 'block' : 'hidden'}>
                     <VisualThesis
                         symbol={symbol}
                         companyName={companyName}
                         currentPrice={currentPrice}
                     />
-                )}
+                </div>
 
-                {activeTab === 'checklist' && (
+                <div className={activeTab === 'checklist' ? 'block' : 'hidden'}>
                     <AIChecklistSection
                         symbol={symbol}
                         companyName={companyName}
                         financialData={financialData}
                         currentPrice={currentPrice}
                     />
-                )}
+                </div>
 
-                {activeTab === 'technical' && (
+                <div className={activeTab === 'technical' ? 'block' : 'hidden'}>
                     <PatternAnalysisSection
                         symbol={symbol}
                         companyName={companyName}
                         financialData={financialData}
                         currentPrice={currentPrice}
                     />
-                )}
+                </div>
 
-                {activeTab === 'competitors' && (
+                <div className={activeTab === 'competitors' ? 'block' : 'hidden'}>
                     <AlternativesSection
                         symbol={symbol}
                         companyName={companyName}
@@ -134,24 +134,24 @@ export default function AnalysisHub({
                         financialData={financialData}
                         currentPrice={currentPrice}
                     />
-                )}
+                </div>
 
-                {activeTab === 'deepdive' && (
+                <div className={activeTab === 'deepdive' ? 'block' : 'hidden'}>
                     <DeepAnalysisSection
                         symbol={symbol}
                         companyName={companyName}
                         financialData={financialData}
                         currentPrice={currentPrice}
                     />
-                )}
+                </div>
 
-                {activeTab === 'thesis' && (
+                <div className={activeTab === 'thesis' ? 'block' : 'hidden'}>
                     <AnalysisWrapper
                         symbol={symbol}
                         companyName={companyName}
                         currentPrice={currentPrice}
                     />
-                )}
+                </div>
             </div>
         </div>
     );
