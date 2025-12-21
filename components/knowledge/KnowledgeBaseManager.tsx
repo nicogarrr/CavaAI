@@ -32,6 +32,7 @@ import {
     deleteDocument,
     getAllKnowledgeContent,
     uploadFile,
+    extractTextFromPDF,
     extractTextFromPDFWithGemini
 } from '@/lib/actions/knowledge.actions';
 import { toast } from 'sonner';
@@ -188,11 +189,17 @@ export default function KnowledgeBaseManager() {
                 
                 // Extraer texto según el tipo de archivo
                 if (filename.toLowerCase().endsWith('.pdf')) {
-                    // Usar Gemini para extraer texto del PDF
-                    toast.info(`🤖 Procesando PDF con IA: ${filename}...`);
+                    // Primero intentar extracción local (más rápida)
+                    toast.info(`📄 Procesando PDF: ${filename}...`);
                     
                     const base64 = await fileToBase64(file);
-                    const extractResult = await extractTextFromPDFWithGemini(base64, filename);
+                    let extractResult = await extractTextFromPDF(base64, filename);
+                    
+                    // Si falla localmente, intentar con Gemini (para PDFs escaneados)
+                    if (!extractResult.success || !extractResult.text) {
+                        toast.info(`🤖 Usando IA para PDF escaneado: ${filename}...`);
+                        extractResult = await extractTextFromPDFWithGemini(base64, filename);
+                    }
                     
                     if (!extractResult.success || !extractResult.text) {
                         results.push({
