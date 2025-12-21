@@ -1,0 +1,29 @@
+# ============================================
+# Dockerfile.dev - Frontend Next.js (Desarrollo)
+# ============================================
+# Con hot-reload para desarrollo
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Instalar dependencias del sistema
+RUN apk add --no-cache libc6-compat
+
+# Copiar archivos de dependencias
+COPY package.json package-lock.json* ./
+
+# Instalar dependencias
+RUN npm ci
+
+# El código se monta como volumen en docker-compose
+# No lo copiamos aquí para permitir hot-reload
+
+EXPOSE 3000
+
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Comando de desarrollo con hot-reload
+CMD ["npm", "run", "dev"]
+

@@ -74,28 +74,57 @@ JLCavaAI es una aplicación moderna de análisis de mercados bursátiles constru
 
 ## 🤸 Quick Start
 
-**Prerequisites**
-- Node.js 20+ y pnpm o npm
-- MongoDB connection string
-- Finnhub API key
-- Gmail account para email (o actualizar Nodemailer transport)
-- Opcional: Google Gemini API key (para intros generadas con IA)
+### 🐳 Opción 1: Docker (Recomendado)
 
-**Clone and install**
+La forma más fácil de ejecutar todo el stack (Frontend + Backend + MongoDB):
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/nicogarrr/CavaAI.git
+cd CavaAI
+
+# 2. Copiar y configurar variables de entorno
+cp docker.env.example .env
+# Edita .env con tus API keys
+
+# 3. Iniciar todo con Docker
+docker-compose up
+
+# ¡Listo! Abre REDACTED_BY_AUDIT
+```
+
+**Comandos útiles de Docker:**
+```bash
+docker-compose up              # Iniciar todo
+docker-compose up -d           # Iniciar en background
+docker-compose restart         # Reiniciar todo
+docker-compose restart backend # Reiniciar solo backend
+docker-compose down            # Parar todo
+docker-compose up --build      # Rebuild si cambias dependencias
+docker-compose logs -f         # Ver logs en tiempo real
+```
+
+### 📦 Opción 2: Manual (Sin Docker)
+
+**Prerequisites**
+- Node.js 20+ y npm
+- Python 3.11+
+- MongoDB (local o Atlas)
+- API keys (Finnhub, FMP, Gemini)
+
+**Frontend (Next.js)**
 ```bash
 git clone https://github.com/nicogarrr/CavaAI.git
 cd CavaAI
 npm install
-```
-
-**Run development**
-```bash
 npm run dev
 ```
 
-**Build & start (production)**
+**Backend (Python)**
 ```bash
-npm run build && npm start
+cd data-engine
+pip install -r requirements.txt
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Open REDACTED_BY_AUDIT to view the app.
