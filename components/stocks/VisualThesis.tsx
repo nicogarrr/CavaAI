@@ -156,10 +156,10 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
     const isUndervalued = verdict === 'UNDERVALUED';
     const isOvervalued = verdict === 'OVERVALUED';
 
-    // Calculate bar heights
+    // Calculate bar heights (más compacto)
     const maxPrice = Math.max(currentPrice, intrinsicValue);
-    const currentBarHeight = (currentPrice / maxPrice) * 70;
-    const intrinsicBarHeight = (intrinsicValue / maxPrice) * 70;
+    const currentBarHeight = (currentPrice / maxPrice) * 50;
+    const intrinsicBarHeight = (intrinsicValue / maxPrice) * 50;
 
     return (
         <div className="space-y-6">
@@ -215,37 +215,39 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                         </div>
                     </div>
 
-                    {/* Price Bars */}
+                    {/* Price Comparison - Diseño compacto */}
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div className="bg-[#080808] rounded-xl p-4 border border-gray-800/50">
-                            <div className="flex items-end justify-center gap-6 h-24 mb-3">
+                            <div className="flex items-end justify-center gap-4 h-16 mb-2">
                                 <div className="flex flex-col items-center">
                                     <div
-                                        className="w-14 bg-gradient-to-t from-teal-600 to-teal-400 rounded-t-md shadow-lg shadow-teal-500/30 transition-all duration-500"
-                                        style={{ height: `${currentBarHeight}px` }}
+                                        className="w-10 bg-gradient-to-t from-teal-600 to-teal-400 rounded-t-md shadow-lg shadow-teal-500/30 transition-all duration-500"
+                                        style={{ height: `${currentBarHeight}px`, minHeight: '20px' }}
                                     />
-                                    <div className="mt-2 text-center">
-                                        <p className="text-sm font-bold text-teal-400">${currentPrice.toFixed(2)}</p>
-                                        <p className="text-[10px] text-gray-500">Precio Actual</p>
-                                    </div>
                                 </div>
                                 <div className="flex flex-col items-center">
                                     <div
-                                        className="w-14 bg-gradient-to-t from-purple-600 to-purple-400 rounded-t-md shadow-lg shadow-purple-500/30 transition-all duration-500"
-                                        style={{ height: `${intrinsicBarHeight}px` }}
+                                        className="w-10 bg-gradient-to-t from-purple-600 to-purple-400 rounded-t-md shadow-lg shadow-purple-500/30 transition-all duration-500"
+                                        style={{ height: `${intrinsicBarHeight}px`, minHeight: '20px' }}
                                     />
-                                    <div className="mt-2 text-center">
-                                        <p className="text-sm font-bold text-purple-400">${intrinsicValue.toFixed(2)}</p>
-                                        <p className="text-[10px] text-gray-500">Valor IA</p>
-                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex justify-center gap-6 pt-2 border-t border-gray-800/50">
+                                <div className="text-center">
+                                    <p className="text-sm font-bold text-teal-400">${currentPrice.toFixed(2)}</p>
+                                    <p className="text-[10px] text-gray-500">Precio Actual</p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-sm font-bold text-purple-400">${intrinsicValue.toFixed(2)}</p>
+                                    <p className="text-[10px] text-gray-500">Valor IA</p>
                                 </div>
                             </div>
                         </div>
 
                         {/* Margin of Safety Gauge */}
                         <div className="bg-[#080808] rounded-xl p-4 flex flex-col items-center justify-center border border-gray-800/50">
-                            <p className="text-xs text-gray-400 mb-3 font-medium">Margen de Seguridad</p>
-                            <div className="relative w-24 h-24">
+                            <p className="text-xs text-gray-400 mb-2 font-medium">Margen de Seguridad</p>
+                            <div className="relative w-20 h-20">
                                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
                                     <circle cx="50" cy="50" r="42" stroke="#1f2937" strokeWidth="8" fill="none" />
                                     <circle
@@ -273,8 +275,8 @@ export default function VisualThesis({ symbol, companyName, currentPrice }: Visu
                                     </defs>
                                 </svg>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span className="text-2xl font-bold text-white">{Math.abs(marginOfSafety).toFixed(1)}%</span>
-                                    <span className="text-[9px] text-gray-500">{marginOfSafety > 0 ? 'descuento' : 'prima'}</span>
+                                    <span className="text-xl font-bold text-white">{Math.abs(marginOfSafety).toFixed(1)}%</span>
+                                    <span className="text-[8px] text-gray-500">{marginOfSafety > 0 ? 'descuento' : 'prima'}</span>
                                 </div>
                             </div>
                         </div>
