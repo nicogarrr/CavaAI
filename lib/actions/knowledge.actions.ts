@@ -25,7 +25,7 @@ export async function extractTextFromPDFWithGemini(
             return { success: false, error: 'API Key de Gemini no configurada' };
         }
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
 
         // Preparar el PDF como parte del prompt
         const result = await model.generateContent([
