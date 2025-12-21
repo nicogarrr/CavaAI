@@ -4,24 +4,24 @@ import { useState } from 'react';
 
 const faqs = [
   {
-    question: "Is OpenStock really free forever?",
-    answer: "Yes! We're part of the Open Dev Society, which means we'll never lock knowledge behind paywalls. Core features remain free always. We run on community donations and the belief that financial tools should be accessible to everyone."
+    question: "¿JLCavaAI es realmente gratuito?",
+    answer: "Sí, las funcionalidades principales son gratuitas. Creemos que las herramientas financieras deben ser accesibles para todos."
   },
   {
-    question: "I'm a student - can I use this for my projects?",
-    answer: "Absolutely! That's exactly why we built this. Use it for school projects, learning, or building your portfolio. Need help? Our community loves mentoring students. Email student@opendevsociety.org for extra support."
+    question: "Soy estudiante, ¿puedo usar esto para mis proyectos?",
+    answer: "¡Por supuesto! Úsalo para proyectos escolares, aprendizaje o construir tu portafolio. La plataforma está diseñada para ser intuitiva y educativa."
   },
   {
-    question: "How do I add stocks to my favorites?",
-    answer: "Navigate to any stock page and click the star icon. You can also search using the search bar and add directly from results. Everything is designed to be intuitive - no complex tutorials needed."
+    question: "¿Cómo añado acciones a mis favoritos?",
+    answer: "Navega a cualquier página de acción y haz clic en el icono de estrella. También puedes buscar usando la barra de búsqueda y añadir directamente desde los resultados."
   },
   {
-    question: "Can I contribute to OpenStock?",
-    answer: "We'd love that! OpenStock is open source and community-driven. Check our GitHub for issues marked 'good first issue' or 'help wanted'. Every contribution, no matter how small, makes a difference."
+    question: "¿Qué hago si encuentro un bug o tengo una sugerencia?",
+    answer: "¡Por favor cuéntanos! Envía un email a soporte y revisaremos tu comentario. Cada reporte es una oportunidad para mejorar la plataforma."
   },
   {
-    question: "What if I find a bug or have a feature request?",
-    answer: "Please tell us! Submit issues on GitHub, join our Discord, or email opendevsociety@gmail.com. We see every report as a chance to make the platform better for everyone."
+    question: "¿Los datos de mercado son en tiempo real?",
+    answer: "Proporcionamos datos con un ligero retraso para la mayoría de mercados. Para análisis y educación, esto es más que suficiente."
   }
 ];
 
@@ -31,13 +31,13 @@ export default function HelpTabs() {
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold text-gray-100 mb-4">Help Center</h1>
+        <h1 className="text-4xl font-bold text-gray-100 mb-4">Centro de Ayuda</h1>
         <p className="text-xl text-gray-200 mb-4">
-          Free help, API documentation, and community support
+          Documentación, preguntas frecuentes y soporte
         </p>
         <div className="bg-green-300 border border-green-200 rounded-lg p-4 max-w-2xl mx-auto">
           <p className="text-black text-sm">
-            🤝 <strong>Our Promise:</strong> Every question matters. Every beginner is welcomed. No exclusion, ever.
+            🤝 <strong>Nuestra Promesa:</strong> Cada pregunta importa. Cada principiante es bienvenido.
           </p>
         </div>
       </div>
@@ -62,7 +62,7 @@ export default function HelpTabs() {
               : 'text-gray-400 hover:text-gray-300'
           }`}
         >
-          API Docs
+          Documentación
         </button>
         <button
           onClick={() => setActiveTab('community')}
@@ -72,7 +72,7 @@ export default function HelpTabs() {
               : 'text-gray-400 hover:text-gray-300'
           }`}
         >
-          Community
+          Contacto
         </button>
       </div>
 
@@ -82,33 +82,30 @@ export default function HelpTabs() {
           {/* Help Philosophy */}
           <div className="grid md:grid-cols-3 gap-6 mb-12">
             <div className="bg-gray-800 rounded-lg shadow-sm p-6 border hover:shadow-md transition-shadow">
-              <h3 className="text-lg font-semibold text-blue-500 mb-2">Learn Together</h3>
+              <h3 className="text-lg font-semibold text-blue-500 mb-2">Aprende</h3>
               <p className="text-gray-200 text-sm">
-                Every expert was once a beginner. Our guides are written by the community, for the community.
-                No jargon, no assumptions about prior knowledge.
+                Nuestras guías están escritas sin jerga técnica. No asumimos conocimiento previo.
               </p>
             </div>
 
             <div className="bg-gray-800 rounded-lg shadow-sm p-6 border hover:shadow-md transition-shadow">
-              <h3 className="text-lg font-semibold text-green-500 mb-2">Community Support</h3>
+              <h3 className="text-lg font-semibold text-green-500 mb-2">Soporte</h3>
               <p className="text-gray-200 text-sm">
-                Real people helping real people. Our Discord community includes students, professionals,
-                and mentors who genuinely want to help you succeed.
+                Personas reales ayudando a personas reales. Estudiantes, profesionales y mentores.
               </p>
             </div>
 
             <div className="bg-gray-800 rounded-lg shadow-sm p-6 border hover:shadow-md transition-shadow">
-              <h3 className="text-lg font-semibold text-purple-500 mb-2">Built with Care</h3>
+              <h3 className="text-lg font-semibold text-purple-500 mb-2">Diseño Intuitivo</h3>
               <p className="text-gray-200 text-sm">
-                Every feature is designed with accessibility and ease-of-use in mind.
-                We believe powerful tools should be simple to use.
+                Cada función está diseñada con accesibilidad y facilidad de uso en mente.
               </p>
             </div>
           </div>
 
           {/* Community FAQs */}
           <section className="mb-12">
-            <h2 className="text-3xl font-bold text-gray-100 mb-8 text-center">Community Questions</h2>
+            <h2 className="text-3xl font-bold text-gray-100 mb-8 text-center">Preguntas Frecuentes</h2>
             <div className="space-y-4">
               {faqs.map((faq, index) => (
                 <div key={index} className="bg-gray-800 rounded-lg shadow-sm p-6 border">
@@ -125,63 +122,42 @@ export default function HelpTabs() {
       {activeTab === 'api' && (
         <div className="space-y-8">
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-100 mb-4">Free & Open API Documentation</h2>
+            <h2 className="text-3xl font-bold text-gray-100 mb-4">Documentación</h2>
             <p className="text-xl text-gray-200 mb-4">
-              Complete guide to integrating with the OpenStock API - completely free, forever
+              Guía completa para usar JLCavaAI
             </p>
-            <div className="bg-blue-300 border border-blue-400 rounded-lg p-4">
-              <p className="text-black text-sm">
-                💡 <strong>Open Dev Society Promise:</strong> This API will always be free. No hidden costs, no usage limits for personal projects, no barriers to knowledge.
-              </p>
-            </div>
           </div>
 
           {/* Philosophy */}
           <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
-            <h2 className="text-2xl font-semibold text-gray-100 mb-4">🌍 Our API Philosophy</h2>
+            <h2 className="text-2xl font-semibold text-gray-100 mb-4">🌍 Nuestra Filosofía</h2>
             <p className="text-gray-200 mb-4">
-              We believe market data should be accessible to everyone - students building their first portfolio tracker,
-              developers creating tools for their community, and anyone who wants to learn about finance without barriers.
+              Creemos que los datos de mercado deben ser accesibles para todos - estudiantes, 
+              desarrolladores y cualquiera que quiera aprender sobre finanzas sin barreras.
             </p>
             <ul className="text-gray-200 space-y-2">
-              <li>✅ <strong>Always Free:</strong> Core features remain free forever</li>
-              <li>✅ <strong>No Gatekeeping:</strong> Simple authentication, clear documentation</li>
-              <li>✅ <strong>Community First:</strong> Built for learners, students, and builders</li>
-              <li>✅ <strong>Open Source:</strong> API examples and SDKs are open source</li>
+              <li>✅ <strong>Accesible:</strong> Funcionalidades principales gratuitas</li>
+              <li>✅ <strong>Sin Barreras:</strong> Documentación clara y simple</li>
+              <li>✅ <strong>Educativo:</strong> Diseñado para aprender y crecer</li>
             </ul>
           </section>
 
-          {/* Community Support */}
+          {/* Features */}
           <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
-            <h2 className="text-2xl font-semibold text-gray-100 mb-4">🤝 Community & Support</h2>
+            <h2 className="text-2xl font-semibold text-gray-100 mb-4">🛠️ Funcionalidades</h2>
             <div className="grid md:grid-cols-2 gap-4">
-              <div className="bg-green-200 p-4 rounded-lg">
-                <h3 className="font-semibold text-black mb-2">🎓 For Students</h3>
-                <p className="text-gray-800 text-sm">
-                  Building a project for class? Email us at <strong>opendevsociety@cc.cc</strong> for unlimited access and mentorship.
+              <div className="bg-green-900/30 p-4 rounded-lg">
+                <h3 className="font-semibold text-green-400 mb-2">📊 Análisis de Acciones</h3>
+                <p className="text-gray-300 text-sm">
+                  Métricas financieras, ratios, y análisis técnico completo.
                 </p>
               </div>
-              <div className="bg-blue-300 p-4 rounded-lg">
-                <h3 className="font-semibold text-black mb-2">💻 For Developers</h3>
-                <p className="text-gray-800 text-sm">
-                  Join our Discord community for code examples, troubleshooting, and collaboration opportunities.
+              <div className="bg-blue-900/30 p-4 rounded-lg">
+                <h3 className="font-semibold text-blue-400 mb-2">🤖 IA Integrada</h3>
+                <p className="text-gray-300 text-sm">
+                  Análisis automatizado con modelos de lenguaje avanzados.
                 </p>
               </div>
-            </div>
-          </section>
-
-          {/* Open Source Commitment */}
-          <section className="bg-gray-800 rounded-lg p-6 border">
-            <h2 className="text-2xl font-semibold text-gray-200 mb-4">🔓 Open Source Promise</h2>
-            <p className="text-gray-200 mb-4">
-              This API, its documentation, and all example code are open source.
-              Found a bug? Want a feature? Submit a PR or issue on GitHub.
-            </p>
-            <div className="flex space-x-4">
-              <a target="_blank" rel="noopener noreferrer" href="https://github.com/Open-Dev-Society/"
-                 className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300 transition-colors">
-                Contact us
-              </a>
             </div>
           </section>
         </div>
@@ -189,37 +165,24 @@ export default function HelpTabs() {
 
       {/* Community Tab */}
       {activeTab === 'community' && (
-        <section className="bg-gradient-to-r from-blue-200 to-purple-200 rounded-lg p-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Join Our Community</h2>
-          <p className="text-gray-700 mb-6">
-            Don&apos;t struggle alone. Our community of builders, learners, and dreamers is here to help.
-            Because we believe the future belongs to those who build it openly.
+        <section className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg p-8 text-center">
+          <h2 className="text-2xl font-bold text-gray-100 mb-4">Contacto</h2>
+          <p className="text-gray-300 mb-6">
+            ¿Tienes preguntas o sugerencias? Estamos aquí para ayudarte.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <a
-                  href="https://discord.gg/jdJuEMvk"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-550 transition-colors text-center inline-block"
+                  href="mailto:soporte@jlcavaai.com"
+                  className="bg-gray-800 text-gray-200 px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors text-center inline-block"
               >
-                  Join Discord Community
-              </a>
-
-              <a
-                  href="mailto:opendevsociety@gmail.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-gray-800 text-gray-200 px-6 py-3 rounded-lg hover:bg-gray-900 transition-colors text-center inline-block"
-              >
-                  Email Help Team
+                  Enviar Email
               </a>
           </div>
-          <p className="text-xs text-gray-600 mt-4">
-            ✨ All support is free, always. We&apos;re here because we care, not for profit.
+          <p className="text-xs text-gray-400 mt-4">
+            ✨ Respondemos todas las consultas lo antes posible.
           </p>
         </section>
       )}
     </div>
   );
 }
-

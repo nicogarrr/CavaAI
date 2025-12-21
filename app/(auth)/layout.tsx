@@ -32,11 +32,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
                     <blockquote className="auth-blockquote">
                         "JLCavaAI no es solo otra plataforma de inversión. Es una herramienta inteligente que te da claridad y control total sobre tus inversiones, con análisis en tiempo real y gestión personalizada."
                     </blockquote>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <cite className="auth-testimonial-author">- Ravi Pratap Singh (@ravixalgorithm)</cite>
-                            <p className="max-md:text-xs text-gray-500">Founder @opendevsociety</p>
-                        </div>
+                    <div className="flex items-center justify-end">
                         <div className="flex items-center gap-0.5">
                             {[1,2,3,4,5].map((star) => (
                                 <Image src="/assets/icons/star.svg" alt="star" key={star} width={20} height={20} className="w-4 h-4"/>

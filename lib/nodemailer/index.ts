@@ -15,10 +15,10 @@ export const sendWelcomeEmail = async ({ email, name, intro }: WelcomeEmailData)
         .replace('{{intro}}', intro);
 
     const mailOptions = {
-        from: `"Openstock" <opendevsociety@gmail.com>`,
+        from: `"JLCavaAI" <noreply@jlcavaai.com>`,
         to: email,
-        subject: `Welcome to Openstock - your open-source stock market toolkit!`,
-        text: 'Thanks for joining Openstock, an initiative by open dev society',
+        subject: `Bienvenido a JLCavaAI - tu herramienta de análisis de inversiones`,
+        text: 'Gracias por unirte a JLCavaAI',
         html: htmlTemplate,
     }
 
@@ -33,10 +33,10 @@ export const sendNewsSummaryEmail = async (
         .replace('{{newsContent}}', newsContent);
 
     const mailOptions = {
-        from: `"Openstock" <opendevsociety@gmail.com>`,
+        from: `"JLCavaAI" <noreply@jlcavaai.com>`,
         to: email,
-        subject: `📈 Market News Summary Today - ${date}`,
-        text: `Today's market news summary from Openstock`,
+        subject: `📈 Resumen de Noticias de Mercado - ${date}`,
+        text: `Resumen diario de noticias de mercado de JLCavaAI`,
         html: htmlTemplate,
     };
 
