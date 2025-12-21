@@ -61,11 +61,11 @@ export default function PaginatedNews({ articles, itemsPerPage = 3 }: PaginatedN
                 <h2 className="text-xl font-semibold text-gray-200">Noticias Recientes</h2>
                 <span className="text-sm text-gray-400">{articles.length} artículos</span>
             </div>
-            
+
             <div className="space-y-4">
-                {currentArticles.map((article) => (
+                {currentArticles.map((article, index) => (
                     <a
-                        key={article.id}
+                        key={article.id || `article-${startIndex + index}`}
                         href={article.url}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -133,11 +133,11 @@ export default function PaginatedNews({ articles, itemsPerPage = 3 }: PaginatedN
                             <ChevronLeft className="h-4 w-4" />
                             Anterior
                         </Button>
-                        
+
                         <span className="text-sm text-gray-400 px-4">
                             Página {currentPage} de {totalPages}
                         </span>
-                        
+
                         <Button
                             variant="outline"
                             size="sm"

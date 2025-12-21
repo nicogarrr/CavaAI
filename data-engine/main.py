@@ -1,5 +1,5 @@
 import os
-# Force reload trigger
+# Force reload v3 - YF dividends with label field
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
@@ -214,20 +214,6 @@ async def get_earnings_transcript(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/insider-trading/{symbol}")
-async def get_insider_trading(
-    symbol: str,
-    limit: int = Query(50, description="Number of transactions to return")
-):
-    """Get Insider Trading data (CEO/CFO buy/sell signals)"""
-    symbol = symbol.upper()
-    try:
-        data = fetch_insider_trading(symbol, limit)
-        if isinstance(data, dict) and 'error' in data:
-            raise HTTPException(status_code=500, detail=data['error'])
-        return {"symbol": symbol, "insiderTrades": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/treasury-rates")
 async def get_treasury_rates():
@@ -385,35 +371,31 @@ async def get_general_news(page: int = 0, limit: int = 20):
     data = fetch_general_news(page, limit)
     return data
 
-from modules.fmp import fetch_dividends, fetch_dividends_calendar
+from modules.yfinance_utils import fetch_yf_dividends, fetch_yf_stock_info
 from datetime import datetime, timedelta
 
 @app.get("/dividends/{symbol}")
-async def get_dividends(symbol: str):
+async def get_dividends(symbol: str, limit: int = Query(50, description="Number of dividend records")):
+    """
+    Fetch dividend history using Yahoo Finance (free).
+    Returns historical dividend data with payment dates and amounts.
+    """
     symbol = symbol.upper()
-    data = fetch_dividends(symbol)
     
-    # Stable API returns array directly: [{symbol, date, dividend, ...}]
-    if isinstance(data, list) and len(data) > 0:
-        return data
+    # Use Yahoo Finance for dividends (free and complete historical data)
+    dividends = fetch_yf_dividends(symbol, limit)
     
-    # Fallback: Try dividends-calendar for Free plan (up to 1 month range)
-    # This endpoint returns ALL dividends in the date range, we filter by symbol
-    try:
-        today = datetime.now()
-        from_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')
-        to_date = (today + timedelta(days=30)).strftime('%Y-%m-%d')
-        
-        calendar_data = fetch_dividends_calendar(from_date, to_date)
-        if isinstance(calendar_data, list):
-            # Filter for our specific symbol
-            symbol_dividends = [d for d in calendar_data if d.get('symbol', '').upper() == symbol]
-            if symbol_dividends:
-                return symbol_dividends
-    except Exception as e:
-        print(f"Dividends calendar fallback failed: {e}")
+    # Optionally enhance with current yield info
+    if dividends:
+        try:
+            info = fetch_yf_stock_info(symbol)
+            if info and info.get("dividendYield"):
+                # Add current yield to the most recent dividend
+                dividends[0]["yield"] = round(info["dividendYield"] * 100, 2)
+        except:
+            pass
     
-    return []
+    return dividends
 
 @app.get("/stock-peers/{symbol}")
 async def get_stock_peers_endpoint(symbol: str):
@@ -424,28 +406,21 @@ async def get_stock_peers_endpoint(symbol: str):
         return data
     return []
 
-from modules.fmp import fetch_insider_trading_latest
-
 @app.get("/insider-trading/{symbol}")
 async def get_insider_trading(symbol: str, limit: int = Query(50, description="Number of transactions to return")):
-    symbol = symbol.upper()
-    data = fetch_insider_trading(symbol, limit)
-    
-    # If per-symbol endpoint returns data
-    if isinstance(data, list) and len(data) > 0:
-        return {"symbol": symbol, "insiderTrades": data[:limit]}
-    
-    # Fallback: Fetch latest insider trades and filter by symbol (Free plan: max 100)
+    """
+    Fetch insider trading data using Yahoo Finance (free).
+    Returns insider transactions with details.
+    """
     try:
-        latest_data = fetch_insider_trading_latest(page=0, limit=100)
-        if isinstance(latest_data, list):
-            symbol_trades = [t for t in latest_data if t.get('symbol', '').upper() == symbol]
-            if symbol_trades:
-                return {"symbol": symbol, "insiderTrades": symbol_trades[:limit]}
+        from modules.yfinance_utils import fetch_yf_insider_trading
+        
+        symbol = symbol.upper()
+        trades = fetch_yf_insider_trading(symbol, limit)
+        
+        return {"symbol": symbol, "insiderTrades": trades}
     except Exception as e:
-        print(f"Insider trading latest fallback failed: {e}")
-    
-    return {"symbol": symbol, "insiderTrades": []}
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================
 # STRATEGIES
@@ -472,6 +447,20 @@ async def get_garp_strategy(limit: int = 10):
 
 from pydantic import BaseModel
 from typing import List, Optional as OptionalType
+
+@app.get("/company-news/{symbol}")
+async def get_company_news(symbol: str, limit: int = Query(20, description="News limit")):
+    """
+    Fetch company news (Yahoo Finance).
+    """
+    try:
+        from modules.yfinance_utils import fetch_yf_news
+        symbol = symbol.upper()
+        return fetch_yf_news(symbol, limit)
+    except Exception as e:
+        print(f"Error fetching news for {symbol}: {e}")
+        return []
+
 
 class DocumentUpload(BaseModel):
     collection: str

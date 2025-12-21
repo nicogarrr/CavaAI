@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Activity, Loader2 } from 'lucide-react';
-import { getStockFinancialData } from "@/lib/actions/finnhub.actions";
+import { getRatiosTTM, getKeyMetricsTTM } from "@/lib/actions/fmp.actions";
 
 interface StockFinancialsProps {
     symbol: string;
@@ -14,26 +14,14 @@ interface StockFinancialsProps {
 
 interface Metrics {
     peTTM?: number;
-    peBasicExclExtraTTM?: number;
-    peExclExtraTTM?: number;
     epsTTM?: number;
-    epsBasicExclExtraTTM?: number;
-    epsExclExtraTTM?: number;
     marketCapitalization?: number;
-    dividendYieldIndicatedAnnual?: number;
     dividendYield?: number;
     grossMarginTTM?: number;
-    grossMargin5Y?: number;
     operatingMarginTTM?: number;
-    operatingMargin5Y?: number;
     netProfitMarginTTM?: number;
-    netProfitMargin5Y?: number;
     currentRatioTTM?: number;
-    currentRatioQuarterly?: number;
-    currentRatioAnnual?: number;
     totalDebtToEquityTTM?: number;
-    totalDebtToEquityQuarterly?: number;
-    totalDebtToEquityAnnual?: number;
 }
 
 export default function StockFinancials({ symbol }: StockFinancialsProps) {
@@ -44,9 +32,26 @@ export default function StockFinancials({ symbol }: StockFinancialsProps) {
         async function fetchData() {
             try {
                 setLoading(true);
-                const data = await getStockFinancialData(symbol);
-                const m = data?.metrics?.metric || data?.metrics || {};
-                setMetrics(m);
+                const [ratiosData, keyMetricsData] = await Promise.all([
+                    getRatiosTTM(symbol),
+                    getKeyMetricsTTM(symbol)
+                ]);
+
+                const ratios = ratiosData?.ratios?.[0];
+                const keyMetrics = keyMetricsData?.keyMetrics?.[0];
+
+                // Map FMP data to component metrics
+                setMetrics({
+                    peTTM: ratios?.peRatioTTM ?? keyMetrics?.peRatioTTM,
+                    epsTTM: keyMetrics?.netIncomePerShareTTM ?? undefined,
+                    marketCapitalization: keyMetrics?.marketCapTTM ? keyMetrics.marketCapTTM / 1000000 : undefined, // Convert to Millions
+                    dividendYield: (ratios?.dividendYieldTTM ?? keyMetrics?.dividendYieldTTM) ? (ratios?.dividendYieldTTM ?? keyMetrics?.dividendYieldTTM!) * 100 : undefined,
+                    grossMarginTTM: (ratios?.grossProfitMarginTTM) ? ratios.grossProfitMarginTTM * 100 : undefined,
+                    operatingMarginTTM: (ratios?.operatingProfitMarginTTM) ? ratios.operatingProfitMarginTTM * 100 : undefined,
+                    netProfitMarginTTM: (ratios?.netProfitMarginTTM) ? ratios.netProfitMarginTTM * 100 : undefined,
+                    currentRatioTTM: ratios?.currentRatioTTM ?? keyMetrics?.currentRatioTTM,
+                    totalDebtToEquityTTM: (ratios?.debtEquityRatioTTM ?? keyMetrics?.debtToEquityTTM) ? (ratios?.debtEquityRatioTTM ?? keyMetrics?.debtToEquityTTM!) * 100 : undefined,
+                });
             } catch (err) {
                 console.error('Error fetching financials:', err);
             } finally {
@@ -84,19 +89,20 @@ export default function StockFinancials({ symbol }: StockFinancialsProps) {
     }
 
     // Data Extraction with fallbacks
-    const pe = metrics.peTTM || metrics.peBasicExclExtraTTM || metrics.peExclExtraTTM || null;
-    const eps = metrics.epsTTM || metrics.epsBasicExclExtraTTM || metrics.epsExclExtraTTM || 0;
+    // Data Extraction with fallbacks
+    const pe = metrics.peTTM || 0;
+    const eps = metrics.epsTTM || 0;
     const marketCap = metrics.marketCapitalization || 0;
-    const dividendYield = metrics.dividendYieldIndicatedAnnual || metrics.dividendYield || 0;
+    const dividendYield = metrics.dividendYield || 0;
 
     // Margins
-    const grossMargin = metrics.grossMarginTTM || metrics.grossMargin5Y || 0;
-    const operatingMargin = metrics.operatingMarginTTM || metrics.operatingMargin5Y || 0;
-    const netMargin = metrics.netProfitMarginTTM || metrics.netProfitMargin5Y || 0;
+    const grossMargin = metrics.grossMarginTTM || 0;
+    const operatingMargin = metrics.operatingMarginTTM || 0;
+    const netMargin = metrics.netProfitMarginTTM || 0;
 
     // Health
-    const currentRatio = metrics.currentRatioTTM || metrics.currentRatioQuarterly || metrics.currentRatioAnnual || null;
-    const debtToEquity = metrics.totalDebtToEquityTTM || metrics.totalDebtToEquityQuarterly || metrics.totalDebtToEquityAnnual || null;
+    const currentRatio = metrics.currentRatioTTM || 0;
+    const debtToEquity = metrics.totalDebtToEquityTTM || 0;
 
     return (
         <Card className="bg-gray-800/50 border-gray-700">
