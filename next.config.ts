@@ -6,13 +6,9 @@ const nextConfig: NextConfig = {
     compress: true, // Enable gzip compression
     productionBrowserSourceMaps: false, // Disable source maps in production for smaller bundle
     
-    // Configuración para Turbopack (Next.js 16+)
-    turbopack: {
-        resolveAlias: {
-            canvas: false,
-            encoding: false,
-        },
-    },
+    // Configuración vacía para Turbopack (Next.js 16+)
+    // Necesario para evitar error de build con config webpack legacy
+    turbopack: {},
     
     // Optimize images
     images: {
