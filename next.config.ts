@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
     // Necesario para evitar error de build con config webpack legacy
     turbopack: {},
     
+    // Aumentar límite de tamaño para Server Actions (PDFs grandes)
+    serverActions: {
+        bodySizeLimit: '10mb',
+    },
+    
     // Optimize images
     images: {
         remotePatterns: [
