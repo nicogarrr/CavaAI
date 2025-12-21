@@ -1,6 +1,6 @@
 'use server';
 
-import { getStockFinancialData, getCandles, getProfile } from './finnhub.actions';
+import { getStockFinancialDataLight, getCandles, getProfile } from './finnhub.actions';
 import { calculateAdvancedStockScore } from '@/lib/utils/advancedStockScoring';
 import {
     PROPICKS_STRATEGIES,
@@ -39,6 +39,9 @@ export interface ProPick {
         momentum: number;
         debtLiquidity: number;
     };
+    upsidePotential?: number; // % de subida potencial según analistas (12 meses)
+    isStrongBuy?: boolean; // Flag para "Gritar Compra" (Score > 80 + Upside > 15%)
+    targetPrice?: number;
 }
 
 /**
@@ -114,7 +117,8 @@ CRITERIOS DE SELECCIÓN OBJETIVOS (basados SOLO en datos reales):
 3. **Balance entre categorías** (evalúa objetivamente si hay balance o desequilibrio según datos reales)
 4. **Diversificación sectorial** (máximo 2-3 por sector si es posible, pero no fuerces diversificación si los datos muestran concentración)
 5. **Razones sólidas basadas en datos reales** (fortalezas y oportunidades reales identificadas en los datos, no asumidas)
-6. **IMPARCIALIDAD**: NO favorezcas acciones por sector o nombre - selecciona basándote SOLO en los datos reales proporcionados
+6. **JOYAS OCULTAS**: Prioriza fuertemente las acciones marcadas como [💎 JOYA OCULTA] si sus fundamentos lo respaldan
+7. **IMPARCIALIDAD**: NO favorezcas acciones por sector o nombre - selecciona basándote SOLO en los datos reales proporcionados
 
 RESPONDE SOLO CON UNA LISTA DE SÍMBOLOS SEPARADOS POR COMAS, en el formato exacto:
 SYMBOL1,SYMBOL2,SYMBOL3,...
@@ -123,7 +127,9 @@ Selecciona las ${limit} mejores opciones basándote en los datos reales actuales
 
         const dataText = picksData.map(p => {
             const sectorStatus = p.vsSector.value > 0 && p.vsSector.profitability > 0 ? 'Mejor que sector' : 'Promedio sector';
-            return `${p.symbol} (${p.company}): Score ${p.score} (${p.grade}), StrategyScore ${p.strategyScore}, Sector: ${p.sector}
+            const upsideInfo = p.upsidePotential ? `, Upside: +${p.upsidePotential.toFixed(1)}%` : '';
+            const strongBuyBadge = p.isStrongBuy ? ' [💎 JOYA OCULTA]' : '';
+            return `${p.symbol} (${p.company})${strongBuyBadge}: Score ${p.score} (${p.grade}), StrategyScore ${p.strategyScore}${upsideInfo}, Sector: ${p.sector}
   Categorías: Valor ${p.categoryScores.value}, Crecimiento ${p.categoryScores.growth}, Rentabilidad ${p.categoryScores.profitability}, CashFlow ${p.categoryScores.cashFlow}, Momentum ${p.categoryScores.momentum}
   ${sectorStatus}: Valor ${p.vsSector.value > 0 ? '+' : ''}${p.vsSector.value.toFixed(1)}, Profitability ${p.vsSector.profitability > 0 ? '+' : ''}${p.vsSector.profitability.toFixed(1)}, Growth ${p.vsSector.growth > 0 ? '+' : ''}${p.vsSector.growth.toFixed(1)}
   Razones: ${p.reasons.slice(0, 3).join('; ')}
@@ -295,8 +301,8 @@ export async function generateProPicks(
 
             const batchPromises = batch.map(async (symbol) => {
                 try {
-                    // Obtener datos financieros completos
-                    const financialData = await getStockFinancialData(symbol);
+                    // Use lightweight version - no news, events, peers (much faster)
+                    const financialData = await getStockFinancialDataLight(symbol);
 
                     if (!financialData || !financialData.profile) return null;
 
@@ -351,7 +357,29 @@ export async function generateProPicks(
                         sector,
                         exchange: financialData.profile.exchange || undefined,
                         vsSector: advancedScore.sectorComparison?.vsSector,
+                        upsidePotential: 0,
+                        isStrongBuy: false,
+                        targetPrice: 0,
                     } as ProPick;
+
+                    // Calculate Upside Potential & Strong Buy Logic
+                    if (financialData.priceTarget && financialData.priceTarget.targetMean && currentPrice > 0) {
+                        const targetMean = financialData.priceTarget.targetMean;
+                        const upside = ((targetMean - currentPrice) / currentPrice) * 100;
+
+                        pick.targetPrice = targetMean;
+                        pick.upsidePotential = upside;
+
+                        // "Screaming Buy" Criteria: 
+                        // 1. Excellent Fundamentals (Score >= 80)
+                        // 2. High Upside Potential (> 15%)
+                        if (pick.score >= 80 && upside > 15) {
+                            pick.isStrongBuy = true;
+                            pick.reasons.unshift('💎 JOYA OCULTA: Fuerte subida proyectada a 12 meses');
+                        }
+                    }
+
+                    return pick;
 
                 } catch (error: any) {
                     console.error(`Error evaluating ${symbol}:`, error);

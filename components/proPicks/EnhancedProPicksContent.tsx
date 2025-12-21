@@ -1,18 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { TrendingUp, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { TrendingUp, Sparkles, ArrowRight, Loader2, RefreshCw, Clock } from 'lucide-react';
 import EnhancedProPicksFilters, { ProPicksFilters } from './EnhancedProPicksFilters';
 import { generateEnhancedProPicks, type ProPick } from '@/lib/actions/proPicks.actions';
 
-export default function EnhancedProPicksContent({ initialPicks }: { initialPicks: ProPick[] }) {
+interface EnhancedProPicksContentProps {
+    initialPicks: ProPick[];
+    generatedAt?: string;
+}
+
+export default function EnhancedProPicksContent({ initialPicks, generatedAt }: EnhancedProPicksContentProps) {
     const [picks, setPicks] = useState<ProPick[]>(initialPicks);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [lastGenerated, setLastGenerated] = useState<string | null>(generatedAt || null);
     const [filters, setFilters] = useState<ProPicksFilters>({
         timePeriod: 'month',
         limit: 20,
@@ -27,12 +33,39 @@ export default function EnhancedProPicksContent({ initialPicks }: { initialPicks
         try {
             const newPicks = await generateEnhancedProPicks(filters);
             setPicks(newPicks);
+            setLastGenerated(new Date().toISOString());
         } catch (error) {
             console.error('Error applying filters:', error);
             setError('Error al aplicar los filtros. Por favor, intenta de nuevo.');
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleRefresh = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const newPicks = await generateEnhancedProPicks(filters);
+            setPicks(newPicks);
+            setLastGenerated(new Date().toISOString());
+        } catch (error) {
+            console.error('Error refreshing picks:', error);
+            setError('Error al regenerar. Por favor, intenta de nuevo.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const formatLastGenerated = (isoString: string | null) => {
+        if (!isoString) return null;
+        const date = new Date(isoString);
+        return date.toLocaleString('es-ES', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
     };
 
     const getScoreColor = (score: number) => {
@@ -63,15 +96,37 @@ export default function EnhancedProPicksContent({ initialPicks }: { initialPicks
                     onFiltersChange={setFilters}
                     onApply={handleApplyFilters}
                 />
-                
+
+                {/* Refresh Button */}
+                <Card className="mt-4 p-4 border-gray-700 bg-gray-800/50">
+                    <Button
+                        onClick={handleRefresh}
+                        disabled={loading}
+                        className="w-full gap-2 bg-teal-600 hover:bg-teal-700"
+                    >
+                        {loading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <RefreshCw className="h-4 w-4" />
+                        )}
+                        Regenerar Picks
+                    </Button>
+                    {lastGenerated && (
+                        <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                            <Clock className="h-3 w-3" />
+                            Generado: {formatLastGenerated(lastGenerated)}
+                        </div>
+                    )}
+                </Card>
+
                 {/* Info Card */}
-                <Card className="mt-6 p-4 border-gray-700 bg-gray-800/50">
+                <Card className="mt-4 p-4 border-gray-700 bg-gray-800/50">
                     <h3 className="text-sm font-semibold text-gray-200 mb-2">
                         Sobre ProPicks IA
                     </h3>
                     <p className="text-xs text-gray-400 leading-relaxed">
-                        Nuestro sistema analiza más de 100 métricas financieras, 
-                        compara cada acción con su sector y utiliza inteligencia artificial 
+                        Nuestro sistema analiza más de 100 métricas financieras,
+                        compara cada acción con su sector y utiliza inteligencia artificial
                         para seleccionar las mejores oportunidades del mercado.
                     </p>
                     <div className="mt-3 pt-3 border-t border-gray-700">
@@ -101,17 +156,17 @@ export default function EnhancedProPicksContent({ initialPicks }: { initialPicks
                         {loading && (
                             <div className="flex items-center gap-2 text-sm text-gray-400">
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                Actualizando...
+                                Procesando...
                             </div>
                         )}
                     </div>
                     <p className="text-sm text-gray-400">
                         Acciones seleccionadas con score mínimo de {filters.minScore} ordenadas por {
                             filters.sortBy === 'score' ? 'score general' :
-                            filters.sortBy === 'momentum' ? 'momentum' :
-                            filters.sortBy === 'value' ? 'valor' :
-                            filters.sortBy === 'growth' ? 'crecimiento' :
-                            'rentabilidad'
+                                filters.sortBy === 'momentum' ? 'momentum' :
+                                    filters.sortBy === 'value' ? 'valor' :
+                                        filters.sortBy === 'growth' ? 'crecimiento' :
+                                            'rentabilidad'
                         }
                     </p>
                 </div>
@@ -129,7 +184,7 @@ export default function EnhancedProPicksContent({ initialPicks }: { initialPicks
                             No se encontraron acciones con los filtros seleccionados
                         </p>
                         <p className="text-sm text-gray-600 mt-2">
-                            Intenta ajustar los criterios de búsqueda
+                            Intenta ajustar los criterios o haz clic en "Regenerar Picks"
                         </p>
                     </Card>
                 ) : (
@@ -150,9 +205,16 @@ export default function EnhancedProPicksContent({ initialPicks }: { initialPicks
                                                 <h3 className="text-lg font-bold text-gray-100 group-hover:text-teal-400 transition-colors">
                                                     {pick.symbol}
                                                 </h3>
-                                                <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${getGradeColor(pick.grade)}`}>
-                                                    {pick.grade}
-                                                </span>
+                                                {pick.isStrongBuy && (
+                                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white bg-gradient-to-r from-teal-500 to-emerald-500 animate-pulse">
+                                                        💎 JOYA
+                                                    </span>
+                                                )}
+                                                {!pick.isStrongBuy && (
+                                                    <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${getGradeColor(pick.grade)}`}>
+                                                        {pick.grade}
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-sm text-gray-400 line-clamp-1">{pick.company}</p>
                                             {pick.sector && (
@@ -166,15 +228,25 @@ export default function EnhancedProPicksContent({ initialPicks }: { initialPicks
                                             <div className="text-xs">Score</div>
                                         </div>
                                     </div>
-                                    
-                                    {pick.currentPrice > 0 && (
-                                        <div className="mb-3">
-                                            <div className="text-xl font-semibold text-gray-100">
-                                                ${pick.currentPrice.toFixed(2)}
+
+                                    <div className="flex items-center justify-between mb-3">
+                                        {pick.currentPrice > 0 && (
+                                            <div>
+                                                <div className="text-xl font-semibold text-gray-100">
+                                                    ${pick.currentPrice.toFixed(2)}
+                                                </div>
+                                                <div className="text-xs text-gray-500">Precio actual</div>
                                             </div>
-                                            <div className="text-xs text-gray-500">Precio actual</div>
-                                        </div>
-                                    )}
+                                        )}
+                                        {pick.upsidePotential && pick.upsidePotential > 0 && (
+                                            <div className="text-right">
+                                                <div className={`text-xl font-bold ${pick.upsidePotential > 15 ? 'text-emerald-400' : 'text-green-400'}`}>
+                                                    +{pick.upsidePotential.toFixed(1)}%
+                                                </div>
+                                                <div className="text-xs text-gray-500">Potencial (12m)</div>
+                                            </div>
+                                        )}
+                                    </div>
 
                                     {/* Category Scores */}
                                     <div className="grid grid-cols-3 gap-2 mb-3">
