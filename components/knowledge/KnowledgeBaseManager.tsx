@@ -31,59 +31,24 @@ import {
     listDocuments,
     deleteDocument,
     getAllKnowledgeContent,
-    uploadFile
+    uploadFile,
+    extractTextFromPDFWithGemini
 } from '@/lib/actions/knowledge.actions';
 import { toast } from 'sonner';
 
-// Utilidad para extraer texto de PDF (client-side)
-// NOTA: PDFs pueden fallar en algunos entornos serverless. 
-// Alternativa: copiar el texto del PDF y pegarlo directamente.
-async function extractTextFromPDF(file: File): Promise<string> {
-    try {
-        // Método 1: Intentar con pdf.js
-        const pdfjsLib = await import('pdfjs-dist');
-        
-        // Deshabilitar worker para evitar problemas en Vercel
-        pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-        
-        const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = pdfjsLib.getDocument({ 
-            data: arrayBuffer,
-            useWorkerFetch: false,
-            isEvalSupported: false,
-        });
-        
-        const pdf = await loadingTask.promise;
-        
-        let fullText = '';
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items
-                .map((item: any) => item.str)
-                .join(' ');
-            fullText += pageText + '\n\n';
-        }
-        
-        if (!fullText.trim()) {
-            throw new Error('PDF vacío o escaneado');
-        }
-        
-        return fullText.trim();
-    } catch (error: any) {
-        console.error('Error extracting PDF:', error);
-        
-        // Mensaje de error más útil
-        if (error.message?.includes('worker') || error.message?.includes('fetch')) {
-            throw new Error(
-                'Error al procesar PDF en este entorno. ' +
-                'Alternativa: Abre el PDF, selecciona todo el texto (Ctrl+A), ' +
-                'cópialo (Ctrl+C) y pégalo en "Añadir Texto".'
-            );
-        }
-        
-        throw new Error('No se pudo extraer el texto del PDF. El archivo puede estar escaneado o protegido.');
-    }
+// Convierte un File a base64
+async function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            const result = reader.result as string;
+            // Remover el prefijo "data:application/pdf;base64,"
+            const base64 = result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = error => reject(error);
+    });
 }
 
 export default function KnowledgeBaseManager() {
@@ -223,8 +188,24 @@ export default function KnowledgeBaseManager() {
                 
                 // Extraer texto según el tipo de archivo
                 if (filename.toLowerCase().endsWith('.pdf')) {
-                    toast.info(`Procesando PDF: ${filename}...`);
-                    textContent = await extractTextFromPDF(file);
+                    // Usar Gemini para extraer texto del PDF
+                    toast.info(`🤖 Procesando PDF con IA: ${filename}...`);
+                    
+                    const base64 = await fileToBase64(file);
+                    const extractResult = await extractTextFromPDFWithGemini(base64, filename);
+                    
+                    if (!extractResult.success || !extractResult.text) {
+                        results.push({
+                            filename,
+                            success: false,
+                            error: extractResult.error || 'Error al extraer texto del PDF'
+                        });
+                        continue;
+                    }
+                    
+                    textContent = extractResult.text;
+                    toast.success(`✅ PDF procesado: ${filename}`);
+                    
                 } else if (
                     filename.toLowerCase().endsWith('.txt') ||
                     filename.toLowerCase().endsWith('.md')
@@ -262,12 +243,12 @@ export default function KnowledgeBaseManager() {
                     error: uploadResult.error
                 });
                 
-            } catch (error) {
+            } catch (error: any) {
                 console.error(`Error processing ${filename}:`, error);
                 results.push({
                     filename,
                     success: false,
-                    error: String(error)
+                    error: error.message || String(error)
                 });
             }
         }

@@ -4,8 +4,75 @@ import { connectToDatabase } from '@/database/mongoose';
 import { KnowledgeModel, IKnowledgeDocument } from '@/lib/db/knowledgeModel';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Inicializar Gemini para embeddings
+// Inicializar Gemini para embeddings y procesamiento de PDFs
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+
+/**
+ * Extrae texto de un PDF usando Gemini Vision
+ * Funciona en Vercel porque usa la API de Gemini, no procesamiento local
+ */
+export async function extractTextFromPDFWithGemini(
+    base64Data: string,
+    filename: string
+): Promise<{
+    success: boolean;
+    text?: string;
+    error?: string;
+}> {
+    try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return { success: false, error: 'API Key de Gemini no configurada' };
+        }
+
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+        // Preparar el PDF como parte del prompt
+        const result = await model.generateContent([
+            {
+                inlineData: {
+                    mimeType: 'application/pdf',
+                    data: base64Data,
+                },
+            },
+            {
+                text: `Extrae TODO el texto de este documento PDF de forma literal y completa. 
+                
+Instrucciones:
+- Extrae el texto exactamente como aparece en el documento
+- Mantén la estructura de párrafos y secciones
+- Incluye todos los números, datos y cifras
+- Si hay tablas, conviértelas a texto legible
+- NO resumas ni omitas nada
+- NO añadas comentarios ni interpretaciones
+- Solo devuelve el texto extraído
+
+Documento: ${filename}`,
+            },
+        ]);
+
+        const response = await result.response;
+        const extractedText = response.text();
+
+        if (!extractedText || extractedText.length < 50) {
+            return { 
+                success: false, 
+                error: 'No se pudo extraer texto del PDF. Puede estar escaneado o protegido.' 
+            };
+        }
+
+        return {
+            success: true,
+            text: extractedText,
+        };
+    } catch (error: any) {
+        console.error('Error extracting PDF with Gemini:', error);
+        return {
+            success: false,
+            error: error.message || 'Error al procesar el PDF con Gemini',
+        };
+    }
+}
 
 /**
  * Genera embeddings usando Gemini
