@@ -146,11 +146,147 @@ export const getFinancialGrowth = cache(async (symbol: string): Promise<{ symbol
 });
 
 /**
+ * Fetch financial data from Yahoo Finance (works on Vercel)
+ */
+async function getYahooFinancialData(symbol: string): Promise<{
+    ratios: RatiosTTM | null;
+    keyMetrics: KeyMetricsTTM | null;
+}> {
+    try {
+        const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=financialData,defaultKeyStatistics,summaryDetail,price`;
+        
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+            next: { revalidate: 3600 }, // Cache 1 hour
+        });
+        
+        if (!response.ok) {
+            console.warn(`Yahoo Finance failed for ${symbol}: ${response.status}`);
+            return { ratios: null, keyMetrics: null };
+        }
+        
+        const data = await response.json();
+        const result = data?.quoteSummary?.result?.[0];
+        
+        if (!result) {
+            return { ratios: null, keyMetrics: null };
+        }
+        
+        const financialData = result.financialData || {};
+        const keyStats = result.defaultKeyStatistics || {};
+        const summaryDetail = result.summaryDetail || {};
+        const price = result.price || {};
+        
+        // Extract raw values safely
+        const getValue = (obj: any) => obj?.raw ?? obj ?? null;
+        
+        const ratios: RatiosTTM = {
+            peRatioTTM: getValue(summaryDetail.trailingPE) || getValue(keyStats.trailingPE),
+            pegRatioTTM: getValue(keyStats.pegRatio),
+            priceToSalesRatioTTM: getValue(summaryDetail.priceToSalesTrailing12Months),
+            priceToBookRatioTTM: getValue(keyStats.priceToBook),
+            returnOnEquityTTM: getValue(financialData.returnOnEquity),
+            returnOnAssetsTTM: getValue(financialData.returnOnAssets),
+            returnOnCapitalEmployedTTM: null as any,
+            dividendYieldTTM: getValue(summaryDetail.dividendYield),
+            currentRatioTTM: getValue(financialData.currentRatio),
+            quickRatioTTM: getValue(financialData.quickRatio),
+            debtRatioTTM: null as any,
+            debtEquityRatioTTM: getValue(financialData.debtToEquity) ? getValue(financialData.debtToEquity) / 100 : null as any,
+            grossProfitMarginTTM: getValue(financialData.grossMargins),
+            operatingProfitMarginTTM: getValue(financialData.operatingMargins),
+            netProfitMarginTTM: getValue(financialData.profitMargins),
+        };
+        
+        const keyMetrics: KeyMetricsTTM = {
+            marketCapTTM: getValue(price.marketCap),
+            peRatioTTM: getValue(summaryDetail.trailingPE) || getValue(keyStats.trailingPE),
+            priceToSalesRatioTTM: getValue(summaryDetail.priceToSalesTrailing12Months),
+            pbRatioTTM: getValue(keyStats.priceToBook),
+            enterpriseValueTTM: getValue(keyStats.enterpriseValue),
+            enterpriseValueOverEBITDATTM: getValue(keyStats.enterpriseToEbitda),
+            dividendYieldTTM: getValue(summaryDetail.dividendYield),
+            currentRatioTTM: getValue(financialData.currentRatio),
+            debtToEquityTTM: getValue(financialData.debtToEquity) ? getValue(financialData.debtToEquity) / 100 : null as any,
+            roeTTM: getValue(financialData.returnOnEquity),
+            netIncomePerShareTTM: getValue(keyStats.trailingEps)?.raw ?? getValue(summaryDetail.trailingEps),
+            // Fill remaining with nulls
+            revenuePerShareTTM: null as any,
+            operatingCashFlowPerShareTTM: getValue(financialData.operatingCashflow) ? getValue(financialData.operatingCashflow) / getValue(price.sharesOutstanding) : null as any,
+            freeCashFlowPerShareTTM: getValue(financialData.freeCashflow) ? getValue(financialData.freeCashflow) / getValue(price.sharesOutstanding) : null as any,
+            cashPerShareTTM: getValue(financialData.totalCash) ? getValue(financialData.totalCash) / getValue(price.sharesOutstanding) : null as any,
+            bookValuePerShareTTM: getValue(keyStats.bookValue),
+            tangibleBookValuePerShareTTM: null as any,
+            shareholdersEquityPerShareTTM: null as any,
+            interestDebtPerShareTTM: null as any,
+            pocfratioTTM: null as any,
+            pfcfRatioTTM: null as any,
+            ptbRatioTTM: getValue(keyStats.priceToBook),
+            evToSalesTTM: getValue(keyStats.enterpriseToRevenue),
+            evToOperatingCashFlowTTM: null as any,
+            evToFreeCashFlowTTM: null as any,
+            earningsYieldTTM: getValue(summaryDetail.trailingPE) ? 1 / getValue(summaryDetail.trailingPE) : null as any,
+            freeCashFlowYieldTTM: null as any,
+            debtToAssetsTTM: null as any,
+            netDebtToEBITDATTM: null as any,
+            interestCoverageTTM: null as any,
+            incomeQualityTTM: null as any,
+            payoutRatioTTM: getValue(summaryDetail.payoutRatio),
+            salesGeneralAndAdministrativeToRevenueTTM: null as any,
+            researchAndDevelopementToRevenueTTM: null as any,
+            intangiblesToTotalAssetsTTM: null as any,
+            capexToOperatingCashFlowTTM: null as any,
+            capexToRevenueTTM: null as any,
+            capexToDepreciationTTM: null as any,
+            stockBasedCompensationToRevenueTTM: null as any,
+            grahamNumberTTM: null as any,
+            roicTTM: null as any,
+            returnOnTangibleAssetsTTM: null as any,
+            grahamNetNetTTM: null as any,
+            workingCapitalTTM: null as any,
+            tangibleAssetValueTTM: null as any,
+            netCurrentAssetValueTTM: null as any,
+            investedCapitalTTM: null as any,
+            averageReceivablesTTM: null as any,
+            averagePayablesTTM: null as any,
+            averageInventoryTTM: null as any,
+            daysSalesOutstandingTTM: null as any,
+            daysPayablesOutstandingTTM: null as any,
+            daysOfInventoryOnHandTTM: null as any,
+            receivablesTurnoverTTM: null as any,
+            payablesTurnoverTTM: null as any,
+            inventoryTurnoverTTM: null as any,
+            capexPerShareTTM: null as any,
+        };
+        
+        return { ratios, keyMetrics };
+        
+    } catch (error) {
+        console.error("Error fetching Yahoo Finance data:", error);
+        return { ratios: null, keyMetrics: null };
+    }
+}
+
+/**
  * Fetch TTM ratios (PER, ROIC, ROE, P/S, P/B)
+ * Uses Yahoo Finance as primary source (works on Vercel)
  */
 export const getRatiosTTM = cache(async (symbol: string): Promise<{ symbol: string; ratios: RatiosTTM[] } | null> => {
-    const data = await fetchFromBackend<{ symbol: string; ratios: RatiosTTM[] }>(`/ratios-ttm/${symbol}`);
-    return data;
+    // Try Yahoo Finance first (works on Vercel)
+    const yahooData = await getYahooFinancialData(symbol);
+    if (yahooData.ratios) {
+        return { symbol, ratios: [yahooData.ratios] };
+    }
+    
+    // Fallback to Python backend (only works locally)
+    if (!IS_SERVERLESS) {
+        const data = await fetchFromBackend<{ symbol: string; ratios: RatiosTTM[] }>(`/ratios-ttm/${symbol}`);
+        return data;
+    }
+    
+    return null;
 });
 
 /**
@@ -284,10 +420,22 @@ export interface GradesConsensus {
 
 /**
  * Fetch Key Metrics TTM (ROE, ROIC, EV/EBITDA, Graham Number, etc.)
+ * Uses Yahoo Finance as primary source (works on Vercel)
  */
 export const getKeyMetricsTTM = cache(async (symbol: string): Promise<{ symbol: string; keyMetrics: KeyMetricsTTM[] } | null> => {
-    const data = await fetchFromBackend<{ symbol: string; keyMetrics: KeyMetricsTTM[] }>(`/key-metrics-ttm/${symbol}`);
-    return data;
+    // Try Yahoo Finance first (works on Vercel)
+    const yahooData = await getYahooFinancialData(symbol);
+    if (yahooData.keyMetrics) {
+        return { symbol, keyMetrics: [yahooData.keyMetrics] };
+    }
+    
+    // Fallback to Python backend (only works locally)
+    if (!IS_SERVERLESS) {
+        const data = await fetchFromBackend<{ symbol: string; keyMetrics: KeyMetricsTTM[] }>(`/key-metrics-ttm/${symbol}`);
+        return data;
+    }
+    
+    return null;
 });
 
 /**
@@ -726,15 +874,82 @@ export interface PeerCompany {
     mktCap: number;
 }
 
-export const getStockPeers = cache(async (symbol: string): Promise<PeerCompany[]> => {
+/**
+ * Get stock peers from Yahoo Finance
+ */
+async function getYahooPeers(symbol: string): Promise<PeerCompany[]> {
     try {
-        const data = await fetchFromBackend<PeerCompany[]>(`/stock-peers/${symbol}`);
-        // FMP stable stock-peers returns array of peer objects: [{symbol, companyName, price, mktCap}]
-        return data || [];
+        const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=recommendationTrend,summaryProfile`;
+        
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+            next: { revalidate: 86400 }, // Cache 24 hours
+        });
+        
+        if (!response.ok) return [];
+        
+        const data = await response.json();
+        const profile = data?.quoteSummary?.result?.[0]?.summaryProfile;
+        
+        // Yahoo doesn't provide direct peers, but we can use sector/industry to suggest similar stocks
+        // For now, return empty and rely on Finnhub peers
+        return [];
+        
     } catch (error) {
-        console.error("Error fetching peers:", error);
         return [];
     }
+}
+
+/**
+ * Get stock peers from Finnhub
+ */
+async function getFinnhubPeers(symbol: string): Promise<string[]> {
+    try {
+        const token = process.env.FINNHUB_API_KEY;
+        if (!token) return [];
+        
+        const url = `https://finnhub.io/api/v1/stock/peers?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+        
+        const response = await fetch(url, {
+            next: { revalidate: 86400 }, // Cache 24 hours
+        });
+        
+        if (!response.ok) return [];
+        
+        const data = await response.json();
+        return Array.isArray(data) ? data.filter((s: string) => s !== symbol) : [];
+        
+    } catch (error) {
+        return [];
+    }
+}
+
+export const getStockPeers = cache(async (symbol: string): Promise<PeerCompany[]> => {
+    // Try Finnhub first (they have good peer data)
+    const finnhubPeers = await getFinnhubPeers(symbol);
+    if (finnhubPeers.length > 0) {
+        // Convert to PeerCompany format (basic info only)
+        return finnhubPeers.slice(0, 8).map(peerSymbol => ({
+            symbol: peerSymbol,
+            companyName: peerSymbol, // Will be resolved by UI if needed
+            price: 0,
+            mktCap: 0,
+        }));
+    }
+    
+    // Fallback to Python backend (only works locally)
+    if (!IS_SERVERLESS) {
+        try {
+            const data = await fetchFromBackend<PeerCompany[]>(`/stock-peers/${symbol}`);
+            return data || [];
+        } catch (error) {
+            console.error("Error fetching peers:", error);
+        }
+    }
+    
+    return [];
 });
 
 /**
