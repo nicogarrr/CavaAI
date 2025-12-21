@@ -575,7 +575,7 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
                         const profile = await fetchJSON<any>(url, 3600);
                         return { sym, profile } as { sym: string; profile: any };
                     } catch (e) {
-                        console.error('Error fetching profile2 for', sym, e);
+                        // Silently handle Finnhub timeouts - expected with rate limits
                         return { sym, profile: null } as { sym: string; profile: any };
                     }
                 })

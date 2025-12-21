@@ -2,7 +2,7 @@
 
 import { cache } from 'react';
 
-const FMP_BACKEND_URL = process.env.FMP_BACKEND_URL || 'http://localhost:8000';
+const FMP_BACKEND_URL = process.env.FMP_BACKEND_URL || 'http://127.0.0.1:8000';
 
 /**
  * Generic fetch helper for FMP backend
@@ -580,6 +580,27 @@ export const getFmpArticles = cache(async (page: number = 0, limit: number = 20)
 export const getGeneralNews = cache(async (page: number = 0, limit: number = 20): Promise<GeneralNewsArticle[]> => {
     const data = await fetchFromBackend<GeneralNewsArticle[]>(`/news/general?page=${page}&limit=${limit}`);
     return data || [];
+});
+export interface MarketNewsArticle {
+    category: string;
+    datetime: number;
+    headline: string;
+    id: number | string;
+    image: string;
+    related: string;
+    source: string;
+    summary: string;
+    url: string;
+}
+
+export const getCompanyNews = cache(async (symbol: string, limit: number = 20): Promise<MarketNewsArticle[]> => {
+    try {
+        const data = await fetchFromBackend<MarketNewsArticle[]>(`/company-news/${symbol}?limit=${limit}`);
+        return data || [];
+    } catch (error) {
+        console.error("Error fetching company news:", error);
+        return [];
+    }
 });
 
 export interface Dividend {

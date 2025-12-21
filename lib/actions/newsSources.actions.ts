@@ -39,19 +39,19 @@ async function getNewsFinnhub(symbols?: string[], maxArticles = 6): Promise<Mark
                     const url = `${FINNHUB_BASE_URL}/company-news?symbol=${encodeURIComponent(sym)}&from=${range.from}&to=${range.to}&token=${token}`;
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 8000);
-                    
-                    const response = await fetch(url, { 
+
+                    const response = await fetch(url, {
                         next: { revalidate: 60 },
                         signal: controller.signal,
                     });
-                    
+
                     clearTimeout(timeoutId);
 
                     if (response.ok) {
                         const articles = await response.json();
                         perSymbolArticles[sym] = (articles || []).filter(validateArticle);
                     }
-                    
+
                     if (limitedSymbols.indexOf(sym) < limitedSymbols.length - 1) {
                         await new Promise(resolve => setTimeout(resolve, 200));
                     }
@@ -84,12 +84,12 @@ async function getNewsFinnhub(symbols?: string[], maxArticles = 6): Promise<Mark
         const generalUrl = `${FINNHUB_BASE_URL}/news?category=general&token=${token}`;
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
-        
-        const response = await fetch(generalUrl, { 
+
+        const response = await fetch(generalUrl, {
             next: { revalidate: 60 },
             signal: controller.signal,
         });
-        
+
         clearTimeout(timeoutId);
 
         if (!response.ok) return [];
@@ -122,20 +122,20 @@ async function getNewsAlphaVantage(symbols?: string[], maxArticles = 6): Promise
         const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
         if (!apiKey) return [];
 
-        const topics = symbols && symbols.length > 0 
-            ? `&tickers=${symbols.slice(0, 3).join(',')}` 
+        const topics = symbols && symbols.length > 0
+            ? `&tickers=${symbols.slice(0, 3).join(',')}`
             : '&topics=financial_markets';
 
         const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT${topics}&apikey=${apiKey}&limit=50`;
-        
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        const response = await fetch(url, { 
+
+        const response = await fetch(url, {
             next: { revalidate: 60 },
             signal: controller.signal,
         });
-        
+
         clearTimeout(timeoutId);
 
         if (!response.ok) return [];
@@ -185,15 +185,15 @@ async function getNewsFromNewsAPI(symbols?: string[], maxArticles = 6): Promise<
             : 'stock market OR finance OR trading';
 
         const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=publishedAt&pageSize=${maxArticles * 2}&apiKey=${apiKey}`;
-        
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        const response = await fetch(url, { 
+
+        const response = await fetch(url, {
             next: { revalidate: 60 },
             signal: controller.signal,
         });
-        
+
         clearTimeout(timeoutId);
 
         if (!response.ok) return [];
@@ -237,20 +237,20 @@ async function getNewsMarketaux(symbols?: string[], maxArticles = 6): Promise<Ma
         const apiKey = process.env.MARKETAUX_API_KEY;
         if (!apiKey) return [];
 
-        const symbolsParam = symbols && symbols.length > 0 
-            ? `&symbols=${symbols.slice(0, 3).join(',')}` 
+        const symbolsParam = symbols && symbols.length > 0
+            ? `&symbols=${symbols.slice(0, 3).join(',')}`
             : '';
 
         const url = `https://api.marketaux.com/v1/news/all?filter_entities=true${symbolsParam}&language=en&limit=${maxArticles}&api_token=${apiKey}`;
-        
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        const response = await fetch(url, { 
+
+        const response = await fetch(url, {
             next: { revalidate: 60 },
             signal: controller.signal,
         });
-        
+
         clearTimeout(timeoutId);
 
         if (!response.ok) return [];
@@ -286,14 +286,54 @@ async function getNewsMarketaux(symbols?: string[], maxArticles = 6): Promise<Ma
 }
 
 /**
+ * Fetch news from Yahoo Finance (via local backend)
+ */
+async function getNewsYahoo(symbols?: string[], maxArticles = 15): Promise<MarketNewsArticle[]> {
+    try {
+        const symbol = symbols && symbols.length > 0 ? symbols[0] : '';
+        if (!symbol) return [];
+
+        // Call local backend
+        // We use fetch since we are in a server action environment
+        // Assuming backend is running on default port 8000
+        const backendUrl = process.env.FMP_BACKEND_URL || 'http://127.0.0.1:8000';
+        const url = `${backendUrl}/company-news/${symbol}?limit=${maxArticles}`;
+
+        const response = await fetch(url, { next: { revalidate: 300 } });
+        if (!response.ok) return [];
+
+        const articles: any[] = await response.json();
+
+        if (!Array.isArray(articles)) return [];
+
+        return articles.map(item => ({
+            id: item.id || `yf-${Math.random()}`,
+            headline: item.headline || item.title || '',
+            summary: item.summary || '',
+            source: item.source || 'Yahoo Finance',
+            url: item.url || '',
+            image: item.image || '',
+            datetime: item.datetime || Date.now() / 1000,
+            related: symbol,
+            category: item.category || 'general'
+        }));
+
+    } catch (err) {
+        console.error('Yahoo news error:', err);
+        return [];
+    }
+}
+
+/**
  * Get news with automatic fallback across multiple sources
  * Aggregates news from all available sources and returns the most recent
  */
 export async function getNewsWithFallback(symbols?: string[], maxArticles = 6): Promise<MarketNewsArticle[]> {
     const allNews: MarketNewsArticle[] = [];
-    
+
     // Try to fetch from all available sources in parallel for speed
     const sources = [
+        getNewsYahoo(symbols, maxArticles),
         getNewsFinnhub(symbols, maxArticles),
         getNewsAlphaVantage(symbols, maxArticles),
         getNewsFromNewsAPI(symbols, maxArticles),
@@ -317,7 +357,7 @@ export async function getNewsWithFallback(symbols?: string[], maxArticles = 6): 
     // Remove duplicates based on URL
     const seen = new Set<string>();
     const unique: MarketNewsArticle[] = [];
-    
+
     for (const article of allNews) {
         if (!article.url) continue;
         const normalizedUrl = article.url.toLowerCase().trim();
@@ -328,7 +368,7 @@ export async function getNewsWithFallback(symbols?: string[], maxArticles = 6): 
 
     // Sort by datetime (most recent first) and limit
     unique.sort((a, b) => (b.datetime || 0) - (a.datetime || 0));
-    
+
     return unique.slice(0, maxArticles);
 }
 
