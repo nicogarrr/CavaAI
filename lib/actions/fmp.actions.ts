@@ -621,18 +621,79 @@ export interface Dividend {
     declarationDate: string;
 }
 
-export const getDividends = cache(async (symbol: string): Promise<Dividend[]> => {
+/**
+ * Fetch dividends from Yahoo Finance (works on Vercel)
+ */
+async function getDividendsFromYahoo(symbol: string): Promise<Dividend[]> {
     try {
-        const data = await fetchFromBackend<Dividend[] | { error: string }>(`/dividends/${symbol}`);
-        // Handle error responses or non-array data
-        if (!data || !Array.isArray(data)) {
+        // Yahoo Finance v8 API for dividends
+        const now = Math.floor(Date.now() / 1000);
+        const fiveYearsAgo = now - (5 * 365 * 24 * 60 * 60);
+        
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${fiveYearsAgo}&period2=${now}&interval=1mo&events=div`;
+        
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+            next: { revalidate: 86400 }, // Cache 24 hours
+        });
+        
+        if (!response.ok) {
+            console.warn(`Yahoo Finance dividends failed for ${symbol}: ${response.status}`);
             return [];
         }
-        return data;
+        
+        const data = await response.json();
+        const events = data?.chart?.result?.[0]?.events?.dividends;
+        
+        if (!events || typeof events !== 'object') {
+            return [];
+        }
+        
+        // Convert Yahoo format to our Dividend interface
+        const dividends: Dividend[] = Object.values(events).map((div: any) => {
+            const date = new Date(div.date * 1000);
+            return {
+                date: date.toISOString().split('T')[0],
+                label: `${date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`,
+                adjDividend: div.amount || 0,
+                dividend: div.amount || 0,
+                recordDate: date.toISOString().split('T')[0],
+                paymentDate: date.toISOString().split('T')[0],
+                declarationDate: date.toISOString().split('T')[0],
+            };
+        });
+        
+        // Sort by date descending (most recent first)
+        return dividends.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        
     } catch (error) {
-        console.error("Error fetching dividends:", error);
+        console.error("Error fetching dividends from Yahoo:", error);
         return [];
     }
+}
+
+export const getDividends = cache(async (symbol: string): Promise<Dividend[]> => {
+    // Primero intentar Yahoo Finance (funciona en Vercel)
+    const yahooDividends = await getDividendsFromYahoo(symbol);
+    if (yahooDividends.length > 0) {
+        return yahooDividends;
+    }
+    
+    // Fallback al backend Python (solo funciona localmente)
+    if (!IS_SERVERLESS) {
+        try {
+            const data = await fetchFromBackend<Dividend[] | { error: string }>(`/dividends/${symbol}`);
+            if (data && Array.isArray(data)) {
+                return data;
+            }
+        } catch (error) {
+            console.error("Error fetching dividends from backend:", error);
+        }
+    }
+    
+    return [];
 });
 
 export interface FinancialScore {
