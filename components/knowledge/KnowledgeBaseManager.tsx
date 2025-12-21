@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,19 +19,56 @@ import {
     CheckCircle,
     XCircle,
     Database,
-    Eye
+    Eye,
+    Loader2,
+    CloudUpload,
+    Sparkles
 } from 'lucide-react';
+import {
+    getKnowledgeStats,
+    uploadDocument,
+    searchKnowledge,
+    listDocuments,
+    deleteDocument,
+    getAllKnowledgeContent,
+    uploadFile
+} from '@/lib/actions/knowledge.actions';
+import { toast } from 'sonner';
 
-const KB_API = 'http://127.0.0.1:8000';
+// Utilidad para extraer texto de PDF (client-side)
+async function extractTextFromPDF(file: File): Promise<string> {
+    // Importar pdf.js dinámicamente
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+            .map((item: any) => item.str)
+            .join(' ');
+        fullText += pageText + '\n\n';
+    }
+    
+    return fullText.trim();
+}
 
 export default function KnowledgeBaseManager() {
-    const [stats, setStats] = useState<{ total_chunks: number }>({ total_chunks: 0 });
+    const [stats, setStats] = useState<{ total_chunks: number; total_documents: number }>({ 
+        total_chunks: 0, 
+        total_documents: 0 
+    });
     const [documents, setDocuments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
 
     // Form state
     const [content, setContent] = useState('');
+    const [title, setTitle] = useState('');
 
     // Search state
     const [searchQuery, setSearchQuery] = useState('');
@@ -42,6 +79,7 @@ export default function KnowledgeBaseManager() {
     const [uploadingFiles, setUploadingFiles] = useState(false);
     const [fileResults, setFileResults] = useState<any[]>([]);
     const [dragActive, setDragActive] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // View all content
     const [allContent, setAllContent] = useState('');
@@ -50,21 +88,21 @@ export default function KnowledgeBaseManager() {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            // Get stats
-            const statsRes = await fetch(`${KB_API}/knowledge/stats`);
-            const statsData = await statsRes.json();
-            if (statsData.success) {
-                setStats(statsData.stats);
+            const [statsRes, docsRes] = await Promise.all([
+                getKnowledgeStats(),
+                listDocuments(100)
+            ]);
+            
+            if (statsRes.success) {
+                setStats(statsRes.stats);
             }
-
-            // Get documents
-            const docsRes = await fetch(`${KB_API}/knowledge/list/knowledge?limit=100`);
-            const docsData = await docsRes.json();
-            if (docsData.success) {
-                setDocuments(docsData.documents);
+            
+            if (docsRes.success) {
+                setDocuments(docsRes.documents);
             }
         } catch (error) {
             console.error('Error fetching data:', error);
+            toast.error('Error al cargar la base de conocimiento');
         } finally {
             setLoading(false);
         }
@@ -75,25 +113,29 @@ export default function KnowledgeBaseManager() {
     }, [fetchData]);
 
     async function handleUpload() {
-        if (!content.trim()) return;
+        if (!content.trim()) {
+            toast.error('El contenido no puede estar vacío');
+            return;
+        }
 
         setUploading(true);
         try {
-            const res = await fetch(`${KB_API}/knowledge/upload`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ collection: 'knowledge', content }),
-            });
-            const result = await res.json();
+            const result = await uploadDocument(
+                content,
+                title || undefined
+            );
 
             if (result.success) {
+                toast.success(`Documento añadido: ${result.chunks_added} chunks creados`);
                 setContent('');
+                setTitle('');
                 fetchData();
             } else {
-                alert('Error: ' + result.error);
+                toast.error('Error: ' + result.error);
             }
         } catch (error) {
             console.error('Upload error:', error);
+            toast.error('Error al subir el documento');
         } finally {
             setUploading(false);
         }
@@ -104,30 +146,34 @@ export default function KnowledgeBaseManager() {
 
         setSearching(true);
         try {
-            const res = await fetch(`${KB_API}/knowledge/search`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: searchQuery, n_results: 10 }),
-            });
-            const result = await res.json();
+            const result = await searchKnowledge(searchQuery, 10);
             setSearchResults(result.results || []);
+            
+            if (result.results.length === 0) {
+                toast.info('No se encontraron resultados');
+            }
         } catch (error) {
             console.error('Search error:', error);
+            toast.error('Error en la búsqueda');
         } finally {
             setSearching(false);
         }
     }
 
-    async function handleDelete(docId: string) {
-        if (!confirm('¿Eliminar este documento?')) return;
+    async function handleDelete(docTitle: string) {
+        if (!confirm(`¿Eliminar "${docTitle}" y todos sus chunks?`)) return;
 
         try {
-            await fetch(`${KB_API}/knowledge/delete/knowledge/${docId}`, {
-                method: 'DELETE',
-            });
-            fetchData();
+            const result = await deleteDocument(docTitle);
+            if (result.success) {
+                toast.success(`Eliminado: ${result.deleted} chunks`);
+                fetchData();
+            } else {
+                toast.error('Error al eliminar');
+            }
         } catch (error) {
             console.error('Delete error:', error);
+            toast.error('Error al eliminar el documento');
         }
     }
 
@@ -137,25 +183,78 @@ export default function KnowledgeBaseManager() {
         setUploadingFiles(true);
         setFileResults([]);
 
-        try {
-            const formData = new FormData();
-            for (let i = 0; i < files.length; i++) {
-                formData.append('files', files[i]);
+        const results: any[] = [];
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const filename = file.name;
+            
+            try {
+                let textContent = '';
+                
+                // Extraer texto según el tipo de archivo
+                if (filename.toLowerCase().endsWith('.pdf')) {
+                    toast.info(`Procesando PDF: ${filename}...`);
+                    textContent = await extractTextFromPDF(file);
+                } else if (
+                    filename.toLowerCase().endsWith('.txt') ||
+                    filename.toLowerCase().endsWith('.md')
+                ) {
+                    textContent = await file.text();
+                } else {
+                    results.push({
+                        filename,
+                        success: false,
+                        error: 'Formato no soportado. Usa PDF, TXT o MD.'
+                    });
+                    continue;
+                }
+                
+                if (!textContent || textContent.trim().length < 50) {
+                    results.push({
+                        filename,
+                        success: false,
+                        error: 'El archivo está vacío o tiene muy poco contenido'
+                    });
+                    continue;
+                }
+                
+                // Subir a MongoDB
+                const uploadResult = await uploadFile(
+                    textContent,
+                    filename,
+                    file.type || 'text/plain'
+                );
+                
+                results.push({
+                    filename,
+                    success: uploadResult.success,
+                    chunks_added: uploadResult.chunks_added,
+                    error: uploadResult.error
+                });
+                
+            } catch (error) {
+                console.error(`Error processing ${filename}:`, error);
+                results.push({
+                    filename,
+                    success: false,
+                    error: String(error)
+                });
             }
+        }
 
-            const res = await fetch(`${KB_API}/knowledge/upload-files?collection=knowledge`, {
-                method: 'POST',
-                body: formData,
-            });
-
-            const data = await res.json();
-            setFileResults(data.results || []);
+        setFileResults(results);
+        setUploadingFiles(false);
+        
+        const successCount = results.filter(r => r.success).length;
+        if (successCount > 0) {
+            toast.success(`${successCount}/${files.length} archivos procesados`);
             fetchData();
-        } catch (error) {
-            console.error('File upload error:', error);
-            setFileResults([{ filename: 'Error', success: false, error: String(error) }]);
-        } finally {
-            setUploadingFiles(false);
+        }
+        
+        // Limpiar input
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
         }
     }
 
@@ -179,11 +278,13 @@ export default function KnowledgeBaseManager() {
     async function handleViewAll() {
         setViewingAll(true);
         try {
-            // Combine all document previews
-            const allText = documents.map(d => `📄 ${d.title}\n${d.preview}`).join('\n\n---\n\n');
-            setAllContent(allText);
+            const result = await getAllKnowledgeContent();
+            setAllContent(result.content);
         } catch (error) {
             console.error('Error viewing all:', error);
+            toast.error('Error al cargar el contenido');
+        } finally {
+            setViewingAll(false);
         }
     }
 
@@ -195,20 +296,28 @@ export default function KnowledgeBaseManager() {
                     <CardTitle className="flex items-center gap-2">
                         <Brain className="h-6 w-6 text-purple-400" />
                         Base de Conocimiento - Value Investing AI
+                        <Badge variant="secondary" className="ml-2">
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            MongoDB Atlas
+                        </Badge>
                     </CardTitle>
                     <CardDescription>
-                        Tu agente aprende de todo lo que subas aquí
+                        Tu agente aprende de todo lo que subas aquí. Usa búsqueda semántica con IA.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex items-center gap-4">
-                        <Badge variant="default" className="px-4 py-2 text-base">
+                    <div className="flex items-center gap-4 flex-wrap">
+                        <Badge variant="default" className="px-4 py-2 text-base bg-purple-600">
                             <Database className="h-4 w-4 mr-2" />
                             {stats.total_chunks || 0} chunks de conocimiento
                         </Badge>
                         <Badge variant="secondary" className="px-3 py-1.5">
                             <FileText className="h-3 w-3 mr-1" />
                             {documents.length} documentos
+                        </Badge>
+                        <Badge variant="outline" className="px-3 py-1.5 text-green-400 border-green-400/50">
+                            <CloudUpload className="h-3 w-3 mr-1" />
+                            Sincronizado en la nube
                         </Badge>
                     </div>
                 </CardContent>
@@ -245,7 +354,7 @@ export default function KnowledgeBaseManager() {
                                     Subir Archivos
                                 </CardTitle>
                                 <CardDescription>
-                                    Arrastra PDFs, TXTs o documentos de texto
+                                    Arrastra PDFs o archivos de texto. Se procesarán automáticamente.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -254,16 +363,18 @@ export default function KnowledgeBaseManager() {
                                     onDragLeave={handleDrag}
                                     onDragOver={handleDrag}
                                     onDrop={handleDrop}
-                                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${dragActive
-                                        ? 'border-purple-500 bg-purple-500/10'
-                                        : 'border-gray-600 hover:border-gray-500'
-                                        }`}
+                                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-all ${
+                                        dragActive
+                                            ? 'border-purple-500 bg-purple-500/10 scale-[1.02]'
+                                            : 'border-gray-600 hover:border-gray-500'
+                                    }`}
                                 >
                                     <input
+                                        ref={fileInputRef}
                                         type="file"
                                         id="file-upload"
                                         multiple
-                                        accept=".pdf,.txt,.md,.xlsx,.xls,.docx"
+                                        accept=".pdf,.txt,.md"
                                         className="hidden"
                                         onChange={(e) => handleFileUpload(e.target.files)}
                                     />
@@ -271,13 +382,17 @@ export default function KnowledgeBaseManager() {
                                         htmlFor="file-upload"
                                         className="cursor-pointer flex flex-col items-center gap-3"
                                     >
-                                        <FolderUp className="h-12 w-12 text-gray-400" />
+                                        {uploadingFiles ? (
+                                            <Loader2 className="h-12 w-12 text-purple-400 animate-spin" />
+                                        ) : (
+                                            <FolderUp className="h-12 w-12 text-gray-400" />
+                                        )}
                                         <div>
                                             <p className="text-lg font-medium">
-                                                {uploadingFiles ? 'Subiendo...' : 'Arrastra archivos aquí'}
+                                                {uploadingFiles ? 'Procesando archivos...' : 'Arrastra archivos aquí'}
                                             </p>
                                             <p className="text-sm text-muted-foreground">
-                                                PDF, Excel, Word, TXT, MD
+                                                PDF, TXT, Markdown
                                             </p>
                                         </div>
                                     </label>
@@ -288,21 +403,22 @@ export default function KnowledgeBaseManager() {
                                         {fileResults.map((r, i) => (
                                             <div
                                                 key={i}
-                                                className={`flex items-center gap-2 p-2 rounded text-sm ${r.success ? 'bg-green-500/10' : 'bg-red-500/10'
-                                                    }`}
+                                                className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+                                                    r.success ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'
+                                                }`}
                                             >
                                                 {r.success ? (
-                                                    <CheckCircle className="h-4 w-4 text-green-500" />
+                                                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
                                                 ) : (
-                                                    <XCircle className="h-4 w-4 text-red-500" />
+                                                    <XCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
                                                 )}
                                                 <span className="font-medium">{r.filename}</span>
                                                 {r.success ? (
-                                                    <span className="text-muted-foreground">
-                                                        {r.chunks_added} chunks añadidos
-                                                    </span>
+                                                    <Badge variant="secondary" className="ml-auto">
+                                                        {r.chunks_added} chunks
+                                                    </Badge>
                                                 ) : (
-                                                    <span className="text-red-400">{r.error}</span>
+                                                    <span className="text-red-400 ml-auto text-xs">{r.error}</span>
                                                 )}
                                             </div>
                                         ))}
@@ -314,28 +430,46 @@ export default function KnowledgeBaseManager() {
                         {/* Manual text input */}
                         <Card>
                             <CardHeader>
-                                <CardTitle>Añadir Texto</CardTitle>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Plus className="h-5 w-5" />
+                                    Añadir Texto Manualmente
+                                </CardTitle>
                                 <CardDescription>
-                                    Pega cualquier texto: análisis, notas, criterios, extractos de libros...
+                                    Pega análisis, notas, criterios, extractos de libros...
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
+                                <Input
+                                    placeholder="Título del documento (opcional)"
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                />
+                                
                                 <Textarea
-                                    placeholder="Pega aquí tu conocimiento. Todo lo que añadas será usado por la IA para mejorar sus análisis..."
+                                    placeholder="Pega aquí tu conocimiento. Todo lo que añadas será usado por la IA para mejorar sus análisis de inversión..."
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
-                                    rows={10}
+                                    rows={12}
                                     className="font-mono text-sm"
                                 />
 
-                                <Button
-                                    onClick={handleUpload}
-                                    disabled={!content.trim() || uploading}
-                                    className="w-full"
-                                >
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    {uploading ? 'Añadiendo...' : 'Añadir a la Base de Conocimiento'}
-                                </Button>
+                                <div className="flex items-center justify-between">
+                                    <p className="text-xs text-muted-foreground">
+                                        {content.length} caracteres
+                                    </p>
+                                    <Button
+                                        onClick={handleUpload}
+                                        disabled={!content.trim() || uploading}
+                                        className="bg-purple-600 hover:bg-purple-700"
+                                    >
+                                        {uploading ? (
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        ) : (
+                                            <Plus className="h-4 w-4 mr-2" />
+                                        )}
+                                        {uploading ? 'Procesando...' : 'Añadir a la Base'}
+                                    </Button>
+                                </div>
                             </CardContent>
                         </Card>
                     </div>
@@ -346,33 +480,47 @@ export default function KnowledgeBaseManager() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Todos los Documentos ({documents.length})</CardTitle>
+                            <CardDescription>
+                                Documentos almacenados en tu base de conocimiento
+                            </CardDescription>
                         </CardHeader>
                         <CardContent>
                             {loading ? (
-                                <p className="text-muted-foreground">Cargando...</p>
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
+                                </div>
                             ) : documents.length === 0 ? (
-                                <p className="text-muted-foreground text-center py-8">
-                                    No hay documentos. ¡Sube tu primer análisis!
-                                </p>
+                                <div className="text-center py-12">
+                                    <Database className="h-12 w-12 mx-auto text-gray-600 mb-4" />
+                                    <p className="text-muted-foreground">
+                                        No hay documentos. ¡Sube tu primer análisis!
+                                    </p>
+                                </div>
                             ) : (
                                 <ScrollArea className="h-[500px]">
-                                    <div className="space-y-2">
+                                    <div className="space-y-3">
                                         {documents.map((doc) => (
                                             <div
                                                 key={doc.id}
-                                                className="flex items-start justify-between p-3 rounded-lg border bg-card hover:bg-accent/50"
+                                                className="flex items-start justify-between p-4 rounded-lg border bg-card hover:bg-accent/30 transition-colors"
                                             >
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="font-medium text-sm">
+                                                    <p className="font-medium text-sm flex items-center gap-2">
+                                                        <FileText className="h-4 w-4 text-purple-400" />
                                                         {doc.title || 'Sin título'}
                                                     </p>
-                                                    <p className="text-xs text-muted-foreground line-clamp-2">
+                                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1 pl-6">
                                                         {doc.preview}
                                                     </p>
-                                                    <div className="flex gap-2 mt-1">
+                                                    <div className="flex gap-2 mt-2 pl-6">
                                                         <Badge variant="outline" className="text-xs">
                                                             {doc.chunks} chunks
                                                         </Badge>
+                                                        {doc.metadata?.symbol && (
+                                                            <Badge variant="secondary" className="text-xs">
+                                                                {doc.metadata.symbol}
+                                                            </Badge>
+                                                        )}
                                                         {doc.added_at && (
                                                             <span className="text-xs text-muted-foreground">
                                                                 {new Date(doc.added_at).toLocaleDateString('es-ES')}
@@ -383,9 +531,10 @@ export default function KnowledgeBaseManager() {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    onClick={() => handleDelete(doc.id)}
+                                                    onClick={() => handleDelete(doc.title)}
+                                                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                                                 >
-                                                    <Trash2 className="h-4 w-4 text-red-400" />
+                                                    <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>
                                         ))}
@@ -400,21 +549,33 @@ export default function KnowledgeBaseManager() {
                 <TabsContent value="search">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Buscar en tu Conocimiento</CardTitle>
+                            <CardTitle className="flex items-center gap-2">
+                                <Sparkles className="h-5 w-5 text-purple-400" />
+                                Búsqueda Semántica
+                            </CardTitle>
                             <CardDescription>
-                                Búsqueda semántica - encuentra contenido por significado
+                                Encuentra conocimiento por significado, no solo palabras exactas
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="flex gap-2">
                                 <Input
-                                    placeholder="Buscar... (ej: criterios ROIC, análisis Apple, margen seguridad)"
+                                    placeholder="Buscar... (ej: criterios ROIC, análisis de moats, margen de seguridad)"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                    className="flex-1"
                                 />
-                                <Button onClick={handleSearch} disabled={searching}>
-                                    <Search className="h-4 w-4" />
+                                <Button 
+                                    onClick={handleSearch} 
+                                    disabled={searching}
+                                    className="bg-purple-600 hover:bg-purple-700"
+                                >
+                                    {searching ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Search className="h-4 w-4" />
+                                    )}
                                 </Button>
                             </div>
 
@@ -424,21 +585,31 @@ export default function KnowledgeBaseManager() {
                                         {searchResults.map((result, i) => (
                                             <div
                                                 key={i}
-                                                className="p-3 rounded-lg border bg-card"
+                                                className="p-4 rounded-lg border bg-card"
                                             >
                                                 <div className="flex items-center gap-2 mb-2">
                                                     <Badge
                                                         variant={result.score > 0.7 ? 'default' : 'secondary'}
-                                                        className="text-xs"
+                                                        className={result.score > 0.7 ? 'bg-green-600' : ''}
                                                     >
                                                         {(result.score * 100).toFixed(0)}% relevante
                                                     </Badge>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {result.title}
+                                                    </span>
                                                 </div>
-                                                <p className="text-sm">{result.content}</p>
+                                                <p className="text-sm leading-relaxed">{result.content}</p>
                                             </div>
                                         ))}
                                     </div>
                                 </ScrollArea>
+                            )}
+
+                            {!searching && searchResults.length === 0 && searchQuery && (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                    <p>Escribe una consulta y presiona Enter</p>
+                                </div>
                             )}
                         </CardContent>
                     </Card>
@@ -454,14 +625,22 @@ export default function KnowledgeBaseManager() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Button onClick={handleViewAll} className="mb-4">
-                                <Eye className="h-4 w-4 mr-2" />
+                            <Button 
+                                onClick={handleViewAll} 
+                                className="mb-4 bg-purple-600 hover:bg-purple-700"
+                                disabled={viewingAll}
+                            >
+                                {viewingAll ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Eye className="h-4 w-4 mr-2" />
+                                )}
                                 Ver Todo el Conocimiento
                             </Button>
 
                             {allContent && (
-                                <ScrollArea className="h-[400px]">
-                                    <pre className="text-sm whitespace-pre-wrap font-mono bg-gray-900 p-4 rounded-lg">
+                                <ScrollArea className="h-[500px]">
+                                    <pre className="text-sm whitespace-pre-wrap font-mono bg-gray-900/50 p-4 rounded-lg border">
                                         {allContent}
                                     </pre>
                                 </ScrollArea>
@@ -470,6 +649,22 @@ export default function KnowledgeBaseManager() {
                     </Card>
                 </TabsContent>
             </Tabs>
+
+            {/* Instructions */}
+            <Card className="border-dashed">
+                <CardHeader>
+                    <CardTitle className="text-base">📚 Cómo usar la Base de Conocimiento</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground space-y-2">
+                    <p>• <strong>Sube PDFs</strong> de análisis de inversión, informes anuales, artículos...</p>
+                    <p>• <strong>Añade textos</strong> con tus criterios de inversión, notas de libros, estrategias...</p>
+                    <p>• <strong>La IA usará este conocimiento</strong> para mejorar sus análisis de acciones</p>
+                    <p>• <strong>Búsqueda semántica:</strong> encuentra información por significado, no solo palabras</p>
+                    <p className="text-xs pt-2 text-purple-400">
+                        💡 Tip: Cuanto más conocimiento añadas, más inteligentes serán los análisis
+                    </p>
+                </CardContent>
+            </Card>
         </div>
     );
 }
