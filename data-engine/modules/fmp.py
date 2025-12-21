@@ -19,10 +19,10 @@ def _fetch_from_fmp(url, cache_key, symbol, ttl=86400):
         
         # Handle non-200 responses
         if res.status_code != 200:
-            if res.status_code in [402, 403]:
-                # Plan restricted or forbidden - return empty instead of erroring
+            if res.status_code in [402, 403, 404]:
+                # Plan restricted, forbidden, or not found - return empty instead of erroring
                 # Most FMP endpoints return a list [ {...} ], so [] is safer
-                print(f"DEBUG: FMP Restricted (Status {res.status_code}) for {symbol}")
+                print(f"DEBUG: FMP Restricted/NotFound (Status {res.status_code}) for {symbol}")
                 return []
             
             msg = f"FMP API Error {res.status_code}"
@@ -97,9 +97,14 @@ def fetch_stock_peers(symbol):
     url = f'{BASE_URL}/stock-peers?symbol={symbol}&apikey={FMP_API_KEY}'
     return _fetch_from_fmp(url, f'peers_{symbol}', symbol)
 
-def fetch_dividends(symbol, limit=20):
+def fetch_dividends(symbol, limit=50):
     url = f'{BASE_URL}/dividends?symbol={symbol}&limit={limit}&apikey={FMP_API_KEY}'
     return _fetch_from_fmp(url, f'dividends_{symbol}', symbol)
+
+def fetch_dividends_calendar(from_date: str, to_date: str):
+    """Fetch dividends calendar for a date range (Free plan: up to 1 month range)."""
+    url = f'{BASE_URL}/dividends-calendar?from={from_date}&to={to_date}&apikey={FMP_API_KEY}'
+    return _fetch_from_fmp(url, f'dividends_cal_{from_date}_{to_date}', 'calendar', ttl=3600)
 
 def fetch_earnings_transcript(symbol, year=None, quarter=None):
     url = f'{BASE_URL}/earning-call-transcript?symbol={symbol}&apikey={FMP_API_KEY}'
@@ -109,8 +114,14 @@ def fetch_earnings_transcript(symbol, year=None, quarter=None):
     return _fetch_from_fmp(url, cache_key, symbol, ttl=604800)
 
 def fetch_insider_trading(symbol, limit=50):
-    url = f'{BASE_URL.replace("stable", "v4")}/insider-trading?symbol={symbol}&limit={limit}&apikey={FMP_API_KEY}'
+    # Try stable endpoint first (may be limited access)
+    url = f'{BASE_URL}/insider-trading?symbol={symbol}&limit={limit}&apikey={FMP_API_KEY}'
     return _fetch_from_fmp(url, f'insider_{symbol}', symbol, ttl=21600)
+
+def fetch_insider_trading_latest(page=0, limit=100):
+    """Fetch latest insider trading for all symbols (Free plan: max 100 per call)."""
+    url = f'{BASE_URL}/insider-trading/latest?page={page}&limit={limit}&apikey={FMP_API_KEY}'
+    return _fetch_from_fmp(url, f'insider_latest_{page}', 'latest', ttl=3600)
 
 def fetch_treasury_rates():
     url = f'{BASE_URL}/treasury-rates?apikey={FMP_API_KEY}'

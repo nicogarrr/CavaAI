@@ -14,6 +14,7 @@ const Header = ({ user, initialStocks }: { user: User, initialStocks: StockWithW
                         alt="JLCavaAI"
                         width={200}
                         height={50}
+                        priority
                     />
                 </Link>
 

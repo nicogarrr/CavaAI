@@ -15,19 +15,19 @@ interface StockValuationProps {
 
 export default function StockValuation({ symbol }: StockValuationProps) {
     const [scoreData, setScoreData] = useState<FinancialScore | null>(null);
-    const [peerData, setPeerData] = useState<PeerCompany | null>(null);
+    const [peers, setPeers] = useState<PeerCompany[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [scores, peers] = await Promise.all([
+                const [scores, peerData] = await Promise.all([
                     getFinancialScores(symbol),
                     getStockPeers(symbol)
                 ]);
                 setScoreData(scores);
-                setPeerData(peers);
+                setPeers(peerData || []);
             } catch (error) {
                 console.error("Failed to fetch valuation data", error);
             } finally {
@@ -53,6 +53,13 @@ export default function StockValuation({ symbol }: StockValuationProps) {
         return "text-red-500"; // Weak
     };
 
+    const formatMarketCap = (mktCap: number) => {
+        if (mktCap >= 1e12) return `$${(mktCap / 1e12).toFixed(1)}T`;
+        if (mktCap >= 1e9) return `$${(mktCap / 1e9).toFixed(1)}B`;
+        if (mktCap >= 1e6) return `$${(mktCap / 1e6).toFixed(0)}M`;
+        return `$${mktCap.toLocaleString()}`;
+    };
+
     if (loading) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -62,9 +69,6 @@ export default function StockValuation({ symbol }: StockValuationProps) {
             </div>
         );
     }
-
-    // Handle peer data safely
-    const peerList = peerData?.peersList || [];
 
     return (
         <div className="space-y-6">
@@ -137,18 +141,25 @@ export default function StockValuation({ symbol }: StockValuationProps) {
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex flex-wrap gap-3">
-                        {peerList.length > 0 ? (
-                            peerList.map((peer, i) => (
-                                <Link key={i} href={`/stocks/${peer}`}>
-                                    <Badge variant="outline" className="text-base py-2 px-4 border-gray-700 hover:bg-gray-800 hover:text-white transition-colors cursor-pointer flex items-center gap-2">
-                                        {peer}
-                                        <ArrowUpRight className="h-3 w-3 text-gray-500" />
-                                    </Badge>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {peers.length > 0 ? (
+                            peers.slice(0, 12).map((peer, i) => (
+                                <Link key={i} href={`/stocks/${peer.symbol}`}>
+                                    <div className="p-3 rounded-lg border border-gray-700 hover:bg-gray-800 hover:border-gray-600 transition-colors cursor-pointer">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="font-semibold text-gray-100">{peer.symbol}</span>
+                                            <ArrowUpRight className="h-3 w-3 text-gray-500" />
+                                        </div>
+                                        <div className="text-xs text-gray-400 truncate mb-1">{peer.companyName}</div>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-gray-500">${peer.price?.toFixed(2) || 'N/A'}</span>
+                                            <span className="text-gray-500">{formatMarketCap(peer.mktCap)}</span>
+                                        </div>
+                                    </div>
                                 </Link>
                             ))
                         ) : (
-                            <p className="text-gray-500">No se encontraron competidores.</p>
+                            <p className="text-gray-500 col-span-full">No se encontraron competidores.</p>
                         )}
                     </div>
                 </CardContent>

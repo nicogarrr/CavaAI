@@ -385,19 +385,67 @@ async def get_general_news(page: int = 0, limit: int = 20):
     data = fetch_general_news(page, limit)
     return data
 
-from modules.fmp import fetch_dividends
+from modules.fmp import fetch_dividends, fetch_dividends_calendar
+from datetime import datetime, timedelta
 
 @app.get("/dividends/{symbol}")
 async def get_dividends(symbol: str):
     symbol = symbol.upper()
     data = fetch_dividends(symbol)
-    return data
+    
+    # Stable API returns array directly: [{symbol, date, dividend, ...}]
+    if isinstance(data, list) and len(data) > 0:
+        return data
+    
+    # Fallback: Try dividends-calendar for Free plan (up to 1 month range)
+    # This endpoint returns ALL dividends in the date range, we filter by symbol
+    try:
+        today = datetime.now()
+        from_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+        to_date = (today + timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        calendar_data = fetch_dividends_calendar(from_date, to_date)
+        if isinstance(calendar_data, list):
+            # Filter for our specific symbol
+            symbol_dividends = [d for d in calendar_data if d.get('symbol', '').upper() == symbol]
+            if symbol_dividends:
+                return symbol_dividends
+    except Exception as e:
+        print(f"Dividends calendar fallback failed: {e}")
+    
+    return []
 
 @app.get("/stock-peers/{symbol}")
 async def get_stock_peers_endpoint(symbol: str):
     symbol = symbol.upper()
     data = fetch_stock_peers(symbol)
-    return data
+    # Stable API returns array of peer objects: [{symbol, companyName, price, mktCap}]
+    if isinstance(data, list):
+        return data
+    return []
+
+from modules.fmp import fetch_insider_trading_latest
+
+@app.get("/insider-trading/{symbol}")
+async def get_insider_trading(symbol: str, limit: int = Query(50, description="Number of transactions to return")):
+    symbol = symbol.upper()
+    data = fetch_insider_trading(symbol, limit)
+    
+    # If per-symbol endpoint returns data
+    if isinstance(data, list) and len(data) > 0:
+        return {"symbol": symbol, "insiderTrades": data[:limit]}
+    
+    # Fallback: Fetch latest insider trades and filter by symbol (Free plan: max 100)
+    try:
+        latest_data = fetch_insider_trading_latest(page=0, limit=100)
+        if isinstance(latest_data, list):
+            symbol_trades = [t for t in latest_data if t.get('symbol', '').upper() == symbol]
+            if symbol_trades:
+                return {"symbol": symbol, "insiderTrades": symbol_trades[:limit]}
+    except Exception as e:
+        print(f"Insider trading latest fallback failed: {e}")
+    
+    return {"symbol": symbol, "insiderTrades": []}
 
 # ============================================================================
 # STRATEGIES

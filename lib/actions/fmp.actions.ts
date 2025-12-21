@@ -631,17 +631,19 @@ export const getFinancialScores = cache(async (symbol: string): Promise<Financia
 
 export interface PeerCompany {
     symbol: string;
-    peersList: string[];
+    companyName: string;
+    price: number;
+    mktCap: number;
 }
 
-export const getStockPeers = cache(async (symbol: string): Promise<PeerCompany | null> => {
+export const getStockPeers = cache(async (symbol: string): Promise<PeerCompany[]> => {
     try {
         const data = await fetchFromBackend<PeerCompany[]>(`/stock-peers/${symbol}`);
-        return data && data.length > 0 ? data[0] : null;
-        // FMP stock-peers returns [ { symbol: 'AAPL', peersList: [...] } ] usually
+        // FMP stable stock-peers returns array of peer objects: [{symbol, companyName, price, mktCap}]
+        return data || [];
     } catch (error) {
         console.error("Error fetching peers:", error);
-        return null;
+        return [];
     }
 });
 
