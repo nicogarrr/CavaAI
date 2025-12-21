@@ -36,25 +36,54 @@ import {
 import { toast } from 'sonner';
 
 // Utilidad para extraer texto de PDF (client-side)
+// NOTA: PDFs pueden fallar en algunos entornos serverless. 
+// Alternativa: copiar el texto del PDF y pegarlo directamente.
 async function extractTextFromPDF(file: File): Promise<string> {
-    // Importar pdf.js dinámicamente
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    
-    let fullText = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items
-            .map((item: any) => item.str)
-            .join(' ');
-        fullText += pageText + '\n\n';
+    try {
+        // Método 1: Intentar con pdf.js
+        const pdfjsLib = await import('pdfjs-dist');
+        
+        // Deshabilitar worker para evitar problemas en Vercel
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+        
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ 
+            data: arrayBuffer,
+            useWorkerFetch: false,
+            isEvalSupported: false,
+        });
+        
+        const pdf = await loadingTask.promise;
+        
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+                .map((item: any) => item.str)
+                .join(' ');
+            fullText += pageText + '\n\n';
+        }
+        
+        if (!fullText.trim()) {
+            throw new Error('PDF vacío o escaneado');
+        }
+        
+        return fullText.trim();
+    } catch (error: any) {
+        console.error('Error extracting PDF:', error);
+        
+        // Mensaje de error más útil
+        if (error.message?.includes('worker') || error.message?.includes('fetch')) {
+            throw new Error(
+                'Error al procesar PDF en este entorno. ' +
+                'Alternativa: Abre el PDF, selecciona todo el texto (Ctrl+A), ' +
+                'cópialo (Ctrl+C) y pégalo en "Añadir Texto".'
+            );
+        }
+        
+        throw new Error('No se pudo extraer el texto del PDF. El archivo puede estar escaneado o protegido.');
     }
-    
-    return fullText.trim();
 }
 
 export default function KnowledgeBaseManager() {
