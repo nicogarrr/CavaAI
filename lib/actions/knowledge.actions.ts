@@ -4,12 +4,53 @@ import { connectToDatabase } from '@/database/mongoose';
 import { KnowledgeModel, IKnowledgeDocument } from '@/lib/db/knowledgeModel';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Inicializar Gemini para embeddings y procesamiento de PDFs
+// Inicializar Gemini para embeddings
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 /**
- * Extrae texto de un PDF usando Gemini Vision
- * Funciona en Vercel porque usa la API de Gemini, no procesamiento local
+ * Extrae texto de un PDF usando pdf-parse (local, rápido)
+ * Funciona en local sin necesidad de APIs externas
+ */
+export async function extractTextFromPDF(
+    base64Data: string,
+    filename: string
+): Promise<{
+    success: boolean;
+    text?: string;
+    error?: string;
+}> {
+    try {
+        // Importar pdf-parse dinámicamente para evitar problemas en edge runtime
+        const pdfParse = (await import('pdf-parse')).default;
+        
+        // Convertir base64 a Buffer
+        const pdfBuffer = Buffer.from(base64Data, 'base64');
+        
+        // Parsear el PDF
+        const pdfData = await pdfParse(pdfBuffer);
+        
+        if (!pdfData.text || pdfData.text.trim().length < 50) {
+            return { 
+                success: false, 
+                error: 'El PDF está vacío o es una imagen escaneada sin OCR.' 
+            };
+        }
+
+        return {
+            success: true,
+            text: pdfData.text,
+        };
+    } catch (error: any) {
+        console.error('Error extracting PDF locally:', error);
+        return {
+            success: false,
+            error: error.message || 'Error al procesar el PDF',
+        };
+    }
+}
+
+/**
+ * Extrae texto de un PDF usando Gemini Vision (fallback para PDFs escaneados)
  */
 export async function extractTextFromPDFWithGemini(
     base64Data: string,
@@ -25,7 +66,7 @@ export async function extractTextFromPDFWithGemini(
             return { success: false, error: 'API Key de Gemini no configurada' };
         }
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
         // Preparar el PDF como parte del prompt
         const result = await model.generateContent([
