@@ -50,6 +50,8 @@ export async function generatePortfolioStrategyAnalysis(portfolioSummary: any): 
   opportunities: string[];
   strengths: string[];
   summary: string;
+  stocksToAdd?: { symbol: string; reason: string; potentialImpact: string }[];
+  suggestedChanges?: { action: string; symbol?: string; impact: string; newScoreEstimate: number }[];
 }> {
   try {
     const auth = await getAuth();
@@ -64,7 +66,9 @@ export async function generatePortfolioStrategyAnalysis(portfolioSummary: any): 
         warnings: ['API Key no configurada'],
         opportunities: [],
         strengths: [],
-        summary: 'Error de configuración de IA'
+        summary: 'Error de configuración de IA',
+        stocksToAdd: [],
+        suggestedChanges: []
       };
     }
 
@@ -76,36 +80,51 @@ export async function generatePortfolioStrategyAnalysis(portfolioSummary: any): 
       totalValue: portfolioSummary.totalValue,
       totalGainPercent: portfolioSummary.totalGainPercent,
       holdingsCount: portfolioSummary.holdings.length,
-      topHoldings: portfolioSummary.holdings.slice(0, 5).map((h: any) => ({
+      topHoldings: portfolioSummary.holdings.slice(0, 10).map((h: any) => ({
         symbol: h.symbol,
         weight: ((h.value / portfolioSummary.totalValue) * 100).toFixed(1) + '%',
         gain: h.gainPercent.toFixed(1) + '%'
       })),
-      sectorAllocation: "Calculado por IA basado en holdings" // Gemini puede inferir esto o podríamos calcularlo si tuviéramos datos
+      allSymbols: portfolioSummary.holdings.map((h: any) => h.symbol).join(', '),
+      sectorAllocation: "Calculado por IA basado en holdings"
     };
 
-    const prompt = `Eres el Analista de Estrategia Personal del usuario. Tu trabajo es AUDITAR su cartera actual contra sus PROPIAS reglas de inversión definidas en su base de conocimiento.
+    const prompt = `Eres el Analista de Estrategia Personal del usuario. Tu trabajo es AUDITAR su cartera actual y proporcionar RECOMENDACIONES ACCIONABLES para mejorar el score.
 
 CONTEXTO DE ESTRATEGIA (RAG - Reglas del Usuario):
-${strategyContext || "No se encontraron documentos de estrategia específicos. Usa principios generales de Value Investing y Gestión de Riesgo prudente."}
+${strategyContext || "No se encontraron documentos de estrategia específicos. Usa principios generales de Value Investing, diversificación sectorial, y gestión de riesgo prudente."}
 
 CARTERA ACTUAL:
 ${JSON.stringify(portfolioData, null, 2)}
 
 TAREA:
-Analiza si la cartera cumple con la estrategia del usuario.
 1. Calcula un "Score de Alineación" (0-100). 100 = Cumple todas las reglas perfectamente.
-2. Identifica "Warnings": Violaciones de reglas (ej: mucha concentración, sector prohibido, falta de liquidez si se menciona).
+2. Identifica "Warnings": Violaciones de reglas (concentración excesiva, posiciones perdedoras sin revisar, sectores no diversificados).
 3. Identifica "Strengths": Puntos fuertes donde se respeta la estrategia.
-4. Identifica "Opportunities": Sugerencias basadas en sus reglas (ej: "Tu estrategia dice rebalancear si X sube mucho").
+4. Identifica "Opportunities": Sugerencias generales basadas en las reglas.
+5. **IMPORTANTE - stocksToAdd**: Sugiere 3-5 ACCIONES ESPECÍFICAS reales (usa tickers reales de empresas de calidad) que el usuario podría añadir para MEJORAR la diversificación y subir el score. Considera:
+   - Sectores NO representados en su cartera actual
+   - Acciones defensivas si hay mucha volatilidad
+   - ETFs diversificados si hay concentración
+   - Blue chips estables si faltan
+6. **IMPORTANTE - suggestedChanges**: Propón 2-4 CAMBIOS ESPECÍFICOS con el IMPACTO ESTIMADO en el score. Por ejemplo:
+   - "Reducir posición en X al 10%" -> score sube +5 puntos
+   - "Vender Y (pérdida significativa) y reasignar" -> score sube +8 puntos
+   - "Añadir exposición a sector salud con JNJ" -> score sube +3 puntos
 
-RESPONDE EN JSON EXACTO:
+RESPONDE EN JSON EXACTO (sin markdown, solo JSON):
 {
   "alignmentScore": number,
   "warnings": ["warning1", "warning2"],
   "opportunities": ["opp1", "opp2"],
   "strengths": ["str1", "str2"],
-  "summary": "Breve resumen ejecutivo de 2 líneas"
+  "summary": "Breve resumen ejecutivo de 2 líneas",
+  "stocksToAdd": [
+    { "symbol": "TICKER", "reason": "Por qué añadirla", "potentialImpact": "Mejora diversificación sectorial +X%" }
+  ],
+  "suggestedChanges": [
+    { "action": "Descripción del cambio", "symbol": "TICKER o null", "impact": "Explicación del impacto", "newScoreEstimate": número_estimado_nuevo_score }
+  ]
 }`;
 
     const payload = {
@@ -144,7 +163,9 @@ RESPONDE EN JSON EXACTO:
       warnings: ['Error al analizar la estrategia'],
       opportunities: [],
       strengths: [],
-      summary: 'No se pudo completar el análisis de estrategia en este momento.'
+      summary: 'No se pudo completar el análisis de estrategia en este momento.',
+      stocksToAdd: [],
+      suggestedChanges: []
     };
   }
 }

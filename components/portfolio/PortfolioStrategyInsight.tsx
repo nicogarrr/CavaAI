@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Brain, AlertTriangle, CheckCircle, Lightbulb, ShieldCheck, Loader2 } from 'lucide-react';
+import { Brain, AlertTriangle, CheckCircle, Lightbulb, ShieldCheck, Loader2, PlusCircle, ArrowUpCircle, TrendingUp } from 'lucide-react';
 import { generatePortfolioStrategyAnalysis } from '@/lib/actions/ai.actions';
 import { toast } from 'sonner';
+import Link from 'next/link';
 
 interface PortfolioStrategyInsightProps {
     portfolioSummary: any;
@@ -151,6 +152,109 @@ export function PortfolioStrategyInsight({ portfolioSummary }: PortfolioStrategy
                                     ))}
                                 </ul>
                             </div>
+                        </div>
+
+                        {/* Nueva sección: Acciones para añadir */}
+                        {analysis.stocksToAdd && analysis.stocksToAdd.length > 0 && (
+                            <div className="mt-6 p-4 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 rounded-lg border border-cyan-500/20">
+                                <h4 className="font-semibold flex items-center gap-2 text-cyan-400 mb-4">
+                                    <PlusCircle className="h-5 w-5" />
+                                    Acciones Recomendadas para Añadir
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {analysis.stocksToAdd.map((stock: { symbol: string; reason: string; potentialImpact: string }, i: number) => (
+                                        <Link 
+                                            key={i} 
+                                            href={`/stocks/${stock.symbol}`}
+                                            className="block p-3 bg-cyan-500/10 rounded-lg border border-cyan-500/30 hover:bg-cyan-500/20 transition-colors cursor-pointer"
+                                        >
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="font-bold text-cyan-300 text-lg">{stock.symbol}</span>
+                                                <Badge variant="outline" className="text-cyan-400 border-cyan-500/50 text-xs">
+                                                    Ver análisis →
+                                                </Badge>
+                                            </div>
+                                            <p className="text-xs text-slate-300 mb-1">{stock.reason}</p>
+                                            <p className="text-xs text-cyan-400/80 flex items-center gap-1">
+                                                <TrendingUp className="h-3 w-3" />
+                                                {stock.potentialImpact}
+                                            </p>
+                                        </Link>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Nueva sección: Cambios sugeridos con impacto en Score */}
+                        {analysis.suggestedChanges && analysis.suggestedChanges.length > 0 && (
+                            <div className="mt-6 p-4 bg-gradient-to-r from-purple-950/30 to-indigo-950/30 rounded-lg border border-purple-500/20">
+                                <h4 className="font-semibold flex items-center gap-2 text-purple-400 mb-4">
+                                    <ArrowUpCircle className="h-5 w-5" />
+                                    Cambios para Mejorar tu Score
+                                </h4>
+                                <div className="space-y-3">
+                                    {analysis.suggestedChanges.map((change: { action: string; symbol?: string; impact: string; newScoreEstimate: number }, i: number) => (
+                                        <div 
+                                            key={i} 
+                                            className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/30 flex items-start justify-between gap-4"
+                                        >
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    {change.symbol && (
+                                                        <Link href={`/stocks/${change.symbol}`} className="font-bold text-purple-300 hover:text-purple-200">
+                                                            {change.symbol}
+                                                        </Link>
+                                                    )}
+                                                    <span className="text-sm text-slate-200">{change.action}</span>
+                                                </div>
+                                                <p className="text-xs text-slate-400">{change.impact}</p>
+                                            </div>
+                                            <div className="text-right flex-shrink-0">
+                                                <div className="text-xs text-slate-500 mb-1">Nuevo Score</div>
+                                                <Badge 
+                                                    variant={change.newScoreEstimate > analysis.alignmentScore ? "default" : "secondary"}
+                                                    className={change.newScoreEstimate > analysis.alignmentScore ? "bg-green-600" : ""}
+                                                >
+                                                    {change.newScoreEstimate}/100
+                                                    {change.newScoreEstimate > analysis.alignmentScore && (
+                                                        <span className="ml-1 text-green-200">+{change.newScoreEstimate - analysis.alignmentScore}</span>
+                                                    )}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                {/* Score potencial máximo */}
+                                {analysis.suggestedChanges.length > 0 && (
+                                    <div className="mt-4 p-3 bg-gradient-to-r from-green-950/50 to-emerald-950/50 rounded-lg border border-green-500/30">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-green-300 font-medium">
+                                                Si aplicas todos los cambios:
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-slate-400">{analysis.alignmentScore}</span>
+                                                <span className="text-green-400">→</span>
+                                                <Badge className="bg-green-600 text-lg px-3">
+                                                    {Math.min(100, Math.max(...analysis.suggestedChanges.map((c: { newScoreEstimate: number }) => c.newScoreEstimate)))}/100
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Botón para re-analizar */}
+                        <div className="mt-6 flex justify-center">
+                            <Button
+                                onClick={handleAnalyze}
+                                variant="outline"
+                                className="border-indigo-500/50 text-indigo-400 hover:bg-indigo-500/10"
+                            >
+                                <Brain className="mr-2 h-4 w-4" />
+                                Re-analizar Cartera
+                            </Button>
                         </div>
                     </>
                 )}
