@@ -451,9 +451,29 @@ export async function generateEnhancedProPicks(
 
         // Filtrar por sector si se especifica
         if (sector !== 'all') {
-            filteredPicks = filteredPicks.filter(pick =>
-                pick.sector?.toLowerCase() === sector.toLowerCase()
-            );
+            // Crear mapa de alias de sectores para manejar diferentes nombres
+            const sectorAliases: Record<string, string[]> = {
+                'Technology': ['Technology', 'Information Technology', 'Software', 'Semiconductors', 'Internet'],
+                'Healthcare': ['Healthcare', 'Biotechnology', 'Pharmaceuticals', 'Medical Devices', 'Health Care'],
+                'Financial Services': ['Financial Services', 'Financials', 'Banks', 'Insurance', 'Asset Management'],
+                'Consumer Discretionary': ['Consumer Discretionary', 'Retail', 'Apparel', 'Hotels', 'Restaurants'],
+                'Industrials': ['Industrials', 'Aerospace', 'Defense', 'Machinery', 'Industrial'],
+                'Consumer Staples': ['Consumer Staples', 'Food', 'Beverages', 'Tobacco', 'Household Products'],
+                'Energy': ['Energy', 'Oil', 'Gas', 'Petroleum'],
+                'Utilities': ['Utilities', 'Electric Utilities', 'Power'],
+                'Real Estate': ['Real Estate', 'REITs', 'Property'],
+                'Materials': ['Materials', 'Chemicals', 'Mining', 'Metals', 'Basic Materials'],
+                'Communication Services': ['Communication Services', 'Media', 'Entertainment', 'Telecom', 'Telecommunications']
+            };
+
+            const sectorKeywords = sectorAliases[sector] || [sector];
+            filteredPicks = filteredPicks.filter(pick => {
+                if (!pick.sector) return false;
+                const pickSectorLower = pick.sector.toLowerCase();
+                return sectorKeywords.some(keyword =>
+                    pickSectorLower.includes(keyword.toLowerCase())
+                );
+            });
         }
 
         // Ordenar según el criterio seleccionado
