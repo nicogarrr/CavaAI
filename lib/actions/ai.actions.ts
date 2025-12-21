@@ -10,27 +10,17 @@ import { headers } from 'next/headers';
 /**
  * Retrieves relevant context from the knowledge base for stock analysis
  * This adds your personal investment criteria, past analyses, and references
+ * Ahora usa MongoDB Atlas Vector Search directamente
  */
 export async function getRAGContext(symbol: string, companyName: string): Promise<string> {
   try {
-    const KB_API_URL = 'http://127.0.0.1:8000';
+    // Importar la función de knowledge.actions
+    const { getRAGContext: getRAGContextFromKB } = await import('@/lib/actions/knowledge.actions');
+    
+    const result = await getRAGContextFromKB(symbol, companyName);
 
-    const res = await fetch(`${KB_API_URL}/knowledge/context`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: symbol, symbol: symbol, company_name: companyName }),
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      console.warn('RAG context fetch failed:', res.status);
-      return '';
-    }
-
-    const data = await res.json();
-
-    if (data.success && data.context) {
-      return `\n\n📚 MI BASE DE CONOCIMIENTO (Análisis Previos y Criterios Personales):\n${data.context}\n`;
+    if (result.success && result.context) {
+      return `\n\n📚 MI BASE DE CONOCIMIENTO (Análisis Previos y Criterios Personales):\n${result.context}\n`;
     }
 
     return '';

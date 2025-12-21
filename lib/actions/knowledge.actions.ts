@@ -1,36 +1,103 @@
 'use server';
 
-const KB_API_URL = 'http://127.0.0.1:8000';
+import { connectToDatabase } from '@/database/mongoose';
+import { KnowledgeModel, IKnowledgeDocument } from '@/lib/db/knowledgeModel';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// Inicializar Gemini para embeddings
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 /**
- * Get knowledge base statistics
+ * Genera embeddings usando Gemini
  */
-export async function getKnowledgeStats(): Promise<{
-    success: boolean;
-    stats: Record<string, number>;
-    collections: string[];
-}> {
+async function generateEmbedding(text: string): Promise<number[]> {
     try {
-        const res = await fetch(`${KB_API_URL}/knowledge/stats`, {
-            cache: 'no-store',
-        });
-        if (!res.ok) throw new Error('Failed to fetch stats');
-        return await res.json();
+        const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+        const result = await model.embedContent(text);
+        return result.embedding.values;
     } catch (error) {
-        console.error('Error fetching knowledge stats:', error);
-        return { success: false, stats: {}, collections: [] };
+        console.error('Error generating embedding:', error);
+        // Fallback: vector de ceros (no ideal, pero evita errores)
+        return new Array(768).fill(0);
     }
 }
 
 /**
- * Upload a document to the knowledge base
+ * Divide texto en chunks para mejor búsqueda
+ */
+function chunkText(text: string, chunkSize: number = 1000, overlap: number = 100): string[] {
+    const chunks: string[] = [];
+    let start = 0;
+    
+    while (start < text.length) {
+        let end = start + chunkSize;
+        
+        // Intentar cortar en un punto natural (párrafo o frase)
+        if (end < text.length) {
+            const lastParagraph = text.lastIndexOf('\n\n', end);
+            const lastPeriod = text.lastIndexOf('. ', end);
+            
+            if (lastParagraph > start + chunkSize / 2) {
+                end = lastParagraph + 2;
+            } else if (lastPeriod > start + chunkSize / 2) {
+                end = lastPeriod + 2;
+            }
+        }
+        
+        const chunk = text.slice(start, end).trim();
+        if (chunk.length > 50) {
+            chunks.push(chunk);
+        }
+        
+        start = end - overlap;
+    }
+    
+    return chunks;
+}
+
+/**
+ * Obtener estadísticas de la base de conocimiento
+ */
+export async function getKnowledgeStats(): Promise<{
+    success: boolean;
+    stats: { total_chunks: number; total_documents: number };
+    error?: string;
+}> {
+    try {
+        await connectToDatabase();
+        
+        const totalChunks = await KnowledgeModel.countDocuments();
+        const uniqueTitles = await KnowledgeModel.distinct('title');
+        
+        return {
+            success: true,
+            stats: {
+                total_chunks: totalChunks,
+                total_documents: uniqueTitles.length,
+            },
+        };
+    } catch (error) {
+        console.error('Error getting knowledge stats:', error);
+        return {
+            success: false,
+            stats: { total_chunks: 0, total_documents: 0 },
+            error: String(error),
+        };
+    }
+}
+
+/**
+ * Subir un documento a la base de conocimiento
  */
 export async function uploadDocument(
-    collection: string,
     content: string,
     title?: string,
-    symbol?: string,
-    tags?: string[]
+    metadata?: {
+        source?: string;
+        symbol?: string;
+        tags?: string[];
+        fileType?: string;
+    }
 ): Promise<{
     success: boolean;
     document_id?: string;
@@ -38,60 +105,151 @@ export async function uploadDocument(
     error?: string;
 }> {
     try {
-        const res = await fetch(`${KB_API_URL}/knowledge/upload`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ collection, content, title, symbol, tags }),
-        });
-
-        if (!res.ok) {
-            const error = await res.text();
-            return { success: false, error };
+        await connectToDatabase();
+        
+        // Dividir en chunks
+        const chunks = chunkText(content);
+        const docTitle = title || `Documento ${new Date().toISOString()}`;
+        
+        let chunksAdded = 0;
+        let documentId = '';
+        
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            
+            // Generar embedding para este chunk
+            const embedding = await generateEmbedding(chunk);
+            
+            // Crear preview
+            const preview = chunk.substring(0, 200) + (chunk.length > 200 ? '...' : '');
+            
+            // Guardar en MongoDB
+            const doc = await KnowledgeModel.create({
+                title: docTitle,
+                content: chunk,
+                embedding,
+                metadata: {
+                    ...metadata,
+                    chunkIndex: i,
+                    totalChunks: chunks.length,
+                },
+                preview,
+            });
+            
+            if (i === 0) {
+                documentId = (doc._id as any).toString();
+            }
+            chunksAdded++;
         }
-
-        return await res.json();
+        
+        return {
+            success: true,
+            document_id: documentId,
+            chunks_added: chunksAdded,
+        };
     } catch (error) {
         console.error('Error uploading document:', error);
-        return { success: false, error: String(error) };
+        return {
+            success: false,
+            error: String(error),
+        };
     }
 }
 
 /**
- * Search the knowledge base
+ * Búsqueda semántica en la base de conocimiento
  */
 export async function searchKnowledge(
     query: string,
-    collections?: string[],
     nResults: number = 5
 ): Promise<{
     success: boolean;
     results: Array<{
         content: string;
-        collection: string;
+        title: string;
         score: number;
         metadata: Record<string, any>;
     }>;
     count: number;
 }> {
     try {
-        const res = await fetch(`${KB_API_URL}/knowledge/search`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query, collections, n_results: nResults }),
-        });
-
-        if (!res.ok) throw new Error('Search failed');
-        return await res.json();
+        await connectToDatabase();
+        
+        // Generar embedding de la query
+        const queryEmbedding = await generateEmbedding(query);
+        
+        // Búsqueda vectorial usando MongoDB Atlas Search
+        // Si el índice vectorial no está configurado, usar búsqueda de texto
+        let results: any[] = [];
+        
+        try {
+            // Intentar búsqueda vectorial
+            results = await KnowledgeModel.aggregate([
+                {
+                    $vectorSearch: {
+                        index: 'vector_index',
+                        path: 'embedding',
+                        queryVector: queryEmbedding,
+                        numCandidates: nResults * 10,
+                        limit: nResults,
+                    },
+                },
+                {
+                    $project: {
+                        content: 1,
+                        title: 1,
+                        metadata: 1,
+                        preview: 1,
+                        score: { $meta: 'vectorSearchScore' },
+                    },
+                },
+            ]);
+        } catch (vectorError) {
+            console.log('Vector search not available, falling back to text search');
+            
+            // Fallback: búsqueda de texto tradicional
+            const textResults = await KnowledgeModel.find(
+                { $text: { $search: query } },
+                { score: { $meta: 'textScore' } }
+            )
+                .sort({ score: { $meta: 'textScore' } })
+                .limit(nResults)
+                .lean();
+            
+            // Normalizar scores para texto
+            results = textResults.map((r) => ({
+                content: r.content,
+                title: r.title,
+                metadata: r.metadata,
+                preview: r.preview,
+                score: Math.min((r as any).score / 10, 1), // Normalizar entre 0-1
+            }));
+        }
+        
+        return {
+            success: true,
+            results: results.map((r: any) => ({
+                content: r.content,
+                title: r.title,
+                score: r.score || 0.5,
+                metadata: r.metadata || {},
+            })),
+            count: results.length,
+        };
     } catch (error) {
         console.error('Error searching knowledge:', error);
-        return { success: false, results: [], count: 0 };
+        return {
+            success: false,
+            results: [],
+            count: 0,
+        };
     }
 }
 
 /**
- * Get context for stock analysis (used by AI)
+ * Obtener contexto RAG para análisis de acciones
  */
-export async function getAnalysisContext(
+export async function getRAGContext(
     symbol: string,
     companyName: string
 ): Promise<{
@@ -99,25 +257,58 @@ export async function getAnalysisContext(
     context: string;
 }> {
     try {
-        const res = await fetch(`${KB_API_URL}/knowledge/context`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol, company_name: companyName }),
-        });
-
-        if (!res.ok) throw new Error('Context fetch failed');
-        return await res.json();
+        await connectToDatabase();
+        
+        // Buscar conocimiento relevante para este símbolo y empresa
+        const queries = [
+            `${symbol} ${companyName} análisis`,
+            'criterios value investing',
+            'análisis fundamental acciones',
+        ];
+        
+        let allResults: string[] = [];
+        
+        for (const query of queries) {
+            const searchResult = await searchKnowledge(query, 3);
+            if (searchResult.success) {
+                allResults.push(
+                    ...searchResult.results
+                        .filter(r => r.score > 0.3)
+                        .map(r => r.content)
+                );
+            }
+        }
+        
+        // También buscar documentos específicos del símbolo
+        const symbolDocs = await KnowledgeModel.find({
+            'metadata.symbol': symbol.toUpperCase(),
+        })
+            .limit(5)
+            .lean();
+        
+        allResults.push(...symbolDocs.map((d: any) => d.content));
+        
+        // Eliminar duplicados y limitar contexto
+        const uniqueResults = [...new Set(allResults)];
+        const context = uniqueResults.slice(0, 10).join('\n\n---\n\n');
+        
+        return {
+            success: true,
+            context: context || 'No hay conocimiento específico disponible para esta acción.',
+        };
     } catch (error) {
-        console.error('Error getting analysis context:', error);
-        return { success: false, context: '' };
+        console.error('Error getting RAG context:', error);
+        return {
+            success: false,
+            context: '',
+        };
     }
 }
 
 /**
- * List documents in a collection
+ * Listar todos los documentos
  */
 export async function listDocuments(
-    collection: string,
     limit: number = 50
 ): Promise<{
     success: boolean;
@@ -127,34 +318,116 @@ export async function listDocuments(
         added_at: string;
         chunks: number;
         preview: string;
+        metadata?: Record<string, any>;
     }>;
 }> {
     try {
-        const res = await fetch(`${KB_API_URL}/knowledge/list/${collection}?limit=${limit}`, {
-            cache: 'no-store',
-        });
-        if (!res.ok) throw new Error('List failed');
-        return await res.json();
+        await connectToDatabase();
+        
+        // Agrupar por título para mostrar documentos únicos
+        const docs = await KnowledgeModel.aggregate([
+            {
+                $group: {
+                    _id: '$title',
+                    firstId: { $first: '$_id' },
+                    createdAt: { $first: '$createdAt' },
+                    preview: { $first: '$preview' },
+                    chunks: { $sum: 1 },
+                    metadata: { $first: '$metadata' },
+                },
+            },
+            { $sort: { createdAt: -1 } },
+            { $limit: limit },
+        ]);
+        
+        return {
+            success: true,
+            documents: docs.map((d: any) => ({
+                id: d.firstId.toString(),
+                title: d._id,
+                added_at: d.createdAt?.toISOString() || new Date().toISOString(),
+                chunks: d.chunks,
+                preview: d.preview,
+                metadata: d.metadata,
+            })),
+        };
     } catch (error) {
         console.error('Error listing documents:', error);
-        return { success: false, documents: [] };
+        return {
+            success: false,
+            documents: [],
+        };
     }
 }
 
 /**
- * Delete a document
+ * Eliminar un documento (todos sus chunks)
  */
 export async function deleteDocument(
-    collection: string,
-    documentId: string
-): Promise<{ success: boolean }> {
+    title: string
+): Promise<{ success: boolean; deleted?: number }> {
     try {
-        const res = await fetch(`${KB_API_URL}/knowledge/delete/${collection}/${documentId}`, {
-            method: 'DELETE',
-        });
-        return await res.json();
+        await connectToDatabase();
+        
+        const result = await KnowledgeModel.deleteMany({ title });
+        
+        return {
+            success: true,
+            deleted: result.deletedCount,
+        };
     } catch (error) {
         console.error('Error deleting document:', error);
         return { success: false };
     }
+}
+
+/**
+ * Obtener todo el contenido de la base de conocimiento
+ */
+export async function getAllKnowledgeContent(): Promise<{
+    success: boolean;
+    content: string;
+}> {
+    try {
+        await connectToDatabase();
+        
+        const docs = await KnowledgeModel.find({})
+            .sort({ title: 1, 'metadata.chunkIndex': 1 })
+            .limit(100)
+            .lean();
+        
+        const content = docs
+            .map((d: any) => `📄 ${d.title}\n${d.content}`)
+            .join('\n\n---\n\n');
+        
+        return {
+            success: true,
+            content: content || 'La base de conocimiento está vacía.',
+        };
+    } catch (error) {
+        console.error('Error getting all content:', error);
+        return {
+            success: false,
+            content: 'Error al cargar el contenido.',
+        };
+    }
+}
+
+/**
+ * Subir archivo (procesa el contenido y lo guarda)
+ */
+export async function uploadFile(
+    content: string,
+    filename: string,
+    fileType: string
+): Promise<{
+    success: boolean;
+    document_id?: string;
+    chunks_added?: number;
+    error?: string;
+}> {
+    return uploadDocument(content, filename, {
+        source: 'file_upload',
+        fileType,
+    });
 }
