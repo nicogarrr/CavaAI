@@ -50,6 +50,23 @@ async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T>
                 { status: res.status }
             );
         }
+        
+        // Verificar que la respuesta sea JSON antes de parsear
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            // Finnhub a veces devuelve HTML cuando hay rate limit o errores
+            const text = await res.text();
+            if (text.startsWith('<!DOCTYPE') || text.startsWith('<html')) {
+                throw new RateLimitError(`Finnhub returned HTML instead of JSON (likely rate limited)`);
+            }
+            // Intentar parsear de todos modos si no es HTML
+            try {
+                return JSON.parse(text) as T;
+            } catch {
+                throw new ExternalAPIError(`Invalid response format from Finnhub`, 'finnhub');
+            }
+        }
+        
         return (await res.json()) as T;
     } catch (error: unknown) {
         clearTimeout(timeoutId);
