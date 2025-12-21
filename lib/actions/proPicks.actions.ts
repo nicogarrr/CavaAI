@@ -91,6 +91,8 @@ async function selectBestPicksWithAI(
                     momentum: vsSector.momentum || 0,
                 },
                 reasons: pick.reasons,
+                upsidePotential: pick.upsidePotential,
+                isStrongBuy: pick.isStrongBuy,
             };
         });
 
@@ -340,7 +342,7 @@ export async function generateProPicks(
                         ...advancedScore.reasons.opportunities,
                     ].slice(0, 5);
 
-                    return {
+                    const pick: ProPick = {
                         symbol,
                         company: financialData.profile.name || symbol,
                         score: advancedScore.overallScore,
@@ -360,10 +362,10 @@ export async function generateProPicks(
                         upsidePotential: 0,
                         isStrongBuy: false,
                         targetPrice: 0,
-                    } as ProPick;
+                    };
 
                     // Calculate Upside Potential & Strong Buy Logic
-                    if (financialData.priceTarget && financialData.priceTarget.targetMean && currentPrice > 0) {
+                    if (financialData?.priceTarget?.targetMean && currentPrice > 0) {
                         const targetMean = financialData.priceTarget.targetMean;
                         const upside = ((targetMean - currentPrice) / currentPrice) * 100;
 
@@ -391,7 +393,7 @@ export async function generateProPicks(
             const batchResults = await Promise.all(batchPromises);
 
             // Filtrar nulos y agregar a resultados
-            batchResults.forEach(res => {
+            batchResults.forEach((res: ProPick | null) => {
                 if (res) allEvaluatedPicks.push(res);
             });
 
