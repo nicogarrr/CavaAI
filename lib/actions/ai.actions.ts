@@ -124,7 +124,7 @@ RESPONDE EN JSON EXACTO (sin markdown, solo JSON):
       }]
     };
 
-    const model = 'gemini-2.0-flash'; // Usar modelo rápido y capaz
+    const model = 'gemini-3-flash-preview'; // Usar modelo rápido y capaz
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const res = await fetch(endpoint, {
@@ -2177,7 +2177,7 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
 
   try {
     // Usar modelo con vision
-    const model = 'gemini-2.0-flash';
+    const model = 'gemini-3-flash-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const res = await fetch(endpoint, {
@@ -2359,7 +2359,7 @@ Responde en formato JSON:
 }`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2487,7 +2487,7 @@ Responde SOLO en JSON:
 }`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2680,7 +2680,7 @@ RESPONDE SOLO EN JSON VÁLIDO:
 }`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
