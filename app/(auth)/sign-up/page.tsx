@@ -10,7 +10,6 @@ import FooterLink from "@/components/forms/FooterLink";
 import {signUpWithEmail} from "@/lib/actions/auth.actions";
 import {useRouter} from "next/navigation";
 import {toast} from "sonner";
-import OpenDevSocietyBranding from "@/components/OpenDevSocietyBranding";
 import React from "react";
 
 const SignUp = () => {
@@ -67,7 +66,7 @@ const SignUp = () => {
                 <InputField
                     name="email"
                     label="Email"
-                    placeholder="opendevsociety@cc.cc"
+                    placeholder="email@ejemplo.com"
                     register={register}
                     error={errors.email}
                     validation={{
@@ -133,8 +132,6 @@ const SignUp = () => {
                 </Button>
 
                 <FooterLink text="Already have an account?" linkText="Sign in" href="/sign-in" />
-
-                <OpenDevSocietyBranding outerClassName="mt-10 flex justify-center"/>
             </form>
         </>
     )

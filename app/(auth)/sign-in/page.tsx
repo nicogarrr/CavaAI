@@ -8,7 +8,6 @@ import {signInWithEmail, signUpWithEmail} from "@/lib/actions/auth.actions";
 import {toast} from "sonner";
 import {signInEmail} from "better-auth/api";
 import {useRouter} from "next/navigation";
-import OpenDevSocietyBranding from "@/components/OpenDevSocietyBranding";
 import React from "react";
 
 const SignIn = () => {
@@ -50,7 +49,7 @@ const SignIn = () => {
                 <InputField
                     name="email"
                     label="Email"
-                    placeholder="opendevsociety@cc.cc"
+                    placeholder="email@ejemplo.com"
                     register={register}
                     error={errors.email}
                     validation={{
@@ -77,7 +76,6 @@ const SignIn = () => {
                 </Button>
 
                 <FooterLink text="Don't have an account?" linkText="Create an account" href="/sign-up" />
-                <OpenDevSocietyBranding outerClassName="mt-10 flex justify-center"/>
             </form>
         </>
     );
