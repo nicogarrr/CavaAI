@@ -38,8 +38,13 @@ async function diagnoseConnection() {
 
         // Probar una operación simple
         try {
-            await mongoose.connection.db.admin().ping();
-            console.log('✅ Ping exitoso - El servidor responde correctamente\n');
+            const db = mongoose.connection.db;
+            if (db) {
+                await db.admin().ping();
+                console.log('✅ Ping exitoso - El servidor responde correctamente\n');
+            } else {
+                console.warn('⚠️  Base de datos no disponible');
+            }
         } catch (pingError: any) {
             console.error('⚠️  Ping falló:', pingError.message);
         }
