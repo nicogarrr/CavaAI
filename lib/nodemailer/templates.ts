@@ -152,7 +152,7 @@ export const WELCOME_EMAIL_TEMPLATE = `<!DOCTYPE html>
                             <p class="mobile-text dark-text-muted" style="margin: 40px 0 0 0; font-size: 14px; line-height: 1.5; color: #CCDADC !important; text-align: center;">
                                 <a href="#" style="color: #CCDADC !important; text-decoration: underline;">Cancelar suscripción</a> |
                                 <a href="https://jlcavaai.vercel.app/" style="color: #CCDADC !important; text-decoration: underline;">Visitar JLCavaAI</a><br>
-                                © 2025 JLCavaAI
+                                © 2025 Nicolas Iglesias Garcia
                             </p>
                         </td>
                     </tr>
@@ -290,7 +290,7 @@ export const NEWS_SUMMARY_EMAIL_TEMPLATE = `<!DOCTYPE html>
                                     <a href="https://jlcavaai.vercel.app" style="color: #CCDADC !important; text-decoration: underline;">Visitar JLCavaAI</a>
                                 </p>
                                 <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #CCDADC !important;">
-                                    © 2025 JLCavaAI
+                                    © 2025 Nicolas Iglesias Garcia
                                 </p>
                             </div>
                         </td>
@@ -499,7 +499,7 @@ export const STOCK_ALERT_UPPER_EMAIL_TEMPLATE = `<!DOCTYPE html>
                                     <a href="https://jlcavaai.vercel.app/" style="color: #CCDADC !important; text-decoration: underline;">Visitar JLCavaAI</a>
                                 </p>
                                 <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #CCDADC !important;">
-                                    © 2025 JLCavaAI
+                                    © 2025 Nicolas Iglesias Garcia
                             </div>
                         </td>
                     </tr>
@@ -707,7 +707,7 @@ export const STOCK_ALERT_LOWER_EMAIL_TEMPLATE = `<!DOCTYPE html>
                                     <a href="https://jlcavaai.vercel.app/" style="color: #CCDADC !important; text-decoration: underline;">Visitar JLCavaAI</a>
                                 </p>
                                 <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #CCDADC !important;">
-                                    © 2025 JLCavaAI
+                                    © 2025 Nicolas Iglesias Garcia
                                 </p>
                             </div>
                         </td>
@@ -927,7 +927,7 @@ export const VOLUME_ALERT_EMAIL_TEMPLATE = `<!DOCTYPE html>
                                     <a href="https://jlcavaai.vercel.app" style="color: #CCDADC !important; text-decoration: underline;">Visitar JLCavaAI</a>
                                 </p>
                                 <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #CCDADC !important;">
-                                    © 2025 JLCavaAI
+                                    © 2025 Nicolas Iglesias Garcia
                                 </p>
                             </div>
                         </td>
@@ -1094,7 +1094,7 @@ export const INACTIVE_USER_REMINDER_EMAIL_TEMPLATE = `<!DOCTYPE html>
                                     <a href="https://jlcavaai.vercel.app" style="color: #CCDADC !important; text-decoration: underline;">Visitar JLCavaAI</a>
                                 </p>
                                 <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #CCDADC !important;">
-                                    © 2025 JLCavaAI
+                                    © 2025 Nicolas Iglesias Garcia
                                 </p>
                             </div>
                         </td>
