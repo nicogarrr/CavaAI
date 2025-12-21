@@ -293,10 +293,14 @@ async function getNewsYahoo(symbols?: string[], maxArticles = 15): Promise<Marke
         const symbol = symbols && symbols.length > 0 ? symbols[0] : '';
         if (!symbol) return [];
 
-        // Call local backend
-        // We use fetch since we are in a server action environment
-        // Assuming backend is running on default port 8000
-        const backendUrl = process.env.FMP_BACKEND_URL || 'http://127.0.0.1:8000';
+        // Solo usar backend si está configurado (no disponible en Vercel)
+        const backendUrl = process.env.FMP_BACKEND_URL;
+        
+        // En Vercel/serverless, no hay backend Python
+        if (!backendUrl || process.env.VERCEL) {
+            return [];
+        }
+        
         const url = `${backendUrl}/company-news/${symbol}?limit=${maxArticles}`;
 
         const response = await fetch(url, { next: { revalidate: 300 } });

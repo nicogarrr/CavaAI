@@ -2,12 +2,20 @@
 
 import { cache } from 'react';
 
-const FMP_BACKEND_URL = process.env.FMP_BACKEND_URL || 'http://127.0.0.1:8000';
+// Solo usar backend si está configurado explícitamente (no en Vercel)
+const FMP_BACKEND_URL = process.env.FMP_BACKEND_URL;
+const IS_SERVERLESS = process.env.VERCEL || !FMP_BACKEND_URL;
 
 /**
  * Generic fetch helper for FMP backend
+ * Returns null immediately in serverless environments (Vercel)
  */
 async function fetchFromBackend<T>(endpoint: string): Promise<T | null> {
+    // En Vercel/serverless, no hay backend Python disponible
+    if (IS_SERVERLESS) {
+        return null;
+    }
+    
     try {
         const response = await fetch(`${FMP_BACKEND_URL}${endpoint}`, {
             next: { revalidate: 3600 }, // Cache for 1 hour
@@ -683,6 +691,11 @@ export interface GarpStock {
 }
 
 export const getGarpStrategy = cache(async (limit: number = 20): Promise<{ strategy: string; count: number; data: GarpStock[] } | null> => {
+    // En Vercel/serverless, no hay backend Python disponible
+    if (IS_SERVERLESS) {
+        return null;
+    }
+    
     // Force no-store to ensure we get fresh data from the python backend every time
     // This is crucial for strategies that might change daily/hourly
     try {
