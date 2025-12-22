@@ -8,17 +8,37 @@ import { Gauge, Users, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useStockCache } from "@/lib/cache/useSessionCache";
 
 interface StockValuationProps {
     symbol: string;
 }
 
+interface CachedValuationData {
+    scoreData: FinancialScore | null;
+    peers: PeerCompany[];
+}
+
 export default function StockValuation({ symbol }: StockValuationProps) {
-    const [scoreData, setScoreData] = useState<FinancialScore | null>(null);
-    const [peers, setPeers] = useState<PeerCompany[]>([]);
-    const [loading, setLoading] = useState(true);
+    // Use session cache to persist data between tab changes (15 min TTL)
+    const {
+        data: cachedData,
+        setData: setCachedData
+    } = useStockCache<CachedValuationData>(symbol, 'valuation', { ttlMinutes: 15 });
+
+    const [scoreData, setScoreData] = useState<FinancialScore | null>(cachedData?.scoreData ?? null);
+    const [peers, setPeers] = useState<PeerCompany[]>(cachedData?.peers ?? []);
+    const [loading, setLoading] = useState(!cachedData);
 
     useEffect(() => {
+        // If we have cached data, use it and skip fetch
+        if (cachedData) {
+            setScoreData(cachedData.scoreData);
+            setPeers(cachedData.peers);
+            setLoading(false);
+            return;
+        }
+
         const fetchData = async () => {
             setLoading(true);
             try {
@@ -28,6 +48,8 @@ export default function StockValuation({ symbol }: StockValuationProps) {
                 ]);
                 setScoreData(scores);
                 setPeers(peerData || []);
+                // Save to cache
+                setCachedData({ scoreData: scores, peers: peerData || [] });
             } catch (error) {
                 console.error("Failed to fetch valuation data", error);
             } finally {
@@ -38,7 +60,7 @@ export default function StockValuation({ symbol }: StockValuationProps) {
         if (symbol) {
             fetchData();
         }
-    }, [symbol]);
+    }, [symbol, cachedData, setCachedData]);
 
     // Helpers for Score Colors
     const getAltmanColor = (score: number) => {

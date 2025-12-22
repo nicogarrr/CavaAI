@@ -10,9 +10,15 @@ import {
 } from 'recharts';
 import { TrendingUp, DollarSign, PieChart, Activity, Loader2 } from 'lucide-react';
 import { getFundamentals, getFinancialGrowth, type FundamentalsData, type GrowthData } from '@/lib/actions/fmp.actions';
+import { useStockCache } from '@/lib/cache/useSessionCache';
 
 interface StockFundamentalsProps {
     symbol: string;
+}
+
+interface CachedFundamentalsData {
+    fundamentals: FundamentalsData | null;
+    growth: GrowthData[] | null;
 }
 
 const formatBillions = (value: number) => {
@@ -43,12 +49,26 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function StockFundamentals({ symbol }: StockFundamentalsProps) {
-    const [fundamentals, setFundamentals] = useState<FundamentalsData | null>(null);
-    const [growth, setGrowth] = useState<GrowthData[] | null>(null);
-    const [loading, setLoading] = useState(true);
+    // Use session cache to persist data between tab changes (15 min TTL)
+    const {
+        data: cachedData,
+        setData: setCachedData
+    } = useStockCache<CachedFundamentalsData>(symbol, 'fundamentals', { ttlMinutes: 15 });
+
+    const [fundamentals, setFundamentals] = useState<FundamentalsData | null>(cachedData?.fundamentals ?? null);
+    const [growth, setGrowth] = useState<GrowthData[] | null>(cachedData?.growth ?? null);
+    const [loading, setLoading] = useState(!cachedData);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        // If we have cached data, use it and skip fetch
+        if (cachedData) {
+            setFundamentals(cachedData.fundamentals);
+            setGrowth(cachedData.growth);
+            setLoading(false);
+            return;
+        }
+
         async function fetchData() {
             try {
                 setLoading(true);
@@ -59,6 +79,8 @@ export default function StockFundamentals({ symbol }: StockFundamentalsProps) {
 
                 setFundamentals(fundData);
                 setGrowth(growthData?.growth || null);
+                // Save to cache
+                setCachedData({ fundamentals: fundData, growth: growthData?.growth || null });
             } catch (err) {
                 setError('Error loading fundamental data');
                 console.error(err);
@@ -67,7 +89,7 @@ export default function StockFundamentals({ symbol }: StockFundamentalsProps) {
             }
         }
         fetchData();
-    }, [symbol]);
+    }, [symbol, cachedData, setCachedData]);
 
     if (loading) {
         return (

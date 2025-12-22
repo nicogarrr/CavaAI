@@ -22,17 +22,17 @@ export async function extractTextFromPDF(
     try {
         // Importar pdf-parse dinámicamente para evitar problemas en edge runtime
         const pdfParse = (await import('pdf-parse')).default;
-        
+
         // Convertir base64 a Buffer
         const pdfBuffer = Buffer.from(base64Data, 'base64');
-        
+
         // Parsear el PDF
         const pdfData = await pdfParse(pdfBuffer);
-        
+
         if (!pdfData.text || pdfData.text.trim().length < 50) {
-            return { 
-                success: false, 
-                error: 'El PDF está vacío o es una imagen escaneada sin OCR.' 
+            return {
+                success: false,
+                error: 'El PDF está vacío o es una imagen escaneada sin OCR.'
             };
         }
 
@@ -66,7 +66,7 @@ export async function extractTextFromPDFWithGemini(
             return { success: false, error: 'API Key de Gemini no configurada' };
         }
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
 
         // Preparar el PDF como parte del prompt
         const result = await model.generateContent([
@@ -96,9 +96,9 @@ Documento: ${filename}`,
         const extractedText = response.text();
 
         if (!extractedText || extractedText.length < 50) {
-            return { 
-                success: false, 
-                error: 'No se pudo extraer texto del PDF. Puede estar escaneado o protegido.' 
+            return {
+                success: false,
+                error: 'No se pudo extraer texto del PDF. Puede estar escaneado o protegido.'
             };
         }
 
@@ -136,30 +136,30 @@ async function generateEmbedding(text: string): Promise<number[]> {
 function chunkText(text: string, chunkSize: number = 1000, overlap: number = 100): string[] {
     const chunks: string[] = [];
     let start = 0;
-    
+
     while (start < text.length) {
         let end = start + chunkSize;
-        
+
         // Intentar cortar en un punto natural (párrafo o frase)
         if (end < text.length) {
             const lastParagraph = text.lastIndexOf('\n\n', end);
             const lastPeriod = text.lastIndexOf('. ', end);
-            
+
             if (lastParagraph > start + chunkSize / 2) {
                 end = lastParagraph + 2;
             } else if (lastPeriod > start + chunkSize / 2) {
                 end = lastPeriod + 2;
             }
         }
-        
+
         const chunk = text.slice(start, end).trim();
         if (chunk.length > 50) {
             chunks.push(chunk);
         }
-        
+
         start = end - overlap;
     }
-    
+
     return chunks;
 }
 
@@ -173,10 +173,10 @@ export async function getKnowledgeStats(): Promise<{
 }> {
     try {
         await connectToDatabase();
-        
+
         const totalChunks = await KnowledgeModel.countDocuments();
         const uniqueTitles = await KnowledgeModel.distinct('title');
-        
+
         return {
             success: true,
             stats: {
@@ -214,23 +214,23 @@ export async function uploadDocument(
 }> {
     try {
         await connectToDatabase();
-        
+
         // Dividir en chunks
         const chunks = chunkText(content);
         const docTitle = title || `Documento ${new Date().toISOString()}`;
-        
+
         let chunksAdded = 0;
         let documentId = '';
-        
+
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
-            
+
             // Generar embedding para este chunk
             const embedding = await generateEmbedding(chunk);
-            
+
             // Crear preview
             const preview = chunk.substring(0, 200) + (chunk.length > 200 ? '...' : '');
-            
+
             // Guardar en MongoDB
             const doc = await KnowledgeModel.create({
                 title: docTitle,
@@ -243,13 +243,13 @@ export async function uploadDocument(
                 },
                 preview,
             });
-            
+
             if (i === 0) {
                 documentId = (doc._id as any).toString();
             }
             chunksAdded++;
         }
-        
+
         return {
             success: true,
             document_id: documentId,
@@ -282,14 +282,14 @@ export async function searchKnowledge(
 }> {
     try {
         await connectToDatabase();
-        
+
         // Generar embedding de la query
         const queryEmbedding = await generateEmbedding(query);
-        
+
         // Búsqueda vectorial usando MongoDB Atlas Search
         // Si el índice vectorial no está configurado, usar búsqueda de texto
         let results: any[] = [];
-        
+
         try {
             // Intentar búsqueda vectorial
             results = await KnowledgeModel.aggregate([
@@ -314,7 +314,7 @@ export async function searchKnowledge(
             ]);
         } catch (vectorError) {
             console.log('Vector search not available, falling back to text search');
-            
+
             // Fallback: búsqueda de texto tradicional
             const textResults = await KnowledgeModel.find(
                 { $text: { $search: query } },
@@ -323,7 +323,7 @@ export async function searchKnowledge(
                 .sort({ score: { $meta: 'textScore' } })
                 .limit(nResults)
                 .lean();
-            
+
             // Normalizar scores para texto
             results = textResults.map((r) => ({
                 content: r.content,
@@ -333,7 +333,7 @@ export async function searchKnowledge(
                 score: Math.min((r as any).score / 10, 1), // Normalizar entre 0-1
             }));
         }
-        
+
         return {
             success: true,
             results: results.map((r: any) => ({
@@ -366,16 +366,16 @@ export async function getRAGContext(
 }> {
     try {
         await connectToDatabase();
-        
+
         // Buscar conocimiento relevante para este símbolo y empresa
         const queries = [
             `${symbol} ${companyName} análisis`,
             'criterios value investing',
             'análisis fundamental acciones',
         ];
-        
+
         let allResults: string[] = [];
-        
+
         for (const query of queries) {
             const searchResult = await searchKnowledge(query, 3);
             if (searchResult.success) {
@@ -386,20 +386,20 @@ export async function getRAGContext(
                 );
             }
         }
-        
+
         // También buscar documentos específicos del símbolo
         const symbolDocs = await KnowledgeModel.find({
             'metadata.symbol': symbol.toUpperCase(),
         })
             .limit(5)
             .lean();
-        
+
         allResults.push(...symbolDocs.map((d: any) => d.content));
-        
+
         // Eliminar duplicados y limitar contexto
         const uniqueResults = [...new Set(allResults)];
         const context = uniqueResults.slice(0, 10).join('\n\n---\n\n');
-        
+
         return {
             success: true,
             context: context || 'No hay conocimiento específico disponible para esta acción.',
@@ -431,7 +431,7 @@ export async function listDocuments(
 }> {
     try {
         await connectToDatabase();
-        
+
         // Agrupar por título para mostrar documentos únicos
         const docs = await KnowledgeModel.aggregate([
             {
@@ -447,7 +447,7 @@ export async function listDocuments(
             { $sort: { createdAt: -1 } },
             { $limit: limit },
         ]);
-        
+
         return {
             success: true,
             documents: docs.map((d: any) => ({
@@ -476,9 +476,9 @@ export async function deleteDocument(
 ): Promise<{ success: boolean; deleted?: number }> {
     try {
         await connectToDatabase();
-        
+
         const result = await KnowledgeModel.deleteMany({ title });
-        
+
         return {
             success: true,
             deleted: result.deletedCount,
@@ -498,16 +498,16 @@ export async function getAllKnowledgeContent(): Promise<{
 }> {
     try {
         await connectToDatabase();
-        
+
         const docs = await KnowledgeModel.find({})
             .sort({ title: 1, 'metadata.chunkIndex': 1 })
             .limit(100)
             .lean();
-        
+
         const content = docs
             .map((d: any) => `📄 ${d.title}\n${d.content}`)
             .join('\n\n---\n\n');
-        
+
         return {
             success: true,
             content: content || 'La base de conocimiento está vacía.',
