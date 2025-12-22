@@ -176,9 +176,9 @@ export default function AIChecklistSection({
             {/* Detailed Answers */}
             {expanded && result?.answers && (
                 <div className="space-y-2 mt-4">
-                    {result.answers.map((answer) => (
+                    {result.answers.map((answer, index) => (
                         <div
-                            key={answer.questionId}
+                            key={`${answer.questionId}-${index}`}
                             className="flex items-start gap-3 p-3 bg-gray-900 rounded-lg"
                         >
                             <Badge className={`${ANSWER_COLORS[answer.answer]} shrink-0`}>
