@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingUp, TrendingDown, Shield, DollarSign, Activity, Loader2 } from 'lucide-react';
+import { useStockCache } from '@/lib/cache/useSessionCache';
 
 interface HealthScoreProps {
     symbol: string;
@@ -41,17 +42,31 @@ const getGradeColor = (grade: string) => {
 };
 
 export default function HealthScore({ symbol }: HealthScoreProps) {
-    const [healthScore, setHealthScore] = useState<HealthScoreData | null>(null);
-    const [loading, setLoading] = useState(true);
+    // Use session cache to persist data between tab changes (15 min TTL)
+    const {
+        data: cachedData,
+        setData: setCachedData
+    } = useStockCache<HealthScoreData | null>(symbol, 'healthscore', { ttlMinutes: 15 });
+
+    const [healthScore, setHealthScore] = useState<HealthScoreData | null>(cachedData ?? null);
+    const [loading, setLoading] = useState(!cachedData);
     const [error, setError] = useState(false);
 
     useEffect(() => {
+        // If we have cached data, use it and skip fetch
+        if (cachedData) {
+            setHealthScore(cachedData);
+            setLoading(false);
+            return;
+        }
+
         async function fetchData() {
             try {
                 setLoading(true);
                 setError(false);
                 const data = await getStockHealthScore(symbol);
                 setHealthScore(data);
+                setCachedData(data); // Save to cache
             } catch (err) {
                 console.error('Error fetching health score:', err);
                 setError(true);
@@ -60,7 +75,7 @@ export default function HealthScore({ symbol }: HealthScoreProps) {
             }
         }
         fetchData();
-    }, [symbol]);
+    }, [symbol, cachedData, setCachedData]);
 
     if (loading) {
         return (

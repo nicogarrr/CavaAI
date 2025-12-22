@@ -1,28 +1,44 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Brain, AlertTriangle, CheckCircle, Lightbulb, ShieldCheck, Loader2, PlusCircle, ArrowUpCircle, TrendingUp } from 'lucide-react';
+import { Brain, AlertTriangle, CheckCircle, Lightbulb, ShieldCheck, Loader2, PlusCircle, ArrowUpCircle, TrendingUp, RefreshCw } from 'lucide-react';
 import { generatePortfolioStrategyAnalysis } from '@/lib/actions/ai.actions';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { useSessionCache } from '@/lib/cache/useSessionCache';
 
 interface PortfolioStrategyInsightProps {
     portfolioSummary: any;
 }
 
 export function PortfolioStrategyInsight({ portfolioSummary }: PortfolioStrategyInsightProps) {
+    // Use session cache to persist analysis between tab changes (30 min TTL)
+    const {
+        data: cachedAnalysis,
+        setData: setCachedAnalysis,
+        isFromCache
+    } = useSessionCache<any>('portfolio-strategy-analysis', { ttlMinutes: 30 });
+
     const [analysis, setAnalysis] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+
+    // Load cached data on mount
+    useEffect(() => {
+        if (cachedAnalysis && !analysis) {
+            setAnalysis(cachedAnalysis);
+        }
+    }, [cachedAnalysis, analysis]);
 
     async function handleAnalyze() {
         setLoading(true);
         try {
             const result = await generatePortfolioStrategyAnalysis(portfolioSummary);
             setAnalysis(result);
+            setCachedAnalysis(result); // Save to session cache
             if (result.alignmentScore > 80) {
                 toast.success('¡Tu cartera está muy bien alineada con tu estrategia!');
             } else if (result.alignmentScore < 50) {
@@ -70,12 +86,19 @@ export function PortfolioStrategyInsight({ portfolioSummary }: PortfolioStrategy
                     <div className="flex items-center gap-2">
                         <Brain className="h-5 w-5 text-indigo-400" />
                         <CardTitle>Análisis de Estrategia Personal</CardTitle>
+                        {isFromCache && (
+                            <Badge variant="outline" className="text-xs text-slate-400 border-slate-600">
+                                Guardado
+                            </Badge>
+                        )}
                     </div>
-                    {analysis && (
-                        <Badge variant={analysis.alignmentScore > 75 ? "default" : "destructive"} className="text-base px-3">
-                            Score: {analysis.alignmentScore}/100
-                        </Badge>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {analysis && (
+                            <Badge variant={analysis.alignmentScore > 75 ? "default" : "destructive"} className="text-base px-3">
+                                Score: {analysis.alignmentScore}/100
+                            </Badge>
+                        )}
+                    </div>
                 </div>
                 <CardDescription>
                     Basado en tus documentos de conocimiento y reglas de inversión.
@@ -163,8 +186,8 @@ export function PortfolioStrategyInsight({ portfolioSummary }: PortfolioStrategy
                                 </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                     {analysis.stocksToAdd.map((stock: { symbol: string; reason: string; potentialImpact: string }, i: number) => (
-                                        <Link 
-                                            key={i} 
+                                        <Link
+                                            key={i}
                                             href={`/stocks/${stock.symbol}`}
                                             className="block p-3 bg-cyan-500/10 rounded-lg border border-cyan-500/30 hover:bg-cyan-500/20 transition-colors cursor-pointer"
                                         >
@@ -194,8 +217,8 @@ export function PortfolioStrategyInsight({ portfolioSummary }: PortfolioStrategy
                                 </h4>
                                 <div className="space-y-3">
                                     {analysis.suggestedChanges.map((change: { action: string; symbol?: string; impact: string; newScoreEstimate: number }, i: number) => (
-                                        <div 
-                                            key={i} 
+                                        <div
+                                            key={i}
                                             className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/30 flex items-start justify-between gap-4"
                                         >
                                             <div className="flex-1">
@@ -211,7 +234,7 @@ export function PortfolioStrategyInsight({ portfolioSummary }: PortfolioStrategy
                                             </div>
                                             <div className="text-right flex-shrink-0">
                                                 <div className="text-xs text-slate-500 mb-1">Nuevo Score</div>
-                                                <Badge 
+                                                <Badge
                                                     variant={change.newScoreEstimate > analysis.alignmentScore ? "default" : "secondary"}
                                                     className={change.newScoreEstimate > analysis.alignmentScore ? "bg-green-600" : ""}
                                                 >
@@ -224,7 +247,7 @@ export function PortfolioStrategyInsight({ portfolioSummary }: PortfolioStrategy
                                         </div>
                                     ))}
                                 </div>
-                                
+
                                 {/* Score potencial máximo */}
                                 {analysis.suggestedChanges.length > 0 && (
                                     <div className="mt-4 p-3 bg-gradient-to-r from-green-950/50 to-emerald-950/50 rounded-lg border border-green-500/30">
