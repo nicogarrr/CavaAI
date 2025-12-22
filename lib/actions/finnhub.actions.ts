@@ -683,14 +683,40 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
 
 // Helper para obtener solo la cotización (más ligero que getStockFinancialData)
 export async function getStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
+    // Try Finnhub first
     try {
         const token = env.FINNHUB_API_KEY;
-        if (!token) return null;
-        const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`;
-        return await fetchJSON<any>(url, 60);
-    } catch {
-        return null;
+        if (token) {
+            const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`;
+            const data = await fetchJSON<any>(url, 60);
+            // Verify we got valid data (Finnhub returns all zeros for invalid symbols)
+            if (data && (data.c > 0 || data.pc > 0)) {
+                return data;
+            }
+        }
+    } catch (error) {
+        console.log(`Finnhub quote failed for ${symbol}, trying Yahoo Finance...`);
     }
+    
+    // Fallback to Python backend with Yahoo Finance
+    const backendUrl = process.env.FMP_BACKEND_URL;
+    if (backendUrl && !process.env.VERCEL) {
+        try {
+            const response = await fetch(`${backendUrl}/quote/${encodeURIComponent(symbol)}`, {
+                next: { revalidate: 60 },
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data && (data.c > 0 || data.pc > 0)) {
+                    return data;
+                }
+            }
+        } catch (error) {
+            console.error(`Yahoo Finance quote also failed for ${symbol}:`, error);
+        }
+    }
+    
+    return null;
 }
 
 export type EarningsEvent = {

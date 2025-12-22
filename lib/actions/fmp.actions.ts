@@ -927,26 +927,59 @@ async function getFinnhubPeers(symbol: string): Promise<string[]> {
 }
 
 export const getStockPeers = cache(async (symbol: string): Promise<PeerCompany[]> => {
-    // Try Finnhub first (they have good peer data)
+    // Try Python backend first with prices (only works locally)
+    if (!IS_SERVERLESS) {
+        try {
+            const data = await fetchFromBackend<PeerCompany[]>(`/stock-peers/${symbol}?with_prices=true`);
+            if (data && data.length > 0) {
+                return data;
+            }
+        } catch (error) {
+            console.error("Error fetching peers from backend:", error);
+        }
+    }
+    
+    // Fallback to Finnhub for peer symbols, then try to get prices
     const finnhubPeers = await getFinnhubPeers(symbol);
     if (finnhubPeers.length > 0) {
-        // Convert to PeerCompany format (basic info only)
+        // On serverless, we can't get prices easily - return basic info
+        if (IS_SERVERLESS) {
+            return finnhubPeers.slice(0, 8).map(peerSymbol => ({
+                symbol: peerSymbol,
+                companyName: peerSymbol,
+                price: 0,
+                mktCap: 0,
+            }));
+        }
+        
+        // On local, get prices from backend batch endpoint
+        try {
+            const response = await fetch(`${FMP_BACKEND_URL}/batch-quotes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(finnhubPeers.slice(0, 8)),
+            });
+            
+            if (response.ok) {
+                const quotes = await response.json() as Record<string, { price: number; marketCap: number; companyName: string }>;
+                return finnhubPeers.slice(0, 8).map(peerSymbol => ({
+                    symbol: peerSymbol,
+                    companyName: quotes[peerSymbol]?.companyName || peerSymbol,
+                    price: quotes[peerSymbol]?.price || 0,
+                    mktCap: quotes[peerSymbol]?.marketCap || 0,
+                }));
+            }
+        } catch (error) {
+            console.error("Error fetching batch quotes:", error);
+        }
+        
+        // Return without prices if batch fetch fails
         return finnhubPeers.slice(0, 8).map(peerSymbol => ({
             symbol: peerSymbol,
-            companyName: peerSymbol, // Will be resolved by UI if needed
+            companyName: peerSymbol,
             price: 0,
             mktCap: 0,
         }));
-    }
-    
-    // Fallback to Python backend (only works locally)
-    if (!IS_SERVERLESS) {
-        try {
-            const data = await fetchFromBackend<PeerCompany[]>(`/stock-peers/${symbol}`);
-            return data || [];
-        } catch (error) {
-            console.error("Error fetching peers:", error);
-        }
     }
     
     return [];

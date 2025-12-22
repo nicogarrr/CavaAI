@@ -177,6 +177,87 @@ def fetch_yf_insider_trading(symbol: str, limit: int = 50) -> List[Dict[str, Any
         print(f"Error fetching Yahoo Finance insider trading for {symbol}: {e}")
         return []
 
+def fetch_yf_batch_quotes(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+    """
+    Fetch quotes for multiple symbols at once using yfinance.
+    Returns dict with symbol as key and quote data as value.
+    """
+    result = {}
+    
+    if not symbols:
+        return result
+    
+    try:
+        # Process in batches of 10 to avoid timeouts
+        batch_size = 10
+        for i in range(0, len(symbols), batch_size):
+            batch = symbols[i:i + batch_size]
+            
+            for symbol in batch:
+                try:
+                    ticker = yf.Ticker(symbol)
+                    info = ticker.info
+                    
+                    # Get current price and basic info
+                    current_price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+                    prev_close = info.get("previousClose", 0)
+                    
+                    result[symbol.upper()] = {
+                        "symbol": symbol.upper(),
+                        "price": current_price,
+                        "change": round(current_price - prev_close, 2) if prev_close else 0,
+                        "changePercent": round(((current_price - prev_close) / prev_close * 100), 2) if prev_close else 0,
+                        "marketCap": info.get("marketCap", 0),
+                        "companyName": info.get("shortName", symbol),
+                        "open": info.get("open", 0),
+                        "high": info.get("dayHigh", 0),
+                        "low": info.get("dayLow", 0),
+                        "volume": info.get("volume", 0),
+                    }
+                except Exception as e:
+                    print(f"Error fetching quote for {symbol}: {e}")
+                    result[symbol.upper()] = {
+                        "symbol": symbol.upper(),
+                        "price": 0,
+                        "change": 0,
+                        "changePercent": 0,
+                        "marketCap": 0,
+                        "companyName": symbol,
+                    }
+        
+        return result
+        
+    except Exception as e:
+        print(f"Error in batch quote fetch: {e}")
+        return result
+
+
+def fetch_yf_single_quote(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch a single stock quote from Yahoo Finance.
+    Returns quote data in Finnhub-compatible format.
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        current_price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+        prev_close = info.get("previousClose", 0)
+        
+        return {
+            "c": current_price,  # Current price
+            "d": round(current_price - prev_close, 2) if prev_close else 0,  # Change
+            "dp": round(((current_price - prev_close) / prev_close * 100), 2) if prev_close else 0,  # Change percent
+            "h": info.get("dayHigh", 0),  # High
+            "l": info.get("dayLow", 0),  # Low
+            "o": info.get("open", 0),  # Open
+            "pc": prev_close,  # Previous close
+        }
+    except Exception as e:
+        print(f"Error fetching Yahoo Finance quote for {symbol}: {e}")
+        return None
+
+
 def fetch_yf_news(symbol: str, limit: int = 15) -> List[Dict[str, Any]]:
     """
     Fetch company news from Yahoo Finance.

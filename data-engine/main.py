@@ -1,8 +1,8 @@
 import os
 # Force reload v3 - YF dividends with label field
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
+from typing import Optional, List
 from modules.fmp import (
     fetch_income_statement,
     fetch_balance_sheet,
@@ -371,7 +371,7 @@ async def get_general_news(page: int = 0, limit: int = 20):
     data = fetch_general_news(page, limit)
     return data
 
-from modules.yfinance_utils import fetch_yf_dividends, fetch_yf_stock_info
+from modules.yfinance_utils import fetch_yf_dividends, fetch_yf_stock_info, fetch_yf_batch_quotes, fetch_yf_single_quote
 from datetime import datetime, timedelta
 
 @app.get("/dividends/{symbol}")
@@ -398,13 +398,67 @@ async def get_dividends(symbol: str, limit: int = Query(50, description="Number 
     return dividends
 
 @app.get("/stock-peers/{symbol}")
-async def get_stock_peers_endpoint(symbol: str):
+async def get_stock_peers_endpoint(symbol: str, with_prices: bool = Query(False, description="Include current prices")):
+    """
+    Fetch stock peers. If with_prices=True, enriches data with current prices from Yahoo Finance.
+    """
     symbol = symbol.upper()
     data = fetch_stock_peers(symbol)
-    # Stable API returns array of peer objects: [{symbol, companyName, price, mktCap}]
-    if isinstance(data, list):
-        return data
-    return []
+    
+    if not isinstance(data, list) or not data:
+        return []
+    
+    # If we just have symbols (list of strings), convert to objects
+    if data and isinstance(data[0], str):
+        peer_symbols = data[:8]  # Limit to 8 peers
+    else:
+        # Already objects with symbol field
+        peer_symbols = [p.get("symbol", p) if isinstance(p, dict) else p for p in data[:8]]
+    
+    # Enrich with prices if requested
+    if with_prices and peer_symbols:
+        quotes = fetch_yf_batch_quotes(peer_symbols)
+        result = []
+        for sym in peer_symbols:
+            sym_upper = sym.upper() if isinstance(sym, str) else sym
+            quote = quotes.get(sym_upper, {})
+            result.append({
+                "symbol": sym_upper,
+                "companyName": quote.get("companyName", sym_upper),
+                "price": quote.get("price", 0),
+                "mktCap": quote.get("marketCap", 0),
+                "change": quote.get("change", 0),
+                "changePercent": quote.get("changePercent", 0),
+            })
+        return result
+    
+    # Return basic format
+    return [{"symbol": s.upper() if isinstance(s, str) else s, "companyName": s, "price": 0, "mktCap": 0} for s in peer_symbols]
+
+
+@app.get("/quote/{symbol}")
+async def get_stock_quote_endpoint(symbol: str):
+    """
+    Fetch stock quote from Yahoo Finance.
+    Returns Finnhub-compatible format for easy integration.
+    """
+    symbol = symbol.upper()
+    quote = fetch_yf_single_quote(symbol)
+    if quote:
+        return quote
+    return {"c": 0, "d": 0, "dp": 0, "h": 0, "l": 0, "o": 0, "pc": 0}
+
+
+@app.post("/batch-quotes")
+async def get_batch_quotes(symbols: List[str] = Body(..., description="List of stock symbols")):
+    """
+    Fetch quotes for multiple symbols at once using Yahoo Finance.
+    """
+    if not symbols:
+        return {}
+    # Limit to 20 symbols to avoid timeouts
+    limited_symbols = [s.upper() for s in symbols[:20]]
+    return fetch_yf_batch_quotes(limited_symbols)
 
 @app.get("/insider-trading/{symbol}")
 async def get_insider_trading(symbol: str, limit: int = Query(50, description="Number of transactions to return")):
@@ -713,59 +767,6 @@ async def upload_files(
             })
     
 
-# ============================================================================
-# FUNDS & ETF RANKING
-# ============================================================================
-
-from modules.funds import get_fund_ranking, scrape_all_categories, init_db
-
-# Initialize database on startup
-init_db()
-
-@app.get("/funds/ranking")
-async def get_ranking(category: str = "default", limit: int = 10, indexed: str = "all"):
-    """
-    Get top funds ranking by category.
-    Category can be a short code ('world', 'tech', 'sp500', 'oro', etc.)
-    The category is mapped to Finect category names in the funds module.
-    
-    Args:
-        indexed: 'all' for both, 'true' for indexed/passive, 'false' for active
-    """
-    try:
-        print(f"DEBUG API: Received category={category}, limit={limit}, indexed={indexed}")
-        
-        # Call the module - it handles category mapping via CATEGORY_FILTER_MAP
-        ranking = get_fund_ranking(category, limit=limit, indexed=indexed)
-        
-        return {
-            "success": True, 
-            "category": category,
-            "indexed": indexed,
-            "count": len(ranking),
-            "data": ranking
-        }
-    except Exception as e:
-        print(f"Error in /funds/ranking: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/test")
 async def test_endpoint():
     return {"status": "ok"}
-
-@app.get("/funds/categories")
-async def get_fund_categories():
-    """
-    Get all available fund categories from Finect.
-    Returns list of categories with their IDs and URLs for fund listings.
-    """
-    try:
-        categories = scrape_all_categories()
-        return {
-            "success": True,
-            "count": len(categories),
-            "data": categories
-        }
-    except Exception as e:
-        print(f"Error in /funds/categories: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
