@@ -19,34 +19,9 @@ export async function extractTextFromPDF(
     text?: string;
     error?: string;
 }> {
-    try {
-        // Importar pdf-parse dinámicamente para evitar problemas en edge runtime
-        const pdfParse = (await import('pdf-parse')).default;
-
-        // Convertir base64 a Buffer
-        const pdfBuffer = Buffer.from(base64Data, 'base64');
-
-        // Parsear el PDF
-        const pdfData = await pdfParse(pdfBuffer);
-
-        if (!pdfData.text || pdfData.text.trim().length < 50) {
-            return {
-                success: false,
-                error: 'El PDF está vacío o es una imagen escaneada sin OCR.'
-            };
-        }
-
-        return {
-            success: true,
-            text: pdfData.text,
-        };
-    } catch (error: any) {
-        console.error('Error extracting PDF locally:', error);
-        return {
-            success: false,
-            error: error.message || 'Error al procesar el PDF',
-        };
-    }
+    // Ya no usamos pdf-parse local - directamente usamos Gemini para extraer texto
+    // Esto evita problemas de edge runtime y maneja mejor PDFs escaneados
+    return extractTextFromPDFWithGemini(base64Data, filename);
 }
 
 /**
@@ -120,11 +95,16 @@ Documento: ${filename}`,
  */
 async function generateEmbedding(text: string): Promise<number[]> {
     try {
-        const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
-        const result = await model.embedContent(text);
+        // Truncate text to avoid exceeding limits (max ~10k tokens)
+        const truncatedText = text.length > 10000 ? text.substring(0, 10000) : text;
+
+        // Use the stable embedding model
+        const model = genAI.getGenerativeModel({ model: 'embedding-001' });
+        const result = await model.embedContent(truncatedText);
         return result.embedding.values;
-    } catch (error) {
-        console.error('Error generating embedding:', error);
+    } catch (error: any) {
+        // Log more details for debugging
+        console.error('Error generating embedding:', error?.message || error);
         // Fallback: vector de ceros (no ideal, pero evita errores)
         return new Array(768).fill(0);
     }

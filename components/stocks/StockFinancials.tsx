@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Activity, Loader2 } from 'lucide-react';
 import { getRatiosTTM, getKeyMetricsTTM } from "@/lib/actions/fmp.actions";
+import { getProfile } from "@/lib/actions/finnhub.actions";
 
 interface StockFinancialsProps {
     symbol: string;
@@ -32,19 +33,28 @@ export default function StockFinancials({ symbol }: StockFinancialsProps) {
         async function fetchData() {
             try {
                 setLoading(true);
-                const [ratiosData, keyMetricsData] = await Promise.all([
+                // Fetch from FMP and Finnhub in parallel
+                const [ratiosData, keyMetricsData, profileData] = await Promise.all([
                     getRatiosTTM(symbol),
-                    getKeyMetricsTTM(symbol)
+                    getKeyMetricsTTM(symbol),
+                    getProfile(symbol) // Finnhub for fallback
                 ]);
 
                 const ratios = ratiosData?.ratios?.[0];
                 const keyMetrics = keyMetricsData?.keyMetrics?.[0];
+                const profile = profileData as any;
+
+                // Get market cap - try FMP first, then Finnhub
+                let marketCap = keyMetrics?.marketCapTTM ? keyMetrics.marketCapTTM / 1000000 : undefined;
+                if (!marketCap && profile?.marketCapitalization) {
+                    marketCap = profile.marketCapitalization; // Finnhub returns in millions
+                }
 
                 // Map FMP data to component metrics
                 setMetrics({
                     peTTM: ratios?.peRatioTTM ?? keyMetrics?.peRatioTTM,
                     epsTTM: keyMetrics?.netIncomePerShareTTM ?? undefined,
-                    marketCapitalization: keyMetrics?.marketCapTTM ? keyMetrics.marketCapTTM / 1000000 : undefined, // Convert to Millions
+                    marketCapitalization: marketCap,
                     dividendYield: (ratios?.dividendYieldTTM ?? keyMetrics?.dividendYieldTTM) ? (ratios?.dividendYieldTTM ?? keyMetrics?.dividendYieldTTM!) * 100 : undefined,
                     grossMarginTTM: (ratios?.grossProfitMarginTTM) ? ratios.grossProfitMarginTTM * 100 : undefined,
                     operatingMarginTTM: (ratios?.operatingProfitMarginTTM) ? ratios.operatingProfitMarginTTM * 100 : undefined,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getCompanyNews } from '@/lib/actions/fmp.actions';
+import { getCompanyNewsWithFallback } from '@/lib/actions/newsSources.actions';
 import PaginatedNews from './PaginatedNews';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, Newspaper } from 'lucide-react';
@@ -18,7 +18,7 @@ export default function StockNews({ symbol }: StockNewsProps) {
         async function fetchData() {
             try {
                 setLoading(true);
-                const newsData = await getCompanyNews(symbol, 15);
+                const newsData = await getCompanyNewsWithFallback(symbol, 15);
                 setMarketNews(newsData || []);
             } catch (err) {
                 console.error('Error fetching news:', err);

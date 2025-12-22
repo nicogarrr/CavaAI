@@ -16,7 +16,7 @@ export async function getRAGContext(symbol: string, companyName: string): Promis
   try {
     // Importar la función de knowledge.actions
     const { getRAGContext: getRAGContextFromKB } = await import('@/lib/actions/knowledge.actions');
-    
+
     const result = await getRAGContextFromKB(symbol, companyName);
 
     if (result.success && result.context) {
@@ -2698,49 +2698,76 @@ RESPONDE SOLO EN JSON VÁLIDO:
 
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Try to extract JSON from the response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
+      try {
+        // Sanitize JSON before parsing (handle common Gemini issues)
+        let jsonStr = jsonMatch[0];
 
-      const intrinsicValue = parseFloat(parsed.intrinsicValue) || input.currentPrice;
-      const marginOfSafety = ((intrinsicValue - input.currentPrice) / intrinsicValue) * 100;
+        // Remove trailing commas before } or ]
+        jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
 
-      let verdict: 'UNDERVALUED' | 'FAIRLY_VALUED' | 'OVERVALUED';
-      if (marginOfSafety > 15) verdict = 'UNDERVALUED';
-      else if (marginOfSafety < -15) verdict = 'OVERVALUED';
-      else verdict = 'FAIRLY_VALUED';
+        // Try to fix unescaped quotes within strings (basic attempt)
+        jsonStr = jsonStr.replace(/:\s*"([^"]*?)(?<!\\)"([^"]*?)"/g, ': "$1\\"$2"');
 
-      return {
-        intrinsicValue,
-        marginOfSafety,
-        verdict,
-        wacc: parsed.wacc || 9,
-        costOfEquity: parsed.costOfEquity || 10,
-        terminalValue: (parsed.terminalValue || 0) * 1e9,
-        scenarios: {
-          bear: {
-            price: parsed.scenarios?.bear?.price || input.currentPrice * 0.7,
-            probability: parsed.scenarios?.bear?.probability || 25
+        const parsed = JSON.parse(jsonStr);
+
+        const intrinsicValue = parseFloat(parsed.intrinsicValue) || input.currentPrice;
+        const marginOfSafety = ((intrinsicValue - input.currentPrice) / intrinsicValue) * 100;
+
+        let verdict: 'UNDERVALUED' | 'FAIRLY_VALUED' | 'OVERVALUED';
+        if (marginOfSafety > 15) verdict = 'UNDERVALUED';
+        else if (marginOfSafety < -15) verdict = 'OVERVALUED';
+        else verdict = 'FAIRLY_VALUED';
+
+        return {
+          intrinsicValue,
+          marginOfSafety,
+          verdict,
+          wacc: parsed.wacc || 9,
+          costOfEquity: parsed.costOfEquity || 10,
+          terminalValue: (parsed.terminalValue || 0) * 1e9,
+          scenarios: {
+            bear: {
+              price: parsed.scenarios?.bear?.price || input.currentPrice * 0.7,
+              probability: parsed.scenarios?.bear?.probability || 25
+            },
+            base: {
+              price: parsed.scenarios?.base?.price || intrinsicValue,
+              probability: parsed.scenarios?.base?.probability || 50
+            },
+            bull: {
+              price: parsed.scenarios?.bull?.price || input.currentPrice * 1.4,
+              probability: parsed.scenarios?.bull?.probability || 25
+            }
           },
-          base: {
-            price: parsed.scenarios?.base?.price || intrinsicValue,
-            probability: parsed.scenarios?.base?.probability || 50
+          apiFeedback: {
+            fmpDcf: apiData.fmpDcf,
+            aiAgreement: parsed.apiFeedback?.aiAgreement || 'agree',
+            adjustmentReason: parsed.apiFeedback?.adjustmentReason || ''
           },
-          bull: {
-            price: parsed.scenarios?.bull?.price || input.currentPrice * 1.4,
-            probability: parsed.scenarios?.bull?.probability || 25
+          reasoning: parsed.reasoning || 'Análisis generado por IA basado en datos disponibles.',
+          confidence: parsed.confidence || 'medium',
+          keyInsight: parsed.keyInsight || ''
+        };
+      } catch (parseError) {
+        console.error('AI-Driven Valuation JSON parse error:', parseError);
+        console.error('Raw text from Gemini:', text.substring(0, 500));
+
+        // Return a more informative fallback
+        return {
+          ...defaultResult,
+          reasoning: `No se pudo procesar la respuesta de IA. Mostrando valores estimados basados en precio actual de $${input.currentPrice.toFixed(2)}.`,
+          apiFeedback: {
+            fmpDcf: apiData.fmpDcf,
+            aiAgreement: 'agree',
+            adjustmentReason: 'Error al procesar respuesta de IA'
           }
-        },
-        apiFeedback: {
-          fmpDcf: apiData.fmpDcf,
-          aiAgreement: parsed.apiFeedback?.aiAgreement || 'agree',
-          adjustmentReason: parsed.apiFeedback?.adjustmentReason || ''
-        },
-        reasoning: parsed.reasoning || '',
-        confidence: parsed.confidence || 'medium',
-        keyInsight: parsed.keyInsight || ''
-      };
+        };
+      }
     }
 
     return defaultResult;
@@ -2789,11 +2816,23 @@ export async function generateRedFlagsAnalysis(input: {
   if (!apiKey) return defaultResult;
 
   try {
+    // 1. Get RAG context for enhanced analysis
+    const ragContext = await getRAGContext(input.symbol, input.companyName);
+
     const metrics = input.financialData?.metrics?.metric || input.financialData?.metrics || {};
     const profile = input.financialData?.profile || {};
     const quote = input.financialData?.quote || {};
+    const news = input.financialData?.news || [];
 
-    const system = `Eres un auditor financiero experto en detectar RED FLAGS y señales de peligro en empresas. Analiza los datos proporcionados buscando PROBLEMAS y RIESGOS, no fortalezas.
+    const system = `Eres un auditor financiero experto en detectar RED FLAGS y señales de peligro en empresas. Tu trabajo es IDENTIFICAR PROBLEMAS Y RIESGOS, no fortalezas.
+
+IMPORTANTE: Aunque los datos de API puedan ser limitados, USA TU CONOCIMIENTO actualizado sobre la empresa y su sector para identificar red flags. Investiga mentalmente:
+- Problemas recientes en las noticias
+- Tendencias negativas del sector
+- Riesgos competitivos conocidos
+- Cambios de liderazgo o estrategia
+- Demandas, regulaciones pendientes
+- Problemas de modelo de negocio
 
 CATEGORÍAS DE RED FLAGS A DETECTAR:
 1. DILUCIÓN ACCIONARIAL - shares outstanding aumentando significativamente
@@ -2806,23 +2845,28 @@ CATEGORÍAS DE RED FLAGS A DETECTAR:
 8. INVENTARIO - inventario creciendo más rápido que ventas
 9. CONCENTRACIÓN - dependencia excesiva de clientes/productos
 10. GOVERNANCE - cambios de auditor, restatements, CFO turnover
+11. COMPETENCIA - pérdida de cuota de mercado, nuevos competidores disruptivos
+12. REGULATORIO - investigaciones, multas, cambios de regulación
+13. MODELO DE NEGOCIO - obsolescencia, cambio de consumo
 
 SEVERIDAD:
 - "critical": Riesgo inmediato, evitar inversión
 - "warning": Riesgo material, requiere monitoreo
 - "info": Señal menor, tener en cuenta
 
+INSTRUCCIÓN CRÍTICA: Aunque los datos numéricos sean escasos, DEBES generar al menos 2-3 red flags basados en tu conocimiento actual de la empresa, su sector y sus desafíos conocidos. NUNCA devuelvas una lista vacía de flags.
+
 RESPONDE CON JSON VÁLIDO:
 {
   "flags": [
     {
-      "id": "dilution_1",
+      "id": "unique_id",
       "severity": "warning",
-      "category": "Dilución",
-      "title": "Aumento de acciones en circulación",
-      "description": "Explicación específica con datos",
-      "metric": "Shares Outstanding",
-      "value": "+15% YoY"
+      "category": "Categoría",
+      "title": "Título claro",
+      "description": "Explicación específica con contexto",
+      "metric": "Métrica relacionada o null",
+      "value": "Valor si aplica o null"
     }
   ],
   "overallRisk": "low|medium|high|critical",
@@ -2847,17 +2891,31 @@ RESPONDE CON JSON VÁLIDO:
       sector: profile.finnhubIndustry || profile.industry,
     };
 
-    const prompt = `Analiza ${input.companyName} (${input.symbol}) a $${input.currentPrice} buscando RED FLAGS:
+    // Check if we have enough data
+    const hasApiData = Object.values(keyData).some(v => v !== undefined && v !== null);
+    const hasNews = news.length > 0;
 
-MÉTRICAS CLAVE:
-${JSON.stringify(keyData, null, 2)}
+    // Extract news headlines for context
+    const newsContext = hasNews
+      ? `\n\nNOTICIAS RECIENTES:\n${news.slice(0, 5).map((n: any) => `- ${n.headline || n.title || ''}`).join('\n')}`
+      : '';
 
-DATOS COMPLETOS:
-${JSON.stringify(input.financialData, null, 2)}
+    const prompt = `Analiza ${input.companyName} (${input.symbol}) a $${input.currentPrice.toFixed(2)} buscando RED FLAGS:
 
-Identifica TODOS los problemas potenciales. Sé crítico y objetivo. Si no hay datos suficientes para evaluar un área, indica [DATOS INSUFICIENTES].
+${hasApiData ? `MÉTRICAS DISPONIBLES:\n${JSON.stringify(keyData, null, 2)}` : 'MÉTRICAS DE API: No disponibles - usa tu conocimiento de la empresa'}
+${newsContext}
+${ragContext ? `\nCONTEXTO DE MI BASE DE CONOCIMIENTO:\n${ragContext}` : ''}
 
-Responde con JSON válido.`;
+INSTRUCCIONES:
+1. Si hay métricas, analízalas críticamente
+2. Si NO hay métricas suficientes, USA TU CONOCIMIENTO sobre ${input.companyName}:
+   - ¿Qué problemas enfrenta la empresa actualmente?
+   - ¿Cuáles son sus mayores riesgos competitivos?
+   - ¿Hay problemas de modelo de negocio, regulatorios o de gestión conocidos?
+   - ¿Qué dicen los críticos sobre la empresa?
+3. SIEMPRE genera al menos 2-3 red flags basados en conocimiento general
+
+RESPONDE con JSON válido. NO devuelvas flags vacíos.`;
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
@@ -2866,25 +2924,37 @@ Responde con JSON válido.`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: `${system}\n\n${prompt}` }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
+          generationConfig: { temperature: 0.4, maxOutputTokens: 2000 },
         }),
       }
     );
 
-    if (!res.ok) return defaultResult;
+    if (!res.ok) {
+      console.error('Red Flags API error:', res.status);
+      return defaultResult;
+    }
 
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        flags: parsed.flags || [],
-        overallRisk: parsed.overallRisk || 'low',
-        riskScore: parsed.riskScore || 0,
-        summary: parsed.summary || ''
-      };
+      try {
+        // Sanitize JSON
+        let jsonStr = jsonMatch[0];
+        jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
+
+        const parsed = JSON.parse(jsonStr);
+        return {
+          flags: parsed.flags || [],
+          overallRisk: parsed.overallRisk || 'low',
+          riskScore: parsed.riskScore || 0,
+          summary: parsed.summary || 'Análisis completado'
+        };
+      } catch (parseError) {
+        console.error('Red Flags JSON parse error:', parseError);
+        return defaultResult;
+      }
     }
 
     return defaultResult;
