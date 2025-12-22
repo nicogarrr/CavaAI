@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -9,18 +10,41 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {useRouter} from "next/navigation";
-import {Button} from "@/components/ui/button";
-import {LogOut} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { LogOut } from "lucide-react";
 import NavItems from "@/components/NavItems";
-import {signOut} from "@/lib/actions/auth.actions";
+import { signOut } from "@/lib/actions/auth.actions";
 
-const UserDropdown = ({ user, initialStocks }: {user: User, initialStocks: StockWithWatchlistStatus[]}) => {
+const UserDropdown = ({ user, initialStocks }: { user: User, initialStocks: StockWithWatchlistStatus[] }) => {
     const router = useRouter();
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     const handleSignOut = async () => {
         await signOut();
         router.push("/sign-in");
+    }
+
+    // Render placeholder button during SSR to avoid hydration mismatch
+    if (!mounted) {
+        return (
+            <Button className="flex items-center gap-3 text-gray-4 hover:bg-gray-800 bg-gray-800" aria-label="User menu">
+                <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-teal-500 text-teal-900 text-sm font-bold">
+                        {user.name[0]}
+                    </AvatarFallback>
+                </Avatar>
+                <div className="hidden md:flex flex-col items-start ">
+                    <span className='text-base font-medium text-gray-400 hover:text-teal-500 '>
+                        {user.name}
+                    </span>
+                </div>
+            </Button>
+        );
     }
 
     return (
@@ -55,12 +79,12 @@ const UserDropdown = ({ user, initialStocks }: {user: User, initialStocks: Stock
                         </div>
                     </div>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator className="bg-gray-600"/>
+                <DropdownMenuSeparator className="bg-gray-600" />
                 <DropdownMenuItem onClick={handleSignOut} className="text-gray-100 text-md font-medium focus:bg-transparent focus:text-teal-500 transition-colors cursor-pointer">
                     <LogOut className="h-4 w-4 mr-2 hidden sm:block" />
                     Logout
                 </DropdownMenuItem>
-                <DropdownMenuSeparator className="block sm:hidden bg-gray-600"/>
+                <DropdownMenuSeparator className="block sm:hidden bg-gray-600" />
                 <nav className="sm:hidden">
                     <NavItems initialStocks={initialStocks} />
                 </nav>
