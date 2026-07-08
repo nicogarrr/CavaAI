@@ -3,7 +3,7 @@ from decimal import Decimal
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import Company, Position, ValuationModel, ValuationOutput
+from app.models import Company, FinancialFact, MarketPrice, Position, ValuationModel, ValuationOutput
 from app.valuation import (
     DCFInputs,
     ReverseDCFInputs,
@@ -18,10 +18,18 @@ from app.valuation.dilution_model import DilutionInput, run_dilution
 
 def _position_price(db: Session, company_id: int) -> float:
     position = db.scalar(select(Position).where(Position.company_id == company_id).limit(1))
-    return float(position.market_price) if position else 100.0
+    if position and position.market_price:
+        return float(position.market_price)
+    market_price = db.scalar(
+        select(MarketPrice)
+        .where(MarketPrice.company_id == company_id)
+        .order_by(desc(MarketPrice.date))
+        .limit(1)
+    )
+    return float(market_price.close) if market_price and market_price.close else 100.0
 
 
-def _company_inputs(company: Company) -> dict:
+def _bootstrap_inputs(company: Company) -> dict:
     if "pre_fcf" in company.factor_tags or "speculative" in company.factor_tags:
         return {
             "revenue": 250.0,
@@ -63,10 +71,98 @@ def _company_inputs(company: Company) -> dict:
     }
 
 
+def _latest_fact(db: Session, company: Company, metric: str) -> FinancialFact | None:
+    return db.scalar(
+        select(FinancialFact)
+        .where(FinancialFact.company_id == company.id, FinancialFact.metric == metric)
+        .order_by(FinancialFact.fiscal_year.desc().nullslast(), desc(FinancialFact.created_at))
+        .limit(1)
+    )
+
+
+def _fact_inputs(db: Session, company: Company) -> dict | None:
+    revenue = _latest_fact(db, company, "revenue")
+    free_cash_flow = _latest_fact(db, company, "free_cash_flow")
+    fcf_margin = _latest_fact(db, company, "fcf_margin")
+    revenue_growth = _latest_fact(db, company, "revenue_growth")
+    net_debt = _latest_fact(db, company, "net_debt")
+    shares = _latest_fact(db, company, "shares_diluted")
+
+    if not revenue or not shares or revenue.value <= 0 or shares.value <= 0:
+        return None
+
+    margin = float(fcf_margin.value) if fcf_margin else None
+    if margin is None and free_cash_flow and revenue.value:
+        margin = float(free_cash_flow.value / revenue.value)
+    if margin is None:
+        return None
+
+    growth = float(revenue_growth.value) if revenue_growth else _default_growth(company)
+    inputs = {
+        "revenue": float(revenue.value),
+        "growth": max(min(growth, 0.45), -0.15),
+        "margin": max(min(margin, 0.50), 0.01),
+        "wacc": _default_wacc(company),
+        "terminal": _default_terminal_growth(company),
+        "net_debt": float(net_debt.value) if net_debt else 0.0,
+        "shares": float(shares.value),
+        "source": "financial_facts",
+        "fact_ids": {
+            "revenue": revenue.id,
+            "free_cash_flow": free_cash_flow.id if free_cash_flow else None,
+            "fcf_margin": fcf_margin.id if fcf_margin else None,
+            "revenue_growth": revenue_growth.id if revenue_growth else None,
+            "net_debt": net_debt.id if net_debt else None,
+            "shares_diluted": shares.id,
+        },
+        "periods": {
+            "revenue": revenue.period,
+            "free_cash_flow": free_cash_flow.period if free_cash_flow else None,
+            "revenue_growth": revenue_growth.period if revenue_growth else None,
+            "net_debt": net_debt.period if net_debt else None,
+            "shares_diluted": shares.period,
+        },
+    }
+    return inputs
+
+
+def _default_growth(company: Company) -> float:
+    if "pre_fcf" in company.factor_tags or "speculative" in company.factor_tags:
+        return 0.20
+    if "software" in company.factor_tags or "ai" in company.factor_tags:
+        return 0.10
+    if "commodities" in company.factor_tags:
+        return 0.04
+    return 0.07
+
+
+def _default_wacc(company: Company) -> float:
+    if "pre_fcf" in company.factor_tags or "speculative" in company.factor_tags:
+        return 0.13
+    if "commodities" in company.factor_tags or "china" in company.factor_tags:
+        return 0.11
+    if "quality" in company.factor_tags:
+        return 0.085
+    return 0.10
+
+
+def _default_terminal_growth(company: Company) -> float:
+    if "commodities" in company.factor_tags:
+        return 0.015
+    if "pre_fcf" in company.factor_tags or "speculative" in company.factor_tags:
+        return 0.025
+    return 0.03
+
+
 class ValuationService:
     def value_company(self, db: Session, company: Company) -> dict:
         current_price = _position_price(db, company.id)
-        inputs = _company_inputs(company)
+        inputs = _fact_inputs(db, company) or {
+            **_bootstrap_inputs(company),
+            "source": "bootstrap_assumptions",
+            "fact_ids": {},
+            "periods": {},
+        }
 
         base_inputs = DCFInputs(
             revenue=inputs["revenue"],
@@ -127,13 +223,17 @@ class ValuationService:
 
         trace = {
             "method": company.valuation_model,
-            "bootstrap_notice": "Uses local bootstrap assumptions until SEC/FMP data is ingested.",
+            "input_source": inputs["source"],
+            "fact_ids": inputs["fact_ids"],
+            "periods": inputs["periods"],
             "bear": bear.trace,
             "base": base.trace,
             "bull": bull.trace,
             "weighted": weighted["trace"],
             "reverse_dcf": reverse["trace"],
         }
+        if inputs["source"] == "bootstrap_assumptions":
+            trace["bootstrap_notice"] = "Uses local bootstrap assumptions until SEC/FMP data is ingested."
 
         if "pre_fcf" in company.factor_tags or "speculative" in company.factor_tags:
             trace["dilution"] = run_dilution(
@@ -191,4 +291,3 @@ class ValuationService:
         db.commit()
         db.refresh(model)
         return model
-

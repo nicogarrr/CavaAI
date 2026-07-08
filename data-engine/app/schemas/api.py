@@ -23,6 +23,36 @@ class CompanyOut(BaseModel):
     factor_tags: list[str]
 
 
+class FinancialFactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    metric: str
+    value: Decimal
+    unit: str
+    period: str
+    fiscal_year: int | None
+    fiscal_quarter: str | None
+    source_id: int | None
+    source_type: str
+    is_reported: bool
+    is_adjusted: bool
+    confidence: Decimal
+    created_at: datetime
+
+
+class FinancialRefreshResponse(BaseModel):
+    status: str
+    ticker: str
+    provider: str
+    source_document_id: int
+    facts_imported: int
+    statements_imported: int
+    latest_periods: dict[str, str | None]
+    valuation_input_ready: bool
+
+
 class ThesisGenerateRequest(BaseModel):
     ticker: str = Field(min_length=1, max_length=20)
     force_new_version: bool = False
@@ -95,4 +125,3 @@ class ValuationResponse(BaseModel):
     reverse_dcf: dict
     sensitivity: dict
     trace: dict
-
