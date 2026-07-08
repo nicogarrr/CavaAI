@@ -18,21 +18,11 @@ def test_main_only_declares_root_and_health_routes():
     assert "include_router(market_router)" in source
     assert "include_router(knowledge_router)" in source
     assert "include_router(analytics_router)" in source
+    assert "include_router(research_api_router, prefix=\"/api\")" in source
 
 
 def test_public_routes_are_registered_once():
-    routes = []
-    for route in main.app.routes:
-        if hasattr(route, "path") and getattr(route, "include_in_schema", True):
-            routes.append(route.path)
-            continue
-        original_router = getattr(route, "original_router", None)
-        if original_router is not None:
-            routes.extend([
-                child.path
-                for child in original_router.routes
-                if hasattr(child, "path") and getattr(child, "include_in_schema", True)
-            ])
+    routes = list(main.app.openapi()["paths"].keys())
 
     expected_routes = {
         "/",
@@ -80,6 +70,27 @@ def test_public_routes_are_registered_once():
         "/analytics/montecarlo",
         "/analytics/correlation",
         "/analytics/regime/{symbol}",
+        "/api/companies",
+        "/api/companies/{ticker}",
+        "/api/portfolio/summary",
+        "/api/portfolio/positions",
+        "/api/portfolio/cash",
+        "/api/portfolio/import/ibkr",
+        "/api/portfolio/import/ibkr/xml",
+        "/api/thesis/generate",
+        "/api/thesis/{ticker}/latest",
+        "/api/thesis/{ticker}/versions",
+        "/api/valuation/{ticker}",
+        "/api/news/manual",
+        "/api/news",
+        "/api/risk/dashboard",
+        "/api/chat",
+        "/api/sources/documents",
+        "/api/sources/audits",
+        "/api/sources/quartr/status",
+        "/api/sources/quartr/import-text",
+        "/api/settings",
+        "/api/workflows",
     }
 
     for route in expected_routes:

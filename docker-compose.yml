@@ -1,20 +1,10 @@
 # ============================================
 # Docker Compose - Entorno Completo de Desarrollo
 # ============================================
-# 
-# Uso:
-#   docker-compose up              # Iniciar todo
-#   docker-compose up -d           # Iniciar en background
-#   docker-compose restart         # Reiniciar todo
-#   docker-compose restart backend # Reiniciar solo backend
-#   docker-compose down            # Parar todo
-#   docker-compose up --build      # Rebuild y reiniciar
-#
-# ============================================
 
 services:
   # ==========================================
-  # MongoDB - Base de datos
+  # MongoDB - auth and existing app data
   # ==========================================
   mongodb:
     image: mongo:7
@@ -35,7 +25,31 @@ services:
       retries: 5
 
   # ==========================================
-  # Redis - short-lived analytics cache
+  # PostgreSQL - research canonical store
+  # ==========================================
+  postgres:
+    image: postgres:17
+    container_name: jlcava-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    environment:
+      - POSTGRES_USER=portfolio
+      - POSTGRES_PASSWORD=portfolio
+      - POSTGRES_DB=cavaai_research
+      - TZ=UTC
+      - PGTZ=UTC
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portfolio -d cavaai_research"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ==========================================
+  # Redis - cache, locks, budgets and jobs
   # ==========================================
   redis:
     image: redis:7-alpine
@@ -58,6 +72,28 @@ services:
       - qdrant_data:/qdrant/storage
 
   # ==========================================
+  # MinIO - local S3-compatible raw document store
+  # ==========================================
+  minio:
+    image: minio/minio:latest
+    container_name: jlcava-minio
+    restart: unless-stopped
+    command: server --address ":9000" --console-address ":9001" /data
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=portfolio
+      - MINIO_ROOT_PASSWORD=portfoliosecret
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ==========================================
   # Backend Python (FastAPI)
   # ==========================================
   backend:
@@ -69,24 +105,62 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Montar código para hot-reload en desarrollo
       - ./data-engine:/app
-      # Excluir __pycache__ y .venv
       - /app/__pycache__
       - /app/.venv
     environment:
       - FMP_API_KEY=${FMP_API_KEY}
       - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql+psycopg://portfolio:portfolio@postgres:5432/cavaai_research
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - VECTOR_STORE=qdrant
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=portfolio
+      - MINIO_SECRET_KEY=portfoliosecret
+      - MINIO_BUCKET=research
+      - DUCKDB_PATH=/app/storage/analytics.duckdb
+      - LANGFUSE_HOST=http://langfuse-web:3000
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-false}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
     depends_on:
       mongodb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
       redis:
         condition: service_started
       qdrant:
         condition: service_started
+      minio:
+        condition: service_healthy
+
+  # ==========================================
+  # Background worker - research jobs
+  # ==========================================
+  worker:
+    build:
+      context: ./data-engine
+      dockerfile: Dockerfile
+    container_name: jlcava-worker
+    restart: unless-stopped
+    volumes:
+      - ./data-engine:/app
+      - /app/__pycache__
+      - /app/.venv
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql+psycopg://portfolio:portfolio@postgres:5432/cavaai_research
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - VECTOR_STORE=qdrant
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_started
+    command: ["dramatiq", "app.workers.dramatiq_app"]
 
   # ==========================================
   # Frontend Next.js
@@ -100,7 +174,6 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Montar código para hot-reload en desarrollo
       - .:/app
       - /app/node_modules
       - /app/.next
@@ -117,11 +190,124 @@ services:
       - mongodb
       - backend
 
-# ==========================================
-# Volúmenes persistentes
-# ==========================================
+  # ==========================================
+  # Langfuse observability profile
+  # ==========================================
+  clickhouse:
+    profiles: ["observability"]
+    image: clickhouse/clickhouse-server:latest
+    container_name: jlcava-clickhouse
+    user: "101:101"
+    ports:
+      - "8123:8123"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=clickhouse
+      - CLICKHOUSE_PASSWORD=clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  langfuse-worker:
+    profiles: ["observability"]
+    image: langfuse/langfuse-worker:3
+    container_name: jlcava-langfuse-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      NEXTAUTH_URL: http://localhost:3002
+      DATABASE_URL: postgresql://portfolio:portfolio@postgres:5432/langfuse
+      SALT: cavaai-local-langfuse-salt
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_CONNECTION_STRING: redis://redis:6379/1
+      LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: portfolio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: portfoliosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: portfolio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: portfoliosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9002
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+
+  langfuse-web:
+    profiles: ["observability"]
+    image: langfuse/langfuse:3
+    container_name: jlcava-langfuse-web
+    depends_on:
+      langfuse-worker:
+        condition: service_started
+    ports:
+      - "3002:3000"
+    environment:
+      NEXTAUTH_SECRET: cavaai-local-langfuse-secret
+      NEXTAUTH_URL: http://localhost:3002
+      DATABASE_URL: postgresql://portfolio:portfolio@postgres:5432/langfuse
+      SALT: cavaai-local-langfuse-salt
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_CONNECTION_STRING: redis://redis:6379/1
+      LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: portfolio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: portfoliosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: portfolio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_KEY: portfoliosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: portfoliosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9002
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_INIT_ORG_ID: cavaai
+      LANGFUSE_INIT_ORG_NAME: CavaAI
+      LANGFUSE_INIT_PROJECT_ID: local
+      LANGFUSE_INIT_PROJECT_NAME: Local Research
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-local
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-local
+      LANGFUSE_INIT_USER_EMAIL: local@example.com
+      LANGFUSE_INIT_USER_NAME: Local Analyst
+      LANGFUSE_INIT_USER_PASSWORD: portfolio-research-os
+
 volumes:
   mongodb_data:
     name: jlcava-mongodb-data
+  postgres_data:
+    name: jlcava-postgres-data
   qdrant_data:
     name: jlcava-qdrant-data
+  minio_data:
+    name: jlcava-minio-data
+  clickhouse_data:
+    name: jlcava-clickhouse-data
+  clickhouse_logs:
+    name: jlcava-clickhouse-logs
