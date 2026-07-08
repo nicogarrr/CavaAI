@@ -3,7 +3,7 @@ from decimal import Decimal
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import Company, Document, SourceAudit, ThesisVersion
+from app.models import Company, Document, FinancialFact, SourceAudit, ThesisVersion
 from app.services.source_auditor import SourceAuditor
 from app.services.valuation_service import ValuationService
 
@@ -36,6 +36,11 @@ class ThesisService:
         source = db.scalar(select(Document).where(Document.company_id == company.id).limit(1))
         valuation = self.valuation_service.value_company(db, company)
         self.valuation_service.persist_output(db, company, valuation)
+        facts = self._latest_facts(
+            db,
+            company,
+            ["revenue", "free_cash_flow", "revenue_growth", "fcf_margin", "net_debt", "shares_diluted"],
+        )
 
         claims = [
             {
@@ -53,17 +58,22 @@ class ThesisService:
                 "material": True,
             },
         ]
-        audit = self.auditor.audit(claims=claims, calculation_trace=valuation["trace"])
+        claims.extend(self._financial_fact_claims(company, facts))
+        audit = self.auditor.audit(
+            claims=claims,
+            calculation_trace=valuation["trace"],
+            requires_sec_fmp_reconciliation=valuation["trace"].get("input_source") == "financial_facts",
+        )
 
         previous = self.latest(db, ticker)
         version = (previous.version + 1) if previous else 1
         status = "final" if audit.passed else "draft_failed_audit"
         summary = (
             f"{company.ticker} is in the {company.company_type} bucket. "
-            "This version is a grounded bootstrap thesis: it uses company master evidence and "
-            "deterministic valuation traces until live SEC/FMP/IBKR ingestion is configured."
+            f"Valuation input source: {valuation['trace'].get('input_source', 'unknown')}. "
+            "This version uses deterministic valuation traces and source-audited claims."
         )
-        thesis_markdown = self._render_markdown(company, valuation, audit.as_dict())
+        thesis_markdown = self._render_markdown(company, valuation, audit.as_dict(), facts)
         thesis = ThesisVersion(
             company_id=company.id,
             version=version,
@@ -77,7 +87,7 @@ class ThesisService:
             bull_value=Decimal(str(valuation["bull_value"])),
             expected_value=Decimal(str(valuation["expected_value"])),
             margin_of_safety=Decimal(str(valuation["margin_of_safety"])),
-            data_confidence_score=70 if source else 35,
+            data_confidence_score=85 if facts else 45,
             source_coverage_score=audit.source_coverage_score,
             red_team_score=65,
             valuation_risk_score=75 if "speculative" in company.factor_tags else 45,
@@ -108,12 +118,61 @@ class ThesisService:
             return "expensive"
         return "watch"
 
-    def _render_markdown(self, company: Company, valuation: dict, audit: dict) -> str:
+    def _latest_facts(
+        self,
+        db: Session,
+        company: Company,
+        metrics: list[str],
+    ) -> dict[str, FinancialFact]:
+        result: dict[str, FinancialFact] = {}
+        for metric in metrics:
+            fact = db.scalar(
+                select(FinancialFact)
+                .where(FinancialFact.company_id == company.id, FinancialFact.metric == metric)
+                .order_by(FinancialFact.fiscal_year.desc().nullslast(), desc(FinancialFact.created_at))
+                .limit(1)
+            )
+            if fact:
+                result[metric] = fact
+        return result
+
+    def _financial_fact_claims(self, company: Company, facts: dict[str, FinancialFact]) -> list[dict]:
+        claims = []
+        for metric, fact in facts.items():
+            claims.append(
+                {
+                    "claim": f"{company.ticker} {metric} is {fact.value} for {fact.period}.",
+                    "source_id": fact.source_id,
+                    "source_type": fact.source_type,
+                    "confidence": float(fact.confidence),
+                    "material": metric in {"revenue", "free_cash_flow", "net_debt", "shares_diluted"},
+                }
+            )
+        return claims
+
+    def _facts_markdown(self, facts: dict[str, FinancialFact]) -> str:
+        if not facts:
+            return "No normalized financial facts are available yet. Configure FMP/SEC ingestion before promoting this thesis beyond bootstrap."
+        rows = [
+            "| Metric | Value | Unit | Period | Source |",
+            "| --- | ---: | --- | --- | --- |",
+        ]
+        for metric, fact in facts.items():
+            rows.append(f"| {metric} | {fact.value} | {fact.unit} | {fact.period} | {fact.source_type} #{fact.source_id or 'n/a'} |")
+        return "\n".join(rows)
+
+    def _render_markdown(
+        self,
+        company: Company,
+        valuation: dict,
+        audit: dict,
+        facts: dict[str, FinancialFact],
+    ) -> str:
         return f"""# {company.ticker} Thesis v1
 
 ## 1. Executive Summary
 {company.name} is tracked as `{company.company_type}` with model `{company.valuation_model}`.
-This is a bootstrap thesis until live SEC/FMP/IBKR ingestion is configured.
+Valuation input source: `{valuation["trace"].get("input_source", "unknown")}`.
 
 ## 2. One-Line Thesis
 The investable question is whether the evidence supports the assumptions behind the selected model, not whether a model output looks attractive in isolation.
@@ -122,7 +181,7 @@ The investable question is whether the evidence supports the assumptions behind 
 Sector: {company.sector}. Industry: {company.industry}.
 
 ## 4. Latest Results
-Blocked for final factual claims until SEC/FMP ingestion provides reported facts.
+{self._facts_markdown(facts)}
 
 ## 5. Historical Financials
 Stored in `financial_facts` and `financial_statements` once ingested.
@@ -155,6 +214,7 @@ Requires sourced evidence before final qualitative claims.
 - Bull value: {valuation["bull_value"]:.2f}
 - Expected value: {valuation["expected_value"]:.2f}
 - Margin of safety: {valuation["margin_of_safety"]:.1%}
+- Input source: {valuation["trace"].get("input_source", "unknown")}
 
 ## 14. Reverse DCF
 Required revenue growth: {valuation["reverse_dcf"]["required_revenue_growth"]:.1%}
@@ -179,4 +239,3 @@ Unsupported claims: {audit["unsupported_claims"]}
 ## 20. Sources
 Company master seed, then SEC/FMP/IR/FRED/GDELT documents as ingested.
 """
-

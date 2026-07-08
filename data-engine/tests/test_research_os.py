@@ -226,3 +226,10 @@ def test_fmp_refresh_normalizes_facts_and_valuation_uses_them(monkeypatch):
     assert trace["input_source"] == "financial_facts"
     assert trace["fact_ids"]["revenue"] == revenue_facts[0]["id"]
     assert "bootstrap_notice" not in trace
+
+    thesis = client.post("/api/thesis/generate", json={"ticker": "MSFT", "force_new_version": True})
+    assert thesis.status_code == 200
+    thesis_payload = thesis.json()
+    assert "Valuation input source: `financial_facts`" in thesis_payload["thesis_markdown"]
+    assert "| revenue |" in thesis_payload["thesis_markdown"]
+    assert thesis_payload["data_confidence_score"] >= 80
