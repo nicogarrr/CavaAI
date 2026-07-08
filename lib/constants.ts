@@ -70,6 +70,7 @@ export const ERROR_MESSAGES = {
 export const NAV_ITEMS = [
   { href: '/', label: 'Home' },
   { href: '/portfolio', label: 'Cartera' },
+  { href: '/research', label: 'Research' },
   { href: '/watchlist', label: 'Watchlist' },
   { href: '/propicks', label: 'ProPicks' },
   { href: '/knowledge', label: 'Knowledge' },
