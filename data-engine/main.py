@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router as research_api_router
 from app.core.database import init_db
+from app.seed import ensure_company_master
 from routers.analytics import router as analytics_router
 from routers.fundamentals import router as fundamentals_router
 from routers.knowledge import router as knowledge_router
@@ -16,6 +17,7 @@ from routers.market import router as market_router
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    ensure_company_master()
     yield
 
 
