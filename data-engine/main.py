@@ -3,6 +3,10 @@ import os
 from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
+from routers.analytics import router as analytics_router
+from routers.fundamentals import router as fundamentals_router
+from routers.knowledge import router as knowledge_router
+from routers.market import router as market_router
 from modules.fmp import (
     fetch_income_statement,
     fetch_balance_sheet,
@@ -22,8 +26,6 @@ from modules.fmp import (
     fetch_insider_trading,
     fetch_treasury_rates,
     fetch_analyst_estimates,
-    fetch_treasury_rates,
-    fetch_analyst_estimates,
     fetch_press_releases,
     # Market Movers & Screener
     fetch_biggest_gainers,
@@ -31,7 +33,6 @@ from modules.fmp import (
     fetch_most_actives,
     fetch_stock_screener,
     fetch_earnings_transcripts_list,
-    fetch_earnings_transcript,
     fetch_fmp_articles,
     fetch_general_news
 )
@@ -46,6 +47,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Routers extracted from the monolith. They are included before legacy route
+# declarations so the modular implementations take precedence during rollout.
+app.include_router(fundamentals_router)
+app.include_router(market_router)
+app.include_router(knowledge_router)
+app.include_router(analytics_router)
 
 @app.get("/")
 async def root():
@@ -770,3 +778,139 @@ async def upload_files(
 @app.get("/test")
 async def test_endpoint():
     return {"status": "ok"}
+
+
+# ============================================================================
+# ANALYTICS — quantstats-pro powered endpoints
+# ============================================================================
+
+from modules.portfolio_analytics import (
+    get_portfolio_performance,
+    get_holding_metrics,
+    run_portfolio_montecarlo,
+    get_correlation_matrix,
+    get_regime_drift,
+)
+
+
+class PortfolioAnalyticsRequest(BaseModel):
+    symbols: List[str]
+    weights: Optional[List[float]] = None
+    period: str = "2y"
+    rf: float = 0.0
+    benchmark: str = "SPY"
+
+
+class MonteCarloRequest(BaseModel):
+    symbols: List[str]
+    weights: Optional[List[float]] = None
+    period: str = "3y"
+    horizon: int = 252
+    sims: int = 1000
+    bust: float = -0.5
+    goal: float = 0.5
+    models: Optional[List[str]] = None
+
+
+class CorrelationRequest(BaseModel):
+    symbols: List[str]
+    period: str = "1y"
+    method: str = "pearson"
+
+
+@app.post("/analytics/portfolio")
+async def portfolio_analytics(req: PortfolioAnalyticsRequest):
+    """
+    Real portfolio performance metrics via quantstats-pro.
+    Replaces the heuristic score calculations in the frontend.
+    """
+    if not req.symbols:
+        raise HTTPException(status_code=400, detail="symbols list cannot be empty")
+    if len(req.symbols) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 symbols per request")
+
+    symbols = [s.upper().strip() for s in req.symbols]
+    result = get_portfolio_performance(
+        symbols=symbols,
+        weights=req.weights,
+        period=req.period,
+        rf=req.rf,
+        benchmark=req.benchmark,
+    )
+
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+
+    return result
+
+
+@app.get("/analytics/holding/{symbol}")
+async def holding_analytics(symbol: str, period: str = Query("2y", description="yfinance period string")):
+    """
+    Real performance metrics for a single holding via quantstats-pro.
+    """
+    result = get_holding_metrics(symbol.upper(), period=period)
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+    return result
+
+
+@app.post("/analytics/montecarlo")
+async def portfolio_montecarlo(req: MonteCarloRequest):
+    """
+    Multi-model Monte Carlo simulation for a weighted portfolio.
+    Replaces the deterministic lookup-table risk simulator.
+    """
+    if not req.symbols:
+        raise HTTPException(status_code=400, detail="symbols list cannot be empty")
+
+    symbols = [s.upper().strip() for s in req.symbols]
+    result = run_portfolio_montecarlo(
+        symbols=symbols,
+        weights=req.weights,
+        period=req.period,
+        horizon=req.horizon,
+        sims=req.sims,
+        bust=req.bust,
+        goal=req.goal,
+        models=req.models,
+    )
+
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+
+    return result
+
+
+@app.post("/analytics/correlation")
+async def correlation_matrix(req: CorrelationRequest):
+    """
+    Aligned Pearson/Spearman correlation matrix on daily returns.
+    Uses inner join by date — no imputation.
+    """
+    if len(req.symbols) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 symbols for correlation")
+
+    symbols = [s.upper().strip() for s in req.symbols]
+    result = get_correlation_matrix(
+        symbols=symbols,
+        period=req.period,
+        method=req.method,
+    )
+
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+
+    return result
+
+
+@app.get("/analytics/regime/{symbol}")
+async def regime_drift(symbol: str, period: str = Query("2y", description="yfinance period string")):
+    """
+    Alpha decay / regime drift analysis for a single holding.
+    Detects statistical drift in risk-adjusted metrics across rolling windows.
+    """
+    result = get_regime_drift(symbol.upper(), period=period)
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+    return result

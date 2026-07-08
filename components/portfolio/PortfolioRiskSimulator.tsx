@@ -2,35 +2,47 @@
 
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, TrendingDown, TrendingUp, ShieldAlert, ArrowRight } from 'lucide-react';
-import { generateRiskAnalysis } from '@/lib/actions/risk.actions';
+import { ShieldAlert, TrendingDown, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react';
+import { generateRiskAnalysis, type MonteCarloResult } from '@/lib/actions/risk.actions';
 import { toast } from 'sonner';
 
 interface PortfolioRiskSimulatorProps {
-    portfolioSummary: any;
+    userId: string;
 }
 
-export function PortfolioRiskSimulator({ portfolioSummary }: PortfolioRiskSimulatorProps) {
-    const [scenario, setScenario] = useState<string>('recession_2025');
-    const [analysis, setAnalysis] = useState<any>(null);
+function fmt(n: number | null | undefined, decimals = 1): string {
+    if (n == null) return '—';
+    return `${n >= 0 ? '+' : ''}${(n * 100).toFixed(decimals)}%`;
+}
+
+function fmtProb(n: number | null | undefined): string {
+    if (n == null) return '—';
+    return `${(n * 100).toFixed(1)}%`;
+}
+
+export function PortfolioRiskSimulator({ userId }: PortfolioRiskSimulatorProps) {
+    const [result, setResult] = useState<MonteCarloResult | null>(null);
     const [loading, setLoading] = useState(false);
 
     async function handleSimulate() {
-        if (!scenario) return;
         setLoading(true);
         try {
-            const result = await generateRiskAnalysis(portfolioSummary, scenario);
-            setAnalysis(result);
+            const data = await generateRiskAnalysis(userId, 252, 500);
+            if ('error' in data) {
+                toast.error(data.error);
+                return;
+            }
+            setResult(data);
         } catch (error) {
             console.error(error);
-            toast.error('Error al generar la simulación');
+            toast.error('Error al ejecutar la simulación Monte Carlo');
         } finally {
             setLoading(false);
         }
     }
+
+    const models = result ? Object.values(result.models) : [];
 
     return (
         <Card className="border-red-500/20 bg-slate-950/50 backdrop-blur-sm">
@@ -38,90 +50,90 @@ export function PortfolioRiskSimulator({ portfolioSummary }: PortfolioRiskSimula
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <ShieldAlert className="h-5 w-5 text-red-400" />
-                        <CardTitle>Simulador de Estrés (Stress Test)</CardTitle>
+                        <CardTitle>Simulación Monte Carlo</CardTitle>
                     </div>
                 </div>
                 <CardDescription>
-                    Simula cómo reaccionaría tu cartera ante eventos macroeconómicos extremos.
+                    Distribución probabilística de retornos a 1 año vía modelos estocásticos (GBM, Bootstrap, Block Bootstrap, GARCH).
                 </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-                <div className="flex gap-4">
-                    <Select value={scenario} onValueChange={setScenario}>
-                        <SelectTrigger className="w-[280px] bg-slate-900 border-slate-700">
-                            <SelectValue placeholder="Selecciona un escenario" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="recession_2025">Recesión Global 2025</SelectItem>
-                            <SelectItem value="inflation_high">Inflación Persistente (5%)</SelectItem>
-                            <SelectItem value="tech_crash">Estallido Burbuja Tech</SelectItem>
-                            <SelectItem value="soft_landing">Aterrizaje Suave (Optimista)</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Button
-                        onClick={handleSimulate}
-                        disabled={loading}
-                        className="bg-red-900/50 hover:bg-red-900/70 text-red-100 border border-red-800"
-                    >
-                        {loading ? 'Simulando...' : 'Simular Impacto'}
-                    </Button>
-                </div>
 
-                {analysis && (
+            <CardContent className="space-y-6">
+                <Button
+                    onClick={handleSimulate}
+                    disabled={loading}
+                    className="bg-red-900/50 hover:bg-red-900/70 text-red-100 border border-red-800"
+                >
+                    {loading ? (
+                        <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Simulando ({500} paths)…</>
+                    ) : (
+                        'Ejecutar Simulación'
+                    )}
+                </Button>
+
+                {result && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
 
-                        {/* Main Stats */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Cross-model summary */}
+                        <div className="grid grid-cols-3 gap-4">
                             <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800">
-                                <p className="text-xs text-muted-foreground">Valor Actual</p>
-                                <p className="text-xl font-mono text-white">${analysis.currentValue.toLocaleString()}</p>
-                            </div>
-                            <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800 relative overflow-hidden">
-                                <div className={`absolute inset-0 opacity-10 ${analysis.projectedChange >= 0 ? 'bg-green-500' : 'bg-red-500'}`} />
-                                <p className="text-xs text-muted-foreground">Valor Proyectado</p>
-                                <p className={`text-xl font-bold font-mono ${analysis.projectedChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    ${analysis.projectedValue.toLocaleString([], { maximumFractionDigits: 0 })}
+                                <p className="text-xs text-muted-foreground">Mediana entre modelos</p>
+                                <p className={`text-xl font-mono font-bold ${(result.summary.cross_model_median_return ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {fmt(result.summary.cross_model_median_return)}
                                 </p>
                             </div>
-                            <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800 flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs text-muted-foreground">Impacto Estimado</p>
-                                    <p className={`text-xl font-bold ${analysis.projectedChange >= 0 ? 'text-green-400' : 'text-red-500'}`}>
-                                        {analysis.projectedChangePercent > 0 ? '+' : ''}{analysis.projectedChangePercent.toFixed(2)}%
-                                    </p>
-                                </div>
-                                {analysis.projectedChange >= 0 ? <TrendingUp className="h-8 w-8 text-green-500/20" /> : <TrendingDown className="h-8 w-8 text-red-500/20" />}
+                            <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800">
+                                <p className="text-xs text-muted-foreground">Envelope conservador</p>
+                                <p className={`text-xl font-mono font-bold ${(result.summary.conservative_envelope ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {fmt(result.summary.conservative_envelope)}
+                                </p>
+                            </div>
+                            <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800">
+                                <p className="text-xs text-muted-foreground">Modelos ejecutados</p>
+                                <p className="text-xl font-mono text-white">{result.summary.models_run}</p>
                             </div>
                         </div>
 
-                        {/* Analysis Details */}
-                        <div className="p-4 bg-red-950/10 border border-red-900/20 rounded-lg">
-                            <h4 className="text-sm font-semibold text-red-300 mb-2 flex items-center gap-2">
-                                <AlertTriangle className="h-4 w-4" />
-                                Análisis del Escenario: {analysis.scenario}
-                            </h4>
-                            <p className="text-sm text-slate-300 mb-4">{analysis.description}</p>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                                {analysis.worstHit && (
-                                    <div className="bg-red-500/10 p-3 rounded border border-red-500/20">
-                                        <p className="text-xs text-red-400 mb-1">Más Afectado</p>
-                                        <div className="flex justify-between items-center">
-                                            <span className="font-bold text-red-200">{analysis.worstHit.symbol}</span>
-                                            <span className="font-mono text-red-400">{analysis.worstHit.changePercent.toFixed(2)}%</span>
+                        {/* Per-model breakdown */}
+                        <div className="space-y-2">
+                            <p className="text-xs text-muted-foreground uppercase tracking-wider">Distribución por modelo (horizonte {result.horizon_days}d)</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {models.map(m => (
+                                    <div key={m.name} className="p-3 rounded bg-slate-900/60 border border-slate-800">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-sm font-semibold text-white">{m.label}</span>
+                                            <span className="text-xs text-muted-foreground">{m.category}</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1 text-xs font-mono">
+                                            <div>
+                                                <p className="text-red-400">P5</p>
+                                                <p>{fmt(m.percentile_5)}</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-slate-400">Mediana</p>
+                                                <p className={`font-bold ${(m.median ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmt(m.median)}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-green-400">P95</p>
+                                                <p>{fmt(m.percentile_95)}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                                            <span>Bust (&lt;−50%): <span className="text-red-400">{fmtProb(m.bust_probability)}</span></span>
+                                            <span>Goal (&gt;+50%): <span className="text-green-400">{fmtProb(m.goal_probability)}</span></span>
                                         </div>
                                     </div>
-                                )}
-                                {analysis.bestPerformer && (
-                                    <div className="bg-green-500/10 p-3 rounded border border-green-500/20">
-                                        <p className="text-xs text-green-400 mb-1">Mejor Comportamiento</p>
-                                        <div className="flex justify-between items-center">
-                                            <span className="font-bold text-green-200">{analysis.bestPerformer.symbol}</span>
-                                            <span className="font-mono text-green-400">{analysis.bestPerformer.changePercent > 0 ? '+' : ''}{analysis.bestPerformer.changePercent.toFixed(2)}%</span>
-                                        </div>
-                                    </div>
-                                )}
+                                ))}
                             </div>
+                        </div>
+
+                        <div className="flex items-start gap-2 p-3 rounded bg-amber-950/20 border border-amber-900/30 text-xs text-amber-300">
+                            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                            <span>
+                                Los modelos se calibran sobre retornos históricos de la cartera actual.
+                                Resultados son distribuciones de probabilidad, no predicciones.
+                                Horizonte: {result.horizon_days} días · {result.simulations.toLocaleString()} simulaciones por modelo.
+                            </span>
                         </div>
                     </div>
                 )}

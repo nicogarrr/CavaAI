@@ -123,28 +123,37 @@ class KnowledgeBase:
         self,
         query: str,
         n_results: int = 10,
-        collection_names: List[str] = None  # Ignorado
+        collection_names: List[str] = None,  # Ignorado
+        symbol: Optional[str] = None,
+        general_only: bool = False,
     ) -> List[Dict]:
         """
         Búsqueda semántica en toda la base de conocimiento
         """
         query_embedding = self.embedding_model.encode([query])[0].tolist()
         
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results
-        )
+        query_kwargs = {
+            "query_embeddings": [query_embedding],
+            "n_results": n_results if symbol else max(n_results, n_results * 4),
+        }
+        if symbol:
+            query_kwargs["where"] = {"symbol": symbol.upper()}
+
+        results = self.collection.query(**query_kwargs)
         
         all_results = []
         if results and results['documents'] and results['documents'][0]:
             for i, doc in enumerate(results['documents'][0]):
+                metadata = results['metadatas'][0][i] if results.get('metadatas') else {}
+                if general_only and metadata.get("symbol"):
+                    continue
                 all_results.append({
                     "content": doc,
                     "score": 1 - results['distances'][0][i] if results.get('distances') else 0,
-                    "metadata": results['metadatas'][0][i] if results.get('metadatas') else {}
+                    "metadata": metadata
                 })
         
-        return all_results
+        return all_results[:n_results]
     
     def get_context_for_analysis(self, symbol: str, company_name: str) -> str:
         """
@@ -153,16 +162,21 @@ class KnowledgeBase:
         """
         # Búsqueda amplia con múltiples queries
         queries = [
-            f"{symbol} {company_name}",
-            "criterios inversión valoración ROIC margen",
-            f"análisis {company_name} value investing"
+            (f"{symbol} {company_name}", symbol, False),
+            (f"análisis {company_name} value investing", symbol, False),
+            ("criterios inversión valoración ROIC margen", None, True),
         ]
         
         all_context = []
         seen_content = set()
         
-        for query in queries:
-            results = self.search(query=query, n_results=5)
+        for query, query_symbol, general_only in queries:
+            results = self.search(
+                query=query,
+                n_results=5,
+                symbol=query_symbol,
+                general_only=general_only,
+            )
             for r in results:
                 # Evitar duplicados
                 content_key = r['content'][:100]
@@ -244,7 +258,16 @@ def get_knowledge_base() -> KnowledgeBase:
     """Obtiene la instancia singleton de la base de conocimiento"""
     global _kb_instance
     if _kb_instance is None:
-        _kb_instance = KnowledgeBase()
+        if os.getenv("VECTOR_STORE", "").lower() == "qdrant":
+            try:
+                from modules.vector_store import QdrantVectorStore
+
+                _kb_instance = QdrantVectorStore()
+            except Exception as exc:
+                print(f"Qdrant unavailable, falling back to ChromaDB: {exc}")
+                _kb_instance = KnowledgeBase()
+        else:
+            _kb_instance = KnowledgeBase()
     return _kb_instance
 
 def reset_knowledge_base():
