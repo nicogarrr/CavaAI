@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BarChart3,
   Database,
+  FileText,
   RefreshCcw,
   ShieldCheck,
   Sigma,
@@ -12,8 +13,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   getResearchCompanyDetail,
+  generateResearchThesis,
   refreshCompanyFinancials,
   type ResearchFact,
+  type ResearchThesis,
   type ResearchValuation,
 } from '@/lib/actions/research.actions';
 
@@ -194,9 +197,39 @@ function FactsTable({ facts }: { facts: ResearchFact[] }) {
   );
 }
 
+function ThesisPanel({ thesis }: { thesis: ResearchThesis | null }) {
+  if (!thesis) {
+    return (
+      <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+        No hay tesis generada para este ticker.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Stat label="Version" value={`v${thesis.version}`} />
+        <Stat label="Status" value={thesis.status} tone={thesis.status === 'final' ? 'good' : 'warn'} />
+        <Stat label="Rating" value={thesis.rating} tone={thesis.rating === 'blocked' ? 'bad' : 'default'} />
+        <Stat label="Source score" value={`${thesis.source_coverage_score}`} tone={thesis.source_coverage_score > 80 ? 'good' : 'warn'} />
+      </div>
+      <div className="rounded-md border border-gray-800 bg-black/30 p-4">
+        <div className="text-xs font-semibold uppercase text-gray-500">Executive summary</div>
+        <p className="mt-2 text-sm leading-6 text-gray-300">{thesis.executive_summary}</p>
+      </div>
+      <article className="max-h-[680px] overflow-auto rounded-md border border-gray-800 bg-black/30 p-4">
+        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-gray-300">
+          {thesis.thesis_markdown}
+        </pre>
+      </article>
+    </div>
+  );
+}
+
 export default async function ResearchCompanyPage({ params }: ResearchCompanyPageProps) {
   const { ticker } = await params;
-  const { company, valuation, facts } = await getResearchCompanyDetail(ticker);
+  const { company, valuation, facts, thesis } = await getResearchCompanyDetail(ticker);
 
   if (!company) notFound();
 
@@ -236,10 +269,12 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
         </div>
 
         <form action={refreshCompanyFinancials.bind(null, company.ticker)}>
-          <Button type="submit" variant="outline">
-            <RefreshCcw className="h-4 w-4" />
-            Refresh FMP
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" variant="outline">
+              <RefreshCcw className="h-4 w-4" />
+              Refresh FMP
+            </Button>
+          </div>
         </form>
       </header>
 
@@ -305,6 +340,22 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
             ) : null}
           </div>
         </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-teal-300" />
+            <h2 className="text-lg font-semibold text-gray-100">Thesis</h2>
+          </div>
+          <form action={generateResearchThesis.bind(null, company.ticker)}>
+            <Button type="submit" variant="outline">
+              <FileText className="h-4 w-4" />
+              Generate Thesis
+            </Button>
+          </form>
+        </div>
+        <ThesisPanel thesis={thesis} />
       </section>
     </main>
   );

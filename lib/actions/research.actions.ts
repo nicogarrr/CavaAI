@@ -98,6 +98,27 @@ export type ResearchValuation = {
   };
 };
 
+export type ResearchThesis = {
+  id: number;
+  company_id: number;
+  version: number;
+  status: string;
+  thesis_markdown: string;
+  executive_summary: string;
+  rating: string;
+  current_price: string;
+  bear_value: string;
+  base_value: string;
+  bull_value: string;
+  expected_value: string;
+  margin_of_safety: string;
+  data_confidence_score: number;
+  source_coverage_score: number;
+  red_team_score: number;
+  valuation_risk_score: number;
+  created_at: string;
+};
+
 async function getJson<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
@@ -110,10 +131,12 @@ async function getJson<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
-async function postJson<T>(path: string, fallback: T): Promise<T> {
+async function postJson<T>(path: string, fallback: T, body?: unknown): Promise<T> {
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
       method: 'POST',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
       cache: 'no-store',
     });
     if (!response.ok) return fallback;
@@ -172,16 +195,18 @@ export async function getResearchCompanyDetail(ticker: string) {
     trace: {},
   };
 
-  const [company, valuation, facts] = await Promise.all([
+  const [company, valuation, facts, thesis] = await Promise.all([
     getJson<ResearchCompany | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}`, null),
     getJson<ResearchValuation>(`/api/valuation/${encodeURIComponent(normalizedTicker)}`, emptyValuation),
     getJson<ResearchFact[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/facts?limit=80`, []),
+    getJson<ResearchThesis | null>(`/api/thesis/${encodeURIComponent(normalizedTicker)}/latest`, null),
   ]);
 
   return {
     company,
     valuation,
     facts,
+    thesis,
   };
 }
 
@@ -191,6 +216,20 @@ export async function refreshCompanyFinancials(ticker: string) {
     status: 'not_configured',
     ticker: normalizedTicker,
   });
+  revalidatePath('/research');
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function generateResearchThesis(ticker: string) {
+  const normalizedTicker = ticker.toUpperCase();
+  await postJson(
+    '/api/thesis/generate',
+    null,
+    {
+      ticker: normalizedTicker,
+      force_new_version: true,
+    },
+  );
   revalidatePath('/research');
   revalidatePath(`/research/${normalizedTicker}`);
 }
