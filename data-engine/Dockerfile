@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System deps for scipy / numpy / arch / chromadb
+# System deps for scipy / numpy / arch
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
