@@ -1,7 +1,6 @@
 import { Schema, model, models, type Document, type Model } from 'mongoose';
 
 export interface Alert extends Document {
-    _id: string;
     userId: string;
     symbol: string;
     type: 'price_above' | 'price_below' | 'price_change' | 'news' | 'earnings';
