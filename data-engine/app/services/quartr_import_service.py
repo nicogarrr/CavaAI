@@ -59,6 +59,12 @@ class QuartrImportService:
         db.commit()
         db.refresh(document)
 
+        try:
+            from app.services.rag import RAGIndex
+            RAGIndex().ingest_document(db, document)
+        except Exception:
+            pass
+
         return {
             "document_id": document.id,
             "transcript_id": transcript.id,
