@@ -6,10 +6,31 @@ import {env} from "@/lib/env";
 import {DatabaseError, toAppError, getErrorMessage} from "@/lib/types/errors";
 
 
-let authInstance: ReturnType<typeof betterAuth> | null = null;
+const authOptions = {
+    emailAndPassword: {
+        enabled: true,
+        disableSignUp: false,
+        requireEmailVerification: false,
+        minPasswordLength: 8,
+        maxPasswordLength: 128,
+        autoSignIn: true,
+    },
+    plugins: [nextCookies()],
+};
+
+const createAuthInstance = (database?: ReturnType<typeof mongodbAdapter>) => betterAuth({
+    ...(database ? { database } : {}),
+    secret: env.BETTER_AUTH_SECRET,
+    baseURL: env.BETTER_AUTH_URL || env.VERCEL_URL || 'http://localhost:3000',
+    ...authOptions,
+});
+
+type AuthInstance = ReturnType<typeof createAuthInstance>;
+
+let authInstance: AuthInstance | null = null;
 
 
-export const getAuth = async () => {
+export const getAuth = async (): Promise<AuthInstance> => {
     if(authInstance) {
         return authInstance;
     }
@@ -31,19 +52,7 @@ export const getAuth = async () => {
             if (isBuildTime) {
                 // Durante el build, creamos una instancia mock sin base de datos
                 // Esto permite que Next.js complete el build
-                authInstance = betterAuth({
-                    secret: env.BETTER_AUTH_SECRET,
-                    baseURL: env.BETTER_AUTH_URL || 'http://localhost:3000',
-                    emailAndPassword: {
-                        enabled: true,
-                        disableSignUp: false,
-                        requireEmailVerification: false,
-                        minPasswordLength: 8,
-                        maxPasswordLength: 128,
-                        autoSignIn: true,
-                    },
-                    plugins: [nextCookies()],
-                });
+                authInstance = createAuthInstance();
                 
                 return authInstance;
             }
@@ -55,39 +64,14 @@ export const getAuth = async () => {
             }
             
             console.warn('⚠️ MongoDB connection not available, using memory adapter (development only)');
-            authInstance = betterAuth({
-                secret: env.BETTER_AUTH_SECRET,
-                baseURL: env.BETTER_AUTH_URL || env.VERCEL_URL || 'http://localhost:3000',
-                emailAndPassword: {
-                    enabled: true,
-                    disableSignUp: false,
-                    requireEmailVerification: false,
-                    minPasswordLength: 8,
-                    maxPasswordLength: 128,
-                    autoSignIn: true,
-                },
-                plugins: [nextCookies()],
-            });
+            authInstance = createAuthInstance();
             
             return authInstance;
         }
 
         const db = mongoose.connection;
 
-        authInstance = betterAuth({
-            database: mongodbAdapter(db),
-            secret: env.BETTER_AUTH_SECRET,
-            baseURL: env.BETTER_AUTH_URL,
-            emailAndPassword: {
-                enabled: true,
-                disableSignUp: false,
-                requireEmailVerification: false,
-                minPasswordLength: 8,
-                maxPasswordLength: 128,
-                autoSignIn: true,
-            },
-            plugins: [nextCookies()],
-        });
+        authInstance = createAuthInstance(mongodbAdapter(db));
 
         return authInstance;
     } catch (error: unknown) {
