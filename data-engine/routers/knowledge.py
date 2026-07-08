@@ -133,20 +133,50 @@ async def upload_files(collection: str = "analyses", files: List[UploadFile] = F
 
                 reader = PdfReader(io.BytesIO(file_bytes))
                 text_content = "\n\n".join([page.extract_text() or "" for page in reader.pages])
+            elif filename.lower().endswith((".xlsx", ".xls")):
+                from openpyxl import load_workbook
+
+                workbook = load_workbook(io.BytesIO(file_bytes), data_only=True)
+                text_parts = []
+                for sheet in workbook.sheetnames:
+                    worksheet = workbook[sheet]
+                    rows = []
+                    for row in worksheet.iter_rows(values_only=True):
+                        row_text = " | ".join([str(cell) if cell is not None else "" for cell in row])
+                        if row_text.strip():
+                            rows.append(row_text)
+                    if rows:
+                        text_parts.append(f"=== Hoja: {sheet} ===\n" + "\n".join(rows))
+                text_content = "\n\n".join(text_parts)
+            elif filename.lower().endswith(".docx"):
+                from docx import Document
+
+                document = Document(io.BytesIO(file_bytes))
+                text_parts = [para.text for para in document.paragraphs if para.text.strip()]
+                for table in document.tables:
+                    for row in table.rows:
+                        row_text = " | ".join([cell.text for cell in row.cells])
+                        if row_text.strip():
+                            text_parts.append(row_text)
+                text_content = "\n\n".join(text_parts)
             elif filename.lower().endswith((".txt", ".md")):
                 try:
                     text_content = file_bytes.decode("utf-8")
                 except UnicodeDecodeError:
                     text_content = file_bytes.decode("latin-1")
             else:
-                results.append({"filename": filename, "success": False, "error": "Tipo no soportado."})
+                results.append({"filename": filename, "success": False, "error": "Tipo no soportado. Usa PDF, Excel, Word, TXT o MD."})
                 continue
             if not text_content.strip():
                 results.append({"filename": filename, "success": False, "error": "File is empty"})
                 continue
             result = kb.add_document(content=text_content, metadata={"title": filename, "source": "file_upload"})
-            results.append({"filename": filename, "success": True, "document_id": result.get("document_id")})
+            results.append({
+                "filename": filename,
+                "success": True,
+                "document_id": result.get("document_id"),
+                "chunks_added": result.get("chunks_added", 0),
+            })
         except Exception as e:
             results.append({"filename": file.filename or "unknown", "success": False, "error": str(e)})
     return {"success": True, "results": results}
-
