@@ -1,13 +1,10 @@
-"""Vector-store facade for RAG backends.
-
-Qdrant is the preferred target for the next migration step. Chroma remains the
-fallback backend for existing local data until a data migration exists.
-"""
+"""Qdrant vector-store facade for RAG."""
 
 from __future__ import annotations
 
 import hashlib
 import os
+import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Protocol
 
@@ -75,6 +72,7 @@ class QdrantVectorStore:
         embeddings = self.embedding_model.encode(chunks).tolist()
         base_id = document_id or self._generate_id(content)
         base_metadata = metadata.copy() if metadata else {}
+        base_metadata["document_id"] = base_id
         base_metadata["added_at"] = datetime.now().isoformat()
         base_metadata["total_chunks"] = len(chunks)
 
@@ -84,14 +82,23 @@ class QdrantVectorStore:
             payload["chunk_index"] = i
             payload["chunk_preview"] = chunk[:100] + "..." if len(chunk) > 100 else chunk
             payload["content"] = chunk
-            points.append(PointStruct(id=f"{base_id}_{i}", vector=embeddings[i], payload=payload))
+            point_id = str(uuid.UUID(hex=hashlib.md5(f"{base_id}:{i}".encode()).hexdigest()))
+            points.append(PointStruct(id=point_id, vector=embeddings[i], payload=payload))
 
         self.client.upsert(collection_name=self.collection_name, points=points)
         return {"success": True, "document_id": base_id, "chunks_added": len(chunks), "collection": self.collection_name}
 
-    def search(self, query: str, n_results: int = 10, symbol: Optional[str] = None) -> List[Dict]:
+    def search(
+        self,
+        query: str,
+        n_results: int = 10,
+        collection_names: Optional[List[str]] = None,
+        symbol: Optional[str] = None,
+        general_only: bool = False,
+    ) -> List[Dict]:
         from qdrant_client.models import FieldCondition, Filter, MatchValue
 
+        _ = collection_names
         query_vector = self.embedding_model.encode([query])[0].tolist()
         query_filter = None
         if symbol:
@@ -115,11 +122,11 @@ class QdrantVectorStore:
         return results[:n_results]
 
     def delete_document(self, document_id: str) -> bool:
-        from qdrant_client.models import FieldCondition, Filter, MatchText
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
 
         self.client.delete(
             collection_name=self.collection_name,
-            points_selector=Filter(must=[FieldCondition(key="id", match=MatchText(text=document_id))]),
+            points_selector=Filter(must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]),
         )
         return True
 
@@ -128,7 +135,7 @@ class QdrantVectorStore:
         docs = {}
         for point in points:
             payload = point.payload or {}
-            doc_id = str(point.id).rsplit("_", 1)[0]
+            doc_id = payload.get("document_id", str(point.id))
             docs.setdefault(doc_id, {
                 "id": doc_id,
                 "title": payload.get("title", "Sin título"),
