@@ -1,12 +1,19 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import CashBalance, Company, Position
+from app.services.connectors.ibkr import IBKRFlexClient
+from app.services.ibkr_import_service import IBKRImportService
 from app.services.risk_service import RiskService
 
 router = APIRouter()
+
+
+class IBKRXmlImportRequest(BaseModel):
+    xml: str = Field(min_length=20)
 
 
 @router.get("/summary")
@@ -56,9 +63,17 @@ def cash(db: Session = Depends(get_db)) -> list[dict]:
 
 
 @router.post("/import/ibkr")
-def import_ibkr() -> dict:
-    return {
-        "status": "not_configured",
-        "message": "Set IBKR_FLEX_TOKEN and IBKR_FLEX_QUERY_ID, then run the IBKR Flex connector.",
-    }
+async def import_ibkr(db: Session = Depends(get_db)) -> dict:
+    client = IBKRFlexClient()
+    if not client.configured():
+        return {
+            "status": "not_configured",
+            "message": "Set IBKR_FLEX_TOKEN and IBKR_FLEX_QUERY_ID, then run the IBKR Flex connector.",
+        }
+    xml_text = await client.fetch_latest_xml()
+    return IBKRImportService().import_flex_xml(db, xml_text)
 
+
+@router.post("/import/ibkr/xml")
+def import_ibkr_xml(payload: IBKRXmlImportRequest, db: Session = Depends(get_db)) -> dict:
+    return IBKRImportService().import_flex_xml(db, payload.xml)

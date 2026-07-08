@@ -76,6 +76,7 @@ def test_public_routes_are_registered_once():
         "/api/portfolio/positions",
         "/api/portfolio/cash",
         "/api/portfolio/import/ibkr",
+        "/api/portfolio/import/ibkr/xml",
         "/api/thesis/generate",
         "/api/thesis/{ticker}/latest",
         "/api/thesis/{ticker}/versions",

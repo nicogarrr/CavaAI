@@ -96,3 +96,30 @@ def test_quartr_manual_import_creates_document_chunks_and_transcript():
         assert result["chunks"] >= 1
     finally:
         db.close()
+
+
+def test_ibkr_xml_import_endpoint_ingests_positions_cash_and_trades():
+    init_db()
+    client = TestClient(main.app)
+    xml = """
+    <FlexQueryResponse>
+      <OpenPositions>
+        <OpenPosition symbol="AAPL" position="2" markPrice="200" positionValue="400" costBasisPrice="150" currency="USD" fifoPnlUnrealized="100" />
+      </OpenPositions>
+      <CashReports>
+        <CashReport currency="USD" endingCash="1234.56" settledCash="1200" />
+      </CashReports>
+      <Trades>
+        <Trade tradeID="test-trade-1" symbol="AAPL" buySell="BUY" quantity="2" tradePrice="150" ibCommission="-1" currency="USD" tradeDate="2026-01-02" />
+      </Trades>
+    </FlexQueryResponse>
+    """
+
+    response = client.post("/api/portfolio/import/ibkr/xml", json={"xml": xml})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "imported"
+    assert payload["positions_imported"] == 1
+    assert payload["cash_imported"] == 1
+    assert payload["trades_imported"] in {0, 1}
