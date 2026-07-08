@@ -20,6 +20,57 @@ def upsert_company(db, payload: dict) -> Company:
     return company
 
 
+def ensure_company_master() -> None:
+    init_db()
+    db = SessionLocal()
+    try:
+        companies = {payload["ticker"]: upsert_company(db, payload) for payload in COMPANY_MASTER}
+        db.flush()
+        ensure_company_master_documents(db, companies)
+        db.commit()
+    finally:
+        db.close()
+
+
+def ensure_company_master_documents(db, companies: dict[str, Company]) -> None:
+    for company in companies.values():
+        existing_doc = db.scalar(
+            select(Document).where(
+                Document.company_id == company.id,
+                Document.source_type == "company_master_seed",
+            )
+        )
+        if existing_doc is not None:
+            continue
+        existing_doc = Document(
+            company_id=company.id,
+            title=f"{company.ticker} company master seed",
+            source_type="company_master_seed",
+            source_url=company.ir_url,
+            published_at=datetime.now(UTC),
+            metadata_={
+                "purpose": "bootstrap evidence for local setup",
+                "not_official_financials": True,
+            },
+        )
+        db.add(existing_doc)
+        db.flush()
+        db.add(
+            DocumentChunk(
+                document_id=existing_doc.id,
+                chunk_index=0,
+                text=(
+                    f"{company.ticker} is configured as {company.company_type}. "
+                    f"Valuation model: {company.valuation_model}. "
+                    f"Special sources: {', '.join(company.special_sources)}. "
+                    f"Special risks: {', '.join(company.special_risks)}."
+                ),
+                token_count=80,
+                metadata_={"bootstrap": True},
+            )
+        )
+
+
 def seed() -> None:
     init_db()
     db = SessionLocal()
@@ -54,41 +105,7 @@ def seed() -> None:
             cash.interest_rate = Decimal("0.0525") if balance < 0 else Decimal("0")
             cash.source = "demo_seed"
 
-        for company in companies.values():
-            existing_doc = db.scalar(
-                select(Document).where(
-                    Document.company_id == company.id,
-                    Document.source_type == "company_master_seed",
-                )
-            )
-            if existing_doc is None:
-                existing_doc = Document(
-                    company_id=company.id,
-                    title=f"{company.ticker} company master seed",
-                    source_type="company_master_seed",
-                    source_url=company.ir_url,
-                    published_at=datetime.now(UTC),
-                    metadata_={
-                        "purpose": "bootstrap evidence for local setup",
-                        "not_official_financials": True,
-                    },
-                )
-                db.add(existing_doc)
-                db.flush()
-                db.add(
-                    DocumentChunk(
-                        document_id=existing_doc.id,
-                        chunk_index=0,
-                        text=(
-                            f"{company.ticker} is configured as {company.company_type}. "
-                            f"Valuation model: {company.valuation_model}. "
-                            f"Special sources: {', '.join(company.special_sources)}. "
-                            f"Special risks: {', '.join(company.special_risks)}."
-                        ),
-                        token_count=80,
-                        metadata_={"bootstrap": True},
-                    )
-                )
+        ensure_company_master_documents(db, companies)
 
         db.commit()
     finally:
@@ -98,4 +115,3 @@ def seed() -> None:
 if __name__ == "__main__":
     seed()
     print("Seed complete: companies, demo positions, cash balances and bootstrap sources loaded.")
-
