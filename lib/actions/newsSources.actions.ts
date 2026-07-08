@@ -5,7 +5,7 @@
 
 'use server';
 
-import { validateArticle, formatArticle, getDateRange } from '@/lib/utils';
+import { validateArticle, formatArticle, getDateRange, stableNumericId } from '@/lib/utils';
 
 export enum NewsSource {
     FINNHUB = 'finnhub',
@@ -310,8 +310,8 @@ async function getNewsYahoo(symbols?: string[], maxArticles = 15): Promise<Marke
 
         if (!Array.isArray(articles)) return [];
 
-        return articles.map(item => ({
-            id: item.id || `yf-${Math.random()}`,
+        return articles.map((item, index) => ({
+            id: item.id || stableNumericId(`${symbol}:${item.url || ''}:${item.headline || item.title || ''}:${index}`),
             headline: item.headline || item.title || '',
             summary: item.summary || '',
             source: item.source || 'Yahoo Finance',
