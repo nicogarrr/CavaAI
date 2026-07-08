@@ -1,11 +1,24 @@
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import Company, Document, ThesisVersion
+from app.models import Company, FinancialFact, ThesisVersion
 from app.schemas import ChatResponse
 
 
 class ChatService:
+    def _get_key_facts(self, db, company) -> list[dict]:
+        facts = []
+        for metric in ["revenue", "free_cash_flow", "net_income", "net_debt", "shares_diluted"]:
+            fact = db.scalar(
+                select(FinancialFact)
+                .where(FinancialFact.company_id == company.id, FinancialFact.metric == metric)
+                .order_by(FinancialFact.fiscal_year.desc().nullslast(), desc(FinancialFact.created_at))
+                .limit(1)
+            )
+            if fact:
+                facts.append({"metric": metric, "value": float(fact.value), "unit": fact.unit, "period": fact.period, "source": fact.source_type})
+        return facts
+
     def answer(self, db: Session, question: str, scope: str, ticker: str | None) -> ChatResponse:
         company = None
         if ticker:
@@ -24,7 +37,6 @@ class ChatService:
                 .order_by(desc(ThesisVersion.version))
                 .limit(1)
             )
-            source = db.scalar(select(Document).where(Document.company_id == company.id).limit(1))
             if not thesis:
                 return ChatResponse(
                     answer=(
@@ -35,25 +47,32 @@ class ChatService:
                     blocked=True,
                     proposed_actions=[f"Generate thesis for {company.ticker}"],
                 )
+
+            key_facts = self._get_key_facts(db, company)
+
+            rag_chunks = []
+            try:
+                from app.services.rag import RAGIndex
+                rag_chunks = RAGIndex().search(question, ticker=company.ticker if company else None, limit=4)
+            except Exception:
+                pass
+
+            facts_text = "; ".join(f"{f['metric']}={f['value']:.0f}{f['unit']} ({f['period']})" for f in key_facts)
+            rag_text = rag_chunks[0]["text"][:300] if rag_chunks else "no documents indexed"
+            answer = (
+                f"For {company.ticker}, thesis v{thesis.version} is `{thesis.status}` rating=`{thesis.rating}`. "
+                f"Expected value {float(thesis.expected_value):.2f} vs price {float(thesis.current_price):.2f}. "
+                f"Key facts: {facts_text}. "
+                f"Evidence: {rag_text}"
+            )
+
+            sources = [{"type": "thesis", "id": thesis.id, "title": f"{company.ticker} thesis v{thesis.version}"}]
+            for chunk in rag_chunks[:3]:
+                sources.append({"type": "rag_chunk", "id": chunk.get("point_id"), "title": chunk.get("title", ""), "text": chunk.get("text", "")[:200]})
+
             return ChatResponse(
-                answer=(
-                    f"For {company.ticker}, latest thesis v{thesis.version} is `{thesis.status}` "
-                    f"with rating `{thesis.rating}`. Expected value is {float(thesis.expected_value):.2f} "
-                    f"vs current price {float(thesis.current_price):.2f}. "
-                    "Use this as a grounded answer only within the stored thesis and source audit."
-                ),
-                sources=[
-                    {
-                        "type": "thesis",
-                        "id": thesis.id,
-                        "title": f"{company.ticker} thesis v{thesis.version}",
-                    },
-                    {
-                        "type": source.source_type if source else "missing_source",
-                        "id": source.id if source else None,
-                        "title": source.title if source else "No source document yet",
-                    },
-                ],
+                answer=answer,
+                sources=sources,
                 blocked=thesis.status == "draft_failed_audit",
                 proposed_actions=["Run source audit", "Update thesis"] if thesis.status != "final" else [],
             )
@@ -67,4 +86,3 @@ class ChatService:
             blocked=False,
             proposed_actions=["Open risk dashboard", "Generate missing thesis versions"],
         )
-

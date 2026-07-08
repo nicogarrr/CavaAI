@@ -5,6 +5,7 @@ import {
   BarChart3,
   Database,
   FileText,
+  GitBranch,
   RefreshCcw,
   ShieldCheck,
   Sigma,
@@ -15,8 +16,11 @@ import {
   getResearchCompanyDetail,
   generateResearchThesis,
   refreshCompanyFinancials,
+  refreshCompanyFinancialsSEC,
+  getThesisHistory,
   type ResearchFact,
   type ResearchThesis,
+  type ResearchThesisVersion,
   type ResearchValuation,
 } from '@/lib/actions/research.actions';
 
@@ -229,7 +233,10 @@ function ThesisPanel({ thesis }: { thesis: ResearchThesis | null }) {
 
 export default async function ResearchCompanyPage({ params }: ResearchCompanyPageProps) {
   const { ticker } = await params;
-  const { company, valuation, facts, thesis } = await getResearchCompanyDetail(ticker);
+  const [{ company, valuation, facts, thesis }, thesisHistory] = await Promise.all([
+    getResearchCompanyDetail(ticker),
+    getThesisHistory(ticker),
+  ]);
 
   if (!company) notFound();
 
@@ -268,14 +275,20 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
           </div>
         </div>
 
-        <form action={refreshCompanyFinancials.bind(null, company.ticker)}>
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
+          <form action={refreshCompanyFinancials.bind(null, company.ticker)}>
             <Button type="submit" variant="outline">
               <RefreshCcw className="h-4 w-4" />
               Refresh FMP
             </Button>
-          </div>
-        </form>
+          </form>
+          <form action={refreshCompanyFinancialsSEC.bind(null, company.ticker)}>
+            <Button type="submit" variant="outline">
+              <RefreshCcw className="h-4 w-4" />
+              Refresh SEC
+            </Button>
+          </form>
+        </div>
       </header>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -357,6 +370,42 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
         </div>
         <ThesisPanel thesis={thesis} />
       </section>
+
+      {thesisHistory.length > 0 && (
+        <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <GitBranch className="h-5 w-5 text-teal-300" />
+            <h2 className="text-lg font-semibold text-gray-100">Thesis History</h2>
+            <span className="ml-auto text-sm text-gray-500">{thesisHistory.length} versions</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase text-gray-500">
+                <tr>
+                  <th className="border-b border-gray-800 py-2">Version</th>
+                  <th className="border-b border-gray-800 py-2">Date</th>
+                  <th className="border-b border-gray-800 py-2">Status</th>
+                  <th className="border-b border-gray-800 py-2">Rating</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Source Score</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {thesisHistory.map((tv: ResearchThesisVersion) => (
+                  <tr key={tv.id} className="border-b border-gray-900 last:border-0">
+                    <td className="py-3 font-semibold text-teal-300">v{tv.version}</td>
+                    <td className="py-3 text-gray-400">{tv.created_at.split('T')[0]}</td>
+                    <td className="py-3 text-gray-300">{tv.status}</td>
+                    <td className="py-3 text-gray-300">{tv.rating}</td>
+                    <td className="py-3 text-right text-gray-400">{tv.source_coverage_score}</td>
+                    <td className="py-3 text-right text-gray-400">{tv.data_confidence_score}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

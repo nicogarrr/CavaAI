@@ -59,3 +59,14 @@ async def refresh_fmp_financials(ticker: str, db: Session = Depends(get_db)) -> 
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=424, detail=str(exc)) from exc
+
+
+@router.post("/{ticker}/refresh/sec", response_model=FinancialRefreshResponse)
+async def refresh_sec_financials(ticker: str, db: Session = Depends(get_db)) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    try:
+        return await FinancialIngestionService().refresh_from_sec(db=db, company=company)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=424, detail=str(exc)) from exc

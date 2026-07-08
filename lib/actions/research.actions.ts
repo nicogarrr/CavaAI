@@ -285,3 +285,74 @@ export async function importResearchSource(formData: FormData) {
 
   revalidatePath('/research/sources');
 }
+
+export type ResearchNewsEvent = {
+  id: number;
+  ticker: string | null;
+  date: string;
+  title: string;
+  source: string;
+  event_type: string;
+  materiality_score: number;
+  impact_direction: string;
+  requires_update: boolean;
+};
+
+export type ResearchWorkflowRun = {
+  status: string;
+  workflow: string;
+  ticker: string | null;
+  message: string;
+  steps: string[];
+  estimated_minutes: number;
+  result?: unknown;
+};
+
+export type ResearchThesisVersion = {
+  id: number;
+  version: number;
+  status: string;
+  rating: string;
+  executive_summary: string;
+  source_coverage_score: number;
+  data_confidence_score: number;
+  created_at: string;
+};
+
+export async function getResearchNews(): Promise<ResearchNewsEvent[]> {
+  return getJson<ResearchNewsEvent[]>('/api/news', []);
+}
+
+export async function analyzeManualNews(
+  formData: FormData,
+): Promise<{ event_type: string; materiality_score: number; impact_direction: string; summary: string }> {
+  const text = String(formData.get('text') ?? '').trim();
+  const source = String(formData.get('source') ?? 'manual').trim();
+  if (!text || text.length < 20) return { event_type: 'unknown', materiality_score: 0, impact_direction: 'neutral', summary: '' };
+  return postJson('/api/news/manual', { event_type: 'unknown', materiality_score: 0, impact_direction: 'neutral', summary: '' }, { text, source });
+}
+
+export async function refreshCompanyFinancialsSEC(ticker: string) {
+  const normalizedTicker = ticker.toUpperCase();
+  await postJson(`/api/companies/${encodeURIComponent(normalizedTicker)}/refresh/sec`, {
+    status: 'not_configured',
+    ticker: normalizedTicker,
+  });
+  revalidatePath('/research');
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function runResearchWorkflow(name: string, ticker?: string): Promise<ResearchWorkflowRun> {
+  const result = await postJson<ResearchWorkflowRun>(
+    `/api/workflows/${encodeURIComponent(name)}/run`,
+    { status: 'error', workflow: name, ticker: ticker ?? null, message: 'Backend unavailable', steps: [], estimated_minutes: 0 },
+    { ticker: ticker ?? null, params: {} },
+  );
+  revalidatePath('/research');
+  if (ticker) revalidatePath(`/research/${ticker.toUpperCase()}`);
+  return result;
+}
+
+export async function getThesisHistory(ticker: string): Promise<ResearchThesisVersion[]> {
+  return getJson<ResearchThesisVersion[]>(`/api/thesis/${encodeURIComponent(ticker.toUpperCase())}/versions`, []);
+}
