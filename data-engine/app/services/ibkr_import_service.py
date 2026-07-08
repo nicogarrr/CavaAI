@@ -51,6 +51,9 @@ class IBKRImportService:
         positions_imported = 0
         cash_imported = 0
         trades_imported = 0
+        dividends_imported = 0
+        fees_imported = 0
+        cash_transactions_imported = 0
 
         for element in root.iter():
             tag = _tag_name(element)
@@ -118,12 +121,76 @@ class IBKRImportService:
                 db.add(transaction)
                 trades_imported += 1
 
+            elif tag == "CashTransaction":
+                type_attr = (_attr(element, "type", "transactionType", "activityType") or "").lower()
+                if "dividend" in type_attr:
+                    action = "dividend"
+                elif "interest" in type_attr:
+                    action = "interest"
+                elif "fee" in type_attr or "commission" in type_attr:
+                    action = "fee"
+                else:
+                    action = "cash_misc"
+                external_id = _attr(element, "trxID", "transactionID", "id")
+                if external_id and db.scalar(select(Transaction).where(Transaction.external_id == external_id)):
+                    continue
+                amount = _decimal(_attr(element, "amount", "netCash", "proceeds"))
+                transaction = Transaction(
+                    company_id=None,
+                    trade_date=_date(_attr(element, "dateTime", "date", "tradeDate")),
+                    action=action,
+                    quantity=Decimal("1"),
+                    price=amount,
+                    fees=Decimal("0"),
+                    currency=_attr(element, "currency") or "USD",
+                    external_id=external_id,
+                    raw_payload=dict(element.attrib),
+                )
+                db.add(transaction)
+                if action == "dividend":
+                    dividends_imported += 1
+                elif action == "fee":
+                    fees_imported += 1
+                else:
+                    cash_transactions_imported += 1
+
+            elif tag == "CorporateAction":
+                ca_type = (_attr(element, "type", "activityType") or "").upper()
+                if ca_type not in {"DIV", "DIVIDEND", "PD", "PI"}:
+                    continue
+                action = "dividend"
+                external_id = _attr(element, "transactionID", "id")
+                if external_id and db.scalar(select(Transaction).where(Transaction.external_id == external_id)):
+                    continue
+                symbol = _attr(element, "symbol", "underlyingSymbol")
+                company_id = None
+                if symbol:
+                    corp_company = self._company(db, companies, symbol)
+                    company_id = corp_company.id
+                amount = _decimal(_attr(element, "amount", "proceeds", "netCash"))
+                transaction = Transaction(
+                    company_id=company_id,
+                    trade_date=_date(_attr(element, "dateTime", "date", "tradeDate")),
+                    action=action,
+                    quantity=Decimal("1"),
+                    price=amount,
+                    fees=Decimal("0"),
+                    currency=_attr(element, "currency") or "USD",
+                    external_id=external_id,
+                    raw_payload=dict(element.attrib),
+                )
+                db.add(transaction)
+                dividends_imported += 1
+
         db.commit()
         return {
             "status": "imported",
             "positions_imported": positions_imported,
             "cash_imported": cash_imported,
             "trades_imported": trades_imported,
+            "dividends_imported": dividends_imported,
+            "fees_imported": fees_imported,
+            "cash_transactions_imported": cash_transactions_imported,
         }
 
     def _company(self, db: Session, cache: dict[str, Company], symbol: str) -> Company:

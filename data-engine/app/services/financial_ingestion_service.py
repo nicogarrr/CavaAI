@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, Document, FinancialFact, FinancialStatement, MarketPrice
 from app.services.connectors.fmp import FMPClient
+from app.services.connectors.sec import SECClient
 
 
 MetricSpec = tuple[str, str, str]
@@ -46,6 +47,23 @@ RATIO_METRICS: list[MetricSpec] = [
     ("operating_margin", "operatingProfitMargin", "decimal"),
     ("net_margin", "netProfitMargin", "decimal"),
     ("debt_to_equity", "debtEquityRatio", "decimal"),
+]
+
+SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
+    ("revenue",           ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"],  "USD"),
+    ("gross_profit",      ["GrossProfit"],                                                                          "USD"),
+    ("operating_income",  ["OperatingIncomeLoss"],                                                                  "USD"),
+    ("net_income",        ["NetIncomeLoss", "ProfitLoss"],                                                          "USD"),
+    ("eps_diluted",       ["EarningsPerShareDiluted"],                                                              "USD/share"),
+    ("shares_diluted",    ["WeightedAverageNumberOfDilutedSharesOutstanding", "CommonStockSharesOutstanding"],      "shares"),
+    ("cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsAndShortTermInvestments"], "USD"),
+    ("total_debt",        ["LongTermDebt", "LongTermDebtNoncurrent", "DebtLongtermAndShorttermCombinedAmount"],     "USD"),
+    ("total_assets",      ["Assets"],                                                                               "USD"),
+    ("total_liabilities", ["Liabilities"],                                                                          "USD"),
+    ("total_equity",      ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], "USD"),
+    ("operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities"],                                         "USD"),
+    ("capital_expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment"],                                         "USD"),
+    ("dividends_paid",    ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock"],                                "USD"),
 ]
 
 
@@ -159,6 +177,115 @@ class FinancialIngestionService:
             "valuation_input_ready": self.valuation_input_ready(db, company),
         }
 
+    async def refresh_from_sec(self, db: Session, company: Company) -> dict[str, Any]:
+        sec = SECClient()
+        ticker = company.ticker.upper()
+
+        try:
+            cik = await sec.cik_for_ticker(ticker)
+        except Exception as e:
+            raise RuntimeError(f"SEC fetch failed: {e}") from e
+
+        if not cik:
+            raise RuntimeError(f"CIK not found for {ticker}")
+
+        try:
+            facts_data = await sec.company_facts(cik)
+        except Exception as e:
+            raise RuntimeError(f"SEC fetch failed: {e}") from e
+
+        us_gaap = facts_data.get("facts", {}).get("us-gaap", {})
+
+        document = self._source_document_sec(db, company, ticker)
+        self._replace_sec_data(db, company)
+
+        facts_imported = 0
+
+        for metric, concepts, unit in SEC_METRIC_MAP:
+            xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
+            for concept in concepts:
+                concept_data = us_gaap.get(concept, {})
+                entries = concept_data.get("units", {}).get(xbrl_unit_key, [])
+                annual = [
+                    e for e in entries
+                    if e.get("fp") == "FY" and e.get("form") in {"10-K", "20-F"}
+                ]
+                if not annual:
+                    continue
+                annual_sorted = sorted(annual, key=lambda e: e.get("fy", 0), reverse=True)[:10]
+                for entry in annual_sorted:
+                    val = _decimal(entry.get("val"))
+                    if val is None:
+                        continue
+                    if metric == "capital_expenditure":
+                        val = -val
+                    db.add(
+                        FinancialFact(
+                            company_id=company.id,
+                            metric=metric,
+                            value=val,
+                            unit=unit,
+                            period=f"{entry['end']}:FY",
+                            fiscal_year=entry.get("fy"),
+                            fiscal_quarter=None,
+                            source_id=document.id,
+                            source_type="SEC",
+                            is_reported=True,
+                            confidence=Decimal("0.95"),
+                        )
+                    )
+                    facts_imported += 1
+                break
+
+        db.flush()
+
+        conflicts: list[str] = []
+        sec_facts = list(
+            db.scalars(
+                select(FinancialFact).where(
+                    FinancialFact.company_id == company.id,
+                    FinancialFact.source_type == "SEC",
+                )
+            )
+        )
+        for sec_fact in sec_facts:
+            fmp_fact = db.scalar(
+                select(FinancialFact).where(
+                    FinancialFact.company_id == company.id,
+                    FinancialFact.source_type == "FMP",
+                    FinancialFact.metric == sec_fact.metric,
+                    FinancialFact.period == sec_fact.period,
+                )
+            )
+            if fmp_fact is not None:
+                sec_val = float(sec_fact.value)
+                fmp_val = float(fmp_fact.value)
+                diff = abs(sec_val - fmp_val) / max(abs(fmp_val), 1)
+                if diff > 0.05:
+                    pct = round(diff * 100, 1)
+                    conflicts.append(
+                        f"{sec_fact.metric}:{sec_fact.period} FMP={int(fmp_val)} SEC={int(sec_val)} diff={pct}%"
+                    )
+
+        document.metadata_ = {
+            **(document.metadata_ or {}),
+            "provider": "SEC",
+            "cik": cik,
+            "last_refreshed_at": datetime.now(UTC).isoformat(),
+            "conflicts": conflicts,
+        }
+        db.commit()
+
+        return {
+            "status": "ingested",
+            "ticker": ticker,
+            "provider": "SEC",
+            "source_document_id": document.id,
+            "facts_imported": facts_imported,
+            "cik": cik,
+            "conflicts": conflicts,
+        }
+
     def latest_periods(self, db: Session, company: Company) -> dict[str, str | None]:
         periods: dict[str, str | None] = {}
         for metric in ["revenue", "free_cash_flow", "net_debt", "shares_diluted"]:
@@ -216,6 +343,37 @@ class FinancialIngestionService:
             delete(FinancialStatement).where(
                 FinancialStatement.company_id == company.id,
                 FinancialStatement.source_id == document.id,
+            )
+        )
+        db.flush()
+
+    def _source_document_sec(self, db: Session, company: Company, ticker: str) -> Document:
+        title = f"SEC XBRL facts - {ticker}"
+        document = db.scalar(
+            select(Document).where(
+                Document.company_id == company.id,
+                Document.source_type == "SEC",
+                Document.title == title,
+            )
+        )
+        if document:
+            return document
+        document = Document(
+            company_id=company.id,
+            title=title,
+            source_type="SEC",
+            source_url=f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&ticker={ticker}&type=10-K",
+            metadata_={"provider": "SEC", "normalized": True},
+        )
+        db.add(document)
+        db.flush()
+        return document
+
+    def _replace_sec_data(self, db: Session, company: Company) -> None:
+        db.execute(
+            delete(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.source_type == "SEC",
             )
         )
         db.flush()
