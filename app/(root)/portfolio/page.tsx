@@ -38,6 +38,7 @@ export default async function PortfolioPage() {
     <PortfolioTabs
       summary={summary}
       transactions={transactions}
+      scores={scores}
       userId={userId}
     />
   );

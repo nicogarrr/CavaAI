@@ -41,3 +41,8 @@ next-env.d.ts
 
 # temporary files
 tmp/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/

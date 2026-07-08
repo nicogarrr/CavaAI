@@ -8,12 +8,14 @@ import PortfolioHoldings from '@/components/portfolio/PortfolioHoldings';
 import PortfolioTransactions from '@/components/portfolio/PortfolioTransactions';
 import PortfolioAllocation from '@/components/portfolio/PortfolioAllocation';
 import { PortfolioStrategyInsight } from '@/components/portfolio/PortfolioStrategyInsight';
+import PortfolioScores from '@/components/portfolio/PortfolioScores';
+import { PortfolioRiskSimulator } from '@/components/portfolio/PortfolioRiskSimulator';
 import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import ImportFromImage from '@/components/portfolio/ImportFromImage';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
 import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
-import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain } from 'lucide-react';
-import type { PortfolioSummary as PortfolioSummaryType } from '@/lib/actions/portfolio.actions';
+import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, ShieldAlert } from 'lucide-react';
+import type { PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType } from '@/lib/actions/portfolio.actions';
 
 type Transaction = {
     _id: string;
@@ -28,15 +30,32 @@ type Transaction = {
 type Props = {
     summary: PortfolioSummaryType;
     transactions: Transaction[];
+    scores: { quality: number; growth: number; value: number; dividend: number; cagr3y: number; history?: PortfolioPerformanceHistory };
     userId: string;
 };
 
-export default function PortfolioTabs({ summary, transactions, userId }: Props) {
+export default function PortfolioTabs({ summary, transactions, scores, userId }: Props) {
     const [activeTab, setActiveTab] = useState('resumen');
     const [chartPeriod, setChartPeriod] = useState('1M');
 
-    // Generar datos simulados para el gráfico basados en el valor actual y la ganancia
     const chartData = useMemo(() => {
+        if (scores.history?.dates?.length && scores.history.nav?.length) {
+            const rows = scores.history.dates.map((date, index) => ({
+                date: new Date(`${date}T00:00:00`).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
+                value: scores.history?.nav[index] ?? 0,
+            }));
+            const maxPoints: Record<string, number> = {
+                '1S': 7,
+                '1M': 30,
+                '3M': 90,
+                '6M': 180,
+                'YTD': Math.max(1, Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / (1000 * 60 * 60 * 24))),
+                '1A': 365,
+                'Todo': rows.length,
+            };
+            return rows.slice(-Math.min(rows.length, maxPoints[chartPeriod] ?? 30));
+        }
+
         const periods: Record<string, number> = {
             '1S': 7,
             '1M': 30,
@@ -51,21 +70,13 @@ export default function PortfolioTabs({ summary, transactions, userId }: Props) 
         const data = [];
         const startValue = summary.totalCost; // Comenzamos desde el costo
         const endValue = summary.totalValue;  // Terminamos en el valor actual
-        const volatility = 0.02; // 2% volatilidad diaria
-
-        let currentValue = startValue;
         const dailyGrowth = (endValue - startValue) / days;
 
         for (let i = 0; i <= days; i++) {
             const date = new Date();
             date.setDate(date.getDate() - (days - i));
 
-            // Añadir algo de variación realista
-            const randomFactor = 1 + (Math.random() - 0.5) * volatility;
-            currentValue = currentValue + dailyGrowth * randomFactor;
-
-            // Asegurar que llegamos al valor final
-            if (i === days) currentValue = endValue;
+            const currentValue = i === days ? endValue : startValue + dailyGrowth * i;
 
             data.push({
                 date: date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
@@ -74,7 +85,7 @@ export default function PortfolioTabs({ summary, transactions, userId }: Props) 
         }
 
         return data;
-    }, [summary.totalCost, summary.totalValue, chartPeriod]);
+    }, [summary.totalCost, summary.totalValue, chartPeriod, scores.history]);
     return (
         <div className="flex min-h-screen flex-col p-4 lg:p-6 max-w-[1600px] mx-auto">
             {/* Header */}
@@ -125,6 +136,13 @@ export default function PortfolioTabs({ summary, transactions, userId }: Props) 
                     >
                         <Brain className="h-4 w-4" />
                         Estrategia AI
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="riesgo"
+                        className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2 text-gray-400 flex items-center gap-2"
+                    >
+                        <ShieldAlert className="h-4 w-4" />
+                        Riesgo
                     </TabsTrigger>
                 </TabsList>
 
@@ -243,7 +261,15 @@ export default function PortfolioTabs({ summary, transactions, userId }: Props) 
 
                 {/* Tab: Estrategia AI */}
                 <TabsContent value="estrategia" className="mt-0">
-                    <PortfolioStrategyInsight portfolioSummary={summary} />
+                    <div className="space-y-6">
+                        <PortfolioScores scores={scores} />
+                        <PortfolioStrategyInsight portfolioSummary={summary} />
+                    </div>
+                </TabsContent>
+
+                {/* Tab: Riesgo Monte Carlo */}
+                <TabsContent value="riesgo" className="mt-0">
+                    <PortfolioRiskSimulator userId={userId} />
                 </TabsContent>
             </Tabs>
 

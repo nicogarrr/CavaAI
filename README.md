@@ -124,6 +124,8 @@ npm run dev
 ```bash
 cd data-engine
 pip install -r requirements.txt
+# Optional for local tests/development:
+pip install -e .[test]
 uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 

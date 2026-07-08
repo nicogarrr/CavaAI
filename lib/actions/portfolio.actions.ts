@@ -255,41 +255,117 @@ export async function deleteHolding(userId: string, symbol: string): Promise<{ s
 // Funciones adicionales para Portfolio
 // ============================================
 
-// Obtener puntuaciones agregadas del portfolio
-export async function getPortfolioScores(userId: string) {
+export type PortfolioAnalyticsResult = {
+    cagr: number | null;
+    volatility_ann: number | null;
+    max_drawdown: number | null;
+    sharpe: number | null;
+    sortino: number | null;
+    var_95: number | null;
+    cvar_95: number | null;
+    win_rate: number | null;
+    calmar: number | null;
+    score_quality: number;
+    score_growth: number;
+    score_value: number;
+    score_cagr3y: number | null;
+    trading_days: number;
+    start_date: string;
+    end_date: string;
+    alpha?: number | null;
+    beta?: number | null;
+    information_ratio?: number | null;
+};
+
+export type PortfolioPerformanceHistory = {
+    dates: string[];
+    nav: number[];
+    daily_returns: number[];
+    twr: number;
+    start_date: string;
+    end_date: string;
+};
+
+const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
+
+// Obtener métricas reales del portfolio via quantstats-pro
+export async function getPortfolioScores(userId: string): Promise<{
+    quality: number;
+    growth: number;
+    value: number;
+    dividend: number;
+    cagr3y: number;
+    analytics?: PortfolioAnalyticsResult;
+    history?: PortfolioPerformanceHistory;
+}> {
+    const empty = { quality: 0, growth: 0, value: 0, dividend: 0, cagr3y: 0 };
+
     try {
         const summary = await getPortfolioSummary(userId);
-        const holdingsCount = summary.holdings.length;
+        if (summary.holdings.length === 0) return empty;
 
-        if (holdingsCount === 0) {
-            return {
-                quality: 0,
-                growth: 0,
-                value: 0,
-                dividend: 0,
-                cagr3y: 0
-            };
+        const symbols = summary.holdings.map(h => h.symbol);
+
+        const totalValue = summary.totalValue;
+        const weights = totalValue > 0
+            ? summary.holdings.map(h => h.value / totalValue)
+            : undefined;
+
+        const transactions = await getPortfolioTransactions(userId);
+
+        let history: PortfolioPerformanceHistory | undefined;
+        try {
+            const historyRes = await fetch(`${BACKEND_URL}/analytics/portfolio/returns`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    symbols,
+                    transactions: transactions.map(tx => ({
+                        symbol: tx.symbol,
+                        type: tx.type,
+                        quantity: tx.quantity,
+                        price: tx.price,
+                        date: tx.date,
+                    })),
+                    period: '2y',
+                }),
+                next: { revalidate: 300 },
+            });
+
+            history = historyRes.ok ? await historyRes.json() : undefined;
+        } catch (error) {
+            console.error('Portfolio returns endpoint error:', error);
         }
 
-        // Puntuaciones basadas en performance del portfolio
-        const avgGainPercent = summary.totalGainPercent;
+        const res = await fetch(`${BACKEND_URL}/analytics/portfolio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbols, weights, period: '2y' }),
+            next: { revalidate: 300 },
+        });
+
+        if (!res.ok) {
+            console.error('Portfolio analytics endpoint error:', res.status);
+            return empty;
+        }
+
+        const data: PortfolioAnalyticsResult = await res.json();
 
         return {
-            quality: Math.min(100, Math.max(0, 70 + avgGainPercent * 0.5)),
-            growth: Math.min(100, Math.max(0, 60 + avgGainPercent * 0.8)),
-            value: Math.min(100, Math.max(0, 55 + avgGainPercent * 0.4)),
-            dividend: Math.min(100, Math.max(0, 20 + holdingsCount * 5)),
-            cagr3y: Math.min(50, Math.max(-20, avgGainPercent * 0.3))
+            quality: data.score_quality ?? 0,
+            growth: data.score_growth ?? 0,
+            value: data.score_value ?? 0,
+            // Dividend score stays 0 until we have a real dividend-yield engine
+            dividend: 0,
+            cagr3y: history?.twr != null
+                ? Math.round(history.twr * 10000) / 100
+                : data.score_cagr3y != null ? Math.round(data.score_cagr3y * 100) / 100 : 0,
+            analytics: data,
+            history,
         };
     } catch (error) {
         console.error('Error getting portfolio scores:', error);
-        return {
-            quality: 0,
-            growth: 0,
-            value: 0,
-            dividend: 0,
-            cagr3y: 0
-        };
+        return empty;
     }
 }
 
