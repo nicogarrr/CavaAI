@@ -6,6 +6,7 @@ import {
   GitBranch,
   ShieldCheck,
 } from 'lucide-react';
+import Link from 'next/link';
 import { getResearchDashboard } from '@/lib/actions/research.actions';
 
 export const dynamic = 'force-dynamic';
@@ -96,7 +97,11 @@ export default async function ResearchPage() {
               <tbody>
                 {topCompanies.map((company) => (
                   <tr key={company.ticker} className="border-b border-gray-900 last:border-0">
-                    <td className="py-3 font-semibold text-gray-100">{company.ticker}</td>
+                    <td className="py-3 font-semibold text-gray-100">
+                      <Link className="text-teal-300 hover:text-teal-200" href={`/research/${company.ticker}`}>
+                        {company.ticker}
+                      </Link>
+                    </td>
                     <td className="py-3 text-gray-300">{company.name}</td>
                     <td className="py-3 text-gray-400">{company.company_type}</td>
                     <td className="py-3 text-gray-400">{company.valuation_model}</td>

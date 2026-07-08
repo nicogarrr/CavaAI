@@ -8,6 +8,80 @@ from app.services.source_auditor import SourceAuditor
 from app.valuation import DCFInputs, ReverseDCFInputs, run_dcf, solve_required_growth
 
 
+class FakeFMPClient:
+    async def company_profile(self, ticker: str):
+        return [{"symbol": ticker, "price": 20.0}]
+
+    async def income_statement(self, ticker: str, limit: int = 10):
+        return [
+            {
+                "date": "2025-12-31",
+                "calendarYear": "2025",
+                "period": "FY",
+                "revenue": 1000,
+                "grossProfit": 650,
+                "operatingIncome": 250,
+                "netIncome": 180,
+                "ebitda": 300,
+                "epsdiluted": 1.8,
+                "weightedAverageShsOutDil": 100,
+            },
+            {
+                "date": "2024-12-31",
+                "calendarYear": "2024",
+                "period": "FY",
+                "revenue": 800,
+                "grossProfit": 500,
+                "operatingIncome": 190,
+                "netIncome": 140,
+                "ebitda": 230,
+                "epsdiluted": 1.4,
+                "weightedAverageShsOutDil": 100,
+            },
+        ]
+
+    async def balance_sheet(self, ticker: str, limit: int = 10):
+        return [
+            {
+                "date": "2025-12-31",
+                "calendarYear": "2025",
+                "period": "FY",
+                "cashAndCashEquivalents": 100,
+                "totalDebt": 200,
+                "totalAssets": 1500,
+                "totalLiabilities": 700,
+                "totalStockholdersEquity": 800,
+            }
+        ]
+
+    async def cash_flow(self, ticker: str, limit: int = 10):
+        return [
+            {
+                "date": "2025-12-31",
+                "calendarYear": "2025",
+                "period": "FY",
+                "operatingCashFlow": 300,
+                "capitalExpenditure": -50,
+                "freeCashFlow": 250,
+                "commonStockRepurchased": -25,
+                "dividendsPaid": -10,
+            }
+        ]
+
+    async def ratios(self, ticker: str, limit: int = 10):
+        return [
+            {
+                "date": "2025-12-31",
+                "calendarYear": "2025",
+                "period": "FY",
+                "grossProfitMargin": 0.65,
+                "operatingProfitMargin": 0.25,
+                "netProfitMargin": 0.18,
+                "debtEquityRatio": 0.25,
+            }
+        ]
+
+
 def test_research_api_core_flow():
     seed()
     client = TestClient(main.app)
@@ -123,3 +197,32 @@ def test_ibkr_xml_import_endpoint_ingests_positions_cash_and_trades():
     assert payload["positions_imported"] == 1
     assert payload["cash_imported"] == 1
     assert payload["trades_imported"] in {0, 1}
+
+
+def test_fmp_refresh_normalizes_facts_and_valuation_uses_them(monkeypatch):
+    from app.api.routes import companies as companies_route
+
+    init_db()
+    seed()
+    monkeypatch.setattr(companies_route, "FMPClient", FakeFMPClient)
+    client = TestClient(main.app)
+
+    refresh = client.post("/api/companies/MSFT/refresh/fmp")
+    assert refresh.status_code == 200
+    payload = refresh.json()
+    assert payload["status"] == "ingested"
+    assert payload["facts_imported"] >= 20
+    assert payload["valuation_input_ready"] is True
+
+    facts = client.get("/api/companies/MSFT/facts?metric=revenue")
+    assert facts.status_code == 200
+    revenue_facts = facts.json()
+    assert revenue_facts[0]["metric"] == "revenue"
+    assert revenue_facts[0]["source_type"] == "FMP"
+
+    valuation = client.get("/api/valuation/MSFT")
+    assert valuation.status_code == 200
+    trace = valuation.json()["trace"]
+    assert trace["input_source"] == "financial_facts"
+    assert trace["fact_ids"]["revenue"] == revenue_facts[0]["id"]
+    assert "bootstrap_notice" not in trace
