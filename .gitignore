@@ -46,3 +46,6 @@ tmp/
 __pycache__/
 *.py[cod]
 *.egg-info/
+*.db
+data-engine/knowledge_base/
+data-engine/funds_cache.json
