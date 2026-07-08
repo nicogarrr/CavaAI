@@ -3,7 +3,7 @@
 import { getRAGContext } from './ai.actions';
 
 /**
- * Análisis de sentimiento de noticias y menciones
+ * Analisis de sentimiento de noticias y menciones
  * Usa Gemini AI para analizar sentimiento de texto
  */
 
@@ -64,21 +64,21 @@ async function analyzeNewsSentimentWithAI(
 TEXTO:
 "${text}"
 
-${ragContext ? `CONTEXTO ADICIONAL (Preferencia de Usuario/Análisis Previos):\n${ragContext}\n` : ''}
+${ragContext ? `CONTEXTO ADICIONAL (Preferencia de Usuario/Analisis Previos):\n${ragContext}\n` : ''}
 
 RESPONDE EN FORMATO JSON EXACTO:
 {
   "sentiment": "positive" | "negative" | "neutral",
-  "score": número entre -1 y 1 (1 = muy positivo, -1 = muy negativo),
-  "confidence": número entre 0 y 1 (qué tan seguro estás),
+  "score": numero entre -1 y 1 (1 = muy positivo, -1 = muy negativo),
+  "confidence": numero entre 0 y 1 (que tan seguro estas),
   "keyPhrases": ["frase1", "frase2"] (frases clave que influyeron en el sentimiento)
 }
 
 IMPORTANTE:
-- Sé objetivo e imparcial
+- Se objetivo e imparcial
 - Analiza SOLO el texto proporcionado
-- NO uses información externa
-- El sentimiento debe reflejar cómo afecta esto a ${symbol}`;
+- NO uses informacion externa
+- El sentimiento debe reflejar como afecta esto a ${symbol}`;
 
     const payload = {
       contents: [{
@@ -130,7 +130,7 @@ IMPORTANTE:
 }
 
 /**
- * Analiza el sentimiento de múltiples noticias de una empresa
+ * Analiza el sentimiento de multiples noticias de una empresa
  */
 export async function analyzeNewsSentiment(
   symbol: string,
@@ -147,14 +147,14 @@ export async function analyzeNewsSentiment(
   }
 
   try {
-    // Analizar las últimas 10 noticias más relevantes
+    // Analizar las ultimas 10 noticias mas relevantes
     const articlesToAnalyze = newsArticles.slice(0, 10);
     const sentimentScores: SentimentScore[] = [];
 
-    // 🧠 RAG: Obtener contexto para el análisis de sentimiento
+    // RAG: obtener contexto para el analisis de sentimiento
     const ragContext = await getRAGContext(symbol, companyName);
 
-    // Analizar cada noticia (con límite de rate para no sobrecargar API)
+    // Analizar cada noticia con limite de rate para no sobrecargar API
     for (const article of articlesToAnalyze) {
       const sentiment = await analyzeNewsSentimentWithAI(
         symbol,
@@ -167,7 +167,7 @@ export async function analyzeNewsSentiment(
         sentimentScores.push(sentiment);
       }
 
-      // Pequeña pausa para evitar rate limiting
+      // Pausa breve para evitar rate limiting
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
@@ -190,13 +190,13 @@ export async function analyzeNewsSentiment(
       overallSentiment = 'neutral';
     }
 
-    // Extraer frases clave de todos los análisis
+    // Extraer frases clave de todos los analisis
     const allKeyPhrases = sentimentScores
       .flatMap(s => s.keyPhrases || [])
       .filter((phrase, index, arr) => arr.indexOf(phrase) === index)
       .slice(0, 5);
 
-    // Formatear artículos analizados
+    // Formatear articulos analizados
     const articles = sentimentScores.map((sentiment, idx) => {
       const article = articlesToAnalyze[idx];
       const date = article.datetime
@@ -235,13 +235,38 @@ export async function analyzeNewsSentiment(
 }
 
 /**
- * Analiza sentimiento de menciones en redes sociales (placeholder)
- * Para implementación completa, se necesitaría:
- * - API de Twitter/X
- * - API de Reddit
- * - API de StockTwits
- * - Procesamiento de datos de redes sociales
+ * Analiza sentimiento de menciones sociales proporcionadas por el caller.
  */
+const SOCIAL_POSITIVE_TERMS = [
+  'beat',
+  'beats',
+  'bullish',
+  'upside',
+  'growth',
+  'profitable',
+  'record',
+  'strong',
+  'upgrade',
+  'buyback',
+  'partnership',
+  'guidance raised',
+];
+
+const SOCIAL_NEGATIVE_TERMS = [
+  'miss',
+  'misses',
+  'bearish',
+  'downside',
+  'dilution',
+  'lawsuit',
+  'downgrade',
+  'weak',
+  'fraud',
+  'guidance cut',
+  'bankruptcy',
+  'delay',
+];
+
 export async function analyzeSocialSentiment(
   symbol: string,
   socialMentions: Array<{
@@ -252,13 +277,32 @@ export async function analyzeSocialSentiment(
     engagement?: number;
   }>
 ): Promise<SentimentScore[] | null> {
-  // Por ahora, retornamos null ya que requiere integraciones con APIs de redes sociales
-  // Esto se puede expandir cuando se tengan APIs configuradas
-  return null;
+  if (!socialMentions.length) return null;
+
+  return socialMentions.map((mention) => {
+    const text = mention.text.toLowerCase();
+    const positiveHits = SOCIAL_POSITIVE_TERMS.filter((term) => text.includes(term));
+    const negativeHits = SOCIAL_NEGATIVE_TERMS.filter((term) => text.includes(term));
+    const rawScore = positiveHits.length - negativeHits.length;
+    const engagementBoost = mention.engagement ? Math.min(Math.log10(mention.engagement + 1) / 10, 0.2) : 0;
+    const score = Math.max(-1, Math.min(1, rawScore / 4 + Math.sign(rawScore) * engagementBoost));
+    const sentiment = score > 0.15 ? 'positive' : score < -0.15 ? 'negative' : 'neutral';
+
+    return {
+      symbol,
+      sentiment,
+      score,
+      confidence: Math.min(0.85, 0.45 + (positiveHits.length + negativeHits.length) * 0.12),
+      source: 'social',
+      analyzedText: mention.text,
+      keyPhrases: [...positiveHits, ...negativeHits],
+      timestamp: mention.timestamp,
+    };
+  });
 }
 
 /**
- * Obtiene análisis de sentimiento combinado (noticias + redes sociales si disponible)
+ * Obtiene analisis de sentimiento combinado (noticias + redes sociales si disponible)
  */
 export async function getCombinedSentimentAnalysis(
   symbol: string,

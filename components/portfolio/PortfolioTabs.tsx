@@ -153,7 +153,7 @@ export default function PortfolioTabs({ summary, transactions, scores, userId }:
                         <PortfolioSummary summary={summary} />
                     </div>
 
-                    {/* Grid: Gráfico de rendimiento (placeholder) + Pie Chart completo */}
+                    {/* Grid: gráfico de rendimiento + distribución */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Panel Izquierdo: Gráfico de Rendimiento */}
                         <div className="bg-[#111111] border border-gray-800 rounded-2xl p-6">
