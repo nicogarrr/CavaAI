@@ -6,8 +6,11 @@ from fastapi.testclient import TestClient
 import main
 
 
+DATA_ENGINE_ROOT = Path(__file__).resolve().parents[1]
+
+
 def test_main_only_declares_root_and_health_routes():
-    source = Path("main.py").read_text(encoding="utf-8")
+    source = (DATA_ENGINE_ROOT / "main.py").read_text(encoding="utf-8")
     app_routes = re.findall(r"@app\.(?:get|post|put|patch|delete)\(\"([^\"]+)\"", source)
 
     assert app_routes == ["/", "/health"]
