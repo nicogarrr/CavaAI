@@ -119,6 +119,26 @@ export type ResearchThesis = {
   created_at: string;
 };
 
+export type ResearchSourceDocument = {
+  id: number;
+  ticker: string | null;
+  title: string;
+  source_type: string;
+  source_url: string | null;
+  published_at: string | null;
+};
+
+export type ResearchSourceAudit = {
+  id: number;
+  thesis_version_id: number | null;
+  passed: boolean;
+  source_coverage_score: number;
+  unsupported_claims: string[];
+  weak_claims: string[];
+  data_conflicts: string[];
+  required_fixes: string[];
+};
+
 async function getJson<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
@@ -232,4 +252,36 @@ export async function generateResearchThesis(ticker: string) {
   );
   revalidatePath('/research');
   revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function getResearchSources() {
+  const [documents, audits] = await Promise.all([
+    getJson<ResearchSourceDocument[]>('/api/sources/documents', []),
+    getJson<ResearchSourceAudit[]>('/api/sources/audits', []),
+  ]);
+
+  return {
+    documents,
+    audits,
+  };
+}
+
+export async function importResearchSource(formData: FormData) {
+  const ticker = String(formData.get('ticker') ?? '').trim().toUpperCase();
+  const title = String(formData.get('title') ?? '').trim();
+  const text = String(formData.get('text') ?? '').trim();
+  const sourceUrl = String(formData.get('source_url') ?? '').trim();
+  const period = String(formData.get('period') ?? '').trim() || 'unknown';
+
+  if (!ticker || !title || text.length < 20) return;
+
+  await postJson('/api/sources/quartr/import-text', null, {
+    ticker,
+    title,
+    text,
+    source_url: sourceUrl || null,
+    period,
+  });
+
+  revalidatePath('/research/sources');
 }

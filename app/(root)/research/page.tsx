@@ -125,6 +125,9 @@ export default async function ResearchPage() {
               </div>
             ))}
           </div>
+          <Link className="mt-4 inline-flex text-sm font-semibold text-teal-300 hover:text-teal-200" href="/research/sources">
+            Open sources
+          </Link>
         </div>
       </section>
 
