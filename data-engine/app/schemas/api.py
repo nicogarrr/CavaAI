@@ -306,7 +306,7 @@ class ChatResponse(BaseModel):
     answer: str
     sources: list[dict]
     blocked: bool = False
-    proposed_actions: list[str] = []
+    proposed_actions: list[str] = Field(default_factory=list)
 
 
 class ValuationResponse(BaseModel):

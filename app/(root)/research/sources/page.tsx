@@ -3,7 +3,12 @@ import { ArrowLeft, FileText, ShieldCheck, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { getResearchSources, importResearchSource } from '@/lib/actions/research.actions';
+import {
+  getResearchSources,
+  importResearchDocumentFile,
+  importResearchDocumentUrl,
+  importResearchSource,
+} from '@/lib/actions/research.actions';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -71,6 +76,70 @@ export default async function ResearchSourcesPage() {
             </Button>
           </div>
         </form>
+
+        <section className="grid gap-6">
+          <form action={importResearchDocumentFile} className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <UploadCloud className="h-5 w-5 text-teal-300" />
+              <h2 className="text-lg font-semibold text-gray-100">Upload Document</h2>
+            </div>
+            <div className="grid gap-3">
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center">
+                <label className="text-sm font-semibold text-gray-400" htmlFor="file-ticker">Ticker</label>
+                <Input id="file-ticker" name="ticker" placeholder="MSFT" required />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center">
+                <label className="text-sm font-semibold text-gray-400" htmlFor="file-title">Title</label>
+                <Input id="file-title" name="title" placeholder="Annual report, deck, transcript..." required />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center">
+                <label className="text-sm font-semibold text-gray-400" htmlFor="file-source-type">Source Type</label>
+                <Input id="file-source-type" name="source_type" placeholder="filing, company_ir, transcript" defaultValue="manual_upload" />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center">
+                <label className="text-sm font-semibold text-gray-400" htmlFor="file-source-url">Source URL</label>
+                <Input id="file-source-url" name="source_url" placeholder="https://..." />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center">
+                <label className="text-sm font-semibold text-gray-400" htmlFor="file">File</label>
+                <Input accept=".txt,.md,.html,.htm,.pdf,.docx,.xlsx,.csv,.tsv" id="file" name="file" required type="file" />
+              </div>
+              <Button className="w-full sm:w-fit" type="submit">
+                <UploadCloud className="h-4 w-4" />
+                Upload Document
+              </Button>
+            </div>
+          </form>
+
+          <form action={importResearchDocumentUrl} className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <FileText className="h-5 w-5 text-teal-300" />
+              <h2 className="text-lg font-semibold text-gray-100">Ingest URL</h2>
+            </div>
+            <div className="grid gap-3">
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center">
+                <label className="text-sm font-semibold text-gray-400" htmlFor="url-ticker">Ticker</label>
+                <Input id="url-ticker" name="ticker" placeholder="MSFT" required />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center">
+                <label className="text-sm font-semibold text-gray-400" htmlFor="url-title">Title</label>
+                <Input id="url-title" name="title" placeholder="IR press release or filing page" required />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center">
+                <label className="text-sm font-semibold text-gray-400" htmlFor="url-source-type">Source Type</label>
+                <Input id="url-source-type" name="source_type" placeholder="url, company_ir, filing" defaultValue="url" />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center">
+                <label className="text-sm font-semibold text-gray-400" htmlFor="url">URL</label>
+                <Input id="url" name="url" placeholder="https://..." required type="url" />
+              </div>
+              <Button className="w-full sm:w-fit" type="submit" variant="outline">
+                <UploadCloud className="h-4 w-4" />
+                Ingest URL
+              </Button>
+            </div>
+          </form>
+        </section>
 
         <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
           <div className="mb-4 flex items-center gap-2">

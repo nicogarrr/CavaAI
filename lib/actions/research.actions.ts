@@ -134,6 +134,9 @@ export type ResearchSourceDocument = {
   title: string;
   source_type: string;
   source_url: string | null;
+  storage_uri?: string | null;
+  checksum?: string | null;
+  metadata?: Record<string, unknown>;
   published_at: string | null;
   chunks?: ResearchSourceChunk[];
 };
@@ -144,6 +147,7 @@ export type ResearchSourceChunk = {
   chunk_index: number;
   text: string;
   token_count: number;
+  metadata?: Record<string, unknown>;
 };
 
 export type ResearchSourceAudit = {
@@ -226,6 +230,18 @@ export type ResearchMemoryItem = {
   created_at: string;
 };
 
+export type ResearchChatResponse = {
+  answer: string;
+  sources: Array<{
+    type: string;
+    id: number | string | null;
+    title: string;
+    [key: string]: unknown;
+  }>;
+  blocked: boolean;
+  proposed_actions: string[];
+};
+
 async function getJson<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
@@ -244,6 +260,20 @@ async function postJson<T>(path: string, fallback: T, body?: unknown): Promise<T
       method: 'POST',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
+    });
+    if (!response.ok) return fallback;
+    return (await response.json()) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+async function postForm<T>(path: string, fallback: T, body: FormData): Promise<T> {
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+      method: 'POST',
+      body,
       cache: 'no-store',
     });
     if (!response.ok) return fallback;
@@ -452,6 +482,27 @@ export async function createResearchMemoryItem(ticker: string, formData: FormDat
   revalidatePath(`/research/${normalizedTicker}`);
 }
 
+export async function askResearchCompanyChat(ticker: string, question: string): Promise<ResearchChatResponse | null> {
+  const normalizedTicker = ticker.toUpperCase();
+  const trimmedQuestion = question.trim();
+  if (trimmedQuestion.length < 3) return null;
+
+  return postJson<ResearchChatResponse>(
+    '/api/chat',
+    {
+      answer: 'No response available from the research engine.',
+      sources: [],
+      blocked: true,
+      proposed_actions: ['Check backend status'],
+    },
+    {
+      ticker: normalizedTicker,
+      scope: 'company',
+      question: trimmedQuestion,
+    },
+  );
+}
+
 export async function getResearchSources() {
   const [documents, audits] = await Promise.all([
     getJson<ResearchSourceDocument[]>('/api/sources/documents', []),
@@ -482,6 +533,36 @@ export async function importResearchSource(formData: FormData) {
   });
 
   revalidatePath('/research/sources');
+}
+
+export async function importResearchDocumentFile(formData: FormData) {
+  const ticker = String(formData.get('ticker') ?? '').trim().toUpperCase();
+  const title = String(formData.get('title') ?? '').trim();
+  const file = formData.get('file');
+
+  if (!ticker || !title || !(file instanceof File) || file.size === 0) return;
+
+  await postForm('/api/sources/documents/ingest-file', null, formData);
+  revalidatePath('/research/sources');
+  revalidatePath(`/research/${ticker}`);
+}
+
+export async function importResearchDocumentUrl(formData: FormData) {
+  const ticker = String(formData.get('ticker') ?? '').trim().toUpperCase();
+  const title = String(formData.get('title') ?? '').trim();
+  const url = String(formData.get('url') ?? '').trim();
+  const sourceType = String(formData.get('source_type') ?? 'url').trim() || 'url';
+
+  if (!ticker || !title || !url) return;
+
+  await postJson('/api/sources/documents/ingest-url', null, {
+    ticker,
+    title,
+    url,
+    source_type: sourceType,
+  });
+  revalidatePath('/research/sources');
+  revalidatePath(`/research/${ticker}`);
 }
 
 export type ResearchNewsEvent = {

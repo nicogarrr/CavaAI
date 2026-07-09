@@ -49,3 +49,5 @@ __pycache__/
 *.db
 data-engine/knowledge_base/
 data-engine/funds_cache.json
+data-engine/.pytest_cache/
+data-engine/storage/.pytest_cache/

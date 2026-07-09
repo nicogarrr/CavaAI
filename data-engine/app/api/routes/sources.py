@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import Company, Document, DocumentChunk, SourceAudit
 from app.services.connectors.quartr import QuartrClient
+from app.services.document_ingestion_service import DocumentIngestionService
 from app.services.quartr_import_service import QuartrImportService
 
 router = APIRouter()
@@ -17,6 +18,13 @@ class QuartrManualImportRequest(BaseModel):
     text: str = Field(min_length=20)
     source_url: str | None = None
     period: str = "unknown"
+
+
+class UrlIngestRequest(BaseModel):
+    ticker: str = Field(min_length=1, max_length=20)
+    title: str = Field(min_length=3, max_length=500)
+    url: str = Field(min_length=8, max_length=2000)
+    source_type: str = Field(default="url", min_length=2, max_length=80)
 
 
 @router.get("/documents")
@@ -48,6 +56,7 @@ def documents(
                     "chunk_index": chunk.chunk_index,
                     "text": chunk.text[:500],
                     "token_count": chunk.token_count,
+                    "metadata": chunk.metadata_,
                 }
             )
 
@@ -58,11 +67,57 @@ def documents(
             "title": document.title,
             "source_type": document.source_type,
             "source_url": document.source_url,
+            "storage_uri": document.storage_uri,
+            "checksum": document.checksum,
+            "metadata": document.metadata_,
             "published_at": document.published_at.isoformat() if document.published_at else None,
             "chunks": chunk_map.get(document.id, []) if include_chunks else [],
         }
         for document, company in rows
     ]
+
+
+@router.post("/documents/ingest-file")
+async def ingest_document_file(
+    ticker: str = Form(..., min_length=1, max_length=20),
+    title: str = Form(..., min_length=3, max_length=500),
+    source_type: str = Form(default="manual_upload", min_length=2, max_length=80),
+    source_url: str | None = Form(default=None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        content = await file.read()
+        return DocumentIngestionService().ingest_bytes(
+            db,
+            ticker=ticker,
+            title=title,
+            content=content,
+            filename=file.filename or "upload.bin",
+            source_type=source_type,
+            source_url=source_url,
+            content_type=file.content_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Document ingestion failed: {exc}") from exc
+
+
+@router.post("/documents/ingest-url")
+def ingest_document_url(payload: UrlIngestRequest, db: Session = Depends(get_db)) -> dict:
+    try:
+        return DocumentIngestionService().ingest_url(
+            db,
+            ticker=payload.ticker,
+            title=payload.title,
+            url=payload.url,
+            source_type=payload.source_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"URL ingestion failed: {exc}") from exc
 
 
 @router.get("/audits")
