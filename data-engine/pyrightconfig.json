@@ -1,0 +1,29 @@
+{
+  "include": [
+    "app",
+    "main.py",
+    "routers"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".pytest_cache",
+    ".venv",
+    "quantstats",
+    "storage"
+  ],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportArgumentType": "warning",
+  "reportAssignmentType": "warning",
+  "reportAttributeAccessIssue": "warning",
+  "reportCallIssue": "warning",
+  "reportGeneralTypeIssues": "warning",
+  "reportIndexIssue": "warning",
+  "reportInvalidTypeForm": "warning",
+  "reportOperatorIssue": "warning",
+  "reportOptionalMemberAccess": "warning",
+  "reportOptionalOperand": "warning",
+  "reportReturnType": "warning"
+}

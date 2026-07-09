@@ -1,6 +1,9 @@
 'use server';
 
+import { createHmac } from 'node:crypto';
+import { getAuth } from '@/lib/better-auth/auth';
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -89,6 +92,7 @@ export type ResearchCalculatedMetric = {
 export type ResearchPeerComparison = {
   ticker: string;
   basis: string;
+  selection_trace?: Record<string, unknown>;
   peer_count: number;
   metrics: string[];
   benchmarks: Record<
@@ -187,6 +191,7 @@ export type ResearchSourceDocument = {
   ticker: string | null;
   title: string;
   source_type: string;
+  source_tier: string;
   source_url: string | null;
   storage_uri?: string | null;
   checksum?: string | null;
@@ -286,6 +291,11 @@ export type ResearchMemoryItem = {
 
 export type ResearchChatResponse = {
   answer: string;
+  sections: Array<{
+    key: 'facts' | 'calculations' | 'user_hypotheses' | 'inferences' | 'contradictions' | 'insufficient_data' | 'conclusion';
+    body: string;
+    citations: string[];
+  }>;
   sources: Array<{
     type: string;
     id: number | string | null;
@@ -294,12 +304,157 @@ export type ResearchChatResponse = {
   }>;
   blocked: boolean;
   proposed_actions: string[];
+  evidence_suggestions: ResearchEvidenceSuggestion[];
+  prompt_version?: string | null;
+  model?: string | null;
 };
+
+export type ResearchEvidenceSuggestion = {
+  id: number;
+  company_id: number | null;
+  document_id: number | null;
+  document_chunk_id: number | null;
+  suggested_claim_id: number | null;
+  suggestion_type: string;
+  statement: string;
+  relation: string;
+  rationale: string;
+  quote: string | null;
+  confidence: string;
+  status: string;
+  prompt_version: string;
+  metadata_: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ResearchReview = {
+  id: number;
+  company_id: number | null;
+  review_type: string;
+  status: string;
+  priority: string;
+  title: string;
+  summary: string;
+  thesis_change_id: number | null;
+  claim_id: number | null;
+  news_event_id: number | null;
+  created_at: string;
+};
+
+export type ResearchAlert = {
+  id: number;
+  company_id: number | null;
+  review_id: number | null;
+  severity: string;
+  status: string;
+  alert_type: string;
+  title: string;
+  message: string;
+  channels: string[];
+  snoozed_until: string | null;
+  created_at: string;
+};
+
+export type ResearchThesisGraph = {
+  ticker: string;
+  thesis_version_id: number;
+  nodes: Array<{
+    id: number;
+    node_key: string;
+    node_type: string;
+    label: string;
+    description: string;
+    status: string;
+    confidence: string;
+    materiality_score: number;
+    claim_ids: number[];
+    invalidation_conditions: string[];
+  }>;
+  edges: Array<{
+    id: number;
+    from_node_id: number;
+    to_node_id: number;
+    edge_type: string;
+    strength: string;
+  }>;
+};
+
+export type ResearchPeerAnalysis = {
+  ticker: string;
+  status: string;
+  selection: {
+    basis: string;
+    trace: Record<string, unknown>;
+    peers: string[];
+  };
+  advantages: Array<Record<string, unknown>>;
+  disadvantages: Array<Record<string, unknown>>;
+  insufficient_data: string[];
+  methodology: string;
+};
+
+export type ResearchMoat = {
+  ticker: string;
+  status: string;
+  methodology: string;
+  moats: Array<{
+    type: string;
+    strength: number;
+    trend: string;
+    persistence: string;
+    confidence: number;
+    status: string;
+    supporting_claim_ids: number[];
+    contradicting_claim_ids: number[];
+  }>;
+};
+
+export type ResearchRedTeam = {
+  id: number;
+  score: number;
+  status: string;
+  strongest_bear_case: string;
+  findings: Array<{
+    severity: string;
+    type: string;
+    message: string;
+    trace: Record<string, unknown>;
+  }>;
+  broken_assumptions: string[];
+  missing_risks: string[];
+  falsification_tests: string[];
+  created_at: string;
+};
+
+async function researchRequestHeaders(): Promise<Record<string, string>> {
+  const secret = process.env.RESEARCH_AUTH_SECRET;
+  if (!secret) return {};
+  try {
+    const auth = await getAuth();
+    const session = await auth.api.getSession({ headers: await headers() });
+    const userId = session?.user?.id;
+    if (!userId) return {};
+    const tenantId = userId;
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = createHmac('sha256', secret)
+      .update(`${tenantId}:${userId}:${timestamp}`)
+      .digest('hex');
+    return {
+      'X-CavaAI-User': userId,
+      'X-CavaAI-Tenant': tenantId,
+      'X-CavaAI-Timestamp': timestamp,
+      'X-CavaAI-Signature': signature,
+    };
+  } catch {
+    return {};
+  }
+}
 
 async function getJson<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
       cache: 'no-store',
+      headers: await researchRequestHeaders(),
     });
     if (!response.ok) return fallback;
     return (await response.json()) as T;
@@ -310,9 +465,12 @@ async function getJson<T>(path: string, fallback: T): Promise<T> {
 
 async function postJson<T>(path: string, fallback: T, body?: unknown): Promise<T> {
   try {
+    const authHeaders = await researchRequestHeaders();
     const response = await fetch(`${BACKEND_URL}${path}`, {
       method: 'POST',
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      headers: body
+        ? { ...authHeaders, 'Content-Type': 'application/json' }
+        : authHeaders,
       body: body ? JSON.stringify(body) : undefined,
       cache: 'no-store',
     });
@@ -329,6 +487,7 @@ async function postForm<T>(path: string, fallback: T, body: FormData): Promise<T
       method: 'POST',
       body,
       cache: 'no-store',
+      headers: await researchRequestHeaders(),
     });
     if (!response.ok) return fallback;
     return (await response.json()) as T;
@@ -390,18 +549,44 @@ export async function getResearchCompanyDetail(ticker: string) {
     trace: { input_source: 'insufficient_data' },
   };
 
-  const [company, valuation, facts, calculatedMetricsPayload, peerComparison, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments] = await Promise.all([
+  const [
+    company,
+    valuation,
+    facts,
+    calculatedMetricsPayload,
+    peerComparison,
+    peerAnalysis,
+    moat,
+    thesis,
+    claims,
+    thesisSections,
+    thesisChanges,
+    thesisGraph,
+    reviews,
+    alerts,
+    memoryItems,
+    sourceDocuments,
+    evidenceSuggestions,
+    redTeam,
+  ] = await Promise.all([
     getJson<ResearchCompany | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}`, null),
     getJson<ResearchValuation>(`/api/valuation/${encodeURIComponent(normalizedTicker)}`, emptyValuation),
     getJson<ResearchFact[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/facts?limit=80`, []),
     getJson<{ metrics: ResearchCalculatedMetric[] }>(`/api/companies/${encodeURIComponent(normalizedTicker)}/metrics/calculated`, { metrics: [] }),
     getJson<ResearchPeerComparison | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/peers/comparison`, null),
+    getJson<ResearchPeerAnalysis | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/peers/analysis`, null),
+    getJson<ResearchMoat | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/moat`, null),
     getJson<ResearchThesis | null>(`/api/thesis/${encodeURIComponent(normalizedTicker)}/latest`, null),
     getJson<ResearchClaim[]>(`/api/memory/claims?ticker=${encodeURIComponent(normalizedTicker)}&limit=20`, []),
     getJson<ResearchThesisSection[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/sections`, []),
     getJson<ResearchThesisChange[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/changes`, []),
+    getJson<ResearchThesisGraph | null>(`/api/thesis/${encodeURIComponent(normalizedTicker)}/graph`, null),
+    getJson<ResearchReview[]>(`/api/reviews?ticker=${encodeURIComponent(normalizedTicker)}&status=open`, []),
+    getJson<ResearchAlert[]>(`/api/alerts?ticker=${encodeURIComponent(normalizedTicker)}`, []),
     getJson<ResearchMemoryItem[]>(`/api/memory/memory-items?ticker=${encodeURIComponent(normalizedTicker)}&scope=company&limit=20`, []),
     getJson<ResearchSourceDocument[]>(`/api/sources/documents?ticker=${encodeURIComponent(normalizedTicker)}&include_chunks=true&chunk_text_limit=1800`, []),
+    getJson<ResearchEvidenceSuggestion[]>(`/api/sources/evidence-suggestions?ticker=${encodeURIComponent(normalizedTicker)}&status=pending`, []),
+    getJson<ResearchRedTeam | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/red-team/latest`, null),
   ]);
 
   return {
@@ -410,12 +595,19 @@ export async function getResearchCompanyDetail(ticker: string) {
     facts,
     calculatedMetrics: calculatedMetricsPayload.metrics,
     peerComparison,
+    peerAnalysis,
+    moat,
     thesis,
     claims,
     thesisSections,
     thesisChanges,
+    thesisGraph,
+    reviews,
+    alerts,
     memoryItems,
     sourceDocuments,
+    evidenceSuggestions,
+    redTeam,
   };
 }
 
@@ -468,7 +660,6 @@ export async function addResearchClaimEvidence(ticker: string, claimId: number, 
   const summary = String(formData.get('summary') ?? '').trim();
   const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
   const sourceUrl = String(formData.get('source_url') ?? '').trim();
-  const sourceTier = String(formData.get('source_tier') ?? 'secondary').trim() || 'secondary';
   const sourceRef = String(formData.get('source_ref') ?? '').trim();
   const [sourceRefType, sourceRefId] = sourceRef.split(':');
   const parsedSourceRefId = Number(sourceRefId);
@@ -481,7 +672,6 @@ export async function addResearchClaimEvidence(ticker: string, claimId: number, 
     evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
     summary,
     source_url: sourceUrl || null,
-    source_tier: sourceTier,
     document_id: Number.isFinite(documentId) && documentId > 0 ? documentId : null,
     document_chunk_id: Number.isFinite(documentChunkId) && documentChunkId > 0 ? documentChunkId : null,
   });
@@ -496,7 +686,6 @@ export async function createResearchClaimFromChunk(ticker: string, chunkId: numb
   const summary = String(formData.get('summary') ?? statement).trim();
   const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
   const sourceUrl = String(formData.get('source_url') ?? '').trim();
-  const sourceTier = String(formData.get('source_tier') ?? 'primary').trim() || 'primary';
   const materiality = Number(formData.get('materiality_score') ?? 5);
 
   if (statement.length < 5 || summary.length < 3 || !Number.isFinite(chunkId) || chunkId <= 0) return;
@@ -506,7 +695,7 @@ export async function createResearchClaimFromChunk(ticker: string, chunkId: numb
     statement,
     claim_type: 'source_extracted',
     materiality_score: Number.isFinite(materiality) ? Math.max(0, Math.min(10, materiality)) : 5,
-    source_quality: sourceTier,
+    source_quality: 'backend_classified',
     created_by: 'user',
   });
 
@@ -516,7 +705,6 @@ export async function createResearchClaimFromChunk(ticker: string, chunkId: numb
     evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
     summary,
     source_url: sourceUrl || null,
-    source_tier: sourceTier,
     document_chunk_id: chunkId,
   });
 
@@ -530,7 +718,6 @@ export async function addResearchChunkEvidence(ticker: string, chunkId: number, 
   const summary = String(formData.get('summary') ?? '').trim();
   const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
   const sourceUrl = String(formData.get('source_url') ?? '').trim();
-  const sourceTier = String(formData.get('source_tier') ?? 'primary').trim() || 'primary';
 
   if (!Number.isFinite(claimId) || claimId <= 0 || summary.length < 3 || !Number.isFinite(chunkId) || chunkId <= 0) return;
 
@@ -538,7 +725,6 @@ export async function addResearchChunkEvidence(ticker: string, chunkId: number, 
     evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
     summary,
     source_url: sourceUrl || null,
-    source_tier: sourceTier,
     document_chunk_id: chunkId,
   });
 
@@ -605,9 +791,11 @@ export async function askResearchCompanyChat(ticker: string, question: string): 
     '/api/chat',
     {
       answer: 'No response available from the research engine.',
+      sections: [],
       sources: [],
       blocked: true,
       proposed_actions: ['Check backend status'],
+      evidence_suggestions: [],
     },
     {
       ticker: normalizedTicker,
@@ -802,4 +990,66 @@ export async function runResearchWorkflow(name: string, ticker?: string): Promis
 
 export async function getThesisHistory(ticker: string): Promise<ResearchThesisVersion[]> {
   return getJson<ResearchThesisVersion[]>(`/api/thesis/${encodeURIComponent(ticker.toUpperCase())}/versions`, []);
+}
+
+export async function actionResearchEvidenceSuggestion(
+  ticker: string,
+  suggestionId: number,
+  action: 'accept' | 'reject',
+  claimId?: number,
+) {
+  await postJson(
+    `/api/sources/evidence-suggestions/${suggestionId}/action`,
+    null,
+    {
+      action,
+      claim_id: claimId ?? null,
+    },
+  );
+  revalidatePath(`/research/${ticker.toUpperCase()}`);
+}
+
+export async function runResearchRedTeam(ticker: string) {
+  const normalizedTicker = ticker.toUpperCase();
+  await postJson(
+    `/api/companies/${encodeURIComponent(normalizedTicker)}/red-team`,
+    null,
+  );
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function runResearchEarnings(ticker: string, formData: FormData) {
+  const normalizedTicker = ticker.toUpperCase();
+  const fiscalYear = Number(formData.get('fiscal_year'));
+  const fiscalQuarter = String(formData.get('fiscal_quarter') ?? 'FY');
+  const documentIds = String(formData.get('document_ids') ?? '')
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (!Number.isInteger(fiscalYear)) return;
+  await postJson(
+    `/api/earnings/${encodeURIComponent(normalizedTicker)}/run`,
+    null,
+    {
+      fiscal_year: fiscalYear,
+      fiscal_quarter: ['Q1', 'Q2', 'Q3', 'Q4', 'FY'].includes(fiscalQuarter)
+        ? fiscalQuarter
+        : 'FY',
+      document_ids: documentIds,
+      force_new_thesis: false,
+    },
+  );
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function actionResearchAlert(
+  ticker: string,
+  alertId: number,
+  action: 'acknowledge' | 'resolve' | 'reopen',
+) {
+  await postJson(`/api/alerts/${alertId}/action`, null, {
+    action,
+    actor: 'user',
+  });
+  revalidatePath(`/research/${ticker.toUpperCase()}`);
 }

@@ -30,8 +30,34 @@ class Settings(BaseSettings):
     quartr_api_key: str | None = None
     quartr_api_base_url: str = "https://api.quartr.com"
 
-    openrouter_api_key: str | None = None
+    openrouter_api_key: str | None = Field(default=None, repr=False)
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_enabled: bool = True
+    openrouter_model: str = "deepseek/deepseek-chat"
+    openrouter_site_url: str | None = None
+    openrouter_app_name: str = "Portfolio Research OS"
+
+    openai_enabled: bool = True
+    openai_api_key: str | None = Field(default=None, repr=False)
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-4o-mini"
+
+    anthropic_enabled: bool = True
+    anthropic_api_key: str | None = Field(default=None, repr=False)
+    anthropic_base_url: str = "https://api.anthropic.com"
+    anthropic_api_version: str = "2023-06-01"
+    anthropic_model: str = "claude-3-5-sonnet-latest"
+
+    gemini_enabled: bool = True
+    gemini_api_key: str | None = Field(default=None, repr=False)
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    gemini_model: str = "gemini-2.0-flash"
+
+    llm_enabled: bool = True
+    llm_provider: str = "auto"
+    llm_timeout_seconds: float = Field(default=30.0, gt=0)
+    llm_max_retries: int = Field(default=2, ge=0, le=5)
+    llm_model_overrides: dict[str, str] = Field(default_factory=dict)
     llm_daily_cap_eur: float = Field(default=1.50, ge=0)
     llm_monthly_cap_eur: float = Field(default=40.00, ge=0)
 

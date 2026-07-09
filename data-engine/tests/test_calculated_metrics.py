@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 import main
 from app.core.database import SessionLocal, init_db
 from app.models import CalculatedMetric, Company, FinancialFact
+from app.services.metric_calculation_service import MetricCalculationService
 
 
 TEST_TICKER = "TCALC"
@@ -45,16 +46,26 @@ def create_test_company(db, ticker: str = TEST_TICKER, name: str = "Traceable Me
     return company
 
 
-def add_fact(db, company: Company, metric: str, value: str, period: str = "FY2025") -> FinancialFact:
+def add_fact(
+    db,
+    company: Company,
+    metric: str,
+    value: str,
+    period: str = "FY2025",
+    fiscal_year: int = 2025,
+    fiscal_quarter: str | None = "FY",
+    is_reported: bool = True,
+) -> FinancialFact:
     fact = FinancialFact(
         company_id=company.id,
         metric=metric,
         value=Decimal(value),
         unit="USD" if metric != "shares_diluted" else "shares",
         period=period,
-        fiscal_year=2025,
-        fiscal_quarter="FY",
+        fiscal_year=fiscal_year,
+        fiscal_quarter=fiscal_quarter,
         source_type="test_metric",
+        is_reported=is_reported,
         confidence=Decimal("0.90"),
     )
     db.add(fact)
@@ -96,7 +107,10 @@ def test_calculated_metrics_are_persisted_with_trace():
 
     assert metrics["roic"]["status"] == "ok"
     assert Decimal(metrics["roic"]["value"]) == Decimal("0.21944444")
+    assert metrics["roic"]["definition_version"] == "ROIC_STANDARD_V2"
     assert metrics["roic"]["calculation_trace"]["method"] == "standard_roic"
+    assert metrics["roic"]["calculation_trace"]["tax_rate_source"] == "statutory_fallback"
+    assert metrics["roic"]["calculation_trace"]["tax_rate_fallback_reason"]
 
     db = SessionLocal()
     try:
@@ -134,6 +148,208 @@ def test_calculated_metrics_report_unavailable_when_inputs_are_missing():
     assert "free_cash_flow" in metrics["fcf_margin"]["calculation_trace"]["missing_inputs"]
 
     cleanup_metric_test_artifacts()
+
+
+def test_roic_v2_uses_reported_tax_and_average_invested_capital():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "operating_income", "200")
+        add_fact(db, company, "total_debt", "300")
+        add_fact(db, company, "total_equity", "700")
+        add_fact(db, company, "cash_and_equivalents", "100")
+        add_fact(db, company, "income_tax_expense", "50")
+        add_fact(db, company, "income_before_tax", "200")
+        add_fact(db, company, "total_debt", "200", "FY2024", 2024)
+        add_fact(db, company, "total_equity", "600", "FY2024", 2024)
+        add_fact(db, company, "cash_and_equivalents", "100", "FY2024", 2024)
+        db.commit()
+
+        result = MetricCalculationService().calculate(
+            db,
+            company,
+            "roic",
+            persist=True,
+        )
+        db.commit()
+
+        assert result.status == "ok"
+        assert result.definition_version == "ROIC_STANDARD_V2"
+        assert result.value == Decimal("0.18750000")
+        assert result.numerator == Decimal("150.00000000")
+        assert result.denominator == Decimal("800.00000000")
+        assert result.calculation_trace["tax_rate_source"] == "reported_income_statement"
+        assert Decimal(result.calculation_trace["tax_rate"]) == Decimal("0.25")
+        assert (
+            result.calculation_trace["invested_capital_basis"]
+            == "average_current_and_prior_period"
+        )
+        assert result.calculation_trace["prior_invested_capital"] == "700.000000"
+        assert len(result.source_fact_ids) == 9
+
+        stored = db.scalar(
+            select(CalculatedMetric).where(
+                CalculatedMetric.company_id == company.id,
+                CalculatedMetric.metric == "roic",
+                CalculatedMetric.definition_version == "ROIC_STANDARD_V2",
+            )
+        )
+        assert stored is not None
+        assert stored.value == Decimal("0.18750000")
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_adjusted_roic_requires_and_traces_all_capital_adjustments():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "operating_income", "200")
+        add_fact(db, company, "total_debt", "300")
+        add_fact(db, company, "total_equity", "700")
+        add_fact(db, company, "cash_and_equivalents", "100")
+        add_fact(db, company, "goodwill", "150")
+        add_fact(db, company, "intangible_assets", "50")
+        add_fact(db, company, "effective_tax_rate", "0.25")
+        db.commit()
+
+        service = MetricCalculationService()
+        unavailable = service.calculate(
+            db,
+            company,
+            "roic_adjusted",
+            persist=False,
+        )
+        assert unavailable.status == "unavailable"
+        assert (
+            "operating_lease_liabilities"
+            in unavailable.calculation_trace["missing_inputs"]
+        )
+
+        add_fact(db, company, "operating_lease_liabilities", "100")
+        db.commit()
+        result = service.calculate(db, company, "roic_adjusted", persist=True)
+        db.commit()
+
+        assert result.status == "ok"
+        assert result.definition_version == "ROIC_ADJUSTED_V1"
+        assert result.value == Decimal("0.18750000")
+        assert result.denominator == Decimal("800.00000000")
+        assert result.calculation_trace["method"] == "adjusted_roic"
+        assert result.calculation_trace["adjustments"] == {
+            "goodwill_removed": "150.000000",
+            "intangible_assets_removed": "50.000000",
+            "operating_lease_liabilities_added": "100.000000",
+            "numerator_adjustments": (
+                "none; no amortization or lease-interest add-back is made "
+                "without separately reported inputs"
+            ),
+        }
+        assert len(result.source_fact_ids) == 8
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_wacc_v1_traces_derived_debt_cost_country_risk_currency_and_date():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        period = "2025-12-31"
+        add_fact(db, company, "risk_free_rate", "0.04", period, 2025, None)
+        add_fact(db, company, "beta", "1.2", period, 2025, None)
+        add_fact(db, company, "equity_risk_premium", "0.05", period, 2025, None)
+        add_fact(db, company, "country_risk_premium", "0.01", period, 2025, None)
+        add_fact(db, company, "market_cap", "800", period, 2025, None)
+        add_fact(db, company, "interest_expense", "12")
+        add_fact(db, company, "total_debt", "200")
+        add_fact(db, company, "effective_tax_rate", "0.25")
+        db.commit()
+
+        result = MetricCalculationService().calculate(
+            db,
+            company,
+            "wacc",
+            persist=True,
+        )
+        db.commit()
+
+        assert result.status == "ok"
+        assert result.definition_version == "WACC_STANDARD_V1"
+        assert result.value == Decimal("0.09700000")
+        assert result.calculation_trace["cost_of_debt_source"] == (
+            "interest_expense_over_debt"
+        )
+        assert result.calculation_trace["cost_of_debt"] == "0.06"
+        assert result.calculation_trace["country_risk_premium"] == "0.010000"
+        assert result.calculation_trace["currency"] == "USD"
+        assert result.calculation_trace["as_of_date"] == "2025-12-31"
+        assert result.calculation_trace["equity_value_source"] == "market_cap"
+        assert result.calculation_trace["input_period_alignment"] == (
+            "mixed_latest_available"
+        )
+        assert len(result.source_fact_ids) == 8
+
+        add_fact(db, company, "cost_of_debt", "0.06")
+        db.commit()
+        direct_cost_result = MetricCalculationService().calculate(
+            db,
+            company,
+            "wacc",
+            persist=False,
+        )
+        assert direct_cost_result.value == Decimal("0.09700000")
+        assert direct_cost_result.calculation_trace["cost_of_debt_source"] == (
+            "reported_cost_of_debt"
+        )
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_cfroi_v1_is_persisted_unavailable_and_never_proxied():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        db.commit()
+
+        result = MetricCalculationService().calculate(
+            db,
+            company,
+            "cfroi",
+            persist=True,
+        )
+        db.commit()
+
+        assert result.status == "unavailable"
+        assert result.value is None
+        assert result.definition_version == "CFROI_V1"
+        assert result.calculation_trace["reason"] == (
+            "specialized_methodology_inputs_required"
+        )
+        assert result.calculation_trace["required_inputs"]
+        assert result.calculation_trace["policy"] == (
+            "persist_unavailable_never_fabricate"
+        )
+
+        stored = db.scalar(
+            select(CalculatedMetric).where(
+                CalculatedMetric.company_id == company.id,
+                CalculatedMetric.metric == "cfroi",
+                CalculatedMetric.definition_version == "CFROI_V1",
+            )
+        )
+        assert stored is not None
+        assert stored.status == "unavailable"
+        assert stored.value is None
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
 
 
 def test_peer_comparison_uses_traceable_metrics_and_sector_peers():

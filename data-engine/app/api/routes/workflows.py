@@ -78,6 +78,70 @@ async def run_workflow(name: str, payload: WorkflowRunRequest, db: Session = Dep
             "result": result.model_dump(mode="json"),
         }
 
+    if name == "EarningsWorkflow" and payload.ticker:
+        from datetime import datetime
+
+        from app.services.earnings_service import EarningsWorkflowService
+
+        ticker = payload.ticker.upper()
+        company = db.scalar(select(Company).where(Company.ticker == ticker))
+        if not company:
+            raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
+        run = EarningsWorkflowService().run(
+            db,
+            company,
+            fiscal_year=int(
+                payload.params.get("fiscal_year", datetime.now().year)
+            ),
+            fiscal_quarter=str(
+                payload.params.get("fiscal_quarter", "FY")
+            ),
+            document_ids=[
+                int(document_id)
+                for document_id in payload.params.get("document_ids", [])
+            ],
+            force_new_thesis=bool(
+                payload.params.get("force_new_thesis", False)
+            ),
+        )
+        return {
+            "status": run.status,
+            "workflow": name,
+            "ticker": ticker,
+            "message": run.error or "Earnings workflow completed.",
+            "steps": workflow["steps"],
+            "estimated_minutes": 0,
+            "result": {
+                "earnings_run_id": run.id,
+                "thesis_change_id": run.thesis_change_id,
+                "documents": run.document_ids,
+                "metrics": len(run.extracted_metrics),
+                "guidance_changes": len(run.guidance_changes),
+            },
+        }
+
+    if name == "RedTeamWorkflow" and payload.ticker:
+        from app.services.red_team_service import RedTeamService
+
+        ticker = payload.ticker.upper()
+        company = db.scalar(select(Company).where(Company.ticker == ticker))
+        if not company:
+            raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
+        run = RedTeamService().run(db, company)
+        return {
+            "status": run.status,
+            "workflow": name,
+            "ticker": ticker,
+            "message": "Red-team workflow completed.",
+            "steps": workflow["steps"],
+            "estimated_minutes": 0,
+            "result": {
+                "red_team_run_id": run.id,
+                "score": run.score,
+                "findings": len(run.findings),
+            },
+        }
+
     return {
         "status": "queued",
         "workflow": name,
