@@ -83,7 +83,7 @@ export function tableToChartData(tableData: TableData, xAxisIndex: number = 0, y
  */
 function extractNumericValue(str: string): number {
     // Eliminar símbolos comunes y espacios
-    let cleaned = str
+    const cleaned = str
         .replace(/[$€£]/g, '')
         .replace(/%/g, '')
         .replace(/\s/g, '')

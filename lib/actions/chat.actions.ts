@@ -5,6 +5,7 @@ import { headers } from 'next/headers';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getPortfolioSummary } from './portfolio.actions';
 import { getRAGContext } from './ai.actions'; // Reuse existing RAG function!
+import { getDeepGeminiModel, getGeminiModelFallbacks } from '@/lib/ai/modelConfig';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -21,7 +22,7 @@ export async function chatWithPortfolio(query: string, userId: string) {
         console.log("👉 [CHAT DEBUG] RAG Context Length:", ragContext.length);
 
         // 3. Construct Prompt
-        const model = genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+        const model = genAI.getGenerativeModel({ model: getDeepGeminiModel() });
 
         const prompt = `
     Eres "CavaAI", un analista estratégico personal de inversiones de alto nivel (Nivel Institucional/Warren AI killer), integrado en la cartera del usuario.
@@ -64,10 +65,7 @@ export async function chatWithPortfolio(query: string, userId: string) {
 
 
         // 4. Robust Generation Strategy (Multi-Tier Fallback)
-        const modelsToTry = [
-            'gemini-3-flash-preview', // 1. User Preference (Pro)
-            'gemini-3-pro-preview',     // 2. User Preference (Pro)
-        ];
+        const modelsToTry = getGeminiModelFallbacks();
 
         let lastError;
 

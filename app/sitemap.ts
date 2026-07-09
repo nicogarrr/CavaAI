@@ -1,4 +1,4 @@
-import { MetadataRoute } from 'next'
+import { MetadataRoute } from 'next';
  
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = process.env.BETTER_AUTH_URL || 'https://jlcavaai.com';
@@ -9,12 +9,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 1,
-    },
-    {
-      url: `${baseUrl}/screener`,
-      lastModified: new Date(),
-      changeFrequency: 'daily',
-      priority: 0.8,
     },
     {
       url: `${baseUrl}/propicks`,

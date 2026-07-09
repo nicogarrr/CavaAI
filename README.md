@@ -1,214 +1,174 @@
-<div align="center">
-  <br />
-  <a href="#" target="_blank">
-    <img src="./public/assets/images/dashboard.png" alt="Project Banner" />
-  </a>
+# CavaAI
 
-  <br />
-  <br/>
+CavaAI is a private Personal Investment Research OS for long-term investors. It combines company workspaces, thesis history, traceable evidence, document memory, portfolio context, news impact analysis, and valuation tools.
 
-  <div>
-    <img src="https://img.shields.io/badge/-Next.js-black?style=for-the-badge&logoColor=white&logo=next.js&color=000000" alt="Next.js badge" />
-    <img src="https://img.shields.io/badge/-TypeScript-black?style=for-the-badge&logoColor=white&logo=typescript&color=3178C6"/>
-    <img src="https://img.shields.io/badge/-Tailwind%20CSS-black?style=for-the-badge&logoColor=white&logo=tailwindcss&color=38B2AC"/>
-    <img src="https://img.shields.io/badge/-shadcn/ui-black?style=for-the-badge&logoColor=white&logo=shadcnui&color=000000"/>
-    <img src="https://img.shields.io/badge/-Radix%20UI-black?style=for-the-badge&logoColor=white&logo=radixui&color=000000"/>
-    <img src="https://img.shields.io/badge/-Better%20Auth-black?style=for-the-badge&logoColor=white&logo=betterauth&color=000000"/>
-    <img src="https://img.shields.io/badge/-MongoDB-black?style=for-the-badge&logoColor=white&logo=mongodb&color=00A35C"/>
-    <img src="https://img.shields.io/badge/-TradingView-black?style=for-the-badge&logoColor=white&logo=tradingview&color=2962FF"/>
-    <img src="https://img.shields.io/badge/-Finnhub-black?style=for-the-badge&logoColor=white&color=30B27A"/>
-  </div>
-</div>
+The core product is not a DCF factory. The core product is accumulated investment memory: why a company is owned or watched, what claims support the thesis, what evidence contradicts it, and what changed over time.
 
-# JLCavaAI
+Nothing in this app is financial advice. Market data may be delayed or incomplete depending on each provider.
 
-JLCavaAI es una plataforma inteligente de seguimiento de mercados y análisis de inversiones. Analiza precios en tiempo real y accede a insights detallados de empresas y ETFs — construido con tecnología de vanguardia.
+## Product Principle
 
-**Nota:** JLCavaAI es una herramienta educativa y de análisis. Los datos de mercado pueden tener retraso según las reglas del proveedor. Nada aquí constituye asesoramiento financiero.
+CavaAI must treat the thesis and memory as the center of the product. Quantitative valuation is only one tool. No universal model, metric, or score should be forced onto a company when it is not appropriate.
 
-## 📋 Table of Contents
+See [docs/PRODUCT_VISION.md](docs/PRODUCT_VISION.md) for the full product direction.
 
-1. ✨ [Introduction](#introduction)
-2. ⚙️ [Tech Stack](#tech-stack)
-3. 🔋 [Features](#features)
-4. 🤸 [Quick Start](#quick-start)
-5. 🔐 [Environment Variables](#environment-variables)
-6. 🧱 [Project Structure](#project-structure)
-7. 📡 [Data & Integrations](#data--integrations)
-8. 📜 [License](#license)
+## Stack
 
-## ✨ Introduction
-
-JLCavaAI / CavaAI es una plataforma de seguimiento de mercados y un **Research OS** de inversión: dashboard Next.js + motor FastAPI con valoración determinista, tesis versionadas, auditoría de fuentes y workers de research.
-
-**Importante:** el motor de valoración **no publica fair values** basados en bootstrap assumptions ni precios inventados. Sin hechos financieros coherentes → `status: insufficient_data`.
-
-## ⚙️ Tech Stack
-
-**Frontend**
-- Next.js 16 (App Router), React 19
+Frontend:
+- Next.js 16 App Router
+- React 19
 - TypeScript
-- Tailwind CSS v4 (via @tailwindcss/postcss)
-- shadcn/ui + Radix UI primitives
-- Lucide icons
+- Tailwind CSS v4
+- shadcn/ui and Radix primitives
 
-**Auth & app data**
-- Better Auth (email/password) con MongoDB adapter
-- MongoDB + Mongoose (auth / watchlists / legacy app state)
-- Finnhub API + TradingView widgets
+App data and auth:
+- Better Auth
+- MongoDB and Mongoose
+- Finnhub, FMP, Twelve Data, Alpha Vantage and other optional market data providers
 
-**Research OS (`data-engine/`)**
-- FastAPI + SQLAlchemy + PostgreSQL (canonical research store)
-- Qdrant (RAG), Redis (jobs/cache), MinIO (filings), DuckDB (analytics)
-- Dramatiq workers, Microsoft Agent Framework (MAF), Langfuse (opcional)
-- Valuation engine registry: `standard_dcf`, `sotp`, `pre_revenue`, `holding_company`, `commodity`
+Research engine:
+- FastAPI
+- PostgreSQL and SQLAlchemy
+- Qdrant for semantic retrieval
+- MinIO for raw documents
+- DuckDB for analytics
+- Redis and Dramatiq for jobs/cache
+- Langfuse optional observability
 
-**Automation & Comms**
-- Inngest (events, cron, AI inference via Gemini)
-- Nodemailer (Gmail transport)
+## Current Capabilities
 
-## 🔋 Features
+- Email/password auth
+- Portfolio and watchlist
+- Company pages and market widgets
+- Research OS backend with companies, financial facts, thesis versions, source audits and valuation engines
+- Persistent claims, claim evidence, thesis sections, research sessions and company memory
+- Company Research page connected to backend claims, support/contradiction evidence, document/chunk evidence links and memory capture
+- What Changed records for manual thesis updates, automatic claim contradictions and material news
+- News feed batch ingestion with dedupe and material thesis-change creation
+- Valuation engines for standard DCF, SOTP, pre-revenue/speculative, holding-company and commodity models
+- Knowledge/document upload path
+- Portfolio analytics and risk endpoints
+- News, ProPicks and AI-assisted analysis flows
 
-- **Autenticación**: Email/password auth con Better Auth + MongoDB adapter
-- **Research OS**: companies, financial facts, valuation engines, thesis versions, source audits
-- **Valoración honesta**: bloquea DCF bootstrap; requiere snapshot temporal coherente; sin precio de mercado → `null` (nunca $100)
-- **Búsqueda global y Command + K**: Búsqueda rápida de acciones con Finnhub
-- **Watchlist / portfolio**: posiciones, riesgo, analytics
-- **Detalles de acciones**: Widgets de TradingView, gráficos avanzados, técnicos
-- **UI moderna**: Componentes shadcn/ui, Radix primitives
+## Quick Start
 
-## 🤸 Quick Start
-
-### 🐳 Opción 1: Docker (Recomendado)
-
-La forma más fácil de ejecutar todo el stack (Frontend + Backend + MongoDB):
+Docker local stack:
 
 ```bash
-# 1. Clonar el repositorio
-git clone https://github.com/nicogarrr/CavaAI.git
-cd CavaAI
-
-# 2. Copiar y configurar variables de entorno
 cp docker.env.example .env
-# Edita .env con tus API keys
-
-# 3. Iniciar todo con Docker
-docker-compose up
-
-# ¡Listo! Abre http://localhost:3000
+# edit .env and add the keys you want to use
+docker compose up --build
 ```
 
-**Comandos útiles de Docker:**
+Frontend only:
+
 ```bash
-docker-compose up              # Iniciar todo
-docker-compose up -d           # Iniciar en background
-docker-compose restart         # Reiniciar todo
-docker-compose restart backend # Reiniciar solo backend
-docker-compose down            # Parar todo
-docker-compose up --build      # Rebuild si cambias dependencias
-docker-compose logs -f         # Ver logs en tiempo real
-```
-
-### 📦 Opción 2: Manual (Sin Docker)
-
-**Prerequisites**
-- Node.js 20+ y npm
-- Python 3.11+
-- MongoDB (local o Atlas)
-- API keys (Finnhub, FMP, Gemini)
-
-**Frontend (Next.js)**
-```bash
-git clone https://github.com/nicogarrr/CavaAI.git
-cd CavaAI
 npm install
 npm run dev
 ```
 
-**Backend (Python)**
+Backend only:
+
 ```bash
 cd data-engine
 pip install -r requirements.txt
-# Optional for local tests/development:
 pip install -e .[test]
 uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Open http://localhost:3000 to view the app.
+Open http://localhost:3000.
 
-## 🔐 Environment Variables
+## Environment
 
-Crea `.env` en la raíz del proyecto:
+Minimum local `.env`:
 
 ```env
-# Core
 NODE_ENV=development
-
-# Database
-MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>/<db>?retryWrites=true&w=majority
-
-# Better Auth
-BETTER_AUTH_SECRET=your_better_auth_secret
+MONGODB_URI=mongodb://root:example@localhost:27017/jlcavaai?authSource=admin
+BETTER_AUTH_SECRET=replace_with_a_32_char_minimum_secret
 BETTER_AUTH_URL=http://localhost:3000
+FMP_BACKEND_URL=http://localhost:8000
+```
 
-# Finnhub
-FINNHUB_API_KEY=your_finnhub_key
+Market data:
+
+```env
+FINNHUB_API_KEY=
 FINNHUB_BASE_URL=https://finnhub.io/api/v1
-
-# APIs alternativas
-TWELVE_DATA_API_KEY=your_twelve_data_key
-ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
-
-# Inngest AI (Gemini)
-GEMINI_API_KEY=your_gemini_api_key
-
-# Email (Nodemailer via Gmail)
-NODEMAILER_EMAIL=youraddress@gmail.com
-NODEMAILER_PASSWORD=your_gmail_app_password
+FMP_API_KEY=
+TWELVE_DATA_API_KEY=
+ALPHA_VANTAGE_API_KEY=
+POLYGON_API_KEY=
+NEWSAPI_KEY=
+MARKETAUX_API_KEY=
+FRED_API_KEY=
+TRADING_ECONOMICS_API_KEY=
+SEC_USER_AGENT=CavaAI/0.1 contact@example.com
+QUARTR_API_KEY=
 ```
 
-## 🧱 Project Structure
+AI:
 
-```
-app/
-  (auth)/
-    layout.tsx
-    sign-in/page.tsx
-    sign-up/page.tsx
-  (root)/
-    layout.tsx
-    page.tsx
-    stocks/[symbol]/page.tsx
-  api/inngest/route.ts
-  globals.css
-  layout.tsx
-components/
-  ui/…          # shadcn/radix primitives
-  forms/…       # InputField, SelectField, etc.
-  stocks/…      # Componentes de análisis de acciones
-database/
-  models/watchlist.model.ts
-  mongoose.ts
-lib/
-  actions/…     # server actions
-  better-auth/…
-  inngest/…     # client, functions, prompts
-  nodemailer/…  # transporter, email templates
-  constants.ts, utils.ts
+```env
+GEMINI_API_KEY=
+GOOGLE_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash
+GEMINI_CHEAP_MODEL=gemini-2.5-flash-lite
+GEMINI_DEEP_MODEL=gemini-3.5-flash
+OPENROUTER_API_KEY=
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
 ```
 
-## 📡 Data & Integrations
+Email:
 
-- **Finnhub**: Búsqueda de acciones, perfiles de empresas y noticias de mercado
-- **TradingView**: Widgets embebidos para gráficos, heatmap y cotizaciones
-- **Better Auth + MongoDB**: Email/password con MongoDB adapter
-- **Inngest**: Workflows y cron jobs
-- **Email (Nodemailer)**: Gmail transport para emails automatizados
+```env
+NODEMAILER_EMAIL=
+NODEMAILER_PASSWORD=
+```
 
-## 📜 License
+Generate a production auth secret with:
 
-© 2025 Nicolas Iglesias Garcia. Todos los derechos reservados.
+```bash
+openssl rand -base64 32
+```
 
----
+## Verification
 
-*Desarrollado por Nicolas Iglesias Garcia*
+Frontend:
+
+```bash
+npm run lint
+npm run build
+```
+
+Backend:
+
+```bash
+cd data-engine
+python -m pytest
+```
+
+`npm run lint` is configured as a gate for errors. Existing legacy typing and React Compiler cleanup are currently warnings and should be paid down incrementally.
+
+## AI Provider Guidance
+
+For now, use Gemini directly for the app because the code already integrates Google's API and Gemini has very low-cost tiers for extraction/classification. Keep model selection task-based:
+
+- Cheap extraction/classification: `GEMINI_CHEAP_MODEL`
+- Normal app analysis/chat: `GEMINI_MODEL`
+- Deep research/red-team: `GEMINI_DEEP_MODEL`
+
+OpenRouter is useful once provider abstraction is added because it gives routing/fallback across many models with pay-as-you-go credits. Muse Spark should not be the primary integration target yet: Meta has announced Muse Spark developer availability, but public API pricing/provider coverage is still not mature enough to build the app around it.
+
+## Production Notes
+
+- Do not expose database ports publicly outside local development.
+- Do not use placeholder secrets in shared or production environments.
+- Run Alembic migrations and seed jobs explicitly in production instead of relying on app startup side effects.
+- Keep source lineage for every important financial fact, claim, calculation and thesis update.
+- The current `/api/memory` surface is ready for product integration and has an Alembic migration. Production still needs auth/tenant scoping, richer source previews and automatic evidence extraction before it should be considered finished.
+
+## License
+
+Copyright 2025 Nicolas Iglesias Garcia. All rights reserved.

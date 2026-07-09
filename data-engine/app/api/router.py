@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     chat,
     companies,
+    memory,
     news,
     portfolio,
     risk,
@@ -21,7 +22,7 @@ api_router.include_router(valuation.router, prefix="/valuation", tags=["valuatio
 api_router.include_router(news.router, prefix="/news", tags=["news"])
 api_router.include_router(risk.router, prefix="/risk", tags=["risk"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+api_router.include_router(memory.router, prefix="/memory", tags=["memory"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
-

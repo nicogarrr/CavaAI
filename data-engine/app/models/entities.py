@@ -49,6 +49,8 @@ class Company(Base, TimestampMixin):
 
     positions: Mapped[list["Position"]] = relationship(back_populates="company")
     thesis_versions: Mapped[list["ThesisVersion"]] = relationship(back_populates="company")
+    claims: Mapped[list["Claim"]] = relationship(back_populates="company")
+    memory_items: Mapped[list["MemoryItem"]] = relationship(back_populates="company")
 
 
 class Position(Base, TimestampMixin):
@@ -326,6 +328,115 @@ class ThesisDiff(Base, TimestampMixin):
     rating_changed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class ThesisSection(Base, TimestampMixin):
+    __tablename__ = "thesis_sections"
+    __table_args__ = (
+        UniqueConstraint("thesis_version_id", "section_key", name="uq_thesis_section_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    thesis_version_id: Mapped[int] = mapped_column(ForeignKey("thesis_versions.id"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    section_key: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(40), default="draft")
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0.70"))
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class Claim(Base, TimestampMixin):
+    __tablename__ = "claims"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
+    thesis_version_id: Mapped[int | None] = mapped_column(ForeignKey("thesis_versions.id"), nullable=True)
+    statement: Mapped[str] = mapped_column(Text)
+    claim_type: Mapped[str] = mapped_column(String(80), default="thesis")
+    status: Mapped[str] = mapped_column(String(40), default="unverified")
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0.50"))
+    materiality_score: Mapped[int] = mapped_column(Integer, default=5)
+    source_quality: Mapped[str] = mapped_column(String(40), default="unknown")
+    created_by: Mapped[str] = mapped_column(String(80), default="system")
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+    company: Mapped[Company | None] = relationship(back_populates="claims")
+    evidence: Mapped[list["ClaimEvidence"]] = relationship(
+        back_populates="claim", cascade="all, delete-orphan"
+    )
+
+
+class ClaimEvidence(Base, TimestampMixin):
+    __tablename__ = "claim_evidence"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"), index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    document_chunk_id: Mapped[int | None] = mapped_column(ForeignKey("document_chunks.id"), nullable=True)
+    source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    evidence_type: Mapped[str] = mapped_column(String(40), default="supports")
+    summary: Mapped[str] = mapped_column(Text)
+    quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0.70"))
+    source_tier: Mapped[str] = mapped_column(String(40), default="secondary")
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+    claim: Mapped[Claim] = relationship(back_populates="evidence")
+
+
+class ThesisChange(Base, TimestampMixin):
+    __tablename__ = "thesis_changes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
+    from_version_id: Mapped[int | None] = mapped_column(ForeignKey("thesis_versions.id"), nullable=True)
+    to_version_id: Mapped[int | None] = mapped_column(ForeignKey("thesis_versions.id"), nullable=True)
+    change_type: Mapped[str] = mapped_column(String(80), default="update")
+    impact_direction: Mapped[str] = mapped_column(String(40), default="neutral")
+    materiality_score: Mapped[int] = mapped_column(Integer, default=5)
+    summary: Mapped[str] = mapped_column(Text)
+    affected_claim_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    affected_metrics: Mapped[list[str]] = mapped_column(JSON, default=list)
+    requires_review: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ResearchSession(Base, TimestampMixin):
+    __tablename__ = "research_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    question: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="open")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    source_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    claim_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    memory_item_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class MemoryItem(Base, TimestampMixin):
+    __tablename__ = "memory_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
+    research_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("research_sessions.id"), nullable=True, index=True
+    )
+    scope: Mapped[str] = mapped_column(String(80), default="portfolio")
+    memory_type: Mapped[str] = mapped_column(String(80), default="note")
+    importance: Mapped[int] = mapped_column(Integer, default=5)
+    content: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="active")
+    source_type: Mapped[str] = mapped_column(String(80), default="user")
+    source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+    company: Mapped[Company | None] = relationship(back_populates="memory_items")
+
+
 class SourceAudit(Base, TimestampMixin):
     __tablename__ = "source_audits"
 
@@ -396,4 +507,3 @@ class BudgetUsage(Base, TimestampMixin):
     workflow: Mapped[str] = mapped_column(String(120))
     cost_eur: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
     token_count: Mapped[int] = mapped_column(Integer, default=0)
-

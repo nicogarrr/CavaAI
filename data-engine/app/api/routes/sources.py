@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Company, Document, SourceAudit
+from app.models import Company, Document, DocumentChunk, SourceAudit
 from app.services.connectors.quartr import QuartrClient
 from app.services.quartr_import_service import QuartrImportService
 
@@ -20,13 +20,37 @@ class QuartrManualImportRequest(BaseModel):
 
 
 @router.get("/documents")
-def documents(db: Session = Depends(get_db)) -> list[dict]:
-    rows = db.execute(
-        select(Document, Company)
-        .outerjoin(Company, Document.company_id == Company.id)
-        .order_by(desc(Document.created_at))
-        .limit(200)
-    ).all()
+def documents(
+    ticker: str | None = None,
+    include_chunks: bool = False,
+    chunk_limit: int = Query(default=1000, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    statement = select(Document, Company).outerjoin(Company, Document.company_id == Company.id)
+    if ticker:
+        statement = statement.where(Company.ticker == ticker.upper())
+
+    rows = db.execute(statement.order_by(desc(Document.created_at)).limit(200)).all()
+    chunk_map: dict[int, list[dict]] = {}
+    if include_chunks and rows:
+        document_ids = [document.id for document, _ in rows]
+        chunks = db.scalars(
+            select(DocumentChunk)
+            .where(DocumentChunk.document_id.in_(document_ids))
+            .order_by(DocumentChunk.document_id, DocumentChunk.chunk_index)
+            .limit(chunk_limit)
+        ).all()
+        for chunk in chunks:
+            chunk_map.setdefault(chunk.document_id, []).append(
+                {
+                    "id": chunk.id,
+                    "document_id": chunk.document_id,
+                    "chunk_index": chunk.chunk_index,
+                    "text": chunk.text[:500],
+                    "token_count": chunk.token_count,
+                }
+            )
+
     return [
         {
             "id": document.id,
@@ -35,6 +59,7 @@ def documents(db: Session = Depends(get_db)) -> list[dict]:
             "source_type": document.source_type,
             "source_url": document.source_url,
             "published_at": document.published_at.isoformat() if document.published_at else None,
+            "chunks": chunk_map.get(document.id, []) if include_chunks else [],
         }
         for document, company in rows
     ]

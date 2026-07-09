@@ -1,0 +1,343 @@
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import desc, select
+from sqlalchemy.orm import Session, selectinload
+
+from app.core.database import get_db
+from app.models import (
+    Claim,
+    ClaimEvidence,
+    Company,
+    Document,
+    DocumentChunk,
+    MemoryItem,
+    ResearchSession,
+    ThesisChange,
+    ThesisSection,
+    ThesisVersion,
+)
+from app.schemas import (
+    ClaimCreate,
+    ClaimEvidenceCreate,
+    ClaimEvidenceOut,
+    ClaimOut,
+    MemoryItemCreate,
+    MemoryItemOut,
+    ResearchSessionCreate,
+    ResearchSessionOut,
+    ThesisChangeCreate,
+    ThesisChangeOut,
+    ThesisSectionCreate,
+    ThesisSectionOut,
+)
+
+router = APIRouter()
+
+
+def _company_by_ticker(db: Session, ticker: str) -> Company:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return company
+
+
+def _resolve_company_id(db: Session, ticker: str | None, company_id: int | None) -> int | None:
+    if ticker:
+        return _company_by_ticker(db, ticker).id
+    if company_id is None:
+        return None
+    company = db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return company.id
+
+
+@router.get("/claims", response_model=list[ClaimOut])
+def list_claims(
+    ticker: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> list[Claim]:
+    statement = select(Claim).options(selectinload(Claim.evidence))
+    if ticker:
+        company = _company_by_ticker(db, ticker)
+        statement = statement.where(Claim.company_id == company.id)
+    if status:
+        statement = statement.where(Claim.status == status)
+    return list(db.scalars(statement.order_by(desc(Claim.created_at)).limit(limit)).all())
+
+
+@router.post("/claims", response_model=ClaimOut)
+def create_claim(payload: ClaimCreate, db: Session = Depends(get_db)) -> Claim:
+    company_id = _resolve_company_id(db, payload.ticker, payload.company_id)
+    if payload.thesis_version_id and not db.get(ThesisVersion, payload.thesis_version_id):
+        raise HTTPException(status_code=404, detail="Thesis version not found")
+
+    claim = Claim(
+        company_id=company_id,
+        thesis_version_id=payload.thesis_version_id,
+        statement=payload.statement,
+        claim_type=payload.claim_type,
+        status=payload.status,
+        confidence=payload.confidence,
+        materiality_score=payload.materiality_score,
+        source_quality=payload.source_quality,
+        created_by=payload.created_by,
+    )
+    db.add(claim)
+    db.commit()
+    db.refresh(claim)
+    return claim
+
+
+@router.get("/claims/{claim_id}", response_model=ClaimOut)
+def get_claim(claim_id: int, db: Session = Depends(get_db)) -> Claim:
+    claim = db.scalar(
+        select(Claim).options(selectinload(Claim.evidence)).where(Claim.id == claim_id)
+    )
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    return claim
+
+
+@router.post("/claims/{claim_id}/evidence", response_model=ClaimEvidenceOut)
+def add_claim_evidence(
+    claim_id: int, payload: ClaimEvidenceCreate, db: Session = Depends(get_db)
+) -> ClaimEvidence:
+    claim = db.get(Claim, claim_id)
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    if payload.document_id and not db.get(Document, payload.document_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    if payload.document_chunk_id:
+        chunk = db.get(DocumentChunk, payload.document_chunk_id)
+        if not chunk:
+            raise HTTPException(status_code=404, detail="Document chunk not found")
+        if payload.document_id and chunk.document_id != payload.document_id:
+            raise HTTPException(status_code=400, detail="Document chunk does not belong to document")
+        if payload.document_id is None:
+            payload.document_id = chunk.document_id
+
+    evidence = ClaimEvidence(
+        claim_id=claim.id,
+        document_id=payload.document_id,
+        document_chunk_id=payload.document_chunk_id,
+        source_url=payload.source_url,
+        evidence_type=payload.evidence_type,
+        summary=payload.summary,
+        quote=payload.quote,
+        confidence=payload.confidence,
+        source_tier=payload.source_tier,
+    )
+    if payload.evidence_type == "contradicts":
+        claim.status = "contradicted"
+        db.add(
+            ThesisChange(
+                company_id=claim.company_id,
+                from_version_id=claim.thesis_version_id,
+                to_version_id=claim.thesis_version_id,
+                change_type="claim_contradiction",
+                impact_direction="negative",
+                materiality_score=claim.materiality_score,
+                summary=f"Contradictory evidence added for claim: {claim.statement[:220]}",
+                affected_claim_ids=[claim.id],
+                affected_metrics=[],
+                requires_review=True,
+            )
+        )
+    elif payload.evidence_type == "supports" and claim.status == "unverified":
+        claim.status = "supported"
+    claim.last_reviewed_at = datetime.now(UTC)
+
+    db.add(evidence)
+    db.commit()
+    db.refresh(evidence)
+    return evidence
+
+
+@router.get("/thesis/{ticker}/changes", response_model=list[ThesisChangeOut])
+def list_thesis_changes(
+    ticker: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> list[ThesisChange]:
+    company = _company_by_ticker(db, ticker)
+    return list(
+        db.scalars(
+            select(ThesisChange)
+            .where(ThesisChange.company_id == company.id)
+            .order_by(desc(ThesisChange.created_at))
+            .limit(limit)
+        ).all()
+    )
+
+
+@router.post("/thesis/changes", response_model=ThesisChangeOut)
+def create_thesis_change(payload: ThesisChangeCreate, db: Session = Depends(get_db)) -> ThesisChange:
+    company_id = _resolve_company_id(db, payload.ticker, payload.company_id)
+    if payload.from_version_id and not db.get(ThesisVersion, payload.from_version_id):
+        raise HTTPException(status_code=404, detail="From thesis version not found")
+    if payload.to_version_id and not db.get(ThesisVersion, payload.to_version_id):
+        raise HTTPException(status_code=404, detail="To thesis version not found")
+
+    change = ThesisChange(
+        company_id=company_id,
+        from_version_id=payload.from_version_id,
+        to_version_id=payload.to_version_id,
+        change_type=payload.change_type,
+        impact_direction=payload.impact_direction,
+        materiality_score=payload.materiality_score,
+        summary=payload.summary,
+        affected_claim_ids=payload.affected_claim_ids,
+        affected_metrics=payload.affected_metrics,
+        requires_review=payload.requires_review,
+    )
+    db.add(change)
+    db.commit()
+    db.refresh(change)
+    return change
+
+
+@router.get("/thesis/{ticker}/sections", response_model=list[ThesisSectionOut])
+def list_thesis_sections(ticker: str, db: Session = Depends(get_db)) -> list[ThesisSection]:
+    company = _company_by_ticker(db, ticker)
+    latest = db.scalar(
+        select(ThesisVersion)
+        .where(ThesisVersion.company_id == company.id)
+        .order_by(desc(ThesisVersion.version))
+    )
+    if not latest:
+        raise HTTPException(status_code=404, detail="No thesis for ticker")
+    return list(
+        db.scalars(
+            select(ThesisSection)
+            .where(ThesisSection.thesis_version_id == latest.id)
+            .order_by(ThesisSection.order_index, ThesisSection.section_key)
+        ).all()
+    )
+
+
+@router.post(
+    "/thesis/{ticker}/versions/{thesis_version_id}/sections",
+    response_model=ThesisSectionOut,
+)
+def upsert_thesis_section(
+    ticker: str,
+    thesis_version_id: int,
+    payload: ThesisSectionCreate,
+    db: Session = Depends(get_db),
+) -> ThesisSection:
+    company = _company_by_ticker(db, ticker)
+    thesis = db.scalar(
+        select(ThesisVersion).where(
+            ThesisVersion.id == thesis_version_id,
+            ThesisVersion.company_id == company.id,
+        )
+    )
+    if not thesis:
+        raise HTTPException(status_code=404, detail="Thesis version not found")
+
+    section = db.scalar(
+        select(ThesisSection).where(
+            ThesisSection.thesis_version_id == thesis.id,
+            ThesisSection.section_key == payload.section_key,
+        )
+    )
+    if not section:
+        section = ThesisSection(
+            thesis_version_id=thesis.id,
+            company_id=company.id,
+            section_key=payload.section_key,
+        )
+        db.add(section)
+
+    section.title = payload.title
+    section.body = payload.body
+    section.status = payload.status
+    section.order_index = payload.order_index
+    section.confidence = payload.confidence
+
+    db.commit()
+    db.refresh(section)
+    return section
+
+
+@router.get("/research-sessions", response_model=list[ResearchSessionOut])
+def list_research_sessions(
+    ticker: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> list[ResearchSession]:
+    statement = select(ResearchSession)
+    if ticker:
+        company = _company_by_ticker(db, ticker)
+        statement = statement.where(ResearchSession.company_id == company.id)
+    if status:
+        statement = statement.where(ResearchSession.status == status)
+    return list(db.scalars(statement.order_by(desc(ResearchSession.created_at)).limit(limit)).all())
+
+
+@router.post("/research-sessions", response_model=ResearchSessionOut)
+def create_research_session(
+    payload: ResearchSessionCreate, db: Session = Depends(get_db)
+) -> ResearchSession:
+    company_id = _resolve_company_id(db, payload.ticker, payload.company_id)
+    session = ResearchSession(
+        company_id=company_id,
+        title=payload.title,
+        question=payload.question,
+        status=payload.status,
+        summary=payload.summary,
+        source_ids=payload.source_ids,
+        claim_ids=payload.claim_ids,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@router.get("/memory-items", response_model=list[MemoryItemOut])
+def list_memory_items(
+    ticker: str | None = None,
+    scope: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> list[MemoryItem]:
+    statement = select(MemoryItem)
+    if ticker:
+        company = _company_by_ticker(db, ticker)
+        statement = statement.where(MemoryItem.company_id == company.id)
+    if scope:
+        statement = statement.where(MemoryItem.scope == scope)
+    return list(db.scalars(statement.order_by(desc(MemoryItem.created_at)).limit(limit)).all())
+
+
+@router.post("/memory-items", response_model=MemoryItemOut)
+def create_memory_item(payload: MemoryItemCreate, db: Session = Depends(get_db)) -> MemoryItem:
+    company_id = _resolve_company_id(db, payload.ticker, payload.company_id)
+    session = db.get(ResearchSession, payload.research_session_id) if payload.research_session_id else None
+    if payload.research_session_id and not session:
+        raise HTTPException(status_code=404, detail="Research session not found")
+
+    item = MemoryItem(
+        company_id=company_id,
+        research_session_id=payload.research_session_id,
+        scope=payload.scope,
+        memory_type=payload.memory_type,
+        importance=payload.importance,
+        content=payload.content,
+        status=payload.status,
+        source_type=payload.source_type,
+        source_id=payload.source_id,
+    )
+    db.add(item)
+    db.flush()
+    if session:
+        session.memory_item_ids = [*session.memory_item_ids, item.id]
+    db.commit()
+    db.refresh(item)
+    return item
