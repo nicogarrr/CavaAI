@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -113,11 +114,14 @@ class ClaimEvidenceCreate(BaseModel):
     document_id: int | None = None
     document_chunk_id: int | None = None
     source_url: str | None = None
-    evidence_type: str = Field(default="supports", pattern="^(supports|contradicts|context)$")
+    evidence_type: str = Field(
+        default="supports",
+        pattern="^(supports|contradicts|supersedes|context|uncertain)$",
+    )
     summary: str = Field(min_length=3)
     quote: str | None = None
     confidence: Decimal = Decimal("0.70")
-    source_tier: str = "secondary"
+    source_tier: str | None = None
 
 
 class ClaimEvidenceOut(BaseModel):
@@ -303,6 +307,9 @@ class ManualNewsResponse(BaseModel):
     portfolio_weight: float = 0
     materiality_reasons: list[str] = Field(default_factory=list)
     model_route: str = "news_triage"
+    affected_claim_ids: list[int] = Field(default_factory=list)
+    affected_node_ids: list[int] = Field(default_factory=list)
+    semantic_impact: dict = Field(default_factory=dict)
 
 
 class NewsFeedItem(BaseModel):
@@ -334,11 +341,185 @@ class ChatRequest(BaseModel):
     ticker: str | None = None
 
 
+class SynthesisSection(BaseModel):
+    key: Literal[
+        "facts",
+        "calculations",
+        "user_hypotheses",
+        "inferences",
+        "contradictions",
+        "insufficient_data",
+        "conclusion",
+    ]
+    body: str
+    citations: list[str] = Field(default_factory=list)
+
+
 class ChatResponse(BaseModel):
     answer: str
+    sections: list[SynthesisSection] = Field(default_factory=list)
     sources: list[dict]
     blocked: bool = False
     proposed_actions: list[str] = Field(default_factory=list)
+    evidence_suggestions: list[dict] = Field(default_factory=list)
+    prompt_version: str | None = None
+    model: str | None = None
+
+
+class EvidenceSuggestionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int | None
+    document_id: int | None
+    document_chunk_id: int | None
+    suggested_claim_id: int | None
+    suggestion_type: str
+    statement: str
+    relation: str
+    rationale: str
+    quote: str | None
+    confidence: Decimal
+    status: str
+    model: str | None
+    prompt_version: str
+    metadata_: dict
+    created_at: datetime
+
+
+class EvidenceSuggestionAction(BaseModel):
+    action: Literal["accept", "reject"]
+    claim_id: int | None = None
+
+
+class ContradictionScanRequest(BaseModel):
+    ticker: str
+    document_id: int | None = None
+    news_event_id: int | None = None
+    create_reviews: bool = True
+
+
+class ResearchReviewOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int | None
+    review_type: str
+    status: str
+    priority: str
+    title: str
+    summary: str
+    thesis_change_id: int | None
+    claim_id: int | None
+    news_event_id: int | None
+    assigned_to: str | None
+    due_at: datetime | None
+    resolved_at: datetime | None
+    resolution_notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ResearchReviewUpdate(BaseModel):
+    status: Literal["open", "in_progress", "approved", "dismissed", "resolved"]
+    resolution_notes: str | None = None
+
+
+class ResearchAlertOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int | None
+    review_id: int | None
+    severity: str
+    status: str
+    alert_type: str
+    title: str
+    message: str
+    fingerprint: str
+    channels: list[str]
+    acknowledged_at: datetime | None
+    acknowledged_by: str | None
+    snoozed_until: datetime | None
+    resolved_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ResearchAlertAction(BaseModel):
+    action: Literal["acknowledge", "resolve", "snooze", "reopen"]
+    actor: str = "user"
+    snoozed_until: datetime | None = None
+
+
+class ResearchAlertChannels(BaseModel):
+    channels: list[Literal["in_app", "email", "push"]] = Field(
+        min_length=1
+    )
+
+
+class ThesisNodeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    thesis_version_id: int
+    node_key: str
+    node_type: str
+    label: str
+    description: str
+    status: str
+    confidence: Decimal
+    materiality_score: int
+    claim_ids: list[int]
+    invalidation_conditions: list[str]
+
+
+class ThesisEdgeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    from_node_id: int
+    to_node_id: int
+    edge_type: str
+    strength: Decimal
+
+
+class ThesisGraphOut(BaseModel):
+    ticker: str
+    thesis_version_id: int
+    nodes: list[ThesisNodeOut]
+    edges: list[ThesisEdgeOut]
+
+
+class EarningsWorkflowRequest(BaseModel):
+    fiscal_year: int
+    fiscal_quarter: str = Field(default="FY", pattern="^(Q1|Q2|Q3|Q4|FY)$")
+    document_ids: list[int] = Field(default_factory=list)
+    force_new_thesis: bool = False
+
+
+class EarningsRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    fiscal_year: int
+    fiscal_quarter: str
+    status: str
+    document_ids: list[int]
+    extracted_metrics: list[dict]
+    guidance_changes: list[dict]
+    comparisons: dict
+    management_tone: dict
+    promise_tracking: list[dict]
+    risk_updates: list[dict]
+    catalyst_updates: list[dict]
+    claim_changes: list[dict]
+    thesis_change_id: int | None
+    error: str | None
+    trace: dict
+    created_at: datetime
 
 
 class ValuationResponse(BaseModel):

@@ -124,6 +124,7 @@ class DocumentIngestionService:
             source_type or "manual",
             f"{checksum[:12]}-{filename}",
             content,
+            tenant_id=db.info.get("tenant_id"),
         )
 
         document = Document(
@@ -173,6 +174,27 @@ class DocumentIngestionService:
         else:
             rag_result = {"chunks_indexed": 0, "skipped": "Set CAVAAI_ENABLE_VECTOR_INGEST=1 to index Qdrant."}
 
+        if os.getenv("CAVAAI_ENABLE_AUTO_RESEARCH", "1") == "1":
+            try:
+                from app.services.claim_intelligence_service import (
+                    ClaimIntelligenceService,
+                )
+
+                intelligence_result = ClaimIntelligenceService().scan_document(
+                    db, document, auto_apply=True
+                )
+            except Exception as exc:
+                intelligence_result = {
+                    "status": "failed",
+                    "error": str(exc),
+                    "document_id": document.id,
+                }
+        else:
+            intelligence_result = {
+                "status": "disabled",
+                "document_id": document.id,
+            }
+
         return {
             "status": "ingested",
             "ticker": company.ticker,
@@ -183,6 +205,7 @@ class DocumentIngestionService:
             "storage_uri": storage_uri,
             "warnings": parsed.warnings,
             "rag": rag_result,
+            "intelligence": intelligence_result,
         }
 
     def ingest_url(

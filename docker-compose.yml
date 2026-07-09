@@ -155,12 +155,41 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - VECTOR_STORE=qdrant
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-portfolio}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-portfoliosecret}
+      - MINIO_BUCKET=research
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
+      - RSS_FEEDS=${RSS_FEEDS:-}
     depends_on:
       backend:
         condition: service_started
       redis:
         condition: service_started
     command: ["dramatiq", "app.workers.dramatiq_app"]
+
+  # ==========================================
+  # Scheduler - recurring research jobs
+  # ==========================================
+  scheduler:
+    build:
+      context: ./data-engine
+      dockerfile: Dockerfile
+    container_name: jlcava-scheduler
+    restart: unless-stopped
+    volumes:
+      - ./data-engine:/app
+      - /app/__pycache__
+      - /app/.venv
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-cavaai_research}
+      - REDIS_URL=redis://redis:6379/0
+      - TZ=UTC
+    depends_on:
+      redis:
+        condition: service_started
+    command: ["python", "-m", "app.workers.scheduler"]
 
   # ==========================================
   # Frontend Next.js

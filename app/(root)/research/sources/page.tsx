@@ -182,6 +182,7 @@ export default async function ResearchSourcesPage() {
                 <th className="border-b border-gray-800 py-2">Ticker</th>
                 <th className="border-b border-gray-800 py-2">Title</th>
                 <th className="border-b border-gray-800 py-2">Source</th>
+                <th className="border-b border-gray-800 py-2">Tier</th>
                 <th className="border-b border-gray-800 py-2">Published</th>
                 <th className="border-b border-gray-800 py-2">URL</th>
               </tr>
@@ -192,6 +193,7 @@ export default async function ResearchSourcesPage() {
                   <td className="py-3 font-semibold text-gray-200">{document.ticker ?? 'GLOBAL'}</td>
                   <td className="py-3 text-gray-300">{document.title}</td>
                   <td className="py-3 text-gray-400">{document.source_type}</td>
+                  <td className="py-3 text-gray-400">{document.source_tier}</td>
                   <td className="py-3 text-gray-500">{document.published_at ?? 'n/a'}</td>
                   <td className="py-3 text-gray-500">
                     {document.source_url ? (
@@ -206,7 +208,7 @@ export default async function ResearchSourcesPage() {
               ))}
               {!documents.length ? (
                 <tr>
-                  <td className="py-4 text-gray-500" colSpan={5}>Sin documentos importados.</td>
+                  <td className="py-4 text-gray-500" colSpan={6}>Sin documentos importados.</td>
                 </tr>
               ) : null}
             </tbody>

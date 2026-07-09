@@ -4,10 +4,20 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Company, Document, DocumentChunk, SourceAudit
+from app.models import (
+    Claim,
+    Company,
+    Document,
+    DocumentChunk,
+    EvidenceSuggestion,
+    SourceAudit,
+)
+from app.schemas import EvidenceSuggestionAction, EvidenceSuggestionOut
+from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.connectors.quartr import QuartrClient
 from app.services.document_ingestion_service import DocumentIngestionService
 from app.services.quartr_import_service import QuartrImportService
+from app.services.source_hierarchy_service import SOURCE_TIERS, classify_source
 
 router = APIRouter()
 
@@ -25,6 +35,20 @@ class UrlIngestRequest(BaseModel):
     title: str = Field(min_length=3, max_length=500)
     url: str = Field(min_length=8, max_length=2000)
     source_type: str = Field(default="url", min_length=2, max_length=80)
+
+
+@router.get("/tiers")
+def source_tiers() -> list[dict]:
+    return [
+        {
+            "key": tier.key,
+            "label": tier.label,
+            "rank": tier.rank,
+            "trust_score": tier.trust_score,
+            "policy": tier.policy,
+        }
+        for tier in sorted(SOURCE_TIERS.values(), key=lambda item: item.rank)
+    ]
 
 
 @router.get("/documents")
@@ -67,6 +91,9 @@ def documents(
             "ticker": company.ticker if company else None,
             "title": document.title,
             "source_type": document.source_type,
+            "source_tier": classify_source(
+                document.source_type, document.source_url
+            ).key,
             "source_url": document.source_url,
             "storage_uri": document.storage_uri,
             "checksum": document.checksum,
@@ -76,6 +103,79 @@ def documents(
         }
         for document, company in rows
     ]
+
+
+@router.post("/documents/{document_id}/analyze")
+def analyze_document(document_id: int, db: Session = Depends(get_db)) -> dict:
+    document = db.get(Document, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return ClaimIntelligenceService().scan_document(db, document, auto_apply=True)
+
+
+@router.get(
+    "/evidence-suggestions", response_model=list[EvidenceSuggestionOut]
+)
+def evidence_suggestions(
+    ticker: str | None = None,
+    status: str | None = "pending",
+    document_id: int | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> list[EvidenceSuggestion]:
+    statement = select(EvidenceSuggestion)
+    if ticker:
+        company = db.scalar(
+            select(Company).where(Company.ticker == ticker.upper())
+        )
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        statement = statement.where(EvidenceSuggestion.company_id == company.id)
+    if status:
+        statement = statement.where(EvidenceSuggestion.status == status)
+    if document_id is not None:
+        statement = statement.where(
+            EvidenceSuggestion.document_id == document_id
+        )
+    return list(
+        db.scalars(
+            statement.order_by(
+                desc(EvidenceSuggestion.confidence),
+                desc(EvidenceSuggestion.created_at),
+            ).limit(limit)
+        ).all()
+    )
+
+
+@router.post(
+    "/evidence-suggestions/{suggestion_id}/action",
+    response_model=EvidenceSuggestionOut,
+)
+def action_evidence_suggestion(
+    suggestion_id: int,
+    payload: EvidenceSuggestionAction,
+    db: Session = Depends(get_db),
+) -> EvidenceSuggestion:
+    suggestion = db.get(EvidenceSuggestion, suggestion_id)
+    if not suggestion:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    if payload.action == "reject":
+        suggestion.status = "rejected"
+    else:
+        claim = db.get(Claim, payload.claim_id) if payload.claim_id else None
+        if payload.claim_id and not claim:
+            raise HTTPException(status_code=404, detail="Claim not found")
+        if claim and suggestion.company_id != claim.company_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Suggestion and claim belong to different companies",
+            )
+        ClaimIntelligenceService().apply_suggestion(
+            db, suggestion, claim=claim, automatic=False
+        )
+    db.commit()
+    db.refresh(suggestion)
+    return suggestion
 
 
 @router.post("/documents/ingest-file")

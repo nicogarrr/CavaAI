@@ -232,7 +232,10 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     updated_claim = client.get(f"/api/memory/claims/{claim_payload['id']}")
     assert updated_claim.status_code == 200
     assert updated_claim.json()["status"] == "supported"
-    assert updated_claim.json()["evidence"][0]["source_tier"] == "primary"
+    assert (
+        updated_claim.json()["evidence"][0]["source_tier"]
+        == "tier_3_transcript"
+    )
     assert updated_claim.json()["evidence"][0]["document_id"] == document_payload["id"]
     assert updated_claim.json()["evidence"][0]["document_chunk_id"] == chunk_payload["id"]
 

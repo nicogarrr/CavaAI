@@ -92,5 +92,33 @@ WORKFLOW_CATALOG = [
             "trace_to_langfuse",
         ],
     },
+    {
+        "name": "RedTeamWorkflow",
+        "input": "ticker",
+        "steps": [
+            "load_current_thesis",
+            "load_supporting_and_contradictory_evidence",
+            "check_unsupported_material_claims",
+            "compare_ROIC_vs_WACC",
+            "analyze_moat_and_peers",
+            "attack_assumptions",
+            "build_strongest_bear_case",
+            "define_falsification_tests",
+            "create_review_and_alert",
+        ],
+    },
+    {
+        "name": "ContradictionWorkflow",
+        "input": "ticker + document/news",
+        "steps": [
+            "extract_material_statements",
+            "retrieve_similar_historical_claims",
+            "classify_relation",
+            "apply_source_hierarchy",
+            "create_evidence_suggestions",
+            "update_claim_state",
+            "create_review_and_alert",
+        ],
+    },
 ]
 

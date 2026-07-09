@@ -31,6 +31,8 @@ from app.schemas import (
     ThesisSectionCreate,
     ThesisSectionOut,
 )
+from app.services.review_alert_service import ReviewAlertService
+from app.services.source_hierarchy_service import classify_source
 
 router = APIRouter()
 
@@ -109,7 +111,8 @@ def add_claim_evidence(
     claim = db.get(Claim, claim_id)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
-    if payload.document_id and not db.get(Document, payload.document_id):
+    document = db.get(Document, payload.document_id) if payload.document_id else None
+    if payload.document_id and not document:
         raise HTTPException(status_code=404, detail="Document not found")
     if payload.document_chunk_id:
         chunk = db.get(DocumentChunk, payload.document_chunk_id)
@@ -119,6 +122,12 @@ def add_claim_evidence(
             raise HTTPException(status_code=400, detail="Document chunk does not belong to document")
         if payload.document_id is None:
             payload.document_id = chunk.document_id
+            document = db.get(Document, chunk.document_id)
+
+    source_tier = classify_source(
+        document.source_type if document else "manual",
+        document.source_url if document else payload.source_url,
+    ).key
 
     evidence = ClaimEvidence(
         claim_id=claim.id,
@@ -129,25 +138,45 @@ def add_claim_evidence(
         summary=payload.summary,
         quote=payload.quote,
         confidence=payload.confidence,
-        source_tier=payload.source_tier,
+        source_tier=source_tier,
+        metadata_={"source_tier_assigned_by": "backend"},
     )
-    if payload.evidence_type == "contradicts":
-        claim.status = "contradicted"
-        db.add(
-            ThesisChange(
-                company_id=claim.company_id,
-                from_version_id=claim.thesis_version_id,
-                to_version_id=claim.thesis_version_id,
-                change_type="claim_contradiction",
-                impact_direction="negative",
-                materiality_score=claim.materiality_score,
-                summary=f"Contradictory evidence added for claim: {claim.statement[:220]}",
-                affected_claim_ids=[claim.id],
-                affected_metrics=[],
-                requires_review=True,
-            )
+    relation_status = {
+        "contradicts": "contradicted",
+        "supersedes": "superseded",
+        "uncertain": "uncertain",
+    }.get(payload.evidence_type)
+    if relation_status:
+        claim.status = relation_status
+        change = ThesisChange(
+            company_id=claim.company_id,
+            from_version_id=claim.thesis_version_id,
+            to_version_id=claim.thesis_version_id,
+            change_type=f"claim_{relation_status}",
+            impact_direction=(
+                "negative" if relation_status == "contradicted" else "mixed"
+            ),
+            materiality_score=claim.materiality_score,
+            summary=(
+                f"Evidence classified claim as {relation_status}: "
+                f"{claim.statement[:220]}"
+            ),
+            affected_claim_ids=[claim.id],
+            affected_metrics=[],
+            requires_review=True,
         )
-    elif payload.evidence_type == "supports" and claim.status == "unverified":
+        db.add(change)
+        db.flush()
+        ReviewAlertService().create_from_change(
+            db,
+            change,
+            claim_id=claim.id,
+            metadata={"manual_evidence": True, "source_tier": source_tier},
+        )
+    elif payload.evidence_type == "supports" and claim.status in {
+        "unverified",
+        "uncertain",
+    }:
         claim.status = "supported"
     claim.last_reviewed_at = datetime.now(UTC)
 

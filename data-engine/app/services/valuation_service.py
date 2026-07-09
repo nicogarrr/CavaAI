@@ -42,6 +42,18 @@ class ValuationService:
         result.setdefault("reverse_dcf", {})
         result.setdefault("sensitivity", {"rows": []})
         result.setdefault("moat", {})
+        try:
+            from app.services.moat_service import MoatService
+
+            result["moat"] = MoatService().assess(
+                db, company, persist=False
+            )
+        except Exception as exc:
+            result["moat"] = {
+                "status": "unavailable",
+                "moats": [],
+                "error": str(exc),
+            }
         result["trace"] = result.get("trace") or {}
         result["trace"].setdefault("engine", resolve_engine_key(company))
         result["trace"].setdefault("model_version", MODEL_VERSION)

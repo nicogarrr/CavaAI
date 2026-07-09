@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import Company, ThesisVersion
-from app.schemas import ThesisGenerateRequest, ThesisOut
+from app.schemas import ThesisGenerateRequest, ThesisGraphOut, ThesisOut
+from app.services.thesis_graph_service import ThesisGraphService
 from app.services.thesis_service import ThesisService
 
 router = APIRouter()
@@ -38,4 +39,21 @@ def thesis_versions(ticker: str, db: Session = Depends(get_db)) -> list[ThesisVe
             .order_by(desc(ThesisVersion.version))
         ).all()
     )
+
+
+@router.get("/{ticker}/graph", response_model=ThesisGraphOut)
+def thesis_graph(ticker: str, db: Session = Depends(get_db)) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    try:
+        thesis, nodes, edges = ThesisGraphService().build(db, company)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "ticker": company.ticker,
+        "thesis_version_id": thesis.id,
+        "nodes": nodes,
+        "edges": edges,
+    }
 

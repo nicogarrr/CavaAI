@@ -22,6 +22,8 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   addResearchChunkEvidence,
   addResearchClaimEvidence,
+  actionResearchAlert,
+  actionResearchEvidenceSuggestion,
   askResearchCompanyChat,
   createResearchClaimFromChunk,
   createResearchThesisChange,
@@ -32,17 +34,26 @@ import {
   refreshCompanyFinancials,
   refreshCompanyFinancialsSEC,
   getThesisHistory,
+  runResearchEarnings,
+  runResearchRedTeam,
+  type ResearchAlert,
   type ResearchCalculatedMetric,
   type ResearchClaim,
   type ResearchChatResponse,
   type ResearchFact,
   type ResearchMemoryItem,
+  type ResearchMoat,
+  type ResearchPeerAnalysis,
   type ResearchPeerComparison,
   type ResearchSourceDocument,
+  type ResearchEvidenceSuggestion,
+  type ResearchRedTeam,
+  type ResearchReview,
   type ResearchThesis,
   type ResearchThesisChange,
   type ResearchThesisSection,
   type ResearchThesisVersion,
+  type ResearchThesisGraph,
   type ResearchValuation,
 } from '@/lib/actions/research.actions';
 
@@ -517,6 +528,7 @@ function ClaimsMemoryPanel({
                         </span>
                         {' - '}
                         {evidence.summary}
+                        <span className="text-gray-600"> - {evidence.source_tier}</span>
                         {evidence.document_chunk_id ? (
                           <span className="text-gray-600"> - chunk #{evidence.document_chunk_id}</span>
                         ) : evidence.document_id ? (
@@ -538,9 +550,8 @@ function ClaimsMemoryPanel({
                     </select>
                     <Input aria-label="Evidence summary" name="summary" placeholder="Evidence summary" />
                   </div>
-                  <div className="grid gap-2 md:grid-cols-[1fr_130px_auto]">
+                  <div className="grid gap-2 md:grid-cols-[1fr_auto]">
                     <Input aria-label="Source URL" name="source_url" placeholder="Source URL" type="url" />
-                    <Input aria-label="Source tier" defaultValue="secondary" name="source_tier" />
                     <Button type="submit" variant="outline">
                       <Plus className="h-4 w-4" />
                       Evidence
@@ -629,22 +640,6 @@ function ClaimsMemoryPanel({
   );
 }
 
-function sourceTierForDocument(document: ResearchSourceDocument) {
-  const sourceType = document.source_type.toLowerCase();
-  if (
-    sourceType.includes('sec') ||
-    sourceType.includes('filing') ||
-    sourceType.includes('10-k') ||
-    sourceType.includes('10-q') ||
-    sourceType.includes('transcript') ||
-    sourceType.includes('earnings') ||
-    sourceType.includes('upload')
-  ) {
-    return 'primary';
-  }
-  return 'secondary';
-}
-
 function defaultClaimStatement(text: string, title: string) {
   const firstSentence = text.split(/[.!?]\s/)[0]?.trim() || title;
   return firstSentence.length > 180 ? `${firstSentence.slice(0, 177)}...` : firstSentence;
@@ -682,7 +677,6 @@ function SourceEvidencePanel({
       {visibleRows.length ? (
         <div className="grid gap-4">
           {visibleRows.map(({ document, chunk }) => {
-            const sourceTier = sourceTierForDocument(document);
             const defaultStatement = defaultClaimStatement(chunk.text, document.title);
 
             return (
@@ -690,6 +684,9 @@ function SourceEvidencePanel({
                 <div className="flex flex-wrap items-start gap-2">
                   <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
                     {document.source_type}
+                  </Badge>
+                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                    {document.source_tier}
                   </Badge>
                   <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
                     chunk #{chunk.chunk_index}
@@ -724,7 +721,7 @@ function SourceEvidencePanel({
                       name="summary"
                       required
                     />
-                    <div className="grid gap-2 md:grid-cols-[120px_96px_120px_auto]">
+                    <div className="grid gap-2 md:grid-cols-[120px_96px_auto]">
                       <select
                         aria-label="Evidence type"
                         className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
@@ -734,7 +731,6 @@ function SourceEvidencePanel({
                         <option className="bg-[#111111]" value="contradicts">contradicts</option>
                       </select>
                       <Input aria-label="Materiality" defaultValue="5" max="10" min="0" name="materiality_score" type="number" />
-                      <Input aria-label="Source tier" defaultValue={sourceTier} name="source_tier" />
                       <input name="source_url" type="hidden" value={document.source_url ?? ''} />
                       <Button type="submit" variant="outline">
                         <Plus className="h-4 w-4" />
@@ -759,7 +755,7 @@ function SourceEvidencePanel({
                           ))}
                         </select>
                         <Input aria-label="Evidence summary" defaultValue={defaultStatement} name="summary" required />
-                        <div className="grid gap-2 md:grid-cols-[120px_120px_auto]">
+                        <div className="grid gap-2 md:grid-cols-[120px_auto]">
                           <select
                             aria-label="Evidence type"
                             className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
@@ -768,7 +764,6 @@ function SourceEvidencePanel({
                             <option className="bg-[#111111]" value="supports">supports</option>
                             <option className="bg-[#111111]" value="contradicts">contradicts</option>
                           </select>
-                          <Input aria-label="Source tier" defaultValue={sourceTier} name="source_tier" />
                           <input name="source_url" type="hidden" value={document.source_url ?? ''} />
                           <Button type="submit" variant="outline">
                             <Plus className="h-4 w-4" />
@@ -954,10 +949,222 @@ function SourceAwareChatPanel({
   );
 }
 
+function ResearchIntelligencePanel({
+  ticker,
+  peerAnalysis,
+  moat,
+  redTeam,
+  graph,
+  reviews,
+  alerts,
+  suggestions,
+}: {
+  ticker: string;
+  peerAnalysis: ResearchPeerAnalysis | null;
+  moat: ResearchMoat | null;
+  redTeam: ResearchRedTeam | null;
+  graph: ResearchThesisGraph | null;
+  reviews: ResearchReview[];
+  alerts: ResearchAlert[];
+  suggestions: ResearchEvidenceSuggestion[];
+}) {
+  return (
+    <section className="grid gap-6 xl:grid-cols-2">
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Moat & qualitative peers</h2>
+        </div>
+        <div className="space-y-3">
+          {(moat?.moats ?? []).filter((item) => item.status !== 'insufficient_evidence').slice(0, 6).map((item) => (
+            <div key={item.type} className="rounded-md border border-gray-800 p-3 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-200">{item.type.replaceAll('_', ' ')}</span>
+                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                  {item.strength}/100
+                </Badge>
+                <span className="ml-auto text-xs text-gray-500">{item.trend}</span>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">
+                {item.supporting_claim_ids.length} supporting / {item.contradicting_claim_ids.length} contradicting claims
+              </div>
+            </div>
+          ))}
+          {!(moat?.moats ?? []).some((item) => item.status !== 'insufficient_evidence') ? (
+            <div className="rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
+              Moat unavailable until sourced claim evidence exists.
+            </div>
+          ) : null}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase text-teal-300">Advantages</div>
+              {(peerAnalysis?.advantages ?? []).slice(0, 4).map((item, index) => (
+                <div key={`adv-${index}`} className="mb-2 rounded-md border border-gray-800 p-2 text-xs text-gray-300">
+                  {String(item.statement ?? item.dimension ?? 'Evidence-backed advantage')}
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase text-red-300">Disadvantages</div>
+              {(peerAnalysis?.disadvantages ?? []).slice(0, 4).map((item, index) => (
+                <div key={`dis-${index}`} className="mb-2 rounded-md border border-gray-800 p-2 text-xs text-gray-300">
+                  {String(item.statement ?? item.dimension ?? 'Evidence-backed disadvantage')}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <TriangleAlert className="h-5 w-5 text-amber-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Red team</h2>
+          <form action={runResearchRedTeam.bind(null, ticker)} className="ml-auto">
+            <Button size="sm" type="submit" variant="outline">Run</Button>
+          </form>
+        </div>
+        {redTeam ? (
+          <div className="space-y-3 text-sm">
+            <Stat label="Robustness score" value={`${redTeam.score}/100`} tone={redTeam.score >= 70 ? 'good' : redTeam.score >= 45 ? 'warn' : 'bad'} />
+            <div className="rounded-md border border-red-900/60 bg-red-950/20 p-3 text-red-100">
+              {redTeam.strongest_bear_case}
+            </div>
+            {redTeam.findings.slice(0, 5).map((finding, index) => (
+              <div key={`${finding.type}-${index}`} className="rounded-md border border-gray-800 p-3 text-gray-300">
+                <Badge className="mr-2 border-gray-700 bg-gray-900 text-gray-300" variant="outline">{finding.severity}</Badge>
+                {finding.message}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500">Run the evidence-backed attack workflow.</div>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <GitBranch className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Thesis dependency graph</h2>
+          <span className="ml-auto text-xs text-gray-500">{graph?.nodes.length ?? 0} nodes / {graph?.edges.length ?? 0} edges</span>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {(graph?.nodes ?? []).filter((node) => node.node_type === 'dependency').map((node) => (
+            <div key={node.id} className="rounded-md border border-gray-800 p-3">
+              <div className="font-semibold text-gray-200">{node.label}</div>
+              <div className="mt-1 text-xs text-gray-500">
+                M{node.materiality_score} · {node.status} · {node.claim_ids.length} claims
+              </div>
+              {node.invalidation_conditions.length ? (
+                <div className="mt-2 text-xs text-red-300">{node.invalidation_conditions.join('; ')}</div>
+              ) : null}
+            </div>
+          ))}
+          {!graph?.nodes.length ? <div className="text-sm text-gray-500">Generate a thesis and claims to build the graph.</div> : null}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <FileText className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Earnings workflow</h2>
+        </div>
+        <form action={runResearchEarnings.bind(null, ticker)} className="grid gap-3 md:grid-cols-[110px_90px_1fr_auto]">
+          <Input aria-label="Fiscal year" defaultValue={new Date().getUTCFullYear()} name="fiscal_year" type="number" />
+          <select aria-label="Fiscal quarter" className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100" name="fiscal_quarter">
+            {['Q1', 'Q2', 'Q3', 'Q4', 'FY'].map((quarter) => <option key={quarter} className="bg-[#111111]" value={quarter}>{quarter}</option>)}
+          </select>
+          <Input aria-label="Document IDs" name="document_ids" placeholder="Document IDs, comma-separated (optional)" />
+          <Button type="submit" variant="outline">Analyze</Button>
+        </form>
+        <p className="mt-3 text-xs text-gray-500">
+          Extracted figures remain staged until reconciled against SEC, provider and company sources.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <BrainCircuit className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Evidence suggestions</h2>
+          <span className="ml-auto text-xs text-gray-500">{suggestions.length}</span>
+        </div>
+        <div className="space-y-3">
+          {suggestions.slice(0, 8).map((suggestion) => (
+            <div key={suggestion.id} className="rounded-md border border-gray-800 p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">{suggestion.relation}</Badge>
+                <span className="text-xs text-gray-500">{pct(numberValue(suggestion.confidence))}</span>
+              </div>
+              <p className="mt-2 text-gray-300">{suggestion.statement}</p>
+              <p className="mt-1 text-xs text-gray-500">{suggestion.rationale}</p>
+              <div className="mt-3 flex gap-2">
+                <form action={actionResearchEvidenceSuggestion.bind(null, ticker, suggestion.id, 'accept', undefined)}>
+                  <Button size="sm" type="submit" variant="outline">Accept</Button>
+                </form>
+                <form action={actionResearchEvidenceSuggestion.bind(null, ticker, suggestion.id, 'reject', undefined)}>
+                  <Button size="sm" type="submit" variant="ghost">Reject</Button>
+                </form>
+              </div>
+            </div>
+          ))}
+          {!suggestions.length ? <div className="text-sm text-gray-500">No pending extraction suggestions.</div> : null}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <TriangleAlert className="h-5 w-5 text-amber-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Reviews & alerts</h2>
+          <span className="ml-auto text-xs text-gray-500">{reviews.length} reviews / {alerts.length} alerts</span>
+        </div>
+        <div className="space-y-3">
+          {alerts.slice(0, 6).map((alert) => (
+            <div key={alert.id} className="rounded-md border border-gray-800 p-3 text-sm">
+              <div className="flex items-center gap-2">
+                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">{alert.severity}</Badge>
+                <span className="font-semibold text-gray-200">{alert.title}</span>
+              </div>
+              <p className="mt-2 text-gray-400">{alert.message}</p>
+              <div className="mt-3 flex gap-2">
+                <form action={actionResearchAlert.bind(null, ticker, alert.id, 'acknowledge')}>
+                  <Button size="sm" type="submit" variant="outline">Acknowledge</Button>
+                </form>
+                <form action={actionResearchAlert.bind(null, ticker, alert.id, 'resolve')}>
+                  <Button size="sm" type="submit" variant="ghost">Resolve</Button>
+                </form>
+              </div>
+            </div>
+          ))}
+          {!alerts.length && !reviews.length ? <div className="text-sm text-gray-500">No open research alerts.</div> : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default async function ResearchCompanyPage({ params, searchParams }: ResearchCompanyPageProps) {
   const { ticker } = await params;
   const { chat = '' } = await searchParams;
-  const [{ company, valuation, facts, calculatedMetrics, peerComparison, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments }, thesisHistory] = await Promise.all([
+  const [{
+    company,
+    valuation,
+    facts,
+    calculatedMetrics,
+    peerComparison,
+    peerAnalysis,
+    moat,
+    thesis,
+    claims,
+    thesisSections,
+    thesisChanges,
+    thesisGraph,
+    reviews,
+    alerts,
+    memoryItems,
+    sourceDocuments,
+    evidenceSuggestions,
+    redTeam,
+  }, thesisHistory] = await Promise.all([
     getResearchCompanyDetail(ticker),
     getThesisHistory(ticker),
   ]);
@@ -1110,6 +1317,17 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
       </section>
 
       <PeerComparisonPanel comparison={peerComparison} />
+
+      <ResearchIntelligencePanel
+        alerts={alerts}
+        graph={thesisGraph}
+        moat={moat}
+        peerAnalysis={peerAnalysis}
+        redTeam={redTeam}
+        reviews={reviews}
+        suggestions={evidenceSuggestions}
+        ticker={company.ticker}
+      />
 
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
