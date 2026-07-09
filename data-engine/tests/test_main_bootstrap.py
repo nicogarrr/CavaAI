@@ -108,7 +108,7 @@ def test_public_routes_are_registered_once():
 def test_root_and_health():
     client = TestClient(main.app)
 
-    assert client.get("/").json() == {"status": "ok", "service": "FMP Data Engine"}
+    assert client.get("/").json() == {"status": "ok", "service": "CavaAI Research Engine"}
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/health/live").json() == {"status": "ok"}
     ready = client.get("/health/ready")

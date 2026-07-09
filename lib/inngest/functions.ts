@@ -5,6 +5,7 @@ import { getAllUsersForNewsEmail } from "@/lib/actions/user.actions";
 import { getWatchlistSymbolsByEmail } from "@/lib/actions/watchlist.actions";
 import { getNews } from "@/lib/actions/finnhub.actions";
 import { getFormattedTodayDate } from "@/lib/utils";
+import { getDefaultGeminiModel } from "@/lib/ai/modelConfig";
 
 export const sendSignUpEmail = inngest.createFunction(
     { id: 'sign-up-email', triggers: [{ event: 'app/user.created' }] },
@@ -19,7 +20,7 @@ export const sendSignUpEmail = inngest.createFunction(
         const prompt = PERSONALIZED_WELCOME_EMAIL_PROMPT.replace('{{userProfile}}', userProfile)
 
         const response = await step.ai.infer('generate-welcome-intro', {
-            model: step.ai.models.gemini({ model: 'gemini-3-flash-preview' }),
+            model: step.ai.models.gemini({ model: getDefaultGeminiModel() }),
             body: {
                 contents: [
                     {
@@ -86,7 +87,7 @@ export const sendDailyNewsSummary = inngest.createFunction(
                 const prompt = NEWS_SUMMARY_EMAIL_PROMPT.replace('{{newsData}}', JSON.stringify(articles, null, 2));
 
                 const response = await step.ai.infer(`summarize-news-${user.email}`, {
-                    model: step.ai.models.gemini({ model: 'gemini-3-flash-preview' }),
+                    model: step.ai.models.gemini({ model: getDefaultGeminiModel() }),
                     body: {
                         contents: [{ role: 'user', parts: [{ text: prompt }] }]
                     }

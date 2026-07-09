@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -55,12 +55,7 @@ export default function DeepAnalysisSection({
     const [catalysts, setCatalysts] = useState<CatalystTimeline | null>(null);
     const [ownerEarnings, setOwnerEarnings] = useState<any>(null);
 
-    // Load data based on active tab
-    useEffect(() => {
-        loadTabData(activeTab);
-    }, [activeTab, symbol]);
-
-    const loadTabData = async (tab: TabType) => {
+    const loadTabData = useCallback(async (tab: TabType) => {
         setLoading(true);
         try {
             switch (tab) {
@@ -103,7 +98,12 @@ export default function DeepAnalysisSection({
             console.error(`Error loading ${tab} data:`, error);
         }
         setLoading(false);
-    };
+    }, [catalysts, companyName, currentPrice, financialData, healthScore, ownerEarnings, redFlags, symbol]);
+
+    // Load data based on active tab
+    useEffect(() => {
+        loadTabData(activeTab);
+    }, [activeTab, loadTabData]);
 
     const TABS = [
         { id: 'quality' as TabType, label: 'Quality Score', icon: <Shield className="h-4 w-4" /> },

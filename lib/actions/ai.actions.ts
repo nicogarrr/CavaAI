@@ -2,6 +2,7 @@
 
 import { getAuth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
+import { getDefaultGeminiModel, getGeminiGenerateContentEndpoint } from '@/lib/ai/modelConfig';
 
 // ============================================================================
 // RAG CONTEXT RETRIEVAL - Knowledge Base Integration
@@ -124,7 +125,7 @@ RESPONDE EN JSON EXACTO (sin markdown, solo JSON):
       }]
     };
 
-    const model = 'gemini-3-flash-preview'; // Usar modelo rápido y capaz
+    const model = getDefaultGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const res = await fetch(endpoint, {
@@ -203,8 +204,7 @@ ${ragContext ? '\n\nUSA ESTE CONOCIMIENTO PERSONAL DEL USUARIO PARA PERSONALIZAR
   };
 
   try {
-    // Forzar uso de gemini-3-flash-preview (eliminar variables de entorno obsoletas)
-    const model = 'gemini-3-flash-preview';
+    const model = getDefaultGeminiModel();
     // Usar endpoint v1 (v1beta puede no soportar el modelo)
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
@@ -464,8 +464,7 @@ INSTRUCCIONES:
   };
 
   try {
-    // Forzar uso de gemini-3-flash-preview (eliminar variables de entorno obsoletas)
-    const model = 'gemini-3-flash-preview';
+    const model = getDefaultGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -706,8 +705,7 @@ IMPORTANTE:
   };
 
   try {
-    // Forzar uso de gemini-3-flash-preview (eliminar variables de entorno obsoletas)
-    const model = 'gemini-3-flash-preview';
+    const model = getDefaultGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -1191,8 +1189,7 @@ IMPORTANTE - IMPARCIALIDAD Y USO DE DATOS REALES:
   };
 
   try {
-    // Forzar uso de gemini-3-flash-preview (eliminar variables de entorno obsoletas)
-    const model = 'gemini-3-flash-preview';
+    const model = getDefaultGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -1369,7 +1366,7 @@ CATEGORÍAS FALTANTES A ESTIMAR: ${missingCategories.join(', ')}`;
       }],
     };
 
-    const model = 'gemini-3-flash-preview';
+    const model = getDefaultGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -1605,7 +1602,7 @@ RECUERDA: Incluye [MÉTRICA: valor] en cada explicación. Responde con JSON vál
   };
 
   try {
-    const model = 'gemini-3-flash-preview';
+    const model = getDefaultGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -1768,7 +1765,7 @@ Responde con JSON válido únicamente.`;
   };
 
   try {
-    const model = 'gemini-3-flash-preview';
+    const model = getDefaultGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -2002,7 +1999,7 @@ Responde con JSON válido únicamente.`;
   };
 
   try {
-    const model = 'gemini-3-flash-preview';
+    const model = getDefaultGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -2177,7 +2174,7 @@ RESPONDE SOLO CON JSON VÁLIDO en este formato:
 
   try {
     // Usar modelo con vision
-    const model = 'gemini-3-flash-preview';
+    const model = getDefaultGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const res = await fetch(endpoint, {
@@ -2359,7 +2356,7 @@ Responde en formato JSON:
 }`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+      getGeminiGenerateContentEndpoint(getDefaultGeminiModel(), apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2487,7 +2484,7 @@ Responde SOLO en JSON:
 }`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+      getGeminiGenerateContentEndpoint(getDefaultGeminiModel(), apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2680,7 +2677,7 @@ RESPONDE SOLO EN JSON VÁLIDO:
 }`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+      getGeminiGenerateContentEndpoint(getDefaultGeminiModel(), apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2918,7 +2915,7 @@ INSTRUCCIONES:
 RESPONDE con JSON válido. NO devuelvas flags vacíos.`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+      getGeminiGenerateContentEndpoint(getDefaultGeminiModel(), apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3073,7 +3070,7 @@ Identifica eventos de los próximos 3-6 meses. Sé específico con fechas cuando
 Responde con JSON válido.`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+      getGeminiGenerateContentEndpoint(getDefaultGeminiModel(), apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

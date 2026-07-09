@@ -1,11 +1,60 @@
+from uuid import uuid4
+
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import delete, or_, select
 
 import main
 from app.core.database import SessionLocal, init_db
+from app.models import ExternalClaim, NewsEvent, ThesisChange
 from app.seed import seed
 from app.services.quartr_import_service import QuartrImportService
 from app.services.source_auditor import SourceAuditor
 from app.valuation import DCFInputs, ReverseDCFInputs, run_dcf, solve_required_growth
+
+
+TEST_NEWS_SOURCES = {"manual_test", "test_feed", "workflow_test_feed"}
+TEST_NEWS_PATTERNS = [
+    "%example.com/msft-%",
+    "%MSFT announces a large share offering%",
+    "%MSFT wins major customer contract%",
+    "%MSFT cuts guidance after earnings miss%",
+]
+
+
+def cleanup_news_test_artifacts() -> None:
+    init_db()
+    db = SessionLocal()
+    try:
+        news_filters = [
+            NewsEvent.source.in_(TEST_NEWS_SOURCES),
+            *(NewsEvent.url.like(pattern) for pattern in TEST_NEWS_PATTERNS),
+            *(NewsEvent.title.like(pattern) for pattern in TEST_NEWS_PATTERNS),
+        ]
+        news_events = db.scalars(select(NewsEvent).where(or_(*news_filters))).all()
+        summaries = [event.summary for event in news_events if event.summary]
+
+        if summaries:
+            db.execute(delete(ExternalClaim).where(ExternalClaim.claim.in_(summaries)))
+
+        db.execute(
+            delete(ThesisChange).where(
+                or_(*(ThesisChange.summary.like(pattern) for pattern in TEST_NEWS_PATTERNS))
+            )
+        )
+        for event in news_events:
+            db.delete(event)
+
+        db.commit()
+    finally:
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def clean_news_artifacts_between_tests():
+    cleanup_news_test_artifacts()
+    yield
+    cleanup_news_test_artifacts()
 
 
 class FakeFMPClient:
@@ -110,6 +159,212 @@ def test_research_api_core_flow():
     chat = client.post("/api/chat", json={"question": "Que pasa con ASTS?", "ticker": "ASTS"})
     assert chat.status_code == 200
     assert "ASTS" in chat.json()["answer"]
+
+
+def test_memory_api_tracks_claims_evidence_sections_and_sessions():
+    seed()
+    client = TestClient(main.app)
+
+    thesis = client.post("/api/thesis/generate", json={"ticker": "MSFT", "force_new_version": True})
+    assert thesis.status_code == 200
+    thesis_payload = thesis.json()
+
+    section = client.post(
+        f"/api/memory/thesis/MSFT/versions/{thesis_payload['id']}/sections",
+        json={
+            "section_key": "why-now",
+            "title": "Why now",
+            "body": "Azure AI demand is the key near-term variable.",
+            "status": "active",
+            "order_index": 1,
+        },
+    )
+    assert section.status_code == 200
+    assert section.json()["section_key"] == "why-now"
+
+    claim = client.post(
+        "/api/memory/claims",
+        json={
+            "ticker": "MSFT",
+            "thesis_version_id": thesis_payload["id"],
+            "statement": "Azure AI demand can sustain premium cloud growth.",
+            "claim_type": "growth_driver",
+            "materiality_score": 9,
+        },
+    )
+    assert claim.status_code == 200
+    claim_payload = claim.json()
+    assert claim_payload["status"] == "unverified"
+
+    documents = client.get("/api/sources/documents?ticker=MSFT&include_chunks=true")
+    assert documents.status_code == 200
+    document_payload = documents.json()[0]
+    chunk_payload = document_payload["chunks"][0]
+
+    evidence = client.post(
+        f"/api/memory/claims/{claim_payload['id']}/evidence",
+        json={
+            "document_id": document_payload["id"],
+            "document_chunk_id": chunk_payload["id"],
+            "evidence_type": "supports",
+            "summary": "Management commentary points to durable Azure AI demand.",
+            "source_url": "https://www.microsoft.com/investor",
+            "source_tier": "primary",
+        },
+    )
+    assert evidence.status_code == 200
+
+    updated_claim = client.get(f"/api/memory/claims/{claim_payload['id']}")
+    assert updated_claim.status_code == 200
+    assert updated_claim.json()["status"] == "supported"
+    assert updated_claim.json()["evidence"][0]["source_tier"] == "primary"
+    assert updated_claim.json()["evidence"][0]["document_id"] == document_payload["id"]
+    assert updated_claim.json()["evidence"][0]["document_chunk_id"] == chunk_payload["id"]
+
+    contradiction = client.post(
+        f"/api/memory/claims/{claim_payload['id']}/evidence",
+        json={
+            "evidence_type": "contradicts",
+            "summary": "A later source suggests Azure growth may be decelerating.",
+            "source_url": "https://www.microsoft.com/investor",
+            "source_tier": "primary",
+        },
+    )
+    assert contradiction.status_code == 200
+
+    contradicted_claim = client.get(f"/api/memory/claims/{claim_payload['id']}")
+    assert contradicted_claim.status_code == 200
+    assert contradicted_claim.json()["status"] == "contradicted"
+    assert len(contradicted_claim.json()["evidence"]) == 2
+
+    changes = client.get("/api/memory/thesis/MSFT/changes")
+    assert changes.status_code == 200
+    auto_change = changes.json()[0]
+    assert auto_change["change_type"] == "claim_contradiction"
+    assert auto_change["impact_direction"] == "negative"
+    assert auto_change["requires_review"] is True
+    assert auto_change["affected_claim_ids"] == [claim_payload["id"]]
+
+    manual_change = client.post(
+        "/api/memory/thesis/changes",
+        json={
+            "ticker": "MSFT",
+            "change_type": "material_update",
+            "impact_direction": "mixed",
+            "materiality_score": 7,
+            "summary": "Azure AI remains strong but capex intensity needs monitoring.",
+            "affected_metrics": ["capex", "fcf_margin"],
+            "requires_review": True,
+        },
+    )
+    assert manual_change.status_code == 200
+    assert manual_change.json()["affected_metrics"] == ["capex", "fcf_margin"]
+
+    material_news = client.post(
+        "/api/news/manual",
+        json={
+            "text": (
+                "MSFT announces a large share offering and cuts revenue guidance, "
+                "raising dilution and fcf margin concerns for the current thesis."
+            ),
+            "source": "manual_test",
+            "url": "https://www.microsoft.com/investor",
+        },
+    )
+    assert material_news.status_code == 200
+    assert material_news.json()["requires_update"] is True
+    events = client.get("/api/news")
+    assert events.status_code == 200
+    assert events.json()[0]["url"] == "https://www.microsoft.com/investor"
+
+    news_changes = client.get("/api/memory/thesis/MSFT/changes")
+    assert news_changes.status_code == 200
+    assert any(
+        item["change_type"] == "news_potential_invalidation"
+        and item["impact_direction"] == "negative"
+        and "guidance" in item["affected_metrics"]
+        for item in news_changes.json()
+    )
+
+    unique_suffix = uuid4().hex
+    contract_url = f"https://example.com/msft-contract-{unique_suffix}"
+    contract_title = f"MSFT wins major customer contract and raises revenue outlook {unique_suffix}"
+    contract_text = f"New contract award improves backlog conversion and revenue timing {unique_suffix}."
+    batch = client.post(
+        "/api/news/ingest",
+        json={
+            "source": "test_feed",
+            "items": [
+                        {
+                            "ticker": "MSFT",
+                            "title": contract_title,
+                            "text": contract_text,
+                            "url": contract_url,
+                            "source": "test_feed",
+                        },
+                        {
+                            "ticker": "MSFT",
+                            "title": contract_title,
+                            "text": contract_text,
+                            "url": contract_url,
+                            "source": "test_feed",
+                        },
+            ],
+        },
+    )
+    assert batch.status_code == 200
+    assert batch.json()["created"] == 1
+    assert batch.json()["skipped_duplicates"] == 1
+    assert batch.json()["requires_update"] == 1
+
+    daily = client.post(
+        "/api/workflows/DailyResearchWorkflow/run",
+        json={
+            "params": {
+                "source": "workflow_test_feed",
+                "news_items": [
+                        {
+                            "ticker": "MSFT",
+                            "title": f"MSFT cuts guidance after earnings miss {unique_suffix}",
+                            "text": f"The earnings miss and guidance cut affect revenue growth and fcf margin {unique_suffix}.",
+                            "url": f"https://example.com/msft-guidance-cut-{unique_suffix}",
+                        }
+                ],
+            }
+        },
+    )
+    assert daily.status_code == 200
+    assert daily.json()["status"] == "completed"
+    assert daily.json()["result"]["created"] == 1
+
+    session = client.post(
+        "/api/memory/research-sessions",
+        json={
+            "ticker": "MSFT",
+            "title": "Azure AI demand review",
+            "question": "Is Azure AI demand still strengthening the thesis?",
+            "claim_ids": [claim_payload["id"]],
+        },
+    )
+    assert session.status_code == 200
+
+    memory = client.post(
+        "/api/memory/memory-items",
+        json={
+            "ticker": "MSFT",
+            "research_session_id": session.json()["id"],
+            "scope": "company",
+            "memory_type": "watch_item",
+            "importance": 8,
+            "content": "Recheck Azure AI growth commentary after the next earnings call.",
+        },
+    )
+    assert memory.status_code == 200
+    assert memory.json()["memory_type"] == "watch_item"
+
+    sections = client.get("/api/memory/thesis/MSFT/sections")
+    assert sections.status_code == 200
+    assert any(item["section_key"] == "why-now" for item in sections.json())
 
 
 def test_source_auditor_blocks_unsourced_material_claims():
