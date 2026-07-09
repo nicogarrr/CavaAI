@@ -14,7 +14,7 @@ from app.valuation.engines.base import (
     margin_of_safety,
 )
 from app.valuation.moat_framework import empty_moat_framework
-from app.valuation import Scenario, probability_weighted_value
+from app.valuation.scenario_model import Scenario, probability_weighted_value
 
 
 class CommodityCycleEngine(ValuationEngine):

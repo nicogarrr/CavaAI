@@ -14,7 +14,11 @@ const envSchema = z.object({
   MONGODB_URI: z.string().min(1).optional(),
 
   // Better Auth - Requerido en producción
-  BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET debe tener al menos 32 caracteres'),
+  BETTER_AUTH_SECRET: z
+    .string()
+    .min(32, 'BETTER_AUTH_SECRET debe tener al menos 32 caracteres')
+    .optional()
+    .default('development-only-cavaai-auth-secret-32-chars'),
   BETTER_AUTH_URL: z.string().url().optional(),
 
   // Finnhub - Opcional (hay fallback)
@@ -23,6 +27,7 @@ const envSchema = z.object({
 
   // FMP - Financial Modeling Prep
   FMP_API_KEY: z.string().optional(),
+  FMP_BACKEND_URL: z.string().url().optional(),
 
   // Fuentes alternativas - Opcionales
   TWELVE_DATA_API_KEY: z.string().optional(),
@@ -31,9 +36,17 @@ const envSchema = z.object({
   MARKETSTACK_API_KEY: z.string().optional(),
   NEWSAPI_KEY: z.string().optional(),
   MARKETAUX_API_KEY: z.string().optional(),
+  TRADING_ECONOMICS_API_KEY: z.string().optional(),
 
   // Inngest AI
   GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().optional(),
+  GEMINI_CHEAP_MODEL: z.string().optional(),
+  GEMINI_DEEP_MODEL: z.string().optional(),
+  GOOGLE_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
 
   // Email - Opcional
   NODEMAILER_EMAIL: z.string().email().optional(),
@@ -43,10 +56,15 @@ const envSchema = z.object({
   VERCEL_URL: z.string().optional(),
 });
 
+function isNextBuildTime(): boolean {
+  return process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.NEXT_PHASE === 'phase-development-build' ||
+    process.env.npm_lifecycle_event === 'build';
+}
+
 // Validar variables de entorno
 function validateEnv() {
-  const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' ||
-    process.env.NEXT_PHASE === 'phase-development-build';
+  const isBuildTime = isNextBuildTime();
 
   // En build time, algunas variables pueden faltar
   if (isBuildTime) {
@@ -83,7 +101,7 @@ function validateEnv() {
 export const env = validateEnv();
 
 // Validar que BETTER_AUTH_SECRET sea seguro en producción
-if (env.NODE_ENV === 'production') {
+if (env.NODE_ENV === 'production' && !isNextBuildTime()) {
   if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) {
     throw new Error(
       '❌ BETTER_AUTH_SECRET debe tener al menos 32 caracteres en producción. ' +
@@ -92,7 +110,12 @@ if (env.NODE_ENV === 'production') {
   }
 
   // No permitir valores por defecto inseguros
-  const insecureSecrets = ['fallback-secret', 'dummy-secret-for-build', 'your_better_auth_secret'];
+  const insecureSecrets = [
+    'fallback-secret',
+    'dummy-secret-for-build',
+    'your_better_auth_secret',
+    'development-only-cavaai-auth-secret-32-chars',
+  ];
   if (insecureSecrets.includes(env.BETTER_AUTH_SECRET)) {
     throw new Error(
       '❌ BETTER_AUTH_SECRET no puede usar valores por defecto inseguros en producción. ' +

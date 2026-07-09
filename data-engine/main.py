@@ -22,7 +22,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="FMP Data Engine", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="CavaAI Research Engine", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,7 +41,7 @@ app.include_router(research_api_router, prefix="/api")
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "service": "FMP Data Engine"}
+    return {"status": "ok", "service": "CavaAI Research Engine"}
 
 
 @app.get("/health")

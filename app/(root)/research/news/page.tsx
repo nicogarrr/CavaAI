@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { analyzeManualNews, getResearchNews } from '@/lib/actions/research.actions';
+import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -11,6 +11,11 @@ export const revalidate = 0;
 async function submitAnalyzeNews(formData: FormData): Promise<void> {
   'use server';
   await analyzeManualNews(formData);
+}
+
+async function submitIngestFeed(formData: FormData): Promise<void> {
+  'use server';
+  await ingestResearchNewsFeed(formData);
 }
 
 function Stat({
@@ -120,7 +125,15 @@ export default async function ResearchNewsPage() {
                       )}
                     </td>
                     <td className="py-3 text-gray-400">{event.date.split('T')[0]}</td>
-                    <td className="py-3 max-w-[280px] truncate text-gray-300">{event.title}</td>
+                    <td className="max-w-[280px] truncate py-3 text-gray-300">
+                      {event.url ? (
+                        <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
+                          {event.title}
+                        </a>
+                      ) : (
+                        event.title
+                      )}
+                    </td>
                     <td className="py-3 text-gray-400">{event.source}</td>
                     <td className="py-3 text-gray-400">{event.event_type}</td>
                     <td className="py-3 text-center">
@@ -181,8 +194,38 @@ export default async function ResearchNewsPage() {
             </label>
             <Input id="source" name="source" placeholder="Bloomberg, FT, IR..." />
           </div>
+          <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-center">
+            <label className="text-sm font-semibold text-gray-400" htmlFor="url">
+              Source URL
+            </label>
+            <Input id="url" name="url" placeholder="https://..." type="url" />
+          </div>
           <Button className="w-full sm:w-fit" type="submit">
             Analyze News
+          </Button>
+        </form>
+      </section>
+
+      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Ingest Feed Batch</h2>
+        </div>
+        <form action={submitIngestFeed} className="grid gap-3">
+          <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-center">
+            <label className="text-sm font-semibold text-gray-400" htmlFor="feed-source">
+              Source
+            </label>
+            <Input defaultValue="manual_feed" id="feed-source" name="source" />
+          </div>
+          <Textarea
+            className="min-h-[180px] border-gray-800 bg-black/30 font-mono text-xs text-gray-200 focus-visible:ring-teal-500"
+            name="items"
+            placeholder='[{"ticker":"MSFT","title":"MSFT cuts guidance","text":"earnings miss and guidance cut","url":"https://..."}]'
+            required
+          />
+          <Button className="w-full sm:w-fit" type="submit" variant="outline">
+            Ingest Feed
           </Button>
         </form>
       </section>

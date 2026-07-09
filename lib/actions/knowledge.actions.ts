@@ -3,6 +3,7 @@
 import { connectToDatabase } from '@/database/mongoose';
 import { KnowledgeModel, IKnowledgeDocument } from '@/lib/db/knowledgeModel';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getCheapGeminiModel } from '@/lib/ai/modelConfig';
 
 // Inicializar Gemini para embeddings
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -41,7 +42,7 @@ export async function extractTextFromPDFWithGemini(
             return { success: false, error: 'API Key de Gemini no configurada' };
         }
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+        const model = genAI.getGenerativeModel({ model: getCheapGeminiModel() });
 
         // Preparar el PDF como parte del prompt
         const result = await model.generateContent([
@@ -354,7 +355,7 @@ export async function getRAGContext(
             'análisis fundamental acciones',
         ];
 
-        let allResults: string[] = [];
+        const allResults: string[] = [];
 
         for (const query of queries) {
             const searchResult = await searchKnowledge(query, 3);

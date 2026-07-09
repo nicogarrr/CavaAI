@@ -51,16 +51,19 @@ export default function StockFinancials({ symbol }: StockFinancialsProps) {
                 }
 
                 // Map FMP data to component metrics
+                const rawDividendYield = ratios?.dividendYieldTTM ?? keyMetrics?.dividendYieldTTM;
+                const rawDebtToEquity = ratios?.debtEquityRatioTTM ?? keyMetrics?.debtToEquityTTM;
+
                 setMetrics({
                     peTTM: ratios?.peRatioTTM ?? keyMetrics?.peRatioTTM,
                     epsTTM: keyMetrics?.netIncomePerShareTTM ?? undefined,
                     marketCapitalization: marketCap,
-                    dividendYield: (ratios?.dividendYieldTTM ?? keyMetrics?.dividendYieldTTM) ? (ratios?.dividendYieldTTM ?? keyMetrics?.dividendYieldTTM!) * 100 : undefined,
+                    dividendYield: rawDividendYield ? rawDividendYield * 100 : undefined,
                     grossMarginTTM: (ratios?.grossProfitMarginTTM) ? ratios.grossProfitMarginTTM * 100 : undefined,
                     operatingMarginTTM: (ratios?.operatingProfitMarginTTM) ? ratios.operatingProfitMarginTTM * 100 : undefined,
                     netProfitMarginTTM: (ratios?.netProfitMarginTTM) ? ratios.netProfitMarginTTM * 100 : undefined,
                     currentRatioTTM: ratios?.currentRatioTTM ?? keyMetrics?.currentRatioTTM,
-                    totalDebtToEquityTTM: (ratios?.debtEquityRatioTTM ?? keyMetrics?.debtToEquityTTM) ? (ratios?.debtEquityRatioTTM ?? keyMetrics?.debtToEquityTTM!) * 100 : undefined,
+                    totalDebtToEquityTTM: rawDebtToEquity ? rawDebtToEquity * 100 : undefined,
                 });
             } catch (err) {
                 console.error('Error fetching financials:', err);

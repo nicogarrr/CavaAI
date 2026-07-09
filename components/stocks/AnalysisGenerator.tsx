@@ -96,7 +96,7 @@ export default function AnalysisGenerator({
         const lines = html.split('\n');
         let inTable = false;
         let tableRows: string[] = [];
-        let processedLines: string[] = [];
+        const processedLines: string[] = [];
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -133,7 +133,7 @@ export default function AnalysisGenerator({
 
         // Convertir listas ordenadas y no ordenadas (procesar línea por línea)
         const listLines = html.split('\n');
-        let resultLines: string[] = [];
+        const resultLines: string[] = [];
         let currentList: string[] = [];
         let currentListType: 'ol' | 'ul' | null = null;
 
