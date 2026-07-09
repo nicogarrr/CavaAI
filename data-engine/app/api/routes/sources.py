@@ -32,6 +32,7 @@ def documents(
     ticker: str | None = None,
     include_chunks: bool = False,
     chunk_limit: int = Query(default=1000, ge=1, le=1000),
+    chunk_text_limit: int = Query(default=1500, ge=120, le=10000),
     db: Session = Depends(get_db),
 ) -> list[dict]:
     statement = select(Document, Company).outerjoin(Company, Document.company_id == Company.id)
@@ -54,7 +55,7 @@ def documents(
                     "id": chunk.id,
                     "document_id": chunk.document_id,
                     "chunk_index": chunk.chunk_index,
-                    "text": chunk.text[:500],
+                    "text": chunk.text[:chunk_text_limit],
                     "token_count": chunk.token_count,
                     "metadata": chunk.metadata_,
                 }
