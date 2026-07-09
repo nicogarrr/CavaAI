@@ -42,6 +42,11 @@ function Stat({
   );
 }
 
+function pct(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'N/A';
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 export default async function ResearchNewsPage() {
   const events = await getResearchNews();
   const requireUpdate = events.filter((e) => e.requires_update).length;
@@ -80,7 +85,7 @@ export default async function ResearchNewsPage() {
           <h2 className="text-lg font-semibold text-gray-100">Event Feed</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="text-xs uppercase text-gray-500">
               <tr>
                 <th className="border-b border-gray-800 py-2">Ticker</th>
@@ -88,6 +93,7 @@ export default async function ResearchNewsPage() {
                 <th className="border-b border-gray-800 py-2">Title</th>
                 <th className="border-b border-gray-800 py-2">Source</th>
                 <th className="border-b border-gray-800 py-2">Type</th>
+                <th className="border-b border-gray-800 py-2 text-right">Weight</th>
                 <th className="border-b border-gray-800 py-2 text-center">Materiality</th>
                 <th className="border-b border-gray-800 py-2 text-center">Direction</th>
                 <th className="border-b border-gray-800 py-2 text-center">Update?</th>
@@ -125,17 +131,28 @@ export default async function ResearchNewsPage() {
                       )}
                     </td>
                     <td className="py-3 text-gray-400">{event.date.split('T')[0]}</td>
-                    <td className="max-w-[280px] truncate py-3 text-gray-300">
-                      {event.url ? (
-                        <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
-                          {event.title}
-                        </a>
-                      ) : (
-                        event.title
-                      )}
+                    <td className="max-w-[360px] py-3 text-gray-300">
+                      <div className="truncate">
+                        {event.url ? (
+                          <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
+                            {event.title}
+                          </a>
+                        ) : (
+                          event.title
+                        )}
+                      </div>
+                      {event.materiality_reasons?.length ? (
+                        <div className="mt-1 truncate text-xs text-gray-600">
+                          {event.materiality_reasons.slice(0, 3).join(' | ')}
+                        </div>
+                      ) : null}
                     </td>
-                    <td className="py-3 text-gray-400">{event.source}</td>
+                    <td className="py-3 text-gray-400">
+                      <div>{event.source}</div>
+                      <div className="mt-1 text-xs text-gray-600">{event.source_tier ?? 'tier_unknown'}</div>
+                    </td>
                     <td className="py-3 text-gray-400">{event.event_type}</td>
+                    <td className="py-3 text-right text-gray-400">{pct(event.portfolio_weight)}</td>
                     <td className="py-3 text-center">
                       <span className={`font-semibold ${materialityColor}`}>
                         {event.materiality_score}
@@ -160,7 +177,7 @@ export default async function ResearchNewsPage() {
               })}
               {!events.length ? (
                 <tr>
-                  <td className="py-4 text-gray-500" colSpan={8}>
+                  <td className="py-4 text-gray-500" colSpan={9}>
                     Sin eventos de noticias todavia.
                   </td>
                 </tr>

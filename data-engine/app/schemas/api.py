@@ -298,6 +298,11 @@ class ManualNewsResponse(BaseModel):
     requires_update: bool
     action: str
     source_policy: str
+    source_tier: str = "tier_unknown"
+    source_trust_score: float = 0
+    portfolio_weight: float = 0
+    materiality_reasons: list[str] = Field(default_factory=list)
+    model_route: str = "news_triage"
 
 
 class NewsFeedItem(BaseModel):
