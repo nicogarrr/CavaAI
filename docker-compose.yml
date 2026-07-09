@@ -16,10 +16,10 @@ services:
       - mongodb_data:/data/db
     environment:
       - MONGO_INITDB_DATABASE=jlcavaai
-      - MONGO_INITDB_ROOT_USERNAME=root
-      - MONGO_INITDB_ROOT_PASSWORD=example
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-root}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-example}
     healthcheck:
-      test: ["CMD", "mongosh", "-u", "root", "-p", "example", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "-u", "${MONGO_ROOT_USERNAME:-root}", "-p", "${MONGO_ROOT_PASSWORD:-example}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,13 +37,13 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     environment:
-      - POSTGRES_USER=portfolio
-      - POSTGRES_PASSWORD=portfolio
-      - POSTGRES_DB=cavaai_research
+      - POSTGRES_USER=${POSTGRES_USER:-portfolio}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-portfolio}
+      - POSTGRES_DB=${POSTGRES_DB:-cavaai_research}
       - TZ=UTC
       - PGTZ=UTC
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U portfolio -d cavaai_research"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portfolio} -d ${POSTGRES_DB:-cavaai_research}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -75,7 +75,7 @@ services:
   # MinIO - local S3-compatible raw document store
   # ==========================================
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: jlcava-minio
     restart: unless-stopped
     command: server --address ":9000" --console-address ":9001" /data
@@ -85,8 +85,8 @@ services:
     volumes:
       - minio_data:/data
     environment:
-      - MINIO_ROOT_USER=portfolio
-      - MINIO_ROOT_PASSWORD=portfoliosecret
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-portfolio}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-portfoliosecret}
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -111,13 +111,13 @@ services:
     environment:
       - FMP_API_KEY=${FMP_API_KEY}
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql+psycopg://portfolio:portfolio@postgres:5432/cavaai_research
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - VECTOR_STORE=qdrant
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=portfolio
-      - MINIO_SECRET_KEY=portfoliosecret
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-portfolio}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-portfoliosecret}
       - MINIO_BUCKET=research
       - DUCKDB_PATH=/app/storage/analytics.duckdb
       - LANGFUSE_HOST=http://langfuse-web:3000
@@ -151,7 +151,7 @@ services:
       - /app/.venv
     environment:
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql+psycopg://portfolio:portfolio@postgres:5432/cavaai_research
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - VECTOR_STORE=qdrant
@@ -179,7 +179,7 @@ services:
       - /app/.next
     environment:
       - NODE_ENV=development
-      - MONGODB_URI=mongodb://root:example@mongodb:27017/jlcavaai?authSource=admin
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME:-root}:${MONGO_ROOT_PASSWORD:-example}@mongodb:27017/jlcavaai?authSource=admin
       - FMP_BACKEND_URL=http://backend:8000
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - FMP_API_KEY=${FMP_API_KEY}
@@ -195,7 +195,7 @@ services:
   # ==========================================
   clickhouse:
     profiles: ["observability"]
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:24.8
     container_name: jlcava-clickhouse
     user: "101:101"
     ports:
@@ -206,7 +206,7 @@ services:
     environment:
       - CLICKHOUSE_DB=default
       - CLICKHOUSE_USER=clickhouse
-      - CLICKHOUSE_PASSWORD=clickhouse
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse}
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
       interval: 10s
@@ -228,27 +228,27 @@ services:
         condition: service_healthy
     environment:
       NEXTAUTH_URL: http://localhost:3002
-      DATABASE_URL: postgresql://portfolio:portfolio@postgres:5432/langfuse
-      SALT: cavaai-local-langfuse-salt
-      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT:-cavaai-local-langfuse-salt}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:?Set LANGFUSE_ENCRYPTION_KEY in .env for observability profile}
       TELEMETRY_ENABLED: "false"
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
       CLICKHOUSE_CLUSTER_ENABLED: "false"
       REDIS_CONNECTION_STRING: redis://redis:6379/1
       LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK: "false"
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: portfolio
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: portfoliosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-portfolio}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-portfoliosecret}
       LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
       LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
       LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
-      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: portfolio
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: portfoliosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-portfolio}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-portfoliosecret}
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9002
       LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
 
@@ -262,41 +262,40 @@ services:
     ports:
       - "3002:3000"
     environment:
-      NEXTAUTH_SECRET: cavaai-local-langfuse-secret
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:?Set LANGFUSE_NEXTAUTH_SECRET in .env for observability profile}
       NEXTAUTH_URL: http://localhost:3002
-      DATABASE_URL: postgresql://portfolio:portfolio@postgres:5432/langfuse
-      SALT: cavaai-local-langfuse-salt
-      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT:-cavaai-local-langfuse-salt}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:?Set LANGFUSE_ENCRYPTION_KEY in .env for observability profile}
       TELEMETRY_ENABLED: "false"
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
       CLICKHOUSE_CLUSTER_ENABLED: "false"
       REDIS_CONNECTION_STRING: redis://redis:6379/1
       LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK: "false"
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: portfolio
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: portfoliosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-portfolio}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-portfoliosecret}
       LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
       LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
       LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
-      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: portfolio
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_KEY: portfoliosecret
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: portfoliosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-portfolio}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-portfoliosecret}
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9002
       LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
       LANGFUSE_INIT_ORG_ID: cavaai
       LANGFUSE_INIT_ORG_NAME: CavaAI
       LANGFUSE_INIT_PROJECT_ID: local
       LANGFUSE_INIT_PROJECT_NAME: Local Research
-      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-local
-      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-local
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local}
       LANGFUSE_INIT_USER_EMAIL: local@example.com
       LANGFUSE_INIT_USER_NAME: Local Analyst
-      LANGFUSE_INIT_USER_PASSWORD: portfolio-research-os
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:?Set LANGFUSE_INIT_USER_PASSWORD in .env for observability profile}
 
 volumes:
   mongodb_data:

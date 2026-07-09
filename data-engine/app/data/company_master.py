@@ -54,10 +54,10 @@ COMPANY_MASTER = [
         "cik": "1819994",
         "ir_url": "https://investors.rocketlabusa.com",
         "company_type": "space_defense_growth",
-        "valuation_model": "dcf+backlog_capex_scenario",
+        "valuation_model": "sotp+backlog_capex_scenario",
         "special_sources": ["SEC", "IR", "GDELT"],
         "special_risks": ["launch_execution", "capex", "defense_contracts"],
-        "factor_tags": ["space", "defense", "growth"],
+        "factor_tags": ["space", "defense", "growth", "sotp"],
     },
     {
         "ticker": "UBER",
