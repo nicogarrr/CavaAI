@@ -49,6 +49,7 @@ Research engine:
 - News feed batch ingestion with dedupe and material thesis-change creation
 - Document ingestion for TXT/MD/HTML/PDF/DOCX/XLSX/CSV/TSV with checksum, raw storage, chunk metadata and duplicate detection
 - Traceable calculated metrics with formula, source fact ids, numerator/denominator, calculation trace, confidence and unavailable states
+- Peer comparison from same-industry/sector companies using traceable calculated metrics and peer median/average benchmarks
 - Valuation engines for standard DCF, SOTP, pre-revenue/speculative, holding-company and commodity models
 - Knowledge/document upload path
 - Portfolio analytics and risk endpoints

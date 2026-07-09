@@ -8,6 +8,7 @@ from app.schemas import CalculatedMetricOut, CalculatedMetricsResponse, CompanyO
 from app.services.connectors.fmp import FMPClient
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.services.metric_calculation_service import MetricCalculationService
+from app.services.peer_comparison_service import DEFAULT_PEER_METRICS, PeerComparisonService
 
 router = APIRouter()
 
@@ -83,6 +84,28 @@ def list_calculated_metrics(
             for result in metrics
         ],
     }
+
+
+@router.get("/{ticker}/peers/comparison")
+def peer_comparison(
+    ticker: str,
+    limit: int = Query(default=8, ge=1, le=20),
+    refresh: bool = Query(default=False),
+    metrics: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    metric_names = [item.strip() for item in metrics.split(",") if item.strip()] if metrics else DEFAULT_PEER_METRICS
+    return PeerComparisonService().compare(
+        db,
+        company,
+        limit=limit,
+        metrics=metric_names,
+        refresh=refresh,
+    )
 
 
 @router.post("/{ticker}/refresh/fmp", response_model=FinancialRefreshResponse)

@@ -86,6 +86,41 @@ export type ResearchCalculatedMetric = {
   confidence: string;
 };
 
+export type ResearchPeerComparison = {
+  ticker: string;
+  basis: string;
+  peer_count: number;
+  metrics: string[];
+  benchmarks: Record<
+    string,
+    {
+      peer_median: string | null;
+      peer_average: string | null;
+      peer_sample_size: number;
+      target_value: string | null;
+      target_vs_peer_median: string | null;
+    }
+  >;
+  companies: Array<{
+    ticker: string;
+    name: string;
+    sector: string;
+    industry: string;
+    is_target: boolean;
+    metrics: Record<
+      string,
+      {
+        value: string | null;
+        status: string;
+        unit: string;
+        period: string;
+        confidence: string;
+        source_fact_ids: number[];
+      }
+    >;
+  }>;
+};
+
 export type ResearchValuation = {
   ticker: string;
   model_type: string;
@@ -355,11 +390,12 @@ export async function getResearchCompanyDetail(ticker: string) {
     trace: { input_source: 'insufficient_data' },
   };
 
-  const [company, valuation, facts, calculatedMetricsPayload, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments] = await Promise.all([
+  const [company, valuation, facts, calculatedMetricsPayload, peerComparison, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments] = await Promise.all([
     getJson<ResearchCompany | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}`, null),
     getJson<ResearchValuation>(`/api/valuation/${encodeURIComponent(normalizedTicker)}`, emptyValuation),
     getJson<ResearchFact[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/facts?limit=80`, []),
     getJson<{ metrics: ResearchCalculatedMetric[] }>(`/api/companies/${encodeURIComponent(normalizedTicker)}/metrics/calculated`, { metrics: [] }),
+    getJson<ResearchPeerComparison | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/peers/comparison`, null),
     getJson<ResearchThesis | null>(`/api/thesis/${encodeURIComponent(normalizedTicker)}/latest`, null),
     getJson<ResearchClaim[]>(`/api/memory/claims?ticker=${encodeURIComponent(normalizedTicker)}&limit=20`, []),
     getJson<ResearchThesisSection[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/sections`, []),
@@ -373,6 +409,7 @@ export async function getResearchCompanyDetail(ticker: string) {
     valuation,
     facts,
     calculatedMetrics: calculatedMetricsPayload.metrics,
+    peerComparison,
     thesis,
     claims,
     thesisSections,

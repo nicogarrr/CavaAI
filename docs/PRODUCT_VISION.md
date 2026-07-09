@@ -127,10 +127,10 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - Company and portfolio chat: backend chat is now source-aware and returns facts, calculations, memory/user assumptions, unverified claims, inference and typed sources.
 - News relevance and thesis impact: manual news analyzer, batch feed ingestion, event storage, dedupe and automatic thesis-change creation for material updates are in place.
 - What Changed: thesis change records, manual capture, automatic claim-contradiction changes and material-news changes are in place.
+- Peer comparison: company workspace comparison now uses same-industry/sector peers and traceable calculated metrics with peer median/average benchmarks.
 
 ### P1
 
-- Peer comparison
 - Moat framework
 - Thesis dependency graph
 - Red team
@@ -144,7 +144,7 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - Add LLM synthesis on top of source-aware chat context while preserving the current evidence contract.
 - Add automatic LLM-assisted evidence extraction suggestions from document/chunk text.
 - Promote Docling from optional parser to primary production parser after validating install size, OCR/table accuracy and deployment footprint.
-- Expand traceable metrics to CFROI, ROCE, incremental ROIC, share-count CAGR, WACC sourced from market assumptions, and peer/sector comparisons.
+- Expand traceable metrics to CFROI, ROCE, incremental ROIC, share-count CAGR and WACC sourced from market assumptions.
 - Implement "What changed" from new filings/news/earnings into `thesis_changes`, not only manual thesis history.
 - Add an automated contradiction engine that compares new evidence against existing claims and marks review-required items.
 - Add a provider-agnostic LLM interface before expanding beyond Gemini.
