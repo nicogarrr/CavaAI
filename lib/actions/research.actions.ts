@@ -70,12 +70,15 @@ export type ResearchFact = {
 export type ResearchValuation = {
   ticker: string;
   model_type: string;
-  current_price: number;
-  bear_value: number;
-  base_value: number;
-  bull_value: number;
-  expected_value: number;
-  margin_of_safety: number;
+  status?: string;
+  publishable?: boolean;
+  current_price: number | null;
+  bear_value: number | null;
+  base_value: number | null;
+  bull_value: number | null;
+  expected_value: number | null;
+  margin_of_safety: number | null;
+  missing_inputs?: string[];
   reverse_dcf: {
     required_revenue_growth?: number;
     solved_value_per_share?: number;
@@ -88,12 +91,18 @@ export type ResearchValuation = {
     }>;
     trace?: Record<string, unknown>;
   };
+  moat?: Record<string, unknown>;
   trace: {
     method?: string;
+    engine?: string;
     input_source?: string;
     fact_ids?: Record<string, number | null>;
     periods?: Record<string, string | null>;
     bootstrap_notice?: string;
+    missing_inputs?: string[];
+    publishable?: boolean;
+    status?: string;
+    notice?: string;
     [key: string]: unknown;
   };
 };
@@ -204,15 +213,19 @@ export async function getResearchCompanyDetail(ticker: string) {
   const emptyValuation: ResearchValuation = {
     ticker: normalizedTicker,
     model_type: 'unknown',
-    current_price: 0,
-    bear_value: 0,
-    base_value: 0,
-    bull_value: 0,
-    expected_value: 0,
-    margin_of_safety: 0,
+    status: 'insufficient_data',
+    publishable: false,
+    current_price: null,
+    bear_value: null,
+    base_value: null,
+    bull_value: null,
+    expected_value: null,
+    margin_of_safety: null,
+    missing_inputs: [],
     reverse_dcf: {},
     sensitivity: { rows: [] },
-    trace: {},
+    moat: {},
+    trace: { input_source: 'insufficient_data' },
   };
 
   const [company, valuation, facts, thesis] = await Promise.all([

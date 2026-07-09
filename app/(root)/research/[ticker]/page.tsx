@@ -33,12 +33,13 @@ type ResearchCompanyPageProps = {
   }>;
 };
 
-function money(value: number) {
+function money(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'N/A';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
+  }).format(value);
 }
 
 function compactMoney(value: number) {
@@ -48,8 +49,9 @@ function compactMoney(value: number) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
-function pct(value: number) {
-  return `${((Number.isFinite(value) ? value : 0) * 100).toFixed(1)}%`;
+function pct(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'N/A';
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function numberValue(value: string) {
@@ -90,6 +92,29 @@ function Stat({
 }
 
 function ValuationTable({ valuation }: { valuation: ResearchValuation }) {
+  if (valuation.status === 'insufficient_data') {
+    const missing = valuation.missing_inputs?.length
+      ? valuation.missing_inputs
+      : ((valuation.trace.missing_inputs as string[] | undefined) ?? []);
+    return (
+      <div className="space-y-3 text-sm">
+        <div className="rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-amber-100">
+          <div className="font-semibold">NO VALUATION — insufficient data</div>
+          <p className="mt-2 text-amber-200/90">
+            CavaAI no publica fair value con bootstrap assumptions. Ingiere hechos coherentes antes de confiar en un precio objetivo.
+          </p>
+        </div>
+        {missing.length ? (
+          <ul className="list-disc space-y-1 pl-5 text-gray-300">
+            {missing.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    );
+  }
+
   const scenarios = [
     { name: 'Bear', value: valuation.bear_value },
     { name: 'Base', value: valuation.base_value },
@@ -97,34 +122,43 @@ function ValuationTable({ valuation }: { valuation: ResearchValuation }) {
   ];
 
   return (
-    <table className="w-full text-left text-sm">
-      <thead className="text-xs uppercase text-gray-500">
-        <tr>
-          <th className="border-b border-gray-800 py-2">Escenario</th>
-          <th className="border-b border-gray-800 py-2 text-right">Valor por accion</th>
-          <th className="border-b border-gray-800 py-2 text-right">Upside</th>
-        </tr>
-      </thead>
-      <tbody>
-        {scenarios.map((scenario) => (
-          <tr key={scenario.name} className="border-b border-gray-900 last:border-0">
-            <td className="py-3 font-semibold text-gray-200">{scenario.name}</td>
-            <td className="py-3 text-right text-gray-300">{money(scenario.value)}</td>
-            <td className="py-3 text-right text-gray-400">
-              {valuation.current_price ? pct(scenario.value / valuation.current_price - 1) : '0.0%'}
-            </td>
+    <div className="space-y-3">
+      {valuation.publishable === false ? (
+        <div className="rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
+          Valores parciales — no tratar como fair value final ({valuation.status}).
+        </div>
+      ) : null}
+      <table className="w-full text-left text-sm">
+        <thead className="text-xs uppercase text-gray-500">
+          <tr>
+            <th className="border-b border-gray-800 py-2">Escenario</th>
+            <th className="border-b border-gray-800 py-2 text-right">Valor por accion</th>
+            <th className="border-b border-gray-800 py-2 text-right">Upside</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {scenarios.map((scenario) => (
+            <tr key={scenario.name} className="border-b border-gray-900 last:border-0">
+              <td className="py-3 font-semibold text-gray-200">{scenario.name}</td>
+              <td className="py-3 text-right text-gray-300">{money(scenario.value)}</td>
+              <td className="py-3 text-right text-gray-400">
+                {valuation.current_price && scenario.value != null
+                  ? pct(scenario.value / valuation.current_price - 1)
+                  : 'N/A'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
 function SensitivityGrid({ valuation }: { valuation: ResearchValuation }) {
   const rows = valuation.sensitivity.rows ?? [];
-  const waccValues = rows[0]?.values.map((item) => item.wacc) ?? [];
+  const waccValues = rows[0]?.values?.map((item) => item.wacc) ?? [];
 
-  if (!rows.length) {
+  if (!rows.length || !waccValues.length) {
     return <div className="rounded-md border border-gray-800 p-3 text-sm text-gray-500">Sin sensibilidad disponible.</div>;
   }
 
@@ -240,9 +274,18 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
 
   if (!company) notFound();
 
-  const inputSource = valuation.trace.input_source ?? 'unknown';
-  const sourceTone = inputSource === 'financial_facts' ? 'good' : 'warn';
-  const marginTone = valuation.margin_of_safety > 0.25 ? 'good' : valuation.margin_of_safety < -0.15 ? 'bad' : 'warn';
+  const inputSource = valuation.trace.input_source ?? valuation.status ?? 'unknown';
+  const sourceTone =
+    inputSource === 'financial_facts' ? 'good' : inputSource === 'insufficient_data' ? 'bad' : 'warn';
+  const marginTone =
+    valuation.margin_of_safety == null
+      ? 'warn'
+      : valuation.margin_of_safety > 0.25
+        ? 'good'
+        : valuation.margin_of_safety < -0.15
+          ? 'bad'
+          : 'warn';
+  const engine = (valuation.trace.engine as string | undefined) ?? valuation.model_type;
 
   return (
     <main className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -261,6 +304,16 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
             </Badge>
             <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
               {company.company_type}
+            </Badge>
+            <Badge
+              className={
+                valuation.publishable === false
+                  ? 'border-amber-800 bg-amber-950/30 text-amber-200'
+                  : 'border-teal-800 bg-teal-950/30 text-teal-200'
+              }
+              variant="outline"
+            >
+              {valuation.publishable === false ? 'not publishable' : engine}
             </Badge>
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
@@ -346,9 +399,10 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
                 {JSON.stringify(valuation.trace.fact_ids ?? {}, null, 2)}
               </pre>
             </div>
-            {valuation.trace.bootstrap_notice ? (
+            {valuation.trace.notice || valuation.status === 'insufficient_data' ? (
               <div className="rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-amber-200">
-                {valuation.trace.bootstrap_notice}
+                {(valuation.trace.notice as string | undefined) ??
+                  'Valuation blocked: bootstrap assumptions are disabled. Ingest coherent financial facts.'}
               </div>
             ) : null}
           </div>
