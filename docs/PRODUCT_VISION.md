@@ -57,6 +57,12 @@ The LLM should not "learn" by changing model weights. It should improve through 
 
 Every important answer should distinguish facts, calculations, user assumptions, LLM inference, and unverified claims.
 
+The current backend implements the first production-shaped memory loop:
+
+`chat/query -> retrieve company/portfolio memories -> rank by relevance/importance/recency -> inject into answer context -> optionally write back user-directed memories -> dedupe exact repeats`
+
+This is intentionally lightweight and compatible with Mem0/Graphiti-style evolution. It should remain provider-agnostic until the core product workflows are stable.
+
 ## Evidence Rules
 
 Missing data is not an estimated fact. When evidence is insufficient, the system must return `unknown`, `missing`, or `insufficient_data`.
@@ -94,23 +100,38 @@ The current code supports configurable Gemini models via:
 
 Future provider abstraction should support OpenRouter, OpenAI, Anthropic, Google, and any provider with an OpenAI-compatible endpoint.
 
+Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. The default company chat uses the canonical SQL store first so local development and tests do not depend on Qdrant or embedding downloads.
+
+## External OSS Integration Map
+
+- Mem0: use the architecture pattern of extract, retrieve, consolidate and write memory. Do not make it a hard dependency until tenant scoping, cost controls and observability are stable.
+- Graphiti: use as the reference pattern for future temporal knowledge graph work, especially facts that change over time and require provenance.
+- EdgarTools: preferred P0 candidate for SEC filings, XBRL statements and filing metadata because it provides a focused Python API around EDGAR data.
+- Docling: preferred P0 candidate for PDF/DOCX/XLSX/HTML document parsing, table extraction and layout-aware chunks.
+- OpenEDGAR: use patterns for bulk EDGAR archive construction; do not adopt the whole stack unless CavaAI needs a self-hosted SEC archive.
+- SEC EDGAR AgentKit/MCP: useful adapter/tool patterns over EDGAR; avoid coupling the app to MCP-only runtime paths.
+- FinNLP/FinGPT: mine for financial news/data connector ideas and sentiment datasets; do not make fine-tuning frameworks part of the P0 product.
+
 ## Development Priorities
 
 ### P0
 
 - Persistent company memory: backend model, API and company page read/write path are in place.
+- Memory retrieval and write-back: company/portfolio chat now retrieves relevant memories and stores user-directed chat memories with dedupe.
 - Thesis versions: backend generation, history and frontend display are in place.
 - Claim memory: unified claim/evidence model, API, migration and company page capture are in place.
 - Source lineage: documents, chunks, facts, audits and claim evidence links are in place, including claim evidence linked from the company workspace.
-- Document ingestion: manual Quartr/text import path is in place.
-- Traceable metrics: normalized facts and valuation trace are in place.
-- Company and portfolio chat: basic backend chat route is in place.
-- News relevance and thesis impact: manual news analyzer, batch feed ingestion, event storage, dedupe and automatic thesis-change creation for material updates are in place.
+- Source hierarchy: source quality is now classified through formal tiers from regulatory filings to user input, with trust scores and source policy text reused by chat and news.
+- Document ingestion: manual Quartr/text import, generic file upload and URL ingestion are in place. Native parsers cover TXT/MD/HTML/PDF/DOCX/XLSX/CSV/TSV with checksum, raw storage, chunk metadata and duplicate detection. Docling can be used as an opt-in parser with `CAVAAI_USE_DOCLING=1`.
+- Source evidence workflow: the company workspace shows source chunk previews and supports one-click creation of source-derived claims or support/contradiction evidence linked to existing claims.
+- Traceable metrics: normalized facts, valuation trace and calculated metric records are in place. Current canonical calculated metrics include FCF margin, gross/operating/net margin, ROE, ROA, ROIC, FCF conversion and net debt / EBITDA, each with definition version, formula, numerator, denominator, source fact ids, calculation trace, confidence and unavailable status when inputs are missing.
+- Company and portfolio chat: backend chat is now source-aware and returns facts, calculations, memory/user assumptions, unverified claims, inference and typed sources.
+- News relevance and thesis impact: manual news analyzer, batch feed ingestion, event storage, dedupe, source-tier policy, portfolio-aware materiality and automatic thesis-change creation for material updates are in place.
 - What Changed: thesis change records, manual capture, automatic claim-contradiction changes and material-news changes are in place.
+- Peer comparison: company workspace comparison now uses same-industry/sector peers and traceable calculated metrics with peer median/average benchmarks.
 
 ### P1
 
-- Peer comparison
 - Moat framework
 - Thesis dependency graph
 - Red team
@@ -120,8 +141,11 @@ Future provider abstraction should support OpenRouter, OpenAI, Anthropic, Google
 
 ### Remaining Work To Feel Complete
 
-- Build a first-class company workspace UI around thesis sections, claims, evidence, sources, news, risks and chat instead of keeping some features as backend-only APIs.
-- Add richer source previews and one-click evidence extraction from document/chunk text.
+- Build a first-class company workspace UI around risks and red-team work instead of keeping those features as backend-only APIs.
+- Add LLM synthesis on top of source-aware chat context while preserving the current evidence contract.
+- Add automatic LLM-assisted evidence extraction suggestions from document/chunk text.
+- Promote Docling from optional parser to primary production parser after validating install size, OCR/table accuracy and deployment footprint.
+- Expand traceable metrics to CFROI, ROCE, incremental ROIC, share-count CAGR and WACC sourced from market assumptions.
 - Implement "What changed" from new filings/news/earnings into `thesis_changes`, not only manual thesis history.
 - Add an automated contradiction engine that compares new evidence against existing claims and marks review-required items.
 - Add a provider-agnostic LLM interface before expanding beyond Gemini.

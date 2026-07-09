@@ -67,6 +67,60 @@ export type ResearchFact = {
   created_at: string;
 };
 
+export type ResearchCalculatedMetric = {
+  id: number | null;
+  company_id: number | null;
+  metric: string;
+  value: string | null;
+  unit: string;
+  period: string;
+  fiscal_year: number | null;
+  fiscal_quarter: string | null;
+  status: string;
+  definition_version: string;
+  formula: string;
+  numerator: string | null;
+  denominator: string | null;
+  source_fact_ids: number[];
+  calculation_trace: Record<string, unknown>;
+  confidence: string;
+};
+
+export type ResearchPeerComparison = {
+  ticker: string;
+  basis: string;
+  peer_count: number;
+  metrics: string[];
+  benchmarks: Record<
+    string,
+    {
+      peer_median: string | null;
+      peer_average: string | null;
+      peer_sample_size: number;
+      target_value: string | null;
+      target_vs_peer_median: string | null;
+    }
+  >;
+  companies: Array<{
+    ticker: string;
+    name: string;
+    sector: string;
+    industry: string;
+    is_target: boolean;
+    metrics: Record<
+      string,
+      {
+        value: string | null;
+        status: string;
+        unit: string;
+        period: string;
+        confidence: string;
+        source_fact_ids: number[];
+      }
+    >;
+  }>;
+};
+
 export type ResearchValuation = {
   ticker: string;
   model_type: string;
@@ -134,6 +188,9 @@ export type ResearchSourceDocument = {
   title: string;
   source_type: string;
   source_url: string | null;
+  storage_uri?: string | null;
+  checksum?: string | null;
+  metadata?: Record<string, unknown>;
   published_at: string | null;
   chunks?: ResearchSourceChunk[];
 };
@@ -144,6 +201,7 @@ export type ResearchSourceChunk = {
   chunk_index: number;
   text: string;
   token_count: number;
+  metadata?: Record<string, unknown>;
 };
 
 export type ResearchSourceAudit = {
@@ -226,6 +284,18 @@ export type ResearchMemoryItem = {
   created_at: string;
 };
 
+export type ResearchChatResponse = {
+  answer: string;
+  sources: Array<{
+    type: string;
+    id: number | string | null;
+    title: string;
+    [key: string]: unknown;
+  }>;
+  blocked: boolean;
+  proposed_actions: string[];
+};
+
 async function getJson<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
@@ -244,6 +314,20 @@ async function postJson<T>(path: string, fallback: T, body?: unknown): Promise<T
       method: 'POST',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
+    });
+    if (!response.ok) return fallback;
+    return (await response.json()) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+async function postForm<T>(path: string, fallback: T, body: FormData): Promise<T> {
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+      method: 'POST',
+      body,
       cache: 'no-store',
     });
     if (!response.ok) return fallback;
@@ -306,22 +390,26 @@ export async function getResearchCompanyDetail(ticker: string) {
     trace: { input_source: 'insufficient_data' },
   };
 
-  const [company, valuation, facts, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments] = await Promise.all([
+  const [company, valuation, facts, calculatedMetricsPayload, peerComparison, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments] = await Promise.all([
     getJson<ResearchCompany | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}`, null),
     getJson<ResearchValuation>(`/api/valuation/${encodeURIComponent(normalizedTicker)}`, emptyValuation),
     getJson<ResearchFact[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/facts?limit=80`, []),
+    getJson<{ metrics: ResearchCalculatedMetric[] }>(`/api/companies/${encodeURIComponent(normalizedTicker)}/metrics/calculated`, { metrics: [] }),
+    getJson<ResearchPeerComparison | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/peers/comparison`, null),
     getJson<ResearchThesis | null>(`/api/thesis/${encodeURIComponent(normalizedTicker)}/latest`, null),
     getJson<ResearchClaim[]>(`/api/memory/claims?ticker=${encodeURIComponent(normalizedTicker)}&limit=20`, []),
     getJson<ResearchThesisSection[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/sections`, []),
     getJson<ResearchThesisChange[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/changes`, []),
     getJson<ResearchMemoryItem[]>(`/api/memory/memory-items?ticker=${encodeURIComponent(normalizedTicker)}&scope=company&limit=20`, []),
-    getJson<ResearchSourceDocument[]>(`/api/sources/documents?ticker=${encodeURIComponent(normalizedTicker)}&include_chunks=true`, []),
+    getJson<ResearchSourceDocument[]>(`/api/sources/documents?ticker=${encodeURIComponent(normalizedTicker)}&include_chunks=true&chunk_text_limit=1800`, []),
   ]);
 
   return {
     company,
     valuation,
     facts,
+    calculatedMetrics: calculatedMetricsPayload.metrics,
+    peerComparison,
     thesis,
     claims,
     thesisSections,
@@ -402,6 +490,62 @@ export async function addResearchClaimEvidence(ticker: string, claimId: number, 
   revalidatePath(`/research/${normalizedTicker}`);
 }
 
+export async function createResearchClaimFromChunk(ticker: string, chunkId: number, formData: FormData) {
+  const normalizedTicker = ticker.toUpperCase();
+  const statement = String(formData.get('statement') ?? '').trim();
+  const summary = String(formData.get('summary') ?? statement).trim();
+  const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
+  const sourceUrl = String(formData.get('source_url') ?? '').trim();
+  const sourceTier = String(formData.get('source_tier') ?? 'primary').trim() || 'primary';
+  const materiality = Number(formData.get('materiality_score') ?? 5);
+
+  if (statement.length < 5 || summary.length < 3 || !Number.isFinite(chunkId) || chunkId <= 0) return;
+
+  const claim = await postJson<ResearchClaim | null>('/api/memory/claims', null, {
+    ticker: normalizedTicker,
+    statement,
+    claim_type: 'source_extracted',
+    materiality_score: Number.isFinite(materiality) ? Math.max(0, Math.min(10, materiality)) : 5,
+    source_quality: sourceTier,
+    created_by: 'user',
+  });
+
+  if (!claim?.id) return;
+
+  await postJson(`/api/memory/claims/${claim.id}/evidence`, null, {
+    evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
+    summary,
+    source_url: sourceUrl || null,
+    source_tier: sourceTier,
+    document_chunk_id: chunkId,
+  });
+
+  revalidatePath('/research');
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function addResearchChunkEvidence(ticker: string, chunkId: number, formData: FormData) {
+  const normalizedTicker = ticker.toUpperCase();
+  const claimId = Number(formData.get('claim_id') ?? 0);
+  const summary = String(formData.get('summary') ?? '').trim();
+  const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
+  const sourceUrl = String(formData.get('source_url') ?? '').trim();
+  const sourceTier = String(formData.get('source_tier') ?? 'primary').trim() || 'primary';
+
+  if (!Number.isFinite(claimId) || claimId <= 0 || summary.length < 3 || !Number.isFinite(chunkId) || chunkId <= 0) return;
+
+  await postJson(`/api/memory/claims/${claimId}/evidence`, null, {
+    evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
+    summary,
+    source_url: sourceUrl || null,
+    source_tier: sourceTier,
+    document_chunk_id: chunkId,
+  });
+
+  revalidatePath('/research');
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
 export async function createResearchThesisChange(ticker: string, formData: FormData) {
   const normalizedTicker = ticker.toUpperCase();
   const summary = String(formData.get('summary') ?? '').trim();
@@ -452,6 +596,27 @@ export async function createResearchMemoryItem(ticker: string, formData: FormDat
   revalidatePath(`/research/${normalizedTicker}`);
 }
 
+export async function askResearchCompanyChat(ticker: string, question: string): Promise<ResearchChatResponse | null> {
+  const normalizedTicker = ticker.toUpperCase();
+  const trimmedQuestion = question.trim();
+  if (trimmedQuestion.length < 3) return null;
+
+  return postJson<ResearchChatResponse>(
+    '/api/chat',
+    {
+      answer: 'No response available from the research engine.',
+      sources: [],
+      blocked: true,
+      proposed_actions: ['Check backend status'],
+    },
+    {
+      ticker: normalizedTicker,
+      scope: 'company',
+      question: trimmedQuestion,
+    },
+  );
+}
+
 export async function getResearchSources() {
   const [documents, audits] = await Promise.all([
     getJson<ResearchSourceDocument[]>('/api/sources/documents', []),
@@ -484,6 +649,36 @@ export async function importResearchSource(formData: FormData) {
   revalidatePath('/research/sources');
 }
 
+export async function importResearchDocumentFile(formData: FormData) {
+  const ticker = String(formData.get('ticker') ?? '').trim().toUpperCase();
+  const title = String(formData.get('title') ?? '').trim();
+  const file = formData.get('file');
+
+  if (!ticker || !title || !(file instanceof File) || file.size === 0) return;
+
+  await postForm('/api/sources/documents/ingest-file', null, formData);
+  revalidatePath('/research/sources');
+  revalidatePath(`/research/${ticker}`);
+}
+
+export async function importResearchDocumentUrl(formData: FormData) {
+  const ticker = String(formData.get('ticker') ?? '').trim().toUpperCase();
+  const title = String(formData.get('title') ?? '').trim();
+  const url = String(formData.get('url') ?? '').trim();
+  const sourceType = String(formData.get('source_type') ?? 'url').trim() || 'url';
+
+  if (!ticker || !title || !url) return;
+
+  await postJson('/api/sources/documents/ingest-url', null, {
+    ticker,
+    title,
+    url,
+    source_type: sourceType,
+  });
+  revalidatePath('/research/sources');
+  revalidatePath(`/research/${ticker}`);
+}
+
 export type ResearchNewsEvent = {
   id: number;
   ticker: string | null;
@@ -495,6 +690,12 @@ export type ResearchNewsEvent = {
   materiality_score: number;
   impact_direction: string;
   requires_update: boolean;
+  source_tier?: string;
+  source_trust_score?: number;
+  portfolio_weight?: number;
+  materiality_reasons?: string[];
+  source_policy?: string;
+  model_route?: string;
 };
 
 export type ResearchWorkflowRun = {
@@ -524,7 +725,16 @@ export async function getResearchNews(): Promise<ResearchNewsEvent[]> {
 
 export async function analyzeManualNews(
   formData: FormData,
-): Promise<{ ticker?: string | null; event_type: string; materiality_score: number; impact_direction: string; summary: string }> {
+): Promise<{
+  ticker?: string | null;
+  event_type: string;
+  materiality_score: number;
+  impact_direction: string;
+  summary: string;
+  source_tier?: string;
+  portfolio_weight?: number;
+  materiality_reasons?: string[];
+}> {
   const text = String(formData.get('text') ?? '').trim();
   const source = String(formData.get('source') ?? 'manual').trim();
   const url = String(formData.get('url') ?? '').trim();

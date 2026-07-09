@@ -41,4 +41,5 @@ def test_alembic_upgrade_head_creates_research_memory_tables():
         "thesis_changes",
         "research_sessions",
         "memory_items",
+        "calculated_metrics",
     }.issubset(tables)

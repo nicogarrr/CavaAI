@@ -58,3 +58,4 @@ include = ["app*", "modules*", "routers*", "quantstats*"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+cache_dir = "storage/.pytest_cache"

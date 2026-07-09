@@ -42,9 +42,14 @@ Research engine:
 - Company pages and market widgets
 - Research OS backend with companies, financial facts, thesis versions, source audits and valuation engines
 - Persistent claims, claim evidence, thesis sections, research sessions and company memory
+- Source-aware company chat with memory retrieval, user-directed memory write-back and typed source provenance
 - Company Research page connected to backend claims, support/contradiction evidence, document/chunk evidence links and memory capture
+- Source Evidence Lab for chunk previews, source-derived claim creation and support/contradiction evidence capture from imported documents
 - What Changed records for manual thesis updates, automatic claim contradictions and material news
-- News feed batch ingestion with dedupe and material thesis-change creation
+- News feed batch ingestion with dedupe, formal source tiers, portfolio-aware materiality and material thesis-change creation
+- Document ingestion for TXT/MD/HTML/PDF/DOCX/XLSX/CSV/TSV with checksum, raw storage, chunk metadata and duplicate detection
+- Traceable calculated metrics with formula, source fact ids, numerator/denominator, calculation trace, confidence and unavailable states
+- Peer comparison from same-industry/sector companies using traceable calculated metrics and peer median/average benchmarks
 - Valuation engines for standard DCF, SOTP, pre-revenue/speculative, holding-company and commodity models
 - Knowledge/document upload path
 - Portfolio analytics and risk endpoints
@@ -118,6 +123,9 @@ GEMINI_DEEP_MODEL=gemini-3.5-flash
 OPENROUTER_API_KEY=
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
+CAVAAI_ENABLE_VECTOR_CHAT=0
+CAVAAI_ENABLE_VECTOR_INGEST=0
+CAVAAI_USE_DOCLING=0
 ```
 
 Email:
@@ -167,7 +175,7 @@ OpenRouter is useful once provider abstraction is added because it gives routing
 - Do not use placeholder secrets in shared or production environments.
 - Run Alembic migrations and seed jobs explicitly in production instead of relying on app startup side effects.
 - Keep source lineage for every important financial fact, claim, calculation and thesis update.
-- The current `/api/memory` surface is ready for product integration and has an Alembic migration. Production still needs auth/tenant scoping, richer source previews and automatic evidence extraction before it should be considered finished.
+- The current `/api/memory`, `/api/chat` and `/api/sources/documents/ingest-*` surfaces are ready for product integration and have tests. Production still needs auth/tenant scoping, automatic evidence extraction suggestions and LLM synthesis over the source-aware context before it should be considered finished.
 
 ## License
 
