@@ -67,6 +67,25 @@ export type ResearchFact = {
   created_at: string;
 };
 
+export type ResearchCalculatedMetric = {
+  id: number | null;
+  company_id: number | null;
+  metric: string;
+  value: string | null;
+  unit: string;
+  period: string;
+  fiscal_year: number | null;
+  fiscal_quarter: string | null;
+  status: string;
+  definition_version: string;
+  formula: string;
+  numerator: string | null;
+  denominator: string | null;
+  source_fact_ids: number[];
+  calculation_trace: Record<string, unknown>;
+  confidence: string;
+};
+
 export type ResearchValuation = {
   ticker: string;
   model_type: string;
@@ -336,10 +355,11 @@ export async function getResearchCompanyDetail(ticker: string) {
     trace: { input_source: 'insufficient_data' },
   };
 
-  const [company, valuation, facts, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments] = await Promise.all([
+  const [company, valuation, facts, calculatedMetricsPayload, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments] = await Promise.all([
     getJson<ResearchCompany | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}`, null),
     getJson<ResearchValuation>(`/api/valuation/${encodeURIComponent(normalizedTicker)}`, emptyValuation),
     getJson<ResearchFact[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/facts?limit=80`, []),
+    getJson<{ metrics: ResearchCalculatedMetric[] }>(`/api/companies/${encodeURIComponent(normalizedTicker)}/metrics/calculated`, { metrics: [] }),
     getJson<ResearchThesis | null>(`/api/thesis/${encodeURIComponent(normalizedTicker)}/latest`, null),
     getJson<ResearchClaim[]>(`/api/memory/claims?ticker=${encodeURIComponent(normalizedTicker)}&limit=20`, []),
     getJson<ResearchThesisSection[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/sections`, []),
@@ -352,6 +372,7 @@ export async function getResearchCompanyDetail(ticker: string) {
     company,
     valuation,
     facts,
+    calculatedMetrics: calculatedMetricsPayload.metrics,
     thesis,
     claims,
     thesisSections,

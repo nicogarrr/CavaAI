@@ -47,6 +47,7 @@ Research engine:
 - What Changed records for manual thesis updates, automatic claim contradictions and material news
 - News feed batch ingestion with dedupe and material thesis-change creation
 - Document ingestion for TXT/MD/HTML/PDF/DOCX/XLSX/CSV/TSV with checksum, raw storage, chunk metadata and duplicate detection
+- Traceable calculated metrics with formula, source fact ids, numerator/denominator, calculation trace, confidence and unavailable states
 - Valuation engines for standard DCF, SOTP, pre-revenue/speculative, holding-company and commodity models
 - Knowledge/document upload path
 - Portfolio analytics and risk endpoints

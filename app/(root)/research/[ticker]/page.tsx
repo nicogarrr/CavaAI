@@ -30,6 +30,7 @@ import {
   refreshCompanyFinancials,
   refreshCompanyFinancialsSEC,
   getThesisHistory,
+  type ResearchCalculatedMetric,
   type ResearchClaim,
   type ResearchChatResponse,
   type ResearchFact,
@@ -250,6 +251,63 @@ function FactsTable({ facts }: { facts: ResearchFact[] }) {
               <td className="py-3 text-right text-gray-400">{pct(numberValue(fact.confidence))}</td>
             </tr>
           ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CalculatedMetricsTable({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
+  if (!metrics.length) {
+    return (
+      <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+        No hay metricas calculadas todavia.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[920px] text-left text-sm">
+        <thead className="text-xs uppercase text-gray-500">
+          <tr>
+            <th className="border-b border-gray-800 py-2">Metric</th>
+            <th className="border-b border-gray-800 py-2 text-right">Value</th>
+            <th className="border-b border-gray-800 py-2">Status</th>
+            <th className="border-b border-gray-800 py-2">Formula</th>
+            <th className="border-b border-gray-800 py-2">Period</th>
+            <th className="border-b border-gray-800 py-2">Fact IDs</th>
+            <th className="border-b border-gray-800 py-2 text-right">Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {metrics.map((metric) => {
+            const value = metric.value == null ? null : numberValue(metric.value);
+            return (
+              <tr key={`${metric.metric}-${metric.definition_version}-${metric.period}`} className="border-b border-gray-900 last:border-0">
+                <td className="py-3 font-semibold text-gray-200">{metric.metric}</td>
+                <td className="py-3 text-right text-gray-300">
+                  {value == null ? 'N/A' : metric.unit === 'decimal' ? pct(value) : `${value.toFixed(2)}${metric.unit}`}
+                </td>
+                <td className="py-3">
+                  <Badge
+                    className={
+                      metric.status === 'ok'
+                        ? 'border-teal-800 bg-teal-950/30 text-teal-200'
+                        : 'border-amber-800 bg-amber-950/30 text-amber-200'
+                    }
+                    variant="outline"
+                  >
+                    {metric.status}
+                  </Badge>
+                </td>
+                <td className="max-w-[320px] py-3 text-xs leading-5 text-gray-400">{metric.formula}</td>
+                <td className="py-3 text-gray-500">{metric.period}</td>
+                <td className="py-3 text-gray-500">{metric.source_fact_ids.join(', ') || 'missing'}</td>
+                <td className="py-3 text-right text-gray-400">{pct(numberValue(metric.confidence))}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -628,7 +686,7 @@ function SourceAwareChatPanel({
 export default async function ResearchCompanyPage({ params, searchParams }: ResearchCompanyPageProps) {
   const { ticker } = await params;
   const { chat = '' } = await searchParams;
-  const [{ company, valuation, facts, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments }, thesisHistory] = await Promise.all([
+  const [{ company, valuation, facts, calculatedMetrics, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments }, thesisHistory] = await Promise.all([
     getResearchCompanyDetail(ticker),
     getThesisHistory(ticker),
   ]);
@@ -769,6 +827,15 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
             ) : null}
           </div>
         </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Sigma className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Traceable Metrics</h2>
+          <span className="ml-auto text-sm text-gray-500">{calculatedMetrics.length} metrics</span>
+        </div>
+        <CalculatedMetricsTable metrics={calculatedMetrics} />
       </section>
 
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
