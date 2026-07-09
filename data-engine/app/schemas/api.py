@@ -53,6 +53,33 @@ class FinancialRefreshResponse(BaseModel):
     valuation_input_ready: bool
 
 
+class CalculatedMetricOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int | None = None
+    company_id: int | None = None
+    metric: str
+    value: Decimal | None
+    unit: str
+    period: str
+    fiscal_year: int | None = None
+    fiscal_quarter: str | None = None
+    status: str
+    definition_version: str
+    formula: str
+    numerator: Decimal | None
+    denominator: Decimal | None
+    source_fact_ids: list[int]
+    calculation_trace: dict
+    confidence: Decimal
+
+
+class CalculatedMetricsResponse(BaseModel):
+    ticker: str
+    status: str
+    metrics: list[CalculatedMetricOut]
+
+
 class ThesisGenerateRequest(BaseModel):
     ticker: str = Field(min_length=1, max_length=20)
     force_new_version: bool = False

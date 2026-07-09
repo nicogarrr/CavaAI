@@ -1,6 +1,8 @@
 from app.schemas.api import (
     ChatRequest,
     ChatResponse,
+    CalculatedMetricOut,
+    CalculatedMetricsResponse,
     ClaimCreate,
     ClaimEvidenceCreate,
     ClaimEvidenceOut,
@@ -29,6 +31,8 @@ from app.schemas.api import (
 __all__ = [
     "ChatRequest",
     "ChatResponse",
+    "CalculatedMetricOut",
+    "CalculatedMetricsResponse",
     "ClaimCreate",
     "ClaimEvidenceCreate",
     "ClaimEvidenceOut",

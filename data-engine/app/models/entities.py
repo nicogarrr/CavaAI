@@ -146,6 +146,36 @@ class FinancialFact(Base, TimestampMixin):
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0.80"))
 
 
+class CalculatedMetric(Base, TimestampMixin):
+    __tablename__ = "calculated_metrics"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "metric",
+            "period",
+            "definition_version",
+            name="uq_calculated_metric_definition_period",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    metric: Mapped[str] = mapped_column(String(120), index=True)
+    value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    unit: Mapped[str] = mapped_column(String(40), default="decimal")
+    period: Mapped[str] = mapped_column(String(40), index=True)
+    fiscal_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fiscal_quarter: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="ok")
+    definition_version: Mapped[str] = mapped_column(String(80), default="v1")
+    formula: Mapped[str] = mapped_column(Text)
+    numerator: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    denominator: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    source_fact_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    calculation_trace: Mapped[dict] = mapped_column(JSON, default=dict)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0.70"))
+
+
 class FinancialStatement(Base, TimestampMixin):
     __tablename__ = "financial_statements"
 
