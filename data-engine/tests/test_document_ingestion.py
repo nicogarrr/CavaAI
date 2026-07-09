@@ -79,6 +79,12 @@ def test_file_ingestion_creates_traceable_chunks_and_dedupes():
     assert uploaded["metadata"]["parser"] == "native_text"
     assert uploaded["chunks"][0]["metadata"]["checksum"] == payload["checksum"]
     assert uploaded["chunks"][0]["metadata"]["chunk_sha256"]
+    assert len(uploaded["chunks"][0]["text"]) > 120
+
+    limited_documents = client.get("/api/sources/documents?ticker=MSFT&include_chunks=true&chunk_text_limit=120")
+    assert limited_documents.status_code == 200
+    limited_uploaded = next(item for item in limited_documents.json() if item["id"] == payload["document_id"])
+    assert len(limited_uploaded["chunks"][0]["text"]) <= 120
 
     chat = client.post(
         "/api/chat",

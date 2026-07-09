@@ -20,8 +20,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  addResearchChunkEvidence,
   addResearchClaimEvidence,
   askResearchCompanyChat,
+  createResearchClaimFromChunk,
   createResearchThesisChange,
   createResearchClaim,
   createResearchMemoryItem,
@@ -530,6 +532,178 @@ function ClaimsMemoryPanel({
   );
 }
 
+function sourceTierForDocument(document: ResearchSourceDocument) {
+  const sourceType = document.source_type.toLowerCase();
+  if (
+    sourceType.includes('sec') ||
+    sourceType.includes('filing') ||
+    sourceType.includes('10-k') ||
+    sourceType.includes('10-q') ||
+    sourceType.includes('transcript') ||
+    sourceType.includes('earnings') ||
+    sourceType.includes('upload')
+  ) {
+    return 'primary';
+  }
+  return 'secondary';
+}
+
+function defaultClaimStatement(text: string, title: string) {
+  const firstSentence = text.split(/[.!?]\s/)[0]?.trim() || title;
+  return firstSentence.length > 180 ? `${firstSentence.slice(0, 177)}...` : firstSentence;
+}
+
+function SourceEvidencePanel({
+  ticker,
+  claims,
+  sourceDocuments,
+}: {
+  ticker: string;
+  claims: ResearchClaim[];
+  sourceDocuments: ResearchSourceDocument[];
+}) {
+  const chunkRows = sourceDocuments.flatMap((document) =>
+    (document.chunks ?? []).map((chunk) => ({
+      document,
+      chunk,
+    })),
+  );
+  const visibleRows = chunkRows.slice(0, 12);
+
+  return (
+    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
+          <Database className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Source Evidence Lab</h2>
+        </div>
+        <div className="text-sm text-gray-500">
+          {sourceDocuments.length} documents - {chunkRows.length} chunks
+        </div>
+      </div>
+
+      {visibleRows.length ? (
+        <div className="grid gap-4">
+          {visibleRows.map(({ document, chunk }) => {
+            const sourceTier = sourceTierForDocument(document);
+            const defaultStatement = defaultClaimStatement(chunk.text, document.title);
+
+            return (
+              <article key={chunk.id} className="rounded-md border border-gray-800 bg-black/25 p-4">
+                <div className="flex flex-wrap items-start gap-2">
+                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                    {document.source_type}
+                  </Badge>
+                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                    chunk #{chunk.chunk_index}
+                  </Badge>
+                  <span className="ml-auto text-xs text-gray-500">doc #{document.id}</span>
+                </div>
+                <div className="mt-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                  <h3 className="text-sm font-semibold text-gray-200">{document.title}</h3>
+                  {document.source_url ? (
+                    <a
+                      className="text-xs text-teal-300 hover:text-teal-200"
+                      href={document.source_url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Open source
+                    </a>
+                  ) : null}
+                </div>
+                <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-gray-800 bg-black/30 p-3 font-sans text-sm leading-6 text-gray-300">
+                  {chunk.text}
+                </pre>
+
+                <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                  <form action={createResearchClaimFromChunk.bind(null, ticker, chunk.id)} className="grid gap-2">
+                    <div className="text-xs font-semibold uppercase text-gray-500">Create claim from chunk</div>
+                    <Input aria-label="Claim statement" defaultValue={defaultStatement} name="statement" required />
+                    <Textarea
+                      aria-label="Evidence summary"
+                      className="border-gray-700 bg-transparent text-gray-100"
+                      defaultValue={defaultStatement}
+                      name="summary"
+                      required
+                    />
+                    <div className="grid gap-2 md:grid-cols-[120px_96px_120px_auto]">
+                      <select
+                        aria-label="Evidence type"
+                        className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
+                        name="evidence_type"
+                      >
+                        <option className="bg-[#111111]" value="supports">supports</option>
+                        <option className="bg-[#111111]" value="contradicts">contradicts</option>
+                      </select>
+                      <Input aria-label="Materiality" defaultValue="5" max="10" min="0" name="materiality_score" type="number" />
+                      <Input aria-label="Source tier" defaultValue={sourceTier} name="source_tier" />
+                      <input name="source_url" type="hidden" value={document.source_url ?? ''} />
+                      <Button type="submit" variant="outline">
+                        <Plus className="h-4 w-4" />
+                        Claim
+                      </Button>
+                    </div>
+                  </form>
+
+                  <form action={addResearchChunkEvidence.bind(null, ticker, chunk.id)} className="grid gap-2">
+                    <div className="text-xs font-semibold uppercase text-gray-500">Attach to existing claim</div>
+                    {claims.length ? (
+                      <>
+                        <select
+                          aria-label="Target claim"
+                          className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
+                          name="claim_id"
+                        >
+                          {claims.map((claim) => (
+                            <option key={claim.id} className="bg-[#111111]" value={claim.id}>
+                              #{claim.id} - {claim.statement.slice(0, 92)}
+                            </option>
+                          ))}
+                        </select>
+                        <Input aria-label="Evidence summary" defaultValue={defaultStatement} name="summary" required />
+                        <div className="grid gap-2 md:grid-cols-[120px_120px_auto]">
+                          <select
+                            aria-label="Evidence type"
+                            className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
+                            name="evidence_type"
+                          >
+                            <option className="bg-[#111111]" value="supports">supports</option>
+                            <option className="bg-[#111111]" value="contradicts">contradicts</option>
+                          </select>
+                          <Input aria-label="Source tier" defaultValue={sourceTier} name="source_tier" />
+                          <input name="source_url" type="hidden" value={document.source_url ?? ''} />
+                          <Button type="submit" variant="outline">
+                            <Plus className="h-4 w-4" />
+                            Evidence
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+                        No existing claims yet.
+                      </div>
+                    )}
+                  </form>
+                </div>
+              </article>
+            );
+          })}
+          {chunkRows.length > visibleRows.length ? (
+            <div className="rounded-md border border-gray-800 p-3 text-sm text-gray-400">
+              Showing first {visibleRows.length} chunks. Use source ingestion filters to narrow the working set.
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+          No source chunks available. Import documents from the Sources page to create traceable evidence.
+        </div>
+      )}
+    </section>
+  );
+}
+
 function WhatChangedPanel({
   ticker,
   changes,
@@ -861,6 +1035,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
         sourceDocuments={sourceDocuments}
         ticker={company.ticker}
       />
+
+      <SourceEvidencePanel claims={claims} sourceDocuments={sourceDocuments} ticker={company.ticker} />
 
       <SourceAwareChatPanel chatQuestion={chat} chatResponse={chatResponse} ticker={company.ticker} />
 

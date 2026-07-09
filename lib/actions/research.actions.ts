@@ -365,7 +365,7 @@ export async function getResearchCompanyDetail(ticker: string) {
     getJson<ResearchThesisSection[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/sections`, []),
     getJson<ResearchThesisChange[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/changes`, []),
     getJson<ResearchMemoryItem[]>(`/api/memory/memory-items?ticker=${encodeURIComponent(normalizedTicker)}&scope=company&limit=20`, []),
-    getJson<ResearchSourceDocument[]>(`/api/sources/documents?ticker=${encodeURIComponent(normalizedTicker)}&include_chunks=true`, []),
+    getJson<ResearchSourceDocument[]>(`/api/sources/documents?ticker=${encodeURIComponent(normalizedTicker)}&include_chunks=true&chunk_text_limit=1800`, []),
   ]);
 
   return {
@@ -447,6 +447,62 @@ export async function addResearchClaimEvidence(ticker: string, claimId: number, 
     source_tier: sourceTier,
     document_id: Number.isFinite(documentId) && documentId > 0 ? documentId : null,
     document_chunk_id: Number.isFinite(documentChunkId) && documentChunkId > 0 ? documentChunkId : null,
+  });
+
+  revalidatePath('/research');
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function createResearchClaimFromChunk(ticker: string, chunkId: number, formData: FormData) {
+  const normalizedTicker = ticker.toUpperCase();
+  const statement = String(formData.get('statement') ?? '').trim();
+  const summary = String(formData.get('summary') ?? statement).trim();
+  const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
+  const sourceUrl = String(formData.get('source_url') ?? '').trim();
+  const sourceTier = String(formData.get('source_tier') ?? 'primary').trim() || 'primary';
+  const materiality = Number(formData.get('materiality_score') ?? 5);
+
+  if (statement.length < 5 || summary.length < 3 || !Number.isFinite(chunkId) || chunkId <= 0) return;
+
+  const claim = await postJson<ResearchClaim | null>('/api/memory/claims', null, {
+    ticker: normalizedTicker,
+    statement,
+    claim_type: 'source_extracted',
+    materiality_score: Number.isFinite(materiality) ? Math.max(0, Math.min(10, materiality)) : 5,
+    source_quality: sourceTier,
+    created_by: 'user',
+  });
+
+  if (!claim?.id) return;
+
+  await postJson(`/api/memory/claims/${claim.id}/evidence`, null, {
+    evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
+    summary,
+    source_url: sourceUrl || null,
+    source_tier: sourceTier,
+    document_chunk_id: chunkId,
+  });
+
+  revalidatePath('/research');
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function addResearchChunkEvidence(ticker: string, chunkId: number, formData: FormData) {
+  const normalizedTicker = ticker.toUpperCase();
+  const claimId = Number(formData.get('claim_id') ?? 0);
+  const summary = String(formData.get('summary') ?? '').trim();
+  const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
+  const sourceUrl = String(formData.get('source_url') ?? '').trim();
+  const sourceTier = String(formData.get('source_tier') ?? 'primary').trim() || 'primary';
+
+  if (!Number.isFinite(claimId) || claimId <= 0 || summary.length < 3 || !Number.isFinite(chunkId) || chunkId <= 0) return;
+
+  await postJson(`/api/memory/claims/${claimId}/evidence`, null, {
+    evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
+    summary,
+    source_url: sourceUrl || null,
+    source_tier: sourceTier,
+    document_chunk_id: chunkId,
   });
 
   revalidatePath('/research');
