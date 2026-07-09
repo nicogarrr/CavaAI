@@ -6,17 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, ExternalClaim, NewsEvent, ThesisChange, ThesisVersion
 from app.schemas import ManualNewsResponse, NewsFeedItem, NewsIngestResponse
-
-MATERIAL_KEYWORDS = {
-    "dilution": ["offering", "dilution", "atm", "capital raise", "convertible", "shares"],
-    "earnings": ["earnings", "guidance", "revenue", "eps", "fcf", "margin"],
-    "regulatory": ["fda", "sec", "fcc", "ema", "regulatory", "investigation", "approval"],
-    "contract": ["contract", "award", "customer", "backlog", "launch", "partnership"],
-    "capital_allocation": ["buyback", "repurchase", "dividend", "spin-off", "asset sale"],
-}
+from app.services.materiality_service import MaterialityService
 
 
 class NewsService:
+    def __init__(self) -> None:
+        self.materiality = MaterialityService()
+
     def detect_ticker(self, db: Session, text: str) -> Company | None:
         tickers = {company.ticker: company for company in db.scalars(select(Company)).all()}
         upper_text = text.upper()
@@ -56,43 +52,7 @@ class NewsService:
         ticker: str | None = None,
     ) -> ManualNewsResponse:
         company = self._company_for_item(db, text, ticker)
-        lower_text = text.lower()
-        matched_types = [
-            event_type
-            for event_type, keywords in MATERIAL_KEYWORDS.items()
-            if any(keyword in lower_text for keyword in keywords)
-        ]
-        event_type = matched_types[0] if matched_types else "general_news"
-
-        materiality = 3
-        if matched_types:
-            materiality += 2 * len(matched_types)
-        if "dilution" in matched_types:
-            materiality += 2
-        if any(word in lower_text for word in ["bankruptcy", "fraud", "halt", "default"]):
-            materiality = 10
-        if company and ("pre_fcf" in company.factor_tags or "speculative" in company.factor_tags):
-            materiality += 1
-        materiality = max(1, min(materiality, 10))
-
-        affected_assumptions = []
-        if "dilution" in matched_types:
-            affected_assumptions.extend(["share_count", "cash_runway", "dilution_risk"])
-        if "earnings" in matched_types:
-            affected_assumptions.extend(["revenue_growth", "fcf_margin", "guidance"])
-        if "regulatory" in matched_types:
-            affected_assumptions.extend(["approval_probability", "regulatory_risk"])
-        if "contract" in matched_types:
-            affected_assumptions.extend(["revenue_timing", "backlog_conversion"])
-        if "capital_allocation" in matched_types:
-            affected_assumptions.extend(["share_count", "capital_allocation"])
-
-        requires_update = materiality >= 7
-        impact_direction = "neutral"
-        if any(word in lower_text for word in ["beat", "approval", "award", "buyback", "raise"]):
-            impact_direction = "positive"
-        if any(word in lower_text for word in ["miss", "cut", "delay", "offering", "investigation"]):
-            impact_direction = "negative"
+        assessment = self.materiality.assess_news(db, company, text, source, url)
 
         summary = " ".join(text.strip().split())[:320]
         news = NewsEvent(
@@ -102,12 +62,12 @@ class NewsService:
             source=source,
             url=url,
             summary=summary,
-            event_type=event_type,
-            materiality_score=materiality,
-            impact_direction=impact_direction,
-            affected_thesis=requires_update,
-            affected_assumptions=sorted(set(affected_assumptions)),
-            requires_update=requires_update,
+            event_type=assessment.event_type,
+            materiality_score=assessment.materiality_score,
+            impact_direction=assessment.impact_direction,
+            affected_thesis=assessment.requires_update,
+            affected_assumptions=assessment.affected_assumptions,
+            requires_update=assessment.requires_update,
             processed_at=datetime.now(UTC),
         )
         db.add(news)
@@ -119,11 +79,11 @@ class NewsService:
                 .where(ThesisVersion.company_id == company.id)
                 .order_by(desc(ThesisVersion.version))
             )
-        if requires_update and company:
+        if assessment.requires_update and company:
             change_type = "news_material_update"
-            if materiality >= 9 and impact_direction == "negative":
+            if assessment.materiality_score >= 9 and assessment.impact_direction == "negative":
                 change_type = "news_potential_invalidation"
-            elif materiality >= 9 and impact_direction == "positive":
+            elif assessment.materiality_score >= 9 and assessment.impact_direction == "positive":
                 change_type = "news_material_positive"
             db.add(
                 ThesisChange(
@@ -131,11 +91,11 @@ class NewsService:
                     from_version_id=latest_thesis.id if latest_thesis else None,
                     to_version_id=latest_thesis.id if latest_thesis else None,
                     change_type=change_type,
-                    impact_direction=impact_direction,
-                    materiality_score=materiality,
+                    impact_direction=assessment.impact_direction,
+                    materiality_score=assessment.materiality_score,
                     summary=f"Material news requires thesis review: {summary}",
                     affected_claim_ids=[],
-                    affected_metrics=sorted(set(affected_assumptions)),
+                    affected_metrics=assessment.affected_assumptions,
                     requires_review=True,
                 )
             )
@@ -153,20 +113,25 @@ class NewsService:
 
         action = (
             "Actualizar tesis con aprobacion humana y filing/call si confirma el cambio."
-            if requires_update
+            if assessment.requires_update
             else "Guardar en tracker; no tocar DCF hasta evidencia primaria."
         )
         return ManualNewsResponse(
             ticker=company.ticker if company else None,
             summary=summary,
-            event_type=event_type,
-            materiality_score=materiality,
-            impact_direction=impact_direction,
-            affected_thesis=requires_update,
-            affected_assumptions=sorted(set(affected_assumptions)),
-            requires_update=requires_update,
+            event_type=assessment.event_type,
+            materiality_score=assessment.materiality_score,
+            impact_direction=assessment.impact_direction,
+            affected_thesis=assessment.requires_update,
+            affected_assumptions=assessment.affected_assumptions,
+            requires_update=assessment.requires_update,
             action=action,
-            source_policy="Manual input is evidence, not official truth; material model changes require primary-source confirmation.",
+            source_policy=assessment.source_policy,
+            source_tier=assessment.source_tier,
+            source_trust_score=assessment.source_trust_score,
+            portfolio_weight=assessment.portfolio_weight,
+            materiality_reasons=assessment.reasons,
+            model_route=assessment.model_route,
         )
 
     def analyze_manual_news(self, db: Session, text: str, source: str, url: str | None) -> ManualNewsResponse:

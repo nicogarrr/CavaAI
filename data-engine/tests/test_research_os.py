@@ -1,3 +1,4 @@
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -6,7 +7,7 @@ from sqlalchemy import delete, or_, select
 
 import main
 from app.core.database import SessionLocal, init_db
-from app.models import ExternalClaim, NewsEvent, ThesisChange
+from app.models import Company, ExternalClaim, FinancialFact, MemoryItem, NewsEvent, ThesisChange
 from app.seed import seed
 from app.services.quartr_import_service import QuartrImportService
 from app.services.source_auditor import SourceAuditor
@@ -20,6 +21,7 @@ TEST_NEWS_PATTERNS = [
     "%MSFT wins major customer contract%",
     "%MSFT cuts guidance after earnings miss%",
 ]
+TEST_MEMORY_PATTERNS = ["%Azure AI demand sigue sosteniendo premium cloud growth%"]
 
 
 def cleanup_news_test_artifacts() -> None:
@@ -37,6 +39,19 @@ def cleanup_news_test_artifacts() -> None:
         if summaries:
             db.execute(delete(ExternalClaim).where(ExternalClaim.claim.in_(summaries)))
 
+        db.execute(
+            delete(MemoryItem).where(
+                MemoryItem.source_type == "chat",
+                or_(*(MemoryItem.content.like(pattern) for pattern in TEST_MEMORY_PATTERNS)),
+            )
+        )
+        db.execute(
+            delete(FinancialFact).where(
+                FinancialFact.source_type == "test_sec",
+                FinancialFact.metric == "revenue",
+                FinancialFact.period == "FY2025",
+            )
+        )
         db.execute(
             delete(ThesisChange).where(
                 or_(*(ThesisChange.summary.like(pattern) for pattern in TEST_NEWS_PATTERNS))
@@ -361,6 +376,66 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     )
     assert memory.status_code == 200
     assert memory.json()["memory_type"] == "watch_item"
+
+    db = SessionLocal()
+    try:
+        msft = db.scalar(select(Company).where(Company.ticker == "MSFT"))
+        assert msft is not None
+        existing_revenue = db.scalar(
+            select(FinancialFact).where(
+                FinancialFact.company_id == msft.id,
+                FinancialFact.metric == "revenue",
+                FinancialFact.period == "FY2025",
+            )
+        )
+        if existing_revenue is None:
+            db.add(
+                FinancialFact(
+                    company_id=msft.id,
+                    metric="revenue",
+                    value=Decimal("1000"),
+                    unit="USDm",
+                    period="FY2025",
+                    fiscal_year=2025,
+                    source_type="test_sec",
+                    confidence=Decimal("0.95"),
+                )
+            )
+            db.commit()
+    finally:
+        db.close()
+
+    source_aware_chat = client.post(
+        "/api/chat",
+        json={
+            "ticker": "MSFT",
+            "scope": "company",
+            "question": (
+                "Recuerda vigilar si Azure AI demand sigue sosteniendo premium cloud growth. "
+                "Que evidencia tienes sobre MSFT?"
+            ),
+        },
+    )
+    assert source_aware_chat.status_code == 200
+    chat_payload = source_aware_chat.json()
+    assert "FACT" in chat_payload["answer"]
+    assert "USER ASSUMPTION / MEMORY" in chat_payload["answer"]
+    assert "UNVERIFIED CLAIM" in chat_payload["answer"]
+    assert "LLM INFERENCE" in chat_payload["answer"]
+    source_types = {source["type"] for source in chat_payload["sources"]}
+    assert {"thesis_version", "financial_fact", "claim", "claim_evidence", "memory_item", "memory_writeback"} <= source_types
+
+    db = SessionLocal()
+    try:
+        stored_chat_memory = db.scalar(
+            select(MemoryItem).where(
+                MemoryItem.source_type == "chat",
+                MemoryItem.content.like("%Azure AI demand%"),
+            )
+        )
+        assert stored_chat_memory is not None
+    finally:
+        db.close()
 
     sections = client.get("/api/memory/thesis/MSFT/sections")
     assert sections.status_code == 200

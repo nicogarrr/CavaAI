@@ -8,6 +8,7 @@ import {
   Database,
   FileText,
   GitBranch,
+  MessageSquare,
   Plus,
   RefreshCcw,
   ShieldCheck,
@@ -19,7 +20,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  addResearchChunkEvidence,
   addResearchClaimEvidence,
+  askResearchCompanyChat,
+  createResearchClaimFromChunk,
   createResearchThesisChange,
   createResearchClaim,
   createResearchMemoryItem,
@@ -28,9 +32,12 @@ import {
   refreshCompanyFinancials,
   refreshCompanyFinancialsSEC,
   getThesisHistory,
+  type ResearchCalculatedMetric,
   type ResearchClaim,
+  type ResearchChatResponse,
   type ResearchFact,
   type ResearchMemoryItem,
+  type ResearchPeerComparison,
   type ResearchSourceDocument,
   type ResearchThesis,
   type ResearchThesisChange,
@@ -45,6 +52,9 @@ export const revalidate = 0;
 type ResearchCompanyPageProps = {
   params: Promise<{
     ticker: string;
+  }>;
+  searchParams: Promise<{
+    chat?: string;
   }>;
 };
 
@@ -247,6 +257,159 @@ function FactsTable({ facts }: { facts: ResearchFact[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function CalculatedMetricsTable({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
+  if (!metrics.length) {
+    return (
+      <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+        No hay metricas calculadas todavia.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[920px] text-left text-sm">
+        <thead className="text-xs uppercase text-gray-500">
+          <tr>
+            <th className="border-b border-gray-800 py-2">Metric</th>
+            <th className="border-b border-gray-800 py-2 text-right">Value</th>
+            <th className="border-b border-gray-800 py-2">Status</th>
+            <th className="border-b border-gray-800 py-2">Formula</th>
+            <th className="border-b border-gray-800 py-2">Period</th>
+            <th className="border-b border-gray-800 py-2">Fact IDs</th>
+            <th className="border-b border-gray-800 py-2 text-right">Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {metrics.map((metric) => {
+            const value = metric.value == null ? null : numberValue(metric.value);
+            return (
+              <tr key={`${metric.metric}-${metric.definition_version}-${metric.period}`} className="border-b border-gray-900 last:border-0">
+                <td className="py-3 font-semibold text-gray-200">{metric.metric}</td>
+                <td className="py-3 text-right text-gray-300">
+                  {value == null ? 'N/A' : metric.unit === 'decimal' ? pct(value) : `${value.toFixed(2)}${metric.unit}`}
+                </td>
+                <td className="py-3">
+                  <Badge
+                    className={
+                      metric.status === 'ok'
+                        ? 'border-teal-800 bg-teal-950/30 text-teal-200'
+                        : 'border-amber-800 bg-amber-950/30 text-amber-200'
+                    }
+                    variant="outline"
+                  >
+                    {metric.status}
+                  </Badge>
+                </td>
+                <td className="max-w-[320px] py-3 text-xs leading-5 text-gray-400">{metric.formula}</td>
+                <td className="py-3 text-gray-500">{metric.period}</td>
+                <td className="py-3 text-gray-500">{metric.source_fact_ids.join(', ') || 'missing'}</td>
+                <td className="py-3 text-right text-gray-400">{pct(numberValue(metric.confidence))}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function peerMetricValue(value: string | null, unit: string) {
+  if (value === null) return 'N/A';
+  const parsed = numberValue(value);
+  if (unit === 'decimal') return pct(parsed);
+  if (unit === 'x') return `${parsed.toFixed(2)}x`;
+  return parsed.toFixed(2);
+}
+
+function PeerComparisonPanel({ comparison }: { comparison: ResearchPeerComparison | null }) {
+  if (!comparison || !comparison.companies.length) {
+    return (
+      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Peer Comparison</h2>
+        </div>
+        <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+          No peer comparison available yet.
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Peer Comparison</h2>
+        </div>
+        <div className="text-sm text-gray-500">
+          {comparison.peer_count} peers - {comparison.basis}
+        </div>
+      </div>
+
+      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {comparison.metrics.slice(0, 4).map((metric) => {
+          const benchmark = comparison.benchmarks[metric];
+          return (
+            <div key={metric} className="rounded-md border border-gray-800 p-3">
+              <div className="text-xs font-semibold uppercase text-gray-500">{metric}</div>
+              <div className="mt-2 text-sm text-gray-300">
+                Target {benchmark?.target_value ? pct(numberValue(benchmark.target_value)) : 'N/A'}
+              </div>
+              <div className="text-xs text-gray-500">
+                Peer median {benchmark?.peer_median ? pct(numberValue(benchmark.peer_median)) : 'N/A'} ({benchmark?.peer_sample_size ?? 0})
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] text-left text-sm">
+          <thead className="text-xs uppercase text-gray-500">
+            <tr>
+              <th className="border-b border-gray-800 py-2">Company</th>
+              {comparison.metrics.map((metric) => (
+                <th key={metric} className="border-b border-gray-800 py-2 text-right">
+                  {metric}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {comparison.companies.map((company) => (
+              <tr key={company.ticker} className="border-b border-gray-900 last:border-0">
+                <td className="max-w-[260px] py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-200">{company.ticker}</span>
+                    {company.is_target ? (
+                      <Badge className="border-teal-800 bg-teal-950/30 text-teal-200" variant="outline">
+                        target
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-gray-500">{company.name}</div>
+                </td>
+                {comparison.metrics.map((metric) => {
+                  const item = company.metrics[metric];
+                  return (
+                    <td key={`${company.ticker}-${metric}`} className="py-3 text-right text-gray-300">
+                      <div>{peerMetricValue(item?.value ?? null, item?.unit ?? 'decimal')}</div>
+                      <div className="text-xs text-gray-600">{item?.period ?? 'unknown'}</div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -466,6 +629,178 @@ function ClaimsMemoryPanel({
   );
 }
 
+function sourceTierForDocument(document: ResearchSourceDocument) {
+  const sourceType = document.source_type.toLowerCase();
+  if (
+    sourceType.includes('sec') ||
+    sourceType.includes('filing') ||
+    sourceType.includes('10-k') ||
+    sourceType.includes('10-q') ||
+    sourceType.includes('transcript') ||
+    sourceType.includes('earnings') ||
+    sourceType.includes('upload')
+  ) {
+    return 'primary';
+  }
+  return 'secondary';
+}
+
+function defaultClaimStatement(text: string, title: string) {
+  const firstSentence = text.split(/[.!?]\s/)[0]?.trim() || title;
+  return firstSentence.length > 180 ? `${firstSentence.slice(0, 177)}...` : firstSentence;
+}
+
+function SourceEvidencePanel({
+  ticker,
+  claims,
+  sourceDocuments,
+}: {
+  ticker: string;
+  claims: ResearchClaim[];
+  sourceDocuments: ResearchSourceDocument[];
+}) {
+  const chunkRows = sourceDocuments.flatMap((document) =>
+    (document.chunks ?? []).map((chunk) => ({
+      document,
+      chunk,
+    })),
+  );
+  const visibleRows = chunkRows.slice(0, 12);
+
+  return (
+    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
+          <Database className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Source Evidence Lab</h2>
+        </div>
+        <div className="text-sm text-gray-500">
+          {sourceDocuments.length} documents - {chunkRows.length} chunks
+        </div>
+      </div>
+
+      {visibleRows.length ? (
+        <div className="grid gap-4">
+          {visibleRows.map(({ document, chunk }) => {
+            const sourceTier = sourceTierForDocument(document);
+            const defaultStatement = defaultClaimStatement(chunk.text, document.title);
+
+            return (
+              <article key={chunk.id} className="rounded-md border border-gray-800 bg-black/25 p-4">
+                <div className="flex flex-wrap items-start gap-2">
+                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                    {document.source_type}
+                  </Badge>
+                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                    chunk #{chunk.chunk_index}
+                  </Badge>
+                  <span className="ml-auto text-xs text-gray-500">doc #{document.id}</span>
+                </div>
+                <div className="mt-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                  <h3 className="text-sm font-semibold text-gray-200">{document.title}</h3>
+                  {document.source_url ? (
+                    <a
+                      className="text-xs text-teal-300 hover:text-teal-200"
+                      href={document.source_url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Open source
+                    </a>
+                  ) : null}
+                </div>
+                <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-gray-800 bg-black/30 p-3 font-sans text-sm leading-6 text-gray-300">
+                  {chunk.text}
+                </pre>
+
+                <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                  <form action={createResearchClaimFromChunk.bind(null, ticker, chunk.id)} className="grid gap-2">
+                    <div className="text-xs font-semibold uppercase text-gray-500">Create claim from chunk</div>
+                    <Input aria-label="Claim statement" defaultValue={defaultStatement} name="statement" required />
+                    <Textarea
+                      aria-label="Evidence summary"
+                      className="border-gray-700 bg-transparent text-gray-100"
+                      defaultValue={defaultStatement}
+                      name="summary"
+                      required
+                    />
+                    <div className="grid gap-2 md:grid-cols-[120px_96px_120px_auto]">
+                      <select
+                        aria-label="Evidence type"
+                        className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
+                        name="evidence_type"
+                      >
+                        <option className="bg-[#111111]" value="supports">supports</option>
+                        <option className="bg-[#111111]" value="contradicts">contradicts</option>
+                      </select>
+                      <Input aria-label="Materiality" defaultValue="5" max="10" min="0" name="materiality_score" type="number" />
+                      <Input aria-label="Source tier" defaultValue={sourceTier} name="source_tier" />
+                      <input name="source_url" type="hidden" value={document.source_url ?? ''} />
+                      <Button type="submit" variant="outline">
+                        <Plus className="h-4 w-4" />
+                        Claim
+                      </Button>
+                    </div>
+                  </form>
+
+                  <form action={addResearchChunkEvidence.bind(null, ticker, chunk.id)} className="grid gap-2">
+                    <div className="text-xs font-semibold uppercase text-gray-500">Attach to existing claim</div>
+                    {claims.length ? (
+                      <>
+                        <select
+                          aria-label="Target claim"
+                          className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
+                          name="claim_id"
+                        >
+                          {claims.map((claim) => (
+                            <option key={claim.id} className="bg-[#111111]" value={claim.id}>
+                              #{claim.id} - {claim.statement.slice(0, 92)}
+                            </option>
+                          ))}
+                        </select>
+                        <Input aria-label="Evidence summary" defaultValue={defaultStatement} name="summary" required />
+                        <div className="grid gap-2 md:grid-cols-[120px_120px_auto]">
+                          <select
+                            aria-label="Evidence type"
+                            className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
+                            name="evidence_type"
+                          >
+                            <option className="bg-[#111111]" value="supports">supports</option>
+                            <option className="bg-[#111111]" value="contradicts">contradicts</option>
+                          </select>
+                          <Input aria-label="Source tier" defaultValue={sourceTier} name="source_tier" />
+                          <input name="source_url" type="hidden" value={document.source_url ?? ''} />
+                          <Button type="submit" variant="outline">
+                            <Plus className="h-4 w-4" />
+                            Evidence
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+                        No existing claims yet.
+                      </div>
+                    )}
+                  </form>
+                </div>
+              </article>
+            );
+          })}
+          {chunkRows.length > visibleRows.length ? (
+            <div className="rounded-md border border-gray-800 p-3 text-sm text-gray-400">
+              Showing first {visibleRows.length} chunks. Use source ingestion filters to narrow the working set.
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+          No source chunks available. Import documents from the Sources page to create traceable evidence.
+        </div>
+      )}
+    </section>
+  );
+}
+
 function WhatChangedPanel({
   ticker,
   changes,
@@ -539,14 +874,96 @@ function WhatChangedPanel({
   );
 }
 
-export default async function ResearchCompanyPage({ params }: ResearchCompanyPageProps) {
+function SourceAwareChatPanel({
+  ticker,
+  chatQuestion,
+  chatResponse,
+}: {
+  ticker: string;
+  chatQuestion: string;
+  chatResponse: ResearchChatResponse | null;
+}) {
+  return (
+    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <MessageSquare className="h-5 w-5 text-teal-300" />
+        <h2 className="text-lg font-semibold text-gray-100">Company Chat</h2>
+        {chatResponse?.blocked ? (
+          <Badge className="ml-auto border-amber-800 bg-amber-950/30 text-amber-200" variant="outline">
+            blocked
+          </Badge>
+        ) : null}
+      </div>
+      <form className="grid gap-3 md:grid-cols-[1fr_auto]" method="GET">
+        <Input
+          aria-label="Ask company chat"
+          defaultValue={chatQuestion}
+          name="chat"
+          placeholder={`Ask ${ticker} with source-aware memory`}
+        />
+        <Button type="submit" variant="outline">
+          <MessageSquare className="h-4 w-4" />
+          Ask
+        </Button>
+      </form>
+      {chatResponse ? (
+        <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_320px]">
+          <article className="max-h-[520px] overflow-auto rounded-md border border-gray-800 bg-black/30 p-4">
+            <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-gray-300">
+              {chatResponse.answer}
+            </pre>
+          </article>
+          <aside className="rounded-md border border-gray-800 bg-black/30 p-4">
+            <div className="mb-3 text-xs font-semibold uppercase text-gray-500">Sources</div>
+            <div className="space-y-2">
+              {chatResponse.sources.slice(0, 12).map((source, index) => (
+                <div key={`${source.type}-${String(source.id)}-${index}`} className="rounded-md border border-gray-800 p-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                      {source.type}
+                    </Badge>
+                    <span className="ml-auto text-xs text-gray-600">#{String(source.id ?? 'n/a')}</span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-gray-400">{source.title}</p>
+                </div>
+              ))}
+              {!chatResponse.sources.length ? (
+                <div className="rounded-md border border-gray-800 p-3 text-sm text-gray-400">
+                  No sources returned.
+                </div>
+              ) : null}
+            </div>
+            {chatResponse.proposed_actions.length ? (
+              <div className="mt-4 border-t border-gray-800 pt-3">
+                <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Next actions</div>
+                <ul className="list-disc space-y-1 pl-4 text-xs leading-5 text-gray-400">
+                  {chatResponse.proposed_actions.map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </aside>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+          Ask a question to retrieve thesis, facts, claims, evidence, documents, news and memory with provenance.
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default async function ResearchCompanyPage({ params, searchParams }: ResearchCompanyPageProps) {
   const { ticker } = await params;
-  const [{ company, valuation, facts, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments }, thesisHistory] = await Promise.all([
+  const { chat = '' } = await searchParams;
+  const [{ company, valuation, facts, calculatedMetrics, peerComparison, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments }, thesisHistory] = await Promise.all([
     getResearchCompanyDetail(ticker),
     getThesisHistory(ticker),
   ]);
 
   if (!company) notFound();
+  const chatResponse = chat.trim() ? await askResearchCompanyChat(company.ticker, chat) : null;
 
   const inputSource = valuation.trace.input_source ?? valuation.status ?? 'unknown';
   const sourceTone =
@@ -684,6 +1101,17 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
       </section>
 
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Sigma className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Traceable Metrics</h2>
+          <span className="ml-auto text-sm text-gray-500">{calculatedMetrics.length} metrics</span>
+        </div>
+        <CalculatedMetricsTable metrics={calculatedMetrics} />
+      </section>
+
+      <PeerComparisonPanel comparison={peerComparison} />
+
+      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-teal-300" />
@@ -706,6 +1134,10 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
         sourceDocuments={sourceDocuments}
         ticker={company.ticker}
       />
+
+      <SourceEvidencePanel claims={claims} sourceDocuments={sourceDocuments} ticker={company.ticker} />
+
+      <SourceAwareChatPanel chatQuestion={chat} chatResponse={chatResponse} ticker={company.ticker} />
 
       <WhatChangedPanel changes={thesisChanges} ticker={company.ticker} />
 

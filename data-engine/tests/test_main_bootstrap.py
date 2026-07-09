@@ -78,6 +78,8 @@ def test_public_routes_are_registered_once():
         "/api/companies",
         "/api/companies/{ticker}",
         "/api/portfolio/summary",
+        "/api/companies/{ticker}/metrics/calculated",
+        "/api/companies/{ticker}/peers/comparison",
         "/api/portfolio/positions",
         "/api/portfolio/cash",
         "/api/portfolio/import/ibkr",
