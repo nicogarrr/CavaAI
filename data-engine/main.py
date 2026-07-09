@@ -16,6 +16,7 @@ from routers.market import router as market_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Local/dev convenience only. Production should run migrations + seed explicitly.
     init_db()
     ensure_company_master()
     yield
@@ -44,5 +45,69 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+@app.get("/health/live")
+async def health_live():
+    """Liveness — process is up. Does not check dependencies."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness — verifies critical dependencies when configured."""
+    from sqlalchemy import text
+
+    from app.core.config import get_settings
+    from app.core.database import SessionLocal
+
+    settings = get_settings()
+    checks: dict[str, str] = {}
+
+    # Postgres / SQLite
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as exc:  # noqa: BLE001 — surface dependency status
+        checks["database"] = f"error:{type(exc).__name__}"
+
+    # Redis (optional locally)
+    try:
+        import redis
+
+        client = redis.from_url(settings.redis_url, socket_connect_timeout=1)
+        client.ping()
+        checks["redis"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        checks["redis"] = f"error:{type(exc).__name__}"
+
+    # Qdrant
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(f"{settings.qdrant_url.rstrip('/')}/readyz", timeout=1) as resp:
+            checks["qdrant"] = "ok" if resp.status < 500 else f"error:status_{resp.status}"
+    except Exception as exc:  # noqa: BLE001
+        checks["qdrant"] = f"error:{type(exc).__name__}"
+
+    # MinIO — best-effort TCP/HTTP probe via endpoint string
+    try:
+        import urllib.request
+
+        endpoint = settings.minio_endpoint
+        if not endpoint.startswith("http"):
+            endpoint = f"http://{endpoint}"
+        with urllib.request.urlopen(endpoint, timeout=1) as resp:
+            checks["minio"] = "ok" if resp.status < 500 else f"error:status_{resp.status}"
+    except Exception as exc:  # noqa: BLE001
+        checks["minio"] = f"error:{type(exc).__name__}"
+
+    ready = all(value == "ok" for key, value in checks.items() if key == "database")
+    # Database is hard-required; other deps are reported but do not fail local SQLite-only runs
+    # unless explicitly configured as non-sqlite.
+    if not settings.database_url.startswith("sqlite"):
+        ready = all(value == "ok" for value in checks.values())
+
+    return {
+        "status": "ready" if ready else "degraded",
+        "checks": checks,
+    }

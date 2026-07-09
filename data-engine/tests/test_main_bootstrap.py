@@ -13,7 +13,10 @@ def test_main_only_declares_root_and_health_routes():
     source = (DATA_ENGINE_ROOT / "main.py").read_text(encoding="utf-8")
     app_routes = re.findall(r"@app\.(?:get|post|put|patch|delete)\(\"([^\"]+)\"", source)
 
-    assert app_routes == ["/", "/health"]
+    assert "/" in app_routes
+    assert "/health" in app_routes
+    assert "/health/live" in app_routes
+    assert "/health/ready" in app_routes
     assert "include_router(fundamentals_router)" in source
     assert "include_router(market_router)" in source
     assert "include_router(knowledge_router)" in source
@@ -27,6 +30,8 @@ def test_public_routes_are_registered_once():
     expected_routes = {
         "/",
         "/health",
+        "/health/live",
+        "/health/ready",
         "/test",
         "/fundamentals/{symbol}",
         "/financial-growth/{symbol}",
@@ -104,4 +109,9 @@ def test_root_and_health():
     client = TestClient(main.app)
 
     assert client.get("/").json() == {"status": "ok", "service": "FMP Data Engine"}
-    assert client.get("/health").json() == {"status": "healthy"}
+    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/health/live").json() == {"status": "ok"}
+    ready = client.get("/health/ready")
+    assert ready.status_code == 200
+    assert "checks" in ready.json()
+    assert "database" in ready.json()["checks"]

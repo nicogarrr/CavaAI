@@ -97,11 +97,15 @@ def test_research_api_core_flow():
     valuation = client.get("/api/valuation/ASTS")
     assert valuation.status_code == 200
     assert valuation.json()["ticker"] == "ASTS"
-    assert valuation.json()["trace"]["method"]
+    assert valuation.json()["status"] == "insufficient_data"
+    assert valuation.json()["publishable"] is False
+    assert valuation.json()["expected_value"] is None
+    assert valuation.json()["trace"]["engine"] == "pre_revenue"
 
     thesis = client.post("/api/thesis/generate", json={"ticker": "ASTS", "force_new_version": True})
     assert thesis.status_code == 200
-    assert thesis.json()["status"] in {"final", "draft_failed_audit"}
+    assert thesis.json()["status"] in {"final", "draft_failed_audit", "insufficient_data", "draft"}
+    assert f"Thesis v{thesis.json()['version']}" in thesis.json()["thesis_markdown"]
 
     chat = client.post("/api/chat", json={"question": "Que pasa con ASTS?", "ticker": "ASTS"})
     assert chat.status_code == 200
@@ -222,14 +226,21 @@ def test_fmp_refresh_normalizes_facts_and_valuation_uses_them(monkeypatch):
 
     valuation = client.get("/api/valuation/MSFT")
     assert valuation.status_code == 200
-    trace = valuation.json()["trace"]
+    payload = valuation.json()
+    trace = payload["trace"]
+    assert payload["status"] == "ok"
+    assert payload["publishable"] is True
+    assert payload["expected_value"] is not None
     assert trace["input_source"] == "financial_facts"
     assert trace["fact_ids"]["revenue"] == revenue_facts[0]["id"]
     assert "bootstrap_notice" not in trace
+    assert trace["engine"] == "standard_dcf"
+    assert "snapshot" in trace
 
     thesis = client.post("/api/thesis/generate", json={"ticker": "MSFT", "force_new_version": True})
     assert thesis.status_code == 200
     thesis_payload = thesis.json()
     assert "Valuation input source: `financial_facts`" in thesis_payload["thesis_markdown"]
     assert "| revenue |" in thesis_payload["thesis_markdown"]
+    assert f"Thesis v{thesis_payload['version']}" in thesis_payload["thesis_markdown"]
     assert thesis_payload["data_confidence_score"] >= 80
