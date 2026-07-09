@@ -19,6 +19,9 @@ INCOME_METRICS: list[MetricSpec] = [
     ("revenue", "revenue", "USD"),
     ("gross_profit", "grossProfit", "USD"),
     ("operating_income", "operatingIncome", "USD"),
+    ("income_before_tax", "incomeBeforeTax", "USD"),
+    ("income_tax_expense", "incomeTaxExpense", "USD"),
+    ("interest_expense", "interestExpense", "USD"),
     ("net_income", "netIncome", "USD"),
     ("ebitda", "ebitda", "USD"),
     ("eps_diluted", "epsdiluted", "USD/share"),
@@ -32,6 +35,9 @@ BALANCE_METRICS: list[MetricSpec] = [
     ("total_assets", "totalAssets", "USD"),
     ("total_liabilities", "totalLiabilities", "USD"),
     ("total_equity", "totalStockholdersEquity", "USD"),
+    ("goodwill", "goodwill", "USD"),
+    ("intangible_assets", "intangibleAssets", "USD"),
+    ("operating_lease_liabilities", "operatingLeaseLiabilities", "USD"),
 ]
 
 CASH_FLOW_METRICS: list[MetricSpec] = [
@@ -47,12 +53,16 @@ RATIO_METRICS: list[MetricSpec] = [
     ("operating_margin", "operatingProfitMargin", "decimal"),
     ("net_margin", "netProfitMargin", "decimal"),
     ("debt_to_equity", "debtEquityRatio", "decimal"),
+    ("effective_tax_rate", "effectiveTaxRate", "decimal"),
 ]
 
 SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("revenue",           ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"],  "USD"),
     ("gross_profit",      ["GrossProfit"],                                                                          "USD"),
     ("operating_income",  ["OperatingIncomeLoss"],                                                                  "USD"),
+    ("income_before_tax", ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"], "USD"),
+    ("income_tax_expense", ["IncomeTaxExpenseBenefit"],                                                             "USD"),
+    ("interest_expense",   ["InterestExpenseNonOperating", "InterestExpense"],                                      "USD"),
     ("net_income",        ["NetIncomeLoss", "ProfitLoss"],                                                          "USD"),
     ("eps_diluted",       ["EarningsPerShareDiluted"],                                                              "USD/share"),
     ("shares_diluted",    ["WeightedAverageNumberOfDilutedSharesOutstanding", "CommonStockSharesOutstanding"],      "shares"),
@@ -61,6 +71,9 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("total_assets",      ["Assets"],                                                                               "USD"),
     ("total_liabilities", ["Liabilities"],                                                                          "USD"),
     ("total_equity",      ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], "USD"),
+    ("goodwill",          ["Goodwill"],                                                                              "USD"),
+    ("intangible_assets", ["FiniteLivedIntangibleAssetsNet", "IndefiniteLivedIntangibleAssetsExcludingGoodwill"],    "USD"),
+    ("operating_lease_liabilities", ["OperatingLeaseLiability", "OperatingLeaseLiabilityNoncurrent"],                "USD"),
     ("operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities"],                                         "USD"),
     ("capital_expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment"],                                         "USD"),
     ("dividends_paid",    ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock"],                                "USD"),
@@ -153,6 +166,7 @@ class FinancialIngestionService:
 
         db.flush()
         facts += self._add_derived_facts(db, company, document)
+        facts += self._add_profile_facts(db, company, document, profile)
         self._add_profile_price(db, company, profile)
 
         document.metadata_ = {
@@ -565,3 +579,39 @@ class FinancialIngestionService:
                 source="FMP",
             )
         )
+
+    def _add_profile_facts(
+        self,
+        db: Session,
+        company: Company,
+        document: Document,
+        profile: list[dict[str, Any]],
+    ) -> int:
+        if not profile:
+            return 0
+        row = profile[0]
+        period = datetime.now(UTC).date().isoformat()
+        count = 0
+        for metric, field, unit in [
+            ("beta", "beta", "decimal"),
+            ("market_cap", "mktCap", "USD"),
+        ]:
+            value = _decimal(row.get(field))
+            if value is None:
+                continue
+            db.add(
+                FinancialFact(
+                    company_id=company.id,
+                    metric=metric,
+                    value=value,
+                    unit=unit,
+                    period=period,
+                    source_id=document.id,
+                    source_type="FMP_profile",
+                    is_reported=True,
+                    is_adjusted=False,
+                    confidence=Decimal("0.75"),
+                )
+            )
+            count += 1
+        return count

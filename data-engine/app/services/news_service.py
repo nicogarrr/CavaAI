@@ -6,12 +6,18 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, ExternalClaim, NewsEvent, ThesisChange, ThesisVersion
 from app.schemas import ManualNewsResponse, NewsFeedItem, NewsIngestResponse
+from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.materiality_service import MaterialityService
+from app.services.review_alert_service import ReviewAlertService
+from app.services.thesis_graph_service import ThesisGraphService
 
 
 class NewsService:
     def __init__(self) -> None:
         self.materiality = MaterialityService()
+        self.claim_intelligence = ClaimIntelligenceService()
+        self.thesis_graph = ThesisGraphService()
+        self.reviews = ReviewAlertService()
 
     def detect_ticker(self, db: Session, text: str) -> Company | None:
         tickers = {company.ticker: company for company in db.scalars(select(Company)).all()}
@@ -53,6 +59,27 @@ class NewsService:
     ) -> ManualNewsResponse:
         company = self._company_for_item(db, text, ticker)
         assessment = self.materiality.assess_news(db, company, text, source, url)
+        semantic_impact = (
+            self.thesis_graph.assess_impact(
+                db,
+                company,
+                text,
+                base_materiality=assessment.materiality_score,
+                impact_direction=assessment.impact_direction,
+            )
+            if company
+            else None
+        )
+        materiality_score = (
+            semantic_impact.impact_score
+            if semantic_impact
+            else assessment.materiality_score
+        )
+        requires_update = assessment.requires_update or bool(
+            semantic_impact
+            and semantic_impact.affected_claim_ids
+            and materiality_score >= 7
+        )
 
         summary = " ".join(text.strip().split())[:320]
         news = NewsEvent(
@@ -63,11 +90,11 @@ class NewsService:
             url=url,
             summary=summary,
             event_type=assessment.event_type,
-            materiality_score=assessment.materiality_score,
+            materiality_score=materiality_score,
             impact_direction=assessment.impact_direction,
-            affected_thesis=assessment.requires_update,
+            affected_thesis=requires_update,
             affected_assumptions=assessment.affected_assumptions,
-            requires_update=assessment.requires_update,
+            requires_update=requires_update,
             processed_at=datetime.now(UTC),
         )
         db.add(news)
@@ -79,26 +106,32 @@ class NewsService:
                 .where(ThesisVersion.company_id == company.id)
                 .order_by(desc(ThesisVersion.version))
             )
-        if assessment.requires_update and company:
+        if requires_update and company:
             change_type = "news_material_update"
-            if assessment.materiality_score >= 9 and assessment.impact_direction == "negative":
+            if materiality_score >= 9 and assessment.impact_direction == "negative":
                 change_type = "news_potential_invalidation"
-            elif assessment.materiality_score >= 9 and assessment.impact_direction == "positive":
+            elif materiality_score >= 9 and assessment.impact_direction == "positive":
                 change_type = "news_material_positive"
-            db.add(
-                ThesisChange(
-                    company_id=company.id,
-                    from_version_id=latest_thesis.id if latest_thesis else None,
-                    to_version_id=latest_thesis.id if latest_thesis else None,
-                    change_type=change_type,
-                    impact_direction=assessment.impact_direction,
-                    materiality_score=assessment.materiality_score,
-                    summary=f"Material news requires thesis review: {summary}",
-                    affected_claim_ids=[],
-                    affected_metrics=assessment.affected_assumptions,
-                    requires_review=True,
-                )
+            change = ThesisChange(
+                company_id=company.id,
+                from_version_id=latest_thesis.id if latest_thesis else None,
+                to_version_id=latest_thesis.id if latest_thesis else None,
+                change_type=change_type,
+                impact_direction=assessment.impact_direction,
+                materiality_score=materiality_score,
+                summary=(
+                    f"Material news requires thesis review: {summary}. "
+                    f"{semantic_impact.summary if semantic_impact else ''}"
+                ).strip(),
+                affected_claim_ids=(
+                    semantic_impact.affected_claim_ids if semantic_impact else []
+                ),
+                affected_metrics=assessment.affected_assumptions,
+                requires_review=True,
             )
+            db.add(change)
+            db.flush()
+            self.reviews.create_from_news(db, news, change)
         db.add(
             ExternalClaim(
                 company_id=company.id if company else None,
@@ -109,22 +142,33 @@ class NewsService:
                 used_in_model=False,
             )
         )
-        db.commit()
+        if company:
+            self.claim_intelligence.scan_text(
+                db,
+                company=company,
+                text=text,
+                source_type=source,
+                source_url=url,
+                source_reference={"type": "news_event", "id": news.id},
+                auto_apply=True,
+            )
+        else:
+            db.commit()
 
         action = (
             "Actualizar tesis con aprobacion humana y filing/call si confirma el cambio."
-            if assessment.requires_update
+            if requires_update
             else "Guardar en tracker; no tocar DCF hasta evidencia primaria."
         )
         return ManualNewsResponse(
             ticker=company.ticker if company else None,
             summary=summary,
             event_type=assessment.event_type,
-            materiality_score=assessment.materiality_score,
+            materiality_score=materiality_score,
             impact_direction=assessment.impact_direction,
-            affected_thesis=assessment.requires_update,
+            affected_thesis=requires_update,
             affected_assumptions=assessment.affected_assumptions,
-            requires_update=assessment.requires_update,
+            requires_update=requires_update,
             action=action,
             source_policy=assessment.source_policy,
             source_tier=assessment.source_tier,
@@ -132,6 +176,13 @@ class NewsService:
             portfolio_weight=assessment.portfolio_weight,
             materiality_reasons=assessment.reasons,
             model_route=assessment.model_route,
+            affected_claim_ids=(
+                semantic_impact.affected_claim_ids if semantic_impact else []
+            ),
+            affected_node_ids=(
+                semantic_impact.affected_node_ids if semantic_impact else []
+            ),
+            semantic_impact=(semantic_impact.trace if semantic_impact else {}),
         )
 
     def analyze_manual_news(self, db: Session, text: str, source: str, url: str | None) -> ManualNewsResponse:

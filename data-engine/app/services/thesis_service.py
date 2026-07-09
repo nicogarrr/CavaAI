@@ -9,8 +9,18 @@ from decimal import Decimal
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import Company, Document, FinancialFact, MarketPrice, SourceAudit, ThesisVersion
+from app.models import (
+    Claim,
+    ClaimEvidence,
+    Company,
+    Document,
+    FinancialFact,
+    MarketPrice,
+    SourceAudit,
+    ThesisVersion,
+)
 from app.services.source_auditor import SourceAuditor
+from app.services.source_hierarchy_service import classify_source
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import MODEL_VERSION
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
@@ -135,12 +145,13 @@ class ThesisService:
             margin_of_safety=_dec(valuation.get("margin_of_safety")),
             data_confidence_score=self._confidence_score(valuation, facts),
             source_coverage_score=audit.source_coverage_score,
-            red_team_score=65,
+            red_team_score=0,
             valuation_risk_score=75 if "speculative" in (company.factor_tags or []) else 45,
             input_fingerprint=fingerprint,
         )
         db.add(thesis)
         db.flush()
+        self._persist_claims(db, company, thesis, claims)
         db.add(
             SourceAudit(
                 thesis_version_id=thesis.id,
@@ -159,7 +170,68 @@ class ThesisService:
         )
         db.commit()
         db.refresh(thesis)
+        try:
+            from app.services.thesis_graph_service import ThesisGraphService
+
+            ThesisGraphService().build(db, company, thesis)
+        except Exception:
+            pass
+        try:
+            from app.services.red_team_service import RedTeamService
+
+            RedTeamService().run(db, company, thesis)
+            db.refresh(thesis)
+        except Exception:
+            pass
         return thesis
+
+    def _persist_claims(
+        self,
+        db: Session,
+        company: Company,
+        thesis: ThesisVersion,
+        claims: list[dict],
+    ) -> None:
+        for payload in claims:
+            if not payload.get("material", True):
+                continue
+            statement = str(payload.get("claim") or "").strip()
+            if not statement:
+                continue
+            source_id = payload.get("source_id")
+            source_type = str(payload.get("source_type") or "unknown")
+            claim = Claim(
+                company_id=company.id,
+                thesis_version_id=thesis.id,
+                statement=statement,
+                claim_type=str(payload.get("predicate") or "generated_thesis"),
+                status="supported" if source_id else "unverified",
+                confidence=Decimal(str(payload.get("confidence", 0.5))),
+                materiality_score=8,
+                source_quality=classify_source(source_type).key,
+                created_by="thesis_generation",
+                metadata_={
+                    "generated_claim_id": payload.get("claim_id"),
+                    "verification_state": payload.get(
+                        "verification_state", "unverified"
+                    ),
+                    "prompt_version": PROMPT_VERSION,
+                },
+            )
+            db.add(claim)
+            db.flush()
+            if source_id:
+                db.add(
+                    ClaimEvidence(
+                        claim_id=claim.id,
+                        document_id=int(source_id),
+                        evidence_type="supports",
+                        summary=f"Generated from {source_type} source.",
+                        confidence=claim.confidence,
+                        source_tier=classify_source(source_type).key,
+                        metadata_={"automatic": True, "generator": PROMPT_VERSION},
+                    )
+                )
 
     def _confidence_score(self, valuation: dict, facts: dict) -> int:
         if valuation.get("status") == "insufficient_data":
