@@ -8,6 +8,7 @@ import {
   Database,
   FileText,
   GitBranch,
+  MessageSquare,
   Plus,
   RefreshCcw,
   ShieldCheck,
@@ -20,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   addResearchClaimEvidence,
+  askResearchCompanyChat,
   createResearchThesisChange,
   createResearchClaim,
   createResearchMemoryItem,
@@ -29,6 +31,7 @@ import {
   refreshCompanyFinancialsSEC,
   getThesisHistory,
   type ResearchClaim,
+  type ResearchChatResponse,
   type ResearchFact,
   type ResearchMemoryItem,
   type ResearchSourceDocument,
@@ -45,6 +48,9 @@ export const revalidate = 0;
 type ResearchCompanyPageProps = {
   params: Promise<{
     ticker: string;
+  }>;
+  searchParams: Promise<{
+    chat?: string;
   }>;
 };
 
@@ -539,14 +545,96 @@ function WhatChangedPanel({
   );
 }
 
-export default async function ResearchCompanyPage({ params }: ResearchCompanyPageProps) {
+function SourceAwareChatPanel({
+  ticker,
+  chatQuestion,
+  chatResponse,
+}: {
+  ticker: string;
+  chatQuestion: string;
+  chatResponse: ResearchChatResponse | null;
+}) {
+  return (
+    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <MessageSquare className="h-5 w-5 text-teal-300" />
+        <h2 className="text-lg font-semibold text-gray-100">Company Chat</h2>
+        {chatResponse?.blocked ? (
+          <Badge className="ml-auto border-amber-800 bg-amber-950/30 text-amber-200" variant="outline">
+            blocked
+          </Badge>
+        ) : null}
+      </div>
+      <form className="grid gap-3 md:grid-cols-[1fr_auto]" method="GET">
+        <Input
+          aria-label="Ask company chat"
+          defaultValue={chatQuestion}
+          name="chat"
+          placeholder={`Ask ${ticker} with source-aware memory`}
+        />
+        <Button type="submit" variant="outline">
+          <MessageSquare className="h-4 w-4" />
+          Ask
+        </Button>
+      </form>
+      {chatResponse ? (
+        <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_320px]">
+          <article className="max-h-[520px] overflow-auto rounded-md border border-gray-800 bg-black/30 p-4">
+            <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-gray-300">
+              {chatResponse.answer}
+            </pre>
+          </article>
+          <aside className="rounded-md border border-gray-800 bg-black/30 p-4">
+            <div className="mb-3 text-xs font-semibold uppercase text-gray-500">Sources</div>
+            <div className="space-y-2">
+              {chatResponse.sources.slice(0, 12).map((source, index) => (
+                <div key={`${source.type}-${String(source.id)}-${index}`} className="rounded-md border border-gray-800 p-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                      {source.type}
+                    </Badge>
+                    <span className="ml-auto text-xs text-gray-600">#{String(source.id ?? 'n/a')}</span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-gray-400">{source.title}</p>
+                </div>
+              ))}
+              {!chatResponse.sources.length ? (
+                <div className="rounded-md border border-gray-800 p-3 text-sm text-gray-400">
+                  No sources returned.
+                </div>
+              ) : null}
+            </div>
+            {chatResponse.proposed_actions.length ? (
+              <div className="mt-4 border-t border-gray-800 pt-3">
+                <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Next actions</div>
+                <ul className="list-disc space-y-1 pl-4 text-xs leading-5 text-gray-400">
+                  {chatResponse.proposed_actions.map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </aside>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+          Ask a question to retrieve thesis, facts, claims, evidence, documents, news and memory with provenance.
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default async function ResearchCompanyPage({ params, searchParams }: ResearchCompanyPageProps) {
   const { ticker } = await params;
+  const { chat = '' } = await searchParams;
   const [{ company, valuation, facts, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments }, thesisHistory] = await Promise.all([
     getResearchCompanyDetail(ticker),
     getThesisHistory(ticker),
   ]);
 
   if (!company) notFound();
+  const chatResponse = chat.trim() ? await askResearchCompanyChat(company.ticker, chat) : null;
 
   const inputSource = valuation.trace.input_source ?? valuation.status ?? 'unknown';
   const sourceTone =
@@ -706,6 +794,8 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
         sourceDocuments={sourceDocuments}
         ticker={company.ticker}
       />
+
+      <SourceAwareChatPanel chatQuestion={chat} chatResponse={chatResponse} ticker={company.ticker} />
 
       <WhatChangedPanel changes={thesisChanges} ticker={company.ticker} />
 
