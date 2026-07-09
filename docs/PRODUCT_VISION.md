@@ -121,11 +121,12 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - Thesis versions: backend generation, history and frontend display are in place.
 - Claim memory: unified claim/evidence model, API, migration and company page capture are in place.
 - Source lineage: documents, chunks, facts, audits and claim evidence links are in place, including claim evidence linked from the company workspace.
+- Source hierarchy: source quality is now classified through formal tiers from regulatory filings to user input, with trust scores and source policy text reused by chat and news.
 - Document ingestion: manual Quartr/text import, generic file upload and URL ingestion are in place. Native parsers cover TXT/MD/HTML/PDF/DOCX/XLSX/CSV/TSV with checksum, raw storage, chunk metadata and duplicate detection. Docling can be used as an opt-in parser with `CAVAAI_USE_DOCLING=1`.
 - Source evidence workflow: the company workspace shows source chunk previews and supports one-click creation of source-derived claims or support/contradiction evidence linked to existing claims.
 - Traceable metrics: normalized facts, valuation trace and calculated metric records are in place. Current canonical calculated metrics include FCF margin, gross/operating/net margin, ROE, ROA, ROIC, FCF conversion and net debt / EBITDA, each with definition version, formula, numerator, denominator, source fact ids, calculation trace, confidence and unavailable status when inputs are missing.
 - Company and portfolio chat: backend chat is now source-aware and returns facts, calculations, memory/user assumptions, unverified claims, inference and typed sources.
-- News relevance and thesis impact: manual news analyzer, batch feed ingestion, event storage, dedupe and automatic thesis-change creation for material updates are in place.
+- News relevance and thesis impact: manual news analyzer, batch feed ingestion, event storage, dedupe, source-tier policy, portfolio-aware materiality and automatic thesis-change creation for material updates are in place.
 - What Changed: thesis change records, manual capture, automatic claim-contradiction changes and material-news changes are in place.
 - Peer comparison: company workspace comparison now uses same-industry/sector peers and traceable calculated metrics with peer median/average benchmarks.
 
@@ -140,7 +141,7 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 
 ### Remaining Work To Feel Complete
 
-- Build a first-class company workspace UI around news, risks, peers and red-team work instead of keeping those features as backend-only APIs.
+- Build a first-class company workspace UI around risks and red-team work instead of keeping those features as backend-only APIs.
 - Add LLM synthesis on top of source-aware chat context while preserving the current evidence contract.
 - Add automatic LLM-assisted evidence extraction suggestions from document/chunk text.
 - Promote Docling from optional parser to primary production parser after validating install size, OCR/table accuracy and deployment footprint.

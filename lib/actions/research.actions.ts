@@ -690,6 +690,12 @@ export type ResearchNewsEvent = {
   materiality_score: number;
   impact_direction: string;
   requires_update: boolean;
+  source_tier?: string;
+  source_trust_score?: number;
+  portfolio_weight?: number;
+  materiality_reasons?: string[];
+  source_policy?: string;
+  model_route?: string;
 };
 
 export type ResearchWorkflowRun = {
@@ -719,7 +725,16 @@ export async function getResearchNews(): Promise<ResearchNewsEvent[]> {
 
 export async function analyzeManualNews(
   formData: FormData,
-): Promise<{ ticker?: string | null; event_type: string; materiality_score: number; impact_direction: string; summary: string }> {
+): Promise<{
+  ticker?: string | null;
+  event_type: string;
+  materiality_score: number;
+  impact_direction: string;
+  summary: string;
+  source_tier?: string;
+  portfolio_weight?: number;
+  materiality_reasons?: string[];
+}> {
   const text = String(formData.get('text') ?? '').trim();
   const source = String(formData.get('source') ?? 'manual').trim();
   const url = String(formData.get('url') ?? '').trim();

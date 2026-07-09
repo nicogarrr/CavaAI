@@ -46,7 +46,7 @@ Research engine:
 - Company Research page connected to backend claims, support/contradiction evidence, document/chunk evidence links and memory capture
 - Source Evidence Lab for chunk previews, source-derived claim creation and support/contradiction evidence capture from imported documents
 - What Changed records for manual thesis updates, automatic claim contradictions and material news
-- News feed batch ingestion with dedupe and material thesis-change creation
+- News feed batch ingestion with dedupe, formal source tiers, portfolio-aware materiality and material thesis-change creation
 - Document ingestion for TXT/MD/HTML/PDF/DOCX/XLSX/CSV/TSV with checksum, raw storage, chunk metadata and duplicate detection
 - Traceable calculated metrics with formula, source fact ids, numerator/denominator, calculation trace, confidence and unavailable states
 - Peer comparison from same-industry/sector companies using traceable calculated metrics and peer median/average benchmarks

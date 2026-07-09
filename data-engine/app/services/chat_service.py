@@ -18,6 +18,7 @@ from app.models import (
 )
 from app.schemas import ChatResponse
 from app.services.memory_service import MemoryService
+from app.services.source_hierarchy_service import source_tier_key
 
 
 KEY_FACT_METRICS = [
@@ -31,22 +32,6 @@ KEY_FACT_METRICS = [
     "shares_diluted",
 ]
 
-SOURCE_TIER_BY_TYPE = {
-    "sec": "tier_1_regulatory",
-    "sec_edgar": "tier_1_regulatory",
-    "filing": "tier_1_regulatory",
-    "10-k": "tier_1_regulatory",
-    "10-q": "tier_1_regulatory",
-    "20-f": "tier_1_regulatory",
-    "company_ir": "tier_2_company",
-    "earnings_call": "tier_2_company",
-    "quartr": "tier_2_company",
-    "company_master_seed": "tier_6_bootstrap",
-    "manual": "tier_7_user_input",
-    "chat": "tier_7_user_input",
-}
-
-
 def _decimal_to_float(value: Decimal | int | float | None) -> float | None:
     if value is None:
         return None
@@ -54,8 +39,7 @@ def _decimal_to_float(value: Decimal | int | float | None) -> float | None:
 
 
 def _source_tier(source_type: str | None) -> str:
-    key = (source_type or "unknown").lower()
-    return SOURCE_TIER_BY_TYPE.get(key, "tier_unknown")
+    return source_tier_key(source_type)
 
 
 def _short(text: str, limit: int = 420) -> str:
