@@ -37,6 +37,7 @@ import {
   type ResearchChatResponse,
   type ResearchFact,
   type ResearchMemoryItem,
+  type ResearchPeerComparison,
   type ResearchSourceDocument,
   type ResearchThesis,
   type ResearchThesisChange,
@@ -313,6 +314,102 @@ function CalculatedMetricsTable({ metrics }: { metrics: ResearchCalculatedMetric
         </tbody>
       </table>
     </div>
+  );
+}
+
+function peerMetricValue(value: string | null, unit: string) {
+  if (value === null) return 'N/A';
+  const parsed = numberValue(value);
+  if (unit === 'decimal') return pct(parsed);
+  if (unit === 'x') return `${parsed.toFixed(2)}x`;
+  return parsed.toFixed(2);
+}
+
+function PeerComparisonPanel({ comparison }: { comparison: ResearchPeerComparison | null }) {
+  if (!comparison || !comparison.companies.length) {
+    return (
+      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Peer Comparison</h2>
+        </div>
+        <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
+          No peer comparison available yet.
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Peer Comparison</h2>
+        </div>
+        <div className="text-sm text-gray-500">
+          {comparison.peer_count} peers - {comparison.basis}
+        </div>
+      </div>
+
+      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {comparison.metrics.slice(0, 4).map((metric) => {
+          const benchmark = comparison.benchmarks[metric];
+          return (
+            <div key={metric} className="rounded-md border border-gray-800 p-3">
+              <div className="text-xs font-semibold uppercase text-gray-500">{metric}</div>
+              <div className="mt-2 text-sm text-gray-300">
+                Target {benchmark?.target_value ? pct(numberValue(benchmark.target_value)) : 'N/A'}
+              </div>
+              <div className="text-xs text-gray-500">
+                Peer median {benchmark?.peer_median ? pct(numberValue(benchmark.peer_median)) : 'N/A'} ({benchmark?.peer_sample_size ?? 0})
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] text-left text-sm">
+          <thead className="text-xs uppercase text-gray-500">
+            <tr>
+              <th className="border-b border-gray-800 py-2">Company</th>
+              {comparison.metrics.map((metric) => (
+                <th key={metric} className="border-b border-gray-800 py-2 text-right">
+                  {metric}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {comparison.companies.map((company) => (
+              <tr key={company.ticker} className="border-b border-gray-900 last:border-0">
+                <td className="max-w-[260px] py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-200">{company.ticker}</span>
+                    {company.is_target ? (
+                      <Badge className="border-teal-800 bg-teal-950/30 text-teal-200" variant="outline">
+                        target
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-gray-500">{company.name}</div>
+                </td>
+                {comparison.metrics.map((metric) => {
+                  const item = company.metrics[metric];
+                  return (
+                    <td key={`${company.ticker}-${metric}`} className="py-3 text-right text-gray-300">
+                      <div>{peerMetricValue(item?.value ?? null, item?.unit ?? 'decimal')}</div>
+                      <div className="text-xs text-gray-600">{item?.period ?? 'unknown'}</div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -860,7 +957,7 @@ function SourceAwareChatPanel({
 export default async function ResearchCompanyPage({ params, searchParams }: ResearchCompanyPageProps) {
   const { ticker } = await params;
   const { chat = '' } = await searchParams;
-  const [{ company, valuation, facts, calculatedMetrics, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments }, thesisHistory] = await Promise.all([
+  const [{ company, valuation, facts, calculatedMetrics, peerComparison, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments }, thesisHistory] = await Promise.all([
     getResearchCompanyDetail(ticker),
     getThesisHistory(ticker),
   ]);
@@ -1011,6 +1108,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
         </div>
         <CalculatedMetricsTable metrics={calculatedMetrics} />
       </section>
+
+      <PeerComparisonPanel comparison={peerComparison} />
 
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

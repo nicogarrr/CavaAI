@@ -9,26 +9,27 @@ from app.models import CalculatedMetric, Company, FinancialFact
 
 
 TEST_TICKER = "TCALC"
+PEER_TICKERS = ["TPEER1", "TPEER2"]
 
 
 def cleanup_metric_test_artifacts() -> None:
     init_db()
     db = SessionLocal()
     try:
-        company = db.scalar(select(Company).where(Company.ticker == TEST_TICKER))
-        if company:
+        companies = db.scalars(select(Company).where(Company.ticker.in_([TEST_TICKER, *PEER_TICKERS]))).all()
+        for company in companies:
             db.execute(delete(CalculatedMetric).where(CalculatedMetric.company_id == company.id))
             db.execute(delete(FinancialFact).where(FinancialFact.company_id == company.id))
             db.delete(company)
-            db.commit()
+        db.commit()
     finally:
         db.close()
 
 
-def create_test_company(db) -> Company:
+def create_test_company(db, ticker: str = TEST_TICKER, name: str = "Traceable Metrics Test Co") -> Company:
     company = Company(
-        ticker=TEST_TICKER,
-        name="Traceable Metrics Test Co",
+        ticker=ticker,
+        name=name,
         exchange="TEST",
         currency="USD",
         sector="Software",
@@ -131,5 +132,43 @@ def test_calculated_metrics_report_unavailable_when_inputs_are_missing():
     assert metrics["fcf_margin"]["status"] == "unavailable"
     assert metrics["fcf_margin"]["value"] is None
     assert "free_cash_flow" in metrics["fcf_margin"]["calculation_trace"]["missing_inputs"]
+
+    cleanup_metric_test_artifacts()
+
+
+def test_peer_comparison_uses_traceable_metrics_and_sector_peers():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        target = create_test_company(db)
+        peer_1 = create_test_company(db, "TPEER1", "Traceable Peer One")
+        peer_2 = create_test_company(db, "TPEER2", "Traceable Peer Two")
+
+        for company, revenue, fcf, net_income, operating_income, gross_profit in [
+            (target, "1000", "250", "180", "250", "650"),
+            (peer_1, "1000", "100", "120", "180", "500"),
+            (peer_2, "1000", "300", "220", "280", "700"),
+        ]:
+            add_fact(db, company, "revenue", revenue)
+            add_fact(db, company, "free_cash_flow", fcf)
+            add_fact(db, company, "net_income", net_income)
+            add_fact(db, company, "operating_income", operating_income)
+            add_fact(db, company, "gross_profit", gross_profit)
+        db.commit()
+    finally:
+        db.close()
+
+    client = TestClient(main.app)
+    response = client.get(f"/api/companies/{TEST_TICKER}/peers/comparison?metrics=fcf_margin,net_margin&limit=2")
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["ticker"] == TEST_TICKER
+    assert payload["basis"] == "industry"
+    assert payload["peer_count"] == 2
+    assert payload["companies"][0]["is_target"] is True
+    assert payload["companies"][0]["metrics"]["fcf_margin"]["source_fact_ids"]
+    assert Decimal(payload["benchmarks"]["fcf_margin"]["peer_median"]) == Decimal("0.20000000")
+    assert Decimal(payload["benchmarks"]["fcf_margin"]["target_vs_peer_median"]) == Decimal("0.05000000")
 
     cleanup_metric_test_artifacts()
