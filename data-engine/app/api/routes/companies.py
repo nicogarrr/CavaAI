@@ -8,7 +8,11 @@ from app.schemas import CalculatedMetricOut, CalculatedMetricsResponse, CompanyO
 from app.services.connectors.fmp import FMPClient
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.services.metric_calculation_service import MetricCalculationService
+from app.services.moat_service import MoatService
+from app.services.peer_analysis_service import PeerAnalysisService
 from app.services.peer_comparison_service import DEFAULT_PEER_METRICS, PeerComparisonService
+from app.services.red_team_service import RedTeamService
+from app.services.wacc_input_service import WaccInputService
 
 router = APIRouter()
 
@@ -108,6 +112,69 @@ def peer_comparison(
     )
 
 
+@router.get("/{ticker}/peers/analysis")
+def peer_analysis(
+    ticker: str,
+    limit: int = Query(default=8, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return PeerAnalysisService().analyze(db, company, limit=limit)
+
+
+@router.get("/{ticker}/moat")
+def moat_assessment(
+    ticker: str,
+    refresh: bool = Query(default=True),
+    db: Session = Depends(get_db),
+) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return MoatService().assess(db, company, persist=refresh)
+
+
+@router.post("/{ticker}/red-team")
+def run_red_team(ticker: str, db: Session = Depends(get_db)) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    run = RedTeamService().run(db, company)
+    return _red_team_payload(run)
+
+
+@router.get("/{ticker}/red-team/latest")
+def latest_red_team(ticker: str, db: Session = Depends(get_db)) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    run = RedTeamService().latest(db, company)
+    if not run:
+        raise HTTPException(status_code=404, detail="No red-team run found")
+    return _red_team_payload(run)
+
+
+def _red_team_payload(run) -> dict:
+    return {
+        "id": run.id,
+        "company_id": run.company_id,
+        "thesis_version_id": run.thesis_version_id,
+        "status": run.status,
+        "score": run.score,
+        "strongest_bear_case": run.strongest_bear_case,
+        "findings": run.findings,
+        "broken_assumptions": run.broken_assumptions,
+        "missing_risks": run.missing_risks,
+        "falsification_tests": run.falsification_tests,
+        "model": run.model,
+        "prompt_version": run.prompt_version,
+        "trace": run.trace,
+        "created_at": run.created_at,
+    }
+
+
 @router.post("/{ticker}/refresh/fmp", response_model=FinancialRefreshResponse)
 async def refresh_fmp_financials(ticker: str, db: Session = Depends(get_db)) -> dict:
     company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
@@ -131,5 +198,18 @@ async def refresh_sec_financials(ticker: str, db: Session = Depends(get_db)) -> 
         raise HTTPException(status_code=404, detail="Company not found")
     try:
         return await FinancialIngestionService().refresh_from_sec(db=db, company=company)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=424, detail=str(exc)) from exc
+
+
+@router.post("/{ticker}/refresh/wacc")
+async def refresh_wacc_inputs(
+    ticker: str, db: Session = Depends(get_db)
+) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    try:
+        return await WaccInputService().refresh(db, company)
     except RuntimeError as exc:
         raise HTTPException(status_code=424, detail=str(exc)) from exc

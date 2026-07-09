@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router as research_api_router
+from app.core.config import get_settings
 from app.core.database import init_db
 from app.seed import ensure_company_master
 from routers.analytics import router as analytics_router
@@ -16,9 +17,11 @@ from routers.market import router as market_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Local/dev convenience only. Production should run migrations + seed explicitly.
-    init_db()
-    ensure_company_master()
+    settings = get_settings()
+    if settings.app_env.lower() != "production":
+        # Local/test convenience. Production runs Alembic and seeding explicitly.
+        init_db()
+        ensure_company_master()
     yield
 
 

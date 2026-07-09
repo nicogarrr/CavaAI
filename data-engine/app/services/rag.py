@@ -69,6 +69,7 @@ class RAGIndex:
                     "chunk_index": chunk.chunk_index,
                     "source_type": document.source_type,
                     "title": document.title,
+                    "tenant_id": db.info.get("tenant_id"),
                 },
             ))
 
@@ -82,16 +83,34 @@ class RAGIndex:
 
         return {"chunks_indexed": len(points), "collection": self.collection_name}
 
-    def search(self, query: str, ticker: str | None = None, limit: int = 5) -> list[dict]:
+    def search(
+        self,
+        query: str,
+        ticker: str | None = None,
+        limit: int = 5,
+        tenant_id: int | None = None,
+    ) -> list[dict]:
         from qdrant_client.models import Filter, FieldCondition, MatchValue
         try:
             embedder = self._embedder()
             vector = embedder.encode([query], normalize_embeddings=True)[0].tolist()
             client = self.client()
             self._ensure_collection(client)
-            query_filter = None
+            conditions = []
             if ticker:
-                query_filter = Filter(must=[FieldCondition(key="ticker", match=MatchValue(value=ticker))])
+                conditions.append(
+                    FieldCondition(
+                        key="ticker", match=MatchValue(value=ticker)
+                    )
+                )
+            if tenant_id is not None:
+                conditions.append(
+                    FieldCondition(
+                        key="tenant_id",
+                        match=MatchValue(value=tenant_id),
+                    )
+                )
+            query_filter = Filter(must=conditions) if conditions else None
             results = client.search(
                 collection_name=self.collection_name,
                 query_vector=vector,

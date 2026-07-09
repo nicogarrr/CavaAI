@@ -9,6 +9,7 @@ from app.models import (
     Company,
     Document,
     DocumentChunk,
+    EvidenceSuggestion,
     FinancialFact,
     MemoryItem,
     NewsEvent,
@@ -144,13 +145,24 @@ class ChatService:
         scored.sort(key=lambda item: (item[0], item[2].published_at is not None), reverse=True)
         return [(chunk, document) for _, chunk, document in scored[:limit]]
 
-    def _rag_chunks(self, question: str, company: Company | None, limit: int = 4) -> list[dict]:
+    def _rag_chunks(
+        self,
+        db: Session,
+        question: str,
+        company: Company | None,
+        limit: int = 4,
+    ) -> list[dict]:
         if os.getenv("CAVAAI_ENABLE_VECTOR_CHAT") != "1":
             return []
         try:
             from app.services.rag import RAGIndex
 
-            return RAGIndex().search(question, ticker=company.ticker if company else None, limit=limit)
+            return RAGIndex().search(
+                question,
+                ticker=company.ticker if company else None,
+                limit=limit,
+                tenant_id=db.info.get("tenant_id"),
+            )
         except Exception:
             return []
 
@@ -179,7 +191,21 @@ class ChatService:
             claims = self._claims(db, company)
             news = self._recent_news(db, company)
             db_chunks = self._document_chunks(db, company, question)
-            rag_chunks = self._rag_chunks(question, company)
+            rag_chunks = self._rag_chunks(db, question, company)
+            evidence_suggestions = list(
+                db.scalars(
+                    select(EvidenceSuggestion)
+                    .where(
+                        EvidenceSuggestion.company_id == company.id,
+                        EvidenceSuggestion.status == "pending",
+                    )
+                    .order_by(
+                        desc(EvidenceSuggestion.confidence),
+                        desc(EvidenceSuggestion.created_at),
+                    )
+                    .limit(6)
+                ).all()
+            )
 
             if thesis:
                 sources.append(
@@ -310,7 +336,9 @@ class ChatService:
 
             facts_text = (
                 "\n".join(
-                    f"- {fact.metric}: {_decimal_to_float(fact.value)} {fact.unit} ({fact.period}, {_source_tier(fact.source_type)})"
+                    f"- {fact.metric}: {_decimal_to_float(fact.value)} {fact.unit} "
+                    f"({fact.period}, {_source_tier(fact.source_type)}) "
+                    f"[financial_fact:{fact.id}]"
                     for fact in facts[:5]
                 )
                 or "- No reliable stored financial facts found for this company."
@@ -321,31 +349,70 @@ class ChatService:
                 else "- Calculation blocked: missing stored financial facts."
             )
             assumptions_text = (
-                "\n".join(f"- {_short(item.item.content, 180)}" for item in retrieved_memory[:3])
+                "\n".join(
+                    f"- {_short(item.item.content, 180)} "
+                    f"[memory_item:{item.item.id}]"
+                    for item in retrieved_memory[:3]
+                )
                 or "- No relevant user memory retrieved."
             )
             claim_lines = [
-                f"- [{claim.status}] {_short(claim.statement, 180)}"
+                f"- [{claim.status}] {_short(claim.statement, 180)} "
+                f"[claim:{claim.id}]"
                 for claim in claims[:5]
                 if claim.status != "supported"
             ]
             unverified_text = "\n".join(claim_lines) or "- No unresolved claim surfaced in the retrieved context."
             thesis_text = (
                 f"{company.ticker} thesis v{thesis.version} is `{thesis.status}` with rating `{thesis.rating}`. "
-                f"Expected value={_decimal_to_float(thesis.expected_value)} vs current price={_decimal_to_float(thesis.current_price)}."
+                f"Expected value={_decimal_to_float(thesis.expected_value)} vs current price={_decimal_to_float(thesis.current_price)}. "
+                f"[thesis_version:{thesis.id}]"
                 if thesis
                 else f"No stored thesis exists yet for {company.ticker}."
             )
             evidence_text = (
-                "\n".join(f"- {_short(chunk.text, 180)} ({document.source_type})" for chunk, document in db_chunks[:3])
+                "\n".join(
+                    f"- {_short(chunk.text, 180)} ({document.source_type}) "
+                    f"[document_chunk:{chunk.id}]"
+                    for chunk, document in db_chunks[:3]
+                )
                 or "- No local document chunk matched strongly enough; upload/ingest primary sources."
             )
             news_text = (
                 "\n".join(
-                    f"- {event.title} [{event.impact_direction}, materiality {event.materiality_score}]"
+                    f"- {event.title} [{event.impact_direction}, materiality {event.materiality_score}] "
+                    f"[news_event:{event.id}]"
                     for event in news[:3]
                 )
                 or "- No recent stored news for this company."
+            )
+            contradiction_claims = [
+                claim
+                for claim in claims
+                if claim.status in {"contradicted", "superseded", "stale"}
+            ]
+            contradictions_text = (
+                "\n".join(
+                    f"- [{claim.status}] {_short(claim.statement, 180)} "
+                    f"[claim:{claim.id}]"
+                    for claim in contradiction_claims
+                )
+                or "- No contradiction was found in the retrieved claim set."
+            )
+            found_metrics = {fact.metric for fact in facts}
+            missing_metrics = [
+                metric for metric in KEY_FACT_METRICS if metric not in found_metrics
+            ]
+            insufficient_text = (
+                f"- Missing stored inputs: {', '.join(missing_metrics)}."
+                if missing_metrics
+                else "- No key financial input is missing from this retrieval."
+            )
+            conclusion_text = (
+                "- Thesis review is required before changing assumptions."
+                if contradiction_claims
+                or any(event.requires_update for event in news)
+                else "- Retrieved evidence does not require an automatic thesis change; continue monitoring."
             )
 
             answer = (
@@ -356,14 +423,91 @@ class ChatService:
                 f"LLM INFERENCE\n{thesis_text} Based on the retrieved evidence, the safest next step is to review "
                 f"claims and primary sources before changing the thesis.\n\n"
                 f"EVIDENCE SNAPSHOT\n{evidence_text}\n\n"
-                f"NEWS / WHAT CHANGED\n{news_text}"
+                f"NEWS / WHAT CHANGED\n{news_text}\n\n"
+                f"CONTRADICTIONS\n{contradictions_text}\n\n"
+                f"INSUFFICIENT DATA\n{insufficient_text}\n\n"
+                f"CONCLUSION\n{conclusion_text}"
             )
+
+            sections = [
+                {
+                    "key": "facts",
+                    "body": facts_text,
+                    "citations": [
+                        f"financial_fact:{fact.id}" for fact in facts[:5]
+                    ],
+                },
+                {
+                    "key": "calculations",
+                    "body": calculations_text,
+                    "citations": [
+                        f"financial_fact:{fact.id}" for fact in facts[:5]
+                    ],
+                },
+                {
+                    "key": "user_hypotheses",
+                    "body": assumptions_text,
+                    "citations": [
+                        f"memory_item:{item.item.id}"
+                        for item in retrieved_memory[:3]
+                    ],
+                },
+                {
+                    "key": "inferences",
+                    "body": thesis_text,
+                    "citations": (
+                        [f"thesis_version:{thesis.id}"] if thesis else []
+                    ),
+                },
+                {
+                    "key": "contradictions",
+                    "body": contradictions_text,
+                    "citations": [
+                        f"claim:{claim.id}" for claim in contradiction_claims
+                    ],
+                },
+                {
+                    "key": "insufficient_data",
+                    "body": insufficient_text,
+                    "citations": [],
+                },
+                {
+                    "key": "conclusion",
+                    "body": conclusion_text,
+                    "citations": [
+                        *[
+                            f"claim:{claim.id}"
+                            for claim in contradiction_claims
+                        ],
+                        *[
+                            f"news_event:{event.id}"
+                            for event in news
+                            if event.requires_update
+                        ],
+                    ],
+                },
+            ]
 
             return ChatResponse(
                 answer=answer,
+                sections=sections,
                 sources=sources,
                 blocked=not thesis or not sources,
                 proposed_actions=list(dict.fromkeys(proposed_actions)),
+                evidence_suggestions=[
+                    {
+                        "id": suggestion.id,
+                        "statement": suggestion.statement,
+                        "relation": suggestion.relation,
+                        "suggestion_type": suggestion.suggestion_type,
+                        "confidence": float(suggestion.confidence),
+                        "suggested_claim_id": suggestion.suggested_claim_id,
+                        "document_chunk_id": suggestion.document_chunk_id,
+                    }
+                    for suggestion in evidence_suggestions
+                ],
+                prompt_version="source-aware-synthesis-v1",
+                model="deterministic",
             )
 
         portfolio_memories = [retrieved.item for retrieved in retrieved_memory]
@@ -400,7 +544,52 @@ class ChatService:
         )
         return ChatResponse(
             answer=answer,
+            sections=[
+                {
+                    "key": "facts",
+                    "body": "Portfolio memory and research-session context only.",
+                    "citations": [
+                        f"memory_item:{item.id}"
+                        for item in portfolio_memories[:5]
+                    ],
+                },
+                {
+                    "key": "calculations",
+                    "body": "No portfolio calculation was performed.",
+                    "citations": [],
+                },
+                {
+                    "key": "user_hypotheses",
+                    "body": "Retrieved portfolio memories.",
+                    "citations": [
+                        f"memory_item:{item.id}"
+                        for item in portfolio_memories[:5]
+                    ],
+                },
+                {
+                    "key": "inferences",
+                    "body": "A ticker is required for company-level inference.",
+                    "citations": [],
+                },
+                {
+                    "key": "contradictions",
+                    "body": "No company claim set was selected.",
+                    "citations": [],
+                },
+                {
+                    "key": "insufficient_data",
+                    "body": "Provide a ticker or ingest portfolio-level evidence.",
+                    "citations": [],
+                },
+                {
+                    "key": "conclusion",
+                    "body": "No company-level conclusion is available.",
+                    "citations": [],
+                },
+            ],
             sources=sources,
             blocked=False,
             proposed_actions=["Ask about a ticker", "Ingest portfolio-level documents"],
+            prompt_version="source-aware-synthesis-v1",
+            model="deterministic",
         )
