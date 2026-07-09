@@ -12,6 +12,7 @@ from app.valuation.engines.base import (
 )
 from app.valuation.moat_framework import empty_moat_framework
 from app.valuation.scenario_definitions import holding_company_scenarios
+from app.valuation.scenario_model import Scenario, probability_weighted_value
 from app.valuation.sotp import run_sotp
 from sqlalchemy import desc, select
 
@@ -124,11 +125,9 @@ class SOTPEngine(ValuationEngine):
                 "value_per_share": value,
             }
 
-        from app.valuation import Scenario as ProbScenario, probability_weighted_value
-
         weighted = probability_weighted_value(
             [
-                ProbScenario(s["definition"]["name"], s["definition"]["probability"], s["value_per_share"])
+                Scenario(s["definition"]["name"], s["definition"]["probability"], s["value_per_share"])
                 for s in scenario_results.values()
             ]
         )

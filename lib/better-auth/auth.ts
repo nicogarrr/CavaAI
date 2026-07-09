@@ -93,6 +93,10 @@ export const getAuth = async (): Promise<AuthInstance> => {
             if (env.NODE_ENV === 'production') {
                 throw new DatabaseError('MongoDB connection is required in production', appError);
             }
+
+            console.warn('MongoDB unavailable, using auth without persistent database (development only)');
+            authInstance = createAuthInstance();
+            return authInstance;
         }
         
         throw appError;

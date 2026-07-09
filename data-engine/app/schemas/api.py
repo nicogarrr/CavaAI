@@ -82,6 +82,178 @@ class ThesisOut(BaseModel):
     created_at: datetime
 
 
+class ClaimEvidenceCreate(BaseModel):
+    document_id: int | None = None
+    document_chunk_id: int | None = None
+    source_url: str | None = None
+    evidence_type: str = Field(default="supports", pattern="^(supports|contradicts|context)$")
+    summary: str = Field(min_length=3)
+    quote: str | None = None
+    confidence: Decimal = Decimal("0.70")
+    source_tier: str = "secondary"
+
+
+class ClaimEvidenceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    claim_id: int
+    document_id: int | None
+    document_chunk_id: int | None
+    source_url: str | None
+    evidence_type: str
+    summary: str
+    quote: str | None
+    confidence: Decimal
+    source_tier: str
+    created_at: datetime
+
+
+class ClaimCreate(BaseModel):
+    ticker: str | None = Field(default=None, max_length=20)
+    company_id: int | None = None
+    thesis_version_id: int | None = None
+    statement: str = Field(min_length=5)
+    claim_type: str = "thesis"
+    status: str = "unverified"
+    confidence: Decimal = Decimal("0.50")
+    materiality_score: int = Field(default=5, ge=0, le=10)
+    source_quality: str = "unknown"
+    created_by: str = "user"
+
+
+class ClaimOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int | None
+    thesis_version_id: int | None
+    statement: str
+    claim_type: str
+    status: str
+    confidence: Decimal
+    materiality_score: int
+    source_quality: str
+    created_by: str
+    last_reviewed_at: datetime | None
+    evidence: list[ClaimEvidenceOut] = Field(default_factory=list)
+    created_at: datetime
+
+
+class ThesisSectionCreate(BaseModel):
+    section_key: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=200)
+    body: str = ""
+    status: str = "draft"
+    order_index: int = 0
+    confidence: Decimal = Decimal("0.70")
+
+
+class ThesisSectionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    thesis_version_id: int
+    company_id: int
+    section_key: str
+    title: str
+    body: str
+    status: str
+    order_index: int
+    confidence: Decimal
+    created_at: datetime
+    updated_at: datetime
+
+
+class ThesisChangeCreate(BaseModel):
+    ticker: str | None = Field(default=None, max_length=20)
+    company_id: int | None = None
+    from_version_id: int | None = None
+    to_version_id: int | None = None
+    change_type: str = "manual"
+    impact_direction: str = Field(default="neutral", pattern="^(positive|negative|neutral|mixed)$")
+    materiality_score: int = Field(default=5, ge=0, le=10)
+    summary: str = Field(min_length=5)
+    affected_claim_ids: list[int] = Field(default_factory=list)
+    affected_metrics: list[str] = Field(default_factory=list)
+    requires_review: bool = False
+
+
+class ThesisChangeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int | None
+    from_version_id: int | None
+    to_version_id: int | None
+    change_type: str
+    impact_direction: str
+    materiality_score: int
+    summary: str
+    affected_claim_ids: list[int]
+    affected_metrics: list[str]
+    requires_review: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ResearchSessionCreate(BaseModel):
+    ticker: str | None = Field(default=None, max_length=20)
+    company_id: int | None = None
+    title: str = Field(min_length=1, max_length=300)
+    question: str = Field(min_length=3)
+    status: str = "open"
+    summary: str = ""
+    source_ids: list[int] = Field(default_factory=list)
+    claim_ids: list[int] = Field(default_factory=list)
+
+
+class ResearchSessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int | None
+    title: str
+    question: str
+    status: str
+    summary: str
+    source_ids: list[int]
+    claim_ids: list[int]
+    memory_item_ids: list[int]
+    created_at: datetime
+    updated_at: datetime
+
+
+class MemoryItemCreate(BaseModel):
+    ticker: str | None = Field(default=None, max_length=20)
+    company_id: int | None = None
+    research_session_id: int | None = None
+    scope: str = "portfolio"
+    memory_type: str = "note"
+    importance: int = Field(default=5, ge=0, le=10)
+    content: str = Field(min_length=3)
+    status: str = "active"
+    source_type: str = "user"
+    source_id: int | None = None
+
+
+class MemoryItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int | None
+    research_session_id: int | None
+    scope: str
+    memory_type: str
+    importance: int
+    content: str
+    status: str
+    source_type: str
+    source_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class ManualNewsRequest(BaseModel):
     text: str = Field(min_length=10)
     url: str | None = None
@@ -99,6 +271,29 @@ class ManualNewsResponse(BaseModel):
     requires_update: bool
     action: str
     source_policy: str
+
+
+class NewsFeedItem(BaseModel):
+    title: str = Field(min_length=3, max_length=500)
+    text: str | None = None
+    ticker: str | None = Field(default=None, max_length=20)
+    url: str | None = None
+    source: str = "feed"
+    published_at: datetime | None = None
+
+
+class NewsIngestRequest(BaseModel):
+    items: list[NewsFeedItem] = Field(min_length=1, max_length=100)
+    source: str = "feed"
+
+
+class NewsIngestResponse(BaseModel):
+    status: str
+    received: int
+    created: int
+    skipped_duplicates: int
+    requires_update: int
+    events: list[ManualNewsResponse]
 
 
 class ChatRequest(BaseModel):

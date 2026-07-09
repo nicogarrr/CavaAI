@@ -11,6 +11,7 @@ import {
 import { getAuth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
 import { getRAGContext } from './ai.actions';
+import { getDefaultGeminiModel, getGeminiGenerateContentEndpoint } from '@/lib/ai/modelConfig';
 
 export interface ProPick {
     symbol: string;
@@ -147,8 +148,8 @@ Selecciona las ${limit} mejores opciones basándote en los datos reales actuales
             }],
         };
 
-        const model = 'gemini-3-flash-preview';
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const model = getDefaultGeminiModel();
+        const endpoint = getGeminiGenerateContentEndpoint(model, apiKey);
         const res = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

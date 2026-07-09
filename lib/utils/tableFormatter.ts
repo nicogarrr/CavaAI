@@ -112,7 +112,7 @@ export function fixAllMarkdownTables(content: string): string {
     const tableRegex = /(\|.*\|(?:\r?\n\|[:\-| ]+\|(?:\r?\n\|.*\|)+)?)/gm;
     
     let fixedContent = content;
-    let offset = 0;
+    const offset = 0;
     
     const matches = [...content.matchAll(tableRegex)];
     

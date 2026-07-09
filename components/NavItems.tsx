@@ -8,6 +8,7 @@ import {usePathname} from "next/navigation";
 
 const NavItems = ({initialStocks}: { initialStocks: StockWithWatchlistStatus[]}) => {
     const pathname = usePathname()
+    void initialStocks;
 
     const isActive = (path: string) => {
         if (path ==='/') return pathname === '/'

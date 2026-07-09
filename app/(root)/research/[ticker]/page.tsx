@@ -3,23 +3,38 @@ import { notFound } from 'next/navigation';
 import {
   ArrowLeft,
   BarChart3,
+  BrainCircuit,
+  CheckCircle2,
   Database,
   FileText,
   GitBranch,
+  Plus,
   RefreshCcw,
   ShieldCheck,
   Sigma,
+  TriangleAlert,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
+  addResearchClaimEvidence,
+  createResearchThesisChange,
+  createResearchClaim,
+  createResearchMemoryItem,
   getResearchCompanyDetail,
   generateResearchThesis,
   refreshCompanyFinancials,
   refreshCompanyFinancialsSEC,
   getThesisHistory,
+  type ResearchClaim,
   type ResearchFact,
+  type ResearchMemoryItem,
+  type ResearchSourceDocument,
   type ResearchThesis,
+  type ResearchThesisChange,
+  type ResearchThesisSection,
   type ResearchThesisVersion,
   type ResearchValuation,
 } from '@/lib/actions/research.actions';
@@ -265,9 +280,268 @@ function ThesisPanel({ thesis }: { thesis: ResearchThesis | null }) {
   );
 }
 
+function ClaimStatusBadge({ status }: { status: string }) {
+  const isSupported = status === 'supported';
+  const isContradicted = status === 'contradicted';
+  const className = isContradicted
+    ? 'border-red-800 bg-red-950/30 text-red-200'
+    : isSupported
+      ? 'border-teal-800 bg-teal-950/30 text-teal-200'
+      : 'border-amber-800 bg-amber-950/30 text-amber-200';
+
+  return (
+    <Badge className={className} variant="outline">
+      {isSupported ? <CheckCircle2 className="h-3 w-3" /> : null}
+      {isContradicted ? <TriangleAlert className="h-3 w-3" /> : null}
+      {status}
+    </Badge>
+  );
+}
+
+function ClaimsMemoryPanel({
+  ticker,
+  claims,
+  sections,
+  memoryItems,
+  sourceDocuments,
+}: {
+  ticker: string;
+  claims: ResearchClaim[];
+  sections: ResearchThesisSection[];
+  memoryItems: ResearchMemoryItem[];
+  sourceDocuments: ResearchSourceDocument[];
+}) {
+  const sourceChunks = sourceDocuments.flatMap((document) => document.chunks ?? []);
+
+  return (
+    <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <BrainCircuit className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Claims</h2>
+          <span className="ml-auto text-sm text-gray-500">{claims.length}</span>
+        </div>
+        <form action={createResearchClaim.bind(null, ticker)} className="mb-4 grid gap-3 md:grid-cols-[1fr_150px_96px_auto]">
+          <Input aria-label="Claim" name="statement" placeholder="Material claim" required />
+          <Input aria-label="Claim type" defaultValue="thesis" name="claim_type" />
+          <Input aria-label="Materiality" defaultValue="5" max="10" min="0" name="materiality_score" type="number" />
+          <Button type="submit" variant="outline">
+            <Plus className="h-4 w-4" />
+            Add
+          </Button>
+        </form>
+        <div className="space-y-3">
+          {claims.length ? (
+            claims.map((claim) => (
+              <div key={claim.id} className="rounded-md border border-gray-800 p-3">
+                <div className="flex flex-wrap items-start gap-2">
+                  <ClaimStatusBadge status={claim.status} />
+                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                    {claim.claim_type}
+                  </Badge>
+                  <span className="ml-auto text-xs text-gray-500">M{claim.materiality_score}</span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-gray-300">{claim.statement}</p>
+                <div className="mt-2 text-xs text-gray-500">
+                  Evidence: {claim.evidence.length} - Confidence: {pct(numberValue(claim.confidence))}
+                </div>
+                {claim.evidence.length ? (
+                  <div className="mt-3 space-y-2 border-t border-gray-800 pt-3">
+                    {claim.evidence.slice(0, 2).map((evidence) => (
+                      <div key={evidence.id} className="text-xs leading-5 text-gray-400">
+                        <span className={evidence.evidence_type === 'contradicts' ? 'text-red-300' : 'text-teal-300'}>
+                          {evidence.evidence_type}
+                        </span>
+                        {' - '}
+                        {evidence.summary}
+                        {evidence.document_chunk_id ? (
+                          <span className="text-gray-600"> - chunk #{evidence.document_chunk_id}</span>
+                        ) : evidence.document_id ? (
+                          <span className="text-gray-600"> - document #{evidence.document_id}</span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <form action={addResearchClaimEvidence.bind(null, ticker, claim.id)} className="mt-3 grid gap-2 border-t border-gray-800 pt-3">
+                  <div className="grid gap-2 md:grid-cols-[120px_1fr]">
+                    <select
+                      aria-label="Evidence type"
+                      className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
+                      name="evidence_type"
+                    >
+                      <option className="bg-[#111111]" value="supports">supports</option>
+                      <option className="bg-[#111111]" value="contradicts">contradicts</option>
+                    </select>
+                    <Input aria-label="Evidence summary" name="summary" placeholder="Evidence summary" />
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-[1fr_130px_auto]">
+                    <Input aria-label="Source URL" name="source_url" placeholder="Source URL" type="url" />
+                    <Input aria-label="Source tier" defaultValue="secondary" name="source_tier" />
+                    <Button type="submit" variant="outline">
+                      <Plus className="h-4 w-4" />
+                      Evidence
+                    </Button>
+                  </div>
+                  {sourceDocuments.length ? (
+                    <div>
+                      <select
+                        aria-label="Evidence source"
+                        className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
+                        name="source_ref"
+                      >
+                        <option className="bg-[#111111]" value="">No linked document</option>
+                        {sourceDocuments.map((document) => (
+                          <option key={`doc-${document.id}`} className="bg-[#111111]" value={`document:${document.id}`}>
+                            Document: {document.title}
+                          </option>
+                        ))}
+                        {sourceChunks.map((chunk) => {
+                          const document = sourceDocuments.find((item) => item.id === chunk.document_id);
+                          return (
+                            <option key={`chunk-${chunk.id}`} className="bg-[#111111]" value={`chunk:${chunk.id}`}>
+                              Chunk: {document?.title ?? `Document ${chunk.document_id}`} #{chunk.chunk_index}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  ) : null}
+                </form>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">No claims captured.</div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <FileText className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Memory</h2>
+          <span className="ml-auto text-sm text-gray-500">{memoryItems.length}</span>
+        </div>
+        <form action={createResearchMemoryItem.bind(null, ticker)} className="mb-4 grid gap-3">
+          <Textarea aria-label="Memory item" className="border-gray-700 bg-transparent text-gray-100" name="content" placeholder="Watch item or decision note" required />
+          <div className="grid gap-3 md:grid-cols-[1fr_96px_auto]">
+            <Input aria-label="Memory type" defaultValue="note" name="memory_type" />
+            <Input aria-label="Importance" defaultValue="5" max="10" min="0" name="importance" type="number" />
+            <Button type="submit" variant="outline">
+              <Plus className="h-4 w-4" />
+              Add
+            </Button>
+          </div>
+        </form>
+        <div className="space-y-3">
+          {memoryItems.slice(0, 6).map((item) => (
+            <div key={item.id} className="rounded-md border border-gray-800 p-3">
+              <div className="flex items-center gap-2">
+                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                  {item.memory_type}
+                </Badge>
+                <span className="ml-auto text-xs text-gray-500">I{item.importance}</span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-gray-300">{item.content}</p>
+            </div>
+          ))}
+          {!memoryItems.length ? (
+            <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">No memory items captured.</div>
+          ) : null}
+        </div>
+        {sections.length ? (
+          <div className="mt-5 border-t border-gray-800 pt-4">
+            <div className="mb-3 text-xs font-semibold uppercase text-gray-500">Thesis sections</div>
+            <div className="flex flex-wrap gap-2">
+              {sections.map((section) => (
+                <Badge key={section.id} className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                  {section.title}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function WhatChangedPanel({
+  ticker,
+  changes,
+}: {
+  ticker: string;
+  changes: ResearchThesisChange[];
+}) {
+  const impactClass = (impact: string) => {
+    if (impact === 'positive') return 'border-teal-800 bg-teal-950/30 text-teal-200';
+    if (impact === 'negative') return 'border-red-800 bg-red-950/30 text-red-200';
+    if (impact === 'mixed') return 'border-amber-800 bg-amber-950/30 text-amber-200';
+    return 'border-gray-700 bg-gray-900 text-gray-300';
+  };
+
+  return (
+    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <GitBranch className="h-5 w-5 text-teal-300" />
+        <h2 className="text-lg font-semibold text-gray-100">What Changed</h2>
+        <span className="ml-auto text-sm text-gray-500">{changes.length}</span>
+      </div>
+      <form action={createResearchThesisChange.bind(null, ticker)} className="mb-4 grid gap-3 xl:grid-cols-[1fr_150px_140px_96px_160px_auto]">
+        <Input aria-label="Change summary" name="summary" placeholder="Thesis change" required />
+        <Input aria-label="Change type" defaultValue="manual" name="change_type" />
+        <select
+          aria-label="Impact direction"
+          className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
+          name="impact_direction"
+        >
+          <option className="bg-[#111111]" value="neutral">neutral</option>
+          <option className="bg-[#111111]" value="positive">positive</option>
+          <option className="bg-[#111111]" value="negative">negative</option>
+          <option className="bg-[#111111]" value="mixed">mixed</option>
+        </select>
+        <Input aria-label="Materiality" defaultValue="5" max="10" min="0" name="materiality_score" type="number" />
+        <Input aria-label="Affected metrics" name="affected_metrics" placeholder="metrics" />
+        <Button type="submit" variant="outline">
+          <Plus className="h-4 w-4" />
+          Add
+        </Button>
+      </form>
+      <div className="grid gap-3">
+        {changes.length ? (
+          changes.slice(0, 8).map((change) => (
+            <div key={change.id} className="rounded-md border border-gray-800 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className={impactClass(change.impact_direction)} variant="outline">
+                  {change.impact_direction}
+                </Badge>
+                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
+                  {change.change_type}
+                </Badge>
+                {change.requires_review ? (
+                  <Badge className="border-amber-800 bg-amber-950/30 text-amber-200" variant="outline">
+                    review
+                  </Badge>
+                ) : null}
+                <span className="ml-auto text-xs text-gray-500">M{change.materiality_score}</span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-gray-300">{change.summary}</p>
+              <div className="mt-2 text-xs text-gray-500">
+                Claims: {change.affected_claim_ids.length} - Metrics: {change.affected_metrics.join(', ') || 'none'}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">No thesis changes captured.</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default async function ResearchCompanyPage({ params }: ResearchCompanyPageProps) {
   const { ticker } = await params;
-  const [{ company, valuation, facts, thesis }, thesisHistory] = await Promise.all([
+  const [{ company, valuation, facts, thesis, claims, thesisSections, thesisChanges, memoryItems, sourceDocuments }, thesisHistory] = await Promise.all([
     getResearchCompanyDetail(ticker),
     getThesisHistory(ticker),
   ]);
@@ -424,6 +698,16 @@ export default async function ResearchCompanyPage({ params }: ResearchCompanyPag
         </div>
         <ThesisPanel thesis={thesis} />
       </section>
+
+      <ClaimsMemoryPanel
+        claims={claims}
+        memoryItems={memoryItems}
+        sections={thesisSections}
+        sourceDocuments={sourceDocuments}
+        ticker={company.ticker}
+      />
+
+      <WhatChangedPanel changes={thesisChanges} ticker={company.ticker} />
 
       {thesisHistory.length > 0 && (
         <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
