@@ -39,38 +39,43 @@ JLCavaAI es una plataforma inteligente de seguimiento de mercados y análisis de
 
 ## ✨ Introduction
 
-JLCavaAI es una aplicación moderna de análisis de mercados bursátiles construida con Next.js (App Router), shadcn/ui y Tailwind CSS, Better Auth para autenticación, MongoDB para persistencia, Finnhub para datos de mercado, y widgets de TradingView para gráficos y vistas de mercado.
+JLCavaAI / CavaAI es una plataforma de seguimiento de mercados y un **Research OS** de inversión: dashboard Next.js + motor FastAPI con valoración determinista, tesis versionadas, auditoría de fuentes y workers de research.
+
+**Importante:** el motor de valoración **no publica fair values** basados en bootstrap assumptions ni precios inventados. Sin hechos financieros coherentes → `status: insufficient_data`.
 
 ## ⚙️ Tech Stack
 
-**Core**
-- Next.js 15 (App Router), React 19
+**Frontend**
+- Next.js 16 (App Router), React 19
 - TypeScript
 - Tailwind CSS v4 (via @tailwindcss/postcss)
 - shadcn/ui + Radix UI primitives
 - Lucide icons
 
-**Auth & Data**
+**Auth & app data**
 - Better Auth (email/password) con MongoDB adapter
-- MongoDB + Mongoose
-- Finnhub API para símbolos, perfiles y noticias de mercado
-- TradingView widgets embebidos
+- MongoDB + Mongoose (auth / watchlists / legacy app state)
+- Finnhub API + TradingView widgets
+
+**Research OS (`data-engine/`)**
+- FastAPI + SQLAlchemy + PostgreSQL (canonical research store)
+- Qdrant (RAG), Redis (jobs/cache), MinIO (filings), DuckDB (analytics)
+- Dramatiq workers, Microsoft Agent Framework (MAF), Langfuse (opcional)
+- Valuation engine registry: `standard_dcf`, `sotp`, `pre_revenue`, `holding_company`, `commodity`
 
 **Automation & Comms**
 - Inngest (events, cron, AI inference via Gemini)
 - Nodemailer (Gmail transport)
-- next-themes, cmdk (command palette), react-hook-form
 
 ## 🔋 Features
 
 - **Autenticación**: Email/password auth con Better Auth + MongoDB adapter
+- **Research OS**: companies, financial facts, valuation engines, thesis versions, source audits
+- **Valoración honesta**: bloquea DCF bootstrap; requiere snapshot temporal coherente; sin precio de mercado → `null` (nunca $100)
 - **Búsqueda global y Command + K**: Búsqueda rápida de acciones con Finnhub
-- **Watchlist**: Watchlist por usuario almacenada en MongoDB
+- **Watchlist / portfolio**: posiciones, riesgo, analytics
 - **Detalles de acciones**: Widgets de TradingView, gráficos avanzados, técnicos
-- **Vista de mercado**: Heatmap, cotizaciones y noticias principales
-- **Análisis con IA**: Análisis automatizado con modelos de lenguaje avanzados
-- **Email automático**: Email de bienvenida personalizado y resúmenes diarios
-- **UI moderna**: Componentes shadcn/ui, Radix primitives, diseño oscuro por defecto
+- **UI moderna**: Componentes shadcn/ui, Radix primitives
 
 ## 🤸 Quick Start
 

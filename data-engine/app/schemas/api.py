@@ -78,6 +78,7 @@ class ThesisOut(BaseModel):
     source_coverage_score: int
     red_team_score: int
     valuation_risk_score: int
+    input_fingerprint: str | None = None
     created_at: datetime
 
 
@@ -116,12 +117,16 @@ class ChatResponse(BaseModel):
 class ValuationResponse(BaseModel):
     ticker: str
     model_type: str
-    current_price: float
-    bear_value: float
-    base_value: float
-    bull_value: float
-    expected_value: float
-    margin_of_safety: float
-    reverse_dcf: dict
-    sensitivity: dict
-    trace: dict
+    status: str = "ok"
+    publishable: bool = True
+    current_price: float | None = None
+    bear_value: float | None = None
+    base_value: float | None = None
+    bull_value: float | None = None
+    expected_value: float | None = None
+    margin_of_safety: float | None = None
+    missing_inputs: list[str] = []
+    reverse_dcf: dict = {}
+    sensitivity: dict = {}
+    moat: dict = {}
+    trace: dict = {}

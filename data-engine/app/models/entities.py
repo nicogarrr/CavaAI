@@ -309,6 +309,7 @@ class ThesisVersion(Base, TimestampMixin):
     source_coverage_score: Mapped[int] = mapped_column(Integer, default=0)
     red_team_score: Mapped[int] = mapped_column(Integer, default=0)
     valuation_risk_score: Mapped[int] = mapped_column(Integer, default=0)
+    input_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     company: Mapped[Company] = relationship(back_populates="thesis_versions")
 
