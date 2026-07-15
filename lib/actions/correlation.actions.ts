@@ -1,6 +1,8 @@
 'use server';
 
 import { cache } from 'react';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -59,12 +61,13 @@ export const calculateCorrelationMatrix = cache(async (
     period: string = '1y',
     method: 'pearson' | 'spearman' = 'pearson',
 ): Promise<CorrelationMatrixResult | null> => {
+    const identityHeaders = await researchIdentityHeaders();
     if (symbols.length < 2) return null;
 
     try {
         const res = await fetch(`${BACKEND_URL}/analytics/correlation`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...identityHeaders },
             body: JSON.stringify({ symbols: symbols.map(s => s.toUpperCase()), period, method }),
             next: { revalidate: 3600 },
         });
@@ -89,6 +92,7 @@ export async function getCorrelationPairs(
     symbols: string[],
     period: string = '1y',
 ): Promise<CorrelationData[]> {
+    await requireAuthenticatedUser();
     const result = await calculateCorrelationMatrix(symbols, period);
     if (!result) return [];
 
@@ -113,6 +117,7 @@ export const analyzeDiversification = cache(async (
         region?: string;
     }>,
 ): Promise<DiversificationAnalysis> => {
+    await requireAuthenticatedUser();
     // Concentration metrics (no external call needed)
     const sectorMap = new Map<string, { percentage: number; count: number }>();
     const regionMap = new Map<string, { percentage: number; count: number }>();
@@ -190,6 +195,7 @@ export const analyzeDiversification = cache(async (
 export const getRebalancingRecommendations = cache(async (
     positions: Array<{ symbol: string; percentage: number; sector?: string }>,
 ): Promise<Array<{ type: 'reduce' | 'increase' | 'add' | 'remove'; symbol: string; currentWeight: number; recommendedWeight: number; reason: string }>> => {
+    await requireAuthenticatedUser();
     const symbols = positions.map(p => p.symbol);
     const corrResult = await calculateCorrelationMatrix(symbols, '3m');
     const pairs = corrResult?.pairs ?? [];

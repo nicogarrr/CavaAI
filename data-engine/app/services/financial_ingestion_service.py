@@ -347,16 +347,29 @@ class FinancialIngestionService:
         return document
 
     def _replace_fmp_data(self, db: Session, company: Company, document: Document) -> None:
+        tenant_id = db.info.get("tenant_id")
+        fact_tenant = (
+            FinancialFact.tenant_id == tenant_id
+            if tenant_id is not None
+            else FinancialFact.tenant_id.is_(None)
+        )
+        statement_tenant = (
+            FinancialStatement.tenant_id == tenant_id
+            if tenant_id is not None
+            else FinancialStatement.tenant_id.is_(None)
+        )
         db.execute(
             delete(FinancialFact).where(
                 FinancialFact.company_id == company.id,
                 FinancialFact.source_type == "FMP",
+                fact_tenant,
             )
         )
         db.execute(
             delete(FinancialStatement).where(
                 FinancialStatement.company_id == company.id,
                 FinancialStatement.source_id == document.id,
+                statement_tenant,
             )
         )
         db.flush()
@@ -384,10 +397,17 @@ class FinancialIngestionService:
         return document
 
     def _replace_sec_data(self, db: Session, company: Company) -> None:
+        tenant_id = db.info.get("tenant_id")
+        tenant_filter = (
+            FinancialFact.tenant_id == tenant_id
+            if tenant_id is not None
+            else FinancialFact.tenant_id.is_(None)
+        )
         db.execute(
             delete(FinancialFact).where(
                 FinancialFact.company_id == company.id,
                 FinancialFact.source_type == "SEC",
+                tenant_filter,
             )
         )
         db.flush()

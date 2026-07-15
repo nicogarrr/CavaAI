@@ -57,16 +57,7 @@ export const getAuth = async (): Promise<AuthInstance> => {
                 return authInstance;
             }
             
-            // En runtime, si no hay conexión a MongoDB, lanzar error en producción
-            // En desarrollo, permitir fallback pero con warning
-            if (env.NODE_ENV === 'production') {
-                throw new DatabaseError('MongoDB connection is required in production');
-            }
-            
-            console.warn('⚠️ MongoDB connection not available, using memory adapter (development only)');
-            authInstance = createAuthInstance();
-            
-            return authInstance;
+            throw new DatabaseError('MongoDB connection is required at runtime');
         }
 
         const db = mongoose.connection;
@@ -89,14 +80,7 @@ export const getAuth = async (): Promise<AuthInstance> => {
             console.error('   Para producción: agrega tu IP específica');
             console.error('6. Espera 1-2 minutos y vuelve a intentar\n');
             
-            // En producción, lanzar error
-            if (env.NODE_ENV === 'production') {
-                throw new DatabaseError('MongoDB connection is required in production', appError);
-            }
-
-            console.warn('MongoDB unavailable, using auth without persistent database (development only)');
-            authInstance = createAuthInstance();
-            return authInstance;
+            throw new DatabaseError('MongoDB connection is required at runtime', appError);
         }
         
         throw appError;

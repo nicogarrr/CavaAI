@@ -12,7 +12,7 @@ from sentence_transformers import SentenceTransformer
 
 
 class VectorStore(Protocol):
-    def add_document(self, content: str, metadata: Optional[Dict] = None, document_id: Optional[str] = None) -> Dict:
+    def add_document(self, content: str, tenant_id: int, metadata: Optional[Dict] = None, document_id: Optional[str] = None) -> Dict:
         ...
 
     def search(
@@ -22,16 +22,17 @@ class VectorStore(Protocol):
         collection_names: Optional[List[str]] = None,
         symbol: Optional[str] = None,
         general_only: bool = False,
+        tenant_id: int | None = None,
     ) -> List[Dict]:
         ...
 
-    def delete_document(self, document_id: str) -> bool:
+    def delete_document(self, document_id: str, tenant_id: int) -> bool:
         ...
 
-    def list_documents(self, limit: int = 100) -> List[Dict]:
+    def list_documents(self, tenant_id: int, limit: int = 100) -> List[Dict]:
         ...
 
-    def stats(self) -> Dict:
+    def stats(self, tenant_id: int) -> Dict:
         ...
 
 
@@ -65,13 +66,14 @@ class QdrantVectorStore:
     def _generate_id(self, content: str) -> str:
         return hashlib.md5(content.encode()).hexdigest()[:16]
 
-    def add_document(self, content: str, metadata: Optional[Dict] = None, document_id: Optional[str] = None) -> Dict:
+    def add_document(self, content: str, tenant_id: int, metadata: Optional[Dict] = None, document_id: Optional[str] = None) -> Dict:
         from qdrant_client.models import PointStruct
 
         chunks = self._chunk_text(content)
         embeddings = self.embedding_model.encode(chunks).tolist()
         base_id = document_id or self._generate_id(content)
         base_metadata = metadata.copy() if metadata else {}
+        base_metadata["tenant_id"] = tenant_id
         base_metadata["document_id"] = base_id
         base_metadata["added_at"] = datetime.now().isoformat()
         base_metadata["total_chunks"] = len(chunks)
@@ -95,14 +97,18 @@ class QdrantVectorStore:
         collection_names: Optional[List[str]] = None,
         symbol: Optional[str] = None,
         general_only: bool = False,
+        tenant_id: int | None = None,
     ) -> List[Dict]:
         from qdrant_client.models import FieldCondition, Filter, MatchValue
 
         _ = collection_names
+        if tenant_id is None:
+            return []
         query_vector = self.embedding_model.encode([query])[0].tolist()
-        query_filter = None
+        conditions = [FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))]
         if symbol:
-            query_filter = Filter(must=[FieldCondition(key="symbol", match=MatchValue(value=symbol.upper()))])
+            conditions.append(FieldCondition(key="symbol", match=MatchValue(value=symbol.upper())))
+        query_filter = Filter(must=conditions)
         hits = self.client.search(
             collection_name=self.collection_name,
             query_vector=query_vector,
@@ -121,17 +127,27 @@ class QdrantVectorStore:
             results = [result for result in results if not result["metadata"].get("symbol")]
         return results[:n_results]
 
-    def delete_document(self, document_id: str) -> bool:
+    def delete_document(self, document_id: str, tenant_id: int) -> bool:
         from qdrant_client.models import FieldCondition, Filter, MatchValue
 
         self.client.delete(
             collection_name=self.collection_name,
-            points_selector=Filter(must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]),
+            points_selector=Filter(must=[
+                FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id)),
+                FieldCondition(key="document_id", match=MatchValue(value=document_id)),
+            ]),
         )
         return True
 
-    def list_documents(self, limit: int = 100) -> List[Dict]:
-        points, _ = self.client.scroll(collection_name=self.collection_name, limit=limit, with_payload=True)
+    def list_documents(self, tenant_id: int, limit: int = 100) -> List[Dict]:
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+        points, _ = self.client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=Filter(must=[FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))]),
+            limit=limit,
+            with_payload=True,
+        )
         docs = {}
         for point in points:
             payload = point.payload or {}
@@ -145,14 +161,20 @@ class QdrantVectorStore:
             })
         return list(docs.values())[:limit]
 
-    def stats(self) -> Dict:
-        info = self.client.get_collection(self.collection_name)
-        return {"total_chunks": info.points_count, "collection": self.collection_name, "backend": "qdrant"}
+    def stats(self, tenant_id: int) -> Dict:
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-    def get_stats(self) -> Dict:
-        return self.stats()
+        result = self.client.count(
+            collection_name=self.collection_name,
+            count_filter=Filter(must=[FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))]),
+            exact=True,
+        )
+        return {"total_chunks": result.count, "collection": self.collection_name, "backend": "qdrant"}
 
-    def get_context_for_analysis(self, symbol: str, company_name: str) -> str:
+    def get_stats(self, tenant_id: int) -> Dict:
+        return self.stats(tenant_id)
+
+    def get_context_for_analysis(self, symbol: str, company_name: str, tenant_id: int) -> str:
         queries = [
             (f"{symbol} {company_name}", symbol, False),
             (f"análisis {company_name} value investing", symbol, False),
@@ -161,7 +183,13 @@ class QdrantVectorStore:
         all_context = []
         seen_content = set()
         for query, query_symbol, general_only in queries:
-            for result in self.search(query=query, n_results=5, symbol=query_symbol, general_only=general_only):
+            for result in self.search(
+                query=query,
+                n_results=5,
+                symbol=query_symbol,
+                general_only=general_only,
+                tenant_id=tenant_id,
+            ):
                 content_key = result["content"][:100]
                 if content_key not in seen_content:
                     seen_content.add(content_key)

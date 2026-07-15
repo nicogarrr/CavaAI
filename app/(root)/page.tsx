@@ -1,9 +1,8 @@
 import { Suspense } from 'react';
-import { getAuth } from '@/lib/better-auth/auth';
-import { headers } from 'next/headers';
 import PersonalizedOverview from '@/components/PersonalizedOverview';
 import { Loader2 } from 'lucide-react';
 import { redirect } from 'next/navigation';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 // Forzar renderizado dinámico porque requiere datos de usuario
 export const dynamic = 'force-dynamic';
@@ -11,18 +10,9 @@ export const revalidate = 0;
 
 async function getUserId(): Promise<string> {
     try {
-        const auth = await getAuth();
-        if (!auth) {
-            if (process.env.NODE_ENV === 'development') return 'dev-user-123';
-            redirect('/sign-in');
-        }
-        const session = await auth.api.getSession({ headers: await headers() });
-        if (session?.user?.id) return session.user.id;
-        if (process.env.NODE_ENV === 'development') return 'dev-user-123';
-        redirect('/sign-in');
+        return (await requireAuthenticatedUser()).id;
     } catch {
-        if (process.env.NODE_ENV !== 'development') redirect('/sign-in');
-        return 'dev-user-123';
+        redirect('/sign-in');
     }
 }
 

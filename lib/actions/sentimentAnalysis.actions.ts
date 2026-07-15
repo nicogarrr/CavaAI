@@ -2,6 +2,7 @@
 
 import { getRAGContext } from './ai.actions';
 import { getDefaultGeminiModel, getGeminiGenerateContentEndpoint } from '@/lib/ai/modelConfig';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 /**
  * Analisis de sentimiento de noticias y menciones
@@ -143,6 +144,7 @@ export async function analyzeNewsSentiment(
     source?: string;
   }>
 ): Promise<NewsSentimentAnalysis | null> {
+  await requireAuthenticatedUser();
   if (!newsArticles || newsArticles.length === 0) {
     return null;
   }
@@ -278,6 +280,7 @@ export async function analyzeSocialSentiment(
     engagement?: number;
   }>
 ): Promise<SentimentScore[] | null> {
+  await requireAuthenticatedUser();
   if (!socialMentions.length) return null;
 
   return socialMentions.map((mention) => {
@@ -332,6 +335,7 @@ export async function getCombinedSentimentAnalysis(
     confidence: number;
   } | null;
 }> {
+  await requireAuthenticatedUser();
   const [newsSentiment, socialSentiment] = await Promise.all([
     analyzeNewsSentiment(symbol, companyName, newsArticles),
     socialMentions ? analyzeSocialSentiment(symbol, socialMentions) : Promise.resolve(null),

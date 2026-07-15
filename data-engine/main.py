@@ -2,11 +2,12 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router as research_api_router
 from app.core.config import get_settings
+from app.core.auth import get_research_principal
 from app.core.database import init_db
 from app.seed import ensure_company_master
 from routers.analytics import router as analytics_router
@@ -35,11 +36,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(fundamentals_router)
-app.include_router(market_router)
-app.include_router(knowledge_router)
-app.include_router(analytics_router)
-app.include_router(research_api_router, prefix="/api")
+private_dependencies = [Depends(get_research_principal)]
+
+app.include_router(fundamentals_router, dependencies=private_dependencies)
+app.include_router(market_router, dependencies=private_dependencies)
+app.include_router(knowledge_router, dependencies=private_dependencies)
+app.include_router(analytics_router, dependencies=private_dependencies)
+app.include_router(
+    research_api_router,
+    prefix="/api",
+    dependencies=private_dependencies,
+)
 
 
 @app.get("/")

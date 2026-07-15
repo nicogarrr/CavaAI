@@ -40,16 +40,23 @@ def _store_with_fake_client():
 def test_search_filters_by_symbol_in_qdrant_filter():
     store = _store_with_fake_client()
 
-    store.search("apple", symbol="aapl")
+    store.search("apple", symbol="aapl", tenant_id=1)
 
     assert store.client.last_search["query_filter"] is not None
     assert "AAPL" in repr(store.client.last_search["query_filter"])
+    assert "tenant_id" in repr(store.client.last_search["query_filter"])
+    assert "1" in repr(store.client.last_search["query_filter"])
 
 
 def test_general_only_excludes_symbol_specific_results():
     store = _store_with_fake_client()
 
-    results = store.search("criterios inversion", n_results=5, general_only=True)
+    results = store.search(
+        "criterios inversion",
+        n_results=5,
+        general_only=True,
+        tenant_id=1,
+    )
 
     assert [r["content"] for r in results] == ["General rule"]
 
@@ -58,7 +65,15 @@ def test_context_mixes_symbol_specific_and_general(monkeypatch):
     store = _store_with_fake_client()
     calls = []
 
-    def fake_search(query, n_results=10, collection_names=None, symbol=None, general_only=False):
+    def fake_search(
+        query,
+        n_results=10,
+        collection_names=None,
+        symbol=None,
+        general_only=False,
+        tenant_id=None,
+    ):
+        assert tenant_id == 1
         calls.append((query, symbol, general_only))
         if symbol == "AAPL":
             return [{"content": "AAPL moat", "metadata": {"symbol": "AAPL"}, "score": 0.9}]
@@ -68,7 +83,7 @@ def test_context_mixes_symbol_specific_and_general(monkeypatch):
 
     monkeypatch.setattr(store, "search", fake_search)
 
-    context = store.get_context_for_analysis("AAPL", "Apple")
+    context = store.get_context_for_analysis("AAPL", "Apple", tenant_id=1)
 
     assert "AAPL moat" in context
     assert "General ROIC rule" in context

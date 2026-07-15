@@ -2,6 +2,7 @@
 
 import { cache } from 'react';
 import { env } from '@/lib/env';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
 
@@ -9,6 +10,7 @@ const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
  * Helper function for Alpha Vantage API calls
  */
 async function fetchAlphaVantage<T>(params: Record<string, string>): Promise<T | null> {
+    await requireAuthenticatedUser();
     const apiKey = env.ALPHA_VANTAGE_API_KEY;
     if (!apiKey) {
         console.warn('ALPHA_VANTAGE_API_KEY not configured');
@@ -78,6 +80,7 @@ export const getNewsSentiment = cache(async (
     topics?: string,
     limit: number = 50
 ): Promise<NewsSentimentResponse | null> => {
+    await requireAuthenticatedUser();
     const params: Record<string, string> = {
         function: 'NEWS_SENTIMENT',
         limit: limit.toString(),
@@ -140,6 +143,7 @@ export type EconomicIndicator = {
  * Fetch Real GDP data
  */
 export const getRealGDP = cache(async (interval: 'annual' | 'quarterly' = 'quarterly'): Promise<EconomicIndicator | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchAlphaVantage<any>({
         function: 'REAL_GDP',
         interval,
@@ -164,6 +168,7 @@ export const getRealGDP = cache(async (interval: 'annual' | 'quarterly' = 'quart
  * Fetch CPI (Inflation) data
  */
 export const getCPI = cache(async (interval: 'monthly' | 'semiannual' = 'monthly'): Promise<EconomicIndicator | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchAlphaVantage<any>({
         function: 'CPI',
         interval,
@@ -188,6 +193,7 @@ export const getCPI = cache(async (interval: 'monthly' | 'semiannual' = 'monthly
  * Fetch Unemployment Rate
  */
 export const getUnemploymentRate = cache(async (): Promise<EconomicIndicator | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchAlphaVantage<any>({
         function: 'UNEMPLOYMENT',
     });
@@ -211,6 +217,7 @@ export const getUnemploymentRate = cache(async (): Promise<EconomicIndicator | n
  * Fetch Federal Funds Rate
  */
 export const getFederalFundsRate = cache(async (interval: 'daily' | 'weekly' | 'monthly' = 'monthly'): Promise<EconomicIndicator | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchAlphaVantage<any>({
         function: 'FEDERAL_FUNDS_RATE',
         interval,
@@ -238,6 +245,7 @@ export const getTreasuryYield = cache(async (
     maturity: '3month' | '2year' | '5year' | '7year' | '10year' | '30year' = '10year',
     interval: 'daily' | 'weekly' | 'monthly' = 'monthly'
 ): Promise<EconomicIndicator | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchAlphaVantage<any>({
         function: 'TREASURY_YIELD',
         interval,
@@ -263,6 +271,7 @@ export const getTreasuryYield = cache(async (
  * Fetch Inflation Rate
  */
 export const getInflation = cache(async (): Promise<EconomicIndicator | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchAlphaVantage<any>({
         function: 'INFLATION',
     });
@@ -293,6 +302,7 @@ export async function getAllEconomicIndicators(): Promise<{
     treasuryYield10Y: EconomicIndicator | null;
     inflation: EconomicIndicator | null;
 }> {
+    await requireAuthenticatedUser();
     const [gdp, cpi, unemployment, federalFundsRate, treasuryYield10Y, inflation] = await Promise.all([
         getRealGDP('quarterly'),
         getCPI('monthly'),

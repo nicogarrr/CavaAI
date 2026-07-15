@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     app_name: str = "Portfolio Research OS"
     api_prefix: str = "/api"
 
+    # Research OS is private by default. Tests that intentionally exercise the
+    # public dependency graph must opt out explicitly with
+    # RESEARCH_AUTH_REQUIRED=false.
+    research_auth_required: bool = True
+    research_auth_secret: str | None = Field(default=None, repr=False, min_length=32)
+    research_auth_max_age_seconds: int = Field(default=300, ge=30, le=3600)
+
     database_url: str = "sqlite:///./portfolio_research_os.db"
     redis_url: str = "redis://localhost:6379/0"
     qdrant_url: str = "http://localhost:6333"

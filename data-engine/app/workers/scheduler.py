@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.workers.dramatiq_app import (
@@ -11,6 +13,7 @@ from app.workers.dramatiq_app import (
     review_theses,
     run_daily_research,
     scan_contradictions,
+    tenant_contexts,
 )
 
 
@@ -32,32 +35,46 @@ def _register(scheduler: BlockingScheduler, func, trigger: str, *, job_id: str, 
     )
 
 
+def enqueue_for_all_tenants(actor) -> dict:
+    queued = []
+    for tenant_id, user_id in tenant_contexts():
+        message = actor.send(tenant_id, user_id)
+        queued.append(
+            {
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "message_id": str(message.message_id),
+            }
+        )
+    return {"actor": actor.actor_name, "queued": queued}
+
+
 def build_scheduler() -> BlockingScheduler:
     scheduler = BlockingScheduler(timezone="UTC")
     _register(
         scheduler,
-        refresh_rss_feeds.send,
+        partial(enqueue_for_all_tenants, refresh_rss_feeds),
         "interval",
         job_id="rss_refresh",
         minutes=15,
     )
     _register(
         scheduler,
-        refresh_news.send,
+        partial(enqueue_for_all_tenants, refresh_news),
         "interval",
         job_id="news_refresh",
         minutes=30,
     )
     _register(
         scheduler,
-        refresh_ir_pages.send,
+        partial(enqueue_for_all_tenants, refresh_ir_pages),
         "interval",
         job_id="ir_refresh",
         hours=1,
     )
     _register(
         scheduler,
-        refresh_sec_filings.send,
+        partial(enqueue_for_all_tenants, refresh_sec_filings),
         "cron",
         job_id="sec_refresh",
         hour="*/4",
@@ -65,7 +82,7 @@ def build_scheduler() -> BlockingScheduler:
     )
     _register(
         scheduler,
-        scan_contradictions.send,
+        partial(enqueue_for_all_tenants, scan_contradictions),
         "cron",
         job_id="contradiction_scan",
         hour="*",
@@ -73,7 +90,7 @@ def build_scheduler() -> BlockingScheduler:
     )
     _register(
         scheduler,
-        consolidate_memory.send,
+        partial(enqueue_for_all_tenants, consolidate_memory),
         "cron",
         job_id="memory_consolidation",
         hour=3,
@@ -81,7 +98,7 @@ def build_scheduler() -> BlockingScheduler:
     )
     _register(
         scheduler,
-        review_theses.send,
+        partial(enqueue_for_all_tenants, review_theses),
         "cron",
         job_id="thesis_review",
         hour=7,
@@ -108,4 +125,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
