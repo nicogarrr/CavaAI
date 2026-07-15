@@ -145,6 +145,45 @@ FRAMEWORKS: dict[str, CompanyFramework] = {
         active_modules=COMMON_MODULES + ("market_opportunity", "segment_model", "macro_sensitivity", "sotp"),
         required_fact_metrics=("aum", "fee_rate", "nav", "holdco_debt", "asset_value"),
     ),
+    "bank": CompanyFramework(
+        key="bank",
+        label="Bank / deposit franchise",
+        primary_question="Can the deposit franchise earn returns above its cost of equity through the credit cycle?",
+        market_opportunity_mode="recommended",
+        revenue_drivers=("loan_growth", "deposit_growth", "net_interest_margin", "fee_income", "cost_of_deposits"),
+        kpis=("return_on_tangible_equity", "cet1_ratio", "nonperforming_loan_ratio", "net_charge_off_rate", "efficiency_ratio", "tangible_book_value"),
+        unit_economics=("earning assets × net interest margin", "tangible book × sustainable ROTE"),
+        segment_model=("consumer_banking", "commercial_banking", "wealth", "markets"),
+        binding_constraints=("credit_losses", "funding_cost", "capital_requirements", "liquidity", "rate_sensitivity"),
+        active_modules=COMMON_MODULES + ("credit_cycle", "capital_adequacy", "residual_income", "macro_sensitivity"),
+        required_fact_metrics=("tangible_book_value", "shares_diluted", "return_on_tangible_equity", "cost_of_equity", "net_interest_margin", "cet1_ratio"),
+    ),
+    "insurer": CompanyFramework(
+        key="insurer",
+        label="Insurance underwriter",
+        primary_question="Can underwriting discipline and investment returns compound book value above the cost of equity?",
+        market_opportunity_mode="recommended",
+        revenue_drivers=("earned_premiums", "premium_growth", "combined_ratio", "investment_income", "retention"),
+        kpis=("combined_ratio", "loss_ratio", "expense_ratio", "reserve_development", "roe", "book_value_per_share"),
+        unit_economics=("earned premium × underwriting margin", "float × investment yield"),
+        segment_model=("underwriting_lines", "geography", "investment_portfolio"),
+        binding_constraints=("catastrophe_losses", "reserve_adequacy", "pricing_cycle", "capital", "investment_yield"),
+        active_modules=COMMON_MODULES + ("underwriting_cycle", "reserve_quality", "book_value_model", "macro_sensitivity"),
+        required_fact_metrics=("book_value", "shares_diluted", "roe", "cost_of_equity", "combined_ratio"),
+    ),
+    "reit": CompanyFramework(
+        key="reit",
+        label="REIT / property owner",
+        primary_question="Can same-store NOI and accretive investment outgrow financing and cap-rate pressure?",
+        market_opportunity_mode="recommended",
+        revenue_drivers=("occupied_area", "occupancy", "rent_per_area", "same_store_noi_growth", "development_pipeline"),
+        kpis=("net_operating_income", "occupancy", "same_store_noi_growth", "affo_per_share", "cap_rate", "net_debt_to_ebitda"),
+        unit_economics=("occupied area × rent", "NOI ÷ capitalization rate"),
+        segment_model=("property_type", "geography", "development", "joint_ventures"),
+        binding_constraints=("interest_rates", "refinancing", "cap_rates", "occupancy", "development_cost"),
+        active_modules=COMMON_MODULES + ("reit_nav", "same_store_growth", "lease_maturity", "macro_sensitivity"),
+        required_fact_metrics=("net_operating_income", "cap_rate", "net_debt", "shares_diluted", "occupancy"),
+    ),
     "commodity": CompanyFramework(
         key="commodity",
         label="Commodity / royalty / resource",
@@ -196,6 +235,12 @@ def resolve_company_framework(company: Company) -> CompanyFramework:
     }
     if ticker in explicit_tickers:
         return FRAMEWORKS[explicit_tickers[ticker]]
+    if "bank" in company_type or "bank" in model:
+        return FRAMEWORKS["bank"]
+    if "insur" in company_type or "insur" in model:
+        return FRAMEWORKS["insurer"]
+    if "reit" in company_type or "reit" in model or "real_estate_nav" in model:
+        return FRAMEWORKS["reit"]
     if "holding" in company_type or "asset_manager" in company_type or "sotp" in model:
         return FRAMEWORKS["holding_asset_manager"]
     if "commodity" in tags or "mining" in company_type or "uranium" in company_type or "royalty" in company_type:

@@ -89,7 +89,16 @@ class StandardDCFEngine(ValuationEngine):
             shares_outstanding=shares,
         )
 
-        scenarios = mechanical_dcf_scenarios(growth, margin, wacc, terminal)
+        evidence_confidence = sum(float(fact.confidence) for fact in snapshot.facts.values()) / len(
+            snapshot.facts
+        )
+        scenarios = mechanical_dcf_scenarios(
+            growth,
+            margin,
+            wacc,
+            terminal,
+            evidence_confidence,
+        )
         scenario_results = {}
         for scenario in scenarios:
             result = run_dcf(
@@ -173,7 +182,9 @@ class StandardDCFEngine(ValuationEngine):
                 "model_version": MODEL_VERSION,
                 "growth_source": growth_source,
                 "wacc_source": "tag_default",
-                "scenario_style": "mechanical_mvp",
+                "scenario_style": "fact_anchored_sensitivity",
+                "probability_method": "source_confidence_plus_company_financials",
+                "evidence_confidence": evidence_confidence,
                 "fact_ids": snapshot.fact_ids(),
                 "periods": snapshot.periods(),
                 "snapshot": {

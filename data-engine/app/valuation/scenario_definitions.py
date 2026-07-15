@@ -18,17 +18,40 @@ class ScenarioDefinition:
     description: str = ""
 
 
+def evidence_weighted_probabilities(
+    *,
+    evidence_confidence: float,
+    directional_signal: float = 0.0,
+    downside_risk: float = 0.0,
+) -> dict[str, float]:
+    """Derive scenario weights from sourced evidence and company conditions."""
+    confidence = max(0.0, min(1.0, evidence_confidence))
+    signal = max(-1.0, min(1.0, directional_signal))
+    risk = max(0.0, min(1.0, downside_risk))
+    base = max(0.40, min(0.68, 0.40 + confidence * 0.24 - risk * 0.08))
+    tail = 1.0 - base
+    upside_share = max(0.25, min(0.75, 0.50 + signal * 0.20 - risk * 0.20))
+    bull = tail * upside_share
+    return {"bear": tail - bull, "base": base, "bull": bull}
+
+
 def mechanical_dcf_scenarios(
     growth: float,
     margin: float,
     wacc: float,
     terminal: float,
+    evidence_confidence: float,
 ) -> list[ScenarioDefinition]:
-    """Legacy MVP scenarios — labeled as mechanical, not causal."""
+    """Fact-anchored mechanical sensitivities with evidence-weighted probabilities."""
+    direction = (growth - wacc) * 3.0 + (margin - 0.10) * 2.0
+    probabilities = evidence_weighted_probabilities(
+        evidence_confidence=evidence_confidence,
+        directional_signal=direction,
+    )
     return [
         ScenarioDefinition(
             name="bear",
-            probability=0.25,
+            probability=probabilities["bear"],
             assumptions={
                 "revenue_growth": max(growth - 0.08, -0.05),
                 "fcf_margin": max(margin - 0.06, 0.02),
@@ -40,7 +63,7 @@ def mechanical_dcf_scenarios(
         ),
         ScenarioDefinition(
             name="base",
-            probability=0.50,
+            probability=probabilities["base"],
             assumptions={
                 "revenue_growth": growth,
                 "fcf_margin": margin,
@@ -52,7 +75,7 @@ def mechanical_dcf_scenarios(
         ),
         ScenarioDefinition(
             name="bull",
-            probability=0.25,
+            probability=probabilities["bull"],
             assumptions={
                 "revenue_growth": growth + 0.08,
                 "fcf_margin": min(margin + 0.06, 0.45),
@@ -71,12 +94,19 @@ def speculative_causal_scenarios(
     wacc: float,
     terminal: float,
     dilution_pct: float = 0.0,
+    evidence_confidence: float = 0.0,
 ) -> list[ScenarioDefinition]:
     """Causal-leaning scenarios for pre-FCF / speculative names (ASTS-like)."""
+    funding_risk = max(0.0, min(1.0, dilution_pct * 2.0))
+    probabilities = evidence_weighted_probabilities(
+        evidence_confidence=evidence_confidence,
+        directional_signal=(growth - wacc) * 2.0,
+        downside_risk=funding_risk,
+    )
     return [
         ScenarioDefinition(
             name="execution_delay_funding_stress",
-            probability=0.30,
+            probability=probabilities["bear"],
             assumptions={
                 "revenue_growth": max(growth - 0.12, -0.05),
                 "fcf_margin": max(margin - 0.08, 0.01),
@@ -89,7 +119,7 @@ def speculative_causal_scenarios(
         ),
         ScenarioDefinition(
             name="base_commercialization",
-            probability=0.45,
+            probability=probabilities["base"],
             assumptions={
                 "revenue_growth": growth,
                 "fcf_margin": margin,
@@ -102,7 +132,7 @@ def speculative_causal_scenarios(
         ),
         ScenarioDefinition(
             name="accelerated_monetization",
-            probability=0.25,
+            probability=probabilities["bull"],
             assumptions={
                 "revenue_growth": growth + 0.10,
                 "fcf_margin": min(margin + 0.05, 0.35),
@@ -118,26 +148,32 @@ def speculative_causal_scenarios(
 
 def holding_company_scenarios(
     nav_per_share: float,
-    holding_discount: float = 0.15,
+    holding_discount: float,
+    evidence_confidence: float,
 ) -> list[ScenarioDefinition]:
+    probabilities = evidence_weighted_probabilities(
+        evidence_confidence=evidence_confidence,
+        directional_signal=-holding_discount,
+        downside_risk=holding_discount,
+    )
     return [
         ScenarioDefinition(
             name="bear",
-            probability=0.25,
+            probability=probabilities["bear"],
             assumptions={"nav_per_share": nav_per_share, "holding_discount": min(holding_discount + 0.15, 0.45)},
             drivers=["wider_holding_discount", "asset_value_compression"],
             description="Wider conglomerate/holding discount.",
         ),
         ScenarioDefinition(
             name="base",
-            probability=0.50,
+            probability=probabilities["base"],
             assumptions={"nav_per_share": nav_per_share, "holding_discount": holding_discount},
             drivers=["base_nav", "base_discount"],
             description="Base NAV with standard holding discount.",
         ),
         ScenarioDefinition(
             name="bull",
-            probability=0.25,
+            probability=probabilities["bull"],
             assumptions={"nav_per_share": nav_per_share * 1.12, "holding_discount": max(holding_discount - 0.08, 0.0)},
             drivers=["nav_expansion", "discount_narrowing", "buybacks"],
             description="NAV expansion and discount narrowing.",

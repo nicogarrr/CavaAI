@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { CavaAIWordmark } from "@/components/CavaAIWordmark";
 import NavItems from "@/components/NavItems";
 import UserDropdown from "@/components/UserDropdown";
 import SearchCommand from "@/components/SearchCommand";
@@ -9,13 +9,7 @@ const Header = ({ user, initialStocks }: { user: User, initialStocks: StockWithW
         <header className="sticky top-0 header">
             <div className="container header-wrapper">
                 <Link href="/" prefetch={false} className="flex items-center justify-center gap-2">
-                    <Image
-                        src="/assets/images/logo.png"
-                        alt="JLCavaAI"
-                        width={200}
-                        height={50}
-                        priority
-                    />
+                    <CavaAIWordmark />
                 </Link>
 
                 {/* Buscador visible */}

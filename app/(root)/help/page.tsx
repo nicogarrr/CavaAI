@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import HelpTabs from '@/components/help/HelpTabs';
 
 export const metadata: Metadata = {
-  title: 'Help Center - OpenStock',
+  title: 'Help Center - CavaAI',
   description: 'Free help, API documentation, and community support - no barriers, just guidance',
 };
 

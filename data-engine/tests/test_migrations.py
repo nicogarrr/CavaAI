@@ -42,4 +42,24 @@ def test_alembic_upgrade_head_creates_research_memory_tables():
         "research_sessions",
         "memory_items",
         "calculated_metrics",
+        "fundamental_model_versions",
+        "fundamental_drivers",
+        "fundamental_assumptions",
+        "fundamental_forecasts",
+        "decision_journal_entries",
+        "expectation_reviews",
     }.issubset(tables)
+
+
+def test_latest_fundamental_migration_is_explicit_and_not_metadata_driven():
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "0006_fundamental_model_journal.py"
+    ).read_text(encoding="utf-8")
+
+    assert "Base.metadata" not in migration
+    assert "op.create_table" in migration
+    assert "fundamental_model_versions" in migration
+    assert "decision_journal_entries" in migration

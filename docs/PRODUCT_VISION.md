@@ -117,13 +117,7 @@ Use different model tiers by task:
 - Deep research: strong model
 - Red team: strong model
 
-The current code supports configurable Gemini models via:
-
-- `GEMINI_MODEL`
-- `GEMINI_CHEAP_MODEL`
-- `GEMINI_DEEP_MODEL`
-
-Future provider abstraction should support OpenRouter, OpenAI, Anthropic, Google, and any provider with an OpenAI-compatible endpoint.
+The current backend has a provider-agnostic interface for OpenRouter, OpenAI-compatible endpoints, Anthropic and Gemini. `LLM_PROVIDER=auto` chooses only among enabled providers with configured credentials; task-specific overrides keep extraction, synthesis and red-team model choice separate.
 
 Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. The default company chat uses the canonical SQL store first so local development and tests do not depend on Qdrant or embedding downloads.
 
@@ -157,16 +151,14 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - Company-specific long-term modelling: the workspace resolves a company framework and exposes the source-aware Long-Term Fundamental Modeling Engine.
 - Market Opportunity: TAM/SAM/SOM, top-down and bottom-up opportunity, valuation-implied market share and binding-constraint detection are unified in one contract; mature asset-heavy companies use reinvestment runway instead of forced TAM.
 
-### P1
+### P1 foundations implemented
 
-- Moat framework
-- Thesis dependency graph
-- Red team
-- What Changed automation from filings, earnings and fully scheduled external news connectors
-- Earnings workflow
-- Contradiction engine
-- Decision Journal linked to thesis versions, model assumptions and subsequent outcomes
-- Expectation vs Reality review against every explicit forward-model year and KPI
+- Moat assessment, peer selection, thesis dependency graph and red-team persistence.
+- Earnings workflow, contradiction/review records and material What Changed automation.
+- Decision Journal linked to the latest thesis, fundamental model and observed price.
+- Expectation vs Reality reviews linked to persisted forecast points and subsequent reported facts.
+- Dedicated fact-driven bank, insurer and REIT valuation engines.
+- One company snapshot endpoint consumed through a generated OpenAPI TypeScript client.
 
 ### Remaining Work To Feel Complete
 
@@ -176,11 +168,9 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - Promote Docling from optional parser to primary production parser after validating install size, OCR/table accuracy and deployment footprint.
 - Expand traceable metrics to CFROI, ROCE, incremental ROIC, share-count CAGR and WACC sourced from market assumptions.
 - Implement "What changed" from new filings/news/earnings into `thesis_changes`, not only manual thesis history.
-- Add an automated contradiction engine that compares new evidence against existing claims and marks review-required items.
-- Add a provider-agnostic LLM interface before expanding beyond Gemini.
-- Replace the dynamic `0001_initial` Alembic migration with explicit table definitions before production hardening.
+- Expand automated contradiction checks from current claim/news/earnings triggers to every newly ingested source.
 - Pay down legacy frontend warnings currently tolerated by ESLint.
-- Add e2e/browser coverage for `/research`, `/research/[ticker]`, source import, thesis generation and memory capture.
+- Expand authenticated browser coverage from the public/auth shell to `/research/[ticker]`, source import, thesis generation and memory capture in a containerized test stack.
 - Replace remaining demo/dev fallbacks with explicit production onboarding and empty states.
 
 ### P2

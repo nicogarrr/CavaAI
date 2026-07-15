@@ -1,53 +1,37 @@
 # AI Provider Strategy
 
-Date: 2026-07-09
+Date: 2026-07-15
 
 ## Recommendation
 
-Use Gemini directly for the current product phase.
+Use the backend `LLMProvider` abstraction and keep provider choice configurable.
 
 Reasons:
 
-- The app already uses Google Gemini endpoints.
-- Gemini has very low-cost models suitable for extraction, classification, summarization and routing.
-- The model can be configured through environment variables without code changes.
-- Direct provider integration is simpler while the product core is still stabilizing.
+- OpenRouter, OpenAI-compatible endpoints, Anthropic and Gemini share one completion/structured-output contract.
+- `LLM_PROVIDER=auto` only selects enabled providers with configured credentials.
+- Task-level model overrides decouple extraction, classification, synthesis and red-team workloads.
+- Every run retains provider/model/prompt trace metadata; model output cannot create missing facts.
 
-Recommended defaults:
+Example configuration:
 
 ```env
-GEMINI_MODEL=gemini-3.5-flash
-GEMINI_CHEAP_MODEL=gemini-2.5-flash-lite
-GEMINI_DEEP_MODEL=gemini-3.5-flash
+LLM_PROVIDER=auto
+OPENROUTER_API_KEY=
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
 ```
 
-## OpenRouter
-
-OpenRouter should be the next abstraction target, not the first dependency. It is useful for:
-
-- fallback routing;
-- testing multiple models without rewriting code;
-- separating dev/staging/prod keys;
-- putting spend caps on model experiments.
-
-Add it once CavaAI has a provider interface like:
+## Implemented interface
 
 ```text
 LLMProvider
-- generateText
-- generateJson
-- extractDocument
-- classify
-- embed
-- modelForTask(task)
-- trace metadata
+- complete
+- structured_output
+- task model overrides
+- provider/model trace metadata
 ```
-
-## Muse Spark
-
-Do not build the production app around Muse Spark yet.
-
-Muse Spark is promising, but API access/pricing/provider coverage is not stable enough as the primary provider choice. Treat it as an experiment once Meta publishes mature developer docs, pricing, rate limits and an integration surface that can be used outside Meta products.
 
 ## Task Routing
 

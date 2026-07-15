@@ -467,8 +467,9 @@ class LongTermModelService:
 
     @staticmethod
     def _market_revenue_ceiling(market_opportunity: dict[str, Any]) -> float | None:
+        future_market = (market_opportunity.get("top_down") or {}).get("future_market") or {}
         candidates = [
-            _float((market_opportunity.get("top_down") or {}).get("future_market", {}).get("value")),
+            _float(future_market.get("value")),
             _float((market_opportunity.get("bottom_up") or {}).get("value")),
         ]
         positive = [value for value in candidates if value is not None and value > 0]
@@ -853,7 +854,8 @@ class LongTermModelService:
         share_growth = assumptions["shares_cagr"].value or 0.0
         capex_ratio = assumptions["capex_to_revenue"].value
         working_capital_ratio = assumptions["working_capital_to_revenue"].value
-        tax_rate = assumptions["effective_tax_rate"].value or 0.25
+        tax_rate_value = assumptions["effective_tax_rate"].value
+        tax_rate = tax_rate_value if tax_rate_value is not None else 0.25
         base_ids = _unique_ids(ids=assumptions["revenue_growth"].source_fact_ids)
         margin_ids = _unique_ids(ids=assumptions["fcf_margin"].source_fact_ids)
         share_ids = _unique_ids(ids=assumptions["shares_cagr"].source_fact_ids)
