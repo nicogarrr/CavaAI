@@ -129,6 +129,7 @@ def test_company_workspace_uses_one_coherent_snapshot_contract():
         "facts",
         "calculatedMetrics",
         "longTermModel",
+        "thesisHistory",
         "claims",
         "sourceDocuments",
         "decisionJournal",

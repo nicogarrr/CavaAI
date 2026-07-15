@@ -39,7 +39,6 @@ import {
   generateResearchThesis,
   refreshCompanyFinancials,
   refreshCompanyFinancialsSEC,
-  getThesisHistory,
   runResearchEarnings,
   runResearchRedTeam,
   type ResearchAlert,
@@ -1161,6 +1160,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
     peerAnalysis,
     moat,
     thesis,
+    thesisHistory,
     claims,
     thesisSections,
     thesisChanges,
@@ -1174,9 +1174,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
     longTermModel,
     decisionJournal,
     expectationReviews,
-  }, thesisHistory, marketSnapshot] = await Promise.all([
+  }, marketSnapshot] = await Promise.all([
     getResearchCompanyDetail(ticker),
-    getThesisHistory(ticker),
     getCompanyMarketSnapshot(ticker),
   ]);
 
