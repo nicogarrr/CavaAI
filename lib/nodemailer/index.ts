@@ -15,10 +15,10 @@ export const sendWelcomeEmail = async ({ email, name, intro }: WelcomeEmailData)
         .replace('{{intro}}', intro);
 
     const mailOptions = {
-        from: `"JLCavaAI" <noreply@jlcavaai.com>`,
+        from: `"CavaAI" <${process.env.NODEMAILER_EMAIL || 'noreply@cavaai.local'}>`,
         to: email,
-        subject: `Bienvenido a JLCavaAI - tu herramienta de análisis de inversiones`,
-        text: 'Gracias por unirte a JLCavaAI',
+        subject: `Bienvenido a CavaAI - tu herramienta de análisis de inversiones`,
+        text: 'Gracias por unirte a CavaAI',
         html: htmlTemplate,
     }
 
@@ -33,10 +33,10 @@ export const sendNewsSummaryEmail = async (
         .replace('{{newsContent}}', newsContent);
 
     const mailOptions = {
-        from: `"JLCavaAI" <noreply@jlcavaai.com>`,
+        from: `"CavaAI" <${process.env.NODEMAILER_EMAIL || 'noreply@cavaai.local'}>`,
         to: email,
         subject: `📈 Resumen de Noticias de Mercado - ${date}`,
-        text: `Resumen diario de noticias de mercado de JLCavaAI`,
+        text: `Resumen diario de noticias de mercado de CavaAI`,
         html: htmlTemplate,
     };
 
