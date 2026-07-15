@@ -100,6 +100,60 @@ def _message_id(message) -> str | None:
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
+def extract_document_kpis(
+    document_id: int,
+    *,
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Idempotently extract approval candidates from one persisted document."""
+    from app.models import Document
+    from app.services.kpi_extraction_service import KPIExtractionService
+
+    db = _session(tenant_id, user_id)
+    try:
+        document = db.get(Document, document_id)
+        if document is None:
+            raise ValueError(f"Document {document_id} was not found")
+        candidates = _run(KPIExtractionService().extract_document(db, document))
+        return {
+            "status": "ok",
+            "document_id": document_id,
+            "candidate_ids": [candidate.id for candidate in candidates],
+            "candidates": len(candidates),
+        }
+    except Exception as exc:
+        _rollback(db)
+        return _failure("extract_document_kpis", exc, document_id=document_id)
+    finally:
+        db.close()
+
+
+@dramatiq.actor(max_retries=1)
+def evaluate_alert_rules(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    from app.services.alert_rule_service import AlertRuleService
+
+    db = _session(tenant_id, user_id)
+    try:
+        results = AlertRuleService().evaluate_all(db)
+        return {
+            "status": "ok",
+            "actor": "evaluate_alert_rules",
+            "evaluated": len(results),
+            "triggered": sum(result.get("status") == "triggered" for result in results),
+            "results": results,
+        }
+    except Exception as exc:
+        _rollback(db)
+        return _failure("evaluate_alert_rules", exc, tenant_id=tenant_id)
+    finally:
+        db.close()
+
+
+@dramatiq.actor(max_retries=2, min_backoff=15_000)
 def refresh_sec_filings(
     tenant_id: int | None = None,
     user_id: str | None = None,
@@ -665,6 +719,7 @@ def review_theses(
 def run_daily_research() -> dict[str, Any]:
     actor_name = "run_daily_research"
     jobs: list[tuple[str, Any]] = [
+        ("alert_rule_evaluation", evaluate_alert_rules),
         ("sec_refresh", refresh_sec_filings),
         ("ir_refresh", refresh_ir_pages),
         ("rss_refresh", refresh_rss_feeds),

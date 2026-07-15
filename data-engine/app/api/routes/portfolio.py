@@ -8,11 +8,12 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import CashBalance, Company, Position, Transaction
+from app.models import CashBalance, Company, FXRate, Position, Transaction
 from app.services.connectors.ibkr import IBKRFlexClient
 from app.services.ibkr_import_service import IBKRImportService
 from app.services.risk_service import RiskService
 from app.services.portfolio_ledger_service import PortfolioLedgerService
+from app.services.portfolio_fx_service import PortfolioFXService
 
 router = APIRouter()
 
@@ -36,6 +37,18 @@ class PortfolioPriceInput(BaseModel):
     ticker: str = Field(min_length=1, max_length=20)
     price: Decimal = Field(gt=0)
     as_of: date | None = None
+
+
+class PortfolioConfigurationInput(BaseModel):
+    base_currency: str = Field(min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$")
+
+
+class FXRateInput(BaseModel):
+    base_currency: str = Field(min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$")
+    quote_currency: str = Field(min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$")
+    rate: Decimal = Field(gt=0)
+    rate_date: date
+    source: str = Field(default="manual", min_length=1, max_length=80)
 
 
 def _transaction_payload(transaction: Transaction, company: Company) -> dict:
@@ -64,7 +77,96 @@ def portfolio_summary(db: Session = Depends(get_db)) -> dict:
         "top_1_weight": risk["top_1_weight"],
         "top_5_weight": risk["top_5_weight"],
         "alerts": risk["alerts"],
+        "status": risk["status"],
+        "base_currency": risk["base_currency"],
+        "cash_native": risk["cash_native"],
+        "missing_fx": risk["missing_fx"],
     }
+
+
+@router.get("/configuration")
+def portfolio_configuration(db: Session = Depends(get_db)) -> dict:
+    portfolio = PortfolioFXService().portfolio(db)
+    return {
+        "id": portfolio.id if portfolio else None,
+        "name": portfolio.name if portfolio else "Main",
+        "base_currency": portfolio.base_currency if portfolio else "EUR",
+        "is_default": portfolio.is_default if portfolio else True,
+    }
+
+
+@router.put("/configuration")
+def update_portfolio_configuration(
+    payload: PortfolioConfigurationInput,
+    db: Session = Depends(get_db),
+) -> dict:
+    service = PortfolioFXService()
+    ledger = PortfolioLedgerService()
+    try:
+        portfolio = service.set_base_currency(db, payload.base_currency)
+        company_ids = list(db.scalars(select(Position.company_id)).all())
+        for company_id in company_ids:
+            ledger.rebuild_position(db, company_id)
+        db.commit()
+        return {
+            "id": portfolio.id,
+            "name": portfolio.name,
+            "base_currency": portfolio.base_currency,
+            "is_default": portfolio.is_default,
+        }
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/fx-rates")
+def list_fx_rates(db: Session = Depends(get_db)) -> list[dict]:
+    return [
+        {
+            "id": row.id,
+            "base_currency": row.base_currency,
+            "quote_currency": row.quote_currency,
+            "rate": float(row.rate),
+            "rate_date": row.rate_date.isoformat(),
+            "source": row.source,
+        }
+        for row in db.scalars(
+            select(FXRate).order_by(
+                desc(FXRate.rate_date), FXRate.base_currency, FXRate.quote_currency
+            )
+        ).all()
+    ]
+
+
+@router.post("/fx-rates", status_code=201)
+def upsert_fx_rate(payload: FXRateInput, db: Session = Depends(get_db)) -> dict:
+    service = PortfolioFXService()
+    ledger = PortfolioLedgerService()
+    try:
+        row = service.upsert_rate(
+            db,
+            base_currency=payload.base_currency,
+            quote_currency=payload.quote_currency,
+            rate=payload.rate,
+            rate_date=payload.rate_date,
+            source=payload.source,
+        )
+        company_ids = list(db.scalars(select(Position.company_id)).all())
+        for company_id in company_ids:
+            ledger.rebuild_position(db, company_id)
+        db.commit()
+        db.refresh(row)
+        return {
+            "id": row.id,
+            "base_currency": row.base_currency,
+            "quote_currency": row.quote_currency,
+            "rate": float(row.rate),
+            "rate_date": row.rate_date.isoformat(),
+            "source": row.source,
+        }
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/positions")
@@ -76,10 +178,52 @@ def positions(db: Session = Depends(get_db)) -> list[dict]:
             "name": company.name,
             "sector": company.sector,
             "quantity": float(position.quantity),
+            "average_cost": float(position.average_cost),
             "market_price": float(position.market_price),
             "market_value": float(position.market_value),
             "unrealized_pnl": float(position.unrealized_pnl),
+            "realized_pnl": float(position.realized_pnl),
+            "cost_basis": float(
+                position.cost_basis_native
+                if position.cost_basis_native is not None
+                else position.quantity * position.average_cost
+            ),
+            "as_of": position.as_of.isoformat(),
             "currency": position.currency,
+            "native_currency": position.currency,
+            "base_currency": position.base_currency,
+            "market_value_native": (
+                float(position.market_value_native)
+                if position.market_value_native is not None
+                else float(position.market_value)
+            ),
+            "market_value_base": (
+                float(position.market_value_base)
+                if position.market_value_base is not None
+                else None
+            ),
+            "cost_basis_native": (
+                float(position.cost_basis_native)
+                if position.cost_basis_native is not None
+                else float(position.quantity * position.average_cost)
+            ),
+            "cost_basis_base": (
+                float(position.cost_basis_base)
+                if position.cost_basis_base is not None
+                else None
+            ),
+            "unrealized_pnl_native": float(position.unrealized_pnl),
+            "unrealized_pnl_base": (
+                float(position.unrealized_pnl_base)
+                if position.unrealized_pnl_base is not None
+                else None
+            ),
+            "realized_pnl_base": (
+                float(position.realized_pnl_base)
+                if position.realized_pnl_base is not None
+                else None
+            ),
+            "fx_rate": float(position.fx_rate) if position.fx_rate is not None else None,
             "source": position.source,
         }
         for position, company in rows

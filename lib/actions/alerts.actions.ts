@@ -23,25 +23,27 @@ export interface CreateAlertInput {
     condition: Alert['condition'];
 }
 
-type ResearchAlert = {
+type ResearchAlertRule = {
     id: number;
-    status: string;
-    alert_type: Alert['type'];
+    active: boolean;
+    rule_type: Alert['type'];
+    condition: Alert['condition'];
+    last_triggered_at?: string | null;
     created_at: string;
     updated_at: string;
     metadata: {
         ticker?: string;
-        condition?: Alert['condition'];
     };
 };
 
-function toAlert(alert: ResearchAlert): Alert {
+function toAlert(alert: ResearchAlertRule): Alert {
     return {
         _id: String(alert.id),
         symbol: alert.metadata.ticker ?? '',
-        type: alert.alert_type,
-        condition: alert.metadata.condition ?? { operator: '==', value: '' },
-        isActive: !['resolved', 'dismissed'].includes(alert.status),
+        type: alert.rule_type,
+        condition: alert.condition,
+        isActive: alert.active,
+        lastTriggered: alert.last_triggered_at ?? undefined,
         createdAt: alert.created_at,
         updatedAt: alert.updated_at,
     };
@@ -56,7 +58,7 @@ export async function createAlert(input: CreateAlertInput): Promise<Alert> {
         method: 'POST',
         body: jsonBody({ ticker: symbol }),
     });
-    const alert = await researchRequest<ResearchAlert>('/api/alerts', {
+    const alert = await researchRequest<ResearchAlertRule>('/api/alerts', {
         method: 'POST',
         body: jsonBody({
             ticker: symbol,
@@ -69,14 +71,13 @@ export async function createAlert(input: CreateAlertInput): Promise<Alert> {
 }
 
 export async function getUserAlerts(): Promise<Alert[]> {
-    const alerts = await researchRequest<ResearchAlert[]>('/api/alerts?include_snoozed=true');
-    return alerts.filter((alert) => !['resolved', 'dismissed'].includes(alert.status)).map(toAlert);
+    const alerts = await researchRequest<ResearchAlertRule[]>('/api/alerts/rules?active=true');
+    return alerts.map(toAlert);
 }
 
 export async function deleteAlert(alertId: string): Promise<void> {
     if (!/^\d+$/.test(alertId)) throw new ValidationError('Invalid alert id', 'alertId');
-    await researchRequest(`/api/alerts/${alertId}/action`, {
-        method: 'POST',
-        body: jsonBody({ action: 'resolve', actor: 'user' }),
+    await researchRequest(`/api/alerts/rules/${alertId}`, {
+        method: 'DELETE',
     });
 }

@@ -4,6 +4,8 @@ from decimal import Decimal
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.llm.base import LLMProvider
+from app.llm.factory import create_llm_provider
 from app.models import (
     Claim,
     Company,
@@ -19,6 +21,7 @@ from app.models import (
 )
 from app.schemas import ChatResponse
 from app.services.memory_service import MemoryService
+from app.services.chat_synthesis_service import ChatSynthesisService
 from app.services.source_hierarchy_service import source_tier_key
 
 
@@ -51,8 +54,9 @@ def _short(text: str, limit: int = 420) -> str:
 
 
 class ChatService:
-    def __init__(self) -> None:
+    def __init__(self, provider: LLMProvider | None = None) -> None:
         self.memory = MemoryService()
+        self.provider = provider or create_llm_provider()
 
     def _resolve_company(self, db: Session, question: str, scope: str, ticker: str | None) -> Company | None:
         if ticker:
@@ -175,7 +179,20 @@ class ChatService:
         payload.update({key: value for key, value in extra.items() if value is not None})
         return payload
 
-    def answer(self, db: Session, question: str, scope: str, ticker: str | None) -> ChatResponse:
+    async def answer(
+        self, db: Session, question: str, scope: str, ticker: str | None
+    ) -> ChatResponse:
+        baseline = self._deterministic_answer(db, question, scope, ticker)
+        return await ChatSynthesisService(self.provider).synthesize(
+            question=question,
+            ticker=ticker,
+            baseline=baseline,
+            db=db,
+        )
+
+    def _deterministic_answer(
+        self, db: Session, question: str, scope: str, ticker: str | None
+    ) -> ChatResponse:
         company = self._resolve_company(db, question, scope, ticker)
         written_memory = self.memory.maybe_write_from_chat(db, question, company, scope)
         retrieved_memory = self.memory.retrieve(db, question, company, scope=scope, limit=6)

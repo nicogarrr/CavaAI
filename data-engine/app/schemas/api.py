@@ -43,6 +43,58 @@ class FinancialFactOut(BaseModel):
     created_at: datetime
 
 
+class CompanyKPIOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    metric_key: str
+    display_name: str
+    aliases: list[str]
+    canonical_unit: str
+    period_type: str
+    driver_type: str
+    required: bool
+    active: bool
+    registry_version: str
+    metadata: dict = Field(validation_alias="metadata_")
+
+
+class KPIExtractionCandidateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    company_kpi_id: int
+    document_id: int
+    document_chunk_id: int
+    metric_key: str
+    raw_label: str
+    raw_value: str
+    raw_unit: str
+    normalized_value: Decimal | None
+    canonical_unit: str
+    period: str
+    fiscal_year: int | None
+    fiscal_quarter: str | None
+    source_locator: dict
+    reconciliation_status: str
+    status: str
+    confidence: Decimal
+    extraction_model: str
+    prompt_version: str
+    approved_by: str | None
+    approved_at: datetime | None
+    canonical_fact_id: int | None
+    trace: dict
+    created_at: datetime
+
+
+class KPIExtractionAction(BaseModel):
+    action: Literal["approve", "reject"]
+    actor: str = Field(default="user", min_length=1, max_length=160)
+
+
 class FinancialRefreshResponse(BaseModel):
     status: str
     ticker: str
@@ -81,6 +133,99 @@ class CalculatedMetricsResponse(BaseModel):
     metrics: list[CalculatedMetricOut]
 
 
+class SnapshotThesisSummaryOut(BaseModel):
+    id: int
+    version: int
+    status: str
+    executive_summary: str
+    rating: str
+    current_price: Decimal | None
+    bear_value: Decimal | None
+    base_value: Decimal | None
+    bull_value: Decimal | None
+    expected_value: Decimal | None
+    margin_of_safety: Decimal | None
+    data_confidence_score: int
+    source_coverage_score: int
+    created_at: datetime
+
+
+class SnapshotValuationSummaryOut(BaseModel):
+    model_id: int | None = None
+    model_type: str
+    version: int | None = None
+    status: str
+    current_price: Decimal | None = None
+    bear_value: Decimal | None = None
+    base_value: Decimal | None = None
+    bull_value: Decimal | None = None
+    expected_value: Decimal | None = None
+    margin_of_safety: Decimal | None = None
+    updated_at: datetime | None = None
+
+
+class SnapshotModelSummaryOut(BaseModel):
+    id: int
+    version: int
+    engine_version: str
+    algorithm_version: str
+    framework_key: str
+    horizon_years: int
+    status: str
+    publishable: bool
+    input_fingerprint: str
+    forecast_fingerprint: str
+    market_snapshot_fingerprint: str
+    valuation_snapshot_fingerprint: str
+    code_commit_sha: str
+    scenario_probabilities: dict[str, float | None]
+    created_at: datetime
+
+
+class SnapshotCountsOut(BaseModel):
+    facts: int = 0
+    calculated_metrics: int = 0
+    documents: int = 0
+    claims: int = 0
+    thesis_versions: int = 0
+    model_versions: int = 0
+    open_reviews: int = 0
+    open_alerts: int = 0
+
+
+class ResearchHealthOut(BaseModel):
+    score: int = Field(ge=0, le=100)
+    status: Literal["empty", "incomplete", "review_required", "healthy"]
+    missing: list[str] = Field(default_factory=list)
+    review_required: bool = False
+
+
+class SnapshotRecentChangeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int | None
+    change_type: str
+    impact_direction: str
+    materiality_score: int
+    summary: str
+    affected_metrics: list[str]
+    requires_review: bool
+    created_at: datetime
+
+
+class CompanySnapshotOut(BaseModel):
+    """Small, read-only bootstrap contract for the Research workspace."""
+
+    company: CompanyOut
+    latest_thesis: SnapshotThesisSummaryOut | None = None
+    valuation_summary: SnapshotValuationSummaryOut
+    model_summary: SnapshotModelSummaryOut | None = None
+    research_health: ResearchHealthOut
+    counts: SnapshotCountsOut
+    recent_changes: list[SnapshotRecentChangeOut] = Field(default_factory=list)
+
+
 class ThesisGenerateRequest(BaseModel):
     ticker: str = Field(min_length=1, max_length=20)
     force_new_version: bool = False
@@ -96,12 +241,12 @@ class ThesisOut(BaseModel):
     thesis_markdown: str
     executive_summary: str
     rating: str
-    current_price: Decimal
-    bear_value: Decimal
-    base_value: Decimal
-    bull_value: Decimal
-    expected_value: Decimal
-    margin_of_safety: Decimal
+    current_price: Decimal | None
+    bear_value: Decimal | None
+    base_value: Decimal | None
+    bull_value: Decimal | None
+    expected_value: Decimal | None
+    margin_of_safety: Decimal | None
     data_confidence_score: int
     source_coverage_score: int
     red_team_score: int
@@ -364,6 +509,9 @@ class ChatResponse(BaseModel):
     evidence_suggestions: list[dict] = Field(default_factory=list)
     prompt_version: str | None = None
     model: str | None = None
+    confidence: float = Field(default=0, ge=0, le=1)
+    insufficient_data: bool = False
+    llm_trace: dict = Field(default_factory=dict)
 
 
 class EvidenceSuggestionOut(BaseModel):
@@ -443,6 +591,29 @@ class ResearchAlertOut(BaseModel):
     acknowledged_by: str | None
     snoozed_until: datetime | None
     resolved_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AlertRuleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    name: str
+    rule_type: str
+    condition: dict
+    target: dict
+    severity: str
+    channels: list[str]
+    active: bool
+    cooldown_seconds: int
+    last_evaluated_at: datetime | None
+    last_triggered_at: datetime | None
+    trigger_count: int
+    last_value: str | None
+    last_result: dict
+    metadata: dict = Field(validation_alias="metadata_")
     created_at: datetime
     updated_at: datetime
 

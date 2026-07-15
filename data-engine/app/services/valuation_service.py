@@ -72,7 +72,14 @@ class ValuationService:
 
         return result
 
-    def persist_output(self, db: Session, company: Company, valuation: dict) -> ValuationModel | None:
+    def persist_output(
+        self,
+        db: Session,
+        company: Company,
+        valuation: dict,
+        *,
+        commit: bool = True,
+    ) -> ValuationModel | None:
         if not valuation.get("publishable") and valuation.get("status") == "insufficient_data":
             # Persist a draft trace so audits can show why valuation was blocked.
             status = "insufficient_data"
@@ -108,6 +115,9 @@ class ValuationService:
                     output_payload=valuation,
                 )
             )
-        db.commit()
-        db.refresh(model)
+        if commit:
+            db.commit()
+            db.refresh(model)
+        else:
+            db.flush()
         return model

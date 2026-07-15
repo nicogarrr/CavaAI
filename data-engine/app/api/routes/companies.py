@@ -6,14 +6,23 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Company, FinancialFact
-from app.schemas import CalculatedMetricOut, CalculatedMetricsResponse, CompanyOut, FinancialFactOut, FinancialRefreshResponse
+from app.models import CalculatedMetric, Company, CompanyKPI, FinancialFact
+from app.schemas import (
+    CalculatedMetricOut,
+    CalculatedMetricsResponse,
+    CompanyOut,
+    CompanyKPIOut,
+    CompanySnapshotOut,
+    FinancialFactOut,
+    FinancialRefreshResponse,
+)
 from app.services.connectors.fmp import FMPClient
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.services.fundamental_review_service import (
     DecisionJournalService,
     ExpectationRealityService,
 )
+from app.services.fundamental_model_repository import FundamentalModelRepository
 from app.services.metric_calculation_service import MetricCalculationService
 from app.services.moat_service import MoatService
 from app.services.long_term_model_service import LongTermModelService
@@ -22,8 +31,35 @@ from app.services.peer_comparison_service import DEFAULT_PEER_METRICS, PeerCompa
 from app.services.red_team_service import RedTeamService
 from app.services.wacc_input_service import WaccInputService
 from app.services.company_snapshot_service import CompanySnapshotService
+from app.services.kpi_extraction_service import CompanyKPIRegistryService
 
 router = APIRouter()
+
+
+@router.get("/{ticker}/kpi-registry", response_model=list[CompanyKPIOut])
+def company_kpi_registry(
+    ticker: str, db: Session = Depends(get_db)
+) -> list[CompanyKPI]:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return list(
+        db.scalars(
+            select(CompanyKPI)
+            .where(CompanyKPI.company_id == company.id, CompanyKPI.active.is_(True))
+            .order_by(CompanyKPI.required.desc(), CompanyKPI.metric_key)
+        ).all()
+    )
+
+
+@router.post("/{ticker}/kpi-registry/sync", response_model=list[CompanyKPIOut])
+def sync_company_kpi_registry(
+    ticker: str, db: Session = Depends(get_db)
+) -> list[CompanyKPI]:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return CompanyKPIRegistryService().sync(db, company)
 
 
 class CompanyEnsureRequest(BaseModel):
@@ -111,15 +147,58 @@ def list_financial_facts(
 @router.get("/{ticker}/metrics/calculated", response_model=CalculatedMetricsResponse)
 def list_calculated_metrics(
     ticker: str,
-    refresh: bool = Query(default=True),
     db: Session = Depends(get_db),
 ) -> dict:
     company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    service = MetricCalculationService()
-    metrics = service.calculate_all(db, company, persist=refresh)
+    metrics = list(
+        db.scalars(
+            select(CalculatedMetric)
+            .where(CalculatedMetric.company_id == company.id)
+            .order_by(
+                CalculatedMetric.fiscal_year.desc().nullslast(),
+                desc(CalculatedMetric.created_at),
+            )
+        ).all()
+    )
+    return {
+        "ticker": company.ticker,
+        "status": "persisted" if metrics else "not_generated",
+        "metrics": [
+            CalculatedMetricOut(
+                id=result.id,
+                company_id=company.id,
+                metric=result.metric,
+                value=result.value,
+                unit=result.unit,
+                period=result.period,
+                fiscal_year=result.fiscal_year,
+                fiscal_quarter=result.fiscal_quarter,
+                status=result.status,
+                definition_version=result.definition_version,
+                formula=result.formula,
+                numerator=result.numerator,
+                denominator=result.denominator,
+                source_fact_ids=result.source_fact_ids,
+                calculation_trace=result.calculation_trace,
+                confidence=result.confidence,
+            )
+            for result in metrics
+        ],
+    }
+
+
+@router.post("/{ticker}/metrics/refresh", response_model=CalculatedMetricsResponse)
+def refresh_calculated_metrics(
+    ticker: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    metrics = MetricCalculationService().calculate_all(db, company, persist=True)
     return {
         "ticker": company.ticker,
         "status": "calculated",
@@ -150,18 +229,22 @@ def list_calculated_metrics(
 @router.get("/{ticker}/long-term-model")
 def long_term_model(
     ticker: str,
-    horizon: int = Query(default=5, ge=5, le=10),
     db: Session = Depends(get_db),
 ) -> dict:
     """Return the source-aware 5–10 year fundamental model for a company."""
     company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    return LongTermModelService().build(db, company, horizon=horizon)
+    payload = FundamentalModelRepository().latest_payload(db, company)
+    return payload if payload else {
+        "ticker": company.ticker,
+        "status": "not_generated",
+        "publishable": False,
+    }
 
 
-@router.get("/{ticker}/snapshot")
-def company_snapshot(
+@router.post("/{ticker}/long-term-model/generate")
+def generate_long_term_model(
     ticker: str,
     horizon: int = Query(default=5, ge=5, le=10),
     db: Session = Depends(get_db),
@@ -169,7 +252,33 @@ def company_snapshot(
     company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    return CompanySnapshotService().build(db, company, horizon=horizon)
+    return LongTermModelService().build(db, company, horizon=horizon)
+
+
+@router.get("/{ticker}/snapshot", response_model=CompanySnapshotOut)
+def company_snapshot(
+    ticker: str,
+    db: Session = Depends(get_db),
+) -> CompanySnapshotOut:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return CompanySnapshotService().build(db, company)
+
+
+@router.post("/{ticker}/snapshot/refresh", response_model=CompanySnapshotOut)
+def refresh_company_snapshot(
+    ticker: str,
+    horizon: int = Query(default=5, ge=5, le=10),
+    db: Session = Depends(get_db),
+) -> CompanySnapshotOut:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    MetricCalculationService().calculate_all(db, company, persist=True)
+    LongTermModelService().build(db, company, horizon=horizon)
+    MoatService().assess(db, company, persist=True)
+    return CompanySnapshotService().build(db, company)
 
 
 @router.get("/{ticker}/decision-journal")
@@ -239,6 +348,9 @@ def _expectation_payload(item) -> dict:
         "model_version_id": item.model_version_id,
         "forecast_id": item.forecast_id,
         "actual_fact_id": item.actual_fact_id,
+        "actual_metric_id": item.actual_metric_id,
+        "actual_source_type": item.actual_source_type,
+        "semantics": item.semantics,
         "fiscal_year": item.fiscal_year,
         "metric": item.metric,
         "expected_value": item.expected_value,
@@ -288,13 +400,23 @@ def peer_analysis(
 @router.get("/{ticker}/moat")
 def moat_assessment(
     ticker: str,
-    refresh: bool = Query(default=True),
     db: Session = Depends(get_db),
 ) -> dict:
     company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    return MoatService().assess(db, company, persist=refresh)
+    return MoatService().read(db, company)
+
+
+@router.post("/{ticker}/moat/refresh")
+def refresh_moat_assessment(
+    ticker: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return MoatService().assess(db, company, persist=True)
 
 
 @router.post("/{ticker}/red-team")

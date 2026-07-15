@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -28,7 +28,12 @@ def latest_thesis(ticker: str, db: Session = Depends(get_db)) -> ThesisVersion:
 
 
 @router.get("/{ticker}/versions", response_model=list[ThesisOut])
-def thesis_versions(ticker: str, db: Session = Depends(get_db)) -> list[ThesisVersion]:
+def thesis_versions(
+    ticker: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[ThesisVersion]:
     company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -37,12 +42,31 @@ def thesis_versions(ticker: str, db: Session = Depends(get_db)) -> list[ThesisVe
             select(ThesisVersion)
             .where(ThesisVersion.company_id == company.id)
             .order_by(desc(ThesisVersion.version))
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         ).all()
     )
 
 
 @router.get("/{ticker}/graph", response_model=ThesisGraphOut)
 def thesis_graph(ticker: str, db: Session = Depends(get_db)) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    try:
+        thesis, nodes, edges = ThesisGraphService().read(db, company)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "ticker": company.ticker,
+        "thesis_version_id": thesis.id,
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+
+@router.post("/{ticker}/graph/refresh", response_model=ThesisGraphOut)
+def refresh_thesis_graph(ticker: str, db: Session = Depends(get_db)) -> dict:
     company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -56,4 +80,3 @@ def thesis_graph(ticker: str, db: Session = Depends(get_db)) -> dict:
         "nodes": nodes,
         "edges": edges,
     }
-

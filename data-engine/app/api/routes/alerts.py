@@ -7,13 +7,15 @@ from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Company, ResearchAlert
+from app.models import AlertRule, Company, ResearchAlert
 from app.schemas import (
+    AlertRuleOut,
     ResearchAlertAction,
     ResearchAlertChannels,
     ResearchAlertOut,
 )
 from app.services.review_alert_service import ReviewAlertService
+from app.services.alert_rule_service import AlertRuleService
 from app.services.notification_service import NotificationService
 
 router = APIRouter()
@@ -26,38 +28,58 @@ class ManualAlertCreate(BaseModel):
     value: float | str
 
 
-@router.post("", response_model=ResearchAlertOut, status_code=201)
+@router.post("", response_model=AlertRuleOut, status_code=201)
 def create_alert(
     payload: ManualAlertCreate, db: Session = Depends(get_db)
-) -> ResearchAlert:
+) -> AlertRule:
     company = db.scalar(
         select(Company).where(Company.ticker == payload.ticker.upper())
     )
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    alert = ReviewAlertService().emit_alert(
+    return AlertRuleService().create(
         db,
-        company_id=company.id,
-        alert_type=payload.alert_type,
-        severity="medium",
-        title=f"{company.ticker}: {payload.alert_type.replace('_', ' ')}",
-        message=f"{company.ticker} {payload.operator} {payload.value}",
-        fingerprint_parts=[
-            "manual",
-            company.ticker,
-            payload.alert_type,
-            payload.operator,
-            str(payload.value),
-        ],
-        metadata={
-            "manual": True,
-            "ticker": company.ticker,
-            "condition": {"operator": payload.operator, "value": payload.value},
-        },
+        company,
+        rule_type=payload.alert_type,
+        operator=payload.operator,
+        value=payload.value,
     )
+
+
+@router.get("/rules", response_model=list[AlertRuleOut])
+def list_alert_rules(
+    ticker: str | None = None,
+    active: bool | None = None,
+    db: Session = Depends(get_db),
+) -> list[AlertRule]:
+    statement = select(AlertRule)
+    if ticker:
+        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        statement = statement.where(AlertRule.company_id == company.id)
+    if active is not None:
+        statement = statement.where(AlertRule.active.is_(active))
+    return list(db.scalars(statement.order_by(desc(AlertRule.created_at))).all())
+
+
+@router.post("/rules/evaluate")
+def evaluate_alert_rules(db: Session = Depends(get_db)) -> dict:
+    results = AlertRuleService().evaluate_all(db)
+    return {"status": "ok", "evaluated": len(results), "results": results}
+
+
+@router.delete("/rules/{rule_id}", response_model=AlertRuleOut)
+def deactivate_alert_rule(
+    rule_id: int, db: Session = Depends(get_db)
+) -> AlertRule:
+    rule = db.get(AlertRule, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Alert rule not found")
+    rule.active = False
     db.commit()
-    db.refresh(alert)
-    return alert
+    db.refresh(rule)
+    return rule
 
 
 @router.get("", response_model=list[ResearchAlertOut])
