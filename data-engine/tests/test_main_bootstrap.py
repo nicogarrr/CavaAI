@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import main
+from app.seed import seed
 
 
 DATA_ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -80,6 +81,7 @@ def test_public_routes_are_registered_once():
         "/api/companies/{ticker}",
         "/api/portfolio/summary",
         "/api/companies/{ticker}/metrics/calculated",
+        "/api/companies/{ticker}/snapshot",
         "/api/companies/{ticker}/peers/comparison",
         "/api/portfolio/positions",
         "/api/portfolio/cash",
@@ -118,3 +120,22 @@ def test_root_and_health():
     assert ready.status_code == 200
     assert "checks" in ready.json()
     assert "database" in ready.json()["checks"]
+
+
+def test_company_workspace_uses_one_coherent_snapshot_contract():
+    seed()
+    response = TestClient(main.app).get("/api/companies/MSFT/snapshot?horizon=5")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["company"]["ticker"] == "MSFT"
+    assert {
+        "valuation",
+        "facts",
+        "calculatedMetrics",
+        "longTermModel",
+        "claims",
+        "sourceDocuments",
+        "decisionJournal",
+        "expectationReviews",
+    }.issubset(payload)
