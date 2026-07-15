@@ -1,7 +1,4 @@
-import io
-
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
 
 import main
 from routers import fundamentals, market
@@ -57,32 +54,10 @@ def test_stock_peers_enriches_with_prices(monkeypatch):
     }
 
 
-def test_knowledge_upload_files_supports_excel(monkeypatch):
-    class FakeKnowledgeBase:
-        def add_document(self, content, tenant_id, metadata=None):
-            assert tenant_id == 1
-            assert "=== Hoja: Sheet ===" in content
-            assert "ticker | value" in content
-            return {"document_id": "doc-1", "chunks_added": 1}
-
-    import modules.knowledge_base as knowledge_base
-    from routers import knowledge
-
-    monkeypatch.setattr(knowledge_base, "get_knowledge_base", lambda: FakeKnowledgeBase())
-    monkeypatch.setattr(knowledge, "_tenant_id", lambda _db: 1)
-
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.append(["ticker", "value"])
-    sheet.append(["AAPL", 10])
-    buffer = io.BytesIO()
-    workbook.save(buffer)
-    buffer.seek(0)
-
+def test_legacy_direct_vector_knowledge_routes_are_retired():
     response = TestClient(main.app).post(
-        "/knowledge/upload-files",
-        files={"files": ("sample.xlsx", buffer.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        "/knowledge/upload",
+        json={"collection": "analyses", "content": "must not bypass canonical ingestion"},
     )
 
-    assert response.status_code == 200
-    assert response.json()["results"][0]["document_id"] == "doc-1"
+    assert response.status_code == 404

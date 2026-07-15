@@ -12,7 +12,6 @@ from app.core.database import init_db
 from app.seed import ensure_company_master
 from routers.analytics import router as analytics_router
 from routers.fundamentals import router as fundamentals_router
-from routers.knowledge import router as knowledge_router
 from routers.market import router as market_router
 
 
@@ -40,7 +39,6 @@ private_dependencies = [Depends(get_research_principal)]
 
 app.include_router(fundamentals_router, dependencies=private_dependencies)
 app.include_router(market_router, dependencies=private_dependencies)
-app.include_router(knowledge_router, dependencies=private_dependencies)
 app.include_router(analytics_router, dependencies=private_dependencies)
 app.include_router(
     research_api_router,

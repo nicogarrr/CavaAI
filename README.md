@@ -94,6 +94,7 @@ Minimum local `.env`:
 ```env
 NODE_ENV=development
 MONGODB_URI=mongodb://root:example@localhost:27017/jlcavaai?authSource=admin
+NEXT_PUBLIC_SUPPORT_EMAIL=support@cavaai.app
 BETTER_AUTH_SECRET=replace_with_a_32_char_minimum_secret
 BETTER_AUTH_URL=http://localhost:3000
 RESEARCH_AUTH_REQUIRED=true

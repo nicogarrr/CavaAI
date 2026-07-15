@@ -580,4 +580,7 @@ def test_fmp_refresh_normalizes_facts_and_valuation_uses_them(monkeypatch):
     assert "Valuation input source: `financial_facts`" in thesis_payload["thesis_markdown"]
     assert "| revenue |" in thesis_payload["thesis_markdown"]
     assert f"Thesis v{thesis_payload['version']}" in thesis_payload["thesis_markdown"]
-    assert thesis_payload["data_confidence_score"] >= 80
+    assert thesis_payload["status"] == "draft"
+    assert thesis_payload["data_confidence_score"] == 55
+    assert "Mandatory drivers missing:" in thesis_payload["thesis_markdown"]
+    assert "Mandatory drivers missing: none" not in thesis_payload["thesis_markdown"]
