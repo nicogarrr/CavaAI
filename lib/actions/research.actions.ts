@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
-import { AppError, ExternalAPIError } from '@/lib/types/errors';
+import { AppError, ExternalAPIError, ValidationError } from '@/lib/types/errors';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -628,6 +628,17 @@ export async function getResearchDashboard() {
   };
 }
 
+export async function ensureResearchCompany(ticker: string, name?: string) {
+  const normalizedTicker = ticker.trim().toUpperCase();
+  if (!/^[A-Z0-9.\-]{1,20}$/.test(normalizedTicker)) {
+    throw new AppError('Invalid ticker', 'VALIDATION_ERROR', 400, { field: 'ticker' });
+  }
+  return postJson<ResearchCompany>('/api/companies/ensure', null as never, {
+    ticker: normalizedTicker,
+    name: name?.trim() || null,
+  });
+}
+
 export async function getResearchCompanyDetail(ticker: string) {
   const normalizedTicker = ticker.toUpperCase();
   const emptyValuation: ResearchValuation = {
@@ -743,7 +754,7 @@ export async function createResearchClaim(ticker: string, formData: FormData) {
   const claimType = String(formData.get('claim_type') ?? 'thesis').trim() || 'thesis';
   const materiality = Number(formData.get('materiality_score') ?? 5);
 
-  if (statement.length < 5) return;
+  if (statement.length < 5) throw new ValidationError('La afirmación debe tener al menos 5 caracteres', 'statement');
 
   await postJson('/api/memory/claims', null, {
     ticker: normalizedTicker,
@@ -768,7 +779,7 @@ export async function addResearchClaimEvidence(ticker: string, claimId: number, 
   const documentId = sourceRefType === 'document' ? parsedSourceRefId : Number(formData.get('document_id') ?? 0);
   const documentChunkId = sourceRefType === 'chunk' ? parsedSourceRefId : Number(formData.get('document_chunk_id') ?? 0);
 
-  if (summary.length < 3) return;
+  if (summary.length < 3) throw new ValidationError('El resumen de evidencia debe tener al menos 3 caracteres', 'summary');
 
   await postJson(`/api/memory/claims/${claimId}/evidence`, null, {
     evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
@@ -790,7 +801,9 @@ export async function createResearchClaimFromChunk(ticker: string, chunkId: numb
   const sourceUrl = String(formData.get('source_url') ?? '').trim();
   const materiality = Number(formData.get('materiality_score') ?? 5);
 
-  if (statement.length < 5 || summary.length < 3 || !Number.isFinite(chunkId) || chunkId <= 0) return;
+  if (statement.length < 5) throw new ValidationError('La afirmación debe tener al menos 5 caracteres', 'statement');
+  if (summary.length < 3) throw new ValidationError('El resumen de evidencia debe tener al menos 3 caracteres', 'summary');
+  if (!Number.isFinite(chunkId) || chunkId <= 0) throw new ValidationError('El fragmento de origen no es válido', 'chunkId');
 
   const claim = await postJson<ResearchClaim | null>('/api/memory/claims', null, {
     ticker: normalizedTicker,
@@ -801,7 +814,7 @@ export async function createResearchClaimFromChunk(ticker: string, chunkId: numb
     created_by: 'user',
   });
 
-  if (!claim?.id) return;
+  if (!claim?.id) throw new AppError('No se pudo crear la afirmación', 'CLAIM_CREATION_FAILED', 502);
 
   await postJson(`/api/memory/claims/${claim.id}/evidence`, null, {
     evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
@@ -821,7 +834,9 @@ export async function addResearchChunkEvidence(ticker: string, chunkId: number, 
   const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
   const sourceUrl = String(formData.get('source_url') ?? '').trim();
 
-  if (!Number.isFinite(claimId) || claimId <= 0 || summary.length < 3 || !Number.isFinite(chunkId) || chunkId <= 0) return;
+  if (!Number.isFinite(claimId) || claimId <= 0) throw new ValidationError('La afirmación seleccionada no es válida', 'claim_id');
+  if (summary.length < 3) throw new ValidationError('El resumen de evidencia debe tener al menos 3 caracteres', 'summary');
+  if (!Number.isFinite(chunkId) || chunkId <= 0) throw new ValidationError('El fragmento de origen no es válido', 'chunkId');
 
   await postJson(`/api/memory/claims/${claimId}/evidence`, null, {
     evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
@@ -845,7 +860,7 @@ export async function createResearchThesisChange(ticker: string, formData: FormD
     .map((item) => item.trim())
     .filter(Boolean);
 
-  if (summary.length < 5) return;
+  if (summary.length < 5) throw new ValidationError('El cambio debe describirse con al menos 5 caracteres', 'summary');
 
   await postJson('/api/memory/thesis/changes', null, {
     ticker: normalizedTicker,
@@ -869,7 +884,7 @@ export async function createResearchMemoryItem(ticker: string, formData: FormDat
   const memoryType = String(formData.get('memory_type') ?? 'note').trim() || 'note';
   const importance = Number(formData.get('importance') ?? 5);
 
-  if (content.length < 3) return;
+  if (content.length < 3) throw new ValidationError('La nota debe tener al menos 3 caracteres', 'content');
 
   await postJson('/api/memory/memory-items', null, {
     ticker: normalizedTicker,
@@ -926,7 +941,9 @@ export async function importResearchSource(formData: FormData) {
   const sourceUrl = String(formData.get('source_url') ?? '').trim();
   const period = String(formData.get('period') ?? '').trim() || 'unknown';
 
-  if (!ticker || !title || text.length < 20) return;
+  if (!ticker) throw new ValidationError('El ticker es obligatorio', 'ticker');
+  if (!title) throw new ValidationError('El título es obligatorio', 'title');
+  if (text.length < 20) throw new ValidationError('El documento debe tener al menos 20 caracteres', 'text');
 
   await postJson('/api/sources/quartr/import-text', null, {
     ticker,
@@ -944,7 +961,9 @@ export async function importResearchDocumentFile(formData: FormData) {
   const title = String(formData.get('title') ?? '').trim();
   const file = formData.get('file');
 
-  if (!ticker || !title || !(file instanceof File) || file.size === 0) return;
+  if (!ticker) throw new ValidationError('El ticker es obligatorio', 'ticker');
+  if (!title) throw new ValidationError('El título es obligatorio', 'title');
+  if (!(file instanceof File) || file.size === 0) throw new ValidationError('Selecciona un archivo no vacío', 'file');
 
   await postForm('/api/sources/documents/ingest-file', null, formData);
   revalidatePath('/research/sources');
@@ -957,7 +976,9 @@ export async function importResearchDocumentUrl(formData: FormData) {
   const url = String(formData.get('url') ?? '').trim();
   const sourceType = String(formData.get('source_type') ?? 'url').trim() || 'url';
 
-  if (!ticker || !title || !url) return;
+  if (!ticker) throw new ValidationError('El ticker es obligatorio', 'ticker');
+  if (!title) throw new ValidationError('El título es obligatorio', 'title');
+  if (!url) throw new ValidationError('La URL es obligatoria', 'url');
 
   await postJson('/api/sources/documents/ingest-url', null, {
     ticker,
@@ -1028,7 +1049,7 @@ export async function analyzeManualNews(
   const text = String(formData.get('text') ?? '').trim();
   const source = String(formData.get('source') ?? 'manual').trim();
   const url = String(formData.get('url') ?? '').trim();
-  if (!text || text.length < 20) return { ticker: null, event_type: 'unknown', materiality_score: 0, impact_direction: 'neutral', summary: '' };
+  if (!text || text.length < 20) throw new ValidationError('La noticia debe tener al menos 20 caracteres', 'text');
 
   const result = await postJson(
     '/api/news/manual',
@@ -1048,9 +1069,7 @@ export async function ingestResearchNewsFeed(
 ): Promise<{ status: string; received: number; created: number; skipped_duplicates: number; requires_update: number }> {
   const rawItems = String(formData.get('items') ?? '').trim();
   const source = String(formData.get('source') ?? 'manual_feed').trim() || 'manual_feed';
-  if (!rawItems) {
-    return { status: 'empty', received: 0, created: 0, skipped_duplicates: 0, requires_update: 0 };
-  }
+  if (!rawItems) throw new ValidationError('Introduce al menos una noticia en JSON', 'items');
 
   try {
     const parsed = JSON.parse(rawItems) as unknown;
@@ -1064,8 +1083,9 @@ export async function ingestResearchNewsFeed(
     revalidatePath('/research');
     revalidatePath('/research/news');
     return result;
-  } catch {
-    return { status: 'invalid_json', received: 0, created: 0, skipped_duplicates: 0, requires_update: 0 };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new ValidationError('El feed no contiene JSON válido', 'items');
   }
 }
 
@@ -1128,7 +1148,7 @@ export async function runResearchEarnings(ticker: string, formData: FormData) {
     .split(',')
     .map((value) => Number(value.trim()))
     .filter((value) => Number.isFinite(value) && value > 0);
-  if (!Number.isInteger(fiscalYear)) return;
+  if (!Number.isInteger(fiscalYear)) throw new ValidationError('El ejercicio fiscal no es válido', 'fiscal_year');
   await postJson(
     `/api/earnings/${encodeURIComponent(normalizedTicker)}/run`,
     null,

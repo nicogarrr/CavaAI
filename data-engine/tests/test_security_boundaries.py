@@ -14,7 +14,17 @@ from app.core import auth as auth_module
 from app.core.auth import sign_research_identity
 from app.core.config import Settings
 from app.core.database import SessionLocal, init_db
-from app.models import Claim, Company, Document, DocumentChunk, FinancialFact, MemoryItem, Tenant
+from app.models import (
+    Claim,
+    Company,
+    Document,
+    DocumentChunk,
+    FinancialFact,
+    MemoryItem,
+    Position,
+    Tenant,
+    Transaction,
+)
 from app.seed import seed
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.workers import dramatiq_app
@@ -67,6 +77,22 @@ def test_research_auth_settings_are_real_and_private_by_default(monkeypatch):
     )
     assert configured.research_auth_secret == SECRET
     assert configured.research_auth_max_age_seconds == 120
+
+
+def test_private_routers_reject_missing_and_invalid_signed_identity(required_auth):
+    client = TestClient(main.app)
+
+    unsigned = client.get("/quote/MSFT")
+    assert unsigned.status_code == 401
+    assert unsigned.json()["detail"] == "A signed Research OS identity is required"
+
+    invalid_headers = _headers("tenant-security", "user-security")
+    invalid_headers["X-CavaAI-Signature"] = "0" * 64
+    invalid = client.get("/api/companies", headers=invalid_headers)
+    assert invalid.status_code == 401
+    assert invalid.json()["detail"] == "Invalid Research OS identity signature"
+
+    assert client.get("/health/live").status_code == 200
 
 
 def test_worker_session_requires_and_preserves_tenant_and_user():
@@ -296,5 +322,71 @@ def test_cross_tenant_document_chunk_cannot_be_linked_as_evidence(required_auth)
     db.execute(delete(Document).where(Document.id == document_id))
     db.execute(delete(Claim).where(Claim.id.in_([claim_id, tenant_b_claim.json()["id"]])))
     db.execute(delete(Tenant).where(Tenant.id.in_(tenant_ids)))
+    db.commit()
+    db.close()
+
+
+def test_postgres_portfolio_crud_is_tenant_scoped(required_auth):
+    suffix = uuid4().hex[:8]
+    ticker = f"P{suffix[:5]}".upper()
+    tenant_a = f"portfolio-a-{suffix}"
+    tenant_b = f"portfolio-b-{suffix}"
+    client = TestClient(main.app)
+    payload = {
+        "ticker": ticker,
+        "action": "buy",
+        "quantity": 4,
+        "price": 25,
+        "trade_date": "2026-01-02",
+        "notes": "canonical postgres transaction",
+    }
+
+    created = client.post(
+        "/api/portfolio/transactions",
+        headers=_headers(tenant_a, f"user-a-{suffix}"),
+        json=payload,
+    )
+    assert created.status_code == 201
+    transaction_id = created.json()["id"]
+
+    own = client.get(
+        "/api/portfolio/transactions",
+        headers=_headers(tenant_a, f"user-a-{suffix}"),
+    )
+    other = client.get(
+        "/api/portfolio/transactions",
+        headers=_headers(tenant_b, f"user-b-{suffix}"),
+    )
+    assert [row["id"] for row in own.json()] == [transaction_id]
+    assert other.json() == []
+
+    forbidden_update = client.put(
+        f"/api/portfolio/transactions/{transaction_id}",
+        headers=_headers(tenant_b, f"user-b-{suffix}"),
+        json={**payload, "quantity": 9},
+    )
+    assert forbidden_update.status_code == 404
+
+    deleted = client.delete(
+        f"/api/portfolio/transactions/{transaction_id}",
+        headers=_headers(tenant_a, f"user-a-{suffix}"),
+    )
+    assert deleted.status_code == 204
+
+    db = SessionLocal()
+    company = db.scalar(select(Company).where(Company.ticker == ticker))
+    assert company is not None
+    assert db.scalar(
+        select(Transaction)
+        .where(Transaction.id == transaction_id)
+        .execution_options(include_all_tenants=True)
+    ) is None
+    db.execute(
+        delete(Position)
+        .where(Position.company_id == company.id)
+        .execution_options(include_all_tenants=True)
+    )
+    db.execute(delete(Tenant).where(Tenant.external_id.in_([tenant_a, tenant_b])))
+    db.delete(company)
     db.commit()
     db.close()

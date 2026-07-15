@@ -192,7 +192,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                         {picks.map((pick, index) => (
                             <Link
                                 key={pick.symbol}
-                                href={`/stocks/${pick.symbol}`}
+                                href={`/research/${pick.symbol}`}
                                 className="block"
                             >
                                 <Card className="p-5 rounded-lg border border-gray-700 bg-gray-800/50 hover:bg-gray-800 transition-all duration-200 group h-full">

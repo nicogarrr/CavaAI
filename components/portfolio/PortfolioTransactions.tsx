@@ -9,6 +9,8 @@ import { Trash2 } from 'lucide-react';
 import { deleteTransaction } from '@/lib/actions/portfolio.actions';
 import { useRouter } from 'next/navigation';
 import EditTransactionDialog from './EditTransactionDialog';
+import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/types/errors';
 
 type Transaction = {
   _id: string;
@@ -33,14 +35,15 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
     if (!confirm('¿Estás seguro de eliminar esta transacción?')) return;
 
     setDeleting(transactionId);
-    const result = await deleteTransaction(userId, transactionId);
-
-    if (result.success) {
+    try {
+      await deleteTransaction(userId, transactionId);
+      toast.success('Transacción eliminada');
       router.refresh();
-    } else {
-      alert('Error al eliminar la transacción');
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setDeleting(null);
     }
-    setDeleting(null);
   };
 
   return (

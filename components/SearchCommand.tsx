@@ -133,7 +133,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
         setSearchTerm("");
         setStocks(initialStocks);
         // Use router.push for faster navigation
-        router.push(`/stocks/${symbol}`);
+        router.push(`/research/${symbol.toUpperCase()}`);
     }, [initialStocks, router]);
 
     // Evitar hydration mismatch

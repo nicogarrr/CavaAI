@@ -1,9 +1,8 @@
 'use server';
 
-import { connectToDatabase } from '@/database/mongoose';
-import { PortfolioTransaction } from '@/database/models/portfolio.model';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
+import { jsonBody, researchRequest } from '@/lib/research/client';
 import { AuthorizationError, ValidationError } from '@/lib/types/errors';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
@@ -51,6 +50,30 @@ export type PortfolioSummary = {
     holdings: PortfolioHolding[];
 };
 
+type ResearchPortfolioTransaction = {
+    id: number;
+    ticker: string;
+    action: 'buy' | 'sell';
+    quantity: number;
+    price: number;
+    fees: number;
+    currency: string;
+    trade_date: string;
+    notes?: string | null;
+    created_at: string;
+    updated_at: string;
+};
+
+type ResearchPortfolioPosition = {
+    ticker: string;
+    quantity: number;
+    average_cost: number;
+    market_price: number;
+    market_value: number;
+    unrealized_pnl: number;
+    currency: string;
+};
+
 export async function addTransaction(
     userId: string,
     symbol: string,
@@ -60,149 +83,72 @@ export async function addTransaction(
     date: Date,
     notes?: string
 ): Promise<{ success: boolean; error?: string }> {
-    const resolvedUserId = await resolveUserId(userId);
+    await resolveUserId(userId);
     if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
         throw new ValidationError('Quantity must be positive and price cannot be negative');
     }
-    try {
-        await connectToDatabase();
-
-        if (type === 'sell') {
-            const transactions = await PortfolioTransaction.find({ userId: resolvedUserId, symbol: symbol.toUpperCase() })
-                .sort({ date: 1, createdAt: 1 })
-                .lean();
-            const available = transactions.reduce(
-                (total, tx) => total + (tx.type === 'buy' ? tx.quantity : -tx.quantity),
-                0,
-            );
-            if (quantity > available) {
-                throw new ValidationError(`Cannot sell ${quantity}; only ${available} shares are available`);
-            }
-        }
-
-        await PortfolioTransaction.create({
-            userId: resolvedUserId,
-            symbol: symbol.toUpperCase(),
-            type,
+    await researchRequest<ResearchPortfolioTransaction>('/api/portfolio/transactions', {
+        method: 'POST',
+        body: jsonBody({
+            ticker: symbol.toUpperCase(),
+            action: type,
             quantity,
             price,
-            date,
-            notes,
-        });
-
-        return { success: true };
-    } catch (error) {
-        console.error('Error adding transaction:', error);
-        return { success: false, error: 'Failed to add transaction' };
-    }
+            trade_date: date.toISOString().slice(0, 10),
+            notes: notes || null,
+            currency: 'USD',
+            fees: 0,
+        }),
+    });
+    return { success: true };
 }
 
 export async function getPortfolioTransactions(userId: string) {
-    const resolvedUserId = await resolveUserId(userId);
-    try {
-        await connectToDatabase();
-
-        const transactions = await PortfolioTransaction.find({ userId: resolvedUserId })
-            .sort({ date: -1 })
-            .lean();
-
-        return transactions.map(t => ({
-            ...t,
-            _id: String(t._id),
-            date: t.date.toISOString(),
-            createdAt: t.createdAt.toISOString(),
-            updatedAt: t.updatedAt.toISOString(),
-        }));
-    } catch (error) {
-        console.error('Error getting transactions:', error);
-        return [];
-    }
+    await resolveUserId(userId);
+    const transactions = await researchRequest<ResearchPortfolioTransaction[]>('/api/portfolio/transactions');
+    return transactions.map((transaction) => ({
+        _id: String(transaction.id),
+        symbol: transaction.ticker,
+        type: transaction.action,
+        quantity: transaction.quantity,
+        price: transaction.price,
+        date: transaction.trade_date,
+        notes: transaction.notes ?? undefined,
+        createdAt: transaction.created_at,
+        updatedAt: transaction.updated_at,
+    }));
 }
 
 export async function getPortfolioSummary(userId: string): Promise<PortfolioSummary> {
-    const resolvedUserId = await resolveUserId(userId);
-    try {
-        await connectToDatabase();
-
-        const transactions = await PortfolioTransaction.find({ userId: resolvedUserId })
-            .sort({ date: 1, createdAt: 1 })
-            .lean();
-
-        // Calculate holdings
-        const holdingsMap = new Map<string, { quantity: number; totalCost: number }>();
-
-        transactions.forEach(tx => {
-            const symbol = tx.symbol;
-            const existing = holdingsMap.get(symbol) || { quantity: 0, totalCost: 0 };
-
-            if (tx.type === 'buy') {
-                existing.quantity += tx.quantity;
-                existing.totalCost += tx.quantity * tx.price;
-            } else {
-                // Sell: reduce quantity proportionally and cost
-                const avgCost = existing.quantity > 0 ? existing.totalCost / existing.quantity : 0;
-                existing.quantity -= tx.quantity;
-                existing.totalCost -= tx.quantity * avgCost;
-            }
-
-            holdingsMap.set(symbol, existing);
-        });
-
-        // Remove zero or negative holdings
-        for (const [symbol, data] of holdingsMap.entries()) {
-            if (data.quantity <= 0) {
-                holdingsMap.delete(symbol);
-            }
-        }
-
-        // Fetch current prices
-        const holdings: PortfolioHolding[] = [];
-        let totalValue = 0;
-        let totalCost = 0;
-
-        for (const [symbol, data] of holdingsMap.entries()) {
-            const quote = await getQuote(symbol);
-            const currentPrice = quote?.c || 0;
-            const value = data.quantity * currentPrice;
-            const avgPrice = data.quantity > 0 ? data.totalCost / data.quantity : 0;
-            const gain = value - data.totalCost;
-            const gainPercent = data.totalCost > 0 ? (gain / data.totalCost) * 100 : 0;
-
-            holdings.push({
-                symbol,
-                quantity: data.quantity,
-                avgPrice,
-                currentPrice,
-                value,
-                cost: data.totalCost,
-                gain,
-                gainPercent,
-            });
-
-            totalValue += value;
-            totalCost += data.totalCost;
-        }
-
-        const totalGain = totalValue - totalCost;
-        const totalGainPercent = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
-
+    await resolveUserId(userId);
+    const positions = await researchRequest<ResearchPortfolioPosition[]>('/api/portfolio/positions');
+    const holdings = await Promise.all(positions.map(async (position): Promise<PortfolioHolding> => {
+        const quote = await getQuote(position.ticker);
+        const currentPrice = quote?.c || position.market_price;
+        const cost = position.quantity * position.average_cost;
+        const value = position.quantity * currentPrice;
+        const gain = value - cost;
         return {
-            totalValue,
-            totalCost,
-            totalGain,
-            totalGainPercent,
-            holdings: holdings.sort((a, b) => b.value - a.value),
+            symbol: position.ticker,
+            quantity: position.quantity,
+            avgPrice: position.average_cost,
+            currentPrice,
+            value,
+            cost,
+            gain,
+            gainPercent: cost > 0 ? (gain / cost) * 100 : 0,
         };
-    } catch (error) {
-        console.error('Error getting portfolio summary:', error);
-        return {
-            totalValue: 0,
-            totalCost: 0,
-            totalGain: 0,
-            totalGainPercent: 0,
-            holdings: [],
-        };
-    }
+    }));
+    const totalValue = holdings.reduce((sum, holding) => sum + holding.value, 0);
+    const totalCost = holdings.reduce((sum, holding) => sum + holding.cost, 0);
+    const totalGain = totalValue - totalCost;
+    return {
+        totalValue,
+        totalCost,
+        totalGain,
+        totalGainPercent: totalCost > 0 ? (totalGain / totalCost) * 100 : 0,
+        holdings: holdings.sort((a, b) => b.value - a.value),
+    };
 }
 
 // Actualizar transacción existente
@@ -216,74 +162,44 @@ export async function updateTransaction(
     date: Date,
     notes?: string
 ): Promise<{ success: boolean; error?: string }> {
-    const resolvedUserId = await resolveUserId(userId);
-    try {
-        await connectToDatabase();
-
-        const result = await PortfolioTransaction.updateOne(
-            { _id: transactionId, userId: resolvedUserId },
-            {
-                symbol: symbol.toUpperCase(),
-                type,
+    await resolveUserId(userId);
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
+        throw new ValidationError('Quantity must be positive and price cannot be negative');
+    }
+    await researchRequest<ResearchPortfolioTransaction>(
+        `/api/portfolio/transactions/${encodeURIComponent(transactionId)}`,
+        {
+            method: 'PUT',
+            body: jsonBody({
+                ticker: symbol.toUpperCase(),
+                action: type,
                 quantity,
                 price,
-                date,
-                notes,
-            }
-        );
-
-        if (result.matchedCount === 0) {
-            return { success: false, error: 'Transaction not found' };
-        }
-
-        return { success: true };
-    } catch (error) {
-        console.error('Error updating transaction:', error);
-        return { success: false, error: 'Failed to update transaction' };
-    }
+                trade_date: date.toISOString().slice(0, 10),
+                notes: notes || null,
+                currency: 'USD',
+                fees: 0,
+            }),
+        },
+    );
+    return { success: true };
 }
 
 export async function deleteTransaction(userId: string, transactionId: string): Promise<{ success: boolean; error?: string }> {
-    const resolvedUserId = await resolveUserId(userId);
-    try {
-        await connectToDatabase();
-
-        const result = await PortfolioTransaction.deleteOne({
-            _id: transactionId,
-            userId: resolvedUserId
-        });
-
-        if (result.deletedCount === 0) {
-            return { success: false, error: 'Transaction not found' };
-        }
-
-        return { success: true };
-    } catch (error) {
-        console.error('Error deleting transaction:', error);
-        return { success: false, error: 'Failed to delete transaction' };
-    }
+    await resolveUserId(userId);
+    await researchRequest<void>(`/api/portfolio/transactions/${encodeURIComponent(transactionId)}`, {
+        method: 'DELETE',
+    });
+    return { success: true };
 }
 
 // Eliminar todas las transacciones de un símbolo (eliminar posición)
 export async function deleteHolding(userId: string, symbol: string): Promise<{ success: boolean; error?: string }> {
-    const resolvedUserId = await resolveUserId(userId);
-    try {
-        await connectToDatabase();
-
-        const result = await PortfolioTransaction.deleteMany({
-            symbol: symbol.toUpperCase(),
-            userId: resolvedUserId
-        });
-
-        if (result.deletedCount === 0) {
-            return { success: false, error: 'Holding not found' };
-        }
-
-        return { success: true };
-    } catch (error) {
-        console.error('Error deleting holding:', error);
-        return { success: false, error: 'Failed to delete holding' };
-    }
+    await resolveUserId(userId);
+    await researchRequest<void>(`/api/portfolio/holdings/${encodeURIComponent(symbol.toUpperCase())}`, {
+        method: 'DELETE',
+    });
+    return { success: true };
 }
 
 // ============================================
@@ -475,7 +391,14 @@ export async function updateAllPortfolioPrices(userId: string): Promise<{
 // Sincronización Inteligente de Cartera (Diffing)
 // ============================================
 
-import { ExtractedPosition } from './ai.actions';
+type ExtractedPosition = {
+    symbol: string;
+    currentPriceUSD: number;
+    changePercent: number;
+    currency: 'EUR' | 'USD';
+    shares?: number;
+    marketValue?: number;
+};
 
 export async function syncPortfolioHoldings(
     userId: string,

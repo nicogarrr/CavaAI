@@ -7,11 +7,9 @@ import PortfolioSummary from '@/components/portfolio/PortfolioSummary';
 import PortfolioHoldings from '@/components/portfolio/PortfolioHoldings';
 import PortfolioTransactions from '@/components/portfolio/PortfolioTransactions';
 import PortfolioAllocation from '@/components/portfolio/PortfolioAllocation';
-import { PortfolioStrategyInsight } from '@/components/portfolio/PortfolioStrategyInsight';
 import PortfolioScores from '@/components/portfolio/PortfolioScores';
 import { PortfolioRiskSimulator } from '@/components/portfolio/PortfolioRiskSimulator';
 import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
-import ImportFromImage from '@/components/portfolio/ImportFromImage';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
 import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
 import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, ShieldAlert } from 'lucide-react';
@@ -101,7 +99,6 @@ export default function PortfolioTabs({ summary, transactions, scores, userId }:
                 </div>
                 <div className="flex items-center gap-2">
                     <RefreshPortfolioButton userId={userId} />
-                    <ImportFromImage userId={userId} />
                     <AddTransactionButton userId={userId} />
                 </div>
             </div>
@@ -135,7 +132,7 @@ export default function PortfolioTabs({ summary, transactions, scores, userId }:
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2 text-gray-400 flex items-center gap-2"
                     >
                         <Brain className="h-4 w-4" />
-                        Estrategia AI
+                        Factores
                     </TabsTrigger>
                     <TabsTrigger
                         value="riesgo"
@@ -259,12 +256,9 @@ export default function PortfolioTabs({ summary, transactions, scores, userId }:
                     </div>
                 </TabsContent>
 
-                {/* Tab: Estrategia AI */}
+                {/* Tab: factores calculados */}
                 <TabsContent value="estrategia" className="mt-0">
-                    <div className="space-y-6">
-                        <PortfolioScores scores={scores} />
-                        <PortfolioStrategyInsight portfolioSummary={summary} />
-                    </div>
+                    <PortfolioScores scores={scores} />
                 </TabsContent>
 
                 {/* Tab: Riesgo Monte Carlo */}

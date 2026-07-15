@@ -16,6 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Pencil } from 'lucide-react';
 import { updateTransaction } from '@/lib/actions/portfolio.actions';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/types/errors';
 
 type Transaction = {
     _id: string;
@@ -50,24 +52,24 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
         e.preventDefault();
         setLoading(true);
 
-        const result = await updateTransaction(
-            userId,
-            transaction._id,
-            formData.symbol,
-            formData.type,
-            parseFloat(formData.quantity),
-            parseFloat(formData.price),
-            new Date(formData.date),
-            formData.notes || undefined
-        );
-
-        setLoading(false);
-
-        if (result.success) {
+        try {
+            await updateTransaction(
+                userId,
+                transaction._id,
+                formData.symbol,
+                formData.type,
+                parseFloat(formData.quantity),
+                parseFloat(formData.price),
+                new Date(formData.date),
+                formData.notes || undefined
+            );
             setOpen(false);
+            toast.success('Transacción actualizada');
             router.refresh();
-        } else {
-            alert('Error al actualizar la transacción');
+        } catch (error) {
+            toast.error(getErrorMessage(error));
+        } finally {
+            setLoading(false);
         }
     };
 

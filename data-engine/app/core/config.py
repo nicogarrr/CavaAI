@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     minio_access_key: str = "portfolio"
     minio_secret_key: str = "portfoliosecret"
     minio_bucket: str = "research"
+    document_storage_backend: str = "minio"
 
     fmp_api_key: str | None = None
     ibkr_flex_token: str | None = None
