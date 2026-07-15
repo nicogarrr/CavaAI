@@ -52,3 +52,16 @@ def test_document_store_rejects_unscoped_minio_write():
         assert "Tenant context" in str(exc)
     else:
         raise AssertionError("Unscoped document write should fail")
+
+
+def test_document_store_rejects_local_originals_in_production():
+    store = DocumentStore()
+    store.settings.app_env = "production"
+    store.settings.document_storage_backend = "local"
+
+    try:
+        store.put_bytes("MSFT", "filing", "10-k.pdf", b"raw", tenant_id=17)
+    except RuntimeError as exc:
+        assert "must use MinIO" in str(exc)
+    else:
+        raise AssertionError("Production must not accept local canonical originals")
