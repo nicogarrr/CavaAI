@@ -152,9 +152,19 @@ class BankValuationEngine(ValuationEngine):
             engine_key=self.key,
             scenario_values=values,
             probabilities=probabilities,
-            fact_ids={key: value.fact_id for key, value in sourced.items() if value},
-            periods={key: value.period for key, value in sourced.items() if value},
-            assumptions={"book_per_share": book_per_share, "scenario_roe_cost_growth": specs},
+            fact_ids={
+                **{key: value.fact_id for key, value in sourced.items() if value},
+                **({"book_value_growth": growth.fact_id} if growth else {}),
+            },
+            periods={
+                **{key: value.period for key, value in sourced.items() if value},
+                **({"book_value_growth": growth.period} if growth else {}),
+            },
+            assumptions={
+                "book_per_share": book_per_share,
+                "scenario_roe_cost_growth": specs,
+                "growth_source": "financial_facts" if growth else "explicit_zero_growth_policy",
+            },
         )
 
 
@@ -209,15 +219,26 @@ class InsurerValuationEngine(ValuationEngine):
             justified_pb = (scenario_roe - growth_value) / (scenario_cost - growth_value)
             underwriting_quality = max(0.75, min(1.25, 1 + (1 - scenario_combined) * 2))
             values[name] = book_per_share * max(0.25, min(3.0, justified_pb)) * underwriting_quality
-        probabilities = _probabilities(list(sourced.values()), 1 - combined_ratio.value)
+        available = list(sourced.values()) + ([growth] if growth else [])
+        probabilities = _probabilities(available, 1 - combined_ratio.value)
         return _result(
             context,
             engine_key=self.key,
             scenario_values=values,
             probabilities=probabilities,
-            fact_ids={key: value.fact_id for key, value in sourced.items() if value},
-            periods={key: value.period for key, value in sourced.items() if value},
-            assumptions={"book_per_share": book_per_share, "scenario_roe_cost_combined_ratio": specs},
+            fact_ids={
+                **{key: value.fact_id for key, value in sourced.items() if value},
+                **({"book_value_growth": growth.fact_id} if growth else {}),
+            },
+            periods={
+                **{key: value.period for key, value in sourced.items() if value},
+                **({"book_value_growth": growth.period} if growth else {}),
+            },
+            assumptions={
+                "book_per_share": book_per_share,
+                "scenario_roe_cost_combined_ratio": specs,
+                "growth_source": "financial_facts" if growth else "explicit_zero_growth_policy",
+            },
         )
 
 

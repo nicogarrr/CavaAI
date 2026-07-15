@@ -16,28 +16,6 @@ from app.valuation.scenario_model import Scenario, probability_weighted_value
 from app.valuation.sotp import run_sotp
 from sqlalchemy import desc, select
 
-
-# Default segment templates keyed by ticker when segment facts are not yet ingested.
-# Values are placeholders only used when matching FinancialFact metrics exist.
-SEGMENT_TEMPLATES: dict[str, list[dict]] = {
-    "BN": [
-        {"name": "asset_management", "metric_key": "fee_related_earnings", "multiple": 18.0},
-        {"name": "insurance", "metric_key": "insurance_earnings", "multiple": 12.0},
-        {"name": "invested_capital", "metric_key": "invested_capital", "multiple": 1.0},
-    ],
-    "BABA": [
-        {"name": "china_commerce", "metric_key": "china_commerce_revenue", "multiple": 1.5},
-        {"name": "cloud", "metric_key": "cloud_revenue", "multiple": 4.0},
-        {"name": "international", "metric_key": "international_revenue", "multiple": 2.0},
-        {"name": "local_services", "metric_key": "local_services_revenue", "multiple": 1.2},
-    ],
-    "RKLB": [
-        {"name": "launch", "metric_key": "launch_revenue", "multiple": 4.0},
-        {"name": "space_systems", "metric_key": "space_systems_revenue", "multiple": 5.0},
-    ],
-}
-
-
 class SOTPEngine(ValuationEngine):
     key = "sotp"
 
@@ -45,44 +23,67 @@ class SOTPEngine(ValuationEngine):
         company = context.company
         snapshot = context.snapshot
         current_price = context.current_price
-        shares = snapshot.value("shares_diluted")
-        net_debt = snapshot.value("net_debt")
 
-        templates = SEGMENT_TEMPLATES.get(company.ticker.upper(), [])
+        facts = list(
+            context.db.scalars(
+                select(FinancialFact)
+                .where(FinancialFact.company_id == company.id)
+                .order_by(FinancialFact.fiscal_year.desc().nullslast(), desc(FinancialFact.created_at))
+            ).all()
+        )
+        latest_by_metric: dict[str, FinancialFact] = {}
+        for fact in facts:
+            latest_by_metric.setdefault(fact.metric, fact)
+        shares_fact = latest_by_metric.get("shares_diluted")
+        net_debt_fact = latest_by_metric.get("net_debt")
+        shares = float(shares_fact.value) if shares_fact is not None else None
+        net_debt = float(net_debt_fact.value) if net_debt_fact is not None else None
+
         segments: list[dict] = []
         missing_segments: list[str] = []
-
-        for template in templates:
-            fact = context.db.scalar(
-                select(FinancialFact)
-                .where(
-                    FinancialFact.company_id == company.id,
-                    FinancialFact.metric == template["metric_key"],
-                )
-                .order_by(FinancialFact.fiscal_year.desc().nullslast(), desc(FinancialFact.created_at))
-                .limit(1)
-            )
-            if fact is None or float(fact.value) <= 0:
-                missing_segments.append(template["metric_key"])
+        segment_sources: list[FinancialFact] = []
+        suffix = "_valuation_multiple"
+        for multiple_metric, multiple_fact in latest_by_metric.items():
+            if not multiple_metric.startswith("segment_") or not multiple_metric.endswith(suffix):
                 continue
+            prefix = multiple_metric[: -len(suffix)]
+            operating_metric = f"{prefix}_operating_metric"
+            operating_fact = latest_by_metric.get(operating_metric)
+            if operating_fact is None or float(operating_fact.value) <= 0:
+                missing_segments.append(operating_metric)
+                continue
+            if float(multiple_fact.value) <= 0:
+                missing_segments.append(multiple_metric)
+                continue
+            segment_name = prefix.removeprefix("segment_")
             segments.append(
                 {
-                    "name": template["name"],
-                    "metric": float(fact.value),
-                    "multiple": template["multiple"],
-                    "fact_id": fact.id,
-                    "period": fact.period,
+                    "name": segment_name,
+                    "metric": float(operating_fact.value),
+                    "multiple": float(multiple_fact.value),
+                    "metric_fact_id": operating_fact.id,
+                    "multiple_fact_id": multiple_fact.id,
+                    "period": operating_fact.period,
                 }
             )
+            segment_sources.extend([operating_fact, multiple_fact])
 
-        missing = list(snapshot.missing_inputs)
+        discount_fact = latest_by_metric.get("holding_company_discount")
+
+        missing: list[str] = []
         if shares is None or shares <= 0:
             missing.append("shares_diluted")
+        if net_debt is None:
+            missing.append("net_debt")
+        if discount_fact is None or not 0 <= float(discount_fact.value) < 1:
+            missing.append("holding_company_discount")
         if not segments:
-            missing.extend(missing_segments or ["segment_operating_metrics"])
-            missing.append("sotp_segment_facts")
+            missing.extend(
+                missing_segments
+                or ["segment_*_operating_metric", "segment_*_valuation_multiple"]
+            )
 
-        if missing or not segments or shares is None or shares <= 0:
+        if missing or not segments or shares is None or shares <= 0 or net_debt is None:
             result = insufficient_result(
                 ticker=company.ticker,
                 model_type=company.valuation_model,
@@ -95,7 +96,10 @@ class SOTPEngine(ValuationEngine):
                 ),
                 snapshot=snapshot,
                 extra_trace={
-                    "required_segments": [t["metric_key"] for t in templates] or ["segment_metrics"],
+                    "segment_fact_contract": {
+                        "operating_metric": "segment_{name}_operating_metric",
+                        "valuation_multiple": "segment_{name}_valuation_multiple",
+                    },
                     "found_segments": [s["name"] for s in segments],
                 },
             )
@@ -104,10 +108,23 @@ class SOTPEngine(ValuationEngine):
             )
             return result
 
-        base = run_sotp(segments, net_debt=net_debt or 0.0, shares_outstanding=shares)
+        assert discount_fact is not None
+        base = run_sotp(segments, net_debt=net_debt, shares_outstanding=shares)
         nav_per_share = base["value_per_share"]
-        discount = 0.15 if "china" in (company.factor_tags or []) or company.ticker == "BABA" else 0.10
-        scenarios = holding_company_scenarios(nav_per_share, holding_discount=discount)
+        discount = float(discount_fact.value)
+        confidence_sources = segment_sources + [discount_fact]
+        if shares_fact is not None:
+            confidence_sources.append(shares_fact)
+        if net_debt_fact is not None:
+            confidence_sources.append(net_debt_fact)
+        evidence_confidence = sum(float(fact.confidence) for fact in confidence_sources) / len(
+            confidence_sources
+        )
+        scenarios = holding_company_scenarios(
+            nav_per_share,
+            holding_discount=discount,
+            evidence_confidence=evidence_confidence,
+        )
 
         scenario_results = {}
         for scenario in scenarios:
@@ -158,8 +175,30 @@ class SOTPEngine(ValuationEngine):
                 "status": "ok",
                 "model_version": MODEL_VERSION,
                 "scenario_style": "holding_discount_on_sotp",
-                "fact_ids": snapshot.fact_ids(),
-                "periods": snapshot.periods(),
+                "fact_ids": {
+                    **snapshot.fact_ids(),
+                    "shares_diluted": shares_fact.id if shares_fact else None,
+                    "net_debt": net_debt_fact.id if net_debt_fact else None,
+                    "holding_company_discount": discount_fact.id,
+                    **{
+                        f"segment_{segment['name']}_operating_metric": segment["metric_fact_id"]
+                        for segment in segments
+                    },
+                    **{
+                        f"segment_{segment['name']}_valuation_multiple": segment["multiple_fact_id"]
+                        for segment in segments
+                    },
+                },
+                "periods": {
+                    **snapshot.periods(),
+                    "shares_diluted": shares_fact.period if shares_fact else None,
+                    "net_debt": net_debt_fact.period if net_debt_fact else None,
+                    "holding_company_discount": discount_fact.period,
+                    **{
+                        f"segment_{segment['name']}": segment["period"]
+                        for segment in segments
+                    },
+                },
                 "snapshot": {
                     "as_of": snapshot.as_of_period,
                     "income_statement": snapshot.income_statement,
@@ -169,6 +208,9 @@ class SOTPEngine(ValuationEngine):
                 },
                 "sotp": base,
                 "holding_discount_base": discount,
+                "holding_discount_source": "financial_facts",
+                "probability_method": "source_confidence_plus_holding_discount",
+                "evidence_confidence": evidence_confidence,
                 "missing_optional_segments": missing_segments,
                 "scenarios": scenario_results,
                 "weighted": weighted["trace"],
