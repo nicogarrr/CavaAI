@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import { updateAllPortfolioPrices } from '@/lib/actions/portfolio.actions';
+import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/types/errors';
 
 interface RefreshPortfolioButtonProps {
     userId: string;
@@ -23,9 +25,10 @@ export default function RefreshPortfolioButton({ userId }: RefreshPortfolioButto
 
             // 2. Force a full page refresh to recalculate all KPIs
             router.refresh();
+            toast.success('Cartera actualizada');
 
         } catch (error) {
-            console.error('Error refreshing portfolio:', error);
+            toast.error(getErrorMessage(error));
         } finally {
             // Small delay to allow the page to refresh
             setTimeout(() => setIsRefreshing(false), 1000);

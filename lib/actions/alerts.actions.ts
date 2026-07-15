@@ -1,79 +1,82 @@
 'use server';
 
-import { connectToDatabase } from '@/database/mongoose';
-import { AlertModel, type Alert } from '@/database/models/alert.model';
-import { getAuth } from '@/lib/better-auth/auth';
-import { headers } from 'next/headers';
+import { jsonBody, researchRequest } from '@/lib/research/client';
+import { ValidationError } from '@/lib/types/errors';
 
-export interface CreateAlertInput {
+export interface Alert {
+    _id: string;
     symbol: string;
     type: 'price_above' | 'price_below' | 'price_change' | 'news' | 'earnings';
     condition: {
         operator: '>' | '<' | '>=' | '<=' | '==';
         value: number | string;
     };
+    isActive: boolean;
+    lastTriggered?: string;
+    createdAt: string;
+    updatedAt: string;
 }
 
-export async function createAlert(input: CreateAlertInput): Promise<Alert | null> {
-    try {
-        const auth = await getAuth();
-        const session = await auth.api.getSession({ headers: await headers() });
-        if (!session?.user?.id) throw new Error('Usuario no autenticado');
+export interface CreateAlertInput {
+    symbol: string;
+    type: Alert['type'];
+    condition: Alert['condition'];
+}
 
-        await connectToDatabase();
+type ResearchAlert = {
+    id: number;
+    status: string;
+    alert_type: Alert['type'];
+    created_at: string;
+    updated_at: string;
+    metadata: {
+        ticker?: string;
+        condition?: Alert['condition'];
+    };
+};
 
-        const alert = await AlertModel.create({
-            userId: session.user.id,
-            symbol: input.symbol.toUpperCase(),
-            type: input.type,
-            condition: input.condition,
-            isActive: true,
-        });
+function toAlert(alert: ResearchAlert): Alert {
+    return {
+        _id: String(alert.id),
+        symbol: alert.metadata.ticker ?? '',
+        type: alert.alert_type,
+        condition: alert.metadata.condition ?? { operator: '==', value: '' },
+        isActive: !['resolved', 'dismissed'].includes(alert.status),
+        createdAt: alert.created_at,
+        updatedAt: alert.updated_at,
+    };
+}
 
-        return JSON.parse(JSON.stringify(alert));
-    } catch (error) {
-        console.error('Error creating alert:', error);
-        throw error;
+export async function createAlert(input: CreateAlertInput): Promise<Alert> {
+    const symbol = input.symbol.trim().toUpperCase();
+    if (!/^[A-Z0-9.\-]{1,20}$/.test(symbol)) {
+        throw new ValidationError('A valid ticker is required', 'symbol');
     }
+    await researchRequest('/api/companies/ensure', {
+        method: 'POST',
+        body: jsonBody({ ticker: symbol }),
+    });
+    const alert = await researchRequest<ResearchAlert>('/api/alerts', {
+        method: 'POST',
+        body: jsonBody({
+            ticker: symbol,
+            alert_type: input.type,
+            operator: input.condition.operator,
+            value: input.condition.value,
+        }),
+    });
+    return toAlert(alert);
 }
 
 export async function getUserAlerts(): Promise<Alert[]> {
-    try {
-        const auth = await getAuth();
-        const session = await auth.api.getSession({ headers: await headers() });
-        if (!session?.user?.id) throw new Error('Usuario no autenticado');
-
-        await connectToDatabase();
-
-        const alerts = await AlertModel.find({ 
-            userId: session.user.id,
-            isActive: true 
-        })
-        .sort({ createdAt: -1 })
-        .lean();
-
-        return JSON.parse(JSON.stringify(alerts));
-    } catch (error) {
-        console.error('Error getting user alerts:', error);
-        throw error;
-    }
+    const alerts = await researchRequest<ResearchAlert[]>('/api/alerts?include_snoozed=true');
+    return alerts.filter((alert) => !['resolved', 'dismissed'].includes(alert.status)).map(toAlert);
 }
 
 export async function deleteAlert(alertId: string): Promise<void> {
-    try {
-        const auth = await getAuth();
-        const session = await auth.api.getSession({ headers: await headers() });
-        if (!session?.user?.id) throw new Error('Usuario no autenticado');
-
-        await connectToDatabase();
-
-        await AlertModel.findOneAndUpdate(
-            { _id: alertId, userId: session.user.id },
-            { isActive: false }
-        );
-    } catch (error) {
-        console.error('Error deleting alert:', error);
-        throw error;
-    }
+    if (!/^\d+$/.test(alertId)) throw new ValidationError('Invalid alert id', 'alertId');
+    await researchRequest(`/api/alerts/${alertId}/action`, {
+        method: 'POST',
+        body: jsonBody({ action: 'resolve', actor: 'user' }),
+    });
 }
-

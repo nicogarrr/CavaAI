@@ -301,7 +301,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             .map((h) => (
                                                 <Link
                                                     key={h.symbol}
-                                                    href={`/stocks/${h.symbol}`}
+                                                    href={`/research/${h.symbol}`}
                                                     className="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700/30"
                                                 >
                                                     <span className="text-white font-semibold">{h.symbol}</span>
@@ -340,7 +340,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                             <CardContent className="pt-4">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {opportunities.map((op) => (
-                                        <Link key={op.symbol} href={`/stocks/${op.symbol}`}>
+                                        <Link key={op.symbol} href={`/research/${op.symbol}`}>
                                             <div className="p-4 bg-gray-900/40 rounded-xl border border-gray-700/30 hover:border-purple-500/50 hover:bg-gray-800 transition-all group">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div>
@@ -385,7 +385,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                     {watchlist.map((stock) => (
                                         <Link
                                             key={stock.symbol}
-                                            href={`/stocks/${stock.symbol}`}
+                                            href={`/research/${stock.symbol}`}
                                             className="flex items-center justify-between p-3 bg-gray-900/30 rounded-lg hover:bg-gray-800/80 transition-colors group"
                                         >
                                             <div className="flex items-center gap-3">

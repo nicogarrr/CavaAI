@@ -1,3 +1,4 @@
+from io import BytesIO
 from pathlib import Path
 import re
 
@@ -48,6 +49,42 @@ class DocumentStore:
         path = directory / self._safe_filename(filename)
         path.write_bytes(content)
         return str(path)
+
+    def put_bytes(
+        self,
+        ticker: str,
+        category: str,
+        filename: str,
+        content: bytes,
+        tenant_id: int | None = None,
+        content_type: str = "application/octet-stream",
+    ) -> str:
+        """Persist an immutable original; production uses MinIO as canonical storage."""
+        if self.settings.app_env == "test" or self.settings.document_storage_backend == "local":
+            return self.put_bytes_local(ticker, category, filename, content, tenant_id)
+        if tenant_id is None:
+            raise ValueError("Tenant context is required to store a document")
+
+        bucket = self.settings.minio_bucket
+        object_name = "/".join(
+            [
+                self._safe_path_part(f"tenant-{tenant_id}"),
+                self._safe_path_part(ticker.upper()),
+                self._safe_path_part(category),
+                self._safe_filename(filename),
+            ]
+        )
+        client = self._client()
+        if not client.bucket_exists(bucket):
+            client.make_bucket(bucket)
+        client.put_object(
+            bucket,
+            object_name,
+            BytesIO(content),
+            length=len(content),
+            content_type=content_type,
+        )
+        return f"minio://{bucket}/{object_name}"
 
     def _directory(
         self, ticker: str, category: str, tenant_id: int | None
