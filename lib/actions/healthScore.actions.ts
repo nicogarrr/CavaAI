@@ -3,8 +3,10 @@
 import { getStockFinancialData } from './finnhub.actions';
 import { calculateHealthScore, HealthScoreData } from '@/lib/utils/healthScore';
 import { estimateHealthScoreWithAI } from './ai.actions';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 export async function getStockHealthScore(symbol: string): Promise<HealthScoreData | null> {
+    await requireAuthenticatedUser();
     try {
         const financialData = await getStockFinancialData(symbol);
         if (!financialData) return null;

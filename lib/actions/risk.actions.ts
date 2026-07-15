@@ -1,6 +1,7 @@
 'use server';
 
 import { getPortfolioSummary } from './portfolio.actions';
+import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -38,6 +39,7 @@ export async function generateRiskAnalysis(
     horizon: number = 252,
     sims: number = 500,
 ): Promise<MonteCarloResult | { error: string }> {
+    const identityHeaders = await researchIdentityHeaders();
     try {
         const summary = await getPortfolioSummary(userId);
 
@@ -53,7 +55,7 @@ export async function generateRiskAnalysis(
 
         const res = await fetch(`${BACKEND_URL}/analytics/montecarlo`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...identityHeaders },
             body: JSON.stringify({
                 symbols,
                 weights,

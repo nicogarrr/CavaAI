@@ -59,14 +59,17 @@ def test_stock_peers_enriches_with_prices(monkeypatch):
 
 def test_knowledge_upload_files_supports_excel(monkeypatch):
     class FakeKnowledgeBase:
-        def add_document(self, content, metadata=None):
+        def add_document(self, content, tenant_id, metadata=None):
+            assert tenant_id == 1
             assert "=== Hoja: Sheet ===" in content
             assert "ticker | value" in content
             return {"document_id": "doc-1", "chunks_added": 1}
 
     import modules.knowledge_base as knowledge_base
+    from routers import knowledge
 
     monkeypatch.setattr(knowledge_base, "get_knowledge_base", lambda: FakeKnowledgeBase())
+    monkeypatch.setattr(knowledge, "_tenant_id", lambda _db: 1)
 
     workbook = Workbook()
     sheet = workbook.active

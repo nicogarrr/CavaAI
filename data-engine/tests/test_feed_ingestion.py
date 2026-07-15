@@ -211,7 +211,7 @@ def test_scheduler_jobs_are_single_instance_and_coalesced():
 def test_actor_dependency_failure_returns_structured_error(monkeypatch):
     from app.workers import dramatiq_app
 
-    def unavailable_session():
+    def unavailable_session(*_args):
         raise ImportError("models are still loading")
 
     monkeypatch.setattr(dramatiq_app, "_session", unavailable_session)

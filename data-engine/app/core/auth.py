@@ -43,9 +43,7 @@ def get_research_principal(
     x_cavaai_signature: str | None = Header(default=None),
 ) -> ResearchPrincipal | None:
     settings = get_settings()
-    required = bool(getattr(settings, "research_auth_required", False)) or (
-        settings.app_env.lower() == "production"
-    )
+    required = settings.research_auth_required or settings.app_env.lower() == "production"
     supplied = all(
         [x_cavaai_user, x_cavaai_tenant, x_cavaai_timestamp, x_cavaai_signature]
     )
@@ -57,7 +55,7 @@ def get_research_principal(
             )
         return None
 
-    research_auth_secret = getattr(settings, "research_auth_secret", None)
+    research_auth_secret = settings.research_auth_secret
     if not research_auth_secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -72,7 +70,7 @@ def get_research_principal(
             detail="Invalid Research OS identity timestamp",
         ) from exc
 
-    max_age = int(getattr(settings, "research_auth_max_age_seconds", 300))
+    max_age = settings.research_auth_max_age_seconds
     if abs(int(time.time()) - issued_at) > max_age:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

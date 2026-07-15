@@ -109,6 +109,9 @@ services:
       - /app/__pycache__
       - /app/.venv
     environment:
+      - APP_ENV=${APP_ENV:-local}
+      - RESEARCH_AUTH_REQUIRED=true
+      - RESEARCH_AUTH_SECRET=${RESEARCH_AUTH_SECRET:?Set RESEARCH_AUTH_SECRET in .env}
       - FMP_API_KEY=${FMP_API_KEY}
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-cavaai_research}
@@ -214,6 +217,8 @@ services:
       - FMP_API_KEY=${FMP_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - RESEARCH_AUTH_REQUIRED=true
+      - RESEARCH_AUTH_SECRET=${RESEARCH_AUTH_SECRET:?Set RESEARCH_AUTH_SECRET in .env}
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
     depends_on:
       - mongodb

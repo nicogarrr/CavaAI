@@ -2,6 +2,7 @@
 
 import { cache } from 'react';
 import { fetchJSON } from './finnhub.actions';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';
@@ -55,6 +56,7 @@ const SECTOR_REPRESENTATIVE_STOCKS: Record<string, string[]> = {
  * Calcula promedios del sector basándose en acciones representativas
  */
 export const getSectorAverages = cache(async (sector: string): Promise<SectorAverages | null> => {
+    await requireAuthenticatedUser();
     try {
         const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
         if (!token) {

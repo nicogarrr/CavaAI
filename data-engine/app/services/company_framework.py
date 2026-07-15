@@ -1,0 +1,213 @@
+"""Company-specific research frameworks for the long-term model.
+
+The framework is a routing decision, not an investment conclusion. It tells the
+research engine which drivers and modules deserve attention for a company and
+which market-opportunity method should be used. Missing inputs remain explicit.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from app.models import Company
+
+
+@dataclass(frozen=True)
+class CompanyFramework:
+    key: str
+    label: str
+    primary_question: str
+    market_opportunity_mode: str
+    revenue_drivers: tuple[str, ...]
+    kpis: tuple[str, ...]
+    unit_economics: tuple[str, ...]
+    segment_model: tuple[str, ...]
+    binding_constraints: tuple[str, ...]
+    active_modules: tuple[str, ...]
+    required_fact_metrics: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict:
+        return {
+            "key": self.key,
+            "label": self.label,
+            "primary_question": self.primary_question,
+            "market_opportunity_mode": self.market_opportunity_mode,
+            "revenue_drivers": list(self.revenue_drivers),
+            "kpis": list(self.kpis),
+            "unit_economics": list(self.unit_economics),
+            "segment_model": list(self.segment_model),
+            "binding_constraints": list(self.binding_constraints),
+            "active_modules": list(self.active_modules),
+            "required_fact_metrics": list(self.required_fact_metrics),
+        }
+
+
+COMMON_MODULES = (
+    "historical_review",
+    "forward_operating_model",
+    "quality_of_growth",
+    "capital_allocation",
+    "reverse_dcf",
+    "timeline",
+    "what_must_be_true",
+)
+
+
+FRAMEWORKS: dict[str, CompanyFramework] = {
+    "space_network": CompanyFramework(
+        key="space_network",
+        label="Space network / connectivity",
+        primary_question="Can physical network capacity, monetization and funding support the revenue ramp?",
+        market_opportunity_mode="required",
+        revenue_drivers=("addressable_subscribers", "penetration", "monthly_arpu", "revenue_share", "satellites", "capacity_per_satellite", "utilization", "price_per_gb"),
+        kpis=("satellites", "launch_cadence", "coverage", "mno_agreements", "cash_burn", "dilution", "runway"),
+        unit_economics=("subscribers × ARPU × revenue share", "satellites × capacity × utilization × price"),
+        segment_model=("connectivity", "government_or_defense", "other"),
+        binding_constraints=("capacity", "launch_cadence", "funding", "regulation", "MNO_monetization"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "unit_economics", "segment_model", "macro_sensitivity"),
+        required_fact_metrics=("addressable_subscribers", "penetration", "monthly_arpu", "revenue_share", "satellites", "capacity_per_satellite", "utilization", "price_per_gb"),
+    ),
+    "space_defense": CompanyFramework(
+        key="space_defense",
+        label="Space and defense platform",
+        primary_question="Does backlog convert into a profitable, scalable space systems and launch business?",
+        market_opportunity_mode="required",
+        revenue_drivers=("launches", "price_per_launch", "backlog", "backlog_conversion", "space_systems_units", "price_per_unit"),
+        kpis=("backlog", "launch_cadence", "gross_margin", "defense_contracts", "capex", "R&D"),
+        unit_economics=("launches × price per launch", "units × price per unit"),
+        segment_model=("launch", "space_systems", "defense"),
+        binding_constraints=("launch_execution", "capacity", "capital", "contract_timing", "competition"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "unit_economics", "segment_model", "macro_sensitivity"),
+        required_fact_metrics=("launches", "price_per_launch", "backlog", "backlog_conversion"),
+    ),
+    "platform": CompanyFramework(
+        key="platform",
+        label="Platform / marketplace",
+        primary_question="Can engagement, volume and take rate compound without losing quality or share?",
+        market_opportunity_mode="required",
+        revenue_drivers=("active_accounts", "transactions_per_account", "tpv", "take_rate", "bookings", "trips", "revenue_per_trip"),
+        kpis=("active_accounts", "churn", "retention", "tpv", "take_rate", "customer_acquisition_cost", "contribution_margin"),
+        unit_economics=("TPV × take rate", "customers × usage × monetization"),
+        segment_model=("core_platform", "adjacent_products", "geography"),
+        binding_constraints=("competition", "pricing", "churn", "regulation", "distribution"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "unit_economics", "segment_model", "macro_sensitivity"),
+        required_fact_metrics=("active_accounts", "tpv", "take_rate", "churn", "retention"),
+    ),
+    "subscriber": CompanyFramework(
+        key="subscriber",
+        label="Subscriber / recurring revenue",
+        primary_question="Can subscriber growth, retention and ARPU support durable FCF and reinvestment?",
+        market_opportunity_mode="recommended",
+        revenue_drivers=("subscribers", "active_accounts", "penetration", "monthly_arpu", "churn", "retention"),
+        kpis=("subscribers", "net_adds", "churn", "retention", "ARPU", "content_or_marketing_spend"),
+        unit_economics=("subscribers × monthly ARPU × 12",),
+        segment_model=("subscription", "advertising", "geography", "product_tier"),
+        binding_constraints=("churn", "content_or_marketing_cost", "competition", "pricing", "regulation"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "unit_economics", "segment_model", "macro_sensitivity"),
+        required_fact_metrics=("subscribers", "monthly_arpu", "churn", "retention"),
+    ),
+    "software_ai": CompanyFramework(
+        key="software_ai",
+        label="Software / AI platform",
+        primary_question="Can seats, usage, pricing and retention grow faster than compute and go-to-market costs?",
+        market_opportunity_mode="recommended",
+        revenue_drivers=("customers", "seats", "arpu", "arr", "usage", "price", "retention"),
+        kpis=("ARR", "net_revenue_retention", "gross_retention", "RPO", "cloud_cost", "R&D", "SBC"),
+        unit_economics=("customers × seats × ARPU", "ARR × retention × expansion"),
+        segment_model=("subscription", "consumption", "services", "geography"),
+        binding_constraints=("competition", "AI_disruption", "cloud_cost", "distribution", "regulation"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "unit_economics", "segment_model", "macro_sensitivity"),
+        required_fact_metrics=("customers", "arr", "retention", "arpu", "cloud_cost"),
+    ),
+    "capacity_infrastructure": CompanyFramework(
+        key="capacity_infrastructure",
+        label="Capacity / infrastructure",
+        primary_question="Can capacity, utilization and pricing earn an acceptable return on heavy investment?",
+        market_opportunity_mode="required",
+        revenue_drivers=("capacity_units", "utilization", "price_per_unit", "power_capacity", "customers"),
+        kpis=("capacity", "utilization", "price", "power_cost", "capex", "funding", "ROIC"),
+        unit_economics=("capacity × utilization × price",),
+        segment_model=("capacity", "services", "geography"),
+        binding_constraints=("capital", "power", "supply_chain", "utilization", "funding"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "unit_economics", "segment_model", "macro_sensitivity"),
+        required_fact_metrics=("capacity_units", "utilization", "price_per_unit", "capex"),
+    ),
+    "holding_asset_manager": CompanyFramework(
+        key="holding_asset_manager",
+        label="Holding company / asset manager",
+        primary_question="Can the asset base compound NAV and cash earnings through disciplined capital allocation?",
+        market_opportunity_mode="reinvestment_runway",
+        revenue_drivers=("aum", "fee_rate", "fee_related_earnings", "asset_value", "cash_yield"),
+        kpis=("fee_related_earnings", "AUM", "inflows", "carry", "holdco_debt", "NAV", "buybacks"),
+        unit_economics=("AUM × fee rate", "asset value × ownership × realization"),
+        segment_model=("asset_management", "wealth_solutions", "operating_businesses", "real_estate", "infrastructure", "holdco_debt"),
+        binding_constraints=("rates", "asset_values", "capital_allocation", "complexity", "liquidity"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "segment_model", "macro_sensitivity", "sotp"),
+        required_fact_metrics=("aum", "fee_rate", "nav", "holdco_debt", "asset_value"),
+    ),
+    "commodity": CompanyFramework(
+        key="commodity",
+        label="Commodity / royalty / resource",
+        primary_question="What is the normalized cash return across price, volume, reserves and reinvestment cycles?",
+        market_opportunity_mode="recommended",
+        revenue_drivers=("production_volume", "commodity_price", "realized_price", "royalty_rate", "reserve_life"),
+        kpis=("production", "realized_price", "all_in_cost", "reserves", "reserve_life", "royalty_revenue", "NOI"),
+        unit_economics=("volume × realized price", "tons × royalty per ton"),
+        segment_model=("resource", "royalty", "land", "rental_income"),
+        binding_constraints=("commodity_price", "reserves", "permitting", "cost_curve", "reinvestment"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "unit_economics", "segment_model", "macro_sensitivity"),
+        required_fact_metrics=("production_volume", "realized_price", "all_in_cost", "reserve_life"),
+    ),
+    "generic_fcf": CompanyFramework(
+        key="generic_fcf",
+        label="FCF compounder",
+        primary_question="Can organic growth, margins and reinvestment compound owner earnings at attractive returns?",
+        market_opportunity_mode="recommended",
+        revenue_drivers=("revenue", "price", "volume", "mix", "organic_growth"),
+        kpis=("organic_growth", "gross_margin", "FCF_margin", "ROIC", "share_count", "working_capital"),
+        unit_economics=("revenue × normalized margin",),
+        segment_model=("reported_segments", "geography", "product"),
+        binding_constraints=("market_size", "competition", "pricing", "reinvestment", "management"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "segment_model", "macro_sensitivity"),
+    ),
+}
+
+
+def resolve_company_framework(company: Company) -> CompanyFramework:
+    """Resolve a framework using explicit company identity before broad tags."""
+    ticker = company.ticker.upper()
+    company_type = (company.company_type or "").lower()
+    model = (company.valuation_model or "").lower()
+    tags = set(company.factor_tags or [])
+
+    explicit_tickers = {
+        "ASTS": "space_network",
+        "RKLB": "space_defense",
+        "PYPL": "platform",
+        "UBER": "platform",
+        "HIMS": "subscriber",
+        "NFLX": "subscriber",
+        "NBIS": "capacity_infrastructure",
+        "IREN": "capacity_infrastructure",
+        "BN": "holding_asset_manager",
+        "BABA": "holding_asset_manager",
+        "CCJ": "commodity",
+        "FRPH": "commodity",
+    }
+    if ticker in explicit_tickers:
+        return FRAMEWORKS[explicit_tickers[ticker]]
+    if "holding" in company_type or "asset_manager" in company_type or "sotp" in model:
+        return FRAMEWORKS["holding_asset_manager"]
+    if "commodity" in tags or "mining" in company_type or "uranium" in company_type or "royalty" in company_type:
+        return FRAMEWORKS["commodity"]
+    if "subscriber" in tags or "subscriber" in company_type:
+        return FRAMEWORKS["subscriber"]
+    if "platform" in tags or "marketplace" in company_type:
+        return FRAMEWORKS["platform"]
+    if "infra" in tags or "capacity" in company_type:
+        return FRAMEWORKS["capacity_infrastructure"]
+    if "software" in tags or "ai" in tags or "cloud" in tags:
+        return FRAMEWORKS["software_ai"]
+    if "space" in tags or "defense" in tags:
+        return FRAMEWORKS["space_defense"]
+    return FRAMEWORKS["generic_fcf"]

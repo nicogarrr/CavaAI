@@ -33,6 +33,10 @@ class RAGIndex:
         from qdrant_client.models import PointStruct
         import uuid
 
+        tenant_id = db.info.get("tenant_id")
+        if tenant_id is None or document.tenant_id != tenant_id:
+            raise ValueError("Tenant context is required to index a document")
+
         chunks = list(db.scalars(
             select(DocumentChunk)
             .where(DocumentChunk.document_id == document.id)
@@ -69,7 +73,7 @@ class RAGIndex:
                     "chunk_index": chunk.chunk_index,
                     "source_type": document.source_type,
                     "title": document.title,
-                    "tenant_id": db.info.get("tenant_id"),
+                    "tenant_id": tenant_id,
                 },
             ))
 
@@ -91,6 +95,8 @@ class RAGIndex:
         tenant_id: int | None = None,
     ) -> list[dict]:
         from qdrant_client.models import Filter, FieldCondition, MatchValue
+        if tenant_id is None:
+            return []
         try:
             embedder = self._embedder()
             vector = embedder.encode([query], normalize_embeddings=True)[0].tolist()
@@ -103,13 +109,12 @@ class RAGIndex:
                         key="ticker", match=MatchValue(value=ticker)
                     )
                 )
-            if tenant_id is not None:
-                conditions.append(
-                    FieldCondition(
-                        key="tenant_id",
-                        match=MatchValue(value=tenant_id),
-                    )
+            conditions.append(
+                FieldCondition(
+                    key="tenant_id",
+                    match=MatchValue(value=tenant_id),
                 )
+            )
             query_filter = Filter(must=conditions) if conditions else None
             results = client.search(
                 collection_name=self.collection_name,

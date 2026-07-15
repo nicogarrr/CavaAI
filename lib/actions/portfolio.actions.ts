@@ -2,9 +2,20 @@
 
 import { connectToDatabase } from '@/database/mongoose';
 import { PortfolioTransaction } from '@/database/models/portfolio.model';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { researchIdentityHeaders } from '@/lib/auth/research-identity';
+import { AuthorizationError, ValidationError } from '@/lib/types/errors';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY ?? process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
+
+async function resolveUserId(requestedUserId?: string): Promise<string> {
+    const user = await requireAuthenticatedUser();
+    if (requestedUserId && requestedUserId !== user.id) {
+        throw new AuthorizationError('Cannot access another user portfolio');
+    }
+    return user.id;
+}
 
 async function getQuote(symbol: string): Promise<{ c: number } | null> {
     try {
@@ -49,11 +60,28 @@ export async function addTransaction(
     date: Date,
     notes?: string
 ): Promise<{ success: boolean; error?: string }> {
+    const resolvedUserId = await resolveUserId(userId);
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
+        throw new ValidationError('Quantity must be positive and price cannot be negative');
+    }
     try {
         await connectToDatabase();
 
+        if (type === 'sell') {
+            const transactions = await PortfolioTransaction.find({ userId: resolvedUserId, symbol: symbol.toUpperCase() })
+                .sort({ date: 1, createdAt: 1 })
+                .lean();
+            const available = transactions.reduce(
+                (total, tx) => total + (tx.type === 'buy' ? tx.quantity : -tx.quantity),
+                0,
+            );
+            if (quantity > available) {
+                throw new ValidationError(`Cannot sell ${quantity}; only ${available} shares are available`);
+            }
+        }
+
         await PortfolioTransaction.create({
-            userId,
+            userId: resolvedUserId,
             symbol: symbol.toUpperCase(),
             type,
             quantity,
@@ -70,10 +98,11 @@ export async function addTransaction(
 }
 
 export async function getPortfolioTransactions(userId: string) {
+    const resolvedUserId = await resolveUserId(userId);
     try {
         await connectToDatabase();
 
-        const transactions = await PortfolioTransaction.find({ userId })
+        const transactions = await PortfolioTransaction.find({ userId: resolvedUserId })
             .sort({ date: -1 })
             .lean();
 
@@ -91,10 +120,13 @@ export async function getPortfolioTransactions(userId: string) {
 }
 
 export async function getPortfolioSummary(userId: string): Promise<PortfolioSummary> {
+    const resolvedUserId = await resolveUserId(userId);
     try {
         await connectToDatabase();
 
-        const transactions = await PortfolioTransaction.find({ userId }).lean();
+        const transactions = await PortfolioTransaction.find({ userId: resolvedUserId })
+            .sort({ date: 1, createdAt: 1 })
+            .lean();
 
         // Calculate holdings
         const holdingsMap = new Map<string, { quantity: number; totalCost: number }>();
@@ -184,11 +216,12 @@ export async function updateTransaction(
     date: Date,
     notes?: string
 ): Promise<{ success: boolean; error?: string }> {
+    const resolvedUserId = await resolveUserId(userId);
     try {
         await connectToDatabase();
 
         const result = await PortfolioTransaction.updateOne(
-            { _id: transactionId, userId },
+            { _id: transactionId, userId: resolvedUserId },
             {
                 symbol: symbol.toUpperCase(),
                 type,
@@ -211,12 +244,13 @@ export async function updateTransaction(
 }
 
 export async function deleteTransaction(userId: string, transactionId: string): Promise<{ success: boolean; error?: string }> {
+    const resolvedUserId = await resolveUserId(userId);
     try {
         await connectToDatabase();
 
         const result = await PortfolioTransaction.deleteOne({
             _id: transactionId,
-            userId
+            userId: resolvedUserId
         });
 
         if (result.deletedCount === 0) {
@@ -232,12 +266,13 @@ export async function deleteTransaction(userId: string, transactionId: string): 
 
 // Eliminar todas las transacciones de un símbolo (eliminar posición)
 export async function deleteHolding(userId: string, symbol: string): Promise<{ success: boolean; error?: string }> {
+    const resolvedUserId = await resolveUserId(userId);
     try {
         await connectToDatabase();
 
         const result = await PortfolioTransaction.deleteMany({
             symbol: symbol.toUpperCase(),
-            userId
+            userId: resolvedUserId
         });
 
         if (result.deletedCount === 0) {
@@ -298,6 +333,7 @@ export async function getPortfolioScores(userId: string): Promise<{
     analytics?: PortfolioAnalyticsResult;
     history?: PortfolioPerformanceHistory;
 }> {
+    await resolveUserId(userId);
     const empty = { quality: 0, growth: 0, value: 0, dividend: 0, cagr3y: 0 };
 
     try {
@@ -312,12 +348,13 @@ export async function getPortfolioScores(userId: string): Promise<{
             : undefined;
 
         const transactions = await getPortfolioTransactions(userId);
+        const identityHeaders = await researchIdentityHeaders();
 
         let history: PortfolioPerformanceHistory | undefined;
         try {
             const historyRes = await fetch(`${BACKEND_URL}/analytics/portfolio/returns`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...identityHeaders },
                 body: JSON.stringify({
                     symbols,
                     transactions: transactions.map(tx => ({
@@ -339,7 +376,7 @@ export async function getPortfolioScores(userId: string): Promise<{
 
         const res = await fetch(`${BACKEND_URL}/analytics/portfolio`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...identityHeaders },
             body: JSON.stringify({ symbols, weights, period: '2y' }),
             next: { revalidate: 300 },
         });
@@ -376,11 +413,13 @@ export async function quickAddPosition(
     shares: number,
     price: number
 ): Promise<{ success: boolean; error?: string }> {
+    await resolveUserId(userId);
     return addTransaction(userId, symbol, 'buy', shares, price, new Date());
 }
 
 // Obtener holdings con peso de portfolio
 export async function getPortfolioWithWeights(userId: string) {
+    await resolveUserId(userId);
     const summary = await getPortfolioSummary(userId);
 
     return summary.holdings.map(h => ({
@@ -391,6 +430,7 @@ export async function getPortfolioWithWeights(userId: string) {
 
 // Actualizar precios de holdings existentes (para refresco cliente)
 export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Promise<PortfolioHolding[]> {
+    await requireAuthenticatedUser();
     try {
         const updatedHoldings = await Promise.all(holdings.map(async (h) => {
             const quote = await getQuote(h.symbol);
@@ -421,6 +461,7 @@ export async function updateAllPortfolioPrices(userId: string): Promise<{
     summary: PortfolioSummary;
     scores: { quality: number; growth: number; value: number; dividend: number; cagr3y: number }
 }> {
+    await resolveUserId(userId);
     // Force fresh fetch of everything - no cache
     const [summary, scores] = await Promise.all([
         getPortfolioSummary(userId),
@@ -440,6 +481,7 @@ export async function syncPortfolioHoldings(
     userId: string,
     extractedPositions: ExtractedPosition[]
 ): Promise<{ success: boolean; actions: string[]; error?: string }> {
+    await resolveUserId(userId);
     try {
         const actions: string[] = [];
 

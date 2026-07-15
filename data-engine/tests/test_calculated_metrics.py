@@ -352,7 +352,7 @@ def test_cfroi_v1_is_persisted_unavailable_and_never_proxied():
         cleanup_metric_test_artifacts()
 
 
-def test_peer_comparison_uses_traceable_metrics_and_sector_peers():
+def test_peer_comparison_uses_traceable_metrics_and_multifactor_peers():
     cleanup_metric_test_artifacts()
     db = SessionLocal()
     try:
@@ -380,7 +380,19 @@ def test_peer_comparison_uses_traceable_metrics_and_sector_peers():
     payload = response.json()
 
     assert payload["ticker"] == TEST_TICKER
-    assert payload["basis"] == "industry"
+    assert payload["basis"] == "multifactor_business_model_stage_size"
+    assert payload["selection_trace"]["method"] == "PEER_SELECTION_V2"
+    selected_candidates = {
+        candidate["ticker"]: candidate
+        for candidate in payload["selection_trace"]["candidates"]
+        if candidate["selected"]
+    }
+    assert set(selected_candidates) == set(PEER_TICKERS)
+    assert all(
+        candidate["dimensions"]["industry"] == 1.0
+        and "same industry" in candidate["rationale"]
+        for candidate in selected_candidates.values()
+    )
     assert payload["peer_count"] == 2
     assert payload["companies"][0]["is_target"] is True
     assert payload["companies"][0]["metrics"]["fcf_margin"]["source_fact_ids"]

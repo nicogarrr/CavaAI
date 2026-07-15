@@ -81,6 +81,14 @@ def test_document_scan_detects_numeric_contradiction_and_creates_review():
             ResearchAlert.company_id == company.id
         )
     )
+    thesis_change = db.scalar(
+        select(ThesisChange).where(
+            ThesisChange.company_id == company.id
+        )
+    )
+    assert thesis_change is not None
+    assert thesis_change.change_type == "claim_contradiction"
+    assert thesis_change.affected_claim_ids == [claim.id]
 
     claim_id = claim.id
     company_id = company.id

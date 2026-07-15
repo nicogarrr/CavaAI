@@ -1,0 +1,112 @@
+from decimal import Decimal
+
+from fastapi.testclient import TestClient
+from sqlalchemy import delete, select
+
+import main
+from app.core.database import SessionLocal, init_db
+from app.models import Company, FinancialFact, Position
+
+
+TICKER = "TLM"
+
+
+def _cleanup() -> None:
+    init_db()
+    db = SessionLocal()
+    try:
+        company = db.scalar(select(Company).where(Company.ticker == TICKER))
+        if company:
+            db.execute(delete(FinancialFact).where(FinancialFact.company_id == company.id))
+            db.execute(delete(Position).where(Position.company_id == company.id))
+            db.delete(company)
+            db.commit()
+    finally:
+        db.close()
+
+
+def _fact(db, company, metric: str, value: float, year: int) -> None:
+    db.add(
+        FinancialFact(
+            company_id=company.id,
+            metric=metric,
+            value=Decimal(str(value)),
+            unit="shares" if metric == "shares_diluted" else "USD",
+            period=f"FY{year}",
+            fiscal_year=year,
+            fiscal_quarter="FY",
+            source_type="test_long_term",
+            is_reported=True,
+            confidence=Decimal("0.95"),
+        )
+    )
+
+
+def test_long_term_model_returns_scenarios_and_source_trace():
+    _cleanup()
+    db = SessionLocal()
+    try:
+        company = Company(
+            ticker=TICKER,
+            name="Long Term Model Test Co",
+            exchange="TEST",
+            currency="USD",
+            sector="Software",
+            industry="Application Software",
+            company_type="standard",
+            valuation_model="standard_dcf",
+            special_sources=[],
+            special_risks=[],
+            factor_tags=["quality"],
+        )
+        db.add(company)
+        db.flush()
+        db.add(Position(company_id=company.id, market_price=Decimal("50")))
+        for year, revenue, fcf, shares in [
+            (2020, 100, 20, 10.0),
+            (2021, 110, 22, 9.9),
+            (2022, 121, 25, 9.8),
+            (2023, 133, 28, 9.7),
+            (2024, 146, 31, 9.5),
+            (2025, 160, 35, 9.3),
+        ]:
+            _fact(db, company, "revenue", revenue, year)
+            _fact(db, company, "gross_profit", revenue * 0.60, year)
+            _fact(db, company, "operating_income", revenue * 0.20, year)
+            _fact(db, company, "ebitda", revenue * 0.25, year)
+            _fact(db, company, "net_income", revenue * 0.15, year)
+            _fact(db, company, "free_cash_flow", fcf, year)
+            _fact(db, company, "operating_cash_flow", fcf + 8, year)
+            _fact(db, company, "capital_expenditure", -8, year)
+            _fact(db, company, "shares_diluted", shares, year)
+            _fact(db, company, "net_debt", 50 - (year - 2020) * 2, year)
+            _fact(db, company, "total_debt", 100, year)
+            _fact(db, company, "total_equity", 300, year)
+            _fact(db, company, "cash_and_equivalents", 50, year)
+            _fact(db, company, "market_size", 1000 * (1.05 ** (year - 2020)), year)
+            _fact(db, company, "market_growth", 0.05, year)
+        db.commit()
+    finally:
+        db.close()
+
+    response = TestClient(main.app).get(f"/api/companies/{TICKER}/long-term-model?horizon=5")
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["status"] == "ok"
+    assert payload["publishable"] is True
+    assert payload["historical_review"]["years_covered"] == 6
+    assert len(payload["scenarios"]["base"]["forecast"]) == 5
+    assert payload["scenarios"]["base"]["year_5"]["free_cash_flow"] > 0
+    assert payload["scenarios"]["base"]["valuation"]["value_per_share"] > 0
+    assert payload["framework"]["key"] == "generic_fcf"
+    assert payload["market_opportunity"]["status"] == "ok"
+    assert payload["market_opportunity"]["top_down"]["tam"]["value"] > 0
+    assert payload["market_opportunity"]["implied_by_valuation"]["base_future_market_share"] > 0
+    assert payload["market_opportunity"]["source_fact_ids"]
+    assert payload["assumptions"]["revenue_growth"]["source_fact_ids"]
+    assert payload["scenarios"]["base"]["forecast"][0]["evidence"]["free_cash_flow"]["source_fact_ids"]
+    assert payload["owner_earnings"]["status"] == "insufficient_data"
+    assert "maintenance_vs_growth_capex_split" in payload["limitations"]
+
+    _cleanup()
