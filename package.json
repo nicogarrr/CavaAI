@@ -14,7 +14,6 @@
     "generate:openapi": "python data-engine/scripts/export_openapi.py && openapi-typescript data-engine/openapi.json -o lib/research/openapi.generated.ts"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { SUPPORT_EMAIL } from '@/lib/config/brand';
 
 const faqs = [
   {
@@ -172,10 +173,10 @@ export default function HelpTabs() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <a
-                  href="mailto:soporte@jlcavaai.com"
+                  href={`mailto:${SUPPORT_EMAIL}`}
                   className="bg-gray-800 text-gray-200 px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors text-center inline-block"
               >
-                  Enviar Email
+                  Enviar email a {SUPPORT_EMAIL}
               </a>
           </div>
           <p className="text-xs text-gray-400 mt-4">

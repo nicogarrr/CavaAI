@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import { SUPPORT_EMAIL } from '@/lib/config/brand';
 
 export const metadata: Metadata = {
   title: 'Términos de Servicio - CavaAI',
@@ -140,8 +141,8 @@ export default function TermsPage() {
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
             <p className="text-gray-200">
               <strong>Contacto:</strong>{' '}
-              <a href="mailto:soporte@jlcavaai.com" className="text-blue-400 hover:text-blue-300">
-                soporte@jlcavaai.com
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="text-blue-400 hover:text-blue-300">
+                {SUPPORT_EMAIL}
               </a>
             </p>
           </div>
