@@ -694,6 +694,7 @@ export type ResearchCompanyDetail = {
   peerAnalysis: ResearchPeerAnalysis | null;
   moat: ResearchMoat | null;
   thesis: ResearchThesis | null;
+  thesisHistory: ResearchThesisVersion[];
   claims: ResearchClaim[];
   thesisSections: ResearchThesisSection[];
   thesisChanges: ResearchThesisChange[];
@@ -737,6 +738,7 @@ export async function getResearchCompanyDetail(ticker: string): Promise<Research
       peerAnalysis: null,
       moat: null,
       thesis: null,
+      thesisHistory: [],
       claims: [],
       thesisSections: [],
       thesisChanges: [],
@@ -1183,10 +1185,6 @@ export async function runResearchWorkflow(name: string, ticker?: string): Promis
   revalidatePath('/research');
   if (ticker) revalidatePath(`/research/${ticker.toUpperCase()}`);
   return result;
-}
-
-export async function getThesisHistory(ticker: string): Promise<ResearchThesisVersion[]> {
-  return getJson<ResearchThesisVersion[]>(`/api/thesis/${encodeURIComponent(ticker.toUpperCase())}/versions`, []);
 }
 
 export async function actionResearchEvidenceSuggestion(
