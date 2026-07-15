@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next';
  
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = process.env.BETTER_AUTH_URL || 'https://jlcavaai.com';
+  const baseUrl = process.env.BETTER_AUTH_URL || 'http://localhost:3000';
   
   return [
     {

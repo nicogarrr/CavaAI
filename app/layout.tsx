@@ -4,13 +4,13 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "JLCavaAI - Plataforma de Análisis de Mercados",
-    template: "%s | JLCavaAI"
+    default: "CavaAI - Research OS de inversión fundamental",
+    template: "%s | CavaAI"
   },
-  description: "JLCavaAI es una plataforma inteligente de seguimiento de mercados. Analiza precios en tiempo real y accede a insights detallados de empresas y ETFs — construido con tecnología de vanguardia.",
-  keywords: ["stock analysis", "market data", "financial analysis", "ETF analysis", "real-time prices", "análisis de acciones", "datos de mercado"],
-  authors: [{ name: "JLCavaAI Team" }],
-  creator: "JLCavaAI",
+  description: "CavaAI convierte evidencia, modelos company-specific y memoria histórica en tesis fundamentales trazables.",
+  keywords: ["fundamental analysis", "investment thesis", "financial modeling", "research OS", "análisis fundamental"],
+  authors: [{ name: "CavaAI Team" }],
+  creator: "CavaAI",
   robots: {
     index: true,
     follow: true,

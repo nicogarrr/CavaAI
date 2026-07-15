@@ -9,6 +9,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/api/', '/_next/', '/sign-in', '/sign-up'],
       },
     ],
-    sitemap: `${process.env.BETTER_AUTH_URL || 'https://jlcavaai.com'}/sitemap.xml`,
+    sitemap: `${process.env.BETTER_AUTH_URL || 'http://localhost:3000'}/sitemap.xml`,
   }
 }
