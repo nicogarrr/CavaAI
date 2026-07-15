@@ -119,12 +119,13 @@ class DocumentIngestionService:
         if len(text.strip()) < 20:
             raise ValueError("Document parser produced too little text")
 
-        storage_uri = DocumentStore().put_bytes_local(
+        storage_uri = DocumentStore().put_bytes(
             company.ticker,
             source_type or "manual",
             f"{checksum[:12]}-{filename}",
             content,
             tenant_id=db.info.get("tenant_id"),
+            content_type=content_type or "application/octet-stream",
         )
 
         document = Document(

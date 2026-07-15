@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Plus, Trash2, X } from 'lucide-react';
-import { createAlert, getUserAlerts, deleteAlert, type CreateAlertInput } from '@/lib/actions/alerts.actions';
+import { Bell, Plus, Trash2 } from 'lucide-react';
+import { createAlert, getUserAlerts, deleteAlert, type Alert, type CreateAlertInput } from '@/lib/actions/alerts.actions';
 import {
     Dialog,
     DialogContent,
@@ -23,9 +23,11 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/types/errors';
 
 export default function AlertsManager() {
-    const [alerts, setAlerts] = useState<any[]>([]);
+    const [alerts, setAlerts] = useState<Alert[]>([]);
     const [loading, setLoading] = useState(true);
     const [open, setOpen] = useState(false);
     const [formData, setFormData] = useState<CreateAlertInput>({
@@ -46,7 +48,7 @@ export default function AlertsManager() {
             const data = await getUserAlerts();
             setAlerts(data);
         } catch (error) {
-            console.error('Error loading alerts:', error);
+            toast.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -59,7 +61,7 @@ export default function AlertsManager() {
                 : parseFloat(String(formData.condition.value));
             
             if (isNaN(numericValue as number) && formData.type !== 'news' && formData.type !== 'earnings') {
-                alert('Por favor ingresa un valor numérico válido');
+                toast.error('Introduce un valor numérico válido');
                 return;
             }
 
@@ -70,6 +72,7 @@ export default function AlertsManager() {
                     value: numericValue,
                 },
             });
+            toast.success('Alerta creada');
             
             setOpen(false);
             setFormData({
@@ -82,21 +85,21 @@ export default function AlertsManager() {
             });
             loadAlerts();
         } catch (error) {
-            console.error('Error creating alert:', error);
-            alert('Error al crear la alerta');
+            toast.error(getErrorMessage(error));
         }
     };
 
     const handleDeleteAlert = async (alertId: string) => {
         try {
             await deleteAlert(alertId);
-            loadAlerts();
+            await loadAlerts();
+            toast.success('Alerta eliminada');
         } catch (error) {
-            console.error('Error deleting alert:', error);
+            toast.error(getErrorMessage(error));
         }
     };
 
-    const getAlertLabel = (alert: any) => {
+    const getAlertLabel = (alert: Alert) => {
         const symbol = alert.symbol;
         const type = alert.type;
         const operator = alert.condition.operator;

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,48 @@ from app.services.red_team_service import RedTeamService
 from app.services.wacc_input_service import WaccInputService
 
 router = APIRouter()
+
+
+class CompanyEnsureRequest(BaseModel):
+    ticker: str = Field(min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.\-]+$")
+    name: str | None = Field(default=None, max_length=255)
+    exchange: str | None = Field(default=None, max_length=50)
+    currency: str | None = Field(default=None, min_length=3, max_length=10)
+    sector: str | None = Field(default=None, max_length=120)
+    industry: str | None = Field(default=None, max_length=160)
+
+
+@router.post("/ensure", response_model=CompanyOut)
+def ensure_company(payload: CompanyEnsureRequest, db: Session = Depends(get_db)) -> Company:
+    ticker = payload.ticker.strip().upper()
+    company = db.scalar(select(Company).where(Company.ticker == ticker))
+    if company is None:
+        company = Company(
+            ticker=ticker,
+            name=(payload.name or ticker).strip(),
+            exchange=(payload.exchange or "UNKNOWN").strip().upper(),
+            currency=(payload.currency or "USD").strip().upper(),
+            sector=(payload.sector or "Unknown").strip(),
+            industry=(payload.industry or "Unknown").strip(),
+            company_type="research_candidate",
+            valuation_model="unassigned",
+            special_sources=[],
+            special_risks=[],
+            factor_tags=[],
+        )
+        db.add(company)
+    else:
+        if payload.name and company.name == company.ticker:
+            company.name = payload.name.strip()
+        if payload.exchange and company.exchange == "UNKNOWN":
+            company.exchange = payload.exchange.strip().upper()
+        if payload.sector and company.sector == "Unknown":
+            company.sector = payload.sector.strip()
+        if payload.industry and company.industry == "Unknown":
+            company.industry = payload.industry.strip()
+    db.commit()
+    db.refresh(company)
+    return company
 
 
 @router.get("", response_model=list[CompanyOut])

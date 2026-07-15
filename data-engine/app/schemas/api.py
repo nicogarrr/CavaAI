@@ -438,6 +438,7 @@ class ResearchAlertOut(BaseModel):
     message: str
     fingerprint: str
     channels: list[str]
+    metadata: dict = Field(default_factory=dict, validation_alias="metadata_")
     acknowledged_at: datetime | None
     acknowledged_by: str | None
     snoozed_until: datetime | None

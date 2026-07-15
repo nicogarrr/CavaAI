@@ -87,6 +87,60 @@ class RAGIndex:
 
         return {"chunks_indexed": len(points), "collection": self.collection_name}
 
+    def rebuild_tenant(self, db) -> dict:
+        """Recreate one tenant's disposable Qdrant index from PostgreSQL chunks."""
+        from qdrant_client.models import (
+            FieldCondition,
+            Filter,
+            FilterSelector,
+            MatchValue,
+        )
+        from sqlalchemy import select
+        from app.models import Document
+
+        tenant_id = db.info.get("tenant_id")
+        if tenant_id is None:
+            raise ValueError("Tenant context is required to rebuild the vector index")
+
+        client = self.client()
+        self._ensure_collection(client)
+        client.delete(
+            collection_name=self.collection_name,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="tenant_id",
+                            match=MatchValue(value=tenant_id),
+                        )
+                    ]
+                )
+            ),
+            wait=True,
+        )
+
+        documents = list(
+            db.scalars(
+                select(Document)
+                .where(Document.tenant_id == tenant_id)
+                .order_by(Document.id)
+            ).all()
+        )
+        indexed = 0
+        errors: list[dict] = []
+        for document in documents:
+            result = self.ingest_document(db, document)
+            indexed += int(result.get("chunks_indexed", 0))
+            if result.get("error"):
+                errors.append({"document_id": document.id, "error": result["error"]})
+        return {
+            "tenant_id": tenant_id,
+            "documents": len(documents),
+            "chunks_indexed": indexed,
+            "errors": errors,
+            "collection": self.collection_name,
+        }
+
     def search(
         self,
         query: str,

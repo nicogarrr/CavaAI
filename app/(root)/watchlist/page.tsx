@@ -143,7 +143,7 @@ export default async function WatchlistPage() {
                             {watchlistStocks.map((stock) => (
                                 <TableRow key={stock.symbol} className="hover:bg-gray-800/30 border-gray-800 transition-colors">
                                     <TableCell>
-                                        <Link href={`/stocks/${stock.symbol}`} className="flex items-center gap-3 group">
+                                        <Link href={`/research/${stock.symbol}`} className="flex items-center gap-3 group">
                                             <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center font-bold text-gray-300 group-hover:bg-gray-700 transition-colors">
                                                 {stock.symbol.slice(0, 2)}
                                             </div>
@@ -200,7 +200,7 @@ export default async function WatchlistPage() {
                                         <div className="flex items-center justify-end gap-2">
                                             <WatchlistRemoveButton symbol={stock.symbol} />
                                             <Link
-                                                href={`/stocks/${stock.symbol}`}
+                                                href={`/research/${stock.symbol}`}
                                                 className="p-2 hover:bg-gray-700 rounded-lg transition-colors text-gray-400 hover:text-white"
                                             >
                                                 <ArrowRight className="w-4 h-4" />
