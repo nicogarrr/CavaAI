@@ -9,6 +9,11 @@ from app.valuation.engines.holding_company import HoldingCompanyEngine
 from app.valuation.engines.pre_revenue import PreRevenueScenarioEngine
 from app.valuation.engines.sotp_engine import SOTPEngine
 from app.valuation.engines.standard_dcf import StandardDCFEngine
+from app.valuation.engines.sector_specific import (
+    BankValuationEngine,
+    InsurerValuationEngine,
+    ReitValuationEngine,
+)
 
 VALUATION_ENGINES: dict[str, type[ValuationEngine]] = {
     "standard_dcf": StandardDCFEngine,
@@ -16,10 +21,9 @@ VALUATION_ENGINES: dict[str, type[ValuationEngine]] = {
     "pre_revenue": PreRevenueScenarioEngine,
     "holding_company": HoldingCompanyEngine,
     "commodity": CommodityCycleEngine,
-    # Stubs mapped to closest real engine until dedicated implementations exist.
-    "bank": StandardDCFEngine,
-    "insurer": HoldingCompanyEngine,
-    "reit": HoldingCompanyEngine,
+    "bank": BankValuationEngine,
+    "insurer": InsurerValuationEngine,
+    "reit": ReitValuationEngine,
 }
 
 
