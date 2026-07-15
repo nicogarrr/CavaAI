@@ -27,6 +27,7 @@ type Transaction = {
     price: number;
     date: string;
     notes?: string;
+    currency?: string;
 };
 
 type Props = {
@@ -46,6 +47,7 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
         price: transaction.price.toString(),
         date: new Date(transaction.date).toISOString().split('T')[0],
         notes: transaction.notes || '',
+        currency: transaction.currency || 'USD',
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -61,7 +63,8 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                 parseFloat(formData.quantity),
                 parseFloat(formData.price),
                 new Date(formData.date),
-                formData.notes || undefined
+                formData.notes || undefined,
+                formData.currency,
             );
             setOpen(false);
             toast.success('Transacción actualizada');
@@ -104,6 +107,16 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                     </div>
 
                     <div className="space-y-2">
+                        <Label htmlFor="edit-currency" className="text-gray-300">Moneda de la operación</Label>
+                        <Select value={formData.currency} onValueChange={(currency) => setFormData({ ...formData, currency })}>
+                            <SelectTrigger id="edit-currency" className="bg-gray-800 border-gray-700 text-gray-100"><SelectValue /></SelectTrigger>
+                            <SelectContent className="bg-gray-800 border-gray-700">
+                                {['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'HKD', 'CHF', 'CAD', 'AUD'].map((currency) => <SelectItem value={currency} key={currency}>{currency}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-2">
                         <Label htmlFor="type" className="text-gray-300">Tipo de Operación</Label>
                         <Select
                             value={formData.type}
@@ -135,7 +148,7 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="price" className="text-gray-300">Precio ($)</Label>
+                            <Label htmlFor="price" className="text-gray-300">Precio ({formData.currency})</Label>
                             <Input
                                 id="price"
                                 type="number"

@@ -4,12 +4,14 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
+from pypdf import PdfWriter
 from sqlalchemy import delete, select
 
 import main
 from app.core.database import SessionLocal, init_db
 from app.models import Document, DocumentChunk
 from app.seed import seed
+from app.services.document_ingestion_service import DocumentIngestionService
 
 
 def cleanup_test_uploads() -> None:
@@ -30,6 +32,18 @@ def cleanup_test_uploads() -> None:
         for path in raw_root.glob("*"):
             if path.is_file():
                 path.unlink()
+
+
+def test_pdf_parser_uses_the_maintained_pypdf_package():
+    content = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.write(content)
+
+    parsed = DocumentIngestionService()._parse_pdf(content.getvalue())
+
+    assert parsed.parser == "pypdf"
+    assert parsed.blocks == []
 
 
 def test_file_ingestion_creates_traceable_chunks_and_dedupes():

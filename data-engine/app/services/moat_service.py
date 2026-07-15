@@ -23,7 +23,48 @@ MOAT_KEYWORDS: dict[str, tuple[str, ...]] = {
 
 
 class MoatService:
-    def assess(self, db: Session, company: Company, *, persist: bool = True) -> dict:
+    def read(self, db: Session, company: Company) -> dict:
+        """Return only persisted assessments; never derive or write on GET."""
+        rows = list(
+            db.scalars(
+                select(MoatAssessment)
+                .where(MoatAssessment.company_id == company.id)
+                .order_by(MoatAssessment.moat_type)
+            ).all()
+        )
+        moats = [
+            {
+                "type": row.moat_type,
+                "strength": row.strength,
+                "trend": row.trend,
+                "persistence": row.persistence,
+                "confidence": float(row.confidence),
+                "status": row.status,
+                "supporting_claim_ids": row.supporting_claim_ids,
+                "contradicting_claim_ids": row.contradicting_claim_ids,
+                "trace": row.assessment_trace,
+            }
+            for row in rows
+        ]
+        return {
+            "ticker": company.ticker,
+            "status": (
+                "evidence_backed"
+                if any(item["status"] == "evidence_backed" for item in moats)
+                else "insufficient_evidence"
+            ),
+            "methodology": "Persisted source-weighted moat assessments.",
+            "moats": moats,
+        }
+
+    def assess(
+        self,
+        db: Session,
+        company: Company,
+        *,
+        persist: bool = True,
+        commit: bool = True,
+    ) -> dict:
         claims = list(
             db.scalars(
                 select(Claim)
@@ -136,7 +177,7 @@ class MoatService:
             results.append(payload)
             if persist:
                 self._persist(db, company, payload)
-        if persist:
+        if persist and commit:
             db.commit()
         evidence_backed = sum(
             1 for result in results if result["status"] == "evidence_backed"

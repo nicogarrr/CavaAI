@@ -84,14 +84,16 @@ CavaAI must support configurable frameworks, qualitative reasoning, manual assum
 
 ## Long-Term Fundamental Modeling Engine
 
-The company workspace now has a first source-aware vertical for long-term fundamental modelling. It is exposed through the company model endpoint and is designed to grow into the full 5–10 year thesis workflow:
+The company workspace now has a source-aware v2 engine for the full 5–10 year thesis workflow. The framework selects company-specific drivers and formulas, while the persisted model separates the operating forecast from market-price valuation snapshots:
 
 - 10-year annual financial history with reported-versus-calculated labels.
-- Bear / Base / Bull operating forecasts for revenue, margins, EBITDA, net income, cash flow, capex, working capital, net debt, shares and FCF per share.
+- Bear / Base / Bull driver-based operating forecasts for revenue, segments, margins, EBITDA, net income, cash flow, capex, working capital, net debt, shares and FCF per share.
+- Funding roll-forward for opening cash, operating cash generation, capex, debt, equity issuance, closing cash, dilution and future invested capital / ROIC. Unknown acquisitions remain unknown rather than being coerced to zero.
 - Revenue and FCF bridges, reverse DCF, quality of growth, owner earnings, capital allocation and “what must be true”.
 - Market-share and maintenance-versus-growth-capex outputs that remain `insufficient_data` until the required facts are sourced.
+- Reproducibility through algorithm version, code SHA and separate input, forecast, market and valuation fingerprints.
 
-Every modelled value carries its input fact IDs and calculation basis. Historical facts carry period, source type, document ID when available, reported/adjusted state and confidence. Explicit policy assumptions (scenario spreads, WACC and terminal growth) are kept separate from company facts so the model cannot turn missing evidence into false precision.
+Every modelled value carries its input fact IDs and calculation basis. Historical facts carry period, source type, document ID when available, reported/adjusted state and confidence. The engine uses the traceable calculated WACC first; a policy default is preview-only and blocks publication. Scenario spreads and terminal growth remain explicit policy assumptions so the model cannot turn missing evidence into false precision.
 
 ### Canonical research flow
 
@@ -111,13 +113,14 @@ The long-term engine is therefore the quantitative spine of the thesis, not a se
 
 Use different model tiers by task:
 
-- Extraction: cheap model
-- Classification: cheap model
-- Simple chat: mid-tier model
-- Deep research: strong model
-- Red team: strong model
+- Extraction and classification: Qwen Flash
+- Main financial synthesis: Qwen3.7 Plus
+- Agentic red team: GLM 5.2
+- Premium escalation: disabled unless a financial evaluation gate justifies the cost
 
-The current backend has a provider-agnostic interface for OpenRouter, OpenAI-compatible endpoints, Anthropic and Gemini. `LLM_PROVIDER=auto` chooses only among enabled providers with configured credentials; task-specific overrides keep extraction, synthesis and red-team model choice separate.
+The backend connects this routing policy to productive chat and KPI extraction through OpenRouter, OpenAI-compatible endpoints, Anthropic and Gemini. Company chat keeps the deterministic context contract, then performs source-aware JSON synthesis, verifies citation IDs, calculates confidence / insufficient-data state and falls back safely when a provider or validation step fails. `LLM_PROVIDER=auto` chooses only among enabled providers with configured credentials.
+
+Langfuse records workflow, provider, model, prompt version, retrieval set, tools, tokens and cache tokens, estimated cost, latency, citations, JSON validity, fallback, escalation and evaluation score. Native Microsoft Agent Framework workflows are reserved for Deep Research, Earnings Review, Thesis Review and Red Team; ingestion, SQL, metrics and DCF remain deterministic services.
 
 Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. The default company chat uses the canonical SQL store first so local development and tests do not depend on Qdrant or embedding downloads.
 
@@ -156,20 +159,38 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - Moat assessment, peer selection, thesis dependency graph and red-team persistence.
 - Earnings workflow, contradiction/review records and material What Changed automation.
 - Decision Journal linked to the latest thesis, fundamental model and observed price.
-- Expectation vs Reality reviews linked to persisted forecast points and subsequent reported facts.
+- Expectation vs Reality reviews choose the last forecast made before the actual, support reported and calculated actuals, and apply metric-specific direction and tolerance semantics.
 - Dedicated fact-driven bank, insurer and REIT valuation engines.
-- One company snapshot endpoint consumed through a generated OpenAPI TypeScript client.
+- Read-only typed compact snapshot plus explicit refresh commands and paginated detail endpoints, consumed through a generated OpenAPI TypeScript client.
+- Company KPI Registry and automatic structured extraction from documents with exact chunk locator validation, normalization, period reconciliation and human approval before canonical facts are created.
+- Company-specific driver formulas, funding / dilution roll-forward, traceable WACC and reproducible operating-model / valuation snapshots.
+- Persistent evaluated alert rules with cooldowns and scheduled workers.
+- Portfolio base-currency accounting with historical FX, native/base cost basis and realized P&L.
+- Full AI task routing, citation checking, cost budgets, Langfuse instrumentation and a financial evaluation dataset.
 
 ### Post-v1 expansion
 
-- Add optional LLM prose synthesis on top of the deterministic source-aware chat contract; generated text must remain clearly separated from facts and calculations.
 - Promote Docling from optional parser only after validating deployment size, OCR quality and table accuracy.
-- Expand traceable metrics to CFROI, ROCE, incremental ROIC and externally sourced WACC inputs.
+- Expand traceable metrics to CFROI, ROCE and incremental ROIC.
 - Extend automatic filing contradictions beyond the current claim, news and earnings triggers.
 - Expand browser coverage to authenticated mutations in a disposable containerized stack.
-- Continue typing legacy market-data adapters; the canonical Research workspace and generated OpenAPI client are already strict.
+- Add a portfolio risk graph, management credibility tracker, capital-allocation ledger, forecast calibration and mistake taxonomy.
+- Continue typing and removing lint debt from legacy market-data and presentation adapters; the canonical Research workspace and generated OpenAPI client are already strict.
+- Produce a reproducible Python lockfile for deployments instead of resolving only from bounded direct dependencies.
 
 These are additive capabilities, not alternate persistence paths or prerequisites for the core Research OS workflow.
+
+## Production Release Gate
+
+CavaAI is functionally ready for a private staging / beta round, but it must not be described as 100% production-ready until all of these conditions hold on the exact release commit:
+
+- GitHub CI is green for frontend, backend, PostgreSQL migrations, dependency audits, API E2E, browser E2E and OpenAPI drift; `main` is protected and those checks are required.
+- PostgreSQL, Redis, Qdrant, MinIO, workers and Langfuse run together in staging with production-shaped secrets, tenant isolation and real provider credentials.
+- A Docker-volume migration dry run, encrypted backup and full restore drill have been completed and reconciled against tenant, document and portfolio counts.
+- Representative companies have been calibrated against real filings and subsequent actuals; WACC, funding, dilution, future ROIC and valuation outputs have received human financial review.
+- Data retention, deletion/export, privacy notice, terms and incident ownership have been completed for the intended deployment jurisdiction and audience.
+
+Passing local tests proves implementation integrity; it does not replace operational, financial, security or legal validation in staging.
 
 ## Success Criterion
 

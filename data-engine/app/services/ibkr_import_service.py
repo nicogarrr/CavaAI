@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import CashBalance, Company, Position, Transaction
+from app.services.portfolio_fx_service import PortfolioFXService
 
 
 def _tag_name(element: ElementTree.Element) -> str:
@@ -47,6 +48,8 @@ def _attr(element: ElementTree.Element, *names: str) -> str | None:
 class IBKRImportService:
     def import_flex_xml(self, db: Session, xml_text: str) -> dict:
         root = ElementTree.fromstring(xml_text)
+        fx_service = PortfolioFXService()
+        portfolio = fx_service.ensure_portfolio(db)
         companies: dict[str, Company] = {}
         positions_imported = 0
         cash_imported = 0
@@ -70,7 +73,7 @@ class IBKRImportService:
                 average_cost = _decimal(_attr(element, "costBasisPrice", "costPrice", "avgPrice"))
                 position = db.scalar(select(Position).where(Position.company_id == company.id))
                 if position is None:
-                    position = Position(company_id=company.id)
+                    position = Position(company_id=company.id, portfolio_id=portfolio.id)
                     db.add(position)
                 position.quantity = quantity
                 position.average_cost = average_cost
@@ -78,8 +81,29 @@ class IBKRImportService:
                 position.market_value = market_value
                 position.unrealized_pnl = _decimal(_attr(element, "fifoPnlUnrealized", "unrealizedPnl"))
                 position.currency = _attr(element, "currency") or company.currency
-                position.source = "ibkr_flex"
+                position.portfolio_id = portfolio.id
+                position.base_currency = portfolio.base_currency
                 position.as_of = _date(_attr(element, "reportDate", "asOfDate"))
+                position.market_value_native = market_value
+                position.cost_basis_native = quantity * average_cost
+                rate = fx_service.rate(
+                    db,
+                    quote_currency=position.currency,
+                    base_currency=portfolio.base_currency,
+                    as_of=position.as_of,
+                )
+                position.fx_rate = rate
+                position.market_value_base = market_value * rate if rate is not None else None
+                position.cost_basis_base = (
+                    position.cost_basis_native * rate if rate is not None else None
+                )
+                position.unrealized_pnl_base = (
+                    position.market_value_base - position.cost_basis_base
+                    if position.market_value_base is not None
+                    and position.cost_basis_base is not None
+                    else None
+                )
+                position.source = "ibkr_flex"
                 positions_imported += 1
 
             elif tag == "CashReport":
@@ -108,6 +132,7 @@ class IBKRImportService:
                 action = self._action(_attr(element, "buySell", "transactionType", "tradeType"))
                 quantity = abs(_decimal(_attr(element, "quantity", "shares")))
                 transaction = Transaction(
+                    portfolio_id=portfolio.id,
                     company_id=company.id,
                     trade_date=_date(_attr(element, "tradeDate", "dateTime", "date")),
                     action=action,
@@ -136,6 +161,7 @@ class IBKRImportService:
                     continue
                 amount = _decimal(_attr(element, "amount", "netCash", "proceeds"))
                 transaction = Transaction(
+                    portfolio_id=portfolio.id,
                     company_id=None,
                     trade_date=_date(_attr(element, "dateTime", "date", "tradeDate")),
                     action=action,
@@ -169,6 +195,7 @@ class IBKRImportService:
                     company_id = corp_company.id
                 amount = _decimal(_attr(element, "amount", "proceeds", "netCash"))
                 transaction = Transaction(
+                    portfolio_id=portfolio.id,
                     company_id=company_id,
                     trade_date=_date(_attr(element, "dateTime", "date", "tradeDate")),
                     action=action,

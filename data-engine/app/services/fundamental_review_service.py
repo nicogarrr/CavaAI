@@ -7,6 +7,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    CalculatedMetric,
     Company,
     DecisionJournalEntry,
     ExpectationReview,
@@ -16,6 +17,7 @@ from app.models import (
     MarketPrice,
     ThesisVersion,
 )
+from app.services.metric_semantics import MetricSemanticsRegistry
 
 
 class DecisionJournalService:
@@ -79,39 +81,66 @@ class DecisionJournalService:
 
 class ExpectationRealityService:
     def review(self, db: Session, company: Company) -> list[ExpectationReview]:
-        model = db.scalar(
-            select(FundamentalModelVersion)
-            .where(FundamentalModelVersion.company_id == company.id)
-            .order_by(desc(FundamentalModelVersion.version))
-            .limit(1)
-        )
-        if not model:
-            return []
-        forecasts = list(
-            db.scalars(
-                select(FundamentalForecast)
+        rows = list(
+            db.execute(
+                select(FundamentalForecast, FundamentalModelVersion)
+                .join(
+                    FundamentalModelVersion,
+                    FundamentalModelVersion.id == FundamentalForecast.model_version_id,
+                )
                 .where(
-                    FundamentalForecast.model_version_id == model.id,
+                    FundamentalModelVersion.company_id == company.id,
                     FundamentalForecast.scenario == "base",
                 )
                 .order_by(
                     FundamentalForecast.fiscal_year,
                     FundamentalForecast.metric,
+                    FundamentalModelVersion.created_at,
                 )
             ).all()
         )
+        grouped: dict[
+            tuple[int, str], list[tuple[FundamentalForecast, FundamentalModelVersion]]
+        ] = {}
+        for forecast, model in rows:
+            grouped.setdefault((forecast.fiscal_year, forecast.metric), []).append(
+                (forecast, model)
+            )
         reviews: list[ExpectationReview] = []
-        for forecast in forecasts:
-            actual = db.scalar(
+        for (fiscal_year, metric), candidates in grouped.items():
+            actual_fact = db.scalar(
                 select(FinancialFact)
                 .where(
                     FinancialFact.company_id == company.id,
-                    FinancialFact.metric == forecast.metric,
-                    FinancialFact.fiscal_year == forecast.fiscal_year,
+                    FinancialFact.metric == metric,
+                    FinancialFact.fiscal_year == fiscal_year,
                 )
                 .order_by(desc(FinancialFact.created_at))
                 .limit(1)
             )
+            actual_metric = db.scalar(
+                select(CalculatedMetric)
+                .where(
+                    CalculatedMetric.company_id == company.id,
+                    CalculatedMetric.metric == metric,
+                    CalculatedMetric.fiscal_year == fiscal_year,
+                    CalculatedMetric.value.is_not(None),
+                )
+                .order_by(desc(CalculatedMetric.created_at))
+                .limit(1)
+            )
+            actual = self._preferred_actual(actual_fact, actual_metric)
+            actual_created_at = actual.created_at if actual is not None else None
+            eligible = [
+                item
+                for item in candidates
+                if actual_created_at is None
+                or self._is_before(item[1].created_at, actual_created_at)
+            ]
+            if not eligible:
+                # A model created after the result is known is not a forecast.
+                continue
+            forecast, model = eligible[-1]
             review = db.scalar(
                 select(ExpectationReview).where(
                     ExpectationReview.forecast_id == forecast.id
@@ -125,6 +154,7 @@ class ExpectationRealityService:
                     fiscal_year=forecast.fiscal_year,
                     metric=forecast.metric,
                     expected_value=forecast.value,
+                    semantics=MetricSemanticsRegistry.get(metric).direction,
                     status="pending_actual",
                 )
                 db.add(review)
@@ -132,31 +162,41 @@ class ExpectationRealityService:
             if actual is None:
                 review.status = "pending_actual"
                 review.actual_fact_id = None
+                review.actual_metric_id = None
+                review.actual_source_type = None
                 review.actual_value = None
                 review.variance = None
                 review.variance_percent = None
             else:
                 actual_value = Decimal(actual.value)
                 variance = actual_value - forecast.value
-                variance_percent = (
-                    variance / abs(forecast.value)
-                    if forecast.value != 0
-                    else None
+                status, variance_percent = MetricSemanticsRegistry.classify(
+                    metric, forecast.value, actual_value
                 )
-                review.actual_fact_id = actual.id
+                is_calculated = isinstance(actual, CalculatedMetric)
+                review.actual_fact_id = None if is_calculated else actual.id
+                review.actual_metric_id = actual.id if is_calculated else None
+                review.actual_source_type = (
+                    "calculated_metric" if is_calculated else "financial_fact"
+                )
                 review.actual_value = actual_value
                 review.variance = variance
                 review.variance_percent = variance_percent
-                if variance_percent is None or abs(variance_percent) <= Decimal("0.05"):
-                    review.status = "met"
-                elif variance_percent > 0:
-                    review.status = "beat"
-                else:
-                    review.status = "miss"
+                rule = MetricSemanticsRegistry.get(metric)
+                review.semantics = rule.direction
+                review.status = status
                 review.trace = {
-                    "threshold": "5_percent",
-                    "actual_source_type": actual.source_type,
+                    "tolerance": str(rule.tolerance),
+                    "semantics": rule.direction,
+                    "actual_source_type": (
+                        "calculated_metric"
+                        if is_calculated
+                        else actual.source_type
+                    ),
                     "actual_period": actual.period,
+                    "selection_policy": "latest model created before actual",
+                    "forecast_model_created_at": model.created_at.isoformat(),
+                    "actual_created_at": actual.created_at.isoformat(),
                 }
             review.reviewed_at = datetime.now(UTC)
             reviews.append(review)
@@ -164,6 +204,24 @@ class ExpectationRealityService:
         for review in reviews:
             db.refresh(review)
         return reviews
+
+    @staticmethod
+    def _preferred_actual(
+        fact: FinancialFact | None,
+        metric: CalculatedMetric | None,
+    ) -> FinancialFact | CalculatedMetric | None:
+        if fact is None:
+            return metric
+        if metric is None:
+            return fact
+        # Raw reported observations win ties; otherwise use the newest canonical value.
+        return fact if fact.created_at >= metric.created_at else metric
+
+    @staticmethod
+    def _is_before(model_time: datetime, actual_time: datetime) -> bool:
+        model_value = model_time.replace(tzinfo=None)
+        actual_value = actual_time.replace(tzinfo=None)
+        return model_value < actual_value
 
     def list(self, db: Session, company: Company) -> list[ExpectationReview]:
         return list(

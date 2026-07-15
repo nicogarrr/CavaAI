@@ -47,6 +47,40 @@ class Tenant(Base, TimestampMixin):
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 
+class Portfolio(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "portfolios"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_portfolio_tenant_name"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), default="Main")
+    base_currency: Mapped[str] = mapped_column(String(10), default="EUR")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class FXRate(TenantOwnedMixin, Base, TimestampMixin):
+    """Historical conversion where quote amount × rate = base amount."""
+
+    __tablename__ = "fx_rates"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "base_currency",
+            "quote_currency",
+            "rate_date",
+            name="uq_fx_rate_tenant_pair_date",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    base_currency: Mapped[str] = mapped_column(String(10), index=True)
+    quote_currency: Mapped[str] = mapped_column(String(10), index=True)
+    rate: Mapped[Decimal] = mapped_column(Numeric(20, 10))
+    rate_date: Mapped[date] = mapped_column(Date, index=True)
+    source: Mapped[str] = mapped_column(String(80), default="manual")
+
+
 class Company(Base, TimestampMixin):
     __tablename__ = "companies"
 
@@ -75,6 +109,9 @@ class Position(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "positions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_id: Mapped[int | None] = mapped_column(
+        ForeignKey("portfolios.id"), nullable=True, index=True
+    )
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     average_cost: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
@@ -83,6 +120,26 @@ class Position(TenantOwnedMixin, Base, TimestampMixin):
     unrealized_pnl: Mapped[Decimal] = mapped_column(Numeric(20, 2), default=0)
     realized_pnl: Mapped[Decimal] = mapped_column(Numeric(20, 2), default=0)
     currency: Mapped[str] = mapped_column(String(10), default="USD")
+    base_currency: Mapped[str] = mapped_column(String(10), default="EUR")
+    market_value_native: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 6), nullable=True
+    )
+    market_value_base: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 6), nullable=True
+    )
+    cost_basis_native: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 6), nullable=True
+    )
+    cost_basis_base: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 6), nullable=True
+    )
+    unrealized_pnl_base: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 6), nullable=True
+    )
+    realized_pnl_base: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 6), nullable=True
+    )
+    fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
     source: Mapped[str] = mapped_column(String(80), default="manual")
     as_of: Mapped[date] = mapped_column(Date, default=date.today)
 
@@ -108,6 +165,9 @@ class Transaction(TenantOwnedMixin, Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_id: Mapped[int | None] = mapped_column(
+        ForeignKey("portfolios.id"), nullable=True, index=True
+    )
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     action: Mapped[str] = mapped_column(String(40))
@@ -165,6 +225,70 @@ class FinancialFact(TenantOwnedMixin, Base, TimestampMixin):
     is_reported: Mapped[bool] = mapped_column(Boolean, default=True)
     is_adjusted: Mapped[bool] = mapped_column(Boolean, default=False)
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0.80"))
+
+
+class CompanyKPI(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "company_kpis"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "company_id", "metric_key", name="uq_company_kpi_metric"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    metric_key: Mapped[str] = mapped_column(String(120), index=True)
+    display_name: Mapped[str] = mapped_column(String(200))
+    aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
+    canonical_unit: Mapped[str] = mapped_column(String(40), default="unknown")
+    period_type: Mapped[str] = mapped_column(String(40), default="annual_or_quarterly")
+    driver_type: Mapped[str] = mapped_column(String(60), default="kpi")
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    registry_version: Mapped[str] = mapped_column(String(80), default="framework-v1")
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class KPIExtractionCandidate(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "kpi_extraction_candidates"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "document_id",
+            "document_chunk_id",
+            "metric_key",
+            "period",
+            "raw_value",
+            name="uq_kpi_candidate_observation",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    company_kpi_id: Mapped[int] = mapped_column(ForeignKey("company_kpis.id"), index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
+    document_chunk_id: Mapped[int] = mapped_column(ForeignKey("document_chunks.id"), index=True)
+    metric_key: Mapped[str] = mapped_column(String(120), index=True)
+    raw_label: Mapped[str] = mapped_column(String(240))
+    raw_value: Mapped[str] = mapped_column(String(160))
+    raw_unit: Mapped[str] = mapped_column(String(80), default="unknown")
+    normalized_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    canonical_unit: Mapped[str] = mapped_column(String(40), default="unknown")
+    period: Mapped[str] = mapped_column(String(40), index=True)
+    fiscal_year: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    fiscal_quarter: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    source_locator: Mapped[dict] = mapped_column(JSON, default=dict)
+    reconciliation_status: Mapped[str] = mapped_column(String(60), default="pending")
+    status: Mapped[str] = mapped_column(String(40), default="pending_approval", index=True)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0.50"))
+    extraction_model: Mapped[str] = mapped_column(String(160), default="unknown")
+    prompt_version: Mapped[str] = mapped_column(String(120), default="kpi-extraction-v1")
+    approved_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    canonical_fact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_facts.id"), nullable=True, index=True
+    )
+    trace: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class CalculatedMetric(TenantOwnedMixin, Base, TimestampMixin):
@@ -357,12 +481,12 @@ class ThesisVersion(TenantOwnedMixin, Base, TimestampMixin):
     thesis_markdown: Mapped[str] = mapped_column(Text)
     executive_summary: Mapped[str] = mapped_column(Text)
     rating: Mapped[str] = mapped_column(String(40), default="watch")
-    current_price: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=0)
-    bear_value: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=0)
-    base_value: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=0)
-    bull_value: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=0)
-    expected_value: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=0)
-    margin_of_safety: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
+    current_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    bear_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    base_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    bull_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    expected_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    margin_of_safety: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
     data_confidence_score: Mapped[int] = mapped_column(Integer, default=0)
     source_coverage_score: Mapped[int] = mapped_column(Integer, default=0)
     red_team_score: Mapped[int] = mapped_column(Integer, default=0)
@@ -676,6 +800,34 @@ class ResearchAlert(TenantOwnedMixin, Base, TimestampMixin):
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 
+class AlertRule(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "alert_rules"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "company_id", "name", name="uq_alert_rule_name"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    name: Mapped[str] = mapped_column(String(300))
+    rule_type: Mapped[str] = mapped_column(String(80), index=True)
+    condition: Mapped[dict] = mapped_column(JSON, default=dict)
+    target: Mapped[dict] = mapped_column(JSON, default=dict)
+    severity: Mapped[str] = mapped_column(String(40), default="medium")
+    channels: Mapped[list[str]] = mapped_column(JSON, default=lambda: ["in_app"])
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    cooldown_seconds: Mapped[int] = mapped_column(Integer, default=3600)
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_triggered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    trigger_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_value: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    last_result: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
 class ConnectorState(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "connector_states"
     __table_args__ = (
@@ -799,13 +951,40 @@ class FundamentalModelVersion(TenantOwnedMixin, Base, TimestampMixin):
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     version: Mapped[int] = mapped_column(Integer)
     engine_version: Mapped[str] = mapped_column(String(160))
+    algorithm_version: Mapped[str] = mapped_column(String(160))
     framework_key: Mapped[str] = mapped_column(String(80), index=True)
     horizon_years: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(40), index=True)
     publishable: Mapped[bool] = mapped_column(Boolean, default=False)
     input_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    forecast_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    market_snapshot_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    valuation_snapshot_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    code_commit_sha: Mapped[str] = mapped_column(String(80), default="unknown")
     scenario_probabilities: Mapped[dict] = mapped_column(JSON, default=dict)
     model_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class FundamentalValuationSnapshot(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "fundamental_valuation_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "model_version_id",
+            "market_snapshot_fingerprint",
+            name="uq_fundamental_valuation_market_snapshot",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model_version_id: Mapped[int] = mapped_column(
+        ForeignKey("fundamental_model_versions.id"), index=True
+    )
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    current_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    market_snapshot_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    valuation_snapshot_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class FundamentalDriver(TenantOwnedMixin, Base, TimestampMixin):
@@ -924,6 +1103,11 @@ class ExpectationReview(TenantOwnedMixin, Base, TimestampMixin):
     actual_fact_id: Mapped[int | None] = mapped_column(
         ForeignKey("financial_facts.id"), nullable=True, index=True
     )
+    actual_metric_id: Mapped[int | None] = mapped_column(
+        ForeignKey("calculated_metrics.id"), nullable=True, index=True
+    )
+    actual_source_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    semantics: Mapped[str] = mapped_column(String(40), default="higher_is_better")
     fiscal_year: Mapped[int] = mapped_column(Integer, index=True)
     metric: Mapped[str] = mapped_column(String(160), index=True)
     expected_value: Mapped[Decimal] = mapped_column(Numeric(24, 8))

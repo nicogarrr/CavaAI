@@ -13,6 +13,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models import Company, Document, DocumentChunk
 from app.services.document_store import DocumentStore
 
@@ -165,6 +166,31 @@ class DocumentIngestionService:
         db.commit()
         db.refresh(document)
 
+        kpi_extraction = {"status": "not_queued"}
+        if (
+            os.getenv("CAVAAI_ENABLE_AUTO_KPI_EXTRACTION", "1") == "1"
+            and get_settings().llm_enabled
+            and db.info.get("tenant_id") is not None
+            and db.info.get("user_id")
+        ):
+            try:
+                from app.workers.dramatiq_app import extract_document_kpis
+
+                message = extract_document_kpis.send(
+                    document.id,
+                    tenant_id=int(db.info["tenant_id"]),
+                    user_id=str(db.info["user_id"]),
+                )
+                kpi_extraction = {
+                    "status": "queued",
+                    "message_id": str(message.message_id),
+                }
+            except Exception as exc:
+                kpi_extraction = {
+                    "status": "queue_unavailable",
+                    "error": type(exc).__name__,
+                }
+
         if os.getenv("CAVAAI_ENABLE_VECTOR_INGEST") == "1":
             try:
                 from app.services.rag import RAGIndex
@@ -204,6 +230,7 @@ class DocumentIngestionService:
             "checksum": checksum,
             "parser": parsed.parser,
             "storage_uri": storage_uri,
+            "kpi_extraction": kpi_extraction,
             "warnings": parsed.warnings,
             "rag": rag_result,
             "intelligence": intelligence_result,
@@ -315,7 +342,7 @@ class DocumentIngestionService:
         )
 
     def _parse_pdf(self, content: bytes) -> ParsedDocument:
-        from PyPDF2 import PdfReader
+        from pypdf import PdfReader
 
         reader = PdfReader(BytesIO(content))
         blocks = []
@@ -323,7 +350,7 @@ class DocumentIngestionService:
             text = _compact(page.extract_text() or "")
             if text:
                 blocks.append(ParsedBlock(text=text, metadata={"page": page_index + 1}))
-        return ParsedDocument(blocks=blocks, parser="pypdf2")
+        return ParsedDocument(blocks=blocks, parser="pypdf")
 
     def _parse_docx(self, content: bytes) -> ParsedDocument:
         from docx import Document as DocxDocument

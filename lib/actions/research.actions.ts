@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { AppError, ExternalAPIError, ValidationError } from '@/lib/types/errors';
 import { createResearchOpenApiClient } from '@/lib/research/openapi-client';
+import type { components } from '@/lib/research/openapi.generated';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -685,89 +686,109 @@ export async function ensureResearchCompany(ticker: string, name?: string) {
   });
 }
 
-export type ResearchCompanyDetail = {
-  company: ResearchCompany | null;
-  valuation: ResearchValuation;
-  facts: ResearchFact[];
-  calculatedMetrics: ResearchCalculatedMetric[];
-  peerComparison: ResearchPeerComparison | null;
-  peerAnalysis: ResearchPeerAnalysis | null;
-  moat: ResearchMoat | null;
-  thesis: ResearchThesis | null;
-  thesisHistory: ResearchThesisVersion[];
-  claims: ResearchClaim[];
-  thesisSections: ResearchThesisSection[];
-  thesisChanges: ResearchThesisChange[];
-  thesisGraph: ResearchThesisGraph | null;
-  reviews: ResearchReview[];
-  alerts: ResearchAlert[];
-  memoryItems: ResearchMemoryItem[];
-  sourceDocuments: ResearchSourceDocument[];
-  evidenceSuggestions: ResearchEvidenceSuggestion[];
-  redTeam: ResearchRedTeam | null;
-  longTermModel: ResearchLongTermModel | null;
-  decisionJournal: ResearchDecisionJournalEntry[];
-  expectationReviews: ResearchExpectationReview[];
-};
+export type ResearchCompanySnapshot = components['schemas']['CompanySnapshotOut'];
 
-export async function getResearchCompanyDetail(ticker: string): Promise<ResearchCompanyDetail> {
+export async function getResearchCompanySnapshot(
+  ticker: string,
+): Promise<ResearchCompanySnapshot | null> {
   const normalizedTicker = ticker.trim().toUpperCase();
-  const emptyValuation: ResearchValuation = {
-    ticker: normalizedTicker,
-    model_type: 'unknown',
-    status: 'insufficient_data',
-    publishable: false,
-    current_price: null,
-    bear_value: null,
-    base_value: null,
-    bull_value: null,
-    expected_value: null,
-    margin_of_safety: null,
-    missing_inputs: [],
-    reverse_dcf: {},
-    sensitivity: { rows: [] },
-    moat: {},
-    trace: { input_source: 'insufficient_data' },
-  };
-  const fallback: ResearchCompanyDetail = {
-      company: null,
-      valuation: emptyValuation,
-      facts: [],
-      calculatedMetrics: [],
-      peerComparison: null,
-      peerAnalysis: null,
-      moat: null,
-      thesis: null,
-      thesisHistory: [],
-      claims: [],
-      thesisSections: [],
-      thesisChanges: [],
-      thesisGraph: null,
-      reviews: [],
-      alerts: [],
-      memoryItems: [],
-      sourceDocuments: [],
-      evidenceSuggestions: [],
-      redTeam: null,
-      longTermModel: null,
-      decisionJournal: [],
-      expectationReviews: [],
-  };
   const client = createResearchOpenApiClient();
   const { data, error, response } = await client.GET('/api/companies/{ticker}/snapshot', {
     params: {
       path: { ticker: normalizedTicker },
-      query: { horizon: 5 },
     },
   });
-  if (response.status === 404) return fallback;
+  if (response.status === 404) return null;
   if (error || !data) {
     const detail = typeof error === 'object' && error && 'detail' in error
       ? String(error.detail)
       : `Research snapshot failed with status ${response.status}`;
     throw new AppError(detail, 'RESEARCH_SNAPSHOT_ERROR', response.status);
   }
-  return data as unknown as ResearchCompanyDetail;
+  return data;
+}
+
+export async function getResearchThesisWorkspace(ticker: string) {
+  const encoded = encodeURIComponent(ticker.toUpperCase());
+  const [thesis, history, claims, sections, graph, redTeam] = await Promise.all([
+    getJson<ResearchThesis | null>(`/api/thesis/${encoded}/latest`, null),
+    getJson<ResearchThesisVersion[]>(`/api/thesis/${encoded}/versions`, []),
+    getJson<ResearchClaim[]>(`/api/memory/claims?ticker=${encoded}&limit=100`, []),
+    getJson<ResearchThesisSection[]>(`/api/memory/thesis/${encoded}/sections`, []),
+    getJson<ResearchThesisGraph | null>(`/api/thesis/${encoded}/graph`, null),
+    getJson<ResearchRedTeam | null>(`/api/companies/${encoded}/red-team/latest`, null),
+  ]);
+  return { thesis, history, claims, sections, graph, redTeam };
+}
+
+export async function getResearchChangesWorkspace(ticker: string) {
+  const encoded = encodeURIComponent(ticker.toUpperCase());
+  const [changes, reviews, alerts, decisions, expectations] = await Promise.all([
+    getJson<ResearchThesisChange[]>(`/api/memory/thesis/${encoded}/changes?limit=100`, []),
+    getJson<ResearchReview[]>(`/api/reviews?ticker=${encoded}`, []),
+    getJson<ResearchAlert[]>(`/api/alerts?ticker=${encoded}&include_snoozed=true`, []),
+    getJson<ResearchDecisionJournalEntry[]>(`/api/companies/${encoded}/decision-journal`, []),
+    getJson<ResearchExpectationReview[]>(`/api/companies/${encoded}/expectation-reality`, []),
+  ]);
+  return { changes, reviews, alerts, decisions, expectations };
+}
+
+export async function getResearchFinancialsWorkspace(ticker: string) {
+  const encoded = encodeURIComponent(ticker.toUpperCase());
+  const [facts, metrics] = await Promise.all([
+    getJson<ResearchFact[]>(`/api/companies/${encoded}/facts?limit=250`, []),
+    getJson<{ metrics: ResearchCalculatedMetric[] }>(
+      `/api/companies/${encoded}/metrics/calculated`,
+      { metrics: [] },
+    ),
+  ]);
+  return { facts, calculatedMetrics: metrics.metrics };
+}
+
+export async function getResearchLongTermModel(ticker: string) {
+  return getJson<ResearchLongTermModel | null>(
+    `/api/companies/${encodeURIComponent(ticker.toUpperCase())}/long-term-model`,
+    null,
+  );
+}
+
+export async function getResearchMoatWorkspace(ticker: string) {
+  return getJson<ResearchMoat | null>(
+    `/api/companies/${encodeURIComponent(ticker.toUpperCase())}/moat`,
+    null,
+  );
+}
+
+export async function getResearchPeersWorkspace(ticker: string) {
+  const encoded = encodeURIComponent(ticker.toUpperCase());
+  const [comparison, analysis] = await Promise.all([
+    getJson<ResearchPeerComparison | null>(`/api/companies/${encoded}/peers/comparison`, null),
+    getJson<ResearchPeerAnalysis | null>(`/api/companies/${encoded}/peers/analysis`, null),
+  ]);
+  return { comparison, analysis };
+}
+
+export async function getResearchValuationWorkspace(ticker: string) {
+  return getJson<ResearchValuation | null>(
+    `/api/valuation/${encodeURIComponent(ticker.toUpperCase())}`,
+    null,
+  );
+}
+
+export async function getResearchDocumentsWorkspace(
+  ticker: string,
+  includeChunks = false,
+) {
+  const encoded = encodeURIComponent(ticker.toUpperCase());
+  return getJson<ResearchSourceDocument[]>(
+    `/api/sources/documents?ticker=${encoded}&include_chunks=${includeChunks ? 'true' : 'false'}`,
+    [],
+  );
+}
+
+export async function getResearchSourceAuditsWorkspace(ticker?: string) {
+  const query = ticker ? `?ticker=${encodeURIComponent(ticker.toUpperCase())}` : '';
+  return getJson<ResearchSourceAudit[]>(`/api/sources/audits${query}`, []);
 }
 
 export async function createResearchDecision(ticker: string, formData: FormData) {
@@ -808,6 +829,15 @@ export async function refreshCompanyFinancials(ticker: string) {
     ticker: normalizedTicker,
   });
   revalidatePath('/research');
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function refreshCompanyResearchModel(ticker: string) {
+  const normalizedTicker = ticker.toUpperCase();
+  await postJson(
+    `/api/companies/${encodeURIComponent(normalizedTicker)}/snapshot/refresh?horizon=5`,
+    null,
+  );
   revalidatePath(`/research/${normalizedTicker}`);
 }
 

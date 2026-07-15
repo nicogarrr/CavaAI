@@ -5,7 +5,7 @@ from sqlalchemy import delete, select
 
 import main
 from app.core.database import SessionLocal, init_db
-from app.models import Company, FinancialFact, Position
+from app.models import CalculatedMetric, Company, FinancialFact, Position
 
 
 TICKER = "TLM"
@@ -85,16 +85,36 @@ def test_long_term_model_returns_scenarios_and_source_trace():
             _fact(db, company, "cash_and_equivalents", 50, year)
             _fact(db, company, "market_size", 1000 * (1.05 ** (year - 2020)), year)
             _fact(db, company, "market_growth", 0.05, year)
+        db.add(
+            CalculatedMetric(
+                company_id=company.id,
+                metric="wacc",
+                value=Decimal("0.09"),
+                unit="decimal",
+                period="FY2025",
+                fiscal_year=2025,
+                status="ok",
+                definition_version="wacc-v1",
+                formula="E/(D+E)*cost_of_equity + D/(D+E)*after_tax_cost_of_debt",
+                source_fact_ids=[],
+                calculation_trace={"risk_free_rate": 0.04, "equity_risk_premium": 0.05},
+                confidence=Decimal("0.90"),
+            )
+        )
         db.commit()
     finally:
         db.close()
 
-    response = TestClient(main.app).get(f"/api/companies/{TICKER}/long-term-model?horizon=5")
+    response = TestClient(main.app).post(
+        f"/api/companies/{TICKER}/long-term-model/generate?horizon=5"
+    )
     assert response.status_code == 200
     payload = response.json()
 
     assert payload["status"] == "ok"
     assert payload["publishable"] is True
+    assert payload["model_version"] == "long-term-fundamental-model-v2"
+    assert payload["algorithm_version"] == "driver-formulas-funding-rollforward-v2"
     assert payload["historical_review"]["years_covered"] == 6
     assert len(payload["scenarios"]["base"]["forecast"]) == 5
     assert payload["scenarios"]["base"]["year_5"]["free_cash_flow"] > 0
@@ -106,6 +126,13 @@ def test_long_term_model_returns_scenarios_and_source_trace():
     assert payload["market_opportunity"]["source_fact_ids"]
     assert payload["assumptions"]["revenue_growth"]["source_fact_ids"]
     assert payload["scenarios"]["base"]["forecast"][0]["evidence"]["free_cash_flow"]["source_fact_ids"]
+    assert payload["driver_formula"]["formula_key"] == "reported_revenue_bridge"
+    assert payload["scenarios"]["base"]["driver_operating_model"]["status"] == "driver_based"
+    first_forecast = payload["scenarios"]["base"]["forecast"][0]
+    assert first_forecast["funding_model"]["debt_trend_status"] == "historical_cagr"
+    assert first_forecast["invested_capital"] > 350
+    assert first_forecast["evidence"]["roic"]["calculation"] == "NOPAT / rolled-forward invested capital"
+    assert payload["trace"]["wacc"]["status"] == "traceable"
     assert payload["owner_earnings"]["status"] == "insufficient_data"
     assert "maintenance_vs_growth_capex_split" in payload["limitations"]
 

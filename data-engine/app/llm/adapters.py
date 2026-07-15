@@ -124,10 +124,13 @@ class OpenAICompatibleProvider(LLMProvider):
         usage_body = usage_body if isinstance(usage_body, dict) else {}
         input_tokens = _integer(usage_body.get("prompt_tokens"))
         output_tokens = _integer(usage_body.get("completion_tokens"))
+        prompt_details = usage_body.get("prompt_tokens_details") or {}
+        prompt_details = prompt_details if isinstance(prompt_details, dict) else {}
         usage = Usage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             total_tokens=_integer(usage_body.get("total_tokens")) or input_tokens + output_tokens,
+            cache_read_tokens=_integer(prompt_details.get("cached_tokens")),
         )
         return LLMResponse(
             message=Message(MessageRole.ASSISTANT, content),
@@ -223,7 +226,13 @@ class AnthropicProvider(LLMProvider):
         output_tokens = _integer(usage_body.get("output_tokens"))
         return LLMResponse(
             message=Message(MessageRole.ASSISTANT, content),
-            usage=Usage(input_tokens, output_tokens, input_tokens + output_tokens),
+            usage=Usage(
+                input_tokens,
+                output_tokens,
+                input_tokens + output_tokens,
+                cache_read_tokens=_integer(usage_body.get("cache_read_input_tokens")),
+                cache_write_tokens=_integer(usage_body.get("cache_creation_input_tokens")),
+            ),
             model=body.get("model") if isinstance(body.get("model"), str) else model,
             provider=self.name,
             finish_reason=body.get("stop_reason") if isinstance(body.get("stop_reason"), str) else None,
@@ -316,6 +325,7 @@ class GeminiProvider(LLMProvider):
                 input_tokens,
                 output_tokens,
                 _integer(usage_body.get("totalTokenCount")) or input_tokens + output_tokens,
+                cache_read_tokens=_integer(usage_body.get("cachedContentTokenCount")),
             ),
             model=model,
             provider=self.name,

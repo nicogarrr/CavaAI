@@ -9,6 +9,5 @@ router = APIRouter()
 
 
 @router.post("", response_model=ChatResponse)
-def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
-    return ChatService().answer(db, payload.question, payload.scope, payload.ticker)
-
+async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+    return await ChatService().answer(db, payload.question, payload.scope, payload.ticker)

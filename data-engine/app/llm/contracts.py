@@ -88,9 +88,17 @@ class Usage:
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
 
     def __post_init__(self) -> None:
-        if min(self.input_tokens, self.output_tokens, self.total_tokens) < 0:
+        if min(
+            self.input_tokens,
+            self.output_tokens,
+            self.total_tokens,
+            self.cache_read_tokens,
+            self.cache_write_tokens,
+        ) < 0:
             raise ValueError("Token usage cannot be negative")
 
 
