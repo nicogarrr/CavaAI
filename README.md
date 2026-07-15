@@ -69,6 +69,28 @@ cp docker.env.example .env
 docker compose up --build
 ```
 
+If an older checkout created `jlcava-*` Docker volumes, do not start writing to
+the new empty `cavaai-*` volumes. Stop the stack and migrate them explicitly:
+
+```powershell
+.\scripts\migrate-docker-volumes.ps1 -DryRun
+.\scripts\migrate-docker-volumes.ps1
+docker compose up --build
+```
+
+The migration refuses to run while CavaAI containers are active and refuses to
+overwrite a non-empty target. Verify PostgreSQL, MongoDB, MinIO and Qdrant before
+removing any old volume. A new installation may consciously start from empty
+`cavaai-*` volumes without running the script.
+
+Operational runbooks:
+
+- [Backup and restore](docs/BACKUP_RESTORE.md)
+- [Financial document privacy and retention](docs/PRIVACY_AND_DATA_RETENTION.md)
+
+Authenticated API requests are rate-limited per tenant, user and client address;
+expensive LLM and model-refresh routes use a separate lower budget.
+
 Frontend only:
 
 ```bash
@@ -157,6 +179,8 @@ Frontend:
 ```bash
 npm run lint
 npm run build
+npm run generate:openapi
+git diff --exit-code -- data-engine/openapi.json lib/research/openapi.generated.ts
 ```
 
 Backend:

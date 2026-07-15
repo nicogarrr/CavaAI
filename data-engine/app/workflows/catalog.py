@@ -1,6 +1,7 @@
 WORKFLOW_CATALOG = [
     {
         "name": "GenerateThesisWorkflow",
+        "execution_mode": "deterministic",
         "input": "ticker",
         "steps": [
             "resolve_ticker",
@@ -27,6 +28,7 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "DailyResearchWorkflow",
+        "execution_mode": "deterministic",
         "input": "portfolio",
         "steps": [
             "sync_IBKR",
@@ -43,6 +45,7 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "ManualNewsWorkflow",
+        "execution_mode": "deterministic",
         "input": "pasted_news",
         "steps": [
             "detect_ticker",
@@ -60,6 +63,7 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "EarningsWorkflow",
+        "execution_mode": "microsoft_agent_framework",
         "input": "ticker + earnings docs",
         "steps": [
             "ingest_earnings_release",
@@ -79,6 +83,7 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "ChatWorkflow",
+        "execution_mode": "deterministic_plus_llm_synthesis",
         "input": "user_question",
         "steps": [
             "classify_scope",
@@ -94,6 +99,7 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "RedTeamWorkflow",
+        "execution_mode": "microsoft_agent_framework",
         "input": "ticker",
         "steps": [
             "load_current_thesis",
@@ -109,6 +115,7 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "ContradictionWorkflow",
+        "execution_mode": "deterministic",
         "input": "ticker + document/news",
         "steps": [
             "extract_material_statements",
@@ -120,5 +127,27 @@ WORKFLOW_CATALOG = [
             "create_review_and_alert",
         ],
     },
+    {
+        "name": "DeepResearchWorkflow",
+        "execution_mode": "microsoft_agent_framework",
+        "input": "ticker + research question",
+        "steps": [
+            "plan_research",
+            "retrieve_primary_sources",
+            "challenge_source_coverage",
+            "synthesize_with_citations",
+            "evaluate_answer",
+        ],
+    },
+    {
+        "name": "ThesisReviewWorkflow",
+        "execution_mode": "microsoft_agent_framework",
+        "input": "ticker + proposed thesis change",
+        "steps": [
+            "load_current_thesis",
+            "review_evidence_delta",
+            "challenge_assumptions",
+            "propose_review_decision",
+        ],
+    },
 ]
-

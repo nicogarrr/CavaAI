@@ -18,16 +18,25 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import Company, FinancialFact, MarketPrice, NewsEvent, Position, ThesisChange
+from app.models import (
+    CalculatedMetric,
+    Company,
+    FinancialFact,
+    MarketPrice,
+    NewsEvent,
+    Position,
+    ThesisChange,
+)
 from app.services.company_framework import CompanyFramework, resolve_company_framework
+from app.services.driver_operating_model import DriverOperatingModel
 from app.services.fundamental_model_repository import FundamentalModelRepository
 from app.services.market_opportunity_service import MarketOpportunityEngine
-from app.valuation.dcf_fcff import DCFInputs, run_dcf
 from app.valuation.engines.base import default_terminal_growth, default_wacc
 from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth
 
 
-MODEL_VERSION = "long-term-fundamental-model-v1"
+MODEL_VERSION = "long-term-fundamental-model-v2"
+ALGORITHM_VERSION = "driver-formulas-funding-rollforward-v2"
 ANNUAL_METRICS = (
     "revenue",
     "gross_profit",
@@ -167,7 +176,14 @@ def _is_annual(fact: FinancialFact) -> bool:
 class LongTermModelService:
     """Build the evidence-aware long-term model for one company."""
 
-    def build(self, db: Session, company: Company, horizon: int = 5) -> dict[str, Any]:
+    def build(
+        self,
+        db: Session,
+        company: Company,
+        horizon: int = 5,
+        *,
+        commit: bool = True,
+    ) -> dict[str, Any]:
         horizon = max(5, min(10, int(horizon)))
         framework = resolve_company_framework(company)
         market_metrics = MarketOpportunityEngine.metrics_for_framework(framework)
@@ -208,6 +224,7 @@ class LongTermModelService:
         }
 
         assumptions, assumption_meta = self._assumptions(
+            db=db,
             fact_cache=fact_cache,
             revenue_history=revenue_history,
             years=years,
@@ -219,6 +236,21 @@ class LongTermModelService:
             for driver in driver_model
             if driver["required"] and driver["status"] == "missing"
         ]
+        driver_preview = (
+            DriverOperatingModel().build(
+                framework,
+                fact_cache,
+                latest_year=latest_year,
+                horizon=horizon,
+                scenario="base",
+            )
+            if latest_year is not None
+            else {"status": "missing_formula_inputs", "missing_inputs": ["fiscal_year"]}
+        )
+        missing_formula_inputs = list(driver_preview.get("missing_inputs") or [])
+        missing_mandatory_drivers = list(
+            dict.fromkeys(missing_mandatory_drivers + missing_formula_inputs)
+        )
         missing_core = [
             name
             for name, value in (
@@ -238,6 +270,13 @@ class LongTermModelService:
                 missing_mandatory_drivers=missing_mandatory_drivers,
             )
             for name, spec in scenario_specs:
+                driver_forecast = DriverOperatingModel().build(
+                    framework,
+                    fact_cache,
+                    latest_year=latest_year,
+                    horizon=horizon,
+                    scenario=name,
+                )
                 forecast = self._forecast(
                     fact_cache=fact_cache,
                     years=years,
@@ -248,6 +287,7 @@ class LongTermModelService:
                     fcf_margin=spec["fcf_margin"],
                     wacc=spec["wacc"],
                     assumptions=assumptions,
+                    driver_forecast=driver_forecast,
                 )
                 scenarios[name] = self._scenario_payload(
                     name=name,
@@ -257,6 +297,7 @@ class LongTermModelService:
                     fact_cache=fact_cache,
                     latest_year=latest_year,
                 )
+                scenarios[name]["driver_operating_model"] = driver_forecast
 
         reverse_dcf = self._reverse_dcf(
             current_price=current_price,
@@ -289,6 +330,13 @@ class LongTermModelService:
             if constrained_specs != scenario_specs:
                 scenarios = {}
                 for name, spec in constrained_specs:
+                    driver_forecast = DriverOperatingModel().build(
+                        framework,
+                        fact_cache,
+                        latest_year=latest_year,
+                        horizon=horizon,
+                        scenario=name,
+                    )
                     forecast = self._forecast(
                         fact_cache=fact_cache,
                         years=years,
@@ -299,6 +347,7 @@ class LongTermModelService:
                         fcf_margin=spec["fcf_margin"],
                         wacc=spec["wacc"],
                         assumptions=assumptions,
+                        driver_forecast=driver_forecast,
                     )
                     scenarios[name] = self._scenario_payload(
                         name=name,
@@ -308,6 +357,7 @@ class LongTermModelService:
                         fact_cache=fact_cache,
                         latest_year=latest_year,
                     )
+                    scenarios[name]["driver_operating_model"] = driver_forecast
                 market_opportunity = MarketOpportunityEngine().build(
                     db,
                     company,
@@ -328,6 +378,11 @@ class LongTermModelService:
         status = "ok" if not missing_core else "insufficient_data"
         if not missing_core and missing_mandatory_drivers:
             status = "missing_mandatory_drivers"
+        publication_blockers: list[str] = []
+        if assumptions["wacc"].source_type != "calculated_metric":
+            publication_blockers.append("traceable_wacc")
+            if status == "ok":
+                status = "preview_only"
         limitations = self._limitations(
             fact_cache=fact_cache,
             years=years,
@@ -343,15 +398,19 @@ class LongTermModelService:
             "publishable": (
                 status == "ok"
                 and not missing_mandatory_drivers
+                and not publication_blockers
                 and coverage["coverage_percent"] >= 60
             ),
             "model": "long_term_fundamental_modeling_engine",
             "model_version": MODEL_VERSION,
+            "algorithm_version": ALGORITHM_VERSION,
+            "code_commit_sha": self._code_commit_sha(),
             "framework": framework.as_dict(),
             "horizon_years": horizon,
             "as_of_period": current.get("period"),
             "current_price": current_price,
-            "missing_inputs": missing_core + missing_mandatory_drivers,
+            "missing_inputs": missing_core + missing_mandatory_drivers + publication_blockers,
+            "publication_blockers": publication_blockers,
             "missing_mandatory_drivers": missing_mandatory_drivers,
             "historical_review": {
                 "years_covered": len(years),
@@ -372,6 +431,24 @@ class LongTermModelService:
                 "active_modules": list(framework.active_modules),
             },
             "driver_model": driver_model,
+            "driver_formula": {
+                "status": driver_preview.get("status"),
+                "formula_key": driver_preview.get("formula_key"),
+                "output_metric": driver_preview.get("output_metric"),
+                "expression": driver_preview.get("expression"),
+                "missing_inputs": missing_formula_inputs,
+            },
+            "scenario_configuration": {
+                "names": [name for name, _ in scenario_specs],
+                "probability_method": "company_evidence_confidence_and_growth_skew",
+                "driver_scenario_shift": {"bear": -0.02, "base": 0.0, "bull": 0.02},
+            },
+            "funding_policy": {
+                "minimum_cash": 0.0,
+                "maximum_debt_to_ebitda": 3.0,
+                "equity_issuance_price_basis": "latest_reported_book_value_per_share",
+                "acquisitions": "unknown_unless_sourced; excluded from baseline",
+            },
             "scenarios": scenarios,
             "reverse_dcf": reverse_dcf,
             "market_opportunity": market_opportunity,
@@ -411,16 +488,36 @@ class LongTermModelService:
                 "input_source": "financial_facts" if history else "insufficient_data",
                 "fact_count": sum(len(items) for items in fact_cache.values()),
                 "annual_periods": years,
+                "wacc": assumption_meta.get("wacc_trace"),
             },
         }
-        persisted = FundamentalModelRepository().persist(db, company, payload)
+        persisted = FundamentalModelRepository().persist(db, company, payload, commit=commit)
         payload["persistence"] = {
             "model_version_id": persisted.id if persisted else None,
             "version": persisted.version if persisted else None,
             "input_fingerprint": persisted.input_fingerprint if persisted else None,
+            "forecast_fingerprint": persisted.forecast_fingerprint if persisted else None,
+            "market_snapshot_fingerprint": (
+                persisted.market_snapshot_fingerprint if persisted else None
+            ),
+            "valuation_snapshot_fingerprint": (
+                persisted.valuation_snapshot_fingerprint if persisted else None
+            ),
+            "code_commit_sha": persisted.code_commit_sha if persisted else None,
             "status": "persisted" if persisted else "tenant_context_required",
         }
         return payload
+
+    @staticmethod
+    def _code_commit_sha() -> str:
+        import os
+
+        return (
+            os.getenv("GIT_COMMIT_SHA")
+            or os.getenv("GITHUB_SHA")
+            or os.getenv("RENDER_GIT_COMMIT")
+            or "development"
+        )[:80]
 
     @staticmethod
     def _metric_key(metric: str) -> str:
@@ -618,6 +715,7 @@ class LongTermModelService:
     def _assumptions(
         self,
         *,
+        db: Session,
         fact_cache: dict[str, list[FinancialFact]],
         revenue_history: dict[int, FinancialFact],
         years: list[int],
@@ -703,16 +801,53 @@ class LongTermModelService:
         shares_series = self._series(fact_cache, "shares_diluted", years)
         shares_cagr = self._cagr(shares_series)
         shares_ids = [fact_id for item in shares_series for fact_id in item["fact_ids"]]
-        # WACC is a market assumption in the current product. Keep its policy
-        # origin explicit until risk-free-rate/beta facts are fully source-tagged.
-        wacc = Assumption(
-            value=default_wacc(company),
-            unit="decimal",
-            source_type="model_policy",
-            basis="company valuation policy; replace with source-tagged WACC inputs",
-            source_fact_ids=[],
-            confidence=0.40,
+        wacc_metric = db.scalar(
+            select(CalculatedMetric)
+            .where(
+                CalculatedMetric.company_id == company.id,
+                CalculatedMetric.metric == "wacc",
+                CalculatedMetric.value.is_not(None),
+            )
+            .order_by(
+                desc(CalculatedMetric.fiscal_year),
+                desc(CalculatedMetric.created_at),
+            )
+            .limit(1)
         )
+        if wacc_metric is not None:
+            wacc = Assumption(
+                value=_float(wacc_metric.value),
+                unit=wacc_metric.unit,
+                source_type="calculated_metric",
+                basis=(
+                    f"CalculatedMetric #{wacc_metric.id}: {wacc_metric.formula}; "
+                    f"definition={wacc_metric.definition_version}"
+                ),
+                source_fact_ids=list(wacc_metric.source_fact_ids or []),
+                confidence=_float(wacc_metric.confidence) or 0.0,
+            )
+            wacc_trace = {
+                "status": "traceable",
+                "calculated_metric_id": wacc_metric.id,
+                "period": wacc_metric.period,
+                "formula": wacc_metric.formula,
+                "source_fact_ids": list(wacc_metric.source_fact_ids or []),
+                "calculation_trace": wacc_metric.calculation_trace or {},
+            }
+        else:
+            wacc = Assumption(
+                value=default_wacc(company),
+                unit="decimal",
+                source_type="model_policy",
+                basis="preview-only company policy; a traceable CalculatedMetric(wacc) is required for publication",
+                source_fact_ids=[],
+                confidence=0.20,
+            )
+            wacc_trace = {
+                "status": "preview_only_default",
+                "calculated_metric_id": None,
+                "source_fact_ids": [],
+            }
         terminal = Assumption(
             value=default_terminal_growth(company),
             unit="decimal",
@@ -756,6 +891,7 @@ class LongTermModelService:
             "margin_spread_policy": max(0.02, min(0.06, margin_spread * 0.75 if margin_values else 0.02)),
             "normalization_window_years": min(5, len(years)),
             "share_count_observations": len(shares_series),
+            "wacc_trace": wacc_trace,
         }
         return assumptions, assumption_meta
 
@@ -844,14 +980,14 @@ class LongTermModelService:
         fcf_margin: float,
         wacc: float,
         assumptions: dict[str, Assumption],
+        driver_forecast: dict[str, Any],
     ) -> list[dict[str, Any]]:
         latest_revenue = self._value_for_year(fact_cache["revenue"], latest_year)
         latest_shares = self._value_for_year(fact_cache["shares_diluted"], latest_year)
-        latest_net_debt = self._value_for_year(fact_cache["net_debt"], latest_year)
         if latest_revenue is None or latest_shares in (None, 0):
             return []
 
-        share_growth = assumptions["shares_cagr"].value or 0.0
+        share_growth = assumptions["shares_cagr"].value
         capex_ratio = assumptions["capex_to_revenue"].value
         working_capital_ratio = assumptions["working_capital_to_revenue"].value
         tax_rate_value = assumptions["effective_tax_rate"].value
@@ -865,13 +1001,43 @@ class LongTermModelService:
         previous_revenue = latest_revenue
         previous_shares = latest_shares
         previous_working_capital = self._value_for_year(fact_cache["working_capital"], latest_year)
+        previous_cash = self._value_for_year(fact_cache["cash_and_equivalents"], latest_year)
+        previous_debt = self._value_for_year(fact_cache["total_debt"], latest_year)
+        latest_equity = self._value_for_year(fact_cache["total_equity"], latest_year)
+        previous_invested_capital = (
+            previous_debt + latest_equity - previous_cash
+            if previous_debt is not None
+            and latest_equity is not None
+            and previous_cash is not None
+            else None
+        )
+        book_value_per_share = (
+            latest_equity / latest_shares
+            if latest_equity is not None and latest_equity > 0 and latest_shares > 0
+            else None
+        )
+        debt_series = self._series(fact_cache, "total_debt", years)
+        debt_trend = self._cagr(debt_series)
+        driver_rows = {
+            int(row["year"]): row for row in (driver_forecast.get("years") or [])
+        }
         latest_fcf = self._derived_fcf_value(fact_cache, latest_year)
         latest_margin = latest_fcf / latest_revenue if latest_fcf is not None and latest_revenue else fcf_margin
         forecasts: list[dict[str, Any]] = []
         for offset in range(1, horizon + 1):
             year = latest_year + offset
-            revenue = previous_revenue * (1 + growth)
-            shares = max(0.000001, previous_shares * (1 + share_growth))
+            driver_row = driver_rows.get(year)
+            driver_output_metric = driver_forecast.get("output_metric")
+            revenue = (
+                float(driver_row["output"])
+                if driver_row is not None and driver_output_metric == "revenue"
+                else previous_revenue * (1 + growth)
+            )
+            organic_shares = (
+                max(0.000001, previous_shares * (1 + share_growth))
+                if share_growth is not None
+                else previous_shares
+            )
             fcf = revenue * fcf_margin
             capex = -revenue * capex_ratio if capex_ratio is not None else None
             operating_cash_flow = fcf - capex if capex is not None else None
@@ -887,10 +1053,115 @@ class LongTermModelService:
             net_income = revenue * assumptions["net_margin"].value if assumptions["net_margin"].value is not None else (
                 operating_income * (1 - tax_rate) if operating_income is not None else None
             )
-            roic = self._forward_roic(db=None, company=None, operating_income=operating_income, tax_rate=tax_rate, fact_cache=fact_cache, latest_year=latest_year)
+            if driver_row is not None and driver_output_metric == "operating_income":
+                operating_income = float(driver_row["output"])
+            if driver_row is not None and driver_output_metric == "net_income":
+                net_income = float(driver_row["output"])
+
+            baseline_cash = (
+                previous_cash + operating_cash_flow + capex
+                if previous_cash is not None
+                and operating_cash_flow is not None
+                and capex is not None
+                else None
+            )
+            planned_debt = (
+                max(0.0, previous_debt * (1 + debt_trend))
+                if previous_debt is not None and debt_trend is not None
+                else None
+            )
+            planned_debt_change = (
+                planned_debt - previous_debt
+                if planned_debt is not None and previous_debt is not None
+                else None
+            )
+            cash_after_planned_debt = (
+                baseline_cash + planned_debt_change
+                if baseline_cash is not None and planned_debt_change is not None
+                else baseline_cash
+            )
+            funding_gap = (
+                max(0.0, -cash_after_planned_debt)
+                if cash_after_planned_debt is not None
+                else None
+            )
+            debt_capacity = (
+                max(0.0, ebitda * 3.0 - planned_debt)
+                if ebitda is not None and planned_debt is not None
+                else 0.0
+            )
+            new_debt_for_gap = (
+                min(funding_gap, debt_capacity) if funding_gap is not None else None
+            )
+            equity_issuance = (
+                max(0.0, funding_gap - (new_debt_for_gap or 0.0))
+                if funding_gap is not None
+                else None
+            )
+            incremental_shares = (
+                equity_issuance / book_value_per_share
+                if equity_issuance is not None
+                and equity_issuance > 0
+                and book_value_per_share not in (None, 0)
+                else (0.0 if equity_issuance == 0 else None)
+            )
+            shares = (
+                organic_shares + incremental_shares
+                if incremental_shares is not None
+                else None
+            )
+            closing_cash = (
+                max(
+                    0.0,
+                    cash_after_planned_debt
+                    + (new_debt_for_gap or 0.0)
+                    + (equity_issuance or 0.0),
+                )
+                if cash_after_planned_debt is not None
+                else None
+            )
+            closing_debt = (
+                planned_debt + (new_debt_for_gap or 0.0)
+                if planned_debt is not None
+                else None
+            )
+            net_debt = (
+                closing_debt - closing_cash
+                if closing_debt is not None and closing_cash is not None
+                else None
+            )
+            growth_investment = (
+                abs(capex) + max(0.0, working_capital_absorption or 0.0)
+                if capex is not None
+                else None
+            )
+            invested_capital = (
+                previous_invested_capital + growth_investment
+                if previous_invested_capital is not None and growth_investment is not None
+                else None
+            )
+            roic = (
+                operating_income * (1 - tax_rate) / invested_capital
+                if operating_income is not None
+                and invested_capital is not None
+                and invested_capital > 0
+                else None
+            )
             point_ids = _unique_ids(ids=base_ids + margin_ids)
+            revenue_source_ids = (
+                list(driver_row.get("source_fact_ids") or [])
+                if driver_row is not None and driver_output_metric == "revenue"
+                else base_ids
+            )
             evidence = {
-                "revenue": {"source_fact_ids": base_ids, "calculation": "prior revenue * (1 + scenario revenue growth)"},
+                "revenue": {
+                    "source_fact_ids": revenue_source_ids,
+                    "calculation": (
+                        driver_row.get("calculation")
+                        if driver_row is not None and driver_output_metric == "revenue"
+                        else "prior revenue * (1 + scenario revenue growth)"
+                    ),
+                },
                 "gross_profit": {"source_fact_ids": point_ids + assumptions["gross_margin"].source_fact_ids, "calculation": "revenue * historical gross margin"},
                 "operating_income": {"source_fact_ids": point_ids + assumptions["operating_margin"].source_fact_ids, "calculation": "revenue * historical operating margin"},
                 "ebitda": {"source_fact_ids": point_ids + assumptions["ebitda_margin"].source_fact_ids, "calculation": "revenue * historical EBITDA margin"},
@@ -899,10 +1170,46 @@ class LongTermModelService:
                 "capital_expenditure": {"source_fact_ids": capex_ids, "calculation": "-revenue * historical capex intensity"},
                 "free_cash_flow": {"source_fact_ids": point_ids, "calculation": "revenue * scenario FCF margin"},
                 "working_capital": {"source_fact_ids": assumptions["working_capital_to_revenue"].source_fact_ids, "calculation": "revenue * historical working capital / revenue"},
-                "net_debt": {"source_fact_ids": [self._fact_for_year(fact_cache["net_debt"], latest_year).id] if self._fact_for_year(fact_cache["net_debt"], latest_year) else [], "calculation": "held flat; debt paydown/capital allocation not modelled"},
-                "shares_diluted": {"source_fact_ids": share_ids, "calculation": "prior shares * (1 + historical share-count CAGR)"},
+                "net_debt": {"source_fact_ids": self._balance_fact_ids(fact_cache, latest_year), "calculation": "closing debt - closing cash after funding roll-forward"},
+                "shares_diluted": {"source_fact_ids": share_ids + self._balance_fact_ids(fact_cache, latest_year), "calculation": "organic diluted shares + equity funding / latest reported book value per share"},
                 "fcf_per_share": {"source_fact_ids": point_ids + share_ids, "calculation": "free cash flow / diluted shares"},
-                "roic": {"source_fact_ids": point_ids + tax_ids + self._balance_fact_ids(fact_cache, latest_year), "calculation": "NOPAT / current invested capital proxy"},
+                "roic": {"source_fact_ids": point_ids + tax_ids + self._balance_fact_ids(fact_cache, latest_year), "calculation": "NOPAT / rolled-forward invested capital"},
+            }
+            funding_model = {
+                "status": (
+                    "complete_baseline"
+                    if previous_cash is not None
+                    and previous_debt is not None
+                    and debt_trend is not None
+                    and (equity_issuance in (None, 0) or incremental_shares is not None)
+                    else "partial_unknowns"
+                ),
+                "opening_cash": previous_cash,
+                "operating_cash_generation": operating_cash_flow,
+                "capital_expenditure": capex,
+                "acquisitions": None,
+                "acquisitions_policy": "unknown and excluded from baseline; never coerced to zero",
+                "debt_repayment": (
+                    abs(min(0.0, planned_debt_change))
+                    if planned_debt_change is not None
+                    else None
+                ),
+                "new_debt": (
+                    max(0.0, planned_debt_change or 0.0) + (new_debt_for_gap or 0.0)
+                    if planned_debt_change is not None
+                    else new_debt_for_gap
+                ),
+                "equity_issuance": equity_issuance,
+                "incremental_shares": incremental_shares,
+                "closing_cash_pre_acquisitions": closing_cash,
+                "closing_cash": None,
+                "funding_gap": funding_gap,
+                "debt_capacity": debt_capacity,
+                "debt_trend": debt_trend,
+                "debt_trend_status": (
+                    "historical_cagr" if debt_trend is not None else "unknown"
+                ),
+                "equation": "opening cash + operating cash generation + capex - acquisitions - debt repayment + new debt + equity issuance = closing cash",
             }
             forecasts.append(
                 {
@@ -917,42 +1224,27 @@ class LongTermModelService:
                     "free_cash_flow": fcf,
                     "working_capital": working_capital,
                     "working_capital_absorption": working_capital_absorption,
-                    "net_debt": latest_net_debt,
+                    "net_debt": net_debt,
                     "shares_diluted": shares,
-                    "fcf_per_share": fcf / shares,
+                    "fcf_per_share": fcf / shares if shares not in (None, 0) else None,
                     "fcf_margin": fcf / revenue if revenue else None,
                     "roic": roic,
+                    "invested_capital": invested_capital,
+                    "funding_model": funding_model,
+                    "segments": driver_row.get("segments") if driver_row else {},
                     "evidence": evidence,
                     "scenario": scenario,
                     "wacc": wacc,
                 }
             )
             previous_revenue = revenue
-            previous_shares = shares
+            if shares is not None:
+                previous_shares = shares
             previous_working_capital = working_capital
+            previous_cash = closing_cash
+            previous_debt = closing_debt
+            previous_invested_capital = invested_capital
         return forecasts
-
-    def _forward_roic(
-        self,
-        *,
-        db: Session | None,
-        company: Company | None,
-        operating_income: float | None,
-        tax_rate: float,
-        fact_cache: dict[str, list[FinancialFact]],
-        latest_year: int,
-    ) -> float | None:
-        if operating_income is None:
-            return None
-        debt = self._value_for_year(fact_cache["total_debt"], latest_year)
-        equity = self._value_for_year(fact_cache["total_equity"], latest_year)
-        cash = self._value_for_year(fact_cache["cash_and_equivalents"], latest_year)
-        if debt is None or equity is None or cash is None:
-            return None
-        invested_capital = debt + equity - cash
-        if invested_capital <= 0:
-            return None
-        return operating_income * (1 - tax_rate) / invested_capital
 
     def _balance_fact_ids(self, fact_cache: dict[str, list[FinancialFact]], year: int) -> list[int]:
         return _unique_ids(
@@ -982,27 +1274,32 @@ class LongTermModelService:
         latest_year: int,
     ) -> dict[str, Any]:
         latest_revenue = self._value_for_year(fact_cache["revenue"], latest_year)
-        latest_shares = self._value_for_year(fact_cache["shares_diluted"], latest_year)
-        net_debt = self._value_for_year(fact_cache["net_debt"], latest_year) or 0.0
+        net_debt = self._value_for_year(fact_cache["net_debt"], latest_year)
         dcf = None
-        if latest_revenue is not None and latest_shares:
-            dcf_result = run_dcf(
-                DCFInputs(
-                    revenue=latest_revenue,
-                    revenue_growth=spec["growth"],
-                    fcf_margin=spec["fcf_margin"],
-                    wacc=spec["wacc"],
-                    terminal_growth=spec["terminal_growth"],
-                    net_debt=net_debt,
-                    shares_outstanding=latest_shares,
-                    years=len(forecast),
-                )
+        terminal_shares = forecast[-1].get("shares_diluted") if forecast else None
+        if forecast and net_debt is not None and terminal_shares not in (None, 0):
+            pv_explicit = sum(
+                point["free_cash_flow"] / ((1 + spec["wacc"]) ** index)
+                for index, point in enumerate(forecast, start=1)
             )
+            terminal_fcf = forecast[-1]["free_cash_flow"] * (1 + spec["terminal_growth"])
+            terminal_value = terminal_fcf / (spec["wacc"] - spec["terminal_growth"])
+            pv_terminal = terminal_value / ((1 + spec["wacc"]) ** len(forecast))
+            enterprise_value = pv_explicit + pv_terminal
+            equity_value = enterprise_value - net_debt
             dcf = {
-                "enterprise_value": dcf_result.enterprise_value,
-                "equity_value": dcf_result.equity_value,
-                "value_per_share": dcf_result.value_per_share,
-                "trace": dcf_result.trace,
+                "enterprise_value": enterprise_value,
+                "equity_value": equity_value,
+                "value_per_share": equity_value / terminal_shares,
+                "trace": {
+                    "method": "explicit_driver_fcff_dcf",
+                    "pv_explicit_fcf": pv_explicit,
+                    "terminal_fcf": terminal_fcf,
+                    "terminal_value": terminal_value,
+                    "pv_terminal_value": pv_terminal,
+                    "current_net_debt": net_debt,
+                    "terminal_diluted_shares": terminal_shares,
+                },
             }
         first = forecast[0] if forecast else None
         return {
@@ -1023,7 +1320,13 @@ class LongTermModelService:
                     "basis": "normalized historical FCF margin adjusted by explicit scenario spread",
                     "source_fact_ids": assumptions["fcf_margin"].source_fact_ids,
                 },
-                "wacc": {"value": spec["wacc"], "unit": "decimal", "source_type": "model_policy", "basis": "company WACC policy with scenario adjustment", "source_fact_ids": []},
+                "wacc": {
+                    "value": spec["wacc"],
+                    "unit": "decimal",
+                    "source_type": assumptions["wacc"].source_type,
+                    "basis": f"{assumptions['wacc'].basis}; scenario adjustment applied",
+                    "source_fact_ids": assumptions["wacc"].source_fact_ids,
+                },
                 "terminal_growth": {"value": spec["terminal_growth"], "unit": "decimal", "source_type": "model_policy", "basis": "terminal growth policy with bear adjustment", "source_fact_ids": []},
             },
             "drivers": spec["drivers"],
@@ -1039,16 +1342,23 @@ class LongTermModelService:
         if first is None or current_revenue is None:
             return {"status": "insufficient_data", "items": []}
         delta = first["revenue"] - current_revenue
+        calculation = first["evidence"]["revenue"].get("calculation") or ""
+        is_driver_based = calculation != "prior revenue * (1 + scenario revenue growth)"
         return {
-            "status": "partial",
+            "status": "driver_based" if is_driver_based else "partial",
             "from_year": latest_year,
             "to_year": first["year"],
             "items": [
                 {"label": "Revenue actual", "value": current_revenue, "source_fact_ids": first["evidence"]["revenue"]["source_fact_ids"]},
-                {"label": "Crecimiento no atribuido", "value": delta, "source_fact_ids": first["evidence"]["revenue"]["source_fact_ids"], "note": "Pricing, volumen, mix, FX y M&A requieren drivers sectoriales o de segmento."},
+                {
+                    "label": "Cambio producido por drivers" if is_driver_based else "Crecimiento no atribuido",
+                    "value": delta,
+                    "source_fact_ids": first["evidence"]["revenue"]["source_fact_ids"],
+                    "note": calculation,
+                },
                 {"label": "Revenue modelado", "value": first["revenue"], "source_fact_ids": first["evidence"]["revenue"]["source_fact_ids"]},
             ],
-            "unavailable_drivers": ["price", "volume", "mix", "fx", "m_and_a", "churn"],
+            "unavailable_drivers": [] if is_driver_based else ["price", "volume", "mix", "fx", "m_and_a", "churn"],
         }
 
     def _fcf_bridge(self, fact_cache: dict[str, list[FinancialFact]], latest_year: int, first: dict[str, Any] | None) -> dict[str, Any]:

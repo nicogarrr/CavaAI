@@ -6,6 +6,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.workers.dramatiq_app import (
     consolidate_memory,
+    evaluate_alert_rules,
     refresh_ir_pages,
     refresh_news,
     refresh_rss_feeds,
@@ -51,6 +52,13 @@ def enqueue_for_all_tenants(actor) -> dict:
 
 def build_scheduler() -> BlockingScheduler:
     scheduler = BlockingScheduler(timezone="UTC")
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, evaluate_alert_rules),
+        "interval",
+        job_id="alert_rule_evaluation",
+        minutes=5,
+    )
     _register(
         scheduler,
         partial(enqueue_for_all_tenants, refresh_rss_feeds),

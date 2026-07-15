@@ -27,17 +27,22 @@ test.describe("public authentication shell", () => {
 test.describe("company research workspace", () => {
   test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
 
-  test("loads the canonical company snapshot and switches to market context", async ({ page }) => {
+  test("loads the compact snapshot and lazy-loads research modules", async ({ page }) => {
     await page.goto("/research/MSFT");
 
     await expect(page).toHaveURL(/\/research\/MSFT$/);
-    await expect(page.getByRole("heading", { name: "MSFT" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "MSFT", level: 1 })).toBeVisible();
+    await expect(page.getByText("read-only snapshot")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Long-Term Fundamental Model" })).toBeVisible();
+
+    await page.getByRole("link", { name: "Long-Term Model", exact: true }).click();
+    await expect(page).toHaveURL(/view=model/);
+    await expect(page.getByRole("heading", { name: "Long-Term Fundamental Model" })).toBeVisible();
+
+    await page.getByRole("link", { name: "What Changed", exact: true }).click();
+    await expect(page).toHaveURL(/view=changes/);
     await expect(page.getByRole("heading", { name: "Decision Journal" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Expectation vs Reality" })).toBeVisible();
-
-    await page.getByRole("tab", { name: /Market/ }).click();
-    await expect(page.getByText(/Price history is unavailable/)).toBeVisible();
     await page.screenshot({ path: "test-results/cavaai-company-workspace.png", fullPage: true });
   });
 });

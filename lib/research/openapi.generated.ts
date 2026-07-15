@@ -158,6 +158,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/alerts/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Alert Rules */
+        get: operations["list_alert_rules_api_alerts_rules_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/rules/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evaluate Alert Rules */
+        post: operations["evaluate_alert_rules_api_alerts_rules_evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Deactivate Alert Rule */
+        delete: operations["deactivate_alert_rule_api_alerts_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/alerts/{alert_id}/action": {
         parameters: {
             query?: never;
@@ -346,6 +397,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{ticker}/kpi-registry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Company Kpi Registry */
+        get: operations["company_kpi_registry_api_companies__ticker__kpi_registry_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{ticker}/kpi-registry/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Company Kpi Registry */
+        post: operations["sync_company_kpi_registry_api_companies__ticker__kpi_registry_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{ticker}/long-term-model": {
         parameters: {
             query?: never;
@@ -360,6 +445,23 @@ export interface paths {
         get: operations["long_term_model_api_companies__ticker__long_term_model_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{ticker}/long-term-model/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Long Term Model */
+        post: operations["generate_long_term_model_api_companies__ticker__long_term_model_generate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -383,6 +485,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{ticker}/metrics/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Calculated Metrics */
+        post: operations["refresh_calculated_metrics_api_companies__ticker__metrics_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{ticker}/moat": {
         parameters: {
             query?: never;
@@ -394,6 +513,23 @@ export interface paths {
         get: operations["moat_assessment_api_companies__ticker__moat_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{ticker}/moat/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Moat Assessment */
+        post: operations["refresh_moat_assessment_api_companies__ticker__moat_refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -530,6 +666,23 @@ export interface paths {
         get: operations["company_snapshot_api_companies__ticker__snapshot_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{ticker}/snapshot/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Company Snapshot */
+        post: operations["refresh_company_snapshot_api_companies__ticker__snapshot_refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -788,6 +941,42 @@ export interface paths {
         get: operations["cash_api_portfolio_cash_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Portfolio Configuration */
+        get: operations["portfolio_configuration_api_portfolio_configuration_get"];
+        /** Update Portfolio Configuration */
+        put: operations["update_portfolio_configuration_api_portfolio_configuration_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/fx-rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Fx Rates */
+        get: operations["list_fx_rates_api_portfolio_fx_rates_get"];
+        put?: never;
+        /** Upsert Fx Rate */
+        post: operations["upsert_fx_rate_api_portfolio_fx_rates_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1119,6 +1308,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sources/documents/{document_id}/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Document Chunks */
+        get: operations["document_chunks_api_sources_documents__document_id__chunks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sources/documents/{document_id}/extract-kpis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extract Document Kpis */
+        post: operations["extract_document_kpis_api_sources_documents__document_id__extract_kpis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sources/evidence-suggestions": {
         parameters: {
             query?: never;
@@ -1147,6 +1370,40 @@ export interface paths {
         put?: never;
         /** Action Evidence Suggestion */
         post: operations["action_evidence_suggestion_api_sources_evidence_suggestions__suggestion_id__action_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sources/kpi-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Kpi Candidates */
+        get: operations["kpi_candidates_api_sources_kpi_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sources/kpi-candidates/{candidate_id}/action": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Action Kpi Candidate */
+        post: operations["action_kpi_candidate_api_sources_kpi_candidates__candidate_id__action_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1232,6 +1489,23 @@ export interface paths {
         get: operations["thesis_graph_api_thesis__ticker__graph_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thesis/{ticker}/graph/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Thesis Graph */
+        post: operations["refresh_thesis_graph_api_thesis__ticker__graph_refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1897,6 +2171,59 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AlertRuleOut */
+        AlertRuleOut: {
+            /** Active */
+            active: boolean;
+            /** Channels */
+            channels: string[];
+            /** Company Id */
+            company_id: number;
+            /** Condition */
+            condition: {
+                [key: string]: unknown;
+            };
+            /** Cooldown Seconds */
+            cooldown_seconds: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Evaluated At */
+            last_evaluated_at: string | null;
+            /** Last Result */
+            last_result: {
+                [key: string]: unknown;
+            };
+            /** Last Triggered At */
+            last_triggered_at: string | null;
+            /** Last Value */
+            last_value: string | null;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Rule Type */
+            rule_type: string;
+            /** Severity */
+            severity: string;
+            /** Target */
+            target: {
+                [key: string]: unknown;
+            };
+            /** Trigger Count */
+            trigger_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** Body_ingest_document_file_api_sources_documents_ingest_file_post */
         Body_ingest_document_file_api_sources_documents_ingest_file_post: {
             /** File */
@@ -1980,10 +2307,24 @@ export interface components {
              * @default false
              */
             blocked: boolean;
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
             /** Evidence Suggestions */
             evidence_suggestions?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Insufficient Data
+             * @default false
+             */
+            insufficient_data: boolean;
+            /** Llm Trace */
+            llm_trace?: {
+                [key: string]: unknown;
+            };
             /** Model */
             model?: string | null;
             /** Prompt Version */
@@ -2138,6 +2479,35 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /** CompanyKPIOut */
+        CompanyKPIOut: {
+            /** Active */
+            active: boolean;
+            /** Aliases */
+            aliases: string[];
+            /** Canonical Unit */
+            canonical_unit: string;
+            /** Company Id */
+            company_id: number;
+            /** Display Name */
+            display_name: string;
+            /** Driver Type */
+            driver_type: string;
+            /** Id */
+            id: number;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Metric Key */
+            metric_key: string;
+            /** Period Type */
+            period_type: string;
+            /** Registry Version */
+            registry_version: string;
+            /** Required */
+            required: boolean;
+        };
         /** CompanyOut */
         CompanyOut: {
             /** Cik */
@@ -2168,6 +2538,20 @@ export interface components {
             ticker: string;
             /** Valuation Model */
             valuation_model: string;
+        };
+        /**
+         * CompanySnapshotOut
+         * @description Small, read-only bootstrap contract for the Research workspace.
+         */
+        CompanySnapshotOut: {
+            company: components["schemas"]["CompanyOut"];
+            counts: components["schemas"]["SnapshotCountsOut"];
+            latest_thesis?: components["schemas"]["SnapshotThesisSummaryOut"] | null;
+            model_summary?: components["schemas"]["SnapshotModelSummaryOut"] | null;
+            /** Recent Changes */
+            recent_changes?: components["schemas"]["SnapshotRecentChangeOut"][];
+            research_health: components["schemas"]["ResearchHealthOut"];
+            valuation_summary: components["schemas"]["SnapshotValuationSummaryOut"];
         };
         /** ContradictionScanRequest */
         ContradictionScanRequest: {
@@ -2337,6 +2721,25 @@ export interface components {
             /** Suggestion Type */
             suggestion_type: string;
         };
+        /** FXRateInput */
+        FXRateInput: {
+            /** Base Currency */
+            base_currency: string;
+            /** Quote Currency */
+            quote_currency: string;
+            /** Rate */
+            rate: number | string;
+            /**
+             * Rate Date
+             * Format: date
+             */
+            rate_date: string;
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
+        };
         /** FinancialFactOut */
         FinancialFactOut: {
             /** Company Id */
@@ -2401,6 +2804,79 @@ export interface components {
         IBKRXmlImportRequest: {
             /** Xml */
             xml: string;
+        };
+        /** KPIExtractionAction */
+        KPIExtractionAction: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "approve" | "reject";
+            /**
+             * Actor
+             * @default user
+             */
+            actor: string;
+        };
+        /** KPIExtractionCandidateOut */
+        KPIExtractionCandidateOut: {
+            /** Approved At */
+            approved_at: string | null;
+            /** Approved By */
+            approved_by: string | null;
+            /** Canonical Fact Id */
+            canonical_fact_id: number | null;
+            /** Canonical Unit */
+            canonical_unit: string;
+            /** Company Id */
+            company_id: number;
+            /** Company Kpi Id */
+            company_kpi_id: number;
+            /** Confidence */
+            confidence: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Document Chunk Id */
+            document_chunk_id: number;
+            /** Document Id */
+            document_id: number;
+            /** Extraction Model */
+            extraction_model: string;
+            /** Fiscal Quarter */
+            fiscal_quarter: string | null;
+            /** Fiscal Year */
+            fiscal_year: number | null;
+            /** Id */
+            id: number;
+            /** Metric Key */
+            metric_key: string;
+            /** Normalized Value */
+            normalized_value: string | null;
+            /** Period */
+            period: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Raw Label */
+            raw_label: string;
+            /** Raw Unit */
+            raw_unit: string;
+            /** Raw Value */
+            raw_value: string;
+            /** Reconciliation Status */
+            reconciliation_status: string;
+            /** Source Locator */
+            source_locator: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+            /** Trace */
+            trace: {
+                [key: string]: unknown;
+            };
         };
         /** ManualAlertCreate */
         ManualAlertCreate: {
@@ -2654,6 +3130,11 @@ export interface components {
             /** Weights */
             weights?: number[] | null;
         };
+        /** PortfolioConfigurationInput */
+        PortfolioConfigurationInput: {
+            /** Base Currency */
+            base_currency: string;
+        };
         /** PortfolioPriceInput */
         PortfolioPriceInput: {
             /** As Of */
@@ -2787,6 +3268,23 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ResearchHealthOut */
+        ResearchHealthOut: {
+            /** Missing */
+            missing?: string[];
+            /**
+             * Review Required
+             * @default false
+             */
+            review_required: boolean;
+            /** Score */
+            score: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "empty" | "incomplete" | "review_required" | "healthy";
+        };
         /** ResearchReviewOut */
         ResearchReviewOut: {
             /** Assigned To */
@@ -2893,6 +3391,170 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** SnapshotCountsOut */
+        SnapshotCountsOut: {
+            /**
+             * Calculated Metrics
+             * @default 0
+             */
+            calculated_metrics: number;
+            /**
+             * Claims
+             * @default 0
+             */
+            claims: number;
+            /**
+             * Documents
+             * @default 0
+             */
+            documents: number;
+            /**
+             * Facts
+             * @default 0
+             */
+            facts: number;
+            /**
+             * Model Versions
+             * @default 0
+             */
+            model_versions: number;
+            /**
+             * Open Alerts
+             * @default 0
+             */
+            open_alerts: number;
+            /**
+             * Open Reviews
+             * @default 0
+             */
+            open_reviews: number;
+            /**
+             * Thesis Versions
+             * @default 0
+             */
+            thesis_versions: number;
+        };
+        /** SnapshotModelSummaryOut */
+        SnapshotModelSummaryOut: {
+            /** Algorithm Version */
+            algorithm_version: string;
+            /** Code Commit Sha */
+            code_commit_sha: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Engine Version */
+            engine_version: string;
+            /** Forecast Fingerprint */
+            forecast_fingerprint: string;
+            /** Framework Key */
+            framework_key: string;
+            /** Horizon Years */
+            horizon_years: number;
+            /** Id */
+            id: number;
+            /** Input Fingerprint */
+            input_fingerprint: string;
+            /** Market Snapshot Fingerprint */
+            market_snapshot_fingerprint: string;
+            /** Publishable */
+            publishable: boolean;
+            /** Scenario Probabilities */
+            scenario_probabilities: {
+                [key: string]: number | null;
+            };
+            /** Status */
+            status: string;
+            /** Valuation Snapshot Fingerprint */
+            valuation_snapshot_fingerprint: string;
+            /** Version */
+            version: number;
+        };
+        /** SnapshotRecentChangeOut */
+        SnapshotRecentChangeOut: {
+            /** Affected Metrics */
+            affected_metrics: string[];
+            /** Change Type */
+            change_type: string;
+            /** Company Id */
+            company_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Impact Direction */
+            impact_direction: string;
+            /** Materiality Score */
+            materiality_score: number;
+            /** Requires Review */
+            requires_review: boolean;
+            /** Summary */
+            summary: string;
+        };
+        /** SnapshotThesisSummaryOut */
+        SnapshotThesisSummaryOut: {
+            /** Base Value */
+            base_value: string | null;
+            /** Bear Value */
+            bear_value: string | null;
+            /** Bull Value */
+            bull_value: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Price */
+            current_price: string | null;
+            /** Data Confidence Score */
+            data_confidence_score: number;
+            /** Executive Summary */
+            executive_summary: string;
+            /** Expected Value */
+            expected_value: string | null;
+            /** Id */
+            id: number;
+            /** Margin Of Safety */
+            margin_of_safety: string | null;
+            /** Rating */
+            rating: string;
+            /** Source Coverage Score */
+            source_coverage_score: number;
+            /** Status */
+            status: string;
+            /** Version */
+            version: number;
+        };
+        /** SnapshotValuationSummaryOut */
+        SnapshotValuationSummaryOut: {
+            /** Base Value */
+            base_value?: string | null;
+            /** Bear Value */
+            bear_value?: string | null;
+            /** Bull Value */
+            bull_value?: string | null;
+            /** Current Price */
+            current_price?: string | null;
+            /** Expected Value */
+            expected_value?: string | null;
+            /** Margin Of Safety */
+            margin_of_safety?: string | null;
+            /** Model Id */
+            model_id?: number | null;
+            /** Model Type */
+            model_type: string;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Version */
+            version?: number | null;
         };
         /** SynthesisSection */
         SynthesisSection: {
@@ -3042,11 +3704,11 @@ export interface components {
         /** ThesisOut */
         ThesisOut: {
             /** Base Value */
-            base_value: string;
+            base_value: string | null;
             /** Bear Value */
-            bear_value: string;
+            bear_value: string | null;
             /** Bull Value */
-            bull_value: string;
+            bull_value: string | null;
             /** Company Id */
             company_id: number;
             /**
@@ -3055,19 +3717,19 @@ export interface components {
              */
             created_at: string;
             /** Current Price */
-            current_price: string;
+            current_price: string | null;
             /** Data Confidence Score */
             data_confidence_score: number;
             /** Executive Summary */
             executive_summary: string;
             /** Expected Value */
-            expected_value: string;
+            expected_value: string | null;
             /** Id */
             id: number;
             /** Input Fingerprint */
             input_fingerprint?: string | null;
             /** Margin Of Safety */
-            margin_of_safety: string;
+            margin_of_safety: string | null;
             /** Rating */
             rating: string;
             /** Red Team Score */
@@ -3615,7 +4277,116 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ResearchAlertOut"];
+                    "application/json": components["schemas"]["AlertRuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_alert_rules_api_alerts_rules_get: {
+        parameters: {
+            query?: {
+                ticker?: string | null;
+                active?: boolean | null;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRuleOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_alert_rules_api_alerts_rules_evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deactivate_alert_rule_api_alerts_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRuleOut"];
                 };
             };
             /** @description Validation Error */
@@ -4088,7 +4859,117 @@ export interface operations {
             };
         };
     };
+    company_kpi_registry_api_companies__ticker__kpi_registry_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyKPIOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_company_kpi_registry_api_companies__ticker__kpi_registry_sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyKPIOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     long_term_model_api_companies__ticker__long_term_model_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_long_term_model_api_companies__ticker__long_term_model_generate_post: {
         parameters: {
             query?: {
                 horizon?: number;
@@ -4130,9 +5011,43 @@ export interface operations {
     };
     list_calculated_metrics_api_companies__ticker__metrics_calculated_get: {
         parameters: {
-            query?: {
-                refresh?: boolean;
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
             };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalculatedMetricsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_calculated_metrics_api_companies__ticker__metrics_refresh_post: {
+        parameters: {
+            query?: never;
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -4168,9 +5083,45 @@ export interface operations {
     };
     moat_assessment_api_companies__ticker__moat_get: {
         parameters: {
-            query?: {
-                refresh?: boolean;
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
             };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_moat_assessment_api_companies__ticker__moat_refresh_post: {
+        parameters: {
+            query?: never;
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -4476,6 +5427,42 @@ export interface operations {
     };
     company_snapshot_api_companies__ticker__snapshot_get: {
         parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanySnapshotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_company_snapshot_api_companies__ticker__snapshot_refresh_post: {
+        parameters: {
             query?: {
                 horizon?: number;
             };
@@ -4498,9 +5485,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CompanySnapshotOut"];
                 };
             };
             /** @description Validation Error */
@@ -4597,6 +5582,7 @@ export interface operations {
             query?: {
                 ticker?: string | null;
                 status?: string | null;
+                page?: number;
                 limit?: number;
             };
             header?: {
@@ -5197,6 +6183,158 @@ export interface operations {
             };
         };
     };
+    portfolio_configuration_api_portfolio_configuration_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_portfolio_configuration_api_portfolio_configuration_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortfolioConfigurationInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_fx_rates_api_portfolio_fx_rates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_fx_rate_api_portfolio_fx_rates_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FXRateInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_holding_api_portfolio_holdings__ticker__delete: {
         parameters: {
             query?: never;
@@ -5763,7 +6901,11 @@ export interface operations {
     };
     source_audits_api_sources_audits_get: {
         parameters: {
-            query?: never;
+            query?: {
+                ticker?: string | null;
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -5802,6 +6944,8 @@ export interface operations {
             query?: {
                 ticker?: string | null;
                 include_chunks?: boolean;
+                page?: number;
+                page_size?: number;
                 chunk_limit?: number;
                 chunk_text_limit?: number;
             };
@@ -5992,6 +7136,84 @@ export interface operations {
             };
         };
     };
+    document_chunks_api_sources_documents__document_id__chunks_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                text_limit?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_document_kpis_api_sources_documents__document_id__extract_kpis_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KPIExtractionCandidateOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     evidence_suggestions_api_sources_evidence_suggestions_get: {
         parameters: {
             query?: {
@@ -6058,6 +7280,85 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceSuggestionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    kpi_candidates_api_sources_kpi_candidates_get: {
+        parameters: {
+            query?: {
+                ticker?: string | null;
+                document_id?: number | null;
+                status?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KPIExtractionCandidateOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    action_kpi_candidate_api_sources_kpi_candidates__candidate_id__action_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                candidate_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KPIExtractionAction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KPIExtractionCandidateOut"];
                 };
             };
             /** @description Validation Error */
@@ -6257,6 +7558,42 @@ export interface operations {
             };
         };
     };
+    refresh_thesis_graph_api_thesis__ticker__graph_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisGraphOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     latest_thesis_api_thesis__ticker__latest_get: {
         parameters: {
             query?: never;
@@ -6295,7 +7632,10 @@ export interface operations {
     };
     thesis_versions_api_thesis__ticker__versions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;

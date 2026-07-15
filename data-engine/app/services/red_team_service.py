@@ -34,6 +34,8 @@ class RedTeamService:
         db: Session,
         company: Company,
         thesis: ThesisVersion | None = None,
+        *,
+        commit: bool = True,
     ) -> RedTeamRun:
         thesis = thesis or db.scalar(
             select(ThesisVersion)
@@ -155,7 +157,7 @@ class RedTeamService:
                 )
             )
 
-        moat = MoatService().assess(db, company, persist=True)
+        moat = MoatService().assess(db, company, persist=True, commit=False)
         if moat["status"] != "evidence_backed":
             findings.append(
                 self._finding(
@@ -259,8 +261,11 @@ class RedTeamService:
                     impact_direction="negative",
                     metadata={"red_team_run_id": run.id},
                 )
-        db.commit()
-        db.refresh(run)
+        if commit:
+            db.commit()
+            db.refresh(run)
+        else:
+            db.flush()
         return run
 
     def latest(self, db: Session, company: Company) -> RedTeamRun | None:

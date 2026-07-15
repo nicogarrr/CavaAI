@@ -8,10 +8,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import Company, Position, Transaction
+from app.services.portfolio_fx_service import PortfolioFXService
 
 
 class PortfolioLedgerService:
     """Canonical transaction ledger and derived positions for one tenant."""
+
+    def __init__(self) -> None:
+        self.fx = PortfolioFXService()
 
     def ensure_company(self, db: Session, ticker: str, name: str | None = None) -> Company:
         normalized = ticker.strip().upper()
@@ -51,7 +55,9 @@ class PortfolioLedgerService:
         notes: str | None = None,
     ) -> Transaction:
         company = self.ensure_company(db, ticker)
+        portfolio = self.fx.ensure_portfolio(db)
         row = Transaction(
+            portfolio_id=portfolio.id,
             company_id=company.id,
             trade_date=trade_date,
             action=action,
@@ -78,9 +84,19 @@ class PortfolioLedgerService:
                 .order_by(Transaction.trade_date, Transaction.created_at, Transaction.id)
             ).all()
         )
+        currencies = {transaction.currency.upper() for transaction in transactions}
+        if len(currencies) > 1:
+            raise ValueError(
+                "A position cannot mix transaction currencies; split the instrument or normalize the ledger"
+            )
+        portfolio = self.fx.ensure_portfolio(db)
+        base_currency = portfolio.base_currency.upper()
         quantity = Decimal("0")
         cost = Decimal("0")
+        cost_base = Decimal("0")
+        base_cost_complete = True
         realized = Decimal("0")
+        realized_base = Decimal("0")
         last_price = Decimal("0")
         currency = "USD"
         as_of = date.today()
@@ -91,7 +107,18 @@ class PortfolioLedgerService:
             as_of = max(as_of, transaction.trade_date)
             if transaction.action == "buy":
                 quantity += transaction.quantity
-                cost += transaction.quantity * transaction.price + transaction.fees
+                native_purchase = transaction.quantity * transaction.price + transaction.fees
+                cost += native_purchase
+                historical_rate = self.fx.rate(
+                    db,
+                    quote_currency=transaction.currency,
+                    base_currency=base_currency,
+                    as_of=transaction.trade_date,
+                )
+                if historical_rate is None:
+                    base_cost_complete = False
+                elif base_cost_complete:
+                    cost_base += native_purchase * historical_rate
                 continue
             if transaction.quantity > quantity:
                 raise ValueError(
@@ -99,6 +126,21 @@ class PortfolioLedgerService:
                 )
             average_cost = cost / quantity if quantity else Decimal("0")
             realized += (transaction.price - average_cost) * transaction.quantity - transaction.fees
+            historical_rate = self.fx.rate(
+                db,
+                quote_currency=transaction.currency,
+                base_currency=base_currency,
+                as_of=transaction.trade_date,
+            )
+            if historical_rate is None or not base_cost_complete:
+                base_cost_complete = False
+            else:
+                average_cost_base = cost_base / quantity
+                proceeds_base = (
+                    transaction.price * transaction.quantity - transaction.fees
+                ) * historical_rate
+                realized_base += proceeds_base - average_cost_base * transaction.quantity
+                cost_base -= average_cost_base * transaction.quantity
             cost -= average_cost * transaction.quantity
             quantity -= transaction.quantity
 
@@ -110,7 +152,7 @@ class PortfolioLedgerService:
             return None
 
         if position is None:
-            position = Position(company_id=company_id)
+            position = Position(company_id=company_id, portfolio_id=portfolio.id)
             db.add(position)
         existing_price = position.market_price or Decimal("0")
         market_price = existing_price if existing_price > 0 else last_price
@@ -121,6 +163,27 @@ class PortfolioLedgerService:
         position.unrealized_pnl = position.market_value - cost
         position.realized_pnl = realized
         position.currency = currency
+        current_rate = self.fx.rate(
+            db,
+            quote_currency=currency,
+            base_currency=base_currency,
+            as_of=as_of,
+        )
+        position.portfolio_id = portfolio.id
+        position.base_currency = base_currency
+        position.market_value_native = position.market_value
+        position.cost_basis_native = cost
+        position.market_value_base = (
+            position.market_value * current_rate if current_rate is not None else None
+        )
+        position.cost_basis_base = cost_base if base_cost_complete else None
+        position.unrealized_pnl_base = (
+            position.market_value_base - cost_base
+            if position.market_value_base is not None and base_cost_complete
+            else None
+        )
+        position.realized_pnl_base = realized_base if base_cost_complete else None
+        position.fx_rate = current_rate
         position.source = "postgres_ledger"
         position.as_of = as_of
         db.flush()
@@ -154,5 +217,24 @@ class PortfolioLedgerService:
             position.quantity * position.average_cost
         )
         position.as_of = as_of or date.today()
+        position.market_value_native = position.market_value
+        position.cost_basis_native = position.quantity * position.average_cost
+        base_currency = position.base_currency or self.fx.base_currency(db)
+        current_rate = self.fx.rate(
+            db,
+            quote_currency=position.currency,
+            base_currency=base_currency,
+            as_of=position.as_of,
+        )
+        position.fx_rate = current_rate
+        position.market_value_base = (
+            position.market_value * current_rate if current_rate is not None else None
+        )
+        position.unrealized_pnl_base = (
+            position.market_value_base - position.cost_basis_base
+            if position.market_value_base is not None
+            and position.cost_basis_base is not None
+            else None
+        )
         db.flush()
         return position

@@ -60,6 +60,7 @@ def _resolve_company_id(db: Session, ticker: str | None, company_id: int | None)
 def list_claims(
     ticker: str | None = None,
     status: str | None = None,
+    page: int = Query(default=1, ge=1),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
 ) -> list[Claim]:
@@ -69,7 +70,13 @@ def list_claims(
         statement = statement.where(Claim.company_id == company.id)
     if status:
         statement = statement.where(Claim.status == status)
-    return list(db.scalars(statement.order_by(desc(Claim.created_at)).limit(limit)).all())
+    return list(
+        db.scalars(
+            statement.order_by(desc(Claim.created_at))
+            .offset((page - 1) * limit)
+            .limit(limit)
+        ).all()
+    )
 
 
 @router.post("/claims", response_model=ClaimOut)

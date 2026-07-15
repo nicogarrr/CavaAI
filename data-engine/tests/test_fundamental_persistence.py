@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from app.core.database import SessionLocal, init_db
 from app.models import (
     Company,
+    CalculatedMetric,
     DecisionJournalEntry,
     ExpectationReview,
     FinancialFact,
@@ -13,6 +14,8 @@ from app.models import (
     FundamentalDriver,
     FundamentalForecast,
     FundamentalModelVersion,
+    FundamentalValuationSnapshot,
+    Position,
     Tenant,
 )
 from app.services.fundamental_review_service import (
@@ -64,6 +67,14 @@ def test_model_versions_journal_and_expectation_reality_are_persisted():
         tenant_id = tenant.id
         db.info["tenant_id"] = tenant.id
         db.info["user_id"] = "analyst-test"
+        position = Position(
+            company_id=company.id,
+            quantity=Decimal("1"),
+            average_cost=Decimal("50"),
+            market_price=Decimal("50"),
+            currency="USD",
+        )
+        db.add(position)
 
         for year, revenue, fcf, shares in (
             (2023, 100, 15, 10),
@@ -81,10 +92,28 @@ def test_model_versions_journal_and_expectation_reality_are_persisted():
 
         assert first["persistence"]["status"] == "persisted"
         assert first["persistence"]["model_version_id"] == second["persistence"]["model_version_id"]
+        model_id = first["persistence"]["model_version_id"]
+        position.market_price = Decimal("60")
+        db.commit()
+        repriced = LongTermModelService().build(db, company, horizon=5)
+        assert repriced["persistence"]["model_version_id"] == model_id
+        assert (
+            repriced["persistence"]["market_snapshot_fingerprint"]
+            != first["persistence"]["market_snapshot_fingerprint"]
+        )
+        valuation_fingerprints = {
+            row.market_snapshot_fingerprint
+            for row in db.scalars(
+                select(FundamentalValuationSnapshot).where(
+                    FundamentalValuationSnapshot.model_version_id == model_id
+                )
+            ).all()
+        }
+        assert first["persistence"]["market_snapshot_fingerprint"] in valuation_fingerprints
+        assert repriced["persistence"]["market_snapshot_fingerprint"] in valuation_fingerprints
         probabilities = [scenario["probability"] for scenario in first["scenarios"].values()]
         assert abs(sum(probabilities) - 1) < 1e-9
         assert probabilities != [0.25, 0.50, 0.25]
-        model_id = first["persistence"]["model_version_id"]
         assert db.scalar(select(FundamentalDriver).where(FundamentalDriver.model_version_id == model_id))
         assert db.scalar(select(FundamentalAssumption).where(FundamentalAssumption.model_version_id == model_id))
         forecast = db.scalar(
@@ -95,6 +124,14 @@ def test_model_versions_journal_and_expectation_reality_are_persisted():
             )
         )
         assert forecast is not None
+        margin_forecast = db.scalar(
+            select(FundamentalForecast).where(
+                FundamentalForecast.model_version_id == model_id,
+                FundamentalForecast.scenario == "base",
+                FundamentalForecast.metric == "fcf_margin",
+            )
+        )
+        assert margin_forecast is not None
 
         entry = DecisionJournalService().create(
             db,
@@ -105,12 +142,32 @@ def test_model_versions_journal_and_expectation_reality_are_persisted():
         )
         assert entry.model_version_id == model_id
 
-        _fact(db, company.id, "revenue", float(forecast.value) * 0.8, forecast.fiscal_year)
+        db.add(
+            CalculatedMetric(
+                company_id=company.id,
+                metric="fcf_margin",
+                value=margin_forecast.value * Decimal("0.50"),
+                unit="decimal",
+                period=f"FY{margin_forecast.fiscal_year}",
+                fiscal_year=margin_forecast.fiscal_year,
+                status="ok",
+                definition_version="test-v1",
+                formula="free_cash_flow / revenue",
+                source_fact_ids=[],
+                calculation_trace={"method": "test"},
+                confidence=Decimal("0.90"),
+            )
+        )
         db.commit()
+        later_model = LongTermModelService().build(db, company, horizon=6)
+        assert later_model["persistence"]["model_version_id"] != model_id
         reviews = ExpectationRealityService().review(db, company)
-        matched = next(item for item in reviews if item.forecast_id == forecast.id)
+        matched = next(item for item in reviews if item.forecast_id == margin_forecast.id)
         assert matched.status == "miss"
-        assert matched.actual_fact_id is not None
+        assert matched.actual_fact_id is None
+        assert matched.actual_metric_id is not None
+        assert matched.actual_source_type == "calculated_metric"
+        assert matched.model_version_id == model_id
     finally:
         db.rollback()
         db.info.pop("tenant_id", None)
@@ -120,7 +177,10 @@ def test_model_versions_journal_and_expectation_reality_are_persisted():
             FundamentalForecast,
             FundamentalAssumption,
             FundamentalDriver,
+            FundamentalValuationSnapshot,
             FundamentalModelVersion,
+            CalculatedMetric,
+            Position,
             FinancialFact,
         ):
             db.execute(

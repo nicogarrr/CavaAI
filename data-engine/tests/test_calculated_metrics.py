@@ -92,7 +92,7 @@ def test_calculated_metrics_are_persisted_with_trace():
         db.close()
 
     client = TestClient(main.app)
-    response = client.get(f"/api/companies/{TEST_TICKER}/metrics/calculated")
+    response = client.post(f"/api/companies/{TEST_TICKER}/metrics/refresh")
     assert response.status_code == 200
     payload = response.json()
     metrics = {item["metric"]: item for item in payload["metrics"]}
@@ -139,7 +139,7 @@ def test_calculated_metrics_report_unavailable_when_inputs_are_missing():
         db.close()
 
     client = TestClient(main.app)
-    response = client.get(f"/api/companies/{TEST_TICKER}/metrics/calculated?refresh=false")
+    response = client.post(f"/api/companies/{TEST_TICKER}/metrics/refresh")
     assert response.status_code == 200
     metrics = {item["metric"]: item for item in response.json()["metrics"]}
 

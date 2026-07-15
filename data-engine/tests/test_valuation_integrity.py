@@ -3,13 +3,25 @@
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
+import pytest
 
 import main
 from app.core.database import SessionLocal, init_db
-from app.models import Company, FinancialFact, MarketPrice, Position
+from app.models import (
+    Claim,
+    Company,
+    FinancialFact,
+    FundamentalModelVersion,
+    MarketPrice,
+    Position,
+    ThesisVersion,
+    ValuationModel,
+)
 from app.seed import seed
 from app.services.valuation_service import ValuationService
+from app.services.thesis_graph_service import ThesisGraphService
+from app.services.thesis_service import ThesisService
 from app.valuation.engines import resolve_engine_key
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
 
@@ -152,4 +164,33 @@ def test_thesis_version_appears_in_markdown_title():
     assert v2 == v1 + 1
     assert f"Thesis v{v2}" in second.json()["thesis_markdown"]
     assert second.json()["status"] == "insufficient_data"
+    assert second.json()["bear_value"] is None
+    assert second.json()["expected_value"] is None
     assert "NOT PUBLISHABLE" in second.json()["executive_summary"]
+
+
+def test_thesis_generation_rolls_back_everything_when_graph_build_fails(monkeypatch):
+    init_db()
+    seed()
+    db = SessionLocal()
+    try:
+        models = (ThesisVersion, ValuationModel, FundamentalModelVersion, Claim)
+        before = {
+            model.__tablename__: db.scalar(select(func.count()).select_from(model))
+            for model in models
+        }
+
+        def fail_graph(*args, **kwargs):
+            raise RuntimeError("graph build failed")
+
+        monkeypatch.setattr(ThesisGraphService, "build", fail_graph)
+        with pytest.raises(RuntimeError, match="graph build failed"):
+            ThesisService().generate(db, "ASTS", force_new_version=True)
+
+        after = {
+            model.__tablename__: db.scalar(select(func.count()).select_from(model))
+            for model in models
+        }
+        assert after == before
+    finally:
+        db.close()

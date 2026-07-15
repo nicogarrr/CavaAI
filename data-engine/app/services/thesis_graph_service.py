@@ -53,8 +53,43 @@ class ThesisGraphService:
             .limit(1)
         )
 
-    def build(
+    def read(
         self, db: Session, company: Company, thesis: ThesisVersion | None = None
+    ) -> tuple[ThesisVersion, list[ThesisNode], list[ThesisEdge]]:
+        thesis = thesis or self.latest_thesis(db, company)
+        if thesis is None:
+            raise ValueError(f"No thesis exists for {company.ticker}")
+        nodes = list(
+            db.scalars(
+                select(ThesisNode)
+                .where(ThesisNode.thesis_version_id == thesis.id)
+                .order_by(ThesisNode.id)
+            ).all()
+        )
+        node_ids = [node.id for node in nodes]
+        edges = (
+            list(
+                db.scalars(
+                    select(ThesisEdge)
+                    .where(
+                        ThesisEdge.from_node_id.in_(node_ids),
+                        ThesisEdge.to_node_id.in_(node_ids),
+                    )
+                    .order_by(ThesisEdge.id)
+                ).all()
+            )
+            if node_ids
+            else []
+        )
+        return thesis, nodes, edges
+
+    def build(
+        self,
+        db: Session,
+        company: Company,
+        thesis: ThesisVersion | None = None,
+        *,
+        commit: bool = True,
     ) -> tuple[ThesisVersion, list[ThesisNode], list[ThesisEdge]]:
         thesis = thesis or self.latest_thesis(db, company)
         if thesis is None:
@@ -175,29 +210,9 @@ class ThesisGraphService:
                 )
 
         db.flush()
-        nodes = list(
-            db.scalars(
-                select(ThesisNode)
-                .where(ThesisNode.thesis_version_id == thesis.id)
-                .order_by(ThesisNode.id)
-            ).all()
-        )
-        node_ids = [node.id for node in nodes]
-        edges = (
-            list(
-                db.scalars(
-                    select(ThesisEdge)
-                    .where(
-                        ThesisEdge.from_node_id.in_(node_ids),
-                        ThesisEdge.to_node_id.in_(node_ids),
-                    )
-                    .order_by(ThesisEdge.id)
-                ).all()
-            )
-            if node_ids
-            else []
-        )
-        db.commit()
+        _, nodes, edges = self.read(db, company, thesis)
+        if commit:
+            db.commit()
         return thesis, nodes, edges
 
     def assess_impact(

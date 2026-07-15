@@ -24,6 +24,9 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
   const [currentHoldings, setCurrentHoldings] = useState<PortfolioHolding[]>(holdings);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const format = (value: number, currency: string) => new Intl.NumberFormat('en-US', {
+    style: 'currency', currency, maximumFractionDigits: 2,
+  }).format(value);
 
   // Sync props if they change (e.g. from server revalidation)
   useEffect(() => {
@@ -112,18 +115,18 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                         {holding.quantity.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right text-gray-300">
-                        ${holding.avgPrice.toFixed(2)}
+                        {format(holding.avgPrice, holding.nativeCurrency)}
                       </TableCell>
                       <TableCell className="text-right text-gray-300 font-medium">
-                        ${holding.currentPrice.toFixed(2)}
+                        {format(holding.currentPrice, holding.nativeCurrency)}
                       </TableCell>
                       <TableCell className="text-right font-semibold text-gray-100">
-                        ${holding.value.toFixed(2)}
+                        {holding.fxMissing ? <Badge variant="outline">FX missing</Badge> : format(holding.value, holding.baseCurrency)}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end gap-1">
                           <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                            {isPositive ? '+' : ''}${holding.gain.toFixed(2)}
+                            {holding.fxMissing ? 'N/A' : `${isPositive ? '+' : ''}${format(holding.gain, holding.baseCurrency)}`}
                           </span>
                           <Badge
                             variant={isPositive ? 'default' : 'destructive'}

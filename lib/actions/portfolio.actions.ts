@@ -40,6 +40,9 @@ export type PortfolioHolding = {
     cost: number;
     gain: number;
     gainPercent: number;
+    nativeCurrency: string;
+    baseCurrency: string;
+    fxMissing: boolean;
 };
 
 export type PortfolioSummary = {
@@ -48,6 +51,9 @@ export type PortfolioSummary = {
     totalGain: number;
     totalGainPercent: number;
     holdings: PortfolioHolding[];
+    baseCurrency: string;
+    status: 'ok' | 'incomplete_fx';
+    missingFx: Array<Record<string, unknown>>;
 };
 
 type ResearchPortfolioTransaction = {
@@ -72,6 +78,26 @@ type ResearchPortfolioPosition = {
     market_value: number;
     unrealized_pnl: number;
     currency: string;
+    native_currency: string;
+    base_currency: string;
+    realized_pnl: number;
+    cost_basis: number;
+    as_of: string;
+    market_value_native: number;
+    market_value_base: number | null;
+    cost_basis_native: number;
+    cost_basis_base: number | null;
+    unrealized_pnl_base: number | null;
+    realized_pnl_base: number | null;
+    fx_rate: number | null;
+};
+
+type ResearchPortfolioSummaryResponse = {
+    total_value: number;
+    equity_value: number;
+    status: 'ok' | 'incomplete_fx';
+    base_currency: string;
+    missing_fx: Array<Record<string, unknown>>;
 };
 
 export async function addTransaction(
@@ -81,7 +107,8 @@ export async function addTransaction(
     quantity: number,
     price: number,
     date: Date,
-    notes?: string
+    notes?: string,
+    currency = 'USD',
 ): Promise<{ success: boolean; error?: string }> {
     await resolveUserId(userId);
     if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
@@ -96,7 +123,7 @@ export async function addTransaction(
             price,
             trade_date: date.toISOString().slice(0, 10),
             notes: notes || null,
-            currency: 'USD',
+            currency: currency.toUpperCase(),
             fees: 0,
         }),
     });
@@ -114,6 +141,7 @@ export async function getPortfolioTransactions(userId: string) {
         price: transaction.price,
         date: transaction.trade_date,
         notes: transaction.notes ?? undefined,
+        currency: transaction.currency,
         createdAt: transaction.created_at,
         updatedAt: transaction.updated_at,
     }));
@@ -121,13 +149,15 @@ export async function getPortfolioTransactions(userId: string) {
 
 export async function getPortfolioSummary(userId: string): Promise<PortfolioSummary> {
     await resolveUserId(userId);
-    const positions = await researchRequest<ResearchPortfolioPosition[]>('/api/portfolio/positions');
-    const holdings = await Promise.all(positions.map(async (position): Promise<PortfolioHolding> => {
-        const quote = await getQuote(position.ticker);
-        const currentPrice = quote?.c || position.market_price;
-        const cost = position.quantity * position.average_cost;
-        const value = position.quantity * currentPrice;
-        const gain = value - cost;
+    const [positions, backendSummary] = await Promise.all([
+        researchRequest<ResearchPortfolioPosition[]>('/api/portfolio/positions'),
+        researchRequest<ResearchPortfolioSummaryResponse>('/api/portfolio/summary'),
+    ]);
+    const holdings = positions.map((position): PortfolioHolding => {
+        const currentPrice = position.market_price;
+        const cost = position.cost_basis_base ?? 0;
+        const value = position.market_value_base ?? 0;
+        const gain = position.unrealized_pnl_base ?? 0;
         return {
             symbol: position.ticker,
             quantity: position.quantity,
@@ -137,17 +167,23 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
             cost,
             gain,
             gainPercent: cost > 0 ? (gain / cost) * 100 : 0,
+            nativeCurrency: position.native_currency,
+            baseCurrency: position.base_currency,
+            fxMissing: position.market_value_base === null || position.cost_basis_base === null,
         };
-    }));
-    const totalValue = holdings.reduce((sum, holding) => sum + holding.value, 0);
+    });
+    const totalValue = backendSummary.total_value;
     const totalCost = holdings.reduce((sum, holding) => sum + holding.cost, 0);
-    const totalGain = totalValue - totalCost;
+    const totalGain = holdings.reduce((sum, holding) => sum + holding.gain, 0);
     return {
         totalValue,
         totalCost,
         totalGain,
         totalGainPercent: totalCost > 0 ? (totalGain / totalCost) * 100 : 0,
         holdings: holdings.sort((a, b) => b.value - a.value),
+        baseCurrency: backendSummary.base_currency,
+        status: backendSummary.status,
+        missingFx: backendSummary.missing_fx,
     };
 }
 
@@ -160,7 +196,8 @@ export async function updateTransaction(
     quantity: number,
     price: number,
     date: Date,
-    notes?: string
+    notes?: string,
+    currency = 'USD',
 ): Promise<{ success: boolean; error?: string }> {
     await resolveUserId(userId);
     if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
@@ -177,7 +214,7 @@ export async function updateTransaction(
                 price,
                 trade_date: date.toISOString().slice(0, 10),
                 notes: notes || null,
-                currency: 'USD',
+                currency: currency.toUpperCase(),
                 fees: 0,
             }),
         },
@@ -346,26 +383,17 @@ export async function getPortfolioWithWeights(userId: string) {
 
 // Actualizar precios de holdings existentes (para refresco cliente)
 export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Promise<PortfolioHolding[]> {
-    await requireAuthenticatedUser();
+    const user = await requireAuthenticatedUser();
     try {
-        const updatedHoldings = await Promise.all(holdings.map(async (h) => {
+        await Promise.all(holdings.map(async (h) => {
             const quote = await getQuote(h.symbol);
-            const currentPrice = quote?.c || h.currentPrice; // Use old price if fetch fails
-
-            const value = h.quantity * currentPrice;
-            const gain = value - h.cost; // h.cost is totalCost
-            const gainPercent = h.cost > 0 ? (gain / h.cost) * 100 : 0;
-
-            return {
-                ...h,
-                currentPrice,
-                value,
-                gain,
-                gainPercent
-            };
+            if (!quote?.c) return;
+            await researchRequest('/api/portfolio/prices', {
+                method: 'PATCH',
+                body: jsonBody({ ticker: h.symbol, price: quote.c }),
+            });
         }));
-
-        return updatedHoldings;
+        return (await getPortfolioSummary(user.id)).holdings;
     } catch (error) {
         console.error('Error refreshing portfolio holdings:', error);
         return holdings;

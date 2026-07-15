@@ -20,6 +20,7 @@ type Transaction = {
   price: number;
   date: string;
   notes?: string;
+  currency?: string;
 };
 
 type Props = {
@@ -88,10 +89,10 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-gray-200">
-                        ${(tx.quantity * tx.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: tx.currency ?? 'USD' }).format(tx.quantity * tx.price)}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {tx.quantity} acc @ ${tx.price.toFixed(2)}
+                        {tx.quantity} acc @ {tx.price.toFixed(2)} {tx.currency ?? 'USD'}
                       </p>
                     </div>
                   </div>
