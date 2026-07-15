@@ -1,9 +1,8 @@
 'use server';
 
-import { createHmac } from 'node:crypto';
-import { getAuth } from '@/lib/better-auth/auth';
 import { revalidatePath } from 'next/cache';
-import { headers } from 'next/headers';
+import { researchIdentityHeaders } from '@/lib/auth/research-identity';
+import { AppError, ExternalAPIError } from '@/lib/types/errors';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -426,28 +425,122 @@ export type ResearchRedTeam = {
   created_at: string;
 };
 
-async function researchRequestHeaders(): Promise<Record<string, string>> {
-  const secret = process.env.RESEARCH_AUTH_SECRET;
-  if (!secret) return {};
-  try {
-    const auth = await getAuth();
-    const session = await auth.api.getSession({ headers: await headers() });
-    const userId = session?.user?.id;
-    if (!userId) return {};
-    const tenantId = userId;
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const signature = createHmac('sha256', secret)
-      .update(`${tenantId}:${userId}:${timestamp}`)
-      .digest('hex');
-    return {
-      'X-CavaAI-User': userId,
-      'X-CavaAI-Tenant': tenantId,
-      'X-CavaAI-Timestamp': timestamp,
-      'X-CavaAI-Signature': signature,
+export type ResearchLongTermForecast = {
+  year: number;
+  revenue: number | null;
+  gross_profit: number | null;
+  operating_income: number | null;
+  ebitda: number | null;
+  net_income: number | null;
+  operating_cash_flow: number | null;
+  capital_expenditure: number | null;
+  free_cash_flow: number | null;
+  working_capital: number | null;
+  working_capital_absorption: number | null;
+  net_debt: number | null;
+  shares_diluted: number | null;
+  fcf_per_share: number | null;
+  fcf_margin: number | null;
+  roic: number | null;
+  scenario: string;
+  wacc: number;
+  evidence: Record<string, { source_fact_ids: number[]; calculation: string }>;
+};
+
+export type ResearchLongTermScenario = {
+  probability: number;
+  assumptions: Record<string, { value: number | null; unit: string; source_type: string; basis: string; source_fact_ids: number[] }>;
+  drivers: string[];
+  forecast: ResearchLongTermForecast[];
+  year_5: ResearchLongTermForecast | null;
+  terminal_year: ResearchLongTermForecast | null;
+  revenue_bridge: { status: string; items?: Array<{ label: string; value: number | null; source_fact_ids: number[]; note?: string }>; unavailable_drivers?: string[] };
+  fcf_bridge: { status: string; items?: Array<{ label: string; value: number | null; source_fact_ids: number[] }>; unavailable_drivers?: string[] };
+  valuation: { value_per_share: number; enterprise_value: number; equity_value: number } | null;
+};
+
+export type ResearchLongTermModel = {
+  ticker: string;
+  company: string;
+  currency: string;
+  status: string;
+  publishable: boolean;
+  model: string;
+  model_version: string;
+  framework: {
+    key: string;
+    label: string;
+    primary_question: string;
+    market_opportunity_mode: string;
+    revenue_drivers: string[];
+    kpis: string[];
+    unit_economics: string[];
+    segment_model: string[];
+    binding_constraints: string[];
+    active_modules: string[];
+  };
+  operating_model: {
+    revenue_drivers: string[];
+    kpis: string[];
+    unit_economics: string[];
+    segment_model: string[];
+    binding_constraints: string[];
+    active_modules: string[];
+  };
+  horizon_years: number;
+  as_of_period: string | null;
+  current_price: number | null;
+  missing_inputs: string[];
+  historical_review: { years_covered: number; first_year: number | null; last_year: number | null; rows: Array<Record<string, unknown>> };
+  current_snapshot: { period: string | null; fiscal_year: number | null; metrics: Record<string, { value: number | null; source_fact_ids: number[]; status: string }> };
+  assumptions: Record<string, { value: number | null; unit: string; source_type: string; basis: string; source_fact_ids: number[]; confidence: number }>;
+  scenarios: Record<string, ResearchLongTermScenario>;
+  reverse_dcf: { status: string; required_revenue_growth?: number; base_revenue_growth?: number; growth_gap_vs_base?: number; market_price?: number | null; missing_inputs?: string[] };
+  market_opportunity: {
+    status: string;
+    mode: string;
+    primary_question: string;
+    top_down: {
+      status: string;
+      market_type: string | null;
+      tam: { value: number | null; unit: string; source_fact_ids: number[] };
+      sam: { value: number | null; unit: string; source_fact_ids: number[] };
+      som: { value: number | null; unit: string; source_fact_ids: number[] };
+      future_market: { value: number | null; source_fact_ids: number[] };
+      current_market_share: number | null;
+      missing_inputs: string[];
     };
+    bottom_up: { status: string; value: number | null; formulas: Array<{ label: string; value: number | null; status: string; missing_inputs?: string[]; source_fact_ids: number[] }>; missing_inputs: string[] };
+    implied_by_valuation: { status: string; conclusion: string; current_market_share: number | null; prior_market_share: number | null; base_future_market_share: number | null; valuation_implied_market_share: number | null; missing_inputs: string[]; source_fact_ids: number[] };
+    market_share: { status: string; conclusion: string; confidence: string; current_market_share: number | null; prior_market_share: number | null; base_future_market_share: number | null; valuation_implied_market_share: number | null; source_fact_ids: number[]; missing_inputs: string[] };
+    constraints: { status: string; binding_constraint: string | null; severity: string; conclusion: string; framework_constraints: string[] };
+    verdict: { label: string; confidence: string; conclusion: string; base_revenue_to_binding_capacity?: number };
+    missing_inputs: string[];
+  };
+  market_share: { status: string; conclusion: string; confidence: string; current_market_share?: number; prior_market_share?: number | null; implied_future_market_share?: number | null; missing_inputs?: string[] };
+  management_capital_allocation: { status: string; metrics: Record<string, { value: number | null; unit: string; status: string; source_fact_ids: number[]; calculation?: string; note?: string }>; conclusion: string; missing_inputs: string[] };
+  quality_of_growth: { status: string; quality: string; revenue_cagr: { value: number | null }; fcf_margin_change: { value: number | null }; share_count_cagr: { value: number | null }; unavailable_drivers: string[]; conclusion: string };
+  owner_earnings: { status: string; value: number | null; formula: string; missing_inputs?: string[]; source_fact_ids: number[] };
+  capex_analysis: { status: string; total_capex: number | null; maintenance_capex: number | null; growth_capex: number | null; missing_inputs?: string[]; maintenance_vs_growth?: string };
+  timeline: Array<{ date: string | null; type: string; title: string; source: string; thesis_impact: string; source_url?: string | null }>;
+  what_must_be_true: Array<{ id: string; condition: string; value: number | null; unit: string; source_fact_ids: number[]; status: string; comparison?: number | null }>;
+  source_coverage: { coverage_percent: number; sourced_values: number; numeric_values: number; rule: string };
+  limitations: string[];
+};
+
+async function researchRequestHeaders(): Promise<Record<string, string>> {
+  return researchIdentityHeaders();
+}
+
+async function researchApiError(response: Response, path: string): Promise<never> {
+  let detail = `${response.status} ${response.statusText}`.trim();
+  try {
+    const payload = await response.json() as { detail?: string; message?: string };
+    detail = payload.detail ?? payload.message ?? detail;
   } catch {
-    return {};
+    // Keep the HTTP status when the backend did not return JSON.
   }
+  throw new AppError(detail, 'RESEARCH_API_ERROR', response.status, { path });
 }
 
 async function getJson<T>(path: string, fallback: T): Promise<T> {
@@ -456,10 +549,12 @@ async function getJson<T>(path: string, fallback: T): Promise<T> {
       cache: 'no-store',
       headers: await researchRequestHeaders(),
     });
-    if (!response.ok) return fallback;
+    if (response.status === 404) return fallback;
+    if (!response.ok) return researchApiError(response, path);
     return (await response.json()) as T;
-  } catch {
-    return fallback;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new ExternalAPIError(`Research API request failed: ${path}`, 'research-api', error);
   }
 }
 
@@ -474,10 +569,12 @@ async function postJson<T>(path: string, fallback: T, body?: unknown): Promise<T
       body: body ? JSON.stringify(body) : undefined,
       cache: 'no-store',
     });
-    if (!response.ok) return fallback;
+    if (!response.ok) return researchApiError(response, path);
+    if (response.status === 204) return fallback;
     return (await response.json()) as T;
-  } catch {
-    return fallback;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new ExternalAPIError(`Research API mutation failed: ${path}`, 'research-api', error);
   }
 }
 
@@ -489,10 +586,12 @@ async function postForm<T>(path: string, fallback: T, body: FormData): Promise<T
       cache: 'no-store',
       headers: await researchRequestHeaders(),
     });
-    if (!response.ok) return fallback;
+    if (!response.ok) return researchApiError(response, path);
+    if (response.status === 204) return fallback;
     return (await response.json()) as T;
-  } catch {
-    return fallback;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new ExternalAPIError(`Research API upload failed: ${path}`, 'research-api', error);
   }
 }
 
@@ -568,6 +667,7 @@ export async function getResearchCompanyDetail(ticker: string) {
     sourceDocuments,
     evidenceSuggestions,
     redTeam,
+    longTermModel,
   ] = await Promise.all([
     getJson<ResearchCompany | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}`, null),
     getJson<ResearchValuation>(`/api/valuation/${encodeURIComponent(normalizedTicker)}`, emptyValuation),
@@ -587,6 +687,7 @@ export async function getResearchCompanyDetail(ticker: string) {
     getJson<ResearchSourceDocument[]>(`/api/sources/documents?ticker=${encodeURIComponent(normalizedTicker)}&include_chunks=true&chunk_text_limit=1800`, []),
     getJson<ResearchEvidenceSuggestion[]>(`/api/sources/evidence-suggestions?ticker=${encodeURIComponent(normalizedTicker)}&status=pending`, []),
     getJson<ResearchRedTeam | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/red-team/latest`, null),
+    getJson<ResearchLongTermModel | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/long-term-model?horizon=5`, null),
   ]);
 
   return {
@@ -608,6 +709,7 @@ export async function getResearchCompanyDetail(ticker: string) {
     sourceDocuments,
     evidenceSuggestions,
     redTeam,
+    longTermModel,
   };
 }
 

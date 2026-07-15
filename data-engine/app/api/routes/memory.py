@@ -33,6 +33,7 @@ from app.schemas import (
 )
 from app.services.review_alert_service import ReviewAlertService
 from app.services.source_hierarchy_service import classify_source
+from app.services.thesis_change_types import claim_change_type
 
 router = APIRouter()
 
@@ -123,6 +124,8 @@ def add_claim_evidence(
         if payload.document_id is None:
             payload.document_id = chunk.document_id
             document = db.get(Document, chunk.document_id)
+            if not document:
+                raise HTTPException(status_code=404, detail="Document not found")
 
     source_tier = classify_source(
         document.source_type if document else "manual",
@@ -152,7 +155,7 @@ def add_claim_evidence(
             company_id=claim.company_id,
             from_version_id=claim.thesis_version_id,
             to_version_id=claim.thesis_version_id,
-            change_type=f"claim_{relation_status}",
+            change_type=claim_change_type(relation_status),
             impact_direction=(
                 "negative" if relation_status == "contradicted" else "mixed"
             ),

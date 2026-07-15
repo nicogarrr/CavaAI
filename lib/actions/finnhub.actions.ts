@@ -8,6 +8,8 @@ import { requestCache } from '@/lib/cache/requestCache';
 import { env } from '@/lib/env';
 import { TIMEOUTS } from '@/lib/constants';
 import { ExternalAPIError, RateLimitError, toAppError } from '@/lib/types/errors';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 
 const FINNHUB_BASE_URL = env.FINNHUB_BASE_URL;
 
@@ -16,6 +18,7 @@ const FINNHUB_BASE_URL = env.FINNHUB_BASE_URL;
  * Lanza errores tipados en lugar de retornar arrays vacíos silenciosamente
  */
 async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T> {
+    await requireAuthenticatedUser();
     // Para datos críticos como precios y noticias, usar cache mínimo (30-60 segundos)
     // Para datos estáticos como perfiles, permitir cache más largo
     const options: RequestInit & { next?: { revalidate?: number } } = revalidateSeconds && revalidateSeconds > 0
@@ -99,6 +102,7 @@ export { fetchJSON };
 export type FinnhubCandles = { s: 'ok' | 'no_data'; c: number[]; t: number[]; o: number[]; h: number[]; l: number[]; v: number[] };
 
 export async function getCandles(symbol: string, from: number, to: number, resolution: 'D' | 'W' | 'M' | '60' = 'D', revalidateSeconds = 1800): Promise<FinnhubCandles> {
+    await requireAuthenticatedUser();
     const token = env.FINNHUB_API_KEY;
     if (!token) {
         // Sin API key, devolver datos vacíos en lugar de lanzar error
@@ -120,6 +124,7 @@ export async function getCandles(symbol: string, from: number, to: number, resol
 
 export type FinnhubProfile2 = { ticker?: string; name?: string; exchange?: string; currency?: string; country?: string; ipo?: string; logo?: string; weburl?: string };
 export const getProfile = cache(async (symbol: string): Promise<FinnhubProfile2 | null> => {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return null;
@@ -137,6 +142,7 @@ export const getProfile = cache(async (symbol: string): Promise<FinnhubProfile2 
 
 export type FinnhubETFHoldings = { holdings?: Array<{ symbol?: string; name?: string; percent?: number }> };
 export const getETFHoldings = cache(async (symbol: string): Promise<FinnhubETFHoldings> => {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return { holdings: [] };
@@ -153,6 +159,7 @@ export const getETFHoldings = cache(async (symbol: string): Promise<FinnhubETFHo
 });
 
 export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> {
+    await requireAuthenticatedUser();
     try {
         // Use new multi-source news aggregation for better coverage
         const { getNewsWithFallback } = await import('./newsSources.actions');
@@ -251,6 +258,7 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
 }
 
 export async function getCompanyNews(symbol: string, maxArticles = 20): Promise<MarketNewsArticle[]> {
+    await requireAuthenticatedUser();
     try {
         // Use new multi-source news aggregation for better coverage
         const { getCompanyNewsWithFallback } = await import('./newsSources.actions');
@@ -298,6 +306,7 @@ export type CompanyEvent = {
 };
 
 export async function getCompanyEvents(symbol: string): Promise<CompanyEvent[]> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return [];
@@ -347,6 +356,7 @@ export async function getTechnicalAnalysis(symbol: string, days = 252): Promise<
     avgVolume?: number;
     volumeTrend?: 'increasing' | 'decreasing' | 'stable';
 } | null> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return null;
@@ -400,6 +410,7 @@ export async function getIndexComparison(symbol: string): Promise<{
     vsSP500?: { change: number; symbol: string };
     vsSector?: { change: number; sector: string };
 } | null> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return null;
@@ -459,6 +470,7 @@ export async function getStockFinancialData(symbol: string): Promise<{
     insiderTrading?: any;
     esgData?: any;
 } | null> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         // console.log("DEBUG: getStockFinancialData token present?", !!token);
@@ -579,6 +591,7 @@ export async function getStockFinancialDataLight(symbol: string): Promise<{
     metrics: any;
     priceTarget: any;
 } | null> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) {
@@ -601,6 +614,7 @@ export async function getStockFinancialDataLight(symbol: string): Promise<{
 }
 
 export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) {
@@ -683,6 +697,7 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
 
 // Helper para obtener solo la cotización (más ligero que getStockFinancialData)
 export async function getStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
+    await requireAuthenticatedUser();
     // Try Finnhub first
     try {
         const token = env.FINNHUB_API_KEY;
@@ -702,7 +717,9 @@ export async function getStockQuote(symbol: string): Promise<{ c: number; d: num
     const backendUrl = process.env.FMP_BACKEND_URL;
     if (backendUrl && !process.env.VERCEL) {
         try {
+            const identityHeaders = await researchIdentityHeaders();
             const response = await fetch(`${backendUrl}/quote/${encodeURIComponent(symbol)}`, {
+                headers: identityHeaders,
                 next: { revalidate: 60 },
             });
             if (response.ok) {
@@ -729,6 +746,7 @@ export type EarningsEvent = {
 };
 
 export async function getUpcomingEarnings(symbols: string[]): Promise<EarningsEvent[]> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return [];
@@ -811,6 +829,7 @@ export type CongressTrade = {
 };
 
 export async function getCongressTrading(symbol?: string): Promise<CongressTrade[]> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return [];
@@ -866,6 +885,7 @@ export type ESGScore = {
 };
 
 export async function getESGScores(symbol: string): Promise<ESGScore | null> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return null;
@@ -912,6 +932,7 @@ export type InstitutionalOwnership = {
 };
 
 export async function getInstitutionalHoldings(symbol: string): Promise<InstitutionalOwnership | null> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return null;
@@ -962,6 +983,7 @@ export type LobbyingActivity = {
 };
 
 export async function getLobbyingData(symbol: string): Promise<LobbyingActivity[]> {
+    await requireAuthenticatedUser();
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return [];

@@ -9,6 +9,7 @@ from app.services.connectors.fmp import FMPClient
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.services.metric_calculation_service import MetricCalculationService
 from app.services.moat_service import MoatService
+from app.services.long_term_model_service import LongTermModelService
 from app.services.peer_analysis_service import PeerAnalysisService
 from app.services.peer_comparison_service import DEFAULT_PEER_METRICS, PeerComparisonService
 from app.services.red_team_service import RedTeamService
@@ -88,6 +89,19 @@ def list_calculated_metrics(
             for result in metrics
         ],
     }
+
+
+@router.get("/{ticker}/long-term-model")
+def long_term_model(
+    ticker: str,
+    horizon: int = Query(default=5, ge=5, le=10),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Return the source-aware 5–10 year fundamental model for a company."""
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return LongTermModelService().build(db, company, horizon=horizon)
 
 
 @router.get("/{ticker}/peers/comparison")

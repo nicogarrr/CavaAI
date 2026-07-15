@@ -1,6 +1,8 @@
 'use server';
 
 import { cache } from 'react';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 
 // Solo usar backend si está configurado explícitamente (no en Vercel)
 const FMP_BACKEND_URL = process.env.FMP_BACKEND_URL;
@@ -15,9 +17,11 @@ async function fetchFromBackend<T>(endpoint: string): Promise<T | null> {
     if (IS_SERVERLESS) {
         return null;
     }
+    const identityHeaders = await researchIdentityHeaders();
     
     try {
         const response = await fetch(`${FMP_BACKEND_URL}${endpoint}`, {
+            headers: identityHeaders,
             next: { revalidate: 3600 }, // Cache for 1 hour
         });
 
@@ -133,6 +137,7 @@ export interface EnterpriseValueData {
  * Fetch combined financial statements (Income, Balance, CashFlow)
  */
 export const getFundamentals = cache(async (symbol: string, period: string = 'annual'): Promise<FundamentalsData | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<FundamentalsData>(`/fundamentals/${symbol}?period=${period}`);
     return data;
 });
@@ -141,6 +146,7 @@ export const getFundamentals = cache(async (symbol: string, period: string = 'an
  * Fetch pre-calculated growth metrics from FMP
  */
 export const getFinancialGrowth = cache(async (symbol: string): Promise<{ symbol: string; growth: GrowthData[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ symbol: string; growth: GrowthData[] }>(`/financial-growth/${symbol}`);
     return data;
 });
@@ -274,6 +280,7 @@ async function getYahooFinancialData(symbol: string): Promise<{
  * Uses Yahoo Finance as primary source (works on Vercel)
  */
 export const getRatiosTTM = cache(async (symbol: string): Promise<{ symbol: string; ratios: RatiosTTM[] } | null> => {
+    await requireAuthenticatedUser();
     // Try Yahoo Finance first (works on Vercel)
     const yahooData = await getYahooFinancialData(symbol);
     if (yahooData.ratios) {
@@ -293,6 +300,7 @@ export const getRatiosTTM = cache(async (symbol: string): Promise<{ symbol: stri
  * Fetch Discounted Cash Flow valuation (intrinsic value)
  */
 export const getDCF = cache(async (symbol: string): Promise<{ symbol: string; dcf: DCFData[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ symbol: string; dcf: DCFData[] }>(`/dcf/${symbol}`);
     return data;
 });
@@ -301,6 +309,7 @@ export const getDCF = cache(async (symbol: string): Promise<{ symbol: string; dc
  * Fetch Enterprise Value data (for EV/EBITDA, EV/FCF calculations)
  */
 export const getEnterpriseValue = cache(async (symbol: string): Promise<{ symbol: string; enterpriseValue: EnterpriseValueData[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ symbol: string; enterpriseValue: EnterpriseValueData[] }>(`/enterprise-value/${symbol}`);
     return data;
 });
@@ -309,6 +318,7 @@ export const getEnterpriseValue = cache(async (symbol: string): Promise<{ symbol
  * Get all valuation data in one call (optimized for component)
  */
 export const getValuationData = cache(async (symbol: string) => {
+    await requireAuthenticatedUser();
     const [ratios, dcf, ev] = await Promise.all([
         getRatiosTTM(symbol),
         getDCF(symbol),
@@ -423,6 +433,7 @@ export interface GradesConsensus {
  * Uses Yahoo Finance as primary source (works on Vercel)
  */
 export const getKeyMetricsTTM = cache(async (symbol: string): Promise<{ symbol: string; keyMetrics: KeyMetricsTTM[] } | null> => {
+    await requireAuthenticatedUser();
     // Try Yahoo Finance first (works on Vercel)
     const yahooData = await getYahooFinancialData(symbol);
     if (yahooData.keyMetrics) {
@@ -447,6 +458,7 @@ export const getKeyMetricsTTM = cache(async (symbol: string): Promise<{ symbol: 
  * Fetch Owner Earnings (Buffett's preferred metric)
  */
 export const getOwnerEarnings = cache(async (symbol: string): Promise<{ symbol: string; ownerEarnings: OwnerEarnings[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ symbol: string; ownerEarnings: OwnerEarnings[] }>(`/owner-earnings/${symbol}`);
     return data;
 });
@@ -455,6 +467,7 @@ export const getOwnerEarnings = cache(async (symbol: string): Promise<{ symbol: 
  * Fetch Analyst Price Target Consensus
  */
 export const getPriceTarget = cache(async (symbol: string): Promise<{ symbol: string; priceTarget: PriceTargetConsensus[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ symbol: string; priceTarget: PriceTargetConsensus[] }>(`/price-target/${symbol}`);
     return data;
 });
@@ -463,6 +476,7 @@ export const getPriceTarget = cache(async (symbol: string): Promise<{ symbol: st
  * Fetch Stock Grades Consensus (Buy/Hold/Sell)
  */
 export const getGrades = cache(async (symbol: string): Promise<{ symbol: string; grades: GradesConsensus[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ symbol: string; grades: GradesConsensus[] }>(`/grades/${symbol}`);
     return data;
 });
@@ -476,6 +490,7 @@ export const getGrades = cache(async (symbol: string): Promise<{ symbol: string;
  * Get comprehensive analysis data in one call (optimized for StockAnalysis component)
  */
 export const getComprehensiveAnalysis = cache(async (symbol: string) => {
+    await requireAuthenticatedUser();
     const [keyMetrics, scores, ownerEarnings, priceTarget, grades, peers] = await Promise.all([
         getKeyMetricsTTM(symbol),
         getFinancialScores(symbol),
@@ -560,6 +575,7 @@ export const getEarningsTranscript = cache(async (
     year?: number,
     quarter?: number
 ): Promise<{ symbol: string; transcripts: EarningsTranscript[] } | null> => {
+    await requireAuthenticatedUser();
     let endpoint = `/earnings-transcript/${symbol}`;
     const params = new URLSearchParams();
     if (year) params.append('year', year.toString());
@@ -577,6 +593,7 @@ export const getInsiderTrading = cache(async (
     symbol: string,
     limit: number = 50
 ): Promise<{ symbol: string; insiderTrades: InsiderTrade[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ symbol: string; insiderTrades: InsiderTrade[] }>(
         `/insider-trading/${symbol}?limit=${limit}`
     );
@@ -587,6 +604,7 @@ export const getInsiderTrading = cache(async (
  * Fetch Treasury Rates (10Y for Risk-Free Rate in WACC)
  */
 export const getTreasuryRates = cache(async (): Promise<{ treasuryRates: TreasuryRate[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ treasuryRates: TreasuryRate[] }>('/treasury-rates');
     return data;
 });
@@ -599,6 +617,7 @@ export const getAnalystEstimates = cache(async (
     period: 'annual' | 'quarter' = 'annual',
     limit: number = 5
 ): Promise<{ symbol: string; estimates: AnalystEstimate[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ symbol: string; estimates: AnalystEstimate[] }>(
         `/analyst-estimates/${symbol}?period=${period}&limit=${limit}`
     );
@@ -612,6 +631,7 @@ export const getPressReleases = cache(async (
     symbol: string,
     limit: number = 20
 ): Promise<{ symbol: string; pressReleases: PressRelease[] } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ symbol: string; pressReleases: PressRelease[] }>(
         `/press-releases/${symbol}?limit=${limit}`
     );
@@ -622,6 +642,7 @@ export const getPressReleases = cache(async (
  * Get AI/RAG context data in one call
  */
 export const getAIContextData = cache(async (symbol: string) => {
+    await requireAuthenticatedUser();
     const [transcript, insiderTrades, estimates] = await Promise.all([
         getEarningsTranscript(symbol),
         getInsiderTrading(symbol, 20),
@@ -642,6 +663,7 @@ export const getAIContextData = cache(async (symbol: string) => {
  * Fetch Market Movers (Gainers, Losers, Active)
  */
 export const getMarketMovers = cache(async (type: 'gainers' | 'losers' | 'active'): Promise<any[] | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<any>(`/market-movers/${type}`);
     // Backend returns { gainers: [...] } or { losers: [...] } etc.
     if (!data) return [];
@@ -661,6 +683,7 @@ export interface ScreenerFilters {
  * Fetch Stocks via Screener
  */
 export const getScreenerStocks = cache(async (filters: ScreenerFilters): Promise<any[] | null> => {
+    await requireAuthenticatedUser();
     const { marketCapMoreThan, sector, limit = 20 } = filters;
     const params = new URLSearchParams();
     if (marketCapMoreThan) params.append('marketCapMoreThan', marketCapMoreThan.toString());
@@ -709,6 +732,7 @@ export interface EarningsTranscript {
  * Fetch Earnings Transcripts List
  */
 export const getEarningsTranscriptsList = cache(async (symbol: string): Promise<any[]> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ transcripts: any[] }>(`/earnings-transcript-list/${symbol}`);
     return data?.transcripts || [];
 });
@@ -717,6 +741,7 @@ export const getEarningsTranscriptsList = cache(async (symbol: string): Promise<
  * Fetch specific Earnings Transcript
  */
 export const getEarningsTranscriptContent = cache(async (symbol: string, year: number, quarter: number): Promise<EarningsTranscript | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<{ transcript: EarningsTranscript[] }>(`/earnings-transcript/${symbol}?year=${year}&quarter=${quarter}`);
     // API returns array of 1
     return data?.transcript?.[0] || null;
@@ -726,6 +751,7 @@ export const getEarningsTranscriptContent = cache(async (symbol: string, year: n
  * Fetch FMP Articles
  */
 export const getFmpArticles = cache(async (page: number = 0, limit: number = 20): Promise<FmpArticle[]> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<FmpArticle[]>(`/news/fmp-articles?page=${page}&limit=${limit}`);
     return data || [];
 });
@@ -734,6 +760,7 @@ export const getFmpArticles = cache(async (page: number = 0, limit: number = 20)
  * Fetch General News
  */
 export const getGeneralNews = cache(async (page: number = 0, limit: number = 20): Promise<GeneralNewsArticle[]> => {
+    await requireAuthenticatedUser();
     const data = await fetchFromBackend<GeneralNewsArticle[]>(`/news/general?page=${page}&limit=${limit}`);
     return data || [];
 });
@@ -750,6 +777,7 @@ export interface MarketNewsArticle {
 }
 
 export const getCompanyNews = cache(async (symbol: string, limit: number = 20): Promise<MarketNewsArticle[]> => {
+    await requireAuthenticatedUser();
     try {
         const data = await fetchFromBackend<MarketNewsArticle[]>(`/company-news/${symbol}?limit=${limit}`);
         return data || [];
@@ -823,6 +851,7 @@ async function getDividendsFromYahoo(symbol: string): Promise<Dividend[]> {
 }
 
 export const getDividends = cache(async (symbol: string): Promise<Dividend[]> => {
+    await requireAuthenticatedUser();
     // Primero intentar Yahoo Finance (funciona en Vercel)
     const yahooDividends = await getDividendsFromYahoo(symbol);
     if (yahooDividends.length > 0) {
@@ -858,6 +887,7 @@ export interface FinancialScore {
 }
 
 export const getFinancialScores = cache(async (symbol: string): Promise<FinancialScore | null> => {
+    await requireAuthenticatedUser();
     try {
         const data = await fetchFromBackend<FinancialScore[]>(`/financial-scores/${symbol}`);
         return data && data.length > 0 ? data[0] : null;
@@ -927,6 +957,7 @@ async function getFinnhubPeers(symbol: string): Promise<string[]> {
 }
 
 export const getStockPeers = cache(async (symbol: string): Promise<PeerCompany[]> => {
+    await requireAuthenticatedUser();
     // Try Python backend first with prices (only works locally)
     if (!IS_SERVERLESS) {
         try {
@@ -954,9 +985,10 @@ export const getStockPeers = cache(async (symbol: string): Promise<PeerCompany[]
         
         // On local, get prices from backend batch endpoint
         try {
+            const identityHeaders = await researchIdentityHeaders();
             const response = await fetch(`${FMP_BACKEND_URL}/batch-quotes`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...identityHeaders },
                 body: JSON.stringify(finnhubPeers.slice(0, 8)),
             });
             
@@ -1000,6 +1032,7 @@ export interface GarpStock {
 }
 
 export const getGarpStrategy = cache(async (limit: number = 20): Promise<{ strategy: string; count: number; data: GarpStock[] } | null> => {
+    await requireAuthenticatedUser();
     // En Vercel/serverless, no hay backend Python disponible
     if (IS_SERVERLESS) {
         return null;
@@ -1008,7 +1041,9 @@ export const getGarpStrategy = cache(async (limit: number = 20): Promise<{ strat
     // Force no-store to ensure we get fresh data from the python backend every time
     // This is crucial for strategies that might change daily/hourly
     try {
+        const identityHeaders = await researchIdentityHeaders();
         const response = await fetch(`${FMP_BACKEND_URL}/strategies/garp?limit=${limit}`, {
+            headers: identityHeaders,
             cache: 'no-store',
             next: { revalidate: 0 }
         });

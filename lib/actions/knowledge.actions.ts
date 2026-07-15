@@ -4,6 +4,8 @@ import { connectToDatabase } from '@/database/mongoose';
 import { KnowledgeModel, IKnowledgeDocument } from '@/lib/db/knowledgeModel';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getCheapGeminiModel } from '@/lib/ai/modelConfig';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { getErrorMessage } from '@/lib/types/errors';
 
 // Inicializar Gemini para embeddings
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -37,6 +39,7 @@ export async function extractTextFromPDFWithGemini(
     error?: string;
 }> {
     try {
+        await requireAuthenticatedUser();
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
             return { success: false, error: 'API Key de Gemini no configurada' };
@@ -82,11 +85,11 @@ Documento: ${filename}`,
             success: true,
             text: extractedText,
         };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error extracting PDF with Gemini:', error);
         return {
             success: false,
-            error: error.message || 'Error al procesar el PDF con Gemini',
+            error: getErrorMessage(error) || 'Error al procesar el PDF con Gemini',
         };
     }
 }
@@ -103,11 +106,10 @@ async function generateEmbedding(text: string): Promise<number[]> {
         const model = genAI.getGenerativeModel({ model: 'embedding-001' });
         const result = await model.embedContent(truncatedText);
         return result.embedding.values;
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Log more details for debugging
-        console.error('Error generating embedding:', error?.message || error);
-        // Fallback: vector de ceros (no ideal, pero evita errores)
-        return new Array(768).fill(0);
+        console.error('Error generating embedding:', getErrorMessage(error));
+        throw new Error('No se pudo generar un embedding válido', { cause: error });
     }
 }
 
@@ -153,10 +155,11 @@ export async function getKnowledgeStats(): Promise<{
     error?: string;
 }> {
     try {
+        const user = await requireAuthenticatedUser();
         await connectToDatabase();
 
-        const totalChunks = await KnowledgeModel.countDocuments();
-        const uniqueTitles = await KnowledgeModel.distinct('title');
+        const totalChunks = await KnowledgeModel.countDocuments({ userId: user.id });
+        const uniqueTitles = await KnowledgeModel.distinct('title', { userId: user.id });
 
         return {
             success: true,
@@ -194,6 +197,7 @@ export async function uploadDocument(
     error?: string;
 }> {
     try {
+        const user = await requireAuthenticatedUser();
         await connectToDatabase();
 
         // Dividir en chunks
@@ -214,6 +218,7 @@ export async function uploadDocument(
 
             // Guardar en MongoDB
             const doc = await KnowledgeModel.create({
+                userId: user.id,
                 title: docTitle,
                 content: chunk,
                 embedding,
@@ -262,6 +267,7 @@ export async function searchKnowledge(
     count: number;
 }> {
     try {
+        const user = await requireAuthenticatedUser();
         await connectToDatabase();
 
         // Generar embedding de la query
@@ -281,6 +287,7 @@ export async function searchKnowledge(
                         queryVector: queryEmbedding,
                         numCandidates: nResults * 10,
                         limit: nResults,
+                        filter: { userId: user.id },
                     },
                 },
                 {
@@ -298,7 +305,7 @@ export async function searchKnowledge(
 
             // Fallback: búsqueda de texto tradicional
             const textResults = await KnowledgeModel.find(
-                { $text: { $search: query } },
+                { userId: user.id, $text: { $search: query } },
                 { score: { $meta: 'textScore' } }
             )
                 .sort({ score: { $meta: 'textScore' } })
@@ -346,6 +353,7 @@ export async function getRAGContext(
     context: string;
 }> {
     try {
+        const user = await requireAuthenticatedUser();
         await connectToDatabase();
 
         // Buscar conocimiento relevante para este símbolo y empresa
@@ -370,6 +378,7 @@ export async function getRAGContext(
 
         // También buscar documentos específicos del símbolo
         const symbolDocs = await KnowledgeModel.find({
+            userId: user.id,
             'metadata.symbol': symbol.toUpperCase(),
         })
             .limit(5)
@@ -411,10 +420,12 @@ export async function listDocuments(
     }>;
 }> {
     try {
+        const user = await requireAuthenticatedUser();
         await connectToDatabase();
 
         // Agrupar por título para mostrar documentos únicos
         const docs = await KnowledgeModel.aggregate([
+            { $match: { userId: user.id } },
             {
                 $group: {
                     _id: '$title',
@@ -456,9 +467,10 @@ export async function deleteDocument(
     title: string
 ): Promise<{ success: boolean; deleted?: number }> {
     try {
+        const user = await requireAuthenticatedUser();
         await connectToDatabase();
 
-        const result = await KnowledgeModel.deleteMany({ title });
+        const result = await KnowledgeModel.deleteMany({ userId: user.id, title });
 
         return {
             success: true,
@@ -478,9 +490,10 @@ export async function getAllKnowledgeContent(): Promise<{
     content: string;
 }> {
     try {
+        const user = await requireAuthenticatedUser();
         await connectToDatabase();
 
-        const docs = await KnowledgeModel.find({})
+        const docs = await KnowledgeModel.find({ userId: user.id })
             .sort({ title: 1, 'metadata.chunkIndex': 1 })
             .limit(100)
             .lean();

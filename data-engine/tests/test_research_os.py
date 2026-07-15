@@ -257,7 +257,11 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
 
     changes = client.get("/api/memory/thesis/MSFT/changes")
     assert changes.status_code == 200
-    auto_change = changes.json()[0]
+    auto_change = next(
+        item
+        for item in changes.json()
+        if item["affected_claim_ids"] == [claim_payload["id"]]
+    )
     assert auto_change["change_type"] == "claim_contradiction"
     assert auto_change["impact_direction"] == "negative"
     assert auto_change["requires_review"] is True

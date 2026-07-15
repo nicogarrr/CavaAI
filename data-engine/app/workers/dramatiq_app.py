@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
@@ -39,10 +39,42 @@ def _run(coroutine):
     return asyncio.run(coroutine)
 
 
-def _session():
+def _session(tenant_id: int | None, user_id: str | None):
     from app.core.database import SessionLocal
+    from app.models import Tenant
 
-    return SessionLocal()
+    if tenant_id is None or not user_id:
+        raise ValueError("tenant_id and user_id are required for background jobs")
+    db = SessionLocal()
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None or tenant.status != "active":
+        db.close()
+        raise ValueError(f"Active tenant {tenant_id} was not found")
+    db.info["tenant_id"] = tenant.id
+    db.info["user_id"] = user_id
+    return db
+
+
+def tenant_contexts() -> list[tuple[int, str]]:
+    """Return explicit tenant/user pairs for scheduler fan-out."""
+    from sqlalchemy import select
+
+    from app.core.database import SessionLocal
+    from app.models import Tenant
+
+    with SessionLocal() as db:
+        tenants = db.scalars(
+            select(Tenant)
+            .where(Tenant.status == "active")
+            .execution_options(include_all_tenants=True)
+            .order_by(Tenant.id)
+        ).all()
+        contexts: list[tuple[int, str]] = []
+        for tenant in tenants:
+            user_id = str((tenant.metadata_ or {}).get("created_by") or "").strip()
+            if user_id:
+                contexts.append((tenant.id, user_id))
+        return contexts
 
 
 def _companies(db, ticker: str | None = None):
@@ -68,12 +100,17 @@ def _message_id(message) -> str | None:
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
-def refresh_sec_filings(ticker: str | None = None, limit: int = 20) -> dict[str, Any]:
+def refresh_sec_filings(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+    ticker: str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
     actor_name = "refresh_sec_filings"
     try:
         from app.services.feed_ingestion_service import FeedIngestionService
 
-        db = _session()
+        db = _session(tenant_id, user_id)
         try:
             service = FeedIngestionService()
             processed = ingested = queued_documents = 0
@@ -111,6 +148,8 @@ def refresh_sec_filings(ticker: str | None = None, limit: int = 20) -> dict[str,
                             item.url,
                             "SEC",
                             item.published_at.isoformat() if item.published_at else None,
+                            tenant_id,
+                            user_id,
                         )
                         queued_documents += 1
                 except Exception as exc:
@@ -134,16 +173,20 @@ def refresh_sec_filings(ticker: str | None = None, limit: int = 20) -> dict[str,
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, ticker=ticker, limit=limit)
+        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker, limit=limit)
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
-def refresh_ir_pages(ticker: str | None = None) -> dict[str, Any]:
+def refresh_ir_pages(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+    ticker: str | None = None,
+) -> dict[str, Any]:
     actor_name = "refresh_ir_pages"
     try:
         from app.services.feed_ingestion_service import FeedIngestionService
 
-        db = _session()
+        db = _session(tenant_id, user_id)
         try:
             service = FeedIngestionService()
             processed = ingested = queued_documents = 0
@@ -177,6 +220,8 @@ def refresh_ir_pages(ticker: str | None = None) -> dict[str, Any]:
                             item.url,
                             "IR",
                             item.published_at.isoformat() if item.published_at else None,
+                            tenant_id,
+                            user_id,
                         )
                         queued_documents += 1
                 except Exception as exc:
@@ -200,11 +245,13 @@ def refresh_ir_pages(ticker: str | None = None) -> dict[str, Any]:
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, ticker=ticker)
+        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker)
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
 def refresh_rss_feeds(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
     feed_url: str | None = None,
     ticker: str | None = None,
 ) -> dict[str, Any]:
@@ -225,7 +272,7 @@ def refresh_rss_feeds(
                 "feeds_processed": 0,
             }
 
-        db = _session()
+        db = _session(tenant_id, user_id)
         try:
             service = FeedIngestionService()
             processed = ingested = 0
@@ -268,16 +315,28 @@ def refresh_rss_feeds(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, feed_url=feed_url, ticker=ticker)
+        return _failure(
+            actor_name,
+            exc,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            feed_url=feed_url,
+            ticker=ticker,
+        )
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
-def refresh_news(ticker: str | None = None, max_records: int = 25) -> dict[str, Any]:
+def refresh_news(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+    ticker: str | None = None,
+    max_records: int = 25,
+) -> dict[str, Any]:
     actor_name = "refresh_news"
     try:
         from app.services.feed_ingestion_service import FeedIngestionService
 
-        db = _session()
+        db = _session(tenant_id, user_id)
         try:
             service = FeedIngestionService()
             processed = ingested = 0
@@ -325,7 +384,14 @@ def refresh_news(ticker: str | None = None, max_records: int = 25) -> dict[str, 
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, ticker=ticker, max_records=max_records)
+        return _failure(
+            actor_name,
+            exc,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            ticker=ticker,
+            max_records=max_records,
+        )
 
 
 @dramatiq.actor(max_retries=3, min_backoff=30_000)
@@ -335,6 +401,8 @@ def process_document(
     url: str,
     source_type: str,
     published_at: str | None = None,
+    tenant_id: int | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     actor_name = "process_document"
     try:
@@ -345,7 +413,7 @@ def process_document(
             if published_at
             else None
         )
-        db = _session()
+        db = _session(tenant_id, user_id)
         try:
             result = _run(
                 FeedIngestionService().ingest_document_url(
@@ -361,18 +429,29 @@ def process_document(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, ticker=ticker, url=url, source_type=source_type)
+        return _failure(
+            actor_name,
+            exc,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            ticker=ticker,
+            url=url,
+            source_type=source_type,
+        )
 
 
 @dramatiq.actor(max_retries=1)
-def consolidate_memory() -> dict[str, Any]:
+def consolidate_memory(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
     actor_name = "consolidate_memory"
     try:
         from sqlalchemy import select
 
         from app.models import MemoryItem
 
-        db = _session()
+        db = _session(tenant_id, user_id)
         try:
             items = list(
                 db.scalars(
@@ -411,18 +490,22 @@ def consolidate_memory() -> dict[str, Any]:
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc)
+        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id)
 
 
 @dramatiq.actor(max_retries=1)
-def scan_contradictions() -> dict[str, Any]:
+def scan_contradictions(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
     actor_name = "scan_contradictions"
     try:
         from sqlalchemy import select
 
         from app.models import Claim, ClaimEvidence, ThesisChange
+        from app.services.thesis_change_types import claim_change_type
 
-        db = _session()
+        db = _session(tenant_id, user_id)
         try:
             evidence = list(
                 db.scalars(
@@ -440,7 +523,8 @@ def scan_contradictions() -> dict[str, Any]:
             existing_changes = list(
                 db.scalars(
                     select(ThesisChange).where(
-                        ThesisChange.change_type == "claim_contradiction"
+                        ThesisChange.change_type
+                        == claim_change_type("contradicted")
                     )
                 ).all()
             )
@@ -460,7 +544,7 @@ def scan_contradictions() -> dict[str, Any]:
                         company_id=claim.company_id,
                         from_version_id=claim.thesis_version_id,
                         to_version_id=claim.thesis_version_id,
-                        change_type="claim_contradiction",
+                        change_type=claim_change_type("contradicted"),
                         impact_direction="negative",
                         materiality_score=claim.materiality_score,
                         summary=f"Contradictory evidence found for claim: {claim.statement[:220]}",
@@ -481,11 +565,15 @@ def scan_contradictions() -> dict[str, Any]:
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc)
+        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id)
 
 
 @dramatiq.actor(max_retries=1)
-def review_theses(ticker: str | None = None) -> dict[str, Any]:
+def review_theses(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+    ticker: str | None = None,
+) -> dict[str, Any]:
     actor_name = "review_theses"
     try:
         from sqlalchemy import select
@@ -493,7 +581,7 @@ def review_theses(ticker: str | None = None) -> dict[str, Any]:
         from app.models import Company, ThesisChange
         from app.services.thesis_service import ThesisService
 
-        db = _session()
+        db = _session(tenant_id, user_id)
         try:
             pending = list(
                 db.scalars(
@@ -570,35 +658,46 @@ def review_theses(ticker: str | None = None) -> dict[str, Any]:
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, ticker=ticker)
+        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker)
 
 
 @dramatiq.actor(max_retries=1)
 def run_daily_research() -> dict[str, Any]:
     actor_name = "run_daily_research"
-    jobs: list[tuple[str, Callable[[], Any]]] = [
-        ("sec_refresh", refresh_sec_filings.send),
-        ("ir_refresh", refresh_ir_pages.send),
-        ("rss_refresh", refresh_rss_feeds.send),
-        ("news_refresh", refresh_news.send),
-        ("memory_consolidation", consolidate_memory.send),
-        ("contradiction_scan", scan_contradictions.send),
-        ("thesis_review", review_theses.send),
+    jobs: list[tuple[str, Any]] = [
+        ("sec_refresh", refresh_sec_filings),
+        ("ir_refresh", refresh_ir_pages),
+        ("rss_refresh", refresh_rss_feeds),
+        ("news_refresh", refresh_news),
+        ("memory_consolidation", consolidate_memory),
+        ("contradiction_scan", scan_contradictions),
+        ("thesis_review", review_theses),
     ]
     queued: list[dict] = []
     errors: list[dict] = []
-    for job_name, enqueue in jobs:
-        try:
-            message = enqueue()
-            queued.append({"job": job_name, "message_id": _message_id(message)})
-        except Exception as exc:
-            errors.append(
-                {
-                    "job": job_name,
-                    "type": type(exc).__name__,
-                    "message": str(exc),
-                }
-            )
+    contexts = tenant_contexts()
+    for tenant_id, user_id in contexts:
+        for job_name, actor in jobs:
+            try:
+                message = actor.send(tenant_id, user_id)
+                queued.append(
+                    {
+                        "job": job_name,
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                        "message_id": _message_id(message),
+                    }
+                )
+            except Exception as exc:
+                errors.append(
+                    {
+                        "job": job_name,
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                        "type": type(exc).__name__,
+                        "message": str(exc),
+                    }
+                )
     return {
         "status": _batch_status(len(queued), errors),
         "actor": actor_name,
@@ -616,4 +715,3 @@ refresh_rss = refresh_rss_feeds
 
 if __name__ == "__main__":
     print("Dramatiq actors registered. Run with: dramatiq app.workers.dramatiq_app")
-
