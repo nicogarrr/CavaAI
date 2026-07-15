@@ -20,7 +20,7 @@ def test_main_only_declares_root_and_health_routes():
     assert "/health/ready" in app_routes
     assert "include_router(fundamentals_router, dependencies=private_dependencies)" in source
     assert "include_router(market_router, dependencies=private_dependencies)" in source
-    assert "include_router(knowledge_router, dependencies=private_dependencies)" in source
+    assert "knowledge_router" not in source
     assert "include_router(analytics_router, dependencies=private_dependencies)" in source
     assert "research_api_router," in source
     assert "dependencies=private_dependencies" in source
@@ -64,13 +64,6 @@ def test_public_routes_are_registered_once():
         "/insider-trading/{symbol}",
         "/strategies/garp",
         "/company-news/{symbol}",
-        "/knowledge/stats",
-        "/knowledge/upload",
-        "/knowledge/search",
-        "/knowledge/context",
-        "/knowledge/list/{collection}",
-        "/knowledge/delete/{collection}/{document_id}",
-        "/knowledge/upload-files",
         "/analytics/portfolio",
         "/analytics/portfolio/returns",
         "/analytics/holding/{symbol}",
@@ -105,6 +98,8 @@ def test_public_routes_are_registered_once():
 
     for route in expected_routes:
         assert route in routes
+
+    assert not any(route.startswith("/knowledge/") for route in routes)
 
     duplicates = {route for route in routes if routes.count(route) > 1}
     assert duplicates == set()

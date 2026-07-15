@@ -6,10 +6,19 @@ interface NewsSectionProps {
 }
 
 export default async function NewsSection({ symbols }: NewsSectionProps) {
+    let news;
     try {
-        const news = await getNews(symbols);
-
+        news = await getNews(symbols);
+    } catch (error) {
+        console.error('Error loading news:', error);
         return (
+            <div className="w-full h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-6 flex items-center justify-center">
+                <p className="text-gray-500">Error al cargar las noticias. Por favor, intenta más tarde.</p>
+            </div>
+        );
+    }
+
+    return (
             <div className="w-full h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-6 overflow-y-auto">
                 <h2 className="text-2xl font-bold text-white mb-6">Top Stories</h2>
 
@@ -76,14 +85,6 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                     </div>
                 )}
             </div>
-        );
-    } catch (error) {
-        console.error('Error loading news:', error);
-        return (
-            <div className="w-full h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-6 flex items-center justify-center">
-                <p className="text-gray-500">Error al cargar las noticias. Por favor, intenta más tarde.</p>
-            </div>
-        );
-    }
+    );
 }
 
