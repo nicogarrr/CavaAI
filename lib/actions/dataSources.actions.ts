@@ -5,6 +5,8 @@
 
 'use server';
 
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+
 // ========== FUENTES DE DATOS DISPONIBLES ==========
 
 export enum DataSource {
@@ -427,6 +429,7 @@ async function getProfileTwelveData(symbol: string): Promise<CompanyProfile | nu
  * Optimizado con timeouts y mejor manejo de errores para fluidez
  */
 export async function getQuoteWithFallback(symbol: string): Promise<QuoteData | null> {
+    await requireAuthenticatedUser();
     // Orden de prioridad:
     // 1. Finnhub (si está disponible)
     // 2. Twelve Data (buen balance de límites y calidad)
@@ -495,6 +498,7 @@ export async function getQuoteWithFallback(symbol: string): Promise<QuoteData | 
  * Optimizado con timeouts para mejor fluidez
  */
 export async function getProfileWithFallback(symbol: string): Promise<CompanyProfile | null> {
+    await requireAuthenticatedUser();
     // Intentar Finnhub primero
     if (process.env.FINNHUB_API_KEY) {
         try {

@@ -21,6 +21,10 @@ const envSchema = z.object({
     .default('development-only-cavaai-auth-secret-32-chars'),
   BETTER_AUTH_URL: z.string().url().optional(),
 
+  // Signed server-to-server identity bridge for the private Research OS.
+  RESEARCH_AUTH_REQUIRED: z.enum(['true', 'false']).default('true'),
+  RESEARCH_AUTH_SECRET: z.string().min(32, 'RESEARCH_AUTH_SECRET debe tener al menos 32 caracteres').optional(),
+
   // Finnhub - Opcional (hay fallback)
   FINNHUB_API_KEY: z.string().optional(),
   FINNHUB_BASE_URL: z.string().url().default('https://finnhub.io/api/v1'),
@@ -70,6 +74,7 @@ function validateEnv() {
   if (isBuildTime) {
     const buildSchema = envSchema.partial().extend({
       BETTER_AUTH_SECRET: z.string().min(1).optional(),
+      RESEARCH_AUTH_SECRET: z.string().min(1).optional(),
     });
 
     try {
@@ -120,6 +125,12 @@ if (env.NODE_ENV === 'production' && !isNextBuildTime()) {
     throw new Error(
       '❌ BETTER_AUTH_SECRET no puede usar valores por defecto inseguros en producción. ' +
       'Por favor, configura un secreto seguro.'
+    );
+  }
+
+  if (env.RESEARCH_AUTH_REQUIRED === 'true' && !env.RESEARCH_AUTH_SECRET) {
+    throw new Error(
+      '❌ RESEARCH_AUTH_SECRET es obligatorio cuando RESEARCH_AUTH_REQUIRED=true.'
     );
   }
 }

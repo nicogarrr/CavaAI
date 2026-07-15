@@ -17,11 +17,12 @@ def test_main_only_declares_root_and_health_routes():
     assert "/health" in app_routes
     assert "/health/live" in app_routes
     assert "/health/ready" in app_routes
-    assert "include_router(fundamentals_router)" in source
-    assert "include_router(market_router)" in source
-    assert "include_router(knowledge_router)" in source
-    assert "include_router(analytics_router)" in source
-    assert "include_router(research_api_router, prefix=\"/api\")" in source
+    assert "include_router(fundamentals_router, dependencies=private_dependencies)" in source
+    assert "include_router(market_router, dependencies=private_dependencies)" in source
+    assert "include_router(knowledge_router, dependencies=private_dependencies)" in source
+    assert "include_router(analytics_router, dependencies=private_dependencies)" in source
+    assert "research_api_router," in source
+    assert "dependencies=private_dependencies" in source
 
 
 def test_public_routes_are_registered_once():

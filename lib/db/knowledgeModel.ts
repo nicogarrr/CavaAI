@@ -6,6 +6,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IKnowledgeDocument extends Document {
+    userId: string;
     title: string;
     content: string;
     embedding: number[];
@@ -24,6 +25,11 @@ export interface IKnowledgeDocument extends Document {
 
 const KnowledgeSchema = new Schema<IKnowledgeDocument>(
     {
+        userId: {
+            type: String,
+            required: true,
+            index: true,
+        },
         title: {
             type: String,
             required: true,
@@ -59,6 +65,7 @@ const KnowledgeSchema = new Schema<IKnowledgeDocument>(
 
 // Índice de texto para búsqueda tradicional
 KnowledgeSchema.index({ content: 'text', title: 'text' });
+KnowledgeSchema.index({ userId: 1, title: 1, 'metadata.chunkIndex': 1 });
 
 // Verificar si el modelo ya existe antes de crearlo
 let KnowledgeModel: Model<IKnowledgeDocument>;
@@ -88,7 +95,8 @@ export { KnowledgeModel };
  *         "dimensions": 768,
  *         "similarity": "cosine",
  *         "type": "knnVector"
- *       }
+ *       },
+ *       "userId": { "type": "filter" }
  *     }
  *   }
  * }

@@ -92,6 +92,8 @@ NODE_ENV=development
 MONGODB_URI=mongodb://root:example@localhost:27017/jlcavaai?authSource=admin
 BETTER_AUTH_SECRET=replace_with_a_32_char_minimum_secret
 BETTER_AUTH_URL=http://localhost:3000
+RESEARCH_AUTH_REQUIRED=true
+RESEARCH_AUTH_SECRET=replace_with_an_independent_32_char_research_secret
 FMP_BACKEND_URL=http://localhost:8000
 ```
 

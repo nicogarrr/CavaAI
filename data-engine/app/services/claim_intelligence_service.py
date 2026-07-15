@@ -17,6 +17,7 @@ from app.models import (
     ThesisChange,
 )
 from app.services.review_alert_service import ReviewAlertService
+from app.services.thesis_change_types import claim_change_type
 from app.services.source_hierarchy_service import classify_source
 
 
@@ -610,7 +611,7 @@ class ClaimIntelligenceService:
                 company_id=claim.company_id,
                 from_version_id=claim.thesis_version_id,
                 to_version_id=claim.thesis_version_id,
-                change_type=f"claim_{status}",
+                change_type=claim_change_type(status),
                 impact_direction="negative" if status in {"contradicted", "stale"} else "mixed",
                 materiality_score=claim.materiality_score,
                 summary=(

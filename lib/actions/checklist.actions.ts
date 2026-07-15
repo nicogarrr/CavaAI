@@ -1,9 +1,8 @@
 'use server';
 
-import { getAuth } from '@/lib/better-auth/auth';
-import { headers } from 'next/headers';
 import mongoose from 'mongoose';
 import { ThesisChecklist, CHECKLIST_QUESTIONS, IThesisChecklist } from '@/database/models/checklist.model';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 // Conectar a MongoDB si no está conectado
 async function connectDB() {
@@ -15,15 +14,12 @@ async function connectDB() {
 
 // Obtener usuario autenticado
 async function getAuthenticatedUser() {
-    const auth = await getAuth();
-    if (!auth) throw new Error('Auth not initialized');
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) throw new Error('User not authenticated');
-    return session.user;
+    return requireAuthenticatedUser();
 }
 
 // Obtener todas las preguntas del checklist
 export async function getChecklistQuestions() {
+    await getAuthenticatedUser();
     return CHECKLIST_QUESTIONS;
 }
 

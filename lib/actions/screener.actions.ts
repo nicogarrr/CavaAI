@@ -1,6 +1,7 @@
 'use server';
 
 import { cache } from 'react';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY ?? process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
@@ -67,6 +68,7 @@ async function fetchWithTimeout(url: string, timeout = 5000) {
 }
 
 export const screenStocks = cache(async (filters: ScreenerFilters): Promise<ScreenerResult[]> => {
+  await requireAuthenticatedUser();
   if (!FINNHUB_API_KEY) {
     console.error('Finnhub API key not configured');
     return [];
@@ -174,6 +176,7 @@ export const screenStocks = cache(async (filters: ScreenerFilters): Promise<Scre
 });
 
 export async function exportScreenerResults(results: ScreenerResult[]): Promise<string> {
+  await requireAuthenticatedUser();
   // Generate CSV
   const headers = [
     'Symbol', 'Name', 'Price', 'Change', 'Change %', 'Market Cap', 

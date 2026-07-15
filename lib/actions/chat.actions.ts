@@ -1,19 +1,23 @@
 'use server';
 
-import { getAuth } from '@/lib/better-auth/auth';
-import { headers } from 'next/headers';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getPortfolioSummary } from './portfolio.actions';
 import { getRAGContext } from './ai.actions'; // Reuse existing RAG function!
 import { getDeepGeminiModel, getGeminiModelFallbacks } from '@/lib/ai/modelConfig';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { AuthorizationError } from '@/lib/types/errors';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function chatWithPortfolio(query: string, userId: string) {
+    const user = await requireAuthenticatedUser();
+    if (userId !== user.id) {
+        throw new AuthorizationError('Cannot access another user portfolio');
+    }
     try {
         console.log("👉 [CHAT DEBUG] STEP 1: Getting Portfolio Summary...");
         // 1. Get Portfolio Context
-        const summary = await getPortfolioSummary(userId);
+        const summary = await getPortfolioSummary(user.id);
         console.log("👉 [CHAT DEBUG] Portfolio Summary OK. Total Value:", summary.totalValue);
 
         // 2. Get RAG Context (Knowledge Base) based on query

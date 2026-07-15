@@ -82,6 +82,31 @@ Different companies require different frameworks:
 
 CavaAI must support configurable frameworks, qualitative reasoning, manual assumptions, and source-tagged metrics.
 
+## Long-Term Fundamental Modeling Engine
+
+The company workspace now has a first source-aware vertical for long-term fundamental modelling. It is exposed through the company model endpoint and is designed to grow into the full 5–10 year thesis workflow:
+
+- 10-year annual financial history with reported-versus-calculated labels.
+- Bear / Base / Bull operating forecasts for revenue, margins, EBITDA, net income, cash flow, capex, working capital, net debt, shares and FCF per share.
+- Revenue and FCF bridges, reverse DCF, quality of growth, owner earnings, capital allocation and “what must be true”.
+- Market-share and maintenance-versus-growth-capex outputs that remain `insufficient_data` until the required facts are sourced.
+
+Every modelled value carries its input fact IDs and calculation basis. Historical facts carry period, source type, document ID when available, reported/adjusted state and confidence. Explicit policy assumptions (scenario spreads, WACC and terminal growth) are kept separate from company facts so the model cannot turn missing evidence into false precision.
+
+### Canonical research flow
+
+The modules are intentionally layered instead of producing parallel summaries:
+
+`Evidence / documents -> normalized facts -> company framework -> forward operating model + Market Opportunity -> valuation / reverse DCF -> thesis -> monitoring`
+
+- **Company framework** decides which drivers, KPIs, unit economics, segments, macro variables and constraints matter for this company.
+- **Forward Operating Model** owns the forecast, scenarios, bridges, working capital, capex, shares, ROIC and FCF. Unit economics and segment models are inputs to that model, not separate competing forecasts.
+- **Market Opportunity Engine** owns TAM, SAM, SOM, top-down, bottom-up, penetration, market share, valuation-implied share and binding constraints. For mature asset-heavy companies it becomes a reinvestment-runway review.
+- **Thesis** stores the conclusion and its versioned claims; **Evidence** stores why a claim is allowed; **Memory** stores investor hypotheses and research context.
+- **News Impact / What Changed** updates the assumptions and claims that an event touches. **Decision Journal** records the decision made against the thesis. **Expectation vs Reality** compares subsequent facts with the model's explicit forecast and turns misses into review items.
+
+The long-term engine is therefore the quantitative spine of the thesis, not a second thesis generator. A company may activate the same module names with different drivers and different missing-data requirements; a holding company can receive a reinvestment-runway review while a network business receives a mandatory TAM plus capacity analysis.
+
 ## LLM Routing
 
 Use different model tiers by task:
@@ -129,6 +154,8 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - News relevance and thesis impact: manual news analyzer, batch feed ingestion, event storage, dedupe, source-tier policy, portfolio-aware materiality and automatic thesis-change creation for material updates are in place.
 - What Changed: thesis change records, manual capture, automatic claim-contradiction changes and material-news changes are in place.
 - Peer comparison: company workspace comparison now uses same-industry/sector peers and traceable calculated metrics with peer median/average benchmarks.
+- Company-specific long-term modelling: the workspace resolves a company framework and exposes the source-aware Long-Term Fundamental Modeling Engine.
+- Market Opportunity: TAM/SAM/SOM, top-down and bottom-up opportunity, valuation-implied market share and binding-constraint detection are unified in one contract; mature asset-heavy companies use reinvestment runway instead of forced TAM.
 
 ### P1
 
@@ -138,6 +165,8 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - What Changed automation from filings, earnings and fully scheduled external news connectors
 - Earnings workflow
 - Contradiction engine
+- Decision Journal linked to thesis versions, model assumptions and subsequent outcomes
+- Expectation vs Reality review against every explicit forward-model year and KPI
 
 ### Remaining Work To Feel Complete
 

@@ -6,6 +6,8 @@
 'use server';
 
 import { validateArticle, formatArticle, getDateRange, stableNumericId } from '@/lib/utils';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 
 export enum NewsSource {
     FINNHUB = 'finnhub',
@@ -303,7 +305,10 @@ async function getNewsYahoo(symbols?: string[], maxArticles = 15): Promise<Marke
         
         const url = `${backendUrl}/company-news/${symbol}?limit=${maxArticles}`;
 
-        const response = await fetch(url, { next: { revalidate: 300 } });
+        const response = await fetch(url, {
+            headers: await researchIdentityHeaders(),
+            next: { revalidate: 300 },
+        });
         if (!response.ok) return [];
 
         const articles: any[] = await response.json();
@@ -333,6 +338,7 @@ async function getNewsYahoo(symbols?: string[], maxArticles = 15): Promise<Marke
  * Aggregates news from all available sources and returns the most recent
  */
 export async function getNewsWithFallback(symbols?: string[], maxArticles = 6): Promise<MarketNewsArticle[]> {
+    await requireAuthenticatedUser();
     const allNews: MarketNewsArticle[] = [];
 
     // Try to fetch from all available sources in parallel for speed
@@ -380,5 +386,6 @@ export async function getNewsWithFallback(symbols?: string[], maxArticles = 6): 
  * Get company-specific news with fallback
  */
 export async function getCompanyNewsWithFallback(symbol: string, maxArticles = 20): Promise<MarketNewsArticle[]> {
+    await requireAuthenticatedUser();
     return getNewsWithFallback([symbol], maxArticles);
 }

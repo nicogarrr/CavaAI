@@ -4,10 +4,20 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+
+
+def _tenant_id(db: Session) -> int:
+    tenant_id = db.info.get("tenant_id")
+    if tenant_id is None:
+        raise HTTPException(status_code=401, detail="Tenant identity is required")
+    return int(tenant_id)
 
 
 class DocumentUpload(BaseModel):
@@ -31,19 +41,19 @@ class ContextRequest(BaseModel):
 
 
 @router.get("/stats")
-async def get_knowledge_stats():
+async def get_knowledge_stats(db: Session = Depends(get_db)):
     try:
         from modules.knowledge_base import get_knowledge_base, reset_knowledge_base
 
         reset_knowledge_base()
         kb = get_knowledge_base()
-        return {"success": True, "stats": kb.get_stats()}
+        return {"success": True, "stats": kb.get_stats(_tenant_id(db))}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/upload")
-async def upload_document(doc: DocumentUpload):
+async def upload_document(doc: DocumentUpload, db: Session = Depends(get_db)):
     try:
         from modules.knowledge_base import get_knowledge_base
 
@@ -56,6 +66,7 @@ async def upload_document(doc: DocumentUpload):
             metadata["tags"] = ",".join(doc.tags)
         result = get_knowledge_base().add_document(
             content=doc.content,
+            tenant_id=_tenant_id(db),
             metadata=metadata if metadata else None,
         )
         return result
@@ -66,7 +77,7 @@ async def upload_document(doc: DocumentUpload):
 
 
 @router.post("/search")
-async def search_knowledge(query: SearchQuery):
+async def search_knowledge(query: SearchQuery, db: Session = Depends(get_db)):
     try:
         from modules.knowledge_base import get_knowledge_base
 
@@ -74,6 +85,7 @@ async def search_knowledge(query: SearchQuery):
             query=query.query,
             n_results=query.n_results,
             symbol=query.symbol,
+            tenant_id=_tenant_id(db),
         )
         return {"success": True, "results": results, "count": len(results)}
     except Exception as e:
@@ -81,13 +93,14 @@ async def search_knowledge(query: SearchQuery):
 
 
 @router.post("/context")
-async def get_analysis_context(req: ContextRequest):
+async def get_analysis_context(req: ContextRequest, db: Session = Depends(get_db)):
     try:
         from modules.knowledge_base import get_knowledge_base
 
         context = get_knowledge_base().get_context_for_analysis(
             symbol=req.symbol.upper(),
             company_name=req.company_name,
+            tenant_id=_tenant_id(db),
         )
         return {"success": True, "context": context, "symbol": req.symbol.upper()}
     except Exception as e:
@@ -95,29 +108,37 @@ async def get_analysis_context(req: ContextRequest):
 
 
 @router.get("/list/{collection}")
-async def list_documents(collection: str, limit: int = 50):
+async def list_documents(collection: str, limit: int = 50, db: Session = Depends(get_db)):
     try:
         from modules.knowledge_base import get_knowledge_base
 
-        docs = get_knowledge_base().list_documents(limit=limit)
+        docs = get_knowledge_base().list_documents(tenant_id=_tenant_id(db), limit=limit)
         return {"success": True, "documents": docs, "count": len(docs)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/delete/{collection}/{document_id}")
-async def delete_document(collection: str, document_id: str):
+async def delete_document(
+    collection: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+):
     try:
         from modules.knowledge_base import get_knowledge_base
 
-        success = get_knowledge_base().delete_document(document_id)
+        success = get_knowledge_base().delete_document(document_id, _tenant_id(db))
         return {"success": success}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/upload-files")
-async def upload_files(collection: str = "analyses", files: List[UploadFile] = File(...)):
+async def upload_files(
+    collection: str = "analyses",
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
     from modules.knowledge_base import get_knowledge_base
     import io
 
@@ -170,7 +191,11 @@ async def upload_files(collection: str = "analyses", files: List[UploadFile] = F
             if not text_content.strip():
                 results.append({"filename": filename, "success": False, "error": "File is empty"})
                 continue
-            result = kb.add_document(content=text_content, metadata={"title": filename, "source": "file_upload"})
+            result = kb.add_document(
+                content=text_content,
+                tenant_id=_tenant_id(db),
+                metadata={"title": filename, "source": "file_upload"},
+            )
             results.append({
                 "filename": filename,
                 "success": True,

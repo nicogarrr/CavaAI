@@ -135,7 +135,7 @@ class Document(TenantOwnedMixin, Base, TimestampMixin):
     chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document")
 
 
-class DocumentChunk(Base, TimestampMixin):
+class DocumentChunk(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "document_chunks"
 
     id: Mapped[int] = mapped_column(primary_key=True)

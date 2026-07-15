@@ -42,13 +42,19 @@ def _scope_tenant_queries(execute_state) -> None:
 @event.listens_for(Session, "before_flush")
 def _assign_tenant_to_new_rows(session: Session, _flush_context, _instances) -> None:
     tenant_id = session.info.get("tenant_id")
-    if tenant_id is None:
-        return
     from app.models.entities import TenantOwnedMixin
 
-    for instance in session.new:
-        if isinstance(instance, TenantOwnedMixin) and instance.tenant_id is None:
+    tenant_rows = [instance for instance in session.new if isinstance(instance, TenantOwnedMixin)]
+    if tenant_id is None:
+        if settings.research_auth_required and tenant_rows:
+            raise RuntimeError("Tenant context is required for tenant-owned writes")
+        return
+
+    for instance in tenant_rows:
+        if instance.tenant_id is None:
             instance.tenant_id = tenant_id
+        elif instance.tenant_id != tenant_id:
+            raise RuntimeError("Cross-tenant writes are not allowed")
 
 
 def get_db(
@@ -120,4 +126,3 @@ def init_db() -> None:
                     inspector = inspect(engine)
     except Exception:  # noqa: BLE001 — never block startup on optional alter
         pass
-

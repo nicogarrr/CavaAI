@@ -3,6 +3,7 @@ import { env } from '@/lib/env';
 import { SYMBOL_VALIDATION, ERROR_MESSAGES, CACHE_TTL } from '@/lib/constants';
 import { ValidationError, ExternalAPIError, toAppError } from '@/lib/types/errors';
 import { getQuoteWithFallback } from '@/lib/actions/dataSources.actions';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 /**
  * Valida el formato del símbolo
@@ -28,6 +29,7 @@ function validateSymbol(symbol: string): void {
 
 export async function GET(request: NextRequest) {
     try {
+        await requireAuthenticatedUser();
         const searchParams = request.nextUrl.searchParams;
         const symbol = searchParams.get('symbol');
 
@@ -117,6 +119,13 @@ export async function GET(request: NextRequest) {
             return NextResponse.json(
                 { error: appError.message },
                 { status: 400 }
+            );
+        }
+
+        if (appError.statusCode === 401 || appError.statusCode === 403) {
+            return NextResponse.json(
+                { error: appError.message },
+                { status: appError.statusCode }
             );
         }
 

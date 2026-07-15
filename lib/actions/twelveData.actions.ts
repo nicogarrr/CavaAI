@@ -2,6 +2,7 @@
 
 import { cache } from 'react';
 import { env } from '@/lib/env';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 const TWELVE_DATA_BASE_URL = 'https://api.twelvedata.com';
 
@@ -9,6 +10,7 @@ const TWELVE_DATA_BASE_URL = 'https://api.twelvedata.com';
  * Helper function for TwelveData API calls
  */
 async function fetchTwelveData<T>(endpoint: string, params: Record<string, string>): Promise<T | null> {
+    await requireAuthenticatedUser();
     const apiKey = env.TWELVE_DATA_API_KEY;
     if (!apiKey) {
         console.warn('TWELVE_DATA_API_KEY not configured');
@@ -71,6 +73,7 @@ export const getRSI = cache(async (
     timePeriod: number = 14,
     outputSize: number = 30
 ): Promise<TechnicalIndicatorResponse | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/rsi', {
         symbol,
         interval,
@@ -101,6 +104,7 @@ export const getSMA = cache(async (
     timePeriod: number = 20,
     outputSize: number = 30
 ): Promise<TechnicalIndicatorResponse | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/sma', {
         symbol,
         interval,
@@ -131,6 +135,7 @@ export const getEMA = cache(async (
     timePeriod: number = 20,
     outputSize: number = 30
 ): Promise<TechnicalIndicatorResponse | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/ema', {
         symbol,
         interval,
@@ -169,6 +174,7 @@ export const getMACD = cache(async (
         histogram: number;
     }>;
 } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/macd', {
         symbol,
         interval,
@@ -209,6 +215,7 @@ export const getBollingerBands = cache(async (
         lower: number;
     }>;
 } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/bbands', {
         symbol,
         interval,
@@ -248,6 +255,7 @@ export const getStochastic = cache(async (
         slowD: number;
     }>;
 } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/stoch', {
         symbol,
         interval,
@@ -278,6 +286,7 @@ export const getADX = cache(async (
     timePeriod: number = 14,
     outputSize: number = 30
 ): Promise<TechnicalIndicatorResponse | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/adx', {
         symbol,
         interval,
@@ -308,6 +317,7 @@ export const getATR = cache(async (
     timePeriod: number = 14,
     outputSize: number = 30
 ): Promise<TechnicalIndicatorResponse | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/atr', {
         symbol,
         interval,
@@ -344,6 +354,7 @@ export async function getAllTechnicalIndicators(symbol: string, interval: '1day'
     adx: TechnicalIndicatorResponse | null;
     atr: TechnicalIndicatorResponse | null;
 }> {
+    await requireAuthenticatedUser();
     const [rsi, sma20, sma50, ema12, ema26, macd, bollingerBands, stochastic, adx, atr] = await Promise.all([
         getRSI(symbol, interval, 14, 10),
         getSMA(symbol, interval, 20, 10),
@@ -395,6 +406,7 @@ export type ETFHolding = {
  * Get ETF Profile
  */
 export const getETFProfile = cache(async (symbol: string): Promise<ETFProfile | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/etf', {
         symbol,
     });
@@ -430,6 +442,7 @@ export type MutualFundProfile = {
  * Get Mutual Fund Profile
  */
 export const getMutualFundProfile = cache(async (symbol: string): Promise<MutualFundProfile | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/mutual_funds', {
         symbol,
     });
@@ -466,6 +479,7 @@ export const getStatistics = cache(async (symbol: string): Promise<{
     eps: number;
     dividendYield: number;
 } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/statistics', {
         symbol,
     });
@@ -499,6 +513,7 @@ export const getEarnings = cache(async (symbol: string): Promise<Array<{
     difference: number;
     surprisePercent: number;
 }> | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/earnings', {
         symbol,
     });
@@ -529,6 +544,7 @@ export const getRecommendations = cache(async (symbol: string): Promise<{
     strongSell: number;
     period: string;
 } | null> => {
+    await requireAuthenticatedUser();
     const data = await fetchTwelveData<any>('/recommendations', {
         symbol,
     });

@@ -8,10 +8,9 @@ import {
     passesStrategyFilters,
     type ProPickStrategy
 } from '@/lib/utils/proPicksStrategies';
-import { getAuth } from '@/lib/better-auth/auth';
-import { headers } from 'next/headers';
 import { getRAGContext } from './ai.actions';
 import { getDefaultGeminiModel, getGeminiGenerateContentEndpoint } from '@/lib/ai/modelConfig';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 export interface ProPick {
     symbol: string;
@@ -52,6 +51,7 @@ async function selectBestPicksWithAI(
     evaluatedPicks: ProPick[],
     limit: number
 ): Promise<ProPick[]> {
+    await requireAuthenticatedUser();
     try {
         const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
         if (!apiKey) {
@@ -432,6 +432,7 @@ export async function generateProPicksForStrategy(
     strategyId: string,
     limit: number = 10
 ): Promise<ProPick[]> {
+    await requireAuthenticatedUser();
     return generateProPicks(limit, strategyId);
 }
 
@@ -439,6 +440,7 @@ export async function generateProPicksForStrategy(
  * Obtiene todas las estrategias disponibles
  */
 export async function getAvailableStrategies() {
+    await requireAuthenticatedUser();
     return PROPICKS_STRATEGIES.map(s => ({
         id: s.id,
         name: s.name,
@@ -464,6 +466,7 @@ const FILTER_BUFFER_MULTIPLIER = 3;
 export async function generateEnhancedProPicks(
     filters: EnhancedProPicksFilters = {}
 ): Promise<ProPick[]> {
+    await requireAuthenticatedUser();
     const {
         timePeriod = 'month',
         limit = 20,

@@ -43,6 +43,7 @@ import {
   type ResearchFact,
   type ResearchMemoryItem,
   type ResearchMoat,
+  type ResearchLongTermModel,
   type ResearchPeerAnalysis,
   type ResearchPeerComparison,
   type ResearchSourceDocument,
@@ -124,6 +125,172 @@ function Stat({
       <div className="text-xs font-semibold uppercase text-gray-500">{label}</div>
       <div className={`mt-2 text-2xl font-semibold ${toneClass}`}>{value}</div>
     </div>
+  );
+}
+
+function modelMoney(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value) ? 'N/A' : compactMoney(value);
+}
+
+function modelPct(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value) ? 'N/A' : pct(value);
+}
+
+function LongTermModelPanel({ model }: { model: ResearchLongTermModel | null }) {
+  if (!model) {
+    return (
+      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="flex items-center gap-2">
+          <BrainCircuit className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Long-Term Fundamental Model</h2>
+        </div>
+        <p className="mt-3 text-sm text-gray-500">No se pudo construir el modelo con los datos disponibles.</p>
+      </section>
+    );
+  }
+
+  const base = model.scenarios.base;
+  const year5 = base?.year_5 ?? base?.terminal_year;
+  const terminal = base?.terminal_year;
+  const scenarioRows = Object.entries(model.scenarios);
+  const growthAssumption = model.assumptions.revenue_growth;
+  const marginAssumption = model.assumptions.fcf_margin;
+
+  return (
+    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
+        <div className="flex items-center gap-2">
+          <BrainCircuit className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Long-Term Fundamental Model</h2>
+        </div>
+        <span className="text-xs uppercase tracking-wide text-gray-500 md:ml-auto">
+          {model.horizon_years}Y · {model.status} · coverage {model.source_coverage.coverage_percent.toFixed(0)}%
+        </span>
+      </div>
+
+      {model.missing_inputs.length ? (
+        <div className="mb-4 rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
+          Modelo no publicable: faltan {model.missing_inputs.join(', ')}.
+        </div>
+      ) : null}
+
+      <div className="mb-4 rounded-md border border-gray-800 bg-black/10 p-3 text-xs leading-5 text-gray-400">
+        <span className="font-semibold text-gray-300">Drivers:</span> {model.framework.revenue_drivers.join(' · ')}
+        <span className="mx-2 text-gray-700">|</span>
+        <span className="font-semibold text-gray-300">KPIs:</span> {model.framework.kpis.join(' · ')}
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <Stat label={`${year5?.year ?? '5Y'} Revenue`} value={modelMoney(year5?.revenue)} />
+        <Stat label={`${year5?.year ?? '5Y'} FCF`} value={modelMoney(year5?.free_cash_flow)} tone="good" />
+        <Stat label="FCF margin" value={modelPct(year5?.fcf_margin)} />
+        <Stat label="FCF / share" value={modelMoney(year5?.fcf_per_share)} tone="good" />
+      </div>
+
+      <div className="mt-5 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div>
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Bear / Base / Bull</div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="text-xs uppercase text-gray-500">
+                <tr>
+                  <th className="border-b border-gray-800 py-2">Scenario</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Revenue</th>
+                  <th className="border-b border-gray-800 py-2 text-right">FCF</th>
+                  <th className="border-b border-gray-800 py-2 text-right">FCF margin</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Value/share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scenarioRows.map(([name, scenario]) => {
+                  const point = scenario.terminal_year;
+                  return (
+                    <tr key={name} className="border-b border-gray-900 last:border-0">
+                      <td className="py-3 font-semibold capitalize text-gray-200">{name}</td>
+                      <td className="py-3 text-right text-gray-300">{modelMoney(point?.revenue)}</td>
+                      <td className="py-3 text-right text-gray-300">{modelMoney(point?.free_cash_flow)}</td>
+                      <td className="py-3 text-right text-gray-300">{modelPct(point?.fcf_margin)}</td>
+                      <td className="py-3 text-right text-teal-200">{modelMoney(scenario.valuation?.value_per_share)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-md border border-gray-800 p-3">
+            <div className="text-xs font-semibold uppercase text-gray-500">Base assumptions</div>
+            <div className="mt-2 grid gap-2 text-sm">
+              <div className="flex justify-between gap-3"><span className="text-gray-400">Revenue CAGR</span><span className="text-gray-200">{modelPct(growthAssumption?.value)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-400">Normalized FCF margin</span><span className="text-gray-200">{modelPct(marginAssumption?.value)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-400">ROIC / WACC</span><span className="text-gray-200">{modelPct(terminal?.roic)} / {modelPct(model.assumptions.wacc?.value)}</span></div>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-gray-500">Sources revenue: {growthAssumption?.source_fact_ids.join(', ') || 'missing'} · FCF: {marginAssumption?.source_fact_ids.join(', ') || 'missing'}</p>
+          </div>
+          <div className="rounded-md border border-gray-800 p-3 text-sm">
+            <div className="text-xs font-semibold uppercase text-gray-500">Reverse DCF</div>
+            <p className="mt-2 text-gray-300">
+              {model.reverse_dcf.status === 'ok'
+                ? `El precio actual exige ${modelPct(model.reverse_dcf.required_revenue_growth)} de crecimiento; la base asume ${modelPct(model.reverse_dcf.base_revenue_growth)}.`
+                : `No disponible: ${(model.reverse_dcf.missing_inputs ?? []).join(', ') || 'faltan inputs de mercado o financieros'}.`}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-6 xl:grid-cols-3">
+        <div className="rounded-md border border-gray-800 p-3 text-sm">
+          <div className="text-xs font-semibold uppercase text-gray-500">Quality of growth</div>
+          <div className="mt-2 text-xl font-semibold capitalize text-gray-200">{model.quality_of_growth.quality}</div>
+          <p className="mt-2 text-gray-400">Revenue CAGR {modelPct(model.quality_of_growth.revenue_cagr.value)} · FCF margin change {modelPct(model.quality_of_growth.fcf_margin_change.value)}</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500">{model.quality_of_growth.conclusion}</p>
+        </div>
+        <div className="rounded-md border border-gray-800 p-3 text-sm">
+          <div className="text-xs font-semibold uppercase text-gray-500">Owner earnings</div>
+          <div className="mt-2 text-xl font-semibold text-gray-200">{modelMoney(model.owner_earnings.value)}</div>
+          <p className="mt-2 text-xs leading-5 text-gray-500">{model.owner_earnings.status === 'ok' ? model.owner_earnings.formula : `Insuficiente: ${(model.owner_earnings.missing_inputs ?? []).join(', ')}.`}</p>
+        </div>
+        <div className="rounded-md border border-gray-800 p-3 text-sm">
+          <div className="text-xs font-semibold uppercase text-gray-500">Market Opportunity Engine</div>
+          <div className="mt-2 text-sm font-semibold text-gray-200">{model.framework.label}</div>
+          <p className="mt-2 text-gray-400">Top-down TAM {modelMoney(model.market_opportunity.top_down.tam.value)} · bottom-up {modelMoney(model.market_opportunity.bottom_up.value)}</p>
+          <p className="mt-2 text-gray-400">Binding constraint: {model.market_opportunity.constraints.binding_constraint ?? 'unknown'}</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500">{model.market_opportunity.verdict.label} · {model.market_opportunity.verdict.conclusion}</p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <div>
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">What must be true</div>
+          <ul className="space-y-2 text-sm">
+            {model.what_must_be_true.slice(0, 6).map((item) => (
+              <li key={item.id} className="flex gap-2 text-gray-300">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
+                <span>{item.condition}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Recent company timeline</div>
+          <div className="space-y-2 text-sm">
+            {model.timeline.slice(0, 4).map((event, index) => (
+              <div key={`${event.date}-${event.title}-${index}`} className="rounded-md border border-gray-800 p-2">
+                <div className="flex justify-between gap-3"><span className="font-medium text-gray-300">{event.title}</span><span className="text-xs text-gray-500">{event.date?.slice(0, 10) ?? 'unknown'}</span></div>
+                <div className="mt-1 text-xs text-gray-500">{event.type} · {event.source} · impact {event.thesis_impact}</div>
+              </div>
+            ))}
+            {!model.timeline.length ? <div className="text-sm text-gray-500">No hay eventos históricos almacenados.</div> : null}
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-5 border-t border-gray-800 pt-3 text-xs leading-5 text-gray-500">
+        El modelo cubre {model.historical_review.years_covered} años ({model.historical_review.first_year ?? '—'}–{model.historical_review.last_year ?? '—'}). Los números calculados conservan sus fact IDs; lo no disponible se muestra como unknown/insufficient_data.
+      </p>
+    </section>
   );
 }
 
@@ -1164,6 +1331,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
     sourceDocuments,
     evidenceSuggestions,
     redTeam,
+    longTermModel,
   }, thesisHistory] = await Promise.all([
     getResearchCompanyDetail(ticker),
     getThesisHistory(ticker),
@@ -1266,6 +1434,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
           <SensitivityGrid valuation={valuation} />
         </div>
       </section>
+
+      <LongTermModelPanel model={longTermModel} />
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">

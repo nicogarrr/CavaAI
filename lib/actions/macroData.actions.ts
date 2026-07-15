@@ -1,5 +1,7 @@
 'use server';
 
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+
 /**
  * Datos macroeconómicos de Fed, BCE y otros bancos centrales
  * Fuentes: FRED (Federal Reserve Economic Data), ECB, Trading Economics
@@ -45,6 +47,7 @@ export interface InterestRateData {
  * Usa FRED API (Federal Reserve Economic Data)
  */
 export async function getFedMacroData(): Promise<MacroData[]> {
+  await requireAuthenticatedUser();
   try {
     const fredApiKey = process.env.FRED_API_KEY;
     if (!fredApiKey) {
@@ -109,6 +112,7 @@ export async function getFedMacroData(): Promise<MacroData[]> {
  * Usa APIs públicas y web scraping si es necesario
  */
 export async function getInterestRates(): Promise<InterestRateData> {
+  await requireAuthenticatedUser();
   const result: InterestRateData = {
     fed: null,
     ecb: null,
@@ -173,6 +177,7 @@ export async function getInterestRates(): Promise<InterestRateData> {
  * Usa API del BCE o alternativas
  */
 export async function getECBMacroData(): Promise<MacroData[]> {
+  await requireAuthenticatedUser();
   try {
     // El BCE tiene una API SDW (Statistical Data Warehouse)
     // Es compleja, así que usamos una aproximación alternativa
@@ -199,6 +204,7 @@ export async function getAllMacroData(): Promise<{
   ecb: MacroData[];
   interestRates: InterestRateData;
 }> {
+  await requireAuthenticatedUser();
   const [fedData, ecbData, interestRates] = await Promise.all([
     getFedMacroData(),
     getECBMacroData(),

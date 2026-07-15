@@ -1,8 +1,7 @@
 'use server';
 
-import { getAuth } from '@/lib/better-auth/auth';
-import { headers } from 'next/headers';
 import { getDefaultGeminiModel, getGeminiGenerateContentEndpoint } from '@/lib/ai/modelConfig';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 // ============================================================================
 // RAG CONTEXT RETRIEVAL - Knowledge Base Integration
@@ -14,6 +13,7 @@ import { getDefaultGeminiModel, getGeminiGenerateContentEndpoint } from '@/lib/a
  * Ahora usa MongoDB Atlas Vector Search directamente
  */
 export async function getRAGContext(symbol: string, companyName: string): Promise<string> {
+  await requireAuthenticatedUser();
   try {
     // Importar la función de knowledge.actions
     const { getRAGContext: getRAGContextFromKB } = await import('@/lib/actions/knowledge.actions');
@@ -44,12 +44,8 @@ export async function generatePortfolioStrategyAnalysis(portfolioSummary: any): 
   stocksToAdd?: { symbol: string; reason: string; potentialImpact: string }[];
   suggestedChanges?: { action: string; symbol?: string; impact: string; newScoreEstimate: number }[];
 }> {
+  await requireAuthenticatedUser();
   try {
-    const auth = await getAuth();
-    if (!auth) throw new Error('Error de autenticación');
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) throw new Error('Usuario no autenticado');
-
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (!apiKey) {
       return {
@@ -166,11 +162,7 @@ export async function generatePortfolioSummary(input: {
   portfolio: PortfolioPerformance;
   history: { t: number[]; v: number[] };
 }): Promise<string> {
-  const auth = await getAuth();
-  if (!auth) throw new Error('Error de autenticación: no se pudo inicializar el sistema de autenticación');
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) throw new Error('Usuario no autenticado');
-
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     return 'IA desactivada: falta la clave de Gemini en el entorno.';
@@ -235,11 +227,7 @@ export async function generateCombinedAnalysis(input: {
   financialData: any;
   currentPrice: number;
 }): Promise<string> {
-  const auth = await getAuth();
-  if (!auth) throw new Error('Error de autenticación: no se pudo inicializar el sistema de autenticación');
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) throw new Error('Usuario no autenticado');
-
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     return 'IA desactivada: falta la clave de Gemini en el entorno.';
@@ -493,21 +481,7 @@ export async function generateDCFAnalysis(input: {
   financialData: any;
   currentPrice: number;
 }): Promise<string> {
-  try {
-    const { getAuth } = await import('@/lib/better-auth/auth');
-    const auth = await getAuth();
-    if (!auth) throw new Error('Error de autenticación: no se pudo inicializar el sistema de autenticación');
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) throw new Error('Usuario no autenticado');
-  } catch (error: any) {
-    // Si MongoDB no está disponible, permitir uso en modo desarrollo
-    if (process.env.NODE_ENV === 'development' && error.message?.includes('MongoDB')) {
-      console.warn('⚠️  MongoDB no disponible. Generando análisis DCF sin autenticación (modo desarrollo).');
-    } else {
-      throw new Error('Usuario no autenticado');
-    }
-  }
-
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     return 'IA desactivada: falta la clave de Gemini en el entorno.';
@@ -734,11 +708,7 @@ export async function generateInvestmentThesis(input: {
   financialData: any;
   currentPrice: number;
 }): Promise<string> {
-  const auth = await getAuth();
-  if (!auth) throw new Error('Error de autenticación: no se pudo inicializar el sistema de autenticación');
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) throw new Error('Usuario no autenticado');
-
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     return 'IA desactivada: falta la clave de Gemini en el entorno.';
@@ -1228,6 +1198,7 @@ export async function estimateHealthScoreWithAI(
   efficiency?: number;
   valuation?: number;
 }> {
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     console.warn('No Gemini API key, returning empty estimates');
@@ -1449,23 +1420,7 @@ export async function generateChecklistWithAI(input: {
   recommendation: string;
   summary: string;
 }> {
-  // Verificar autenticación (permitir en desarrollo sin MongoDB)
-  try {
-    const auth = await getAuth();
-    if (auth) {
-      const session = await auth.api.getSession({ headers: await headers() });
-      if (!session?.user && process.env.NODE_ENV !== 'development') {
-        throw new Error('Usuario no autenticado');
-      }
-    }
-  } catch (authError: any) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('⚠️ Generando checklist sin autenticación (modo desarrollo)');
-    } else {
-      throw new Error('Usuario no autenticado');
-    }
-  }
-
+  await requireAuthenticatedUser();
   // Obtener datos financieros si no se proporcionan
   let financialData = input.financialData;
   if (!financialData) {
@@ -1670,21 +1625,7 @@ export async function generatePatternAnalysis(input: {
   };
   summary: string;
 }> {
-  // Verificar autenticación (permitir en desarrollo)
-  try {
-    const auth = await getAuth();
-    if (auth) {
-      const session = await auth.api.getSession({ headers: await headers() });
-      if (!session?.user && process.env.NODE_ENV !== 'development') {
-        throw new Error('Usuario no autenticado');
-      }
-    }
-  } catch (authError: any) {
-    if (process.env.NODE_ENV !== 'development') {
-      throw new Error('Usuario no autenticado');
-    }
-  }
-
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     return {
@@ -1909,21 +1850,7 @@ export async function getAlternativeSuggestions(input: {
   recommendation: string;
   summary: string;
 }> {
-  // Permitir en desarrollo
-  try {
-    const auth = await getAuth();
-    if (auth) {
-      const session = await auth.api.getSession({ headers: await headers() });
-      if (!session?.user && process.env.NODE_ENV !== 'development') {
-        throw new Error('Usuario no autenticado');
-      }
-    }
-  } catch (authError: any) {
-    if (process.env.NODE_ENV !== 'development') {
-      throw new Error('Usuario no autenticado');
-    }
-  }
-
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     return {
@@ -2092,21 +2019,7 @@ export async function extractPortfolioFromImage(imageBase64: string): Promise<{
   detectedCurrency: 'EUR' | 'USD';
   error?: string;
 }> {
-  // Permitir en desarrollo
-  try {
-    const auth = await getAuth();
-    if (auth) {
-      const session = await auth.api.getSession({ headers: await headers() });
-      if (!session?.user && process.env.NODE_ENV !== 'development') {
-        return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Usuario no autenticado' };
-      }
-    }
-  } catch (authError: any) {
-    if (process.env.NODE_ENV !== 'development') {
-      return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Usuario no autenticado' };
-    }
-  }
-
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     return { success: false, positions: [], summary: '', detectedCurrency: 'USD', error: 'Falta API key de Gemini' };
@@ -2308,12 +2221,8 @@ export async function generateThesisCommentary(input: ThesisCommentaryInput): Pr
   confidence: 'high' | 'medium' | 'low';
   keyInsight: string;
 }> {
+  await requireAuthenticatedUser();
   try {
-    const auth = await getAuth();
-    if (!auth) throw new Error('Auth error');
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) throw new Error('No auth');
-
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (!apiKey) {
       return {
@@ -2435,12 +2344,8 @@ export async function estimateIntrinsicValueWithAI(input: AIIntrinsicValueInput)
   reasoning: string;
   source: 'AI_ESTIMATED';
 }> {
+  await requireAuthenticatedUser();
   try {
-    const auth = await getAuth();
-    if (!auth) throw new Error('Auth error');
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) throw new Error('No auth');
-
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (!apiKey) {
       // Fallback: simple FCF multiple estimation
@@ -2590,6 +2495,7 @@ export async function generateAIDrivenValuation(input: {
     recentNews?: { headline: string; summary: string; date: string; source: string }[];
   };
 }): Promise<AIValuationResult> {
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
   const defaultResult: AIValuationResult = {
@@ -2801,6 +2707,7 @@ export async function generateRedFlagsAnalysis(input: {
   financialData: any;
   currentPrice: number;
 }): Promise<RedFlagsAnalysis> {
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
   const defaultResult: RedFlagsAnalysis = {
@@ -2987,6 +2894,7 @@ export async function generateCatalystTimeline(input: {
   financialData: any;
   currentPrice: number;
 }): Promise<CatalystTimeline> {
+  await requireAuthenticatedUser();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
   const defaultResult: CatalystTimeline = {
