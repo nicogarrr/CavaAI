@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
 
 export const dynamic = 'force-dynamic';
@@ -192,7 +193,7 @@ export default async function ResearchNewsPage() {
           <AlertTriangle className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Analyze Manual News</h2>
         </div>
-        <form action={submitAnalyzeNews} className="grid gap-3">
+        <MutationForm action={submitAnalyzeNews} className="grid gap-3" resetOnSuccess successMessage="Noticia analizada">
           <div className="grid gap-2">
             <label className="text-sm font-semibold text-gray-400" htmlFor="text">
               News text
@@ -220,7 +221,7 @@ export default async function ResearchNewsPage() {
           <Button className="w-full sm:w-fit" type="submit">
             Analyze News
           </Button>
-        </form>
+        </MutationForm>
       </section>
 
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
@@ -228,7 +229,7 @@ export default async function ResearchNewsPage() {
           <AlertTriangle className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Ingest Feed Batch</h2>
         </div>
-        <form action={submitIngestFeed} className="grid gap-3">
+        <MutationForm action={submitIngestFeed} className="grid gap-3" resetOnSuccess successMessage="Feed importado">
           <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-center">
             <label className="text-sm font-semibold text-gray-400" htmlFor="feed-source">
               Source
@@ -244,7 +245,7 @@ export default async function ResearchNewsPage() {
           <Button className="w-full sm:w-fit" type="submit" variant="outline">
             Ingest Feed
           </Button>
-        </form>
+        </MutationForm>
       </section>
     </main>
   );

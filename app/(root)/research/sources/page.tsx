@@ -3,6 +3,7 @@ import { ArrowLeft, FileText, ShieldCheck, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { MutationForm } from '@/components/forms/MutationForm';
 import {
   getResearchSources,
   importResearchDocumentFile,
@@ -38,7 +39,7 @@ export default async function ResearchSourcesPage() {
       </header>
 
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <form action={importResearchSource} className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <MutationForm action={importResearchSource} className="rounded-lg border border-gray-800 bg-[#111111] p-5" resetOnSuccess successMessage="Fuente importada">
           <div className="mb-4 flex items-center gap-2">
             <UploadCloud className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Import Manual Source</h2>
@@ -75,10 +76,10 @@ export default async function ResearchSourcesPage() {
               Import Source
             </Button>
           </div>
-        </form>
+        </MutationForm>
 
         <section className="grid gap-6">
-          <form action={importResearchDocumentFile} className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+          <MutationForm action={importResearchDocumentFile} className="rounded-lg border border-gray-800 bg-[#111111] p-5" resetOnSuccess successMessage="Documento importado">
             <div className="mb-4 flex items-center gap-2">
               <UploadCloud className="h-5 w-5 text-teal-300" />
               <h2 className="text-lg font-semibold text-gray-100">Upload Document</h2>
@@ -109,9 +110,9 @@ export default async function ResearchSourcesPage() {
                 Upload Document
               </Button>
             </div>
-          </form>
+          </MutationForm>
 
-          <form action={importResearchDocumentUrl} className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+          <MutationForm action={importResearchDocumentUrl} className="rounded-lg border border-gray-800 bg-[#111111] p-5" resetOnSuccess successMessage="URL importada">
             <div className="mb-4 flex items-center gap-2">
               <FileText className="h-5 w-5 text-teal-300" />
               <h2 className="text-lg font-semibold text-gray-100">Ingest URL</h2>
@@ -138,7 +139,7 @@ export default async function ResearchSourcesPage() {
                 Ingest URL
               </Button>
             </div>
-          </form>
+          </MutationForm>
         </section>
 
         <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">

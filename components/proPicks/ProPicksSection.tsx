@@ -101,7 +101,7 @@ export default async function ProPicksSection() {
                     return (
                         <Link
                             key={pick.symbol}
-                            href={`/stocks/${pick.symbol}`}
+                            href={`/research/${pick.symbol}`}
                             className="block p-4 bg-gray-900/50 hover:bg-gray-900 rounded-lg border border-gray-700/50 transition-all duration-200 group"
                         >
                             <div className="flex items-start justify-between mb-3">

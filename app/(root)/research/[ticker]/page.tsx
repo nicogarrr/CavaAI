@@ -19,6 +19,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
+import { CompanyWorkspaceTabs } from '@/components/research/CompanyWorkspaceTabs';
+import { MutationForm } from '@/components/forms/MutationForm';
+import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 import {
   addResearchChunkEvidence,
   addResearchClaimEvidence,
@@ -29,6 +33,7 @@ import {
   createResearchThesisChange,
   createResearchClaim,
   createResearchMemoryItem,
+  ensureResearchCompany,
   getResearchCompanyDetail,
   generateResearchThesis,
   refreshCompanyFinancials,
@@ -662,7 +667,7 @@ function ClaimsMemoryPanel({
           <h2 className="text-lg font-semibold text-gray-100">Claims</h2>
           <span className="ml-auto text-sm text-gray-500">{claims.length}</span>
         </div>
-        <form action={createResearchClaim.bind(null, ticker)} className="mb-4 grid gap-3 md:grid-cols-[1fr_150px_96px_auto]">
+        <MutationForm action={createResearchClaim.bind(null, ticker)} className="mb-4 grid gap-3 md:grid-cols-[1fr_150px_96px_auto]" resetOnSuccess successMessage="Afirmación creada">
           <Input aria-label="Claim" name="statement" placeholder="Material claim" required />
           <Input aria-label="Claim type" defaultValue="thesis" name="claim_type" />
           <Input aria-label="Materiality" defaultValue="5" max="10" min="0" name="materiality_score" type="number" />
@@ -670,7 +675,7 @@ function ClaimsMemoryPanel({
             <Plus className="h-4 w-4" />
             Add
           </Button>
-        </form>
+        </MutationForm>
         <div className="space-y-3">
           {claims.length ? (
             claims.map((claim) => (
@@ -705,7 +710,7 @@ function ClaimsMemoryPanel({
                     ))}
                   </div>
                 ) : null}
-                <form action={addResearchClaimEvidence.bind(null, ticker, claim.id)} className="mt-3 grid gap-2 border-t border-gray-800 pt-3">
+                <MutationForm action={addResearchClaimEvidence.bind(null, ticker, claim.id)} className="mt-3 grid gap-2 border-t border-gray-800 pt-3" resetOnSuccess successMessage="Evidencia vinculada">
                   <div className="grid gap-2 md:grid-cols-[120px_1fr]">
                     <select
                       aria-label="Evidence type"
@@ -748,7 +753,7 @@ function ClaimsMemoryPanel({
                       </select>
                     </div>
                   ) : null}
-                </form>
+                </MutationForm>
               </div>
             ))
           ) : (
@@ -763,7 +768,7 @@ function ClaimsMemoryPanel({
           <h2 className="text-lg font-semibold text-gray-100">Memory</h2>
           <span className="ml-auto text-sm text-gray-500">{memoryItems.length}</span>
         </div>
-        <form action={createResearchMemoryItem.bind(null, ticker)} className="mb-4 grid gap-3">
+        <MutationForm action={createResearchMemoryItem.bind(null, ticker)} className="mb-4 grid gap-3" resetOnSuccess successMessage="Nota guardada">
           <Textarea aria-label="Memory item" className="border-gray-700 bg-transparent text-gray-100" name="content" placeholder="Watch item or decision note" required />
           <div className="grid gap-3 md:grid-cols-[1fr_96px_auto]">
             <Input aria-label="Memory type" defaultValue="note" name="memory_type" />
@@ -773,7 +778,7 @@ function ClaimsMemoryPanel({
               Add
             </Button>
           </div>
-        </form>
+        </MutationForm>
         <div className="space-y-3">
           {memoryItems.slice(0, 6).map((item) => (
             <div key={item.id} className="rounded-md border border-gray-800 p-3">
@@ -878,7 +883,7 @@ function SourceEvidencePanel({
                 </pre>
 
                 <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                  <form action={createResearchClaimFromChunk.bind(null, ticker, chunk.id)} className="grid gap-2">
+                  <MutationForm action={createResearchClaimFromChunk.bind(null, ticker, chunk.id)} className="grid gap-2" resetOnSuccess successMessage="Afirmación creada desde la fuente">
                     <div className="text-xs font-semibold uppercase text-gray-500">Create claim from chunk</div>
                     <Input aria-label="Claim statement" defaultValue={defaultStatement} name="statement" required />
                     <Textarea
@@ -904,9 +909,9 @@ function SourceEvidencePanel({
                         Claim
                       </Button>
                     </div>
-                  </form>
+                  </MutationForm>
 
-                  <form action={addResearchChunkEvidence.bind(null, ticker, chunk.id)} className="grid gap-2">
+                  <MutationForm action={addResearchChunkEvidence.bind(null, ticker, chunk.id)} className="grid gap-2" resetOnSuccess successMessage="Fragmento vinculado">
                     <div className="text-xs font-semibold uppercase text-gray-500">Attach to existing claim</div>
                     {claims.length ? (
                       <>
@@ -943,7 +948,7 @@ function SourceEvidencePanel({
                         No existing claims yet.
                       </div>
                     )}
-                  </form>
+                  </MutationForm>
                 </div>
               </article>
             );
@@ -984,7 +989,7 @@ function WhatChangedPanel({
         <h2 className="text-lg font-semibold text-gray-100">What Changed</h2>
         <span className="ml-auto text-sm text-gray-500">{changes.length}</span>
       </div>
-      <form action={createResearchThesisChange.bind(null, ticker)} className="mb-4 grid gap-3 xl:grid-cols-[1fr_150px_140px_96px_160px_auto]">
+      <MutationForm action={createResearchThesisChange.bind(null, ticker)} className="mb-4 grid gap-3 xl:grid-cols-[1fr_150px_140px_96px_160px_auto]" resetOnSuccess successMessage="Cambio registrado">
         <Input aria-label="Change summary" name="summary" placeholder="Thesis change" required />
         <Input aria-label="Change type" defaultValue="manual" name="change_type" />
         <select
@@ -1003,7 +1008,7 @@ function WhatChangedPanel({
           <Plus className="h-4 w-4" />
           Add
         </Button>
-      </form>
+      </MutationForm>
       <div className="grid gap-3">
         {changes.length ? (
           changes.slice(0, 8).map((change) => (
@@ -1187,9 +1192,9 @@ function ResearchIntelligencePanel({
         <div className="mb-4 flex items-center gap-2">
           <TriangleAlert className="h-5 w-5 text-amber-300" />
           <h2 className="text-lg font-semibold text-gray-100">Red team</h2>
-          <form action={runResearchRedTeam.bind(null, ticker)} className="ml-auto">
+          <MutationForm action={runResearchRedTeam.bind(null, ticker)} className="ml-auto" successMessage="Red team completado">
             <Button size="sm" type="submit" variant="outline">Run</Button>
-          </form>
+          </MutationForm>
         </div>
         {redTeam ? (
           <div className="space-y-3 text-sm">
@@ -1236,14 +1241,14 @@ function ResearchIntelligencePanel({
           <FileText className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Earnings workflow</h2>
         </div>
-        <form action={runResearchEarnings.bind(null, ticker)} className="grid gap-3 md:grid-cols-[110px_90px_1fr_auto]">
+        <MutationForm action={runResearchEarnings.bind(null, ticker)} className="grid gap-3 md:grid-cols-[110px_90px_1fr_auto]" successMessage="Revisión de resultados completada">
           <Input aria-label="Fiscal year" defaultValue={new Date().getUTCFullYear()} name="fiscal_year" type="number" />
           <select aria-label="Fiscal quarter" className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100" name="fiscal_quarter">
             {['Q1', 'Q2', 'Q3', 'Q4', 'FY'].map((quarter) => <option key={quarter} className="bg-[#111111]" value={quarter}>{quarter}</option>)}
           </select>
           <Input aria-label="Document IDs" name="document_ids" placeholder="Document IDs, comma-separated (optional)" />
           <Button type="submit" variant="outline">Analyze</Button>
-        </form>
+        </MutationForm>
         <p className="mt-3 text-xs text-gray-500">
           Extracted figures remain staged until reconciled against SEC, provider and company sources.
         </p>
@@ -1265,12 +1270,12 @@ function ResearchIntelligencePanel({
               <p className="mt-2 text-gray-300">{suggestion.statement}</p>
               <p className="mt-1 text-xs text-gray-500">{suggestion.rationale}</p>
               <div className="mt-3 flex gap-2">
-                <form action={actionResearchEvidenceSuggestion.bind(null, ticker, suggestion.id, 'accept', undefined)}>
+                <MutationForm action={actionResearchEvidenceSuggestion.bind(null, ticker, suggestion.id, 'accept', undefined)} successMessage="Sugerencia aceptada">
                   <Button size="sm" type="submit" variant="outline">Accept</Button>
-                </form>
-                <form action={actionResearchEvidenceSuggestion.bind(null, ticker, suggestion.id, 'reject', undefined)}>
+                </MutationForm>
+                <MutationForm action={actionResearchEvidenceSuggestion.bind(null, ticker, suggestion.id, 'reject', undefined)} successMessage="Sugerencia rechazada">
                   <Button size="sm" type="submit" variant="ghost">Reject</Button>
-                </form>
+                </MutationForm>
               </div>
             </div>
           ))}
@@ -1293,12 +1298,12 @@ function ResearchIntelligencePanel({
               </div>
               <p className="mt-2 text-gray-400">{alert.message}</p>
               <div className="mt-3 flex gap-2">
-                <form action={actionResearchAlert.bind(null, ticker, alert.id, 'acknowledge')}>
+                <MutationForm action={actionResearchAlert.bind(null, ticker, alert.id, 'acknowledge')} successMessage="Alerta reconocida">
                   <Button size="sm" type="submit" variant="outline">Acknowledge</Button>
-                </form>
-                <form action={actionResearchAlert.bind(null, ticker, alert.id, 'resolve')}>
+                </MutationForm>
+                <MutationForm action={actionResearchAlert.bind(null, ticker, alert.id, 'resolve')} successMessage="Alerta resuelta">
                   <Button size="sm" type="submit" variant="ghost">Resolve</Button>
-                </form>
+                </MutationForm>
               </div>
             </div>
           ))}
@@ -1312,6 +1317,7 @@ function ResearchIntelligencePanel({
 export default async function ResearchCompanyPage({ params, searchParams }: ResearchCompanyPageProps) {
   const { ticker } = await params;
   const { chat = '' } = await searchParams;
+  await ensureResearchCompany(ticker);
   const [{
     company,
     valuation,
@@ -1332,9 +1338,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
     evidenceSuggestions,
     redTeam,
     longTermModel,
-  }, thesisHistory] = await Promise.all([
+  }, thesisHistory, marketSnapshot] = await Promise.all([
     getResearchCompanyDetail(ticker),
     getThesisHistory(ticker),
+    getCompanyMarketSnapshot(ticker),
   ]);
 
   if (!company) notFound();
@@ -1395,21 +1402,24 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <form action={refreshCompanyFinancials.bind(null, company.ticker)}>
+          <MutationForm action={refreshCompanyFinancials.bind(null, company.ticker)} successMessage="Datos FMP actualizados">
             <Button type="submit" variant="outline">
               <RefreshCcw className="h-4 w-4" />
               Refresh FMP
             </Button>
-          </form>
-          <form action={refreshCompanyFinancialsSEC.bind(null, company.ticker)}>
+          </MutationForm>
+          <MutationForm action={refreshCompanyFinancialsSEC.bind(null, company.ticker)} successMessage="Datos SEC actualizados">
             <Button type="submit" variant="outline">
               <RefreshCcw className="h-4 w-4" />
               Refresh SEC
             </Button>
-          </form>
+          </MutationForm>
         </div>
       </header>
 
+      <CompanyWorkspaceTabs
+        market={<CompanyMarketPanel snapshot={marketSnapshot} />}
+        overview={<div className="flex flex-col gap-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Stat label="Precio actual" value={money(valuation.current_price)} />
         <Stat label="Expected value" value={money(valuation.expected_value)} />
@@ -1505,12 +1515,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
             <FileText className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Thesis</h2>
           </div>
-          <form action={generateResearchThesis.bind(null, company.ticker)}>
+          <MutationForm action={generateResearchThesis.bind(null, company.ticker)} successMessage="Nueva versión de tesis generada">
             <Button type="submit" variant="outline">
               <FileText className="h-4 w-4" />
               Generate Thesis
             </Button>
-          </form>
+          </MutationForm>
         </div>
         <ThesisPanel thesis={thesis} />
       </section>
@@ -1564,6 +1574,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
           </div>
         </section>
       )}
+        </div>}
+      />
     </main>
   );
 }

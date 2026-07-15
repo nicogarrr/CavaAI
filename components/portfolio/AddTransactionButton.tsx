@@ -17,6 +17,8 @@ import { Plus, Search, TrendingUp, Loader2 } from 'lucide-react';
 import { addTransaction } from '@/lib/actions/portfolio.actions';
 import { searchStocks } from '@/lib/actions/finnhub.actions';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/types/errors';
 
 type Props = {
   userId: string;
@@ -104,19 +106,16 @@ export default function AddTransactionButton({ userId }: Props) {
     e.preventDefault();
     setLoading(true);
 
-    const result = await addTransaction(
-      userId,
-      formData.symbol,
-      formData.type,
-      parseFloat(formData.quantity),
-      parseFloat(formData.price),
-      new Date(formData.date),
-      formData.notes || undefined
-    );
-
-    setLoading(false);
-
-    if (result.success) {
+    try {
+      await addTransaction(
+        userId,
+        formData.symbol,
+        formData.type,
+        parseFloat(formData.quantity),
+        parseFloat(formData.price),
+        new Date(formData.date),
+        formData.notes || undefined
+      );
       setOpen(false);
       setFormData({
         symbol: '',
@@ -128,9 +127,12 @@ export default function AddTransactionButton({ userId }: Props) {
         notes: '',
       });
       setSearchQuery('');
+      toast.success('Transacción registrada');
       router.refresh();
-    } else {
-      alert('Error al agregar la transacción');
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
 

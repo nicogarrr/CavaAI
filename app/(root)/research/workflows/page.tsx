@@ -1,9 +1,9 @@
 import { ArrowLeft, Clock, Layers, Play } from 'lucide-react';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getResearchDashboard, runResearchWorkflow } from '@/lib/actions/research.actions';
+import { MutationForm } from '@/components/forms/MutationForm';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -13,7 +13,6 @@ async function runWorkflow(formData: FormData) {
   const name = String(formData.get('workflow'));
   const ticker = String(formData.get('ticker') || '');
   await runResearchWorkflow(name, ticker || undefined);
-  redirect('/research/workflows');
 }
 
 export default async function ResearchWorkflowsPage() {
@@ -71,7 +70,7 @@ export default async function ResearchWorkflowsPage() {
                   ~{estimatedMin} min
                 </div>
                 {isGenerateThesis ? (
-                  <form action={runWorkflow} className="flex items-center gap-2">
+                  <MutationForm action={runWorkflow} className="flex items-center gap-2" successMessage="Workflow ejecutado">
                     <input name="workflow" type="hidden" value={workflow.name} />
                     {needsTicker && (
                       <Input
@@ -85,7 +84,7 @@ export default async function ResearchWorkflowsPage() {
                       <Play className="h-3.5 w-3.5" />
                       Run
                     </Button>
-                  </form>
+                  </MutationForm>
                 ) : (
                   <span className="text-xs text-gray-600">
                     POST /api/workflows/{workflow.name}/run

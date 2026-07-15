@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,47 @@ from app.services.review_alert_service import ReviewAlertService
 from app.services.notification_service import NotificationService
 
 router = APIRouter()
+
+
+class ManualAlertCreate(BaseModel):
+    ticker: str = Field(min_length=1, max_length=20)
+    alert_type: Literal["price_above", "price_below", "price_change", "news", "earnings"]
+    operator: Literal[">", "<", ">=", "<=", "=="]
+    value: float | str
+
+
+@router.post("", response_model=ResearchAlertOut, status_code=201)
+def create_alert(
+    payload: ManualAlertCreate, db: Session = Depends(get_db)
+) -> ResearchAlert:
+    company = db.scalar(
+        select(Company).where(Company.ticker == payload.ticker.upper())
+    )
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    alert = ReviewAlertService().emit_alert(
+        db,
+        company_id=company.id,
+        alert_type=payload.alert_type,
+        severity="medium",
+        title=f"{company.ticker}: {payload.alert_type.replace('_', ' ')}",
+        message=f"{company.ticker} {payload.operator} {payload.value}",
+        fingerprint_parts=[
+            "manual",
+            company.ticker,
+            payload.alert_type,
+            payload.operator,
+            str(payload.value),
+        ],
+        metadata={
+            "manual": True,
+            "ticker": company.ticker,
+            "condition": {"operator": payload.operator, "value": payload.value},
+        },
+    )
+    db.commit()
+    db.refresh(alert)
+    return alert
 
 
 @router.get("", response_model=list[ResearchAlertOut])

@@ -42,7 +42,7 @@ export function MarketMovers() {
         <div className="space-y-3">
             {items.slice(0, 5).map((stock) => (
                 <Link
-                    href={`/stocks/${stock.symbol}`}
+                    href={`/research/${stock.symbol}`}
                     key={stock.symbol}
                     className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors group"
                 >

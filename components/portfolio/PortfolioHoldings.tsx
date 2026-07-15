@@ -11,6 +11,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Trash2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/types/errors';
 
 type Props = {
   holdings: PortfolioHolding[];
@@ -32,14 +34,15 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
     if (!confirm(`¿Estás seguro de eliminar toda la posición en ${symbol}? Esto borrará todas las transacciones asociadas.`)) return;
 
     setDeleting(symbol);
-    const result = await deleteHolding(userId, symbol);
-
-    if (result.success) {
+    try {
+      await deleteHolding(userId, symbol);
+      toast.success(`Posición ${symbol} eliminada`);
       router.refresh();
-    } else {
-      alert('Error al eliminar la posición');
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setDeleting(null);
     }
-    setDeleting(null);
   };
 
   const handleRefresh = async () => {
@@ -47,8 +50,9 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
     try {
       const updated = await refreshPortfolioHoldings(currentHoldings);
       setCurrentHoldings(updated);
+      toast.success('Precios actualizados');
     } catch (error) {
-      console.error('Error refreshing prices:', error);
+      toast.error(getErrorMessage(error));
     } finally {
       setRefreshing(false);
     }
@@ -98,7 +102,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                     <TableRow key={holding.symbol} className="border-gray-700 hover:bg-gray-800/50">
                       <TableCell>
                         <Link
-                          href={`/stocks/${holding.symbol}`}
+                          href={`/research/${holding.symbol}`}
                           className="font-mono font-bold text-teal-400 hover:text-teal-300 transition-colors"
                         >
                           {holding.symbol}

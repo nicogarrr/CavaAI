@@ -18,6 +18,7 @@ from app.services.connectors.quartr import QuartrClient
 from app.services.document_ingestion_service import DocumentIngestionService
 from app.services.quartr_import_service import QuartrImportService
 from app.services.source_hierarchy_service import SOURCE_TIERS, classify_source
+from app.services.rag import RAGIndex
 
 router = APIRouter()
 
@@ -35,6 +36,16 @@ class UrlIngestRequest(BaseModel):
     title: str = Field(min_length=3, max_length=500)
     url: str = Field(min_length=8, max_length=2000)
     source_type: str = Field(default="url", min_length=2, max_length=80)
+
+
+@router.post("/documents/index/rebuild")
+def rebuild_document_index(db: Session = Depends(get_db)) -> dict:
+    try:
+        return RAGIndex().rebuild_tenant(db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Vector index rebuild failed: {exc}") from exc
 
 
 @router.get("/tiers")
