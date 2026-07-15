@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
@@ -8,6 +10,10 @@ from app.models import Company, FinancialFact
 from app.schemas import CalculatedMetricOut, CalculatedMetricsResponse, CompanyOut, FinancialFactOut, FinancialRefreshResponse
 from app.services.connectors.fmp import FMPClient
 from app.services.financial_ingestion_service import FinancialIngestionService
+from app.services.fundamental_review_service import (
+    DecisionJournalService,
+    ExpectationRealityService,
+)
 from app.services.metric_calculation_service import MetricCalculationService
 from app.services.moat_service import MoatService
 from app.services.long_term_model_service import LongTermModelService
@@ -26,6 +32,12 @@ class CompanyEnsureRequest(BaseModel):
     currency: str | None = Field(default=None, min_length=3, max_length=10)
     sector: str | None = Field(default=None, max_length=120)
     industry: str | None = Field(default=None, max_length=160)
+
+
+class DecisionJournalCreate(BaseModel):
+    decision: Literal["buy", "hold", "trim", "sell", "watch", "avoid"]
+    rationale: str = Field(min_length=5, max_length=5000)
+    what_must_be_true: list[str] = Field(default_factory=list, max_length=30)
 
 
 @router.post("/ensure", response_model=CompanyOut)
@@ -145,6 +157,85 @@ def long_term_model(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return LongTermModelService().build(db, company, horizon=horizon)
+
+
+@router.get("/{ticker}/decision-journal")
+def decision_journal(ticker: str, db: Session = Depends(get_db)) -> list[dict]:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return [_decision_payload(entry) for entry in DecisionJournalService().list(db, company)]
+
+
+@router.post("/{ticker}/decision-journal", status_code=201)
+def create_decision_journal_entry(
+    ticker: str,
+    payload: DecisionJournalCreate,
+    db: Session = Depends(get_db),
+) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    entry = DecisionJournalService().create(
+        db,
+        company,
+        decision=payload.decision,
+        rationale=payload.rationale,
+        what_must_be_true=[item.strip() for item in payload.what_must_be_true if item.strip()],
+    )
+    return _decision_payload(entry)
+
+
+@router.get("/{ticker}/expectation-reality")
+def expectation_reality(ticker: str, db: Session = Depends(get_db)) -> list[dict]:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return [_expectation_payload(item) for item in ExpectationRealityService().list(db, company)]
+
+
+@router.post("/{ticker}/expectation-reality/review")
+def review_expectation_reality(
+    ticker: str,
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return [_expectation_payload(item) for item in ExpectationRealityService().review(db, company)]
+
+
+def _decision_payload(entry) -> dict:
+    return {
+        "id": entry.id,
+        "thesis_version_id": entry.thesis_version_id,
+        "model_version_id": entry.model_version_id,
+        "decision_date": entry.decision_date,
+        "decision": entry.decision,
+        "rationale": entry.rationale,
+        "what_must_be_true": entry.what_must_be_true,
+        "price": entry.price,
+        "status": entry.status,
+        "metadata": entry.metadata_,
+    }
+
+
+def _expectation_payload(item) -> dict:
+    return {
+        "id": item.id,
+        "model_version_id": item.model_version_id,
+        "forecast_id": item.forecast_id,
+        "actual_fact_id": item.actual_fact_id,
+        "fiscal_year": item.fiscal_year,
+        "metric": item.metric,
+        "expected_value": item.expected_value,
+        "actual_value": item.actual_value,
+        "variance": item.variance,
+        "variance_percent": item.variance_percent,
+        "status": item.status,
+        "reviewed_at": item.reviewed_at,
+        "trace": item.trace,
+    }
 
 
 @router.get("/{ticker}/peers/comparison")

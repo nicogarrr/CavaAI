@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.services.source_auditor import SourceAuditor
 from app.services.source_hierarchy_service import classify_source
+from app.services.long_term_model_service import LongTermModelService
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import MODEL_VERSION
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
@@ -45,7 +46,13 @@ class ThesisService:
             .limit(1)
         )
 
-    def _input_fingerprint(self, db: Session, company: Company, valuation: dict) -> str:
+    def _input_fingerprint(
+        self,
+        db: Session,
+        company: Company,
+        valuation: dict,
+        long_term_model: dict,
+    ) -> str:
         documents = list(
             db.scalars(select(Document).where(Document.company_id == company.id).order_by(Document.id)).all()
         )
@@ -73,6 +80,13 @@ class ThesisService:
             "valuation_status": valuation.get("status"),
             "engine": (valuation.get("trace") or {}).get("engine"),
             "input_source": (valuation.get("trace") or {}).get("input_source"),
+            "fundamental_model_fingerprint": (
+                long_term_model.get("persistence") or {}
+            ).get("input_fingerprint"),
+            "fundamental_model_status": long_term_model.get("status"),
+            "missing_mandatory_drivers": long_term_model.get(
+                "missing_mandatory_drivers"
+            ),
         }
         raw = json.dumps(payload, sort_keys=True, default=str)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -82,8 +96,26 @@ class ThesisService:
         if not company:
             raise ValueError(f"Unknown ticker: {ticker}")
 
+        long_term_model = LongTermModelService().build(db, company, horizon=5)
         valuation = self.valuation_service.value_company(db, company)
-        fingerprint = self._input_fingerprint(db, company, valuation)
+        missing_drivers = long_term_model.get("missing_mandatory_drivers") or []
+        if missing_drivers:
+            valuation["publishable"] = False
+            valuation["missing_inputs"] = sorted(
+                set((valuation.get("missing_inputs") or []) + missing_drivers)
+            )
+        valuation.setdefault("trace", {})["fundamental_model"] = {
+            "model_version_id": (long_term_model.get("persistence") or {}).get(
+                "model_version_id"
+            ),
+            "version": (long_term_model.get("persistence") or {}).get("version"),
+            "framework": (long_term_model.get("framework") or {}).get("key"),
+            "status": long_term_model.get("status"),
+            "publishable": long_term_model.get("publishable"),
+            "missing_mandatory_drivers": missing_drivers,
+        }
+        valuation["long_term_model"] = long_term_model
+        fingerprint = self._input_fingerprint(db, company, valuation, long_term_model)
 
         existing = self.latest(db, ticker)
         if existing and not force_new_version:
@@ -118,7 +150,12 @@ class ThesisService:
 
         summary = self._executive_summary(company, valuation)
         thesis_markdown = self._render_markdown(
-            company, valuation, audit.as_dict(), facts, version=version
+            company,
+            valuation,
+            audit.as_dict(),
+            facts,
+            long_term_model=long_term_model,
+            version=version,
         )
 
         def _dec(value) -> Decimal:
@@ -429,6 +466,7 @@ class ThesisService:
         audit: dict,
         facts: dict[str, FinancialFact],
         *,
+        long_term_model: dict,
         version: int,
     ) -> str:
         reverse = valuation.get("reverse_dcf") or {}
@@ -439,6 +477,9 @@ class ThesisService:
             else "Reverse DCF unavailable (missing market price or valuation inputs)."
         )
         scenario_style = (valuation.get("trace") or {}).get("scenario_style", "n/a")
+        framework = long_term_model.get("framework") or {}
+        mandatory_missing = long_term_model.get("missing_mandatory_drivers") or []
+        market_opportunity = long_term_model.get("market_opportunity") or {}
 
         return f"""# {company.ticker} Thesis v{version}
 
@@ -452,6 +493,8 @@ The investable question is whether the evidence supports the assumptions behind 
 
 ## 3. Business Model
 Sector: {company.sector}. Industry: {company.industry}.
+Company-specific framework: `{framework.get("key", "unknown")}`. Primary question: {framework.get("primary_question", "unknown")}.
+Mandatory drivers missing: {", ".join(mandatory_missing) if mandatory_missing else "none"}.
 
 ## 4. Latest Results
 {self._facts_markdown(facts)}
@@ -482,6 +525,10 @@ Material news updates require source audit and human approval before thesis vers
 
 ## 13. Valuation
 {self._valuation_markdown(valuation)}
+
+### Long-Term Fundamental Modeling Engine
+Persisted model version: `{(long_term_model.get("persistence") or {}).get("version")}`.
+Model status: `{long_term_model.get("status")}`. Market-opportunity verdict: `{(market_opportunity.get("verdict") or {}).get("label", "unknown")}`.
 
 ## 14. Reverse DCF
 {reverse_line}

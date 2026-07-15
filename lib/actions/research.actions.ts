@@ -491,6 +491,23 @@ export type ResearchLongTermModel = {
   as_of_period: string | null;
   current_price: number | null;
   missing_inputs: string[];
+  missing_mandatory_drivers: string[];
+  driver_model: Array<{
+    key: string;
+    driver_type: 'revenue_driver' | 'kpi';
+    required: boolean;
+    status: 'sourced' | 'missing';
+    value: number | null;
+    unit: string;
+    confidence: number;
+    source_fact_ids: number[];
+  }>;
+  persistence: {
+    model_version_id: number | null;
+    version: number | null;
+    input_fingerprint: string | null;
+    status: string;
+  };
   historical_review: { years_covered: number; first_year: number | null; last_year: number | null; rows: Array<Record<string, unknown>> };
   current_snapshot: { period: string | null; fiscal_year: number | null; metrics: Record<string, { value: number | null; source_fact_ids: number[]; status: string }> };
   assumptions: Record<string, { value: number | null; unit: string; source_type: string; basis: string; source_fact_ids: number[]; confidence: number }>;
@@ -526,6 +543,34 @@ export type ResearchLongTermModel = {
   what_must_be_true: Array<{ id: string; condition: string; value: number | null; unit: string; source_fact_ids: number[]; status: string; comparison?: number | null }>;
   source_coverage: { coverage_percent: number; sourced_values: number; numeric_values: number; rule: string };
   limitations: string[];
+};
+
+export type ResearchDecisionJournalEntry = {
+  id: number;
+  thesis_version_id: number | null;
+  model_version_id: number | null;
+  decision_date: string;
+  decision: string;
+  rationale: string;
+  what_must_be_true: string[];
+  price: number | null;
+  status: string;
+  metadata: Record<string, unknown>;
+};
+
+export type ResearchExpectationReview = {
+  id: number;
+  model_version_id: number;
+  forecast_id: number;
+  actual_fact_id: number | null;
+  fiscal_year: number;
+  metric: string;
+  expected_value: number;
+  actual_value: number | null;
+  variance: number | null;
+  variance_percent: number | null;
+  status: string;
+  reviewed_at: string | null;
 };
 
 async function researchRequestHeaders(): Promise<Record<string, string>> {
@@ -679,6 +724,8 @@ export async function getResearchCompanyDetail(ticker: string) {
     evidenceSuggestions,
     redTeam,
     longTermModel,
+    decisionJournal,
+    expectationReviews,
   ] = await Promise.all([
     getJson<ResearchCompany | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}`, null),
     getJson<ResearchValuation>(`/api/valuation/${encodeURIComponent(normalizedTicker)}`, emptyValuation),
@@ -699,6 +746,8 @@ export async function getResearchCompanyDetail(ticker: string) {
     getJson<ResearchEvidenceSuggestion[]>(`/api/sources/evidence-suggestions?ticker=${encodeURIComponent(normalizedTicker)}&status=pending`, []),
     getJson<ResearchRedTeam | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/red-team/latest`, null),
     getJson<ResearchLongTermModel | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/long-term-model?horizon=5`, null),
+    getJson<ResearchDecisionJournalEntry[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/decision-journal`, []),
+    getJson<ResearchExpectationReview[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/expectation-reality`, []),
   ]);
 
   return {
@@ -721,7 +770,40 @@ export async function getResearchCompanyDetail(ticker: string) {
     evidenceSuggestions,
     redTeam,
     longTermModel,
+    decisionJournal,
+    expectationReviews,
   };
+}
+
+export async function createResearchDecision(ticker: string, formData: FormData) {
+  const normalizedTicker = ticker.toUpperCase();
+  const decision = String(formData.get('decision') ?? '').trim();
+  const rationale = String(formData.get('rationale') ?? '').trim();
+  const whatMustBeTrue = String(formData.get('what_must_be_true') ?? '')
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!['buy', 'hold', 'trim', 'sell', 'watch', 'avoid'].includes(decision)) {
+    throw new ValidationError('Selecciona una decisión válida', 'decision');
+  }
+  if (rationale.length < 5) {
+    throw new ValidationError('Explica la decisión con al menos 5 caracteres', 'rationale');
+  }
+  await postJson(
+    `/api/companies/${encodeURIComponent(normalizedTicker)}/decision-journal`,
+    null,
+    { decision, rationale, what_must_be_true: whatMustBeTrue },
+  );
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
+export async function reviewResearchExpectations(ticker: string) {
+  const normalizedTicker = ticker.toUpperCase();
+  await postJson(
+    `/api/companies/${encodeURIComponent(normalizedTicker)}/expectation-reality/review`,
+    [],
+  );
+  revalidatePath(`/research/${normalizedTicker}`);
 }
 
 export async function refreshCompanyFinancials(ticker: string) {
