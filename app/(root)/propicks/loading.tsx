@@ -1,5 +1,4 @@
 import { Skeleton } from "@/components/ui/skeleton"
-import { Sparkles, TrendingUp } from "lucide-react"
 import { Card } from "@/components/ui/card"
 
 export default function Loading() {

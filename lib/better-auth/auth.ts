@@ -3,7 +3,7 @@ import {mongodbAdapter} from "better-auth/adapters/mongodb";
 import {connectToDatabase} from "@/database/mongoose";
 import {nextCookies} from "better-auth/next-js";
 import {env} from "@/lib/env";
-import {DatabaseError, toAppError, getErrorMessage} from "@/lib/types/errors";
+import {DatabaseError, toAppError} from "@/lib/types/errors";
 
 
 const authOptions = {

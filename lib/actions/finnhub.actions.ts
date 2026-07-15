@@ -618,8 +618,7 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) {
-            // If no token, log and return empty to avoid throwing per requirements
-            console.error('Error in stock search:', new Error('FINNHUB API key is not configured'));
+            // Finnhub is optional; the search command renders an explicit empty state.
             return [];
         }
 

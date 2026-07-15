@@ -160,25 +160,16 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - Dedicated fact-driven bank, insurer and REIT valuation engines.
 - One company snapshot endpoint consumed through a generated OpenAPI TypeScript client.
 
-### Remaining Work To Feel Complete
+### Post-v1 expansion
 
-- Build a first-class company workspace UI around risks and red-team work instead of keeping those features as backend-only APIs.
-- Add LLM synthesis on top of source-aware chat context while preserving the current evidence contract.
-- Add automatic LLM-assisted evidence extraction suggestions from document/chunk text.
-- Promote Docling from optional parser to primary production parser after validating install size, OCR/table accuracy and deployment footprint.
-- Expand traceable metrics to CFROI, ROCE, incremental ROIC, share-count CAGR and WACC sourced from market assumptions.
-- Implement "What changed" from new filings/news/earnings into `thesis_changes`, not only manual thesis history.
-- Expand automated contradiction checks from current claim/news/earnings triggers to every newly ingested source.
-- Pay down legacy frontend warnings currently tolerated by ESLint.
-- Expand authenticated browser coverage from the public/auth shell to `/research/[ticker]`, source import, thesis generation and memory capture in a containerized test stack.
-- Replace remaining demo/dev fallbacks with explicit production onboarding and empty states.
+- Add optional LLM prose synthesis on top of the deterministic source-aware chat contract; generated text must remain clearly separated from facts and calculations.
+- Promote Docling from optional parser only after validating deployment size, OCR quality and table accuracy.
+- Expand traceable metrics to CFROI, ROCE, incremental ROIC and externally sourced WACC inputs.
+- Extend automatic filing contradictions beyond the current claim, news and earnings triggers.
+- Expand browser coverage to authenticated mutations in a disposable containerized stack.
+- Continue typing legacy market-data adapters; the canonical Research workspace and generated OpenAPI client are already strict.
 
-### P2
-
-- Advanced company-specific valuation models
-- Automatic evaluation
-- Portfolio factor intelligence
-- Scenario calibration
+These are additive capabilities, not alternate persistence paths or prerequisites for the core Research OS workflow.
 
 ## Success Criterion
 

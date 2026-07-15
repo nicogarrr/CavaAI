@@ -420,7 +420,7 @@ class ChatService:
                 f"CALCULATION\n{calculations_text}\n\n"
                 f"USER ASSUMPTION / MEMORY\n{assumptions_text}\n\n"
                 f"UNVERIFIED CLAIM\n{unverified_text}\n\n"
-                f"LLM INFERENCE\n{thesis_text} Based on the retrieved evidence, the safest next step is to review "
+                f"INFERENCE\n{thesis_text} Based on the retrieved evidence, the safest next step is to review "
                 f"claims and primary sources before changing the thesis.\n\n"
                 f"EVIDENCE SNAPSHOT\n{evidence_text}\n\n"
                 f"NEWS / WHAT CHANGED\n{news_text}\n\n"
@@ -540,7 +540,7 @@ class ChatService:
             "USER ASSUMPTION / MEMORY\n"
             f"{chr(10).join(f'- {_short(item.content, 180)}' for item in portfolio_memories[:5]) or '- No relevant portfolio memory retrieved.'}\n\n"
             "UNVERIFIED CLAIM\n- Ask about a specific ticker to check company claims and evidence.\n\n"
-            "LLM INFERENCE\n- For source-aware answers, provide a ticker or ingest portfolio-level evidence first."
+            "INFERENCE\n- For source-aware answers, provide a ticker or ingest portfolio-level evidence first."
         )
         return ChatResponse(
             answer=answer,

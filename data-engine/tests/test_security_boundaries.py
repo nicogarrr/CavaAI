@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import delete, select
 
 import main
@@ -77,6 +78,26 @@ def test_research_auth_settings_are_real_and_private_by_default(monkeypatch):
     )
     assert configured.research_auth_secret == SECRET
     assert configured.research_auth_max_age_seconds == 120
+
+
+def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
+    with pytest.raises(ValidationError, match="RESEARCH_AUTH_SECRET"):
+        Settings(_env_file=None, app_env="production")
+
+    with pytest.raises(ValidationError, match="MINIO_SECRET_KEY"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            research_auth_secret=SECRET,
+        )
+
+    configured = Settings(
+        _env_file=None,
+        app_env="production",
+        research_auth_secret=SECRET,
+        minio_secret_key="production-minio-secret-not-a-default",
+    )
+    assert configured.document_storage_backend == "minio"
 
 
 def test_private_routers_reject_missing_and_invalid_signed_identity(required_auth):

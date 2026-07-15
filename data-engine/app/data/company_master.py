@@ -360,13 +360,3 @@ COMPANY_MASTER = [
         "factor_tags": ["defense", "robotics", "small_cap"],
     },
 ]
-
-
-DEMO_POSITIONS = [
-    {"ticker": "ASTS", "quantity": 920, "average_cost": 11.2, "market_price": 33.4},
-    {"ticker": "BABA", "quantity": 115, "average_cost": 79.5, "market_price": 104.2},
-    {"ticker": "ADBE", "quantity": 18, "average_cost": 485.0, "market_price": 371.6},
-    {"ticker": "RKLB", "quantity": 540, "average_cost": 6.7, "market_price": 12.1},
-    {"ticker": "MSFT", "quantity": 22, "average_cost": 335.0, "market_price": 488.0},
-]
-

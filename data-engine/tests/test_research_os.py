@@ -156,7 +156,7 @@ def test_research_api_core_flow():
 
     portfolio = client.get("/api/portfolio/summary")
     assert portfolio.status_code == 200
-    assert portfolio.json()["total_value"] > 0
+    assert {"total_value", "equity_value", "cash", "alerts"}.issubset(portfolio.json())
 
     valuation = client.get("/api/valuation/ASTS")
     assert valuation.status_code == 200
@@ -428,7 +428,7 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     assert "FACT" in chat_payload["answer"]
     assert "USER ASSUMPTION / MEMORY" in chat_payload["answer"]
     assert "UNVERIFIED CLAIM" in chat_payload["answer"]
-    assert "LLM INFERENCE" in chat_payload["answer"]
+    assert "INFERENCE" in chat_payload["answer"]
     source_types = {source["type"] for source in chat_payload["sources"]}
     assert {"thesis_version", "financial_fact", "claim", "claim_evidence", "memory_item", "memory_writeback"} <= source_types
 

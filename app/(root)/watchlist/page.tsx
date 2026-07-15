@@ -1,7 +1,7 @@
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getStockFinancialData } from '@/lib/actions/finnhub.actions';
 import { getValuationData } from '@/lib/actions/fmp.actions';
-import { Eye, TrendingUp, TrendingDown, ArrowRight, Trash2, AlertCircle } from 'lucide-react';
+import { Eye, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import WatchlistRemoveButton from '@/components/watchlist/WatchlistRemoveButton';
 import { Badge } from '@/components/ui/badge';
@@ -117,7 +117,7 @@ export default async function WatchlistPage() {
                         <Eye className="h-16 w-16 text-gray-600 mb-4" />
                         <h2 className="text-xl font-semibold text-gray-300 mb-2">Tu Watchlist está vacía</h2>
                         <p className="text-gray-500 mb-6 max-w-md">
-                            Busca acciones y haz click en "Añadir a Watchlist" para monitorizarlas aquí.
+                            Busca acciones y haz click en &ldquo;Añadir a Watchlist&rdquo; para monitorizarlas aquí.
                         </p>
                         <Link href="/" className="text-teal-400 hover:text-teal-300">
                             ← Ir a buscar acciones

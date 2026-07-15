@@ -55,7 +55,7 @@ Research engine:
 - Versioned Long-Term Fundamental Modeling Engine with company-specific drivers, mandatory facts, scenarios, forecasts and source traces
 - Dedicated valuation engines for standard DCF, SOTP, pre-revenue/speculative, holding-company, commodity, bank, insurer and REIT models
 - Decision Journal and Expectation vs Reality linked to persisted thesis/model versions
-- Knowledge/document upload path
+- Source/document ingestion path
 - Portfolio analytics and risk endpoints
 - News impact, deterministic ProPicks and provider-agnostic AI-assisted research flows
 
@@ -82,6 +82,7 @@ Backend only:
 cd data-engine
 pip install -r requirements.txt
 pip install -e .[test]
+python -m alembic upgrade head
 uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -93,7 +94,7 @@ Minimum local `.env`:
 
 ```env
 NODE_ENV=development
-MONGODB_URI=mongodb://root:example@localhost:27017/jlcavaai?authSource=admin
+MONGODB_URI=mongodb://root:example@localhost:27017/cavaai?authSource=admin
 NEXT_PUBLIC_SUPPORT_EMAIL=support@cavaai.app
 BETTER_AUTH_SECRET=replace_with_a_32_char_minimum_secret
 BETTER_AUTH_URL=http://localhost:3000
@@ -175,7 +176,7 @@ The research engine uses one provider abstraction for OpenRouter, OpenAI-compati
 
 - Do not expose database ports publicly outside local development.
 - Do not use placeholder secrets in shared or production environments.
-- Run Alembic migrations and seed jobs explicitly in production instead of relying on app startup side effects.
+- Run Alembic migrations explicitly in production. The optional seed command installs only the global company taxonomy; it never creates portfolio positions, cash or evidence.
 - Keep source lineage for every important financial fact, claim, calculation and thesis update.
 - Research APIs require signed tenant/user identity, and tenant-owned rows, workers, chunks and vector operations are scoped to that identity.
 - Raw source originals are canonical in MinIO in production; PostgreSQL stores metadata/chunks and Qdrant is a rebuildable semantic index.
