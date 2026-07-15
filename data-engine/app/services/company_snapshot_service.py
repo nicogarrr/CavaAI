@@ -40,7 +40,6 @@ from app.services.peer_analysis_service import PeerAnalysisService
 from app.services.peer_comparison_service import PeerComparisonService
 from app.services.red_team_service import RedTeamService
 from app.services.thesis_graph_service import ThesisGraphService
-from app.services.thesis_service import ThesisService
 from app.services.valuation_service import ValuationService
 
 
@@ -74,7 +73,15 @@ class CompanySnapshotService:
         )
         metrics = MetricCalculationService().calculate_all(db, company, persist=True)
         long_term = LongTermModelService().build(db, company, horizon=horizon)
-        thesis = ThesisService().latest(db, company.ticker)
+        thesis_history = list(
+            db.scalars(
+                select(ThesisVersion)
+                .where(ThesisVersion.company_id == company.id)
+                .order_by(desc(ThesisVersion.version))
+                .limit(50)
+            ).all()
+        )
+        thesis = thesis_history[0] if thesis_history else None
 
         claims = list(
             db.scalars(
@@ -175,6 +182,7 @@ class CompanySnapshotService:
             "peerAnalysis": PeerAnalysisService().analyze(db, company, limit=8),
             "moat": MoatService().assess(db, company, persist=True),
             "thesis": _dump(ThesisOut, thesis) if thesis else None,
+            "thesisHistory": [_dump(ThesisOut, version) for version in thesis_history],
             "claims": [_dump(ClaimOut, claim) for claim in claims],
             "thesisSections": [_dump(ThesisSectionOut, section) for section in thesis_sections],
             "thesisChanges": [_dump(ThesisChangeOut, change) for change in thesis_changes],
