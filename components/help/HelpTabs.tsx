@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 const faqs = [
   {
-    question: "¿JLCavaAI es realmente gratuito?",
+    question: "¿CavaAI es realmente gratuito?",
     answer: "Sí, las funcionalidades principales son gratuitas. Creemos que las herramientas financieras deben ser accesibles para todos."
   },
   {
@@ -124,7 +124,7 @@ export default function HelpTabs() {
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-gray-100 mb-4">Documentación</h2>
             <p className="text-xl text-gray-200 mb-4">
-              Guía completa para usar JLCavaAI
+              Guía completa para usar CavaAI
             </p>
           </div>
 

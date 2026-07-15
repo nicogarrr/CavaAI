@@ -23,7 +23,8 @@ Frontend:
 
 App data and auth:
 - Better Auth
-- MongoDB and Mongoose
+- MongoDB only for Better Auth and the legacy watchlist boundary
+- PostgreSQL as the canonical store for portfolios, alerts, companies, facts, theses, evidence, models, journals and document metadata
 - Finnhub, FMP, Twelve Data, Alpha Vantage and other optional market data providers
 
 Research engine:
@@ -40,6 +41,7 @@ Research engine:
 - Email/password auth
 - Portfolio and watchlist
 - Company pages and market widgets
+- One canonical `/research/[ticker]` company workspace backed by a coherent snapshot contract
 - Research OS backend with companies, financial facts, thesis versions, source audits and valuation engines
 - Persistent claims, claim evidence, thesis sections, research sessions and company memory
 - Source-aware company chat with memory retrieval, user-directed memory write-back and typed source provenance
@@ -50,10 +52,12 @@ Research engine:
 - Document ingestion for TXT/MD/HTML/PDF/DOCX/XLSX/CSV/TSV with checksum, raw storage, chunk metadata and duplicate detection
 - Traceable calculated metrics with formula, source fact ids, numerator/denominator, calculation trace, confidence and unavailable states
 - Peer comparison from same-industry/sector companies using traceable calculated metrics and peer median/average benchmarks
-- Valuation engines for standard DCF, SOTP, pre-revenue/speculative, holding-company and commodity models
+- Versioned Long-Term Fundamental Modeling Engine with company-specific drivers, mandatory facts, scenarios, forecasts and source traces
+- Dedicated valuation engines for standard DCF, SOTP, pre-revenue/speculative, holding-company, commodity, bank, insurer and REIT models
+- Decision Journal and Expectation vs Reality linked to persisted thesis/model versions
 - Knowledge/document upload path
 - Portfolio analytics and risk endpoints
-- News, ProPicks and AI-assisted analysis flows
+- News impact, deterministic ProPicks and provider-agnostic AI-assisted research flows
 
 ## Quick Start
 
@@ -117,6 +121,7 @@ QUARTR_API_KEY=
 AI:
 
 ```env
+LLM_PROVIDER=auto
 GEMINI_API_KEY=
 GOOGLE_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash
@@ -159,17 +164,11 @@ cd data-engine
 python -m pytest
 ```
 
-`npm run lint` is configured as a gate for errors. Existing legacy typing and React Compiler cleanup are currently warnings and should be paid down incrementally.
+`npm run lint` is configured as a gate for errors. React Compiler and legacy typing warnings are tracked as quality debt and must not grow.
 
 ## AI Provider Guidance
 
-For now, use Gemini directly for the app because the code already integrates Google's API and Gemini has very low-cost tiers for extraction/classification. Keep model selection task-based:
-
-- Cheap extraction/classification: `GEMINI_CHEAP_MODEL`
-- Normal app analysis/chat: `GEMINI_MODEL`
-- Deep research/red-team: `GEMINI_DEEP_MODEL`
-
-OpenRouter is useful once provider abstraction is added because it gives routing/fallback across many models with pay-as-you-go credits. Muse Spark should not be the primary integration target yet: Meta has announced Muse Spark developer availability, but public API pricing/provider coverage is still not mature enough to build the app around it.
+The research engine uses one provider abstraction for OpenRouter, OpenAI-compatible endpoints, Anthropic and Gemini. `LLM_PROVIDER=auto` selects the first enabled provider with a configured key; task-level model overrides keep extraction, synthesis and red-team workloads independent. Provider output never replaces the evidence contract or creates missing financial facts.
 
 ## Production Notes
 
@@ -177,7 +176,9 @@ OpenRouter is useful once provider abstraction is added because it gives routing
 - Do not use placeholder secrets in shared or production environments.
 - Run Alembic migrations and seed jobs explicitly in production instead of relying on app startup side effects.
 - Keep source lineage for every important financial fact, claim, calculation and thesis update.
-- The current `/api/memory`, `/api/chat` and `/api/sources/documents/ingest-*` surfaces are ready for product integration and have tests. Production still needs auth/tenant scoping, automatic evidence extraction suggestions and LLM synthesis over the source-aware context before it should be considered finished.
+- Research APIs require signed tenant/user identity, and tenant-owned rows, workers, chunks and vector operations are scoped to that identity.
+- Raw source originals are canonical in MinIO in production; PostgreSQL stores metadata/chunks and Qdrant is a rebuildable semantic index.
+- Alembic revisions are explicit and immutable; do not import mutable application metadata from a migration.
 
 ## License
 

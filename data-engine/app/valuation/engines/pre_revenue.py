@@ -120,7 +120,17 @@ class PreRevenueScenarioEngine(ValuationEngine):
         if funding.dilution:
             dilution_pct = float(funding.dilution.get("dilution_pct") or 0.0)
 
-        scenarios = speculative_causal_scenarios(growth, margin, wacc, terminal, dilution_pct)
+        evidence_confidence = sum(float(fact.confidence) for fact in snapshot.facts.values()) / len(
+            snapshot.facts
+        )
+        scenarios = speculative_causal_scenarios(
+            growth,
+            margin,
+            wacc,
+            terminal,
+            dilution_pct,
+            evidence_confidence,
+        )
         scenario_results = {}
         for scenario in scenarios:
             dcf = run_dcf(
@@ -221,6 +231,8 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "model_version": MODEL_VERSION,
                 "growth_source": growth_source,
                 "scenario_style": "causal_speculative",
+                "probability_method": "source_confidence_plus_growth_and_funding_risk",
+                "evidence_confidence": evidence_confidence,
                 "fact_ids": snapshot.fact_ids(),
                 "periods": snapshot.periods(),
                 "snapshot": {

@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Términos de Servicio - JLCavaAI',
+  title: 'Términos de Servicio - CavaAI',
   description: 'Términos de servicio justos - construidos sobre confianza y transparencia',
 };
 
@@ -40,11 +40,11 @@ export default function TermsPage() {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold text-gray-100 mb-4">🎯 Lo Básico</h2>
           <p className="text-gray-200 mb-4">
-            Al usar JLCavaAI, esto es lo que esperamos:
+            Al usar CavaAI, esto es lo que esperamos:
           </p>
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
             <ul className="text-gray-200 space-y-3">
-              <li>💙 <strong>Uso Respetuoso:</strong> Usa JLCavaAI para aprender y crecer</li>
+              <li>💙 <strong>Uso Respetuoso:</strong> Usa CavaAI para aprender y crecer</li>
               <li>🎓 <strong>Enfoque Educativo:</strong> Perfecto para estudiantes y aprendizaje</li>
               <li>🔓 <strong>Uso Personal:</strong> Diseñado para uso personal y educativo</li>
             </ul>
@@ -57,7 +57,7 @@ export default function TermsPage() {
             <p className="text-yellow-200 font-medium mb-2">Importante:</p>
             <div className="text-gray-200 space-y-3">
               <p>
-                <strong>JLCavaAI es una herramienta educativa y de análisis, no asesoramiento de inversión.</strong>
+                <strong>CavaAI es una herramienta educativa y de análisis, no asesoramiento de inversión.</strong>
                 Proporcionamos datos y herramientas para ayudarte a tomar decisiones informadas, pero las decisiones son tuyas.
               </p>
               <p>
@@ -110,7 +110,7 @@ export default function TermsPage() {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold text-gray-100 mb-4">🔧 Disponibilidad del Servicio</h2>
           <p className="text-gray-200 mb-4">
-            Estamos comprometidos a mantener JLCavaAI funcionando:
+            Estamos comprometidos a mantener CavaAI funcionando:
           </p>
           <ul className="text-gray-200 space-y-2 ml-6">
             <li>• Apuntamos a alta disponibilidad, pero pueden ocurrir interrupciones</li>
@@ -148,7 +148,7 @@ export default function TermsPage() {
         </section>
 
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center">
-          <h3 className="text-xl font-semibold text-gray-100 mb-3">Gracias por usar JLCavaAI</h3>
+          <h3 className="text-xl font-semibold text-gray-100 mb-3">Gracias por usar CavaAI</h3>
           <p className="text-gray-200 mb-2">
             Construimos herramientas que empoderan a las personas y crean conocimiento accesible para todos.
           </p>
