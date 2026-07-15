@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { AppError, ExternalAPIError, ValidationError } from '@/lib/types/errors';
+import { createResearchOpenApiClient } from '@/lib/research/openapi-client';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -684,8 +685,32 @@ export async function ensureResearchCompany(ticker: string, name?: string) {
   });
 }
 
-export async function getResearchCompanyDetail(ticker: string) {
-  const normalizedTicker = ticker.toUpperCase();
+export type ResearchCompanyDetail = {
+  company: ResearchCompany | null;
+  valuation: ResearchValuation;
+  facts: ResearchFact[];
+  calculatedMetrics: ResearchCalculatedMetric[];
+  peerComparison: ResearchPeerComparison | null;
+  peerAnalysis: ResearchPeerAnalysis | null;
+  moat: ResearchMoat | null;
+  thesis: ResearchThesis | null;
+  claims: ResearchClaim[];
+  thesisSections: ResearchThesisSection[];
+  thesisChanges: ResearchThesisChange[];
+  thesisGraph: ResearchThesisGraph | null;
+  reviews: ResearchReview[];
+  alerts: ResearchAlert[];
+  memoryItems: ResearchMemoryItem[];
+  sourceDocuments: ResearchSourceDocument[];
+  evidenceSuggestions: ResearchEvidenceSuggestion[];
+  redTeam: ResearchRedTeam | null;
+  longTermModel: ResearchLongTermModel | null;
+  decisionJournal: ResearchDecisionJournalEntry[];
+  expectationReviews: ResearchExpectationReview[];
+};
+
+export async function getResearchCompanyDetail(ticker: string): Promise<ResearchCompanyDetail> {
+  const normalizedTicker = ticker.trim().toUpperCase();
   const emptyValuation: ResearchValuation = {
     ticker: normalizedTicker,
     model_type: 'unknown',
@@ -703,76 +728,44 @@ export async function getResearchCompanyDetail(ticker: string) {
     moat: {},
     trace: { input_source: 'insufficient_data' },
   };
-
-  const [
-    company,
-    valuation,
-    facts,
-    calculatedMetricsPayload,
-    peerComparison,
-    peerAnalysis,
-    moat,
-    thesis,
-    claims,
-    thesisSections,
-    thesisChanges,
-    thesisGraph,
-    reviews,
-    alerts,
-    memoryItems,
-    sourceDocuments,
-    evidenceSuggestions,
-    redTeam,
-    longTermModel,
-    decisionJournal,
-    expectationReviews,
-  ] = await Promise.all([
-    getJson<ResearchCompany | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}`, null),
-    getJson<ResearchValuation>(`/api/valuation/${encodeURIComponent(normalizedTicker)}`, emptyValuation),
-    getJson<ResearchFact[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/facts?limit=80`, []),
-    getJson<{ metrics: ResearchCalculatedMetric[] }>(`/api/companies/${encodeURIComponent(normalizedTicker)}/metrics/calculated`, { metrics: [] }),
-    getJson<ResearchPeerComparison | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/peers/comparison`, null),
-    getJson<ResearchPeerAnalysis | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/peers/analysis`, null),
-    getJson<ResearchMoat | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/moat`, null),
-    getJson<ResearchThesis | null>(`/api/thesis/${encodeURIComponent(normalizedTicker)}/latest`, null),
-    getJson<ResearchClaim[]>(`/api/memory/claims?ticker=${encodeURIComponent(normalizedTicker)}&limit=20`, []),
-    getJson<ResearchThesisSection[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/sections`, []),
-    getJson<ResearchThesisChange[]>(`/api/memory/thesis/${encodeURIComponent(normalizedTicker)}/changes`, []),
-    getJson<ResearchThesisGraph | null>(`/api/thesis/${encodeURIComponent(normalizedTicker)}/graph`, null),
-    getJson<ResearchReview[]>(`/api/reviews?ticker=${encodeURIComponent(normalizedTicker)}&status=open`, []),
-    getJson<ResearchAlert[]>(`/api/alerts?ticker=${encodeURIComponent(normalizedTicker)}`, []),
-    getJson<ResearchMemoryItem[]>(`/api/memory/memory-items?ticker=${encodeURIComponent(normalizedTicker)}&scope=company&limit=20`, []),
-    getJson<ResearchSourceDocument[]>(`/api/sources/documents?ticker=${encodeURIComponent(normalizedTicker)}&include_chunks=true&chunk_text_limit=1800`, []),
-    getJson<ResearchEvidenceSuggestion[]>(`/api/sources/evidence-suggestions?ticker=${encodeURIComponent(normalizedTicker)}&status=pending`, []),
-    getJson<ResearchRedTeam | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/red-team/latest`, null),
-    getJson<ResearchLongTermModel | null>(`/api/companies/${encodeURIComponent(normalizedTicker)}/long-term-model?horizon=5`, null),
-    getJson<ResearchDecisionJournalEntry[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/decision-journal`, []),
-    getJson<ResearchExpectationReview[]>(`/api/companies/${encodeURIComponent(normalizedTicker)}/expectation-reality`, []),
-  ]);
-
-  return {
-    company,
-    valuation,
-    facts,
-    calculatedMetrics: calculatedMetricsPayload.metrics,
-    peerComparison,
-    peerAnalysis,
-    moat,
-    thesis,
-    claims,
-    thesisSections,
-    thesisChanges,
-    thesisGraph,
-    reviews,
-    alerts,
-    memoryItems,
-    sourceDocuments,
-    evidenceSuggestions,
-    redTeam,
-    longTermModel,
-    decisionJournal,
-    expectationReviews,
+  const fallback: ResearchCompanyDetail = {
+      company: null,
+      valuation: emptyValuation,
+      facts: [],
+      calculatedMetrics: [],
+      peerComparison: null,
+      peerAnalysis: null,
+      moat: null,
+      thesis: null,
+      claims: [],
+      thesisSections: [],
+      thesisChanges: [],
+      thesisGraph: null,
+      reviews: [],
+      alerts: [],
+      memoryItems: [],
+      sourceDocuments: [],
+      evidenceSuggestions: [],
+      redTeam: null,
+      longTermModel: null,
+      decisionJournal: [],
+      expectationReviews: [],
   };
+  const client = createResearchOpenApiClient();
+  const { data, error, response } = await client.GET('/api/companies/{ticker}/snapshot', {
+    params: {
+      path: { ticker: normalizedTicker },
+      query: { horizon: 5 },
+    },
+  });
+  if (response.status === 404) return fallback;
+  if (error || !data) {
+    const detail = typeof error === 'object' && error && 'detail' in error
+      ? String(error.detail)
+      : `Research snapshot failed with status ${response.status}`;
+    throw new AppError(detail, 'RESEARCH_SNAPSHOT_ERROR', response.status);
+  }
+  return data as unknown as ResearchCompanyDetail;
 }
 
 export async function createResearchDecision(ticker: string, formData: FormData) {

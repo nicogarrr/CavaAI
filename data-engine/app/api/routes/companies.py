@@ -21,6 +21,7 @@ from app.services.peer_analysis_service import PeerAnalysisService
 from app.services.peer_comparison_service import DEFAULT_PEER_METRICS, PeerComparisonService
 from app.services.red_team_service import RedTeamService
 from app.services.wacc_input_service import WaccInputService
+from app.services.company_snapshot_service import CompanySnapshotService
 
 router = APIRouter()
 
@@ -157,6 +158,18 @@ def long_term_model(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return LongTermModelService().build(db, company, horizon=horizon)
+
+
+@router.get("/{ticker}/snapshot")
+def company_snapshot(
+    ticker: str,
+    horizon: int = Query(default=5, ge=5, le=10),
+    db: Session = Depends(get_db),
+) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return CompanySnapshotService().build(db, company, horizon=horizon)
 
 
 @router.get("/{ticker}/decision-journal")
