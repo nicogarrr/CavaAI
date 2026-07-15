@@ -60,6 +60,11 @@ class DocumentStore:
         content_type: str = "application/octet-stream",
     ) -> str:
         """Persist an immutable original; production uses MinIO as canonical storage."""
+        if (
+            self.settings.app_env.lower() in {"production", "prod"}
+            and self.settings.document_storage_backend != "minio"
+        ):
+            raise RuntimeError("Production document originals must use MinIO")
         if self.settings.app_env == "test" or self.settings.document_storage_backend == "local":
             return self.put_bytes_local(ticker, category, filename, content, tenant_id)
         if tenant_id is None:

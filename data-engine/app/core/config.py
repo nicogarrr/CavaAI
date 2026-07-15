@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = "local"
-    app_name: str = "Portfolio Research OS"
+    app_name: str = "CavaAI Research Engine"
     api_prefix: str = "/api"
 
     # Research OS is private by default. Tests that intentionally exercise the
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     fmp_api_key: str | None = None
     ibkr_flex_token: str | None = None
     ibkr_flex_query_id: str | None = None
-    sec_user_agent: str = "PortfolioResearchOS/0.1 contact@example.com"
+    sec_user_agent: str = "CavaAI/0.1 contact@example.com"
     fred_api_key: str | None = None
     quartr_api_key: str | None = None
     quartr_api_base_url: str = "https://api.quartr.com"
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     openrouter_enabled: bool = True
     openrouter_model: str = "deepseek/deepseek-chat"
     openrouter_site_url: str | None = None
-    openrouter_app_name: str = "Portfolio Research OS"
+    openrouter_app_name: str = "CavaAI"
 
     openai_enabled: bool = True
     openai_api_key: str | None = Field(default=None, repr=False)
