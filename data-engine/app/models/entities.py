@@ -782,3 +782,154 @@ class RedTeamRun(TenantOwnedMixin, Base, TimestampMixin):
     model: Mapped[str | None] = mapped_column(String(160), nullable=True)
     prompt_version: Mapped[str] = mapped_column(String(120), default="red-team-v1")
     trace: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class FundamentalModelVersion(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "fundamental_model_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "company_id", "version", name="uq_fundamental_model_tenant_version"
+        ),
+        UniqueConstraint(
+            "tenant_id", "company_id", "input_fingerprint", name="uq_fundamental_model_fingerprint"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    engine_version: Mapped[str] = mapped_column(String(160))
+    framework_key: Mapped[str] = mapped_column(String(80), index=True)
+    horizon_years: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    publishable: Mapped[bool] = mapped_column(Boolean, default=False)
+    input_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    scenario_probabilities: Mapped[dict] = mapped_column(JSON, default=dict)
+    model_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class FundamentalDriver(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "fundamental_drivers"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "model_version_id", "driver_key", name="uq_fundamental_driver_version_key"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model_version_id: Mapped[int] = mapped_column(
+        ForeignKey("fundamental_model_versions.id"), index=True
+    )
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    driver_key: Mapped[str] = mapped_column(String(160), index=True)
+    driver_type: Mapped[str] = mapped_column(String(40))
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    unit: Mapped[str] = mapped_column(String(40), default="unknown")
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0"))
+    source_fact_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    trace: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class FundamentalAssumption(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "fundamental_assumptions"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "model_version_id",
+            "scenario",
+            "assumption_key",
+            name="uq_fundamental_assumption_version_scenario_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model_version_id: Mapped[int] = mapped_column(
+        ForeignKey("fundamental_model_versions.id"), index=True
+    )
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    assumption_key: Mapped[str] = mapped_column(String(160), index=True)
+    scenario: Mapped[str] = mapped_column(String(40), default="base")
+    value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    unit: Mapped[str] = mapped_column(String(40), default="decimal")
+    source_type: Mapped[str] = mapped_column(String(80))
+    basis: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0"))
+    source_fact_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+
+
+class FundamentalForecast(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "fundamental_forecasts"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "model_version_id",
+            "scenario",
+            "fiscal_year",
+            "metric",
+            name="uq_fundamental_forecast_point",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model_version_id: Mapped[int] = mapped_column(
+        ForeignKey("fundamental_model_versions.id"), index=True
+    )
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    scenario: Mapped[str] = mapped_column(String(40), index=True)
+    probability: Mapped[Decimal] = mapped_column(Numeric(7, 6))
+    fiscal_year: Mapped[int] = mapped_column(Integer, index=True)
+    metric: Mapped[str] = mapped_column(String(160), index=True)
+    value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    unit: Mapped[str] = mapped_column(String(40), default="USD")
+    source_fact_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    trace: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class DecisionJournalEntry(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "decision_journal_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    thesis_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("thesis_versions.id"), nullable=True, index=True
+    )
+    model_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("fundamental_model_versions.id"), nullable=True, index=True
+    )
+    decision_date: Mapped[date] = mapped_column(Date, default=date.today)
+    decision: Mapped[str] = mapped_column(String(40), index=True)
+    rationale: Mapped[str] = mapped_column(Text)
+    what_must_be_true: Mapped[list[str]] = mapped_column(JSON, default=list)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class ExpectationReview(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "expectation_reviews"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "forecast_id", name="uq_expectation_review_forecast"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    model_version_id: Mapped[int] = mapped_column(
+        ForeignKey("fundamental_model_versions.id"), index=True
+    )
+    forecast_id: Mapped[int] = mapped_column(ForeignKey("fundamental_forecasts.id"), index=True)
+    actual_fact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_facts.id"), nullable=True, index=True
+    )
+    fiscal_year: Mapped[int] = mapped_column(Integer, index=True)
+    metric: Mapped[str] = mapped_column(String(160), index=True)
+    expected_value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    actual_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    variance: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    variance_percent: Mapped[Decimal | None] = mapped_column(Numeric(12, 8), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    trace: Mapped[dict] = mapped_column(JSON, default=dict)

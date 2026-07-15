@@ -19,7 +19,8 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models import Company, FinancialFact, MarketPrice, NewsEvent, Position, ThesisChange
-from app.services.company_framework import resolve_company_framework
+from app.services.company_framework import CompanyFramework, resolve_company_framework
+from app.services.fundamental_model_repository import FundamentalModelRepository
 from app.services.market_opportunity_service import MarketOpportunityEngine
 from app.valuation.dcf_fcff import DCFInputs, run_dcf
 from app.valuation.engines.base import default_terminal_growth, default_wacc
@@ -170,10 +171,15 @@ class LongTermModelService:
         horizon = max(5, min(10, int(horizon)))
         framework = resolve_company_framework(company)
         market_metrics = MarketOpportunityEngine.metrics_for_framework(framework)
+        driver_metrics = {
+            self._metric_key(metric)
+            for metric in framework.revenue_drivers + framework.kpis + framework.required_fact_metrics
+        }
         fact_cache = {
             metric: self._facts(db, company, metric)
             for metric in set(ANNUAL_METRICS)
             | market_metrics
+            | driver_metrics
             | {
                 "depreciation_and_amortization",
                 "maintenance_capex",
@@ -207,6 +213,12 @@ class LongTermModelService:
             years=years,
             company=company,
         )
+        driver_model = self._driver_model(framework, fact_cache)
+        missing_mandatory_drivers = [
+            driver["key"]
+            for driver in driver_model
+            if driver["required"] and driver["status"] == "missing"
+        ]
         missing_core = [
             name
             for name, value in (
@@ -218,8 +230,14 @@ class LongTermModelService:
         ]
 
         scenarios: dict[str, Any] = {}
+        scenario_specs: list[tuple[str, dict[str, Any]]] = []
         if not missing_core and latest_year is not None:
-            for name, spec in self._scenario_specs(assumptions):
+            scenario_specs = self._scenario_specs(
+                assumptions,
+                framework=framework,
+                missing_mandatory_drivers=missing_mandatory_drivers,
+            )
+            for name, spec in scenario_specs:
                 forecast = self._forecast(
                     fact_cache=fact_cache,
                     years=years,
@@ -259,8 +277,57 @@ class LongTermModelService:
             horizon=horizon,
         )
 
+        revenue_ceiling = self._market_revenue_ceiling(market_opportunity)
+        latest_revenue = self._value_for_year(fact_cache["revenue"], latest_year)
+        if scenarios and revenue_ceiling and latest_revenue and latest_year is not None:
+            constrained_specs = self._constrain_scenario_growth(
+                scenario_specs,
+                latest_revenue=latest_revenue,
+                revenue_ceiling=revenue_ceiling,
+                horizon=horizon,
+            )
+            if constrained_specs != scenario_specs:
+                scenarios = {}
+                for name, spec in constrained_specs:
+                    forecast = self._forecast(
+                        fact_cache=fact_cache,
+                        years=years,
+                        latest_year=latest_year,
+                        horizon=horizon,
+                        scenario=name,
+                        growth=spec["growth"],
+                        fcf_margin=spec["fcf_margin"],
+                        wacc=spec["wacc"],
+                        assumptions=assumptions,
+                    )
+                    scenarios[name] = self._scenario_payload(
+                        name=name,
+                        spec=spec,
+                        forecast=forecast,
+                        assumptions=assumptions,
+                        fact_cache=fact_cache,
+                        latest_year=latest_year,
+                    )
+                market_opportunity = MarketOpportunityEngine().build(
+                    db,
+                    company,
+                    framework,
+                    fact_cache=fact_cache,
+                    revenue_history=revenue_history,
+                    base_scenario=scenarios.get("base"),
+                    reverse_dcf=reverse_dcf,
+                    horizon=horizon,
+                )
+                market_opportunity["model_constraint"] = {
+                    "applied": True,
+                    "revenue_ceiling": revenue_ceiling,
+                    "source": "minimum sourced future market or bottom-up capacity",
+                }
+
         coverage = self._coverage(history, assumptions, scenarios)
         status = "ok" if not missing_core else "insufficient_data"
+        if not missing_core and missing_mandatory_drivers:
+            status = "missing_mandatory_drivers"
         limitations = self._limitations(
             fact_cache=fact_cache,
             years=years,
@@ -268,19 +335,24 @@ class LongTermModelService:
             market_opportunity=market_opportunity,
         )
 
-        return {
+        payload = {
             "ticker": company.ticker,
             "company": company.name,
             "currency": company.currency,
             "status": status,
-            "publishable": status == "ok" and coverage["coverage_percent"] >= 60,
+            "publishable": (
+                status == "ok"
+                and not missing_mandatory_drivers
+                and coverage["coverage_percent"] >= 60
+            ),
             "model": "long_term_fundamental_modeling_engine",
             "model_version": MODEL_VERSION,
             "framework": framework.as_dict(),
             "horizon_years": horizon,
             "as_of_period": current.get("period"),
             "current_price": current_price,
-            "missing_inputs": missing_core,
+            "missing_inputs": missing_core + missing_mandatory_drivers,
+            "missing_mandatory_drivers": missing_mandatory_drivers,
             "historical_review": {
                 "years_covered": len(years),
                 "first_year": years[0] if years else None,
@@ -299,6 +371,7 @@ class LongTermModelService:
                 "binding_constraints": list(framework.binding_constraints),
                 "active_modules": list(framework.active_modules),
             },
+            "driver_model": driver_model,
             "scenarios": scenarios,
             "reverse_dcf": reverse_dcf,
             "market_opportunity": market_opportunity,
@@ -340,6 +413,91 @@ class LongTermModelService:
                 "annual_periods": years,
             },
         }
+        persisted = FundamentalModelRepository().persist(db, company, payload)
+        payload["persistence"] = {
+            "model_version_id": persisted.id if persisted else None,
+            "version": persisted.version if persisted else None,
+            "input_fingerprint": persisted.input_fingerprint if persisted else None,
+            "status": "persisted" if persisted else "tenant_context_required",
+        }
+        return payload
+
+    @staticmethod
+    def _metric_key(metric: str) -> str:
+        return (
+            metric.strip()
+            .lower()
+            .replace("&", "and")
+            .replace("/", "_")
+            .replace("-", "_")
+            .replace(" ", "_")
+        )
+
+    def _driver_model(
+        self,
+        framework: CompanyFramework,
+        fact_cache: dict[str, list[FinancialFact]],
+    ) -> list[dict[str, Any]]:
+        revenue_keys = [self._metric_key(item) for item in framework.revenue_drivers]
+        kpi_keys = [self._metric_key(item) for item in framework.kpis]
+        required_keys = {self._metric_key(item) for item in framework.required_fact_metrics}
+        ordered_keys = list(dict.fromkeys(revenue_keys + kpi_keys))
+        drivers: list[dict[str, Any]] = []
+        for key in ordered_keys:
+            facts = fact_cache.get(key) or []
+            fact = facts[-1] if facts else None
+            drivers.append(
+                {
+                    "key": key,
+                    "driver_type": "revenue_driver" if key in revenue_keys else "kpi",
+                    "required": key in required_keys,
+                    "status": "sourced" if fact else "missing",
+                    "value": _float(fact.value) if fact else None,
+                    "unit": fact.unit if fact else "unknown",
+                    "confidence": _float(fact.confidence) if fact else 0.0,
+                    "source_fact_ids": [fact.id] if fact else [],
+                    "trace": {
+                        "period": fact.period if fact else None,
+                        "fiscal_year": fact.fiscal_year if fact else None,
+                        "source_type": fact.source_type if fact else None,
+                    },
+                }
+            )
+        return drivers
+
+    @staticmethod
+    def _market_revenue_ceiling(market_opportunity: dict[str, Any]) -> float | None:
+        candidates = [
+            _float((market_opportunity.get("top_down") or {}).get("future_market", {}).get("value")),
+            _float((market_opportunity.get("bottom_up") or {}).get("value")),
+        ]
+        positive = [value for value in candidates if value is not None and value > 0]
+        return min(positive) if positive else None
+
+    @staticmethod
+    def _constrain_scenario_growth(
+        specs: list[tuple[str, dict[str, Any]]],
+        *,
+        latest_revenue: float,
+        revenue_ceiling: float,
+        horizon: int,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        if latest_revenue <= 0 or revenue_ceiling <= latest_revenue:
+            maximum_growth = 0.0
+        else:
+            maximum_growth = (revenue_ceiling / latest_revenue) ** (1 / horizon) - 1
+        constrained: list[tuple[str, dict[str, Any]]] = []
+        for name, original in specs:
+            spec = dict(original)
+            if spec["growth"] > maximum_growth:
+                spec["growth"] = maximum_growth
+                spec["drivers"] = list(spec["drivers"]) + ["market_opportunity_revenue_ceiling"]
+                spec["market_constraint"] = {
+                    "revenue_ceiling": revenue_ceiling,
+                    "maximum_cagr": maximum_growth,
+                }
+            constrained.append((name, spec))
+        return constrained
 
     def _facts(self, db: Session, company: Company, metric: str) -> list[FinancialFact]:
         return list(
@@ -626,7 +784,13 @@ class LongTermModelService:
         variance = sum((value - average) ** 2 for value in values) / len(values)
         return sqrt(max(0.0, variance))
 
-    def _scenario_specs(self, assumptions: dict[str, Assumption]) -> list[tuple[str, dict[str, Any]]]:
+    def _scenario_specs(
+        self,
+        assumptions: dict[str, Assumption],
+        *,
+        framework: CompanyFramework,
+        missing_mandatory_drivers: list[str],
+    ) -> list[tuple[str, dict[str, Any]]]:
         growth = assumptions["revenue_growth"].value
         margin = assumptions["fcf_margin"].value
         wacc = assumptions["wacc"].value
@@ -634,10 +798,37 @@ class LongTermModelService:
         assert growth is not None and margin is not None and wacc is not None and terminal is not None
         growth_spread = max(0.02, min(0.08, abs(growth) * 0.35))
         margin_spread = max(0.02, min(0.06, abs(margin) * 0.25))
+        confidence_values = [
+            assumption.confidence
+            for assumption in assumptions.values()
+            if assumption.value is not None
+        ]
+        evidence_confidence = (
+            sum(confidence_values) / len(confidence_values)
+            if confidence_values
+            else 0.0
+        )
+        base_probability = max(0.38, min(0.68, 0.38 + evidence_confidence * 0.30))
+        remaining = 1.0 - base_probability
+        upside_share = max(0.35, min(0.65, 0.50 + growth * 0.75))
+        if missing_mandatory_drivers:
+            base_probability = max(0.34, base_probability - 0.10)
+            remaining = 1.0 - base_probability
+            upside_share = min(upside_share, 0.40)
+        bull_probability = remaining * upside_share
+        bear_probability = remaining - bull_probability
+        probability_basis = {
+            "method": "company_evidence_confidence_and_growth_skew",
+            "evidence_confidence": evidence_confidence,
+            "historical_growth": growth,
+            "framework": framework.key,
+            "missing_mandatory_driver_count": len(missing_mandatory_drivers),
+        }
+        framework_drivers = list(framework.revenue_drivers[:3])
         return [
-            ("bear", {"probability": 0.25, "growth": max(growth - growth_spread, -0.25), "fcf_margin": max(margin - margin_spread, 0.0), "wacc": wacc + 0.02, "terminal_growth": max(terminal - 0.005, 0.0), "drivers": ["historical_growth_downside", "margin_compression", "higher_cost_of_capital"]}),
-            ("base", {"probability": 0.50, "growth": growth, "fcf_margin": margin, "wacc": wacc, "terminal_growth": terminal, "drivers": ["historical_revenue_cagr", "normalized_fcf_margin"]}),
-            ("bull", {"probability": 0.25, "growth": min(growth + growth_spread, 0.50), "fcf_margin": min(margin + margin_spread, 0.60), "wacc": max(wacc - 0.01, terminal + 0.01), "terminal_growth": terminal, "drivers": ["historical_growth_upside", "margin_expansion", "lower_cost_of_capital"]}),
+            ("bear", {"probability": bear_probability, "probability_basis": probability_basis, "growth": max(growth - growth_spread, -0.25), "fcf_margin": max(margin - margin_spread, 0.0), "wacc": wacc + 0.02, "terminal_growth": max(terminal - 0.005, 0.0), "drivers": framework_drivers + ["execution_downside", "margin_compression", "higher_cost_of_capital"]}),
+            ("base", {"probability": base_probability, "probability_basis": probability_basis, "growth": growth, "fcf_margin": margin, "wacc": wacc, "terminal_growth": terminal, "drivers": framework_drivers + ["historical_revenue_cagr", "normalized_fcf_margin"]}),
+            ("bull", {"probability": bull_probability, "probability_basis": probability_basis, "growth": min(growth + growth_spread, 0.50), "fcf_margin": min(margin + margin_spread, 0.60), "wacc": max(wacc - 0.01, terminal + 0.01), "terminal_growth": terminal, "drivers": framework_drivers + ["execution_upside", "margin_expansion", "lower_cost_of_capital"]}),
         ]
 
     def _forecast(
@@ -814,6 +1005,7 @@ class LongTermModelService:
         first = forecast[0] if forecast else None
         return {
             "probability": spec["probability"],
+            "probability_basis": spec.get("probability_basis", {}),
             "assumptions": {
                 "revenue_growth": {
                     "value": spec["growth"],

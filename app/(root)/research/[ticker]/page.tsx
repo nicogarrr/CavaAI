@@ -33,6 +33,7 @@ import {
   createResearchThesisChange,
   createResearchClaim,
   createResearchMemoryItem,
+  createResearchDecision,
   ensureResearchCompany,
   getResearchCompanyDetail,
   generateResearchThesis,
@@ -41,6 +42,7 @@ import {
   getThesisHistory,
   runResearchEarnings,
   runResearchRedTeam,
+  reviewResearchExpectations,
   type ResearchAlert,
   type ResearchCalculatedMetric,
   type ResearchClaim,
@@ -54,6 +56,8 @@ import {
   type ResearchSourceDocument,
   type ResearchEvidenceSuggestion,
   type ResearchRedTeam,
+  type ResearchDecisionJournalEntry,
+  type ResearchExpectationReview,
   type ResearchReview,
   type ResearchThesis,
   type ResearchThesisChange,
@@ -295,6 +299,119 @@ function LongTermModelPanel({ model }: { model: ResearchLongTermModel | null }) 
       <p className="mt-5 border-t border-gray-800 pt-3 text-xs leading-5 text-gray-500">
         El modelo cubre {model.historical_review.years_covered} años ({model.historical_review.first_year ?? '—'}–{model.historical_review.last_year ?? '—'}). Los números calculados conservan sus fact IDs; lo no disponible se muestra como unknown/insufficient_data.
       </p>
+    </section>
+  );
+}
+
+function DecisionAndRealityPanel({
+  ticker,
+  decisions,
+  reviews,
+}: {
+  ticker: string;
+  decisions: ResearchDecisionJournalEntry[];
+  reviews: ResearchExpectationReview[];
+}) {
+  return (
+    <section className="grid gap-6 xl:grid-cols-2">
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <GitBranch className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Decision Journal</h2>
+        </div>
+        <MutationForm
+          action={createResearchDecision.bind(null, ticker)}
+          className="grid gap-3"
+          resetOnSuccess
+          successMessage="Decisión registrada contra la tesis vigente"
+        >
+          <select
+            aria-label="Decision"
+            className="h-10 rounded-md border border-gray-700 bg-gray-900 px-3 text-sm text-gray-200"
+            defaultValue="hold"
+            name="decision"
+          >
+            <option value="buy">Buy</option>
+            <option value="hold">Hold</option>
+            <option value="trim">Trim</option>
+            <option value="sell">Sell</option>
+            <option value="watch">Watch</option>
+            <option value="avoid">Avoid</option>
+          </select>
+          <Textarea
+            aria-label="Decision rationale"
+            className="border-gray-700 bg-transparent text-gray-100"
+            name="rationale"
+            placeholder="Qué evidencia justifica esta decisión"
+            required
+          />
+          <Textarea
+            aria-label="What must be true"
+            className="border-gray-700 bg-transparent text-gray-100"
+            name="what_must_be_true"
+            placeholder="Una condición verificable por línea"
+          />
+          <Button type="submit">Registrar decisión</Button>
+        </MutationForm>
+        <div className="mt-5 space-y-3">
+          {decisions.length === 0 ? (
+            <p className="text-sm text-gray-500">Todavía no hay decisiones registradas.</p>
+          ) : decisions.slice(0, 8).map((entry) => (
+            <div className="rounded-md border border-gray-800 p-3" key={entry.id}>
+              <div className="flex items-center justify-between gap-3">
+                <Badge variant="outline">{entry.decision}</Badge>
+                <span className="text-xs text-gray-500">{entry.decision_date}</span>
+              </div>
+              <p className="mt-2 text-sm text-gray-300">{entry.rationale}</p>
+              <p className="mt-2 text-xs text-gray-500">
+                Thesis {entry.thesis_version_id ?? '—'} · Model {entry.model_version_id ?? '—'}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Expectation vs Reality</h2>
+          <MutationForm
+            action={reviewResearchExpectations.bind(null, ticker)}
+            className="ml-auto"
+            successMessage="Forecasts comparados con los hechos disponibles"
+          >
+            <Button size="sm" type="submit" variant="outline">Comparar ahora</Button>
+          </MutationForm>
+        </div>
+        {reviews.length === 0 ? (
+          <p className="text-sm text-gray-500">Ejecuta la comparación cuando existan forecasts persistidos.</p>
+        ) : (
+          <div className="max-h-[560px] overflow-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase text-gray-500">
+                <tr>
+                  <th className="border-b border-gray-800 py-2">Año / KPI</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Esperado</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Real</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reviews.slice(0, 40).map((review) => (
+                  <tr className="border-b border-gray-900" key={review.id}>
+                    <td className="py-3 text-gray-300">{review.fiscal_year} · {review.metric}</td>
+                    <td className="py-3 text-right text-gray-400">{modelMoney(review.expected_value)}</td>
+                    <td className="py-3 text-right text-gray-400">{modelMoney(review.actual_value)}</td>
+                    <td className="py-3 text-right">
+                      <Badge variant="outline">{review.status}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -1338,6 +1455,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
     evidenceSuggestions,
     redTeam,
     longTermModel,
+    decisionJournal,
+    expectationReviews,
   }, thesisHistory, marketSnapshot] = await Promise.all([
     getResearchCompanyDetail(ticker),
     getThesisHistory(ticker),
@@ -1446,6 +1565,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Rese
       </section>
 
       <LongTermModelPanel model={longTermModel} />
+
+      <DecisionAndRealityPanel
+        decisions={decisionJournal}
+        reviews={expectationReviews}
+        ticker={company.ticker}
+      />
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
