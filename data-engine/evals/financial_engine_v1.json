@@ -1,0 +1,8 @@
+[
+  {"metric": "revenue", "expected": "100", "actual": "110", "status": "beat"},
+  {"metric": "free_cash_flow", "expected": "100", "actual": "90", "status": "miss"},
+  {"metric": "net_debt", "expected": "100", "actual": "90", "status": "beat"},
+  {"metric": "shares_diluted", "expected": "100", "actual": "104", "status": "miss"},
+  {"metric": "combined_ratio", "expected": "0.95", "actual": "0.90", "status": "beat"},
+  {"metric": "capital_expenditure", "expected": "100", "actual": "125", "status": "outside_tolerance"}
+]

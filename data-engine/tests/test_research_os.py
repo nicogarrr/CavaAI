@@ -211,9 +211,25 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     claim_payload = claim.json()
     assert claim_payload["status"] == "unverified"
 
+    source = client.post(
+        "/api/sources/quartr/import-text",
+        json={
+            "ticker": "MSFT",
+            "title": f"MSFT evidence fixture {uuid4().hex}",
+            "text": "Management reported durable Azure AI demand and disciplined capital expenditure. "
+            * 10,
+            "source_url": "https://www.microsoft.com/investor",
+            "period": "Q1",
+        },
+    )
+    assert source.status_code == 200
+    source_document_id = source.json()["document_id"]
+
     documents = client.get("/api/sources/documents?ticker=MSFT&include_chunks=true")
     assert documents.status_code == 200
-    document_payload = documents.json()[0]
+    document_payload = next(
+        item for item in documents.json() if item["id"] == source_document_id
+    )
     chunk_payload = document_payload["chunks"][0]
 
     evidence = client.post(
@@ -309,7 +325,7 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     )
 
     unique_suffix = uuid4().hex
-    contract_url = f"https://example.com/msft-contract-{unique_suffix}"
+    contract_url = f"https://www.microsoft.com/investor/news/msft-contract-{unique_suffix}"
     contract_title = f"MSFT wins major customer contract and raises revenue outlook {unique_suffix}"
     contract_text = f"New contract award improves backlog conversion and revenue timing {unique_suffix}."
     batch = client.post(

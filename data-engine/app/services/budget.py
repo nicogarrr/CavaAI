@@ -8,6 +8,10 @@ from app.core.config import get_settings
 from app.models import BudgetUsage
 
 
+class BudgetExceededError(RuntimeError):
+    pass
+
+
 class BudgetController:
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -44,7 +48,16 @@ class BudgetController:
             and usage["monthly_cost_eur"] + estimated_cost_eur <= self.settings.llm_monthly_cap_eur
         )
 
-    def record(self, db: Session, model: str, workflow: str, cost_eur: float, tokens: int) -> None:
+    def record(
+        self,
+        db: Session,
+        model: str,
+        workflow: str,
+        cost_eur: float,
+        tokens: int,
+        *,
+        commit: bool = True,
+    ) -> None:
         db.add(
             BudgetUsage(
                 usage_date=date.today(),
@@ -54,4 +67,23 @@ class BudgetController:
                 token_count=tokens,
             )
         )
-        db.commit()
+        if commit:
+            db.commit()
+
+    @staticmethod
+    def estimate_cost_eur(model: str, input_tokens: int, output_tokens: int) -> float:
+        """Conservative internal estimates; provider invoices remain authoritative."""
+        lowered = model.lower()
+        if "flash" in lowered:
+            input_rate, output_rate = 0.10, 0.40
+        elif "qwen3.7-plus" in lowered:
+            input_rate, output_rate = 0.60, 1.80
+        elif "glm-5.2" in lowered:
+            input_rate, output_rate = 0.80, 2.40
+        else:
+            input_rate, output_rate = 1.00, 3.00
+        return round(
+            input_tokens / 1_000_000 * input_rate
+            + output_tokens / 1_000_000 * output_rate,
+            8,
+        )

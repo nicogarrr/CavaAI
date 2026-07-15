@@ -2,8 +2,17 @@ import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 
 import main
+from app.core.database import SessionLocal
+from app.models import (
+    CalculatedMetric,
+    FundamentalModelVersion,
+    MoatAssessment,
+    ThesisNode,
+    ValuationModel,
+)
 from app.seed import seed
 
 
@@ -117,21 +126,40 @@ def test_root_and_health():
     assert "database" in ready.json()["checks"]
 
 
-def test_company_workspace_uses_one_coherent_snapshot_contract():
+def test_company_workspace_uses_small_read_only_typed_snapshot_contract():
     seed()
-    response = TestClient(main.app).get("/api/companies/MSFT/snapshot?horizon=5")
+
+    def mutable_row_counts() -> tuple[int, ...]:
+        with SessionLocal() as db:
+            return tuple(
+                int(db.scalar(select(func.count()).select_from(model)) or 0)
+                for model in (
+                    CalculatedMetric,
+                    FundamentalModelVersion,
+                    MoatAssessment,
+                    ThesisNode,
+                    ValuationModel,
+                )
+            )
+
+    before = mutable_row_counts()
+    response = TestClient(main.app).get("/api/companies/MSFT/snapshot")
+    after = mutable_row_counts()
 
     assert response.status_code == 200
+    assert after == before
     payload = response.json()
     assert payload["company"]["ticker"] == "MSFT"
     assert {
-        "valuation",
-        "facts",
-        "calculatedMetrics",
-        "longTermModel",
-        "thesisHistory",
-        "claims",
-        "sourceDocuments",
-        "decisionJournal",
-        "expectationReviews",
+        "latest_thesis",
+        "valuation_summary",
+        "model_summary",
+        "research_health",
+        "counts",
+        "recent_changes",
     }.issubset(payload)
+    assert "facts" not in payload
+    assert "sourceDocuments" not in payload
+    operation = main.app.openapi()["paths"]["/api/companies/{ticker}/snapshot"]["get"]
+    schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    assert schema["$ref"].endswith("/CompanySnapshotOut")

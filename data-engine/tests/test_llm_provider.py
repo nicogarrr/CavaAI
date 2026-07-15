@@ -18,6 +18,7 @@ from app.llm import (
     create_llm_provider,
     parse_json_response,
 )
+from app.services.llm_router import route_model
 
 
 def run(coroutine):
@@ -49,6 +50,10 @@ def test_task_router_uses_existing_policy_and_configured_overrides():
         materiality_score=4,
         portfolio_weight=0.01,
     )
+
+    assert route_model("cheap_extraction").model == "qwen-flash"
+    assert route_model("main_financial_analysis").model == "qwen3.7-plus"
+    assert route_model("agentic_red_team").model == "glm-5.2"
 
     assert (
         TaskModelRouter(

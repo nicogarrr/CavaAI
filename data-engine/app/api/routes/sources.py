@@ -10,12 +10,22 @@ from app.models import (
     Document,
     DocumentChunk,
     EvidenceSuggestion,
+    KPIExtractionCandidate,
     SourceAudit,
+    ThesisVersion,
 )
-from app.schemas import EvidenceSuggestionAction, EvidenceSuggestionOut
+from app.schemas import (
+    EvidenceSuggestionAction,
+    EvidenceSuggestionOut,
+    KPIExtractionAction,
+    KPIExtractionCandidateOut,
+)
+from app.llm.errors import LLMError
 from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.connectors.quartr import QuartrClient
 from app.services.document_ingestion_service import DocumentIngestionService
+from app.services.kpi_extraction_service import KPIExtractionService
+from app.services.budget import BudgetExceededError
 from app.services.quartr_import_service import QuartrImportService
 from app.services.source_hierarchy_service import SOURCE_TIERS, classify_source
 from app.services.rag import RAGIndex
@@ -66,6 +76,8 @@ def source_tiers() -> list[dict]:
 def documents(
     ticker: str | None = None,
     include_chunks: bool = False,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
     chunk_limit: int = Query(default=1000, ge=1, le=1000),
     chunk_text_limit: int = Query(default=1500, ge=120, le=10000),
     db: Session = Depends(get_db),
@@ -74,7 +86,11 @@ def documents(
     if ticker:
         statement = statement.where(Company.ticker == ticker.upper())
 
-    rows = db.execute(statement.order_by(desc(Document.created_at)).limit(200)).all()
+    rows = db.execute(
+        statement.order_by(desc(Document.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
     chunk_map: dict[int, list[dict]] = {}
     if include_chunks and rows:
         document_ids = [document.id for document, _ in rows]
@@ -116,12 +132,117 @@ def documents(
     ]
 
 
+@router.get("/documents/{document_id}/chunks")
+def document_chunks(
+    document_id: int,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    text_limit: int = Query(default=1800, ge=120, le=10000),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    document = db.get(Document, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    chunks = list(
+        db.scalars(
+            select(DocumentChunk)
+            .where(DocumentChunk.document_id == document.id)
+            .order_by(DocumentChunk.chunk_index)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+    )
+    return [
+        {
+            "id": chunk.id,
+            "document_id": chunk.document_id,
+            "chunk_index": chunk.chunk_index,
+            "text": chunk.text[:text_limit],
+            "token_count": chunk.token_count,
+            "metadata": chunk.metadata_,
+        }
+        for chunk in chunks
+    ]
+
+
 @router.post("/documents/{document_id}/analyze")
 def analyze_document(document_id: int, db: Session = Depends(get_db)) -> dict:
     document = db.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     return ClaimIntelligenceService().scan_document(db, document, auto_apply=True)
+
+
+@router.post(
+    "/documents/{document_id}/extract-kpis",
+    response_model=list[KPIExtractionCandidateOut],
+)
+async def extract_document_kpis(
+    document_id: int, db: Session = Depends(get_db)
+) -> list[KPIExtractionCandidate]:
+    document = db.get(Document, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        return await KPIExtractionService().extract_document(db, document)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except BudgetExceededError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+
+
+@router.get("/kpi-candidates", response_model=list[KPIExtractionCandidateOut])
+def kpi_candidates(
+    ticker: str | None = None,
+    document_id: int | None = None,
+    status: str | None = "pending_approval",
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> list[KPIExtractionCandidate]:
+    statement = select(KPIExtractionCandidate)
+    if ticker:
+        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        statement = statement.where(KPIExtractionCandidate.company_id == company.id)
+    if document_id is not None:
+        statement = statement.where(KPIExtractionCandidate.document_id == document_id)
+    if status:
+        statement = statement.where(KPIExtractionCandidate.status == status)
+    return list(
+        db.scalars(
+            statement.order_by(
+                desc(KPIExtractionCandidate.confidence),
+                desc(KPIExtractionCandidate.created_at),
+            ).limit(limit)
+        ).all()
+    )
+
+
+@router.post(
+    "/kpi-candidates/{candidate_id}/action",
+    response_model=KPIExtractionCandidateOut,
+)
+def action_kpi_candidate(
+    candidate_id: int,
+    payload: KPIExtractionAction,
+    db: Session = Depends(get_db),
+) -> KPIExtractionCandidate:
+    candidate = db.get(KPIExtractionCandidate, candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="KPI candidate not found")
+    try:
+        service = KPIExtractionService()
+        if payload.action == "approve":
+            service.approve(db, candidate, actor=payload.actor)
+        else:
+            service.reject(db, candidate, actor=payload.actor)
+        db.refresh(candidate)
+        return candidate
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get(
@@ -233,7 +354,24 @@ def ingest_document_url(payload: UrlIngestRequest, db: Session = Depends(get_db)
 
 
 @router.get("/audits")
-def source_audits(db: Session = Depends(get_db)) -> list[dict]:
+def source_audits(
+    ticker: str | None = Query(default=None, min_length=1, max_length=20),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    statement = select(SourceAudit).order_by(desc(SourceAudit.created_at))
+    if ticker:
+        statement = statement.join(
+            ThesisVersion,
+            SourceAudit.thesis_version_id == ThesisVersion.id,
+        ).where(
+            ThesisVersion.company_id
+            == select(Company.id)
+            .where(Company.ticker == ticker.upper())
+            .scalar_subquery()
+        )
+    statement = statement.offset(offset).limit(limit)
     return [
         {
             "id": audit.id,
@@ -245,7 +383,7 @@ def source_audits(db: Session = Depends(get_db)) -> list[dict]:
             "data_conflicts": audit.data_conflicts,
             "required_fixes": audit.required_fixes,
         }
-        for audit in db.scalars(select(SourceAudit).order_by(desc(SourceAudit.created_at))).all()
+        for audit in db.scalars(statement).all()
     ]
 
 

@@ -1,209 +1,193 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
-from sqlalchemy import desc, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import desc, func, select
+from sqlalchemy.orm import Session
 
 from app.models import (
+    CalculatedMetric,
     Claim,
     Company,
-    EvidenceSuggestion,
+    Document,
     FinancialFact,
-    MemoryItem,
+    FundamentalModelVersion,
     ResearchAlert,
     ResearchReview,
     ThesisChange,
-    ThesisSection,
     ThesisVersion,
+    ValuationModel,
 )
-from app.schemas import (
-    ClaimOut,
-    CompanyOut,
-    EvidenceSuggestionOut,
-    FinancialFactOut,
-    MemoryItemOut,
-    ResearchAlertOut,
-    ResearchReviewOut,
-    ThesisChangeOut,
-    ThesisGraphOut,
-    ThesisOut,
-    ThesisSectionOut,
-)
-from app.services.fundamental_review_service import (
-    DecisionJournalService,
-    ExpectationRealityService,
-)
-from app.services.long_term_model_service import LongTermModelService
-from app.services.metric_calculation_service import MetricCalculationService
-from app.services.moat_service import MoatService
-from app.services.peer_analysis_service import PeerAnalysisService
-from app.services.peer_comparison_service import PeerComparisonService
-from app.services.red_team_service import RedTeamService
-from app.services.thesis_graph_service import ThesisGraphService
-from app.services.valuation_service import ValuationService
-
-
-def _dump(schema: type[BaseModel], value):
-    return schema.model_validate(value).model_dump(mode="json", by_alias=True)
+from app.schemas import CompanySnapshotOut
 
 
 class CompanySnapshotService:
-    """One coherent API snapshot for the company workspace."""
+    """Build the small workspace bootstrap exclusively from persisted rows.
 
-    def build(self, db: Session, company: Company, horizon: int = 5) -> dict:
-        # Local imports avoid coupling the route registry at application startup.
-        from app.api.routes.companies import (
-            _decision_payload,
-            _expectation_payload,
-            _red_team_payload,
-        )
-        from app.api.routes.sources import documents as source_documents
+    This service deliberately contains no calculator, model builder, graph
+    builder, document chunk loader or commit. Refreshes belong to explicit POST
+    endpoints so a GET can be cached, retried and observed without side effects.
+    """
 
-        valuation = ValuationService().value_company(db, company)
-        financial_facts = list(
-            db.scalars(
-                select(FinancialFact)
-                .where(FinancialFact.company_id == company.id)
-                .order_by(
-                    FinancialFact.fiscal_year.desc().nullslast(),
-                    desc(FinancialFact.created_at),
-                )
-                .limit(80)
-            ).all()
+    def build(self, db: Session, company: Company) -> CompanySnapshotOut:
+        thesis = db.scalar(
+            select(ThesisVersion)
+            .where(ThesisVersion.company_id == company.id)
+            .order_by(desc(ThesisVersion.version))
+            .limit(1)
         )
-        metrics = MetricCalculationService().calculate_all(db, company, persist=True)
-        long_term = LongTermModelService().build(db, company, horizon=horizon)
-        thesis_history = list(
-            db.scalars(
-                select(ThesisVersion)
-                .where(ThesisVersion.company_id == company.id)
-                .order_by(desc(ThesisVersion.version))
-                .limit(50)
-            ).all()
+        model = db.scalar(
+            select(FundamentalModelVersion)
+            .where(FundamentalModelVersion.company_id == company.id)
+            .order_by(desc(FundamentalModelVersion.version))
+            .limit(1)
         )
-        thesis = thesis_history[0] if thesis_history else None
-
-        claims = list(
-            db.scalars(
-                select(Claim)
-                .options(selectinload(Claim.evidence))
-                .where(Claim.company_id == company.id)
-                .order_by(desc(Claim.created_at))
-                .limit(20)
-            ).all()
+        valuation_model = db.scalar(
+            select(ValuationModel)
+            .where(ValuationModel.company_id == company.id)
+            .order_by(desc(ValuationModel.version), desc(ValuationModel.created_at))
+            .limit(1)
         )
-        thesis_sections: list[ThesisSection] = []
-        thesis_changes: list[ThesisChange] = []
-        graph = None
-        if thesis:
-            thesis_sections = list(
-                db.scalars(
-                    select(ThesisSection)
-                    .where(ThesisSection.thesis_version_id == thesis.id)
-                    .order_by(ThesisSection.order_index, ThesisSection.section_key)
-                ).all()
-            )
-            try:
-                graph_thesis, nodes, edges = ThesisGraphService().build(db, company, thesis)
-                graph = _dump(
-                    ThesisGraphOut,
-                    {"ticker": company.ticker, "thesis_version_id": graph_thesis.id, "nodes": nodes, "edges": edges},
-                )
-            except ValueError:
-                graph = None
-        thesis_changes = list(
+        recent_changes = list(
             db.scalars(
                 select(ThesisChange)
                 .where(ThesisChange.company_id == company.id)
                 .order_by(desc(ThesisChange.created_at))
-                .limit(50)
+                .limit(10)
             ).all()
         )
-        reviews = list(
-            db.scalars(
-                select(ResearchReview)
-                .where(ResearchReview.company_id == company.id, ResearchReview.status == "open")
-                .order_by(desc(ResearchReview.created_at))
-                .limit(100)
-            ).all()
+        counts = self._counts(db, company.id)
+        missing: list[str] = []
+        if counts["documents"] == 0:
+            missing.append("documents")
+        if counts["facts"] == 0:
+            missing.append("financial_facts")
+        if thesis is None:
+            missing.append("thesis")
+        if model is None:
+            missing.append("long_term_model")
+
+        review_required = counts["open_reviews"] > 0 or counts["open_alerts"] > 0
+        completed = 4 - len(missing)
+        score = completed * 20
+        if counts["calculated_metrics"] > 0:
+            score += 10
+        if counts["claims"] > 0:
+            score += 10
+        if counts["documents"] == counts["facts"] == counts["claims"] == 0:
+            health_status = "empty"
+        elif review_required:
+            health_status = "review_required"
+        elif missing:
+            health_status = "incomplete"
+        else:
+            health_status = "healthy"
+
+        thesis_summary = None
+        if thesis is not None:
+            thesis_summary = {
+                "id": thesis.id,
+                "version": thesis.version,
+                "status": thesis.status,
+                "executive_summary": thesis.executive_summary,
+                "rating": thesis.rating,
+                "current_price": thesis.current_price,
+                "bear_value": thesis.bear_value,
+                "base_value": thesis.base_value,
+                "bull_value": thesis.bull_value,
+                "expected_value": thesis.expected_value,
+                "margin_of_safety": thesis.margin_of_safety,
+                "data_confidence_score": thesis.data_confidence_score,
+                "source_coverage_score": thesis.source_coverage_score,
+                "created_at": thesis.created_at,
+            }
+
+        model_summary = None
+        if model is not None:
+            model_summary = {
+                "id": model.id,
+                "version": model.version,
+                "engine_version": model.engine_version,
+                "algorithm_version": model.algorithm_version,
+                "framework_key": model.framework_key,
+                "horizon_years": model.horizon_years,
+                "status": model.status,
+                "publishable": model.publishable,
+                "input_fingerprint": model.input_fingerprint,
+                "forecast_fingerprint": model.forecast_fingerprint,
+                "market_snapshot_fingerprint": model.market_snapshot_fingerprint,
+                "valuation_snapshot_fingerprint": model.valuation_snapshot_fingerprint,
+                "code_commit_sha": model.code_commit_sha,
+                "scenario_probabilities": {
+                    str(key): float(value) if value is not None else None
+                    for key, value in (model.scenario_probabilities or {}).items()
+                },
+                "created_at": model.created_at,
+            }
+
+        return CompanySnapshotOut.model_validate(
+            {
+                "company": company,
+                "latest_thesis": thesis_summary,
+                "valuation_summary": {
+                    "model_id": valuation_model.id if valuation_model else None,
+                    "model_type": (
+                        valuation_model.model_type
+                        if valuation_model
+                        else company.valuation_model
+                    ),
+                    "version": valuation_model.version if valuation_model else None,
+                    "status": (
+                        valuation_model.status if valuation_model else "not_generated"
+                    ),
+                    "current_price": thesis.current_price if thesis else None,
+                    "bear_value": thesis.bear_value if thesis else None,
+                    "base_value": thesis.base_value if thesis else None,
+                    "bull_value": thesis.bull_value if thesis else None,
+                    "expected_value": thesis.expected_value if thesis else None,
+                    "margin_of_safety": thesis.margin_of_safety if thesis else None,
+                    "updated_at": (
+                        valuation_model.updated_at if valuation_model else None
+                    ),
+                },
+                "model_summary": model_summary,
+                "research_health": {
+                    "score": min(100, score),
+                    "status": health_status,
+                    "missing": missing,
+                    "review_required": review_required,
+                },
+                "counts": counts,
+                "recent_changes": recent_changes,
+            },
+            from_attributes=True,
         )
-        alerts = list(
-            db.scalars(
-                select(ResearchAlert)
-                .where(ResearchAlert.company_id == company.id)
-                .order_by(desc(ResearchAlert.created_at))
-                .limit(100)
-            ).all()
-        )
-        memory_items = list(
-            db.scalars(
-                select(MemoryItem)
-                .where(MemoryItem.company_id == company.id, MemoryItem.scope == "company")
-                .order_by(desc(MemoryItem.created_at))
-                .limit(20)
-            ).all()
-        )
-        suggestions = list(
-            db.scalars(
-                select(EvidenceSuggestion)
-                .where(EvidenceSuggestion.company_id == company.id, EvidenceSuggestion.status == "pending")
-                .order_by(desc(EvidenceSuggestion.confidence), desc(EvidenceSuggestion.created_at))
-                .limit(100)
-            ).all()
-        )
-        red_team = RedTeamService().latest(db, company)
+
+    @staticmethod
+    def _counts(db: Session, company_id: int) -> dict[str, int]:
+        def count(model, *criteria) -> int:
+            return int(db.scalar(select(func.count()).select_from(model).where(*criteria)) or 0)
 
         return {
-            "company": _dump(CompanyOut, company),
-            "valuation": valuation,
-            "facts": [_dump(FinancialFactOut, fact) for fact in financial_facts],
-            "calculatedMetrics": [
-                {
-                    "id": metric.id,
-                    "company_id": company.id,
-                    "metric": metric.metric,
-                    "value": metric.value,
-                    "unit": metric.unit,
-                    "period": metric.period,
-                    "fiscal_year": metric.fiscal_year,
-                    "fiscal_quarter": metric.fiscal_quarter,
-                    "status": metric.status,
-                    "definition_version": metric.definition_version,
-                    "formula": metric.formula,
-                    "numerator": metric.numerator,
-                    "denominator": metric.denominator,
-                    "source_fact_ids": metric.source_fact_ids,
-                    "calculation_trace": metric.calculation_trace,
-                    "confidence": metric.confidence,
-                }
-                for metric in metrics
-            ],
-            "peerComparison": PeerComparisonService().compare(db, company, limit=8, refresh=False),
-            "peerAnalysis": PeerAnalysisService().analyze(db, company, limit=8),
-            "moat": MoatService().assess(db, company, persist=True),
-            "thesis": _dump(ThesisOut, thesis) if thesis else None,
-            "thesisHistory": [_dump(ThesisOut, version) for version in thesis_history],
-            "claims": [_dump(ClaimOut, claim) for claim in claims],
-            "thesisSections": [_dump(ThesisSectionOut, section) for section in thesis_sections],
-            "thesisChanges": [_dump(ThesisChangeOut, change) for change in thesis_changes],
-            "thesisGraph": graph,
-            "reviews": [_dump(ResearchReviewOut, review) for review in reviews],
-            "alerts": [_dump(ResearchAlertOut, alert) for alert in alerts],
-            "memoryItems": [_dump(MemoryItemOut, item) for item in memory_items],
-            "sourceDocuments": source_documents(
-                ticker=company.ticker,
-                include_chunks=True,
-                chunk_limit=1000,
-                chunk_text_limit=1800,
-                db=db,
+            "facts": count(FinancialFact, FinancialFact.company_id == company_id),
+            "calculated_metrics": count(
+                CalculatedMetric, CalculatedMetric.company_id == company_id
             ),
-            "evidenceSuggestions": [_dump(EvidenceSuggestionOut, item) for item in suggestions],
-            "redTeam": _red_team_payload(red_team) if red_team else None,
-            "longTermModel": long_term,
-            "decisionJournal": [
-                _decision_payload(entry) for entry in DecisionJournalService().list(db, company)
-            ],
-            "expectationReviews": [
-                _expectation_payload(item) for item in ExpectationRealityService().list(db, company)
-            ],
+            "documents": count(Document, Document.company_id == company_id),
+            "claims": count(Claim, Claim.company_id == company_id),
+            "thesis_versions": count(
+                ThesisVersion, ThesisVersion.company_id == company_id
+            ),
+            "model_versions": count(
+                FundamentalModelVersion,
+                FundamentalModelVersion.company_id == company_id,
+            ),
+            "open_reviews": count(
+                ResearchReview,
+                ResearchReview.company_id == company_id,
+                ResearchReview.status.in_(["open", "in_progress"]),
+            ),
+            "open_alerts": count(
+                ResearchAlert,
+                ResearchAlert.company_id == company_id,
+                ResearchAlert.status.in_(["open", "snoozed"]),
+            ),
         }

@@ -92,11 +92,23 @@ class ThesisService:
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def generate(self, db: Session, ticker: str, force_new_version: bool = False) -> ThesisVersion:
+        """Persist model, valuation, thesis, evidence, graph and red team atomically."""
+        try:
+            return self._generate_atomic(db, ticker, force_new_version)
+        except Exception:
+            db.rollback()
+            raise
+
+    def _generate_atomic(
+        self, db: Session, ticker: str, force_new_version: bool = False
+    ) -> ThesisVersion:
         company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
         if not company:
             raise ValueError(f"Unknown ticker: {ticker}")
 
-        long_term_model = LongTermModelService().build(db, company, horizon=5)
+        long_term_model = LongTermModelService().build(
+            db, company, horizon=5, commit=False
+        )
         valuation = self.valuation_service.value_company(db, company)
         missing_drivers = long_term_model.get("missing_mandatory_drivers") or []
         if missing_drivers:
@@ -120,10 +132,11 @@ class ThesisService:
         existing = self.latest(db, ticker)
         if existing and not force_new_version:
             if getattr(existing, "input_fingerprint", None) == fingerprint:
+                db.rollback()
                 return existing
             # Material evidence changed — fall through and create a new version.
 
-        self.valuation_service.persist_output(db, company, valuation)
+        self.valuation_service.persist_output(db, company, valuation, commit=False)
         snapshot = FinancialSnapshotBuilder().build(db, company)
         facts = snapshot.facts
 
@@ -158,10 +171,8 @@ class ThesisService:
             version=version,
         )
 
-        def _dec(value) -> Decimal:
-            if value is None:
-                return Decimal("0")
-            return Decimal(str(value))
+        def _dec(value) -> Decimal | None:
+            return None if value is None else Decimal(str(value))
 
         thesis = ThesisVersion(
             company_id=company.id,
@@ -205,21 +216,14 @@ class ThesisService:
                 ),
             )
         )
+        db.flush()
+        from app.services.red_team_service import RedTeamService
+        from app.services.thesis_graph_service import ThesisGraphService
+
+        ThesisGraphService().build(db, company, thesis, commit=False)
+        RedTeamService().run(db, company, thesis, commit=False)
         db.commit()
         db.refresh(thesis)
-        try:
-            from app.services.thesis_graph_service import ThesisGraphService
-
-            ThesisGraphService().build(db, company, thesis)
-        except Exception:
-            pass
-        try:
-            from app.services.red_team_service import RedTeamService
-
-            RedTeamService().run(db, company, thesis)
-            db.refresh(thesis)
-        except Exception:
-            pass
         return thesis
 
     def _persist_claims(

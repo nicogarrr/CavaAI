@@ -2,272 +2,145 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   ArrowLeft,
-  BarChart3,
   BrainCircuit,
-  CheckCircle2,
   Database,
   FileText,
-  GitBranch,
-  MessageSquare,
-  Plus,
   RefreshCcw,
+  Search,
   ShieldCheck,
-  Sigma,
-  TriangleAlert,
+  Target,
 } from 'lucide-react';
+
+import { MutationForm } from '@/components/forms/MutationForm';
+import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
+import {
+  DecisionAndRealityPanel,
+  LongTermModelPanel,
+} from '@/components/research/FundamentalModelPanels';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
-import { CompanyWorkspaceTabs } from '@/components/research/CompanyWorkspaceTabs';
-import { DecisionAndRealityPanel, LongTermModelPanel } from '@/components/research/FundamentalModelPanels';
-import { MutationForm } from '@/components/forms/MutationForm';
-import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 import {
-  addResearchChunkEvidence,
-  addResearchClaimEvidence,
-  actionResearchAlert,
-  actionResearchEvidenceSuggestion,
   askResearchCompanyChat,
-  createResearchClaimFromChunk,
-  createResearchThesisChange,
   createResearchClaim,
-  createResearchMemoryItem,
-  ensureResearchCompany,
-  getResearchCompanyDetail,
   generateResearchThesis,
+  getResearchChangesWorkspace,
+  getResearchCompanySnapshot,
+  getResearchDocumentsWorkspace,
+  getResearchFinancialsWorkspace,
+  getResearchLongTermModel,
+  getResearchMoatWorkspace,
+  getResearchPeersWorkspace,
+  getResearchSourceAuditsWorkspace,
+  getResearchThesisWorkspace,
+  getResearchValuationWorkspace,
+  importResearchDocumentFile,
+  importResearchDocumentUrl,
   refreshCompanyFinancials,
   refreshCompanyFinancialsSEC,
-  runResearchEarnings,
-  runResearchRedTeam,
-  type ResearchAlert,
+  refreshCompanyResearchModel,
   type ResearchCalculatedMetric,
-  type ResearchClaim,
-  type ResearchChatResponse,
   type ResearchFact,
-  type ResearchMemoryItem,
-  type ResearchMoat,
-  type ResearchPeerAnalysis,
-  type ResearchPeerComparison,
-  type ResearchSourceDocument,
-  type ResearchEvidenceSuggestion,
-  type ResearchRedTeam,
-  type ResearchReview,
-  type ResearchThesis,
-  type ResearchThesisChange,
-  type ResearchThesisSection,
-  type ResearchThesisVersion,
-  type ResearchThesisGraph,
+  type ResearchLongTermModel,
   type ResearchValuation,
 } from '@/lib/actions/research.actions';
+import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type ResearchCompanyPageProps = {
-  params: Promise<{
-    ticker: string;
-  }>;
-  searchParams: Promise<{
-    chat?: string;
-  }>;
+const views = [
+  ['overview', 'Overview'],
+  ['thesis', 'Thesis'],
+  ['changes', 'What Changed'],
+  ['financials', 'Financials'],
+  ['model', 'Long-Term Model'],
+  ['market-opportunity', 'Market Opportunity'],
+  ['moat', 'Moat'],
+  ['peers', 'Peers'],
+  ['valuation', 'Valuation'],
+  ['documents', 'Documents'],
+  ['sources', 'Sources'],
+  ['chat', 'Chat'],
+] as const;
+
+type View = (typeof views)[number][0];
+
+type PageProps = {
+  params: Promise<{ ticker: string }>;
+  searchParams: Promise<{ view?: string; chat?: string }>;
 };
 
-function money(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 'N/A';
+function asView(value: string | undefined): View {
+  return views.some(([key]) => key === value) ? (value as View) : 'overview';
+}
+
+function number(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function money(value: number | string | null | undefined, currency = 'USD') {
+  const parsed = number(value);
+  if (parsed === null) return 'N/A';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency,
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(parsed);
 }
 
-function compactMoney(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(Number.isFinite(value) ? value : 0);
+function metricValue(value: number | string | null | undefined, unit: string) {
+  const parsed = number(value);
+  if (parsed === null) return 'unknown';
+  if (unit === 'decimal') return `${(parsed * 100).toFixed(1)}%`;
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(parsed);
 }
 
-function pct(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 'N/A';
-  return `${(value * 100).toFixed(1)}%`;
-}
-
-function numberValue(value: string) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function FactValue({ fact }: { fact: ResearchFact }) {
-  const value = numberValue(fact.value);
-  if (fact.unit === 'decimal') return <>{pct(value)}</>;
-  if (fact.unit === 'shares') return <>{compactMoney(value)}</>;
-  if (fact.unit.toLowerCase().includes('usd')) return <>{compactMoney(value)}</>;
-  return <>{value.toLocaleString('en-US')}</>;
-}
-
-function Stat({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string;
-  value: string;
-  tone?: 'default' | 'good' | 'warn' | 'bad';
-}) {
-  const toneClass = {
-    default: 'text-gray-100',
-    good: 'text-teal-300',
-    warn: 'text-amber-300',
-    bad: 'text-red-300',
-  }[tone];
-
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-gray-800 bg-[#111111] p-4">
-      <div className="text-xs font-semibold uppercase text-gray-500">{label}</div>
-      <div className={`mt-2 text-2xl font-semibold ${toneClass}`}>{value}</div>
+    <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+      <h2 className="text-lg font-semibold text-gray-100">{title}</h2>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <p className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">{children}</p>;
+}
+
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-xl border border-gray-800 bg-[#101010] p-4">
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-gray-100">{value}</div>
     </div>
   );
 }
 
-function ValuationTable({ valuation }: { valuation: ResearchValuation }) {
-  if (valuation.status === 'insufficient_data') {
-    const missing = valuation.missing_inputs?.length
-      ? valuation.missing_inputs
-      : ((valuation.trace.missing_inputs as string[] | undefined) ?? []);
-    return (
-      <div className="space-y-3 text-sm">
-        <div className="rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-amber-100">
-          <div className="font-semibold">NO VALUATION — insufficient data</div>
-          <p className="mt-2 text-amber-200/90">
-            CavaAI no publica fair value con bootstrap assumptions. Ingiere hechos coherentes antes de confiar en un precio objetivo.
-          </p>
-        </div>
-        {missing.length ? (
-          <ul className="list-disc space-y-1 pl-5 text-gray-300">
-            {missing.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    );
-  }
-
-  const scenarios = [
-    { name: 'Bear', value: valuation.bear_value },
-    { name: 'Base', value: valuation.base_value },
-    { name: 'Bull', value: valuation.bull_value },
-  ];
-
+function FactTable({ facts }: { facts: ResearchFact[] }) {
+  if (!facts.length) return <Empty>No persisted financial facts yet.</Empty>;
   return (
-    <div className="space-y-3">
-      {valuation.publishable === false ? (
-        <div className="rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
-          Valores parciales — no tratar como fair value final ({valuation.status}).
-        </div>
-      ) : null}
+    <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
         <thead className="text-xs uppercase text-gray-500">
           <tr>
-            <th className="border-b border-gray-800 py-2">Escenario</th>
-            <th className="border-b border-gray-800 py-2 text-right">Valor por accion</th>
-            <th className="border-b border-gray-800 py-2 text-right">Upside</th>
-          </tr>
-        </thead>
-        <tbody>
-          {scenarios.map((scenario) => (
-            <tr key={scenario.name} className="border-b border-gray-900 last:border-0">
-              <td className="py-3 font-semibold text-gray-200">{scenario.name}</td>
-              <td className="py-3 text-right text-gray-300">{money(scenario.value)}</td>
-              <td className="py-3 text-right text-gray-400">
-                {valuation.current_price && scenario.value != null
-                  ? pct(scenario.value / valuation.current_price - 1)
-                  : 'N/A'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function SensitivityGrid({ valuation }: { valuation: ResearchValuation }) {
-  const rows = valuation.sensitivity.rows ?? [];
-  const waccValues = rows[0]?.values?.map((item) => item.wacc) ?? [];
-
-  if (!rows.length || !waccValues.length) {
-    return <div className="rounded-md border border-gray-800 p-3 text-sm text-gray-500">Sin sensibilidad disponible.</div>;
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[520px] text-right text-sm">
-        <thead className="text-xs uppercase text-gray-500">
-          <tr>
-            <th className="border-b border-gray-800 py-2 text-left">Growth / WACC</th>
-            {waccValues.map((wacc) => (
-              <th key={wacc} className="border-b border-gray-800 py-2">{pct(wacc)}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.revenue_growth} className="border-b border-gray-900 last:border-0">
-              <td className="py-3 text-left font-semibold text-gray-300">{pct(row.revenue_growth)}</td>
-              {row.values.map((item) => (
-                <td key={`${row.revenue_growth}-${item.wacc}`} className="py-3 text-gray-400">
-                  {money(item.value_per_share)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function FactsTable({ facts }: { facts: ResearchFact[] }) {
-  const visibleFacts = facts.slice(0, 40);
-
-  if (!visibleFacts.length) {
-    return (
-      <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
-        No hay facts financieros normalizados todavia. Configura FMP_API_KEY y pulsa Refresh FMP.
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[820px] text-left text-sm">
-        <thead className="text-xs uppercase text-gray-500">
-          <tr>
             <th className="border-b border-gray-800 py-2">Metric</th>
-            <th className="border-b border-gray-800 py-2 text-right">Value</th>
             <th className="border-b border-gray-800 py-2">Period</th>
-            <th className="border-b border-gray-800 py-2">Source</th>
-            <th className="border-b border-gray-800 py-2">Type</th>
-            <th className="border-b border-gray-800 py-2 text-right">Confidence</th>
+            <th className="border-b border-gray-800 py-2 text-right">Value</th>
+            <th className="border-b border-gray-800 py-2 text-right">Source</th>
           </tr>
         </thead>
         <tbody>
-          {visibleFacts.map((fact) => (
-            <tr key={fact.id} className="border-b border-gray-900 last:border-0">
-              <td className="py-3 font-semibold text-gray-200">{fact.metric}</td>
-              <td className="py-3 text-right text-gray-300"><FactValue fact={fact} /></td>
-              <td className="py-3 text-gray-400">{fact.period}</td>
-              <td className="py-3 text-gray-400">{fact.source_type}</td>
-              <td className="py-3">
-                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                  {fact.is_reported ? 'reported' : 'derived'}
-                </Badge>
-              </td>
-              <td className="py-3 text-right text-gray-400">{pct(numberValue(fact.confidence))}</td>
+          {facts.map((fact) => (
+            <tr key={fact.id} className="text-gray-300">
+              <td className="border-b border-gray-900 py-2 font-medium">{fact.metric}</td>
+              <td className="border-b border-gray-900 py-2">{fact.period}</td>
+              <td className="border-b border-gray-900 py-2 text-right">{metricValue(fact.value, fact.unit)}</td>
+              <td className="border-b border-gray-900 py-2 text-right text-xs text-gray-500">{fact.source_type}</td>
             </tr>
           ))}
         </tbody>
@@ -276,1147 +149,293 @@ function FactsTable({ facts }: { facts: ResearchFact[] }) {
   );
 }
 
-function CalculatedMetricsTable({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
-  if (!metrics.length) {
-    return (
-      <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
-        No hay metricas calculadas todavia.
-      </div>
-    );
-  }
-
+function MetricsGrid({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
+  if (!metrics.length) return <Empty>Calculated metrics have not been refreshed.</Empty>;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[920px] text-left text-sm">
-        <thead className="text-xs uppercase text-gray-500">
-          <tr>
-            <th className="border-b border-gray-800 py-2">Metric</th>
-            <th className="border-b border-gray-800 py-2 text-right">Value</th>
-            <th className="border-b border-gray-800 py-2">Status</th>
-            <th className="border-b border-gray-800 py-2">Formula</th>
-            <th className="border-b border-gray-800 py-2">Period</th>
-            <th className="border-b border-gray-800 py-2">Fact IDs</th>
-            <th className="border-b border-gray-800 py-2 text-right">Confidence</th>
-          </tr>
-        </thead>
-        <tbody>
-          {metrics.map((metric) => {
-            const value = metric.value == null ? null : numberValue(metric.value);
-            return (
-              <tr key={`${metric.metric}-${metric.definition_version}-${metric.period}`} className="border-b border-gray-900 last:border-0">
-                <td className="py-3 font-semibold text-gray-200">{metric.metric}</td>
-                <td className="py-3 text-right text-gray-300">
-                  {value == null ? 'N/A' : metric.unit === 'decimal' ? pct(value) : `${value.toFixed(2)}${metric.unit}`}
-                </td>
-                <td className="py-3">
-                  <Badge
-                    className={
-                      metric.status === 'ok'
-                        ? 'border-teal-800 bg-teal-950/30 text-teal-200'
-                        : 'border-amber-800 bg-amber-950/30 text-amber-200'
-                    }
-                    variant="outline"
-                  >
-                    {metric.status}
-                  </Badge>
-                </td>
-                <td className="max-w-[320px] py-3 text-xs leading-5 text-gray-400">{metric.formula}</td>
-                <td className="py-3 text-gray-500">{metric.period}</td>
-                <td className="py-3 text-gray-500">{metric.source_fact_ids.join(', ') || 'missing'}</td>
-                <td className="py-3 text-right text-gray-400">{pct(numberValue(metric.confidence))}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {metrics.map((metric) => (
+        <div className="rounded-lg border border-gray-800 p-4" key={`${metric.metric}-${metric.period}-${metric.definition_version}`}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium text-gray-200">{metric.metric}</span>
+            <Badge variant="outline">{metric.status}</Badge>
+          </div>
+          <div className="mt-2 text-xl text-teal-300">{metricValue(metric.value, metric.unit)}</div>
+          <div className="mt-2 text-xs text-gray-500">{metric.period} · {metric.definition_version}</div>
+          <div className="mt-2 text-xs text-gray-600">{metric.formula}</div>
+        </div>
+      ))}
     </div>
   );
 }
 
-function peerMetricValue(value: string | null, unit: string) {
-  if (value === null) return 'N/A';
-  const parsed = numberValue(value);
-  if (unit === 'decimal') return pct(parsed);
-  if (unit === 'x') return `${parsed.toFixed(2)}x`;
-  return parsed.toFixed(2);
-}
-
-function PeerComparisonPanel({ comparison }: { comparison: ResearchPeerComparison | null }) {
-  if (!comparison || !comparison.companies.length) {
+function ValuationView({ valuation, currency }: { valuation: ResearchValuation | null; currency: string }) {
+  if (!valuation) return <Empty>No persisted valuation is available.</Empty>;
+  if (valuation.status === 'insufficient_data') {
     return (
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Peer Comparison</h2>
-        </div>
-        <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
-          No peer comparison available yet.
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Peer Comparison</h2>
-        </div>
-        <div className="text-sm text-gray-500">
-          {comparison.peer_count} peers - {comparison.basis}
-        </div>
-      </div>
-
-      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {comparison.metrics.slice(0, 4).map((metric) => {
-          const benchmark = comparison.benchmarks[metric];
-          return (
-            <div key={metric} className="rounded-md border border-gray-800 p-3">
-              <div className="text-xs font-semibold uppercase text-gray-500">{metric}</div>
-              <div className="mt-2 text-sm text-gray-300">
-                Target {benchmark?.target_value ? pct(numberValue(benchmark.target_value)) : 'N/A'}
-              </div>
-              <div className="text-xs text-gray-500">
-                Peer median {benchmark?.peer_median ? pct(numberValue(benchmark.peer_median)) : 'N/A'} ({benchmark?.peer_sample_size ?? 0})
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
-          <thead className="text-xs uppercase text-gray-500">
-            <tr>
-              <th className="border-b border-gray-800 py-2">Company</th>
-              {comparison.metrics.map((metric) => (
-                <th key={metric} className="border-b border-gray-800 py-2 text-right">
-                  {metric}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {comparison.companies.map((company) => (
-              <tr key={company.ticker} className="border-b border-gray-900 last:border-0">
-                <td className="max-w-[260px] py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-200">{company.ticker}</span>
-                    {company.is_target ? (
-                      <Badge className="border-teal-800 bg-teal-950/30 text-teal-200" variant="outline">
-                        target
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div className="mt-1 truncate text-xs text-gray-500">{company.name}</div>
-                </td>
-                {comparison.metrics.map((metric) => {
-                  const item = company.metrics[metric];
-                  return (
-                    <td key={`${company.ticker}-${metric}`} className="py-3 text-right text-gray-300">
-                      <div>{peerMetricValue(item?.value ?? null, item?.unit ?? 'decimal')}</div>
-                      <div className="text-xs text-gray-600">{item?.period ?? 'unknown'}</div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function ThesisPanel({ thesis }: { thesis: ResearchThesis | null }) {
-  if (!thesis) {
-    return (
-      <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
-        No hay tesis generada para este ticker.
+      <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-4 text-sm text-amber-200">
+        Valuation is blocked by missing inputs: {(valuation.missing_inputs ?? []).join(', ') || 'unspecified inputs'}.
       </div>
     );
   }
-
   return (
-    <div className="grid gap-4">
-      <div className="grid gap-3 md:grid-cols-4">
-        <Stat label="Version" value={`v${thesis.version}`} />
-        <Stat label="Status" value={thesis.status} tone={thesis.status === 'final' ? 'good' : 'warn'} />
-        <Stat label="Rating" value={thesis.rating} tone={thesis.rating === 'blocked' ? 'bad' : 'default'} />
-        <Stat label="Source score" value={`${thesis.source_coverage_score}`} tone={thesis.source_coverage_score > 80 ? 'good' : 'warn'} />
-      </div>
-      <div className="rounded-md border border-gray-800 bg-black/30 p-4">
-        <div className="text-xs font-semibold uppercase text-gray-500">Executive summary</div>
-        <p className="mt-2 text-sm leading-6 text-gray-300">{thesis.executive_summary}</p>
-      </div>
-      <article className="max-h-[680px] overflow-auto rounded-md border border-gray-800 bg-black/30 p-4">
-        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-gray-300">
-          {thesis.thesis_markdown}
-        </pre>
-      </article>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Stat label="Current price" value={money(valuation.current_price, currency)} />
+      <Stat label="Bear" value={money(valuation.bear_value, currency)} />
+      <Stat label="Base" value={money(valuation.base_value, currency)} />
+      <Stat label="Bull" value={money(valuation.bull_value, currency)} />
     </div>
   );
 }
 
-function ClaimStatusBadge({ status }: { status: string }) {
-  const isSupported = status === 'supported';
-  const isContradicted = status === 'contradicted';
-  const className = isContradicted
-    ? 'border-red-800 bg-red-950/30 text-red-200'
-    : isSupported
-      ? 'border-teal-800 bg-teal-950/30 text-teal-200'
-      : 'border-amber-800 bg-amber-950/30 text-amber-200';
-
+function MarketOpportunityView({ model }: { model: ResearchLongTermModel | null }) {
+  if (!model || model.status === 'not_generated') return <Empty>Generate the Long-Term Model before assessing market opportunity.</Empty>;
+  const opportunity = model.market_opportunity;
   return (
-    <Badge className={className} variant="outline">
-      {isSupported ? <CheckCircle2 className="h-3 w-3" /> : null}
-      {isContradicted ? <TriangleAlert className="h-3 w-3" /> : null}
-      {status}
-    </Badge>
-  );
-}
-
-function ClaimsMemoryPanel({
-  ticker,
-  claims,
-  sections,
-  memoryItems,
-  sourceDocuments,
-}: {
-  ticker: string;
-  claims: ResearchClaim[];
-  sections: ResearchThesisSection[];
-  memoryItems: ResearchMemoryItem[];
-  sourceDocuments: ResearchSourceDocument[];
-}) {
-  const sourceChunks = sourceDocuments.flatMap((document) => document.chunks ?? []);
-
-  return (
-    <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <BrainCircuit className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Claims</h2>
-          <span className="ml-auto text-sm text-gray-500">{claims.length}</span>
-        </div>
-        <MutationForm action={createResearchClaim.bind(null, ticker)} className="mb-4 grid gap-3 md:grid-cols-[1fr_150px_96px_auto]" resetOnSuccess successMessage="Afirmación creada">
-          <Input aria-label="Claim" name="statement" placeholder="Material claim" required />
-          <Input aria-label="Claim type" defaultValue="thesis" name="claim_type" />
-          <Input aria-label="Materiality" defaultValue="5" max="10" min="0" name="materiality_score" type="number" />
-          <Button type="submit" variant="outline">
-            <Plus className="h-4 w-4" />
-            Add
-          </Button>
-        </MutationForm>
-        <div className="space-y-3">
-          {claims.length ? (
-            claims.map((claim) => (
-              <div key={claim.id} className="rounded-md border border-gray-800 p-3">
-                <div className="flex flex-wrap items-start gap-2">
-                  <ClaimStatusBadge status={claim.status} />
-                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                    {claim.claim_type}
-                  </Badge>
-                  <span className="ml-auto text-xs text-gray-500">M{claim.materiality_score}</span>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-gray-300">{claim.statement}</p>
-                <div className="mt-2 text-xs text-gray-500">
-                  Evidence: {claim.evidence.length} - Confidence: {pct(numberValue(claim.confidence))}
-                </div>
-                {claim.evidence.length ? (
-                  <div className="mt-3 space-y-2 border-t border-gray-800 pt-3">
-                    {claim.evidence.slice(0, 2).map((evidence) => (
-                      <div key={evidence.id} className="text-xs leading-5 text-gray-400">
-                        <span className={evidence.evidence_type === 'contradicts' ? 'text-red-300' : 'text-teal-300'}>
-                          {evidence.evidence_type}
-                        </span>
-                        {' - '}
-                        {evidence.summary}
-                        <span className="text-gray-600"> - {evidence.source_tier}</span>
-                        {evidence.document_chunk_id ? (
-                          <span className="text-gray-600"> - chunk #{evidence.document_chunk_id}</span>
-                        ) : evidence.document_id ? (
-                          <span className="text-gray-600"> - document #{evidence.document_id}</span>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                <MutationForm action={addResearchClaimEvidence.bind(null, ticker, claim.id)} className="mt-3 grid gap-2 border-t border-gray-800 pt-3" resetOnSuccess successMessage="Evidencia vinculada">
-                  <div className="grid gap-2 md:grid-cols-[120px_1fr]">
-                    <select
-                      aria-label="Evidence type"
-                      className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
-                      name="evidence_type"
-                    >
-                      <option className="bg-[#111111]" value="supports">supports</option>
-                      <option className="bg-[#111111]" value="contradicts">contradicts</option>
-                    </select>
-                    <Input aria-label="Evidence summary" name="summary" placeholder="Evidence summary" />
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-                    <Input aria-label="Source URL" name="source_url" placeholder="Source URL" type="url" />
-                    <Button type="submit" variant="outline">
-                      <Plus className="h-4 w-4" />
-                      Evidence
-                    </Button>
-                  </div>
-                  {sourceDocuments.length ? (
-                    <div>
-                      <select
-                        aria-label="Evidence source"
-                        className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
-                        name="source_ref"
-                      >
-                        <option className="bg-[#111111]" value="">No linked document</option>
-                        {sourceDocuments.map((document) => (
-                          <option key={`doc-${document.id}`} className="bg-[#111111]" value={`document:${document.id}`}>
-                            Document: {document.title}
-                          </option>
-                        ))}
-                        {sourceChunks.map((chunk) => {
-                          const document = sourceDocuments.find((item) => item.id === chunk.document_id);
-                          return (
-                            <option key={`chunk-${chunk.id}`} className="bg-[#111111]" value={`chunk:${chunk.id}`}>
-                              Chunk: {document?.title ?? `Document ${chunk.document_id}`} #{chunk.chunk_index}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-                  ) : null}
-                </MutationForm>
-              </div>
-            ))
-          ) : (
-            <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">No claims captured.</div>
-          )}
-        </div>
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Stat label="TAM" value={metricValue(opportunity.top_down.tam.value, opportunity.top_down.tam.unit)} />
+        <Stat label="SAM" value={metricValue(opportunity.top_down.sam.value, opportunity.top_down.sam.unit)} />
+        <Stat label="SOM" value={metricValue(opportunity.top_down.som.value, opportunity.top_down.som.unit)} />
       </div>
-
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <FileText className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Memory</h2>
-          <span className="ml-auto text-sm text-gray-500">{memoryItems.length}</span>
-        </div>
-        <MutationForm action={createResearchMemoryItem.bind(null, ticker)} className="mb-4 grid gap-3" resetOnSuccess successMessage="Nota guardada">
-          <Textarea aria-label="Memory item" className="border-gray-700 bg-transparent text-gray-100" name="content" placeholder="Watch item or decision note" required />
-          <div className="grid gap-3 md:grid-cols-[1fr_96px_auto]">
-            <Input aria-label="Memory type" defaultValue="note" name="memory_type" />
-            <Input aria-label="Importance" defaultValue="5" max="10" min="0" name="importance" type="number" />
-            <Button type="submit" variant="outline">
-              <Plus className="h-4 w-4" />
-              Add
-            </Button>
-          </div>
-        </MutationForm>
-        <div className="space-y-3">
-          {memoryItems.slice(0, 6).map((item) => (
-            <div key={item.id} className="rounded-md border border-gray-800 p-3">
-              <div className="flex items-center gap-2">
-                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                  {item.memory_type}
-                </Badge>
-                <span className="ml-auto text-xs text-gray-500">I{item.importance}</span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-gray-300">{item.content}</p>
-            </div>
-          ))}
-          {!memoryItems.length ? (
-            <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">No memory items captured.</div>
-          ) : null}
-        </div>
-        {sections.length ? (
-          <div className="mt-5 border-t border-gray-800 pt-4">
-            <div className="mb-3 text-xs font-semibold uppercase text-gray-500">Thesis sections</div>
-            <div className="flex flex-wrap gap-2">
-              {sections.map((section) => (
-                <Badge key={section.id} className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                  {section.title}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function defaultClaimStatement(text: string, title: string) {
-  const firstSentence = text.split(/[.!?]\s/)[0]?.trim() || title;
-  return firstSentence.length > 180 ? `${firstSentence.slice(0, 177)}...` : firstSentence;
-}
-
-function SourceEvidencePanel({
-  ticker,
-  claims,
-  sourceDocuments,
-}: {
-  ticker: string;
-  claims: ResearchClaim[];
-  sourceDocuments: ResearchSourceDocument[];
-}) {
-  const chunkRows = sourceDocuments.flatMap((document) =>
-    (document.chunks ?? []).map((chunk) => ({
-      document,
-      chunk,
-    })),
-  );
-  const visibleRows = chunkRows.slice(0, 12);
-
-  return (
-    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
-          <Database className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Source Evidence Lab</h2>
-        </div>
-        <div className="text-sm text-gray-500">
-          {sourceDocuments.length} documents - {chunkRows.length} chunks
-        </div>
-      </div>
-
-      {visibleRows.length ? (
-        <div className="grid gap-4">
-          {visibleRows.map(({ document, chunk }) => {
-            const defaultStatement = defaultClaimStatement(chunk.text, document.title);
-
-            return (
-              <article key={chunk.id} className="rounded-md border border-gray-800 bg-black/25 p-4">
-                <div className="flex flex-wrap items-start gap-2">
-                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                    {document.source_type}
-                  </Badge>
-                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                    {document.source_tier}
-                  </Badge>
-                  <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                    chunk #{chunk.chunk_index}
-                  </Badge>
-                  <span className="ml-auto text-xs text-gray-500">doc #{document.id}</span>
-                </div>
-                <div className="mt-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                  <h3 className="text-sm font-semibold text-gray-200">{document.title}</h3>
-                  {document.source_url ? (
-                    <a
-                      className="text-xs text-teal-300 hover:text-teal-200"
-                      href={document.source_url}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      Open source
-                    </a>
-                  ) : null}
-                </div>
-                <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-gray-800 bg-black/30 p-3 font-sans text-sm leading-6 text-gray-300">
-                  {chunk.text}
-                </pre>
-
-                <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                  <MutationForm action={createResearchClaimFromChunk.bind(null, ticker, chunk.id)} className="grid gap-2" resetOnSuccess successMessage="Afirmación creada desde la fuente">
-                    <div className="text-xs font-semibold uppercase text-gray-500">Create claim from chunk</div>
-                    <Input aria-label="Claim statement" defaultValue={defaultStatement} name="statement" required />
-                    <Textarea
-                      aria-label="Evidence summary"
-                      className="border-gray-700 bg-transparent text-gray-100"
-                      defaultValue={defaultStatement}
-                      name="summary"
-                      required
-                    />
-                    <div className="grid gap-2 md:grid-cols-[120px_96px_auto]">
-                      <select
-                        aria-label="Evidence type"
-                        className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
-                        name="evidence_type"
-                      >
-                        <option className="bg-[#111111]" value="supports">supports</option>
-                        <option className="bg-[#111111]" value="contradicts">contradicts</option>
-                      </select>
-                      <Input aria-label="Materiality" defaultValue="5" max="10" min="0" name="materiality_score" type="number" />
-                      <input name="source_url" type="hidden" value={document.source_url ?? ''} />
-                      <Button type="submit" variant="outline">
-                        <Plus className="h-4 w-4" />
-                        Claim
-                      </Button>
-                    </div>
-                  </MutationForm>
-
-                  <MutationForm action={addResearchChunkEvidence.bind(null, ticker, chunk.id)} className="grid gap-2" resetOnSuccess successMessage="Fragmento vinculado">
-                    <div className="text-xs font-semibold uppercase text-gray-500">Attach to existing claim</div>
-                    {claims.length ? (
-                      <>
-                        <select
-                          aria-label="Target claim"
-                          className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
-                          name="claim_id"
-                        >
-                          {claims.map((claim) => (
-                            <option key={claim.id} className="bg-[#111111]" value={claim.id}>
-                              #{claim.id} - {claim.statement.slice(0, 92)}
-                            </option>
-                          ))}
-                        </select>
-                        <Input aria-label="Evidence summary" defaultValue={defaultStatement} name="summary" required />
-                        <div className="grid gap-2 md:grid-cols-[120px_auto]">
-                          <select
-                            aria-label="Evidence type"
-                            className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
-                            name="evidence_type"
-                          >
-                            <option className="bg-[#111111]" value="supports">supports</option>
-                            <option className="bg-[#111111]" value="contradicts">contradicts</option>
-                          </select>
-                          <input name="source_url" type="hidden" value={document.source_url ?? ''} />
-                          <Button type="submit" variant="outline">
-                            <Plus className="h-4 w-4" />
-                            Evidence
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
-                        No existing claims yet.
-                      </div>
-                    )}
-                  </MutationForm>
-                </div>
-              </article>
-            );
-          })}
-          {chunkRows.length > visibleRows.length ? (
-            <div className="rounded-md border border-gray-800 p-3 text-sm text-gray-400">
-              Showing first {visibleRows.length} chunks. Use source ingestion filters to narrow the working set.
-            </div>
-          ) : null}
-        </div>
-      ) : (
-        <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">
-          No source chunks available. Import documents from the Sources page to create traceable evidence.
-        </div>
-      )}
-    </section>
-  );
-}
-
-function WhatChangedPanel({
-  ticker,
-  changes,
-}: {
-  ticker: string;
-  changes: ResearchThesisChange[];
-}) {
-  const impactClass = (impact: string) => {
-    if (impact === 'positive') return 'border-teal-800 bg-teal-950/30 text-teal-200';
-    if (impact === 'negative') return 'border-red-800 bg-red-950/30 text-red-200';
-    if (impact === 'mixed') return 'border-amber-800 bg-amber-950/30 text-amber-200';
-    return 'border-gray-700 bg-gray-900 text-gray-300';
-  };
-
-  return (
-    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <GitBranch className="h-5 w-5 text-teal-300" />
-        <h2 className="text-lg font-semibold text-gray-100">What Changed</h2>
-        <span className="ml-auto text-sm text-gray-500">{changes.length}</span>
-      </div>
-      <MutationForm action={createResearchThesisChange.bind(null, ticker)} className="mb-4 grid gap-3 xl:grid-cols-[1fr_150px_140px_96px_160px_auto]" resetOnSuccess successMessage="Cambio registrado">
-        <Input aria-label="Change summary" name="summary" placeholder="Thesis change" required />
-        <Input aria-label="Change type" defaultValue="manual" name="change_type" />
-        <select
-          aria-label="Impact direction"
-          className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100"
-          name="impact_direction"
-        >
-          <option className="bg-[#111111]" value="neutral">neutral</option>
-          <option className="bg-[#111111]" value="positive">positive</option>
-          <option className="bg-[#111111]" value="negative">negative</option>
-          <option className="bg-[#111111]" value="mixed">mixed</option>
-        </select>
-        <Input aria-label="Materiality" defaultValue="5" max="10" min="0" name="materiality_score" type="number" />
-        <Input aria-label="Affected metrics" name="affected_metrics" placeholder="metrics" />
-        <Button type="submit" variant="outline">
-          <Plus className="h-4 w-4" />
-          Add
-        </Button>
-      </MutationForm>
-      <div className="grid gap-3">
-        {changes.length ? (
-          changes.slice(0, 8).map((change) => (
-            <div key={change.id} className="rounded-md border border-gray-800 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className={impactClass(change.impact_direction)} variant="outline">
-                  {change.impact_direction}
-                </Badge>
-                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                  {change.change_type}
-                </Badge>
-                {change.requires_review ? (
-                  <Badge className="border-amber-800 bg-amber-950/30 text-amber-200" variant="outline">
-                    review
-                  </Badge>
-                ) : null}
-                <span className="ml-auto text-xs text-gray-500">M{change.materiality_score}</span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-gray-300">{change.summary}</p>
-              <div className="mt-2 text-xs text-gray-500">
-                Claims: {change.affected_claim_ids.length} - Metrics: {change.affected_metrics.join(', ') || 'none'}
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="rounded-md border border-gray-800 p-4 text-sm text-gray-400">No thesis changes captured.</div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function SourceAwareChatPanel({
-  ticker,
-  chatQuestion,
-  chatResponse,
-}: {
-  ticker: string;
-  chatQuestion: string;
-  chatResponse: ResearchChatResponse | null;
-}) {
-  return (
-    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <MessageSquare className="h-5 w-5 text-teal-300" />
-        <h2 className="text-lg font-semibold text-gray-100">Company Chat</h2>
-        {chatResponse?.blocked ? (
-          <Badge className="ml-auto border-amber-800 bg-amber-950/30 text-amber-200" variant="outline">
-            blocked
-          </Badge>
-        ) : null}
-      </div>
-      <form className="grid gap-3 md:grid-cols-[1fr_auto]" method="GET">
-        <Input
-          aria-label="Ask company chat"
-          defaultValue={chatQuestion}
-          name="chat"
-          placeholder={`Ask ${ticker} with source-aware memory`}
-        />
-        <Button type="submit" variant="outline">
-          <MessageSquare className="h-4 w-4" />
-          Ask
-        </Button>
-      </form>
-      {chatResponse ? (
-        <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_320px]">
-          <article className="max-h-[520px] overflow-auto rounded-md border border-gray-800 bg-black/30 p-4">
-            <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-gray-300">
-              {chatResponse.answer}
-            </pre>
-          </article>
-          <aside className="rounded-md border border-gray-800 bg-black/30 p-4">
-            <div className="mb-3 text-xs font-semibold uppercase text-gray-500">Sources</div>
-            <div className="space-y-2">
-              {chatResponse.sources.slice(0, 12).map((source, index) => (
-                <div key={`${source.type}-${String(source.id)}-${index}`} className="rounded-md border border-gray-800 p-2">
-                  <div className="flex items-center gap-2">
-                    <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                      {source.type}
-                    </Badge>
-                    <span className="ml-auto text-xs text-gray-600">#{String(source.id ?? 'n/a')}</span>
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-gray-400">{source.title}</p>
-                </div>
-              ))}
-              {!chatResponse.sources.length ? (
-                <div className="rounded-md border border-gray-800 p-3 text-sm text-gray-400">
-                  No sources returned.
-                </div>
-              ) : null}
-            </div>
-            {chatResponse.proposed_actions.length ? (
-              <div className="mt-4 border-t border-gray-800 pt-3">
-                <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Next actions</div>
-                <ul className="list-disc space-y-1 pl-4 text-xs leading-5 text-gray-400">
-                  {chatResponse.proposed_actions.map((action) => (
-                    <li key={action}>{action}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </aside>
-        </div>
-      ) : (
-        <div className="mt-4 rounded-md border border-gray-800 p-4 text-sm text-gray-400">
-          Ask a question to retrieve thesis, facts, claims, evidence, documents, news and memory with provenance.
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ResearchIntelligencePanel({
-  ticker,
-  peerAnalysis,
-  moat,
-  redTeam,
-  graph,
-  reviews,
-  alerts,
-  suggestions,
-}: {
-  ticker: string;
-  peerAnalysis: ResearchPeerAnalysis | null;
-  moat: ResearchMoat | null;
-  redTeam: ResearchRedTeam | null;
-  graph: ResearchThesisGraph | null;
-  reviews: ResearchReview[];
-  alerts: ResearchAlert[];
-  suggestions: ResearchEvidenceSuggestion[];
-}) {
-  return (
-    <section className="grid gap-6 xl:grid-cols-2">
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Moat & qualitative peers</h2>
-        </div>
-        <div className="space-y-3">
-          {(moat?.moats ?? []).filter((item) => item.status !== 'insufficient_evidence').slice(0, 6).map((item) => (
-            <div key={item.type} className="rounded-md border border-gray-800 p-3 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-200">{item.type.replaceAll('_', ' ')}</span>
-                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-                  {item.strength}/100
-                </Badge>
-                <span className="ml-auto text-xs text-gray-500">{item.trend}</span>
-              </div>
-              <div className="mt-2 text-xs text-gray-500">
-                {item.supporting_claim_ids.length} supporting / {item.contradicting_claim_ids.length} contradicting claims
-              </div>
-            </div>
-          ))}
-          {!(moat?.moats ?? []).some((item) => item.status !== 'insufficient_evidence') ? (
-            <div className="rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
-              Moat unavailable until sourced claim evidence exists.
-            </div>
-          ) : null}
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <div className="mb-2 text-xs font-semibold uppercase text-teal-300">Advantages</div>
-              {(peerAnalysis?.advantages ?? []).slice(0, 4).map((item, index) => (
-                <div key={`adv-${index}`} className="mb-2 rounded-md border border-gray-800 p-2 text-xs text-gray-300">
-                  {String(item.statement ?? item.dimension ?? 'Evidence-backed advantage')}
-                </div>
-              ))}
-            </div>
-            <div>
-              <div className="mb-2 text-xs font-semibold uppercase text-red-300">Disadvantages</div>
-              {(peerAnalysis?.disadvantages ?? []).slice(0, 4).map((item, index) => (
-                <div key={`dis-${index}`} className="mb-2 rounded-md border border-gray-800 p-2 text-xs text-gray-300">
-                  {String(item.statement ?? item.dimension ?? 'Evidence-backed disadvantage')}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <TriangleAlert className="h-5 w-5 text-amber-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Red team</h2>
-          <MutationForm action={runResearchRedTeam.bind(null, ticker)} className="ml-auto" successMessage="Red team completado">
-            <Button size="sm" type="submit" variant="outline">Run</Button>
-          </MutationForm>
-        </div>
-        {redTeam ? (
-          <div className="space-y-3 text-sm">
-            <Stat label="Robustness score" value={`${redTeam.score}/100`} tone={redTeam.score >= 70 ? 'good' : redTeam.score >= 45 ? 'warn' : 'bad'} />
-            <div className="rounded-md border border-red-900/60 bg-red-950/20 p-3 text-red-100">
-              {redTeam.strongest_bear_case}
-            </div>
-            {redTeam.findings.slice(0, 5).map((finding, index) => (
-              <div key={`${finding.type}-${index}`} className="rounded-md border border-gray-800 p-3 text-gray-300">
-                <Badge className="mr-2 border-gray-700 bg-gray-900 text-gray-300" variant="outline">{finding.severity}</Badge>
-                {finding.message}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-gray-500">Run the evidence-backed attack workflow.</div>
-        )}
-      </div>
-
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <GitBranch className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Thesis dependency graph</h2>
-          <span className="ml-auto text-xs text-gray-500">{graph?.nodes.length ?? 0} nodes / {graph?.edges.length ?? 0} edges</span>
-        </div>
-        <div className="grid gap-2 md:grid-cols-2">
-          {(graph?.nodes ?? []).filter((node) => node.node_type === 'dependency').map((node) => (
-            <div key={node.id} className="rounded-md border border-gray-800 p-3">
-              <div className="font-semibold text-gray-200">{node.label}</div>
-              <div className="mt-1 text-xs text-gray-500">
-                M{node.materiality_score} · {node.status} · {node.claim_ids.length} claims
-              </div>
-              {node.invalidation_conditions.length ? (
-                <div className="mt-2 text-xs text-red-300">{node.invalidation_conditions.join('; ')}</div>
-              ) : null}
-            </div>
-          ))}
-          {!graph?.nodes.length ? <div className="text-sm text-gray-500">Generate a thesis and claims to build the graph.</div> : null}
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <FileText className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Earnings workflow</h2>
-        </div>
-        <MutationForm action={runResearchEarnings.bind(null, ticker)} className="grid gap-3 md:grid-cols-[110px_90px_1fr_auto]" successMessage="Revisión de resultados completada">
-          <Input aria-label="Fiscal year" defaultValue={new Date().getUTCFullYear()} name="fiscal_year" type="number" />
-          <select aria-label="Fiscal quarter" className="h-10 rounded-lg border border-gray-700 bg-transparent px-3 text-sm text-gray-100" name="fiscal_quarter">
-            {['Q1', 'Q2', 'Q3', 'Q4', 'FY'].map((quarter) => <option key={quarter} className="bg-[#111111]" value={quarter}>{quarter}</option>)}
-          </select>
-          <Input aria-label="Document IDs" name="document_ids" placeholder="Document IDs, comma-separated (optional)" />
-          <Button type="submit" variant="outline">Analyze</Button>
-        </MutationForm>
-        <p className="mt-3 text-xs text-gray-500">
-          Extracted figures remain staged until reconciled against SEC, provider and company sources.
-        </p>
-      </div>
-
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <BrainCircuit className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Evidence suggestions</h2>
-          <span className="ml-auto text-xs text-gray-500">{suggestions.length}</span>
-        </div>
-        <div className="space-y-3">
-          {suggestions.slice(0, 8).map((suggestion) => (
-            <div key={suggestion.id} className="rounded-md border border-gray-800 p-3 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">{suggestion.relation}</Badge>
-                <span className="text-xs text-gray-500">{pct(numberValue(suggestion.confidence))}</span>
-              </div>
-              <p className="mt-2 text-gray-300">{suggestion.statement}</p>
-              <p className="mt-1 text-xs text-gray-500">{suggestion.rationale}</p>
-              <div className="mt-3 flex gap-2">
-                <MutationForm action={actionResearchEvidenceSuggestion.bind(null, ticker, suggestion.id, 'accept', undefined)} successMessage="Sugerencia aceptada">
-                  <Button size="sm" type="submit" variant="outline">Accept</Button>
-                </MutationForm>
-                <MutationForm action={actionResearchEvidenceSuggestion.bind(null, ticker, suggestion.id, 'reject', undefined)} successMessage="Sugerencia rechazada">
-                  <Button size="sm" type="submit" variant="ghost">Reject</Button>
-                </MutationForm>
-              </div>
-            </div>
-          ))}
-          {!suggestions.length ? <div className="text-sm text-gray-500">No pending extraction suggestions.</div> : null}
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <TriangleAlert className="h-5 w-5 text-amber-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Reviews & alerts</h2>
-          <span className="ml-auto text-xs text-gray-500">{reviews.length} reviews / {alerts.length} alerts</span>
-        </div>
-        <div className="space-y-3">
-          {alerts.slice(0, 6).map((alert) => (
-            <div key={alert.id} className="rounded-md border border-gray-800 p-3 text-sm">
-              <div className="flex items-center gap-2">
-                <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">{alert.severity}</Badge>
-                <span className="font-semibold text-gray-200">{alert.title}</span>
-              </div>
-              <p className="mt-2 text-gray-400">{alert.message}</p>
-              <div className="mt-3 flex gap-2">
-                <MutationForm action={actionResearchAlert.bind(null, ticker, alert.id, 'acknowledge')} successMessage="Alerta reconocida">
-                  <Button size="sm" type="submit" variant="outline">Acknowledge</Button>
-                </MutationForm>
-                <MutationForm action={actionResearchAlert.bind(null, ticker, alert.id, 'resolve')} successMessage="Alerta resuelta">
-                  <Button size="sm" type="submit" variant="ghost">Resolve</Button>
-                </MutationForm>
-              </div>
-            </div>
-          ))}
-          {!alerts.length && !reviews.length ? <div className="text-sm text-gray-500">No open research alerts.</div> : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-export default async function ResearchCompanyPage({ params, searchParams }: ResearchCompanyPageProps) {
-  const { ticker } = await params;
-  const { chat = '' } = await searchParams;
-  await ensureResearchCompany(ticker);
-  const [{
-    company,
-    valuation,
-    facts,
-    calculatedMetrics,
-    peerComparison,
-    peerAnalysis,
-    moat,
-    thesis,
-    thesisHistory,
-    claims,
-    thesisSections,
-    thesisChanges,
-    thesisGraph,
-    reviews,
-    alerts,
-    memoryItems,
-    sourceDocuments,
-    evidenceSuggestions,
-    redTeam,
-    longTermModel,
-    decisionJournal,
-    expectationReviews,
-  }, marketSnapshot] = await Promise.all([
-    getResearchCompanyDetail(ticker),
-    getCompanyMarketSnapshot(ticker),
-  ]);
-
-  if (!company) notFound();
-  const chatResponse = chat.trim() ? await askResearchCompanyChat(company.ticker, chat) : null;
-
-  const inputSource = valuation.trace.input_source ?? valuation.status ?? 'unknown';
-  const sourceTone =
-    inputSource === 'financial_facts' ? 'good' : inputSource === 'insufficient_data' ? 'bad' : 'warn';
-  const marginTone =
-    valuation.margin_of_safety == null
-      ? 'warn'
-      : valuation.margin_of_safety > 0.25
-        ? 'good'
-        : valuation.margin_of_safety < -0.15
-          ? 'bad'
-          : 'warn';
-  const engine = (valuation.trace.engine as string | undefined) ?? valuation.model_type;
-
-  return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6">
-      <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <Button asChild className="mb-4" size="sm" variant="ghost">
-            <Link href="/research">
-              <ArrowLeft className="h-4 w-4" />
-              Research
-            </Link>
-          </Button>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold text-gray-100">{company.ticker}</h1>
-            <Badge className="border-teal-800 bg-teal-950/30 text-teal-200" variant="outline">
-              {company.valuation_model}
-            </Badge>
-            <Badge className="border-gray-700 bg-gray-900 text-gray-300" variant="outline">
-              {company.company_type}
-            </Badge>
-            <Badge
-              className={
-                valuation.publishable === false
-                  ? 'border-amber-800 bg-amber-950/30 text-amber-200'
-                  : 'border-teal-800 bg-teal-950/30 text-teal-200'
-              }
-              variant="outline"
-            >
-              {valuation.publishable === false ? 'not publishable' : engine}
-            </Badge>
-          </div>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            {company.name} - {company.sector} / {company.industry}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {company.factor_tags.map((tag) => (
-              <span key={tag} className="rounded-md border border-gray-800 bg-[#111111] px-2 py-1 text-xs text-gray-400">
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
-
+      <Panel title="Constraint-aware verdict">
         <div className="flex flex-wrap gap-2">
-          <MutationForm action={refreshCompanyFinancials.bind(null, company.ticker)} successMessage="Datos FMP actualizados">
-            <Button type="submit" variant="outline">
-              <RefreshCcw className="h-4 w-4" />
-              Refresh FMP
-            </Button>
-          </MutationForm>
-          <MutationForm action={refreshCompanyFinancialsSEC.bind(null, company.ticker)} successMessage="Datos SEC actualizados">
-            <Button type="submit" variant="outline">
-              <RefreshCcw className="h-4 w-4" />
-              Refresh SEC
-            </Button>
-          </MutationForm>
+          <Badge>{opportunity.verdict.label}</Badge>
+          <Badge variant="outline">confidence: {opportunity.verdict.confidence}</Badge>
+          <Badge variant="outline">binding: {opportunity.constraints.binding_constraint ?? 'unknown'}</Badge>
         </div>
-      </header>
-
-      <CompanyWorkspaceTabs
-        market={<CompanyMarketPanel snapshot={marketSnapshot} />}
-        overview={<div className="flex flex-col gap-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Precio actual" value={money(valuation.current_price)} />
-        <Stat label="Expected value" value={money(valuation.expected_value)} />
-        <Stat label="Margin of safety" value={pct(valuation.margin_of_safety)} tone={marginTone} />
-        <Stat label="Input source" value={inputSource.replaceAll('_', ' ')} tone={sourceTone} />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Valuation</h2>
-          </div>
-          <ValuationTable valuation={valuation} />
-        </div>
-
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <Sigma className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Sensitivity</h2>
-          </div>
-          <SensitivityGrid valuation={valuation} />
-        </div>
-      </section>
-
-      <LongTermModelPanel model={longTermModel} />
-
-      <DecisionAndRealityPanel
-        decisions={decisionJournal}
-        reviews={expectationReviews}
-        ticker={company.ticker}
-      />
-
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <Database className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Financial Facts</h2>
-            <span className="ml-auto text-sm text-gray-500">{facts.length} facts</span>
-          </div>
-          <FactsTable facts={facts} />
-        </div>
-
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Audit Trace</h2>
-          </div>
-          <div className="space-y-3 text-sm">
-            <div className="rounded-md border border-gray-800 p-3">
-              <div className="text-xs font-semibold uppercase text-gray-500">Metodo</div>
-              <div className="mt-1 text-gray-200">{valuation.trace.method ?? valuation.model_type}</div>
-            </div>
-            <div className="rounded-md border border-gray-800 p-3">
-              <div className="text-xs font-semibold uppercase text-gray-500">Reverse DCF growth</div>
-              <div className="mt-1 text-gray-200">{pct(valuation.reverse_dcf.required_revenue_growth ?? 0)}</div>
-            </div>
-            <div className="rounded-md border border-gray-800 p-3">
-              <div className="text-xs font-semibold uppercase text-gray-500">Fact IDs</div>
-              <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-gray-400">
-                {JSON.stringify(valuation.trace.fact_ids ?? {}, null, 2)}
-              </pre>
-            </div>
-            {valuation.trace.notice || valuation.status === 'insufficient_data' ? (
-              <div className="rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-amber-200">
-                {(valuation.trace.notice as string | undefined) ??
-                  'Valuation blocked: bootstrap assumptions are disabled. Ingest coherent financial facts.'}
+        <p className="mt-3 text-sm text-gray-300">{opportunity.verdict.conclusion}</p>
+      </Panel>
+      <Panel title="Bottom-up formulas">
+        <div className="space-y-3">
+          {opportunity.bottom_up.formulas.map((formula) => (
+            <div className="rounded-lg border border-gray-800 p-3" key={formula.label}>
+              <div className="flex justify-between gap-4 text-sm">
+                <span className="text-gray-200">{formula.label}</span>
+                <span className="text-teal-300">{formula.value === null ? formula.status : metricValue(formula.value, 'USD')}</span>
               </div>
-            ) : null}
-          </div>
+              {formula.missing_inputs?.length ? <p className="mt-2 text-xs text-amber-300">Missing: {formula.missing_inputs.join(', ')}</p> : null}
+            </div>
+          ))}
         </div>
-      </section>
+      </Panel>
+    </div>
+  );
+}
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <Sigma className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Traceable Metrics</h2>
-          <span className="ml-auto text-sm text-gray-500">{calculatedMetrics.length} metrics</span>
+export default async function ResearchCompanyPage({ params, searchParams }: PageProps) {
+  const [{ ticker: rawTicker }, query] = await Promise.all([params, searchParams]);
+  const ticker = rawTicker.trim().toUpperCase();
+  const activeView = asView(query.view);
+  const snapshot = await getResearchCompanySnapshot(ticker);
+  if (!snapshot) notFound();
+
+  const company = snapshot.company;
+  let content: React.ReactNode;
+
+  if (activeView === 'overview') {
+    const market = await getCompanyMarketSnapshot(ticker);
+    content = (
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Stat label="Research health" value={`${snapshot.research_health.score}/100`} />
+          <Stat label="Facts" value={snapshot.counts.facts} />
+          <Stat label="Claims" value={snapshot.counts.claims} />
+          <Stat label="Documents" value={snapshot.counts.documents} />
         </div>
-        <CalculatedMetricsTable metrics={calculatedMetrics} />
-      </section>
-
-      <PeerComparisonPanel comparison={peerComparison} />
-
-      <ResearchIntelligencePanel
-        alerts={alerts}
-        graph={thesisGraph}
-        moat={moat}
-        peerAnalysis={peerAnalysis}
-        redTeam={redTeam}
-        reviews={reviews}
-        suggestions={evidenceSuggestions}
-        ticker={company.ticker}
-      />
-
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Thesis</h2>
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Panel title="Latest thesis">
+            {snapshot.latest_thesis ? (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <Badge>{snapshot.latest_thesis.rating}</Badge>
+                  <Badge variant="outline">v{snapshot.latest_thesis.version}</Badge>
+                  <Badge variant="outline">{snapshot.latest_thesis.status}</Badge>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-gray-300">{snapshot.latest_thesis.executive_summary}</p>
+              </>
+            ) : <Empty>No thesis has been generated.</Empty>}
+          </Panel>
+          <Panel title="Long-Term Fundamental Model">
+            {snapshot.model_summary ? (
+              <div className="space-y-3 text-sm text-gray-300">
+                <div className="flex flex-wrap gap-2">
+                  <Badge>{snapshot.model_summary.framework_key}</Badge>
+                  <Badge variant="outline">v{snapshot.model_summary.version}</Badge>
+                  <Badge variant="outline">{snapshot.model_summary.publishable ? 'publishable' : 'blocked'}</Badge>
+                </div>
+                <p>{snapshot.model_summary.engine_version} · {snapshot.model_summary.horizon_years} years</p>
+              </div>
+            ) : <Empty>No persisted model. Generate it explicitly from the model tab.</Empty>}
+          </Panel>
+        </div>
+        {snapshot.research_health.missing?.length ? (
+          <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-sm text-amber-200">
+            Missing research layers: {snapshot.research_health.missing.join(', ')}
           </div>
-          <MutationForm action={generateResearchThesis.bind(null, company.ticker)} successMessage="Nueva versión de tesis generada">
-            <Button type="submit" variant="outline">
-              <FileText className="h-4 w-4" />
-              Generate Thesis
-            </Button>
+        ) : null}
+        <CompanyMarketPanel snapshot={market} />
+      </div>
+    );
+  } else if (activeView === 'thesis') {
+    const data = await getResearchThesisWorkspace(ticker);
+    content = (
+      <div className="space-y-6">
+        <div className="flex flex-wrap gap-3">
+          <MutationForm action={generateResearchThesis.bind(null, ticker)} successMessage="New thesis version generated">
+            <Button type="submit"><BrainCircuit className="mr-2 h-4 w-4" />Generate thesis</Button>
           </MutationForm>
+          <Badge variant="outline">{data.history.length} versions</Badge>
+          <Badge variant="outline">{data.claims.length} claims</Badge>
         </div>
-        <ThesisPanel thesis={thesis} />
-      </section>
-
-      <ClaimsMemoryPanel
-        claims={claims}
-        memoryItems={memoryItems}
-        sections={thesisSections}
-        sourceDocuments={sourceDocuments}
-        ticker={company.ticker}
-      />
-
-      <SourceEvidencePanel claims={claims} sourceDocuments={sourceDocuments} ticker={company.ticker} />
-
-      <SourceAwareChatPanel chatQuestion={chat} chatResponse={chatResponse} ticker={company.ticker} />
-
-      <WhatChangedPanel changes={thesisChanges} ticker={company.ticker} />
-
-      {thesisHistory.length > 0 && (
-        <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <GitBranch className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Thesis History</h2>
-            <span className="ml-auto text-sm text-gray-500">{thesisHistory.length} versions</span>
+        <Panel title="Current thesis">
+          {data.thesis ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2"><Badge>{data.thesis.rating}</Badge><Badge variant="outline">{data.thesis.status}</Badge></div>
+              <p className="text-sm leading-6 text-gray-300">{data.thesis.executive_summary}</p>
+              <div className="whitespace-pre-wrap rounded-lg border border-gray-800 bg-black/20 p-4 text-sm leading-6 text-gray-400">{data.thesis.thesis_markdown}</div>
+            </div>
+          ) : <Empty>No thesis exists.</Empty>}
+        </Panel>
+        <Panel title="Company-specific thesis sections">
+          <div className="grid gap-3 lg:grid-cols-2">
+            {data.sections.map((section) => (
+              <div className="rounded-lg border border-gray-800 p-4" key={section.id}>
+                <div className="flex justify-between gap-3"><h3 className="font-medium text-gray-200">{section.title}</h3><Badge variant="outline">{section.status}</Badge></div>
+                <p className="mt-2 text-sm leading-6 text-gray-400">{section.body}</p>
+              </div>
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-gray-500">
-                <tr>
-                  <th className="border-b border-gray-800 py-2">Version</th>
-                  <th className="border-b border-gray-800 py-2">Date</th>
-                  <th className="border-b border-gray-800 py-2">Status</th>
-                  <th className="border-b border-gray-800 py-2">Rating</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Source Score</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Confidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {thesisHistory.map((tv: ResearchThesisVersion) => (
-                  <tr key={tv.id} className="border-b border-gray-900 last:border-0">
-                    <td className="py-3 font-semibold text-teal-300">v{tv.version}</td>
-                    <td className="py-3 text-gray-400">{tv.created_at.split('T')[0]}</td>
-                    <td className="py-3 text-gray-300">{tv.status}</td>
-                    <td className="py-3 text-gray-300">{tv.rating}</td>
-                    <td className="py-3 text-right text-gray-400">{tv.source_coverage_score}</td>
-                    <td className="py-3 text-right text-gray-400">{tv.data_confidence_score}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        </Panel>
+        <Panel title="Claims and evidence">
+          <MutationForm action={createResearchClaim.bind(null, ticker)} className="mb-5 grid gap-3 md:grid-cols-[1fr_150px_auto]" resetOnSuccess successMessage="Claim created">
+            <Textarea name="statement" placeholder="A falsifiable company-specific claim" required />
+            <Input name="materiality_score" type="number" min="0" max="10" defaultValue="5" />
+            <Button type="submit">Add claim</Button>
+          </MutationForm>
+          <div className="space-y-3">
+            {data.claims.length ? data.claims.map((claim) => (
+              <div className="rounded-lg border border-gray-800 p-4" key={claim.id}>
+                <div className="flex flex-wrap gap-2"><Badge variant="outline">{claim.status}</Badge><Badge variant="outline">materiality {claim.materiality_score}</Badge><Badge variant="outline">{claim.evidence.length} evidence</Badge></div>
+                <p className="mt-3 text-sm text-gray-300">{claim.statement}</p>
+              </div>
+            )) : <Empty>No claims recorded.</Empty>}
           </div>
-        </section>
-      )}
-        </div>}
-      />
+        </Panel>
+        <Panel title="Dependency graph and red team">
+          <p className="text-sm text-gray-300">{data.graph ? `${data.graph.nodes.length} nodes · ${data.graph.edges.length} dependencies` : 'No persisted graph.'}</p>
+          <p className="mt-2 text-sm text-gray-400">{data.redTeam?.strongest_bear_case ?? 'No red-team run persisted.'}</p>
+        </Panel>
+      </div>
+    );
+  } else if (activeView === 'changes') {
+    const data = await getResearchChangesWorkspace(ticker);
+    content = (
+      <div className="space-y-6">
+        <Panel title="What Changed">
+          <div className="space-y-3">
+            {data.changes.length ? data.changes.map((change) => (
+              <div className="rounded-lg border border-gray-800 p-4" key={change.id}>
+                <div className="flex flex-wrap gap-2"><Badge>{change.impact_direction}</Badge><Badge variant="outline">{change.change_type}</Badge><Badge variant="outline">materiality {change.materiality_score}</Badge></div>
+                <p className="mt-3 text-sm text-gray-300">{change.summary}</p>
+              </div>
+            )) : <Empty>No material changes recorded.</Empty>}
+          </div>
+        </Panel>
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Panel title="Open reviews"><div className="space-y-2">{data.reviews.length ? data.reviews.map((review) => <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-300" key={review.id}>{review.title}</div>) : <Empty>No open reviews.</Empty>}</div></Panel>
+          <Panel title="Alerts"><div className="space-y-2">{data.alerts.length ? data.alerts.map((alert) => <div className="rounded-lg border border-gray-800 p-3 text-sm" key={alert.id}><Badge variant="outline">{alert.severity}</Badge><p className="mt-2 text-gray-300">{alert.message}</p></div>) : <Empty>No alerts.</Empty>}</div></Panel>
+        </div>
+        <DecisionAndRealityPanel ticker={ticker} decisions={data.decisions} reviews={data.expectations} />
+      </div>
+    );
+  } else if (activeView === 'financials') {
+    const data = await getResearchFinancialsWorkspace(ticker);
+    content = (
+      <div className="space-y-6">
+        <div className="flex flex-wrap gap-3">
+          <MutationForm action={refreshCompanyFinancials.bind(null, ticker)} successMessage="FMP financials refreshed"><Button type="submit" variant="outline">Refresh FMP</Button></MutationForm>
+          <MutationForm action={refreshCompanyFinancialsSEC.bind(null, ticker)} successMessage="SEC financials refreshed"><Button type="submit" variant="outline">Refresh SEC</Button></MutationForm>
+          <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Metrics and research model refreshed"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Recalculate</Button></MutationForm>
+        </div>
+        <Panel title="Traceable calculated metrics"><MetricsGrid metrics={data.calculatedMetrics} /></Panel>
+        <Panel title="Canonical financial facts"><FactTable facts={data.facts} /></Panel>
+      </div>
+    );
+  } else if (activeView === 'model') {
+    const model = await getResearchLongTermModel(ticker);
+    content = (
+      <div className="space-y-5">
+        <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Long-Term Model generated"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Generate model</Button></MutationForm>
+        <LongTermModelPanel model={model?.status === 'not_generated' ? null : model} />
+      </div>
+    );
+  } else if (activeView === 'market-opportunity') {
+    content = <MarketOpportunityView model={await getResearchLongTermModel(ticker)} />;
+  } else if (activeView === 'moat') {
+    const moat = await getResearchMoatWorkspace(ticker);
+    content = (
+      <div className="space-y-5">
+        <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Moat assessment refreshed"><Button type="submit" variant="outline"><ShieldCheck className="mr-2 h-4 w-4" />Refresh evidence assessment</Button></MutationForm>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {moat?.moats.length ? moat.moats.map((item) => <div className="rounded-xl border border-gray-800 bg-[#101010] p-4" key={item.type}><div className="flex justify-between gap-3"><span className="font-medium text-gray-200">{item.type.replaceAll('_', ' ')}</span><Badge>{item.strength}/100</Badge></div><p className="mt-3 text-sm text-gray-400">{item.status} · {item.trend} · persistence {item.persistence}</p><p className="mt-2 text-xs text-gray-600">{item.supporting_claim_ids.length} supporting · {item.contradicting_claim_ids.length} contradicting claims</p></div>) : <Empty>No persisted moat assessment.</Empty>}
+        </div>
+      </div>
+    );
+  } else if (activeView === 'peers') {
+    const peers = await getResearchPeersWorkspace(ticker);
+    content = (
+      <div className="space-y-6">
+        <Panel title="Peer set"><p className="text-sm text-gray-300">{peers.comparison?.basis ?? 'No peer set'} · {peers.comparison?.peer_count ?? 0} peers</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
+        <Panel title="Comparable benchmarks"><div className="grid gap-3 md:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Target {value.target_value ?? 'unknown'} · median {value.peer_median ?? 'unknown'} · n={value.peer_sample_size}</div></div>)}</div></Panel>
+        <Panel title="Advantages and disadvantages"><p className="text-sm text-gray-400">{peers.analysis?.methodology ?? 'No persisted peer analysis.'}</p><p className="mt-3 text-xs text-amber-300">{peers.analysis?.insufficient_data.join(', ')}</p></Panel>
+      </div>
+    );
+  } else if (activeView === 'valuation') {
+    content = <ValuationView valuation={await getResearchValuationWorkspace(ticker)} currency={company.currency} />;
+  } else if (activeView === 'documents') {
+    const documents = await getResearchDocumentsWorkspace(ticker, false);
+    content = (
+      <div className="space-y-6">
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Panel title="Upload a primary source"><MutationForm action={importResearchDocumentFile} className="grid gap-3" successMessage="Document uploaded"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Document title" required /><Input name="file" type="file" required /><Button type="submit">Upload</Button></MutationForm></Panel>
+          <Panel title="Import from URL"><MutationForm action={importResearchDocumentUrl} className="grid gap-3" successMessage="Document imported"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Document title" required /><Input name="url" type="url" placeholder="https://..." required /><Input name="source_type" placeholder="sec_filing / investor_relations" defaultValue="url" /><Button type="submit">Import</Button></MutationForm></Panel>
+        </div>
+        <Panel title="Documents"><div className="space-y-3">{documents.length ? documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{document.source_tier}</Badge></div><p className="mt-2 text-xs text-gray-500">{document.source_type} · {document.published_at ?? 'date unknown'}</p></div>) : <Empty>No documents ingested.</Empty>}</div></Panel>
+      </div>
+    );
+  } else if (activeView === 'sources') {
+    const audits = await getResearchSourceAuditsWorkspace(ticker);
+    content = <Panel title="Source audits"><div className="space-y-3">{audits.length ? audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'passed' : 'failed'}</Badge><Badge variant="outline">coverage {audit.source_coverage_score}/100</Badge><Badge variant="outline">thesis {audit.thesis_version_id ?? 'unknown'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>) : <Empty>No source audits persisted.</Empty>}</div></Panel>;
+  } else {
+    const response = query.chat ? await askResearchCompanyChat(ticker, query.chat) : null;
+    content = (
+      <div className="space-y-6">
+        <Panel title="Source-aware company chat">
+          <form className="flex gap-3" method="get"><input type="hidden" name="view" value="chat" /><Input name="chat" defaultValue={query.chat} placeholder={`Ask a source-aware question about ${ticker}`} minLength={3} required /><Button type="submit"><Search className="mr-2 h-4 w-4" />Ask</Button></form>
+        </Panel>
+        {response ? <Panel title="Answer"><div className="whitespace-pre-wrap text-sm leading-7 text-gray-300">{response.answer}</div><div className="mt-4 flex flex-wrap gap-2"><Badge variant="outline">model {response.model ?? 'deterministic'}</Badge><Badge variant="outline">{response.sources.length} sources</Badge><Badge variant="outline">{response.blocked ? 'insufficient data' : 'grounded'}</Badge></div></Panel> : <Empty>Ask a question to retrieve the deterministic evidence contract and source-aware synthesis.</Empty>}
+      </div>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1600px]">
+        <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
+        <header className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-3"><h1 className="text-3xl font-bold">{ticker}</h1><Badge variant="outline">{company.exchange}</Badge><Badge variant="outline">{company.currency}</Badge></div>
+            <p className="mt-2 text-gray-400">{company.name} · {company.sector} · {company.industry}</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />read-only snapshot</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{company.company_type}</span></div>
+        </header>
+        <nav aria-label="Research modules" className="mb-7 flex gap-2 overflow-x-auto pb-2">
+          {views.map(([key, label]) => (
+            <Link className={`whitespace-nowrap rounded-lg border px-3 py-2 text-sm transition ${activeView === key ? 'border-teal-600 bg-teal-950/40 text-teal-200' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'}`} href={`/research/${encodeURIComponent(ticker)}?view=${key}`} key={key}>{label}</Link>
+          ))}
+        </nav>
+        {content}
+      </div>
     </main>
   );
 }
