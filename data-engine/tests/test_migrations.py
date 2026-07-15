@@ -63,3 +63,12 @@ def test_latest_fundamental_migration_is_explicit_and_not_metadata_driven():
     assert "op.create_table" in migration
     assert "fundamental_model_versions" in migration
     assert "decision_journal_entries" in migration
+
+
+def test_every_committed_migration_is_frozen_and_explicit():
+    versions = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+
+    for path in sorted(versions.glob("*.py")):
+        migration = path.read_text(encoding="utf-8")
+        assert "Base.metadata" not in migration, f"{path.name} imports mutable ORM metadata"
+        assert "metadata.create_all" not in migration, f"{path.name} creates the current schema dynamically"
