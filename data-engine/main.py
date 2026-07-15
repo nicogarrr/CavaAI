@@ -18,9 +18,11 @@ from routers.market import router as market_router
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
-    if settings.app_env.lower() != "production":
-        # Local/test convenience. Production runs Alembic and seeding explicitly.
+    if settings.app_env.lower() == "test":
+        # Tests use an isolated disposable schema. Runtime environments migrate
+        # with Alembic before the process starts.
         init_db()
+    if settings.app_env.lower() != "production":
         ensure_company_master()
     yield
 
@@ -29,7 +31,7 @@ app = FastAPI(title="CavaAI Research Engine", version="1.0.0", lifespan=lifespan
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=get_settings().cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

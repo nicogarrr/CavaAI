@@ -83,7 +83,7 @@ class Position(TenantOwnedMixin, Base, TimestampMixin):
     unrealized_pnl: Mapped[Decimal] = mapped_column(Numeric(20, 2), default=0)
     realized_pnl: Mapped[Decimal] = mapped_column(Numeric(20, 2), default=0)
     currency: Mapped[str] = mapped_column(String(10), default="USD")
-    source: Mapped[str] = mapped_column(String(80), default="demo_seed")
+    source: Mapped[str] = mapped_column(String(80), default="manual")
     as_of: Mapped[date] = mapped_column(Date, default=date.today)
 
     company: Mapped[Company] = relationship(back_populates="positions")
@@ -97,7 +97,7 @@ class CashBalance(TenantOwnedMixin, Base, TimestampMixin):
     balance: Mapped[Decimal] = mapped_column(Numeric(20, 2), default=0)
     settled_cash: Mapped[Decimal] = mapped_column(Numeric(20, 2), default=0)
     interest_rate: Mapped[Decimal] = mapped_column(Numeric(10, 6), default=0)
-    source: Mapped[str] = mapped_column(String(80), default="demo_seed")
+    source: Mapped[str] = mapped_column(String(80), default="manual")
     as_of: Mapped[date] = mapped_column(Date, default=date.today)
 
 

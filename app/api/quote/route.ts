@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from '@/lib/env';
 import { SYMBOL_VALIDATION, ERROR_MESSAGES, CACHE_TTL } from '@/lib/constants';
-import { ValidationError, ExternalAPIError, toAppError } from '@/lib/types/errors';
+import { ValidationError, toAppError } from '@/lib/types/errors';
 import { getQuoteWithFallback } from '@/lib/actions/dataSources.actions';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 

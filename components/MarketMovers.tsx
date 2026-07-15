@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { TrendingUp, TrendingDown, Activity, ArrowRight } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity } from 'lucide-react'
 import { getMarketMovers } from '@/lib/actions/fmp.actions'
 import Link from 'next/link'
 

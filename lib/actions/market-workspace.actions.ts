@@ -24,6 +24,17 @@ export type CompanyMarketSnapshot = {
 export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyMarketSnapshot> {
     await requireAuthenticatedUser();
     const normalized = ticker.trim().toUpperCase();
+    if (process.env.E2E_AUTH_BYPASS === '1' && process.env.NODE_ENV !== 'production') {
+        return {
+            ticker: normalized,
+            name: normalized,
+            exchange: null,
+            currency: null,
+            quote: { price: null, change: null, changePercent: null, open: null, high: null, low: null, previousClose: null },
+            history: [],
+            status: 'unavailable',
+        };
+    }
     const to = Math.floor(Date.now() / 1000);
     const from = to - 366 * 24 * 60 * 60;
     const [profile, quote, candles] = await Promise.all([

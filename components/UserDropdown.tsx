@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -9,7 +8,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
@@ -18,33 +17,9 @@ import { signOut } from "@/lib/actions/auth.actions";
 
 const UserDropdown = ({ user, initialStocks }: { user: User, initialStocks: StockWithWatchlistStatus[] }) => {
     const router = useRouter();
-    const [mounted, setMounted] = useState(false);
-
-    useEffect(() => {
-        setMounted(true);
-    }, []);
-
     const handleSignOut = async () => {
         await signOut();
         router.push("/sign-in");
-    }
-
-    // Render placeholder button during SSR to avoid hydration mismatch
-    if (!mounted) {
-        return (
-            <Button className="flex items-center gap-3 text-gray-4 hover:bg-gray-800 bg-gray-800" aria-label="User menu">
-                <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-teal-500 text-teal-900 text-sm font-bold">
-                        {user.name[0]}
-                    </AvatarFallback>
-                </Avatar>
-                <div className="hidden md:flex flex-col items-start ">
-                    <span className='text-base font-medium text-gray-400 hover:text-teal-500 '>
-                        {user.name}
-                    </span>
-                </div>
-            </Button>
-        );
     }
 
     return (

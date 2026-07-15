@@ -8,14 +8,14 @@ services:
   # ==========================================
   mongodb:
     image: mongo:7
-    container_name: jlcava-mongodb
+    container_name: cavaai-mongodb
     restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
     environment:
-      - MONGO_INITDB_DATABASE=jlcavaai
+      - MONGO_INITDB_DATABASE=cavaai
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-root}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-example}
     healthcheck:
@@ -29,7 +29,7 @@ services:
   # ==========================================
   postgres:
     image: postgres:17
-    container_name: jlcava-postgres
+    container_name: cavaai-postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
@@ -53,7 +53,7 @@ services:
   # ==========================================
   redis:
     image: redis:7-alpine
-    container_name: jlcava-redis
+    container_name: cavaai-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -63,7 +63,7 @@ services:
   # ==========================================
   qdrant:
     image: qdrant/qdrant:v1.12.5
-    container_name: jlcava-qdrant
+    container_name: cavaai-qdrant
     restart: unless-stopped
     ports:
       - "6333:6333"
@@ -76,7 +76,7 @@ services:
   # ==========================================
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-    container_name: jlcava-minio
+    container_name: cavaai-minio
     restart: unless-stopped
     command: server --address ":9000" --console-address ":9001" /data
     ports:
@@ -100,7 +100,7 @@ services:
     build:
       context: ./data-engine
       dockerfile: Dockerfile
-    container_name: jlcava-backend
+    container_name: cavaai-backend
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -146,7 +146,7 @@ services:
     build:
       context: ./data-engine
       dockerfile: Dockerfile
-    container_name: jlcava-worker
+    container_name: cavaai-worker
     restart: unless-stopped
     volumes:
       - ./data-engine:/app
@@ -178,7 +178,7 @@ services:
     build:
       context: ./data-engine
       dockerfile: Dockerfile
-    container_name: jlcava-scheduler
+    container_name: cavaai-scheduler
     restart: unless-stopped
     volumes:
       - ./data-engine:/app
@@ -201,7 +201,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: jlcava-frontend
+    container_name: cavaai-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -211,7 +211,7 @@ services:
       - /app/.next
     environment:
       - NODE_ENV=development
-      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME:-root}:${MONGO_ROOT_PASSWORD:-example}@mongodb:27017/jlcavaai?authSource=admin
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME:-root}:${MONGO_ROOT_PASSWORD:-example}@mongodb:27017/cavaai?authSource=admin
       - FMP_BACKEND_URL=http://backend:8000
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - FMP_API_KEY=${FMP_API_KEY}
@@ -230,7 +230,7 @@ services:
   clickhouse:
     profiles: ["observability"]
     image: clickhouse/clickhouse-server:24.8
-    container_name: jlcava-clickhouse
+    container_name: cavaai-clickhouse
     user: "101:101"
     ports:
       - "8123:8123"
@@ -250,7 +250,7 @@ services:
   langfuse-worker:
     profiles: ["observability"]
     image: langfuse/langfuse-worker:3
-    container_name: jlcava-langfuse-worker
+    container_name: cavaai-langfuse-worker
     depends_on:
       postgres:
         condition: service_healthy
@@ -289,7 +289,7 @@ services:
   langfuse-web:
     profiles: ["observability"]
     image: langfuse/langfuse:3
-    container_name: jlcava-langfuse-web
+    container_name: cavaai-langfuse-web
     depends_on:
       langfuse-worker:
         condition: service_started
@@ -333,14 +333,14 @@ services:
 
 volumes:
   mongodb_data:
-    name: jlcava-mongodb-data
+    name: cavaai-mongodb-data
   postgres_data:
-    name: jlcava-postgres-data
+    name: cavaai-postgres-data
   qdrant_data:
-    name: jlcava-qdrant-data
+    name: cavaai-qdrant-data
   minio_data:
-    name: jlcava-minio-data
+    name: cavaai-minio-data
   clickhouse_data:
-    name: jlcava-clickhouse-data
+    name: cavaai-clickhouse-data
   clickhouse_logs:
-    name: jlcava-clickhouse-logs
+    name: cavaai-clickhouse-logs

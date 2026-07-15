@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,9 @@ class Settings(BaseSettings):
     app_env: str = "local"
     app_name: str = "CavaAI Research Engine"
     api_prefix: str = "/api"
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
+    )
 
     # Research OS is private by default. Tests that intentionally exercise the
     # public dependency graph must opt out explicitly with
@@ -73,6 +77,18 @@ class Settings(BaseSettings):
     langfuse_host: str = "http://localhost:3000"
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Self:
+        if self.app_env.lower() not in {"production", "prod"}:
+            return self
+        if not self.research_auth_secret:
+            raise ValueError("RESEARCH_AUTH_SECRET is required in production")
+        if self.document_storage_backend != "minio":
+            raise ValueError("MinIO is required for production document originals")
+        if self.minio_secret_key in {"portfoliosecret", "minioadmin", "change-me"}:
+            raise ValueError("MINIO_SECRET_KEY must not use a development default in production")
+        return self
 
 
 @lru_cache
