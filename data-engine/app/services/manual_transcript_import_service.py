@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.models import Company, Document, DocumentChunk, Transcript
 
 
-class QuartrImportService:
+class ManualTranscriptImportService:
+    """Persist transcript text exported from any external IR source."""
+
     def import_text(
         self,
         db: Session,
@@ -23,20 +25,22 @@ class QuartrImportService:
         document = Document(
             company_id=company.id,
             title=title,
-            source_type="quartr_manual",
+            source_type="manual_transcript",
             source_url=source_url,
             published_at=datetime.now(UTC),
             metadata_={
-                "source_app": "Quartr",
+                "source_app": "external_ir_source",
                 "ingestion_mode": "manual_export_or_copy_paste",
-                "official_api": False,
             },
         )
         db.add(document)
         db.flush()
 
         chunk_size = 3500
-        chunks = [text[index : index + chunk_size] for index in range(0, len(text), chunk_size)]
+        chunks = [
+            text[index : index + chunk_size]
+            for index in range(0, len(text), chunk_size)
+        ]
         for index, chunk in enumerate(chunks):
             db.add(
                 DocumentChunk(
@@ -44,7 +48,10 @@ class QuartrImportService:
                     chunk_index=index,
                     text=chunk,
                     token_count=max(1, len(chunk) // 4),
-                    metadata_={"ticker": company.ticker, "source_type": "quartr_manual"},
+                    metadata_={
+                        "ticker": company.ticker,
+                        "source_type": "manual_transcript",
+                    },
                 )
             )
 
@@ -61,6 +68,7 @@ class QuartrImportService:
 
         try:
             from app.services.rag import RAGIndex
+
             RAGIndex().ingest_document(db, document)
         except Exception:
             pass
@@ -70,6 +78,5 @@ class QuartrImportService:
             "transcript_id": transcript.id,
             "ticker": company.ticker,
             "chunks": len(chunks),
-            "source_type": "quartr_manual",
+            "source_type": "manual_transcript",
         }
-

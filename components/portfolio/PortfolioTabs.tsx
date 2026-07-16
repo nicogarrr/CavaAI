@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import PortfolioSummary from '@/components/portfolio/PortfolioSummary';
@@ -12,7 +13,7 @@ import { PortfolioRiskSimulator } from '@/components/portfolio/PortfolioRiskSimu
 import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
 import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
-import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, ShieldAlert } from 'lucide-react';
+import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, ShieldAlert, Activity } from 'lucide-react';
 import type { PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType } from '@/lib/actions/portfolio.actions';
 
 type Transaction = {
@@ -73,6 +74,9 @@ export default function PortfolioTabs({ summary, transactions, scores, userId }:
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Link className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-700 px-3 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300" href="/portfolio/intelligence">
+                        <Activity className="h-4 w-4" /> Intelligence
+                    </Link>
                     <RefreshPortfolioButton userId={userId} />
                     <AddTransactionButton userId={userId} />
                 </div>

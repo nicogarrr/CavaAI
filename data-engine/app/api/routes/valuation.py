@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import Company
 from app.schemas import ValuationResponse
+from app.services.historical_valuation_service import HistoricalValuationService
 from app.services.valuation_service import ValuationService
 
 router = APIRouter()
@@ -17,3 +18,14 @@ def valuation(ticker: str, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=404, detail="Company not found")
     return ValuationService().value_company(db, company)
 
+
+@router.get("/{ticker}/history")
+def historical_valuation(
+    ticker: str,
+    years: int = Query(default=10, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> dict:
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return HistoricalValuationService().build(db, company, years=years)

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import desc, select
@@ -54,7 +56,9 @@ KNOWLEDGE_DOCUMENT_TYPES = {
     "personal_postmortem",
 }
 
-PRINCIPLE_PROMPT_VERSION = "investment-principles-v1"
+PRINCIPLE_PROMPT_VERSION = "investment-principles-v2-batched"
+PRINCIPLE_BATCH_MAX_CHARS = 24_000
+PRINCIPLE_BATCH_MAX_CHUNKS = 12
 
 
 def _slug(value: str) -> str:
@@ -251,7 +255,19 @@ class KnowledgeLibraryService:
         self,
         db: Session,
         document: KnowledgeDocument,
+        *,
+        progress: Callable[[int, int], None] | None = None,
     ) -> list[InvestmentPrinciple]:
+        result = await self.extract_principle_batches(db, document, progress=progress)
+        return result["principles"]
+
+    async def extract_principle_batches(
+        self,
+        db: Session,
+        document: KnowledgeDocument,
+        *,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> dict[str, Any]:
         chunks = list(
             db.scalars(
                 select(KnowledgeChunk)
@@ -261,80 +277,82 @@ class KnowledgeLibraryService:
         )
         if not chunks:
             raise ValueError("Knowledge document has no chunks")
-        source = "\n\n".join(
-            f"[chunk:{chunk.id} page:{chunk.page_number or 'unknown'}]\n{chunk.content}"
-            for chunk in chunks
-        )
-        response = await self.provider.complete(
-            LLMRequest(
-                messages=[
-                    Message(
-                        "system",
-                        "Extract durable investment principles from the supplied source. "
-                        "Every proposal must quote an exact fragment and identify its chunk. "
-                        "Do not invent principles that the source does not support.",
-                    ),
-                    Message("user", source),
-                ],
-                task="main_financial_analysis",
-                temperature=0,
-                max_tokens=4000,
-                response_format=ResponseFormat.json_schema(
-                    self._principle_schema(), name="investment_principles", strict=True
-                ),
-                metadata={"prompt_version": PRINCIPLE_PROMPT_VERSION},
-            )
-        )
-        payload = parse_json_response(response.text)
-        if not isinstance(payload, dict) or not isinstance(payload.get("principles"), list):
-            raise ValueError("Invalid investment principle extraction response")
-
-        chunks_by_id = {chunk.id: chunk for chunk in chunks}
+        batches = self._principle_batches(chunks)
         companies = {
             company.ticker.upper(): company.id for company in db.scalars(select(Company)).all()
         }
         created: list[InvestmentPrinciple] = []
-        for item in payload["principles"]:
-            if not isinstance(item, dict):
-                continue
-            chunk_id = self._integer(item.get("chunk_id"))
-            chunk = chunks_by_id.get(chunk_id) if chunk_id is not None else None
-            fragment = str(item.get("exact_fragment") or "").strip()
-            if chunk is None or not fragment or _compact(fragment) not in _compact(chunk.content):
-                continue
-            confidence = max(0.0, min(1.0, float(item.get("confidence") or 0)))
-            principle = InvestmentPrinciple(
-                knowledge_document_id=document.id,
-                knowledge_chunk_id=chunk.id,
-                collection_id=document.collection_id,
-                principle=str(item.get("principle") or "").strip(),
-                category=str(item.get("category") or "general")[:120],
-                application_conditions=self._strings(item.get("application_conditions")),
-                exceptions=self._strings(item.get("exceptions")),
-                applies_to_company_ids=[
-                    companies[ticker.upper()]
-                    for ticker in self._strings(item.get("company_tickers"))
-                    if ticker.upper() in companies
-                ],
-                exact_fragment=fragment,
-                page_number=chunk.page_number,
-                author=document.author,
-                confidence=Decimal(str(confidence)),
-                status="proposed",
-                metadata_={
-                    "model": response.model,
-                    "provider": response.provider,
-                    "request_id": response.request_id,
-                    "prompt_version": PRINCIPLE_PROMPT_VERSION,
-                },
+        exact_duplicates = 0
+        semantic_duplicates = 0
+        for batch_index, batch in enumerate(batches, start=1):
+            source = "\n\n".join(
+                f"[chunk:{chunk.id} page:{chunk.page_number or 'unknown'} "
+                f"section:{chunk.section_title or 'unknown'}]\n{chunk.content}"
+                for chunk in batch
             )
-            if principle.principle:
-                db.add(principle)
-                created.append(principle)
-        db.commit()
-        for principle in created:
-            db.refresh(principle)
-        return created
+            response = await self.provider.complete(
+                LLMRequest(
+                    messages=[
+                        Message(
+                            "system",
+                            "Extract durable investment principles from this bounded source "
+                            "section. Every proposal must quote an exact fragment and identify "
+                            "its chunk. Do not invent principles that the source does not support.",
+                        ),
+                        Message("user", source),
+                    ],
+                    task="main_financial_analysis",
+                    temperature=0,
+                    max_tokens=3000,
+                    response_format=ResponseFormat.json_schema(
+                        self._principle_schema(),
+                        name="investment_principles",
+                        strict=True,
+                    ),
+                    metadata={
+                        "prompt_version": PRINCIPLE_PROMPT_VERSION,
+                        "batch_index": str(batch_index),
+                        "batch_count": str(len(batches)),
+                    },
+                )
+            )
+            payload = parse_json_response(response.text)
+            if not isinstance(payload, dict) or not isinstance(
+                payload.get("principles"), list
+            ):
+                raise ValueError("Invalid investment principle extraction response")
+            chunks_by_id = {chunk.id: chunk for chunk in batch}
+            for item in payload["principles"]:
+                outcome = self._create_principle_candidate(
+                    db,
+                    document=document,
+                    chunks_by_id=chunks_by_id,
+                    companies=companies,
+                    item=item,
+                    response=response,
+                    batch_index=batch_index,
+                    batch_count=len(batches),
+                )
+                if outcome is None:
+                    continue
+                if isinstance(outcome, InvestmentPrinciple):
+                    created.append(outcome)
+                    if outcome.semantic_duplicate_of_id is not None:
+                        semantic_duplicates += 1
+                else:
+                    exact_duplicates += 1
+            db.commit()
+            if progress:
+                progress(batch_index, len(batches))
+
+        contradictions = self._contradictions(created)
+        return {
+            "principles": created,
+            "batch_count": len(batches),
+            "exact_duplicates": exact_duplicates,
+            "semantic_duplicates": semantic_duplicates,
+            "contradictions": contradictions,
+        }
 
     def decide_principle(
         self,
@@ -354,6 +372,267 @@ class KnowledgeLibraryService:
         db.commit()
         db.refresh(principle)
         return principle
+
+    def merge_principle(
+        self,
+        db: Session,
+        principle: InvestmentPrinciple,
+        *,
+        canonical: InvestmentPrinciple,
+        actor: str,
+    ) -> InvestmentPrinciple:
+        if principle.status != "proposed":
+            raise ValueError("Only proposed principles can be merged")
+        if canonical.id == principle.id or canonical.status not in {"proposed", "approved"}:
+            raise ValueError("Merge target must be another active principle")
+        principle.status = "merged"
+        principle.semantic_duplicate_of_id = canonical.id
+        principle.canonical_principle_id = canonical.canonical_principle_id or canonical.id
+        principle.approved_by = actor
+        principle.approved_at = datetime.now(UTC)
+        db.commit()
+        db.refresh(principle)
+        return principle
+
+    def revise_principle(
+        self,
+        db: Session,
+        principle: InvestmentPrinciple,
+        *,
+        changes: dict[str, Any],
+        actor: str,
+    ) -> InvestmentPrinciple:
+        if principle.status in {"rejected", "merged", "superseded"}:
+            raise ValueError("Only active principles can be revised")
+        values = {
+            "principle": str(changes.get("principle", principle.principle)).strip(),
+            "category": str(changes.get("category", principle.category)).strip()[:120],
+            "application_conditions": self._strings(
+                changes.get("application_conditions", principle.application_conditions)
+            ),
+            "exceptions": self._strings(changes.get("exceptions", principle.exceptions)),
+        }
+        if not values["principle"]:
+            raise ValueError("Principle text is required")
+        canonical_id = principle.canonical_principle_id or principle.id
+        version = (
+            db.scalar(
+                select(InvestmentPrinciple.version)
+                .where(
+                    (InvestmentPrinciple.id == canonical_id)
+                    | (InvestmentPrinciple.canonical_principle_id == canonical_id)
+                )
+                .order_by(desc(InvestmentPrinciple.version))
+                .limit(1)
+            )
+            or principle.version
+        ) + 1
+        revised = InvestmentPrinciple(
+            knowledge_document_id=principle.knowledge_document_id,
+            knowledge_chunk_id=principle.knowledge_chunk_id,
+            collection_id=principle.collection_id,
+            **values,
+            principle_fingerprint=self.principle_fingerprint(**values),
+            canonical_principle_id=canonical_id,
+            version=version,
+            applies_to_company_ids=changes.get(
+                "applies_to_company_ids", principle.applies_to_company_ids
+            ),
+            exact_fragment=str(changes.get("exact_fragment", principle.exact_fragment)),
+            page_number=changes.get("page_number", principle.page_number),
+            author=changes.get("author", principle.author),
+            confidence=Decimal(str(changes.get("confidence", principle.confidence))),
+            status="proposed",
+            metadata_={
+                **(principle.metadata_ or {}),
+                "revised_from_id": principle.id,
+                "revised_by": actor,
+            },
+        )
+        db.add(revised)
+        db.flush()
+        principle.superseded_by_id = revised.id
+        principle.status = "superseded"
+        db.commit()
+        db.refresh(revised)
+        return revised
+
+    @staticmethod
+    def principle_fingerprint(
+        *,
+        principle: str,
+        category: str,
+        application_conditions: list[str],
+        exceptions: list[str],
+    ) -> str:
+        canonical = json.dumps(
+            {
+                "principle": _compact(principle),
+                "category": _compact(category),
+                "conditions": sorted(_compact(item) for item in application_conditions),
+                "exceptions": sorted(_compact(item) for item in exceptions),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical.encode()).hexdigest()
+
+    def _create_principle_candidate(
+        self,
+        db: Session,
+        *,
+        document: KnowledgeDocument,
+        chunks_by_id: dict[int, KnowledgeChunk],
+        companies: dict[str, int],
+        item: Any,
+        response: Any,
+        batch_index: int,
+        batch_count: int,
+    ) -> InvestmentPrinciple | str | None:
+        if not isinstance(item, dict):
+            return None
+        chunk_id = self._integer(item.get("chunk_id"))
+        chunk = chunks_by_id.get(chunk_id) if chunk_id is not None else None
+        fragment = str(item.get("exact_fragment") or "").strip()
+        text = str(item.get("principle") or "").strip()
+        if (
+            chunk is None
+            or not text
+            or not fragment
+            or _compact(fragment) not in _compact(chunk.content)
+        ):
+            return None
+        category = str(item.get("category") or "general")[:120]
+        conditions = self._strings(item.get("application_conditions"))
+        exceptions = self._strings(item.get("exceptions"))
+        fingerprint = self.principle_fingerprint(
+            principle=text,
+            category=category,
+            application_conditions=conditions,
+            exceptions=exceptions,
+        )
+        existing = db.scalar(
+            select(InvestmentPrinciple)
+            .where(
+                InvestmentPrinciple.principle_fingerprint == fingerprint,
+                InvestmentPrinciple.status.in_(["proposed", "approved"]),
+            )
+            .order_by(InvestmentPrinciple.id)
+        )
+        if existing:
+            return "exact_duplicate"
+        semantic = self._semantic_duplicate(db, text)
+        confidence = max(0.0, min(1.0, float(item.get("confidence") or 0)))
+        principle = InvestmentPrinciple(
+            knowledge_document_id=document.id,
+            knowledge_chunk_id=chunk.id,
+            collection_id=document.collection_id,
+            principle=text,
+            principle_fingerprint=fingerprint,
+            semantic_duplicate_of_id=semantic.id if semantic else None,
+            canonical_principle_id=(
+                semantic.canonical_principle_id or semantic.id if semantic else None
+            ),
+            version=1,
+            category=category,
+            application_conditions=conditions,
+            exceptions=exceptions,
+            applies_to_company_ids=[
+                companies[ticker.upper()]
+                for ticker in self._strings(item.get("company_tickers"))
+                if ticker.upper() in companies
+            ],
+            exact_fragment=fragment,
+            page_number=chunk.page_number,
+            author=document.author,
+            confidence=Decimal(str(confidence)),
+            status="proposed",
+            metadata_={
+                "model": response.model,
+                "provider": response.provider,
+                "request_id": response.request_id,
+                "prompt_version": PRINCIPLE_PROMPT_VERSION,
+                "batch_index": batch_index,
+                "batch_count": batch_count,
+                "requires_duplicate_review": semantic is not None,
+            },
+        )
+        db.add(principle)
+        db.flush()
+        return principle
+
+    @staticmethod
+    def _principle_batches(chunks: list[KnowledgeChunk]) -> list[list[KnowledgeChunk]]:
+        batches: list[list[KnowledgeChunk]] = []
+        current: list[KnowledgeChunk] = []
+        current_chars = 0
+        current_section: str | None = None
+        for chunk in chunks:
+            section = _compact(chunk.section_title or "") or None
+            section_break = bool(
+                current and section and current_section and section != current_section
+            )
+            size_break = bool(
+                current
+                and (
+                    current_chars + len(chunk.content) > PRINCIPLE_BATCH_MAX_CHARS
+                    or len(current) >= PRINCIPLE_BATCH_MAX_CHUNKS
+                )
+            )
+            if section_break or size_break:
+                batches.append(current)
+                current = []
+                current_chars = 0
+            current.append(chunk)
+            current_chars += len(chunk.content)
+            current_section = section or current_section
+        if current:
+            batches.append(current)
+        return batches
+
+    def _semantic_duplicate(
+        self, db: Session, text: str
+    ) -> InvestmentPrinciple | None:
+        candidates = db.scalars(
+            select(InvestmentPrinciple).where(
+                InvestmentPrinciple.status.in_(["proposed", "approved"])
+            )
+        ).all()
+        tokens = self._semantic_tokens(text)
+        best: tuple[float, InvestmentPrinciple] | None = None
+        for candidate in candidates:
+            candidate_tokens = self._semantic_tokens(candidate.principle)
+            union = tokens | candidate_tokens
+            score = len(tokens & candidate_tokens) / len(union) if union else 0
+            if score >= 0.82 and (best is None or score > best[0]):
+                best = (score, candidate)
+        return best[1] if best else None
+
+    @staticmethod
+    def _semantic_tokens(text: str) -> set[str]:
+        stop = {"a", "an", "and", "for", "in", "of", "the", "to", "with"}
+        return {
+            token
+            for token in re.findall(r"[a-z0-9]+", text.lower())
+            if token not in stop
+        }
+
+    def _contradictions(self, principles: list[InvestmentPrinciple]) -> list[dict[str, int]]:
+        contradictions: list[dict[str, int]] = []
+        negations = {"avoid", "never", "not", "reject", "without"}
+        for index, left in enumerate(principles):
+            left_tokens = self._semantic_tokens(left.principle)
+            for right in principles[index + 1 :]:
+                right_tokens = self._semantic_tokens(right.principle)
+                overlap = left_tokens | right_tokens
+                similarity = (
+                    len(left_tokens & right_tokens) / len(overlap) if overlap else 0
+                )
+                left_negative = bool(left_tokens & negations)
+                right_negative = bool(right_tokens & negations)
+                if similarity >= 0.55 and left_negative != right_negative:
+                    contradictions.append({"left_id": left.id, "right_id": right.id})
+        return contradictions
 
     @staticmethod
     def list_documents(db: Session, *, collection_id: int | None = None) -> list[dict]:

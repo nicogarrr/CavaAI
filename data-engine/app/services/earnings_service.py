@@ -314,7 +314,7 @@ class EarningsWorkflowService:
             "earnings_deck",
             "earnings_call",
             "transcript",
-            "quartr",
+            "manual_transcript",
             "10-q",
             "10-k",
         }

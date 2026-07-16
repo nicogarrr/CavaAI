@@ -18,6 +18,7 @@ from app.services.management_credibility_service import ManagementCredibilitySer
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 from app.services.portfolio_ledger_service import PortfolioLedgerService
+from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
 
 def _company() -> Company:
@@ -174,6 +175,34 @@ def test_financial_terminal_portfolio_intelligence_and_management_scorecard():
         assert portfolio["exposures"]["sectors"] == {"Technology": 1.0}
         assert portfolio["exposures"]["currencies"] == {"USD": 1.0}
         assert portfolio["attribution"]["positions"][0]["components"]["buybacks"] > 0
+
+        snapshot_service = PortfolioSnapshotService()
+        ledger.update_market_price(
+            db,
+            company_id=company.id,
+            price=Decimal("105"),
+            as_of=date.today() - timedelta(days=1),
+        )
+        first_snapshot = snapshot_service.capture(
+            db,
+            as_of=date.today() - timedelta(days=1),
+            source="test",
+        )
+        ledger.update_market_price(
+            db,
+            company_id=company.id,
+            price=Decimal("110"),
+            as_of=date.today(),
+        )
+        second_snapshot = snapshot_service.capture(db, as_of=date.today(), source="test")
+        db.commit()
+        assert first_snapshot.pricing_coverage == 1
+        assert second_snapshot.daily_return is not None
+        snapshot_portfolio = PortfolioIntelligenceService().build(db, years=1)
+        assert snapshot_portfolio["performance"]["twr_is_exact"] is True
+        assert snapshot_portfolio["performance"]["twr_method"] == (
+            "daily_portfolio_snapshots"
+        )
 
         promise = ManagementCredibilityService().register(
             db,

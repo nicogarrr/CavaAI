@@ -98,6 +98,36 @@ def init_db() -> None:
     # Lightweight forward-compat for SQLite/dev DBs created before new columns.
     try:
         inspector = inspect(engine)
+        if settings.database_url.startswith("sqlite") and "investment_principles" in (
+            inspector.get_table_names()
+        ):
+            principle_columns = {
+                column["name"]
+                for column in inspector.get_columns("investment_principles")
+            }
+            principle_additions = {
+                "principle_fingerprint": "VARCHAR(64)",
+                "semantic_duplicate_of_id": "INTEGER",
+                "canonical_principle_id": "INTEGER",
+                "version": "INTEGER NOT NULL DEFAULT 1",
+                "superseded_by_id": "INTEGER",
+            }
+            with engine.begin() as conn:
+                for column, definition in principle_additions.items():
+                    if column not in principle_columns:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE investment_principles "
+                                f"ADD COLUMN {column} {definition}"
+                            )
+                        )
+                conn.execute(
+                    text(
+                        "UPDATE investment_principles "
+                        "SET principle_fingerprint = lower(hex(randomblob(32))) "
+                        "WHERE principle_fingerprint IS NULL"
+                    )
+                )
         if "thesis_versions" in inspector.get_table_names():
             columns = {col["name"] for col in inspector.get_columns("thesis_versions")}
             if "input_fingerprint" not in columns:

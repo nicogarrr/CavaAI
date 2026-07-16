@@ -200,6 +200,90 @@ class Transaction(TenantOwnedMixin, Base, TimestampMixin):
     raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class PortfolioDailySnapshot(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "portfolio_daily_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "portfolio_id",
+            "snapshot_date",
+            name="uq_portfolio_daily_snapshot_tenant_date",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id"), index=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, index=True)
+    base_currency: Mapped[str] = mapped_column(String(10))
+    positions_value_base: Mapped[Decimal] = mapped_column(Numeric(24, 6))
+    cash_value_base: Mapped[Decimal] = mapped_column(Numeric(24, 6))
+    total_value_base: Mapped[Decimal] = mapped_column(Numeric(24, 6))
+    net_external_flow_base: Mapped[Decimal] = mapped_column(
+        Numeric(24, 6), default=Decimal("0")
+    )
+    daily_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 10), nullable=True)
+    cumulative_twr: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 10), nullable=True
+    )
+    pricing_coverage: Mapped[Decimal] = mapped_column(
+        Numeric(5, 4), default=Decimal("0")
+    )
+    source: Mapped[str] = mapped_column(String(80), default="market_refresh")
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class PositionDailySnapshot(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "position_daily_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "portfolio_snapshot_id",
+            "company_id",
+            name="uq_position_daily_snapshot_company",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("portfolio_daily_snapshots.id"), index=True
+    )
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, index=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(20, 6))
+    market_price_native: Mapped[Decimal] = mapped_column(Numeric(20, 6))
+    currency: Mapped[str] = mapped_column(String(10))
+    fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    market_value_native: Mapped[Decimal] = mapped_column(Numeric(24, 6))
+    market_value_base: Mapped[Decimal | None] = mapped_column(
+        Numeric(24, 6), nullable=True
+    )
+    weight: Mapped[Decimal | None] = mapped_column(Numeric(18, 10), nullable=True)
+    source: Mapped[str] = mapped_column(String(80), default="market_refresh")
+
+
+class CashDailySnapshot(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "cash_daily_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "portfolio_snapshot_id",
+            "currency",
+            name="uq_cash_daily_snapshot_currency",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("portfolio_daily_snapshots.id"), index=True
+    )
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id"), index=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, index=True)
+    currency: Mapped[str] = mapped_column(String(10), index=True)
+    balance_native: Mapped[Decimal] = mapped_column(Numeric(24, 6))
+    fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    balance_base: Mapped[Decimal | None] = mapped_column(Numeric(24, 6), nullable=True)
+    source: Mapped[str] = mapped_column(String(80), default="market_refresh")
+
+
 class Document(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "documents"
 
@@ -1222,6 +1306,17 @@ class InvestmentPrinciple(TenantOwnedMixin, Base, TimestampMixin):
         ForeignKey("knowledge_collections.id"), nullable=True, index=True
     )
     principle: Mapped[str] = mapped_column(Text)
+    principle_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    semantic_duplicate_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey("investment_principles.id"), nullable=True, index=True
+    )
+    canonical_principle_id: Mapped[int | None] = mapped_column(
+        ForeignKey("investment_principles.id"), nullable=True, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    superseded_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("investment_principles.id"), nullable=True, index=True
+    )
     category: Mapped[str] = mapped_column(String(120), index=True)
     application_conditions: Mapped[list[str]] = mapped_column(JSON, default=list)
     exceptions: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -1234,6 +1329,28 @@ class InvestmentPrinciple(TenantOwnedMixin, Base, TimestampMixin):
     approved_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class ProcessingJob(TenantOwnedMixin, Base, TimestampMixin):
+    """Durable status and progress for asynchronous Research OS work."""
+
+    __tablename__ = "processing_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_type: Mapped[str] = mapped_column(String(120), index=True)
+    entity_type: Mapped[str] = mapped_column(String(80), index=True)
+    entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="queued", index=True)
+    progress_current: Mapped[int] = mapped_column(Integer, default=0)
+    progress_total: Mapped[int] = mapped_column(Integer, default=0)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class InvestmentCaseStudy(TenantOwnedMixin, Base, TimestampMixin):
