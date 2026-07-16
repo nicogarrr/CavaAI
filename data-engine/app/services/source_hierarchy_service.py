@@ -85,7 +85,7 @@ SOURCE_TIER_BY_TYPE = {
     "shareholder_letter": "tier_2_company",
     "earnings_call": "tier_3_transcript",
     "transcript": "tier_3_transcript",
-    "quartr": "tier_3_transcript",
+    "manual_transcript": "tier_3_transcript",
     "reuters": "tier_4_reputable_media",
     "bloomberg": "tier_4_reputable_media",
     "wsj": "tier_4_reputable_media",

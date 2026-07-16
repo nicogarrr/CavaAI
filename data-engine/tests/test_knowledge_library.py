@@ -13,6 +13,7 @@ from app.models import (
     KnowledgeChunk,
     KnowledgeCollection,
     KnowledgeDocument,
+    ProcessingJob,
 )
 from app.services.knowledge_library_service import (
     DEFAULT_KNOWLEDGE_COLLECTIONS,
@@ -61,6 +62,7 @@ class PrincipleProvider(LLMProvider):
 
 
 def _cleanup(db) -> None:
+    db.execute(delete(ProcessingJob))
     db.execute(delete(InvestmentPrinciple))
     db.execute(delete(KnowledgeChunk))
     db.execute(delete(KnowledgeDocument))
@@ -132,6 +134,22 @@ def test_knowledge_library_ingestion_deduplication_and_principle_approval():
         assert approved.status == "approved"
         assert approved.approved_by == "owner"
         assert approved.approved_at is not None
+
+        duplicate_principles = asyncio.run(extraction.propose_principles(db, document))
+        assert duplicate_principles == []
+        assert len(db.scalars(select(InvestmentPrinciple)).all()) == 1
+
+        revised = extraction.revise_principle(
+            db,
+            approved,
+            changes={"principle": "Prefer long, durable reinvestment runways."},
+            actor="owner",
+        )
+        assert revised.version == 2
+        assert revised.status == "proposed"
+        assert revised.canonical_principle_id == approved.id
+        assert approved.status == "superseded"
+        assert approved.superseded_by_id == revised.id
     finally:
         _cleanup(db)
         db.close()

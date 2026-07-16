@@ -9,14 +9,15 @@ Use the backend `LLMProvider` abstraction and keep provider choice configurable.
 Reasons:
 
 - OpenRouter, OpenAI-compatible endpoints, Anthropic and Gemini share one completion/structured-output contract.
-- `LLM_PROVIDER=auto` only selects enabled providers with configured credentials.
+- `LLM_PROVIDER=openrouter` is the supported application policy and never silently falls back to another provider.
+- OpenAI, Anthropic and Gemini adapters require explicit provider selection plus task-complete `LLM_MODEL_OVERRIDES`; they do not reuse OpenRouter aliases.
 - Task-level model overrides decouple extraction, classification, synthesis and red-team workloads.
 - Every run retains provider/model/prompt trace metadata; model output cannot create missing facts.
 
 Example configuration:
 
 ```env
-LLM_PROVIDER=auto
+LLM_PROVIDER=openrouter
 OPENROUTER_API_KEY=
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=

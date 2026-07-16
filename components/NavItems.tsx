@@ -16,7 +16,7 @@ const NavItems = ({initialStocks}: { initialStocks: StockWithWatchlistStatus[]})
     }
 
     return (
-        <ul className="flex flex-col sm:flex-row p-2 gap-3 sm:gap-10 font-medium">
+        <ul className="flex flex-col sm:flex-row p-2 gap-3 sm:gap-5 font-medium text-sm">
             {NAV_ITEMS.map(({href, label}) => (
                 <li key={href}>
                     <Link 

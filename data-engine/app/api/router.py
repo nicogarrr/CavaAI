@@ -18,6 +18,7 @@ from app.api.routes import (
     sources,
     thesis,
     valuation,
+    work_products,
     workflows,
 )
 
@@ -28,6 +29,9 @@ api_router.include_router(earnings.router, prefix="/earnings", tags=["earnings"]
 api_router.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
 api_router.include_router(thesis.router, prefix="/thesis", tags=["thesis"])
 api_router.include_router(valuation.router, prefix="/valuation", tags=["valuation"])
+api_router.include_router(
+    work_products.router, prefix="/work-products", tags=["work-products"]
+)
 api_router.include_router(news.router, prefix="/news", tags=["news"])
 api_router.include_router(risk.router, prefix="/risk", tags=["risk"])
 api_router.include_router(reviews.router, prefix="/reviews", tags=["reviews"])

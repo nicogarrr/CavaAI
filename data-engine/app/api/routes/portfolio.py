@@ -16,6 +16,7 @@ from app.services.portfolio_ledger_service import PortfolioLedgerService
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.market_refresh_service import MarketRefreshService
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
+from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
 router = APIRouter()
 
@@ -92,6 +93,55 @@ def portfolio_intelligence(
     db: Session = Depends(get_db),
 ) -> dict:
     return PortfolioIntelligenceService().build(db, years=years)
+
+
+@router.get("/snapshots")
+def portfolio_snapshots(
+    start: date | None = None,
+    limit: int = Query(default=1000, ge=1, le=5000),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    return [
+        {
+            "id": snapshot.id,
+            "portfolio_id": snapshot.portfolio_id,
+            "snapshot_date": snapshot.snapshot_date,
+            "base_currency": snapshot.base_currency,
+            "positions_value_base": snapshot.positions_value_base,
+            "cash_value_base": snapshot.cash_value_base,
+            "total_value_base": snapshot.total_value_base,
+            "net_external_flow_base": snapshot.net_external_flow_base,
+            "daily_return": snapshot.daily_return,
+            "cumulative_twr": snapshot.cumulative_twr,
+            "pricing_coverage": snapshot.pricing_coverage,
+            "source": snapshot.source,
+            "metadata": snapshot.metadata_,
+        }
+        for snapshot in PortfolioSnapshotService().history(db, start=start, limit=limit)
+    ]
+
+
+@router.post("/snapshots/capture")
+def capture_portfolio_snapshot(
+    as_of: date | None = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    snapshot = PortfolioSnapshotService().capture(
+        db,
+        as_of=as_of,
+        source="manual_capture",
+    )
+    db.commit()
+    db.refresh(snapshot)
+    return {
+        "id": snapshot.id,
+        "snapshot_date": snapshot.snapshot_date,
+        "total_value_base": snapshot.total_value_base,
+        "pricing_coverage": snapshot.pricing_coverage,
+        "daily_return": snapshot.daily_return,
+        "cumulative_twr": snapshot.cumulative_twr,
+        "metadata": snapshot.metadata_,
+    }
 
 
 @router.get("/configuration")

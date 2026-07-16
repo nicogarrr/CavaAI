@@ -6,8 +6,13 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.llm.errors import LLMError
-from app.models import InvestmentPrinciple, KnowledgeChunk, KnowledgeCollection, KnowledgeDocument
+from app.models import (
+    InvestmentPrinciple,
+    KnowledgeChunk,
+    KnowledgeCollection,
+    KnowledgeDocument,
+    ProcessingJob,
+)
 from app.services.knowledge_library_service import KnowledgeLibraryService
 
 
@@ -21,7 +26,21 @@ class CollectionCreate(BaseModel):
 
 
 class PrincipleAction(BaseModel):
-    action: str = Field(pattern="^(approve|reject)$")
+    action: str = Field(pattern="^(approve|reject|merge)$")
+    actor: str = Field(default="user", min_length=1, max_length=160)
+    canonical_principle_id: int | None = Field(default=None, ge=1)
+
+
+class PrincipleRevision(BaseModel):
+    principle: str | None = Field(default=None, min_length=3)
+    category: str | None = Field(default=None, min_length=1, max_length=120)
+    application_conditions: list[str] | None = None
+    exceptions: list[str] | None = None
+    applies_to_company_ids: list[int] | None = None
+    exact_fragment: str | None = Field(default=None, min_length=1)
+    page_number: int | None = Field(default=None, ge=1)
+    author: str | None = Field(default=None, max_length=240)
+    confidence: float | None = Field(default=None, ge=0, le=1)
     actor: str = Field(default="user", min_length=1, max_length=160)
 
 
@@ -43,6 +62,11 @@ def _principle(principle: InvestmentPrinciple) -> dict:
         "knowledge_chunk_id": principle.knowledge_chunk_id,
         "collection_id": principle.collection_id,
         "principle": principle.principle,
+        "principle_fingerprint": principle.principle_fingerprint,
+        "semantic_duplicate_of_id": principle.semantic_duplicate_of_id,
+        "canonical_principle_id": principle.canonical_principle_id,
+        "version": principle.version,
+        "superseded_by_id": principle.superseded_by_id,
         "category": principle.category,
         "application_conditions": principle.application_conditions,
         "exceptions": principle.exceptions,
@@ -55,6 +79,24 @@ def _principle(principle: InvestmentPrinciple) -> dict:
         "approved_by": principle.approved_by,
         "approved_at": principle.approved_at,
         "metadata": principle.metadata_,
+    }
+
+
+def _job(job: ProcessingJob) -> dict:
+    return {
+        "id": job.id,
+        "job_type": job.job_type,
+        "entity_type": job.entity_type,
+        "entity_id": job.entity_id,
+        "status": job.status,
+        "progress_current": job.progress_current,
+        "progress_total": job.progress_total,
+        "result": job.result,
+        "error": job.error,
+        "started_at": job.started_at,
+        "completed_at": job.completed_at,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
     }
 
 
@@ -161,22 +203,82 @@ def document_chunks(
 
 
 @router.post("/documents/{document_id}/extract-principles")
-async def extract_principles(
+def extract_principles(
     document_id: int,
     db: Session = Depends(get_db),
-) -> list[dict]:
+) -> dict:
     document = db.get(KnowledgeDocument, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Knowledge document not found")
+    active = db.scalar(
+        select(ProcessingJob)
+        .where(
+            ProcessingJob.job_type == "knowledge_principle_extraction",
+            ProcessingJob.entity_type == "knowledge_document",
+            ProcessingJob.entity_id == document_id,
+            ProcessingJob.status.in_(["queued", "running"]),
+        )
+        .order_by(desc(ProcessingJob.created_at))
+    )
+    if active:
+        return _job(active)
+    job = ProcessingJob(
+        job_type="knowledge_principle_extraction",
+        entity_type="knowledge_document",
+        entity_id=document.id,
+        status="queued",
+        result={},
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
     try:
-        return [
-            _principle(principle)
-            for principle in await KnowledgeLibraryService().propose_principles(db, document)
-        ]
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except LLMError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        from app.workers.dramatiq_app import extract_knowledge_principles
+
+        message = extract_knowledge_principles.send(
+            job.id,
+            tenant_id=db.info.get("tenant_id"),
+            user_id=db.info.get("user_id"),
+        )
+        job.result = {"broker_message_id": str(message.message_id)}
+        db.commit()
+        db.refresh(job)
+        return _job(job)
+    except Exception as exc:
+        job.status = "failed"
+        job.error = f"Queue dispatch failed: {exc}"
+        db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "Principle extraction queue is unavailable", "job_id": job.id},
+        ) from exc
+
+
+@router.get("/jobs")
+def list_jobs(
+    document_id: int | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    statement = select(ProcessingJob).where(
+        ProcessingJob.job_type == "knowledge_principle_extraction"
+    )
+    if document_id is not None:
+        statement = statement.where(ProcessingJob.entity_id == document_id)
+    return [
+        _job(job)
+        for job in db.scalars(
+            statement.order_by(desc(ProcessingJob.created_at)).limit(limit)
+        ).all()
+    ]
+
+
+@router.get("/jobs/{job_id}")
+def get_job(job_id: int, db: Session = Depends(get_db)) -> dict:
+    job = db.get(ProcessingJob, job_id)
+    if job is None or job.job_type != "knowledge_principle_extraction":
+        raise HTTPException(status_code=404, detail="Processing job not found")
+    return _job(job)
 
 
 @router.get("/principles")
@@ -209,11 +311,48 @@ def action_principle(
     if principle is None:
         raise HTTPException(status_code=404, detail="Investment principle not found")
     try:
+        if payload.action == "merge":
+            canonical = db.get(InvestmentPrinciple, payload.canonical_principle_id)
+            if canonical is None:
+                raise ValueError("Canonical principle was not found")
+            return _principle(
+                KnowledgeLibraryService().merge_principle(
+                    db,
+                    principle,
+                    canonical=canonical,
+                    actor=payload.actor,
+                )
+            )
         return _principle(
             KnowledgeLibraryService().decide_principle(
                 db,
                 principle,
                 action=payload.action,
+                actor=payload.actor,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.put("/principles/{principle_id}")
+def revise_principle(
+    principle_id: int,
+    payload: PrincipleRevision,
+    db: Session = Depends(get_db),
+) -> dict:
+    principle = db.get(InvestmentPrinciple, principle_id)
+    if principle is None:
+        raise HTTPException(status_code=404, detail="Investment principle not found")
+    changes = payload.model_dump(exclude={"actor"}, exclude_none=True)
+    if not changes:
+        raise HTTPException(status_code=400, detail="At least one revision field is required")
+    try:
+        return _principle(
+            KnowledgeLibraryService().revise_principle(
+                db,
+                principle,
+                changes=changes,
                 actor=payload.actor,
             )
         )

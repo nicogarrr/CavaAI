@@ -14,6 +14,7 @@ from app.models import (
     CompanyKPI,
     DecisionLesson,
     FinancialFact,
+    FundamentalDriver,
     ManagementPromise,
 )
 from app.schemas import (
@@ -358,11 +359,22 @@ def list_driver_assumptions(
     company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
+    versions = DriverAssumptionService().list(
+        db, company, driver_key=driver_key, scenario=scenario
+    )
+    driver_keys = {
+        driver.id: driver.driver_key
+        for driver in db.scalars(
+            select(FundamentalDriver).where(
+                FundamentalDriver.id.in_({version.driver_id for version in versions})
+            )
+        ).all()
+    } if versions else {}
     return [
-        driver_assumption_payload(version)
-        for version in DriverAssumptionService().list(
-            db, company, driver_key=driver_key, scenario=scenario
+        driver_assumption_payload(
+            version, driver_key=driver_keys.get(version.driver_id)
         )
+        for version in versions
     ]
 
 
@@ -393,7 +405,7 @@ def create_driver_assumption(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     model = LongTermModelService().build(db, company, horizon=horizon)
     return {
-        "assumption": driver_assumption_payload(version),
+        "assumption": driver_assumption_payload(version, driver_key=payload.driver_key),
         "model_version": model.get("persistence"),
     }
 

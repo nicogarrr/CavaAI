@@ -118,7 +118,7 @@ Use different model tiers by task:
 - Agentic red team: GLM 5.2
 - Premium escalation: disabled unless a financial evaluation gate justifies the cost
 
-The backend connects this routing policy to productive chat and KPI extraction through OpenRouter, OpenAI-compatible endpoints, Anthropic and Gemini. Company chat keeps the deterministic context contract, then performs source-aware JSON synthesis, verifies citation IDs, calculates confidence / insufficient-data state and falls back safely when a provider or validation step fails. `LLM_PROVIDER=auto` chooses only among enabled providers with configured credentials.
+The backend connects an OpenRouter-first routing policy to productive chat and KPI extraction. Company chat keeps the deterministic context contract, then performs source-aware JSON synthesis, verifies citation IDs, calculates confidence / insufficient-data state and falls back safely when validation fails. Other provider adapters require explicit selection and complete task-level model overrides.
 
 Langfuse records workflow, provider, model, prompt version, retrieval set, tools, tokens and cache tokens, estimated cost, latency, citations, JSON validity, fallback, escalation and evaluation score. Native Microsoft Agent Framework workflows are reserved for Deep Research, Earnings Review, Thesis Review and Red Team; ingestion, SQL, metrics and DCF remain deterministic services.
 

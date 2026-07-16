@@ -139,13 +139,12 @@ MARKETAUX_API_KEY=
 FRED_API_KEY=
 TRADING_ECONOMICS_API_KEY=
 SEC_USER_AGENT=CavaAI/0.1 contact@example.com
-QUARTR_API_KEY=
 ```
 
 AI:
 
 ```env
-LLM_PROVIDER=auto
+LLM_PROVIDER=openrouter
 GEMINI_API_KEY=
 GOOGLE_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash
@@ -194,7 +193,7 @@ python -m pytest
 
 ## AI Provider Guidance
 
-The research engine uses one provider abstraction for OpenRouter, OpenAI-compatible endpoints, Anthropic and Gemini. `LLM_PROVIDER=auto` selects the first enabled provider with a configured key; task-level model overrides keep extraction, synthesis and red-team workloads independent. Provider output never replaces the evidence contract or creates missing financial facts.
+The research engine is OpenRouter-first (`LLM_PROVIDER=openrouter`) and uses provider-specific aliases for every active task. OpenAI-compatible, Anthropic and Gemini adapters remain available only through explicit provider selection with a complete task-level model override map, so the application never silently routes OpenRouter aliases to another provider. Provider output never replaces the evidence contract or creates missing financial facts.
 
 ## Production Notes
 

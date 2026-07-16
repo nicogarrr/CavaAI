@@ -10,13 +10,12 @@ const CONNECTOR_META: Record<string, { label: string; description: string }> = {
   fmp: { label: 'FMP', description: 'Financial Modeling Prep — earnings, balance sheet, ratios' },
   ibkr: { label: 'IBKR', description: 'Interactive Brokers Flex XML — live portfolio positions' },
   fred: { label: 'FRED', description: 'Federal Reserve FRED — macro rates, CPI, GDP' },
-  quartr_api: { label: 'Quartr API', description: 'Quartr API — earnings transcripts, IR docs' },
-  quartr_student: { label: 'Quartr Student', description: 'Quartr manual import — paste transcripts' },
+  manual_transcript_import: { label: 'Manual transcripts', description: 'Provider-neutral transcript text import' },
   langfuse: { label: 'Langfuse', description: 'Langfuse — LLM observability and tracing' },
   qdrant_url: { label: 'Qdrant', description: 'Qdrant — vector store for RAG search' },
 };
 
-const CONNECTOR_ORDER = ['fmp', 'ibkr', 'fred', 'quartr_api', 'quartr_student', 'langfuse', 'qdrant_url'];
+const CONNECTOR_ORDER = ['fmp', 'ibkr', 'fred', 'manual_transcript_import', 'langfuse', 'qdrant_url'];
 
 function connectorStatus(value: boolean | string): 'configured' | 'not_configured' | 'manual' {
   if (value === true || (typeof value === 'string' && value.length > 0 && value !== 'false')) return 'configured';

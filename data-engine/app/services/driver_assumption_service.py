@@ -123,10 +123,13 @@ class DriverAssumptionService:
         return result
 
 
-def driver_assumption_payload(version: DriverAssumptionVersion) -> dict[str, Any]:
+def driver_assumption_payload(
+    version: DriverAssumptionVersion, *, driver_key: str | None = None
+) -> dict[str, Any]:
     return {
         "id": version.id,
         "driver_id": version.driver_id,
+        "driver_key": driver_key,
         "fiscal_year": version.fiscal_year,
         "scenario": version.scenario,
         "value": version.value,
