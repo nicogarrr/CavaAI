@@ -4,7 +4,6 @@ from app.services.connectors.fred import FREDClient
 from app.services.connectors.gdelt import GDELTClient, GDELTConnector
 from app.services.connectors.ibkr import IBKRFlexClient
 from app.services.connectors.ir import IRConnector
-from app.services.connectors.quartr import QuartrClient
 from app.services.connectors.rss import RSSConnector
 from app.services.connectors.sec import SECClient
 
@@ -17,7 +16,6 @@ __all__ = [
     "GDELTConnector",
     "IBKRFlexClient",
     "IRConnector",
-    "QuartrClient",
     "RSSConnector",
     "SECClient",
 ]

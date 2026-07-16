@@ -22,18 +22,17 @@ from app.schemas import (
 )
 from app.llm.errors import LLMError
 from app.services.claim_intelligence_service import ClaimIntelligenceService
-from app.services.connectors.quartr import QuartrClient
 from app.services.document_ingestion_service import DocumentIngestionService
 from app.services.kpi_extraction_service import KPIExtractionService
 from app.services.budget import BudgetExceededError
-from app.services.quartr_import_service import QuartrImportService
+from app.services.manual_transcript_import_service import ManualTranscriptImportService
 from app.services.source_hierarchy_service import SOURCE_TIERS, classify_source
 from app.services.rag import RAGIndex
 
 router = APIRouter()
 
 
-class QuartrManualImportRequest(BaseModel):
+class ManualTranscriptImportRequest(BaseModel):
     ticker: str = Field(min_length=1, max_length=20)
     title: str = Field(min_length=3, max_length=500)
     text: str = Field(min_length=20)
@@ -387,26 +386,13 @@ def source_audits(
     ]
 
 
-@router.get("/quartr/status")
-def quartr_status() -> dict:
-    configured = QuartrClient().configured()
-    return {
-        "api_configured": configured,
-        "free_student_mode": "manual_import",
-        "message": (
-            "Use manual import for Quartr Student/Free. Set QUARTR_API_KEY only if Quartr "
-            "has issued enterprise/API credentials."
-        ),
-    }
-
-
-@router.post("/quartr/import-text")
-def import_quartr_text(
-    payload: QuartrManualImportRequest,
+@router.post("/transcripts/import-text")
+def import_transcript_text(
+    payload: ManualTranscriptImportRequest,
     db: Session = Depends(get_db),
 ) -> dict:
     try:
-        return QuartrImportService().import_text(
+        return ManualTranscriptImportService().import_text(
             db=db,
             ticker=payload.ticker,
             title=payload.title,

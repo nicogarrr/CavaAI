@@ -115,6 +115,7 @@ def test_universal_search_fuses_corpora_and_applies_metadata_filters():
                 knowledge_chunk_id=knowledge_chunk.id,
                 collection_id=collection.id,
                 principle="Judge managers by capital allocation discipline.",
+                principle_fingerprint="b" * 64,
                 category="capital_allocation",
                 exact_fragment="Capital allocation is the test of management discipline.",
                 author="Investor",

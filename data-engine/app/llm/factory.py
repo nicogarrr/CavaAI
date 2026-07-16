@@ -40,18 +40,10 @@ def create_llm_provider(
         return DisabledProvider("disabled_by_configuration")
 
     if requested == "auto":
-        candidates = (
-            ("openrouter", settings.openrouter_enabled, settings.openrouter_api_key),
-            ("openai", settings.openai_enabled, settings.openai_api_key),
-            ("anthropic", settings.anthropic_enabled, settings.anthropic_api_key),
-            ("gemini", settings.gemini_enabled, settings.gemini_api_key),
-        )
-        requested = next(
-            (name for name, enabled, key in candidates if enabled and _has_key(key)),
-            "",
-        )
-        if not requested:
-            return DisabledProvider("no_api_key_configured")
+        # Backwards-compatible spelling for the OpenRouter-first policy.  Do
+        # not silently move a task onto a provider whose model aliases and
+        # capabilities have not been registered.
+        requested = "openrouter"
 
     enabled = getattr(settings, f"{requested}_enabled")
     key = getattr(settings, f"{requested}_api_key")
@@ -62,15 +54,29 @@ def create_llm_provider(
 
     from app.services.llm_router import ROUTES
 
-    MODEL_ALIASES.validate_active_routes(
-        ROUTES.values(),
-        provider=requested,
-        overrides=settings.llm_model_overrides,
-    )
-    resolved_overrides = MODEL_ALIASES.translated_overrides(
-        provider=requested,
-        overrides=settings.llm_model_overrides,
-    )
+    if requested == "openrouter":
+        MODEL_ALIASES.validate_active_routes(
+            ROUTES.values(),
+            provider=requested,
+            overrides=settings.llm_model_overrides,
+        )
+        resolved_overrides = MODEL_ALIASES.translated_overrides(
+            provider=requested,
+            overrides=settings.llm_model_overrides,
+        )
+    else:
+        missing_tasks = sorted(
+            route.task
+            for route in ROUTES.values()
+            if route.task not in settings.llm_model_overrides
+            and route.model not in settings.llm_model_overrides
+        )
+        if missing_tasks:
+            raise ValueError(
+                f"Explicit {requested} configuration requires model overrides "
+                f"for every active task; missing: {', '.join(missing_tasks)}"
+            )
+        resolved_overrides = dict(settings.llm_model_overrides)
     common = {
         "client": client,
         "timeout_seconds": settings.llm_timeout_seconds,

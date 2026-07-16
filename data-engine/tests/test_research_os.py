@@ -9,7 +9,7 @@ import main
 from app.core.database import SessionLocal, init_db
 from app.models import Company, ExternalClaim, FinancialFact, MemoryItem, NewsEvent, ThesisChange
 from app.seed import seed
-from app.services.quartr_import_service import QuartrImportService
+from app.services.manual_transcript_import_service import ManualTranscriptImportService
 from app.services.source_auditor import SourceAuditor
 from app.valuation import DCFInputs, ReverseDCFInputs, run_dcf, solve_required_growth
 
@@ -212,7 +212,7 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     assert claim_payload["status"] == "unverified"
 
     source = client.post(
-        "/api/sources/quartr/import-text",
+        "/api/sources/transcripts/import-text",
         json={
             "ticker": "MSFT",
             "title": f"MSFT evidence fixture {uuid4().hex}",
@@ -507,17 +507,17 @@ def test_dcf_and_reverse_dcf_are_deterministic():
     assert abs(solved["solved_value_per_share"] - 50) < 0.01
 
 
-def test_quartr_manual_import_creates_document_chunks_and_transcript():
+def test_manual_import_creates_document_chunks_and_transcript():
     init_db()
     seed()
     db = SessionLocal()
     try:
-        result = QuartrImportService().import_text(
+        result = ManualTranscriptImportService().import_text(
             db=db,
             ticker="MSFT",
-            title="MSFT Q1 call from Quartr",
+            title="MSFT Q1 call transcript",
             text="Management discussed Azure AI demand and capex discipline. " * 20,
-            source_url="https://quartr.com",
+            source_url="https://www.microsoft.com/investor",
             period="Q1",
         )
 

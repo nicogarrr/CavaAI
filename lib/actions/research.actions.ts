@@ -1052,7 +1052,7 @@ export async function importResearchSource(formData: FormData) {
   if (!title) throw new ValidationError('El título es obligatorio', 'title');
   if (text.length < 20) throw new ValidationError('El documento debe tener al menos 20 caracteres', 'text');
 
-  await postJson('/api/sources/quartr/import-text', null, {
+  await postJson('/api/sources/transcripts/import-text', null, {
     ticker,
     title,
     text,

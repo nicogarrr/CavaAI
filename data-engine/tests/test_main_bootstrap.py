@@ -99,8 +99,7 @@ def test_public_routes_are_registered_once():
         "/api/chat",
         "/api/sources/documents",
         "/api/sources/audits",
-        "/api/sources/quartr/status",
-        "/api/sources/quartr/import-text",
+        "/api/sources/transcripts/import-text",
         "/api/settings",
         "/api/workflows",
     }

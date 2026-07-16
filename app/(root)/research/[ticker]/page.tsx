@@ -433,6 +433,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           {views.map(([key, label]) => (
             <Link className={`whitespace-nowrap rounded-lg border px-3 py-2 text-sm transition ${activeView === key ? 'border-teal-600 bg-teal-950/40 text-teal-200' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'}`} href={`/research/${encodeURIComponent(ticker)}?view=${key}`} key={key}>{label}</Link>
           ))}
+          {[
+            ['financial-terminal', 'Financial Terminal'],
+            ['driver-assumptions', 'Assumptions'],
+            ['decision-lessons', 'Lessons'],
+            ['management-credibility', 'Management'],
+          ].map(([path, label]) => (
+            <Link className="whitespace-nowrap rounded-lg border border-teal-900/60 px-3 py-2 text-sm text-teal-300 transition hover:border-teal-700 hover:text-teal-200" href={`/research/${encodeURIComponent(ticker)}/${path}`} key={path}>{label}</Link>
+          ))}
         </nav>
         {content}
       </div>

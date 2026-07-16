@@ -8,6 +8,9 @@ const eslintConfig = [
     ignores: [
       "node_modules/**",
       ".next/**",
+      ".next-e2e/**",
+      "playwright-report/**",
+      "test-results/**",
       "data-engine/.pytest_cache/**",
       "data-engine/.venv/**",
       "data-engine/**/__pycache__/**",

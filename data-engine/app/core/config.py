@@ -45,9 +45,6 @@ class Settings(BaseSettings):
     ibkr_flex_query_id: str | None = None
     sec_user_agent: str = "CavaAI/0.1 contact@example.com"
     fred_api_key: str | None = None
-    quartr_api_key: str | None = None
-    quartr_api_base_url: str = "https://api.quartr.com"
-
     openrouter_api_key: str | None = Field(default=None, repr=False)
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_enabled: bool = True
@@ -72,7 +69,10 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
 
     llm_enabled: bool = True
-    llm_provider: str = "auto"
+    # OpenRouter is the only provider with an application-level alias policy.
+    # Other adapters remain available only through explicit provider selection
+    # plus a complete task-level model override map.
+    llm_provider: str = "openrouter"
     llm_timeout_seconds: float = Field(default=30.0, gt=0)
     llm_max_retries: int = Field(default=2, ge=0, le=5)
     llm_model_overrides: dict[str, str] = Field(default_factory=dict)

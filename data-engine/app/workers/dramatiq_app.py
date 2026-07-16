@@ -129,6 +129,63 @@ def extract_document_kpis(
         db.close()
 
 
+@dramatiq.actor(max_retries=2, min_backoff=15_000)
+def extract_knowledge_principles(
+    processing_job_id: int,
+    *,
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Extract, deduplicate and consolidate one knowledge document in bounded batches."""
+    from app.models import KnowledgeDocument, ProcessingJob
+    from app.services.knowledge_library_service import KnowledgeLibraryService
+
+    db = _session(tenant_id, user_id)
+    job = db.get(ProcessingJob, processing_job_id)
+    try:
+        if job is None:
+            raise ValueError(f"Processing job {processing_job_id} was not found")
+        document = db.get(KnowledgeDocument, job.entity_id)
+        if document is None:
+            raise ValueError(f"Knowledge document {job.entity_id} was not found")
+        job.status = "running"
+        job.started_at = datetime.now(UTC)
+        db.commit()
+
+        def update_progress(current: int, total: int) -> None:
+            job.progress_current = current
+            job.progress_total = total
+            db.commit()
+
+        result = _run(
+            KnowledgeLibraryService().extract_principle_batches(
+                db,
+                document,
+                progress=update_progress,
+            )
+        )
+        principle_ids = [principle.id for principle in result.pop("principles")]
+        job.status = "completed"
+        job.result = {**result, "principle_ids": principle_ids}
+        job.completed_at = datetime.now(UTC)
+        db.commit()
+        return {"status": "ok", "processing_job_id": job.id, **job.result}
+    except Exception as exc:
+        _rollback(db)
+        if job is not None:
+            job.status = "failed"
+            job.error = f"{type(exc).__name__}: {exc}"
+            job.completed_at = datetime.now(UTC)
+            db.commit()
+        return _failure(
+            "extract_knowledge_principles",
+            exc,
+            processing_job_id=processing_job_id,
+        )
+    finally:
+        db.close()
+
+
 @dramatiq.actor(max_retries=1)
 def evaluate_alert_rules(
     tenant_id: int | None = None,

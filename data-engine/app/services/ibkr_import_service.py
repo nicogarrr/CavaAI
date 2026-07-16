@@ -209,6 +209,16 @@ class IBKRImportService:
                 db.add(transaction)
                 dividends_imported += 1
 
+        from app.services.portfolio_snapshot_service import PortfolioSnapshotService
+
+        observation_dates = [
+            position.as_of for position in db.scalars(select(Position)).all()
+        ] + [cash.as_of for cash in db.scalars(select(CashBalance)).all()]
+        snapshot = PortfolioSnapshotService().capture(
+            db,
+            as_of=max(observation_dates, default=date.today()),
+            source="ibkr_flex",
+        )
         db.commit()
         return {
             "status": "imported",
@@ -218,6 +228,7 @@ class IBKRImportService:
             "dividends_imported": dividends_imported,
             "fees_imported": fees_imported,
             "cash_transactions_imported": cash_transactions_imported,
+            "portfolio_snapshot_id": snapshot.id,
         }
 
     def _company(self, db: Session, cache: dict[str, Company], symbol: str) -> Company:

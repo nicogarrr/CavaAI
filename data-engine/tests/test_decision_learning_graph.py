@@ -108,6 +108,7 @@ def test_missed_expectation_becomes_approved_lesson_and_graph_evidence():
             InvestmentPrinciple(
                 knowledge_document_id=document.id,
                 principle="Capital intensity increases external funding risk.",
+                principle_fingerprint="a" * 64,
                 category="capital_allocation",
                 exact_fragment="Capital intensity increases external funding risk.",
                 author="Investor",
