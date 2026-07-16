@@ -63,6 +63,16 @@ def test_space_network_formula_uses_sourced_demand_and_capacity_drivers():
         "utilization": 0.50,
         "price_per_gb": 100,
     }
+    units = {
+        "addressable_subscribers": "count",
+        "penetration": "decimal",
+        "monthly_arpu": "USD/subscriber/month",
+        "revenue_share": "decimal",
+        "satellites": "count",
+        "capacity_per_satellite": "GB/satellite/year",
+        "utilization": "decimal",
+        "price_per_gb": "USD/GB",
+    }
     cache = {}
     for index, (metric, value) in enumerate(values.items(), start=1):
         fact = FinancialFact(
@@ -70,7 +80,7 @@ def test_space_network_formula_uses_sourced_demand_and_capacity_drivers():
             company_id=1,
             metric=metric,
             value=Decimal(str(value)),
-            unit="decimal" if metric in {"penetration", "revenue_share", "utilization"} else "unit",
+            unit=units[metric],
             period="FY2025",
             fiscal_year=2025,
             fiscal_quarter="FY",
@@ -85,3 +95,47 @@ def test_space_network_formula_uses_sourced_demand_and_capacity_drivers():
     assert result["years"][0]["segments"]["connectivity_demand"] == 6000
     assert result["years"][0]["segments"]["connectivity_capacity_ceiling"] == 50000
     assert result["years"][0]["output"] == 6000
+    assert result["years"][0]["output_dimension"] == "currency/year"
+    assert result["dimensional_validation"]["valid"] is True
+
+
+def test_driver_formula_rejects_an_incompatible_explicit_unit():
+    company = _company("ASTS", "space_telecom_pre_fcf", ["space", "telecom"])
+    framework = resolve_company_framework(company)
+    units = {
+        "addressable_subscribers": "count",
+        "penetration": "decimal",
+        "monthly_arpu": "USD/subscriber/month",
+        "revenue_share": "decimal",
+        "satellites": "count",
+        # Missing the satellite denominator: this is total capacity, not
+        # capacity per satellite.
+        "capacity_per_satellite": "GB/year",
+        "utilization": "decimal",
+        "price_per_gb": "USD/GB",
+    }
+    cache = {
+        metric: [
+            FinancialFact(
+                id=index,
+                company_id=1,
+                metric=metric,
+                value=Decimal("1"),
+                unit=unit,
+                period="FY2025",
+                fiscal_year=2025,
+                fiscal_quarter="FY",
+                source_type="test",
+                confidence=Decimal("0.95"),
+            )
+        ]
+        for index, (metric, unit) in enumerate(units.items(), start=1)
+    }
+
+    result = DriverOperatingModel().build(
+        framework, cache, latest_year=2025, horizon=1, scenario="base"
+    )
+
+    assert result["status"] == "invalid_driver_dimensions"
+    assert result["years"] == []
+    assert result["dimension_errors"][0]["driver"] == "capacity_per_satellite"

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.llm import LLMRequest, Message, ResponseFormat, parse_json_response
@@ -17,6 +17,7 @@ from app.models import (
     CompanyKPI,
     Document,
     DocumentChunk,
+    FactRevision,
     FinancialFact,
     KPIExtractionCandidate,
 )
@@ -356,12 +357,13 @@ class KPIExtractionService:
         if document is None:
             raise ValueError("Source document no longer exists")
         fact = db.scalar(
-            select(FinancialFact).where(
+            select(FinancialFact)
+            .where(
                 FinancialFact.company_id == candidate.company_id,
                 FinancialFact.metric == candidate.metric_key,
                 FinancialFact.period == candidate.period,
-                FinancialFact.source_id == candidate.document_id,
             )
+            .order_by(FinancialFact.id.desc())
         )
         if fact is None:
             fact = FinancialFact(
@@ -380,6 +382,39 @@ class KPIExtractionService:
             )
             db.add(fact)
             db.flush()
+        elif fact.value != candidate.normalized_value:
+            previous_value = fact.value
+            latest_version = db.scalar(
+                select(func.max(FactRevision.canonical_version)).where(
+                    FactRevision.financial_fact_id == fact.id
+                )
+            )
+            revision = FactRevision(
+                financial_fact_id=fact.id,
+                candidate_id=candidate.id,
+                previous_value=previous_value,
+                new_value=candidate.normalized_value,
+                reason="Approved KPI candidate contradicts the current canonical fact",
+                source={
+                    "document_id": candidate.document_id,
+                    "document_chunk_id": candidate.document_chunk_id,
+                    "document_source_type": document.source_type,
+                    "source_locator": candidate.source_locator,
+                    "candidate_id": candidate.id,
+                },
+                approved_by=actor,
+                superseded_at=datetime.now(UTC),
+                canonical_version=int(latest_version or 0) + 1,
+                status="approved",
+            )
+            db.add(revision)
+            fact.value = candidate.normalized_value
+            fact.unit = candidate.canonical_unit
+            fact.fiscal_year = candidate.fiscal_year
+            fact.fiscal_quarter = candidate.fiscal_quarter
+            fact.source_id = candidate.document_id
+            fact.source_type = document.source_type
+            fact.confidence = candidate.confidence
         candidate.status = "approved"
         candidate.approved_by = actor
         candidate.approved_at = datetime.now(UTC)

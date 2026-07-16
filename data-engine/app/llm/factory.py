@@ -10,6 +10,7 @@ from app.llm.adapters import (
     OpenAICompatibleProvider,
 )
 from app.llm.base import LLMProvider
+from app.llm.model_aliases import MODEL_ALIASES
 
 
 def _has_key(value: str | None) -> bool:
@@ -59,11 +60,22 @@ def create_llm_provider(
     if not _has_key(key):
         return DisabledProvider(f"{requested}_api_key_not_configured")
 
+    from app.services.llm_router import ROUTES
+
+    MODEL_ALIASES.validate_active_routes(
+        ROUTES.values(),
+        provider=requested,
+        overrides=settings.llm_model_overrides,
+    )
+    resolved_overrides = MODEL_ALIASES.translated_overrides(
+        provider=requested,
+        overrides=settings.llm_model_overrides,
+    )
     common = {
         "client": client,
         "timeout_seconds": settings.llm_timeout_seconds,
         "max_retries": settings.llm_max_retries,
-        "model_overrides": settings.llm_model_overrides,
+        "model_overrides": resolved_overrides,
     }
     if requested == "openrouter":
         extra_headers = {"X-Title": settings.openrouter_app_name}
@@ -102,3 +114,12 @@ def create_llm_provider(
 
 
 create_provider = create_llm_provider
+
+
+def validate_llm_configuration(settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
+    provider = create_llm_provider(settings)
+    if provider.name != "disabled":
+        # Provider construction performs strict route validation and alias
+        # translation. Reaching this branch proves the active configuration.
+        return

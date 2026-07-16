@@ -23,8 +23,9 @@ from app.llm.errors import (
     ProviderResponseError,
     StructuredOutputError,
 )
-from app.llm.factory import create_llm_provider, create_provider
+from app.llm.factory import create_llm_provider, create_provider, validate_llm_configuration
 from app.llm.json import parse_json_response
+from app.llm.model_aliases import MODEL_ALIASES, ModelAlias, ModelAliasRegistry
 from app.llm.routing import TaskModelRouter
 
 __all__ = [
@@ -39,6 +40,9 @@ __all__ = [
     "LLMUsage",
     "Message",
     "MessageRole",
+    "MODEL_ALIASES",
+    "ModelAlias",
+    "ModelAliasRegistry",
     "OpenAICompatibleProvider",
     "ProviderDisabledError",
     "ProviderHTTPError",
@@ -51,4 +55,5 @@ __all__ = [
     "create_llm_provider",
     "create_provider",
     "parse_json_response",
+    "validate_llm_configuration",
 ]
