@@ -8,8 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router as research_api_router
 from app.core.config import get_settings
 from app.core.auth import get_research_principal
-from app.core.database import init_db
+from app.core.database import SessionLocal, init_db
 from app.core.rate_limit import RateLimitMiddleware
+from app.llm.factory import validate_llm_configuration
+from app.llm.model_aliases import configure_model_aliases
 from app.seed import ensure_company_master
 from routers.analytics import router as analytics_router
 from routers.fundamentals import router as fundamentals_router
@@ -23,6 +25,9 @@ async def lifespan(_: FastAPI):
         # Tests use an isolated disposable schema. Runtime environments migrate
         # with Alembic before the process starts.
         init_db()
+    with SessionLocal() as db:
+        configure_model_aliases(db)
+    validate_llm_configuration(settings)
     if settings.app_env.lower() != "production":
         ensure_company_master()
     yield

@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -14,6 +14,8 @@ from app.services.ibkr_import_service import IBKRImportService
 from app.services.risk_service import RiskService
 from app.services.portfolio_ledger_service import PortfolioLedgerService
 from app.services.portfolio_fx_service import PortfolioFXService
+from app.services.market_refresh_service import MarketRefreshService
+from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 
 router = APIRouter()
 
@@ -82,6 +84,14 @@ def portfolio_summary(db: Session = Depends(get_db)) -> dict:
         "cash_native": risk["cash_native"],
         "missing_fx": risk["missing_fx"],
     }
+
+
+@router.get("/intelligence")
+def portfolio_intelligence(
+    years: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> dict:
+    return PortfolioIntelligenceService().build(db, years=years)
 
 
 @router.get("/configuration")
@@ -340,6 +350,17 @@ def update_price(payload: PortfolioPriceInput, db: Session = Depends(get_db)) ->
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/refresh-market")
+async def refresh_portfolio_market_data(
+    as_of: date | None = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        return await MarketRefreshService().refresh(db, as_of=as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/cash")

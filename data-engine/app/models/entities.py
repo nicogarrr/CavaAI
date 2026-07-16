@@ -29,6 +29,27 @@ class TimestampMixin:
     )
 
 
+class ModelAlias(Base, TimestampMixin):
+    """Stable internal model name mapped to a real provider identifier."""
+
+    __tablename__ = "model_aliases"
+    __table_args__ = (
+        UniqueConstraint(
+            "internal_alias", "provider", name="uq_model_alias_provider"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    internal_alias: Mapped[str] = mapped_column(String(120), index=True)
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    provider_model_id: Mapped[str] = mapped_column(String(240))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    context_window: Mapped[int] = mapped_column(Integer)
+    input_cost: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    output_cost: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    supported_capabilities: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
 class TenantOwnedMixin:
     """Marks rows that must be isolated by the active Research OS tenant."""
 
@@ -1006,6 +1027,12 @@ class FundamentalDriver(TenantOwnedMixin, Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(40), index=True)
     value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
     unit: Mapped[str] = mapped_column(String(40), default="unknown")
+    currency: Mapped[str] = mapped_column(String(10), default="N/A")
+    time_basis: Mapped[str] = mapped_column(String(40), default="point_in_time")
+    geography: Mapped[str] = mapped_column(String(120), default="global")
+    segment: Mapped[str] = mapped_column(String(160), default="consolidated")
+    period: Mapped[str] = mapped_column(String(40), default="unknown")
+    source: Mapped[str] = mapped_column(String(240), default="financial_fact")
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0"))
     source_fact_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
     trace: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -1117,3 +1144,327 @@ class ExpectationReview(TenantOwnedMixin, Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(40), index=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     trace: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class KnowledgeCollection(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "knowledge_collections"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "slug", name="uq_knowledge_collection_tenant_slug"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(240))
+    slug: Mapped[str] = mapped_column(String(160), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    collection_type: Mapped[str] = mapped_column(String(80), default="custom")
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class KnowledgeDocument(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    collection_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_collections.id"), nullable=True, index=True
+    )
+    source_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id"), nullable=True, unique=True
+    )
+    title: Mapped[str] = mapped_column(String(500))
+    author: Mapped[str | None] = mapped_column(String(240), nullable=True, index=True)
+    document_type: Mapped[str] = mapped_column(String(80), index=True)
+    source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    storage_uri: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    publication_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    language: Mapped[str] = mapped_column(String(20), default="en")
+    status: Mapped[str] = mapped_column(String(40), default="ready", index=True)
+    checksum: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class KnowledgeChunk(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "knowledge_document_id",
+            "chunk_index",
+            name="uq_knowledge_chunk_document_index",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    knowledge_document_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_documents.id"), index=True
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column(Text)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    section_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    token_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_locator: Mapped[dict] = mapped_column(JSON, default=dict)
+    qdrant_point_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class InvestmentPrinciple(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "investment_principles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    knowledge_document_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_documents.id"), index=True
+    )
+    knowledge_chunk_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_chunks.id"), nullable=True, index=True
+    )
+    collection_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_collections.id"), nullable=True, index=True
+    )
+    principle: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(120), index=True)
+    application_conditions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    exceptions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    applies_to_company_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    exact_fragment: Mapped[str] = mapped_column(Text)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    author: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0"))
+    status: Mapped[str] = mapped_column(String(40), default="proposed", index=True)
+    approved_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class InvestmentCaseStudy(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "investment_case_studies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    knowledge_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_documents.id"), nullable=True, index=True
+    )
+    collection_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_collections.id"), nullable=True, index=True
+    )
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(500))
+    summary: Mapped[str] = mapped_column(Text)
+    period: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    sector: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    outcome: Mapped[str] = mapped_column(Text, default="")
+    lessons: Mapped[list[str]] = mapped_column(JSON, default=list)
+    source_locator: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class DecisionLesson(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "decision_lessons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    decision_journal_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("decision_journal_entries.id"), nullable=True, index=True
+    )
+    expectation_review_id: Mapped[int | None] = mapped_column(
+        ForeignKey("expectation_reviews.id"), nullable=True, unique=True, index=True
+    )
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
+    taxonomy: Mapped[str] = mapped_column(String(120), index=True)
+    expectation: Mapped[str] = mapped_column(Text, default="")
+    outcome: Mapped[str] = mapped_column(Text, default="")
+    deviation: Mapped[str] = mapped_column(Text, default="")
+    cause: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+    lesson: Mapped[str] = mapped_column(Text)
+    future_application: Mapped[str] = mapped_column(Text, default="")
+    evidence: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class FactRevision(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "fact_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "financial_fact_id",
+            "canonical_version",
+            name="uq_fact_revision_canonical_version",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    financial_fact_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_facts.id"), index=True
+    )
+    candidate_id: Mapped[int | None] = mapped_column(
+        ForeignKey("kpi_extraction_candidates.id"), nullable=True, index=True
+    )
+    previous_value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    new_value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    reason: Mapped[str] = mapped_column(Text)
+    source: Mapped[dict] = mapped_column(JSON, default=dict)
+    approved_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    canonical_version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+
+
+class DriverAssumptionVersion(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "driver_assumption_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    driver_id: Mapped[int] = mapped_column(ForeignKey("fundamental_drivers.id"), index=True)
+    fiscal_year: Mapped[int] = mapped_column(Integer, index=True)
+    scenario: Mapped[str] = mapped_column(String(40), index=True)
+    value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    source: Mapped[str] = mapped_column(String(240))
+    user_override: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0"))
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    previous_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("driver_assumption_versions.id"), nullable=True, index=True
+    )
+
+
+class CustomMetricDefinition(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "custom_metric_definitions"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "metric_key", "version", name="uq_custom_metric_key_version"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    metric_key: Mapped[str] = mapped_column(String(160), index=True)
+    name: Mapped[str] = mapped_column(String(240))
+    formula: Mapped[str] = mapped_column(Text)
+    unit: Mapped[str] = mapped_column(String(40), default="decimal")
+    description: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class SavedScreen(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "saved_screens"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_saved_screen_tenant_name"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(240))
+    description: Mapped[str] = mapped_column(Text, default="")
+    criteria: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    ranking_formula: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ranking_direction: Mapped[str] = mapped_column(String(10), default="desc")
+    alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class SavedScreenMatch(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "saved_screen_matches"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "saved_screen_id", "company_id", name="uq_screen_match_company"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    saved_screen_id: Mapped[int] = mapped_column(
+        ForeignKey("saved_screens.id"), index=True
+    )
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    first_matched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_matched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class KnowledgeGraphNode(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "knowledge_graph_nodes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "node_key", name="uq_knowledge_graph_node_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    node_key: Mapped[str] = mapped_column(String(240), index=True)
+    node_type: Mapped[str] = mapped_column(String(80), index=True)
+    label: Mapped[str] = mapped_column(String(500))
+    description: Mapped[str] = mapped_column(Text, default="")
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
+    entity_type: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("1"))
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class KnowledgeGraphEdge(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "knowledge_graph_edges"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "from_node_id",
+            "to_node_id",
+            "edge_type",
+            name="uq_knowledge_graph_edge",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    from_node_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_graph_nodes.id"), index=True
+    )
+    to_node_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_graph_nodes.id"), index=True
+    )
+    edge_type: Mapped[str] = mapped_column(String(120), index=True)
+    weight: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("1"))
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("1"))
+    evidence: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    provenance: Mapped[str] = mapped_column(String(160), default="deterministic_sync")
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ManagementPromise(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "management_promises"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    source_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id"), nullable=True, index=True
+    )
+    call_claim_id: Mapped[int | None] = mapped_column(
+        ForeignKey("call_claims.id"), nullable=True, unique=True, index=True
+    )
+    promise: Mapped[str] = mapped_column(Text)
+    promise_date: Mapped[date] = mapped_column(Date, index=True)
+    expected_period: Mapped[str] = mapped_column(String(80), index=True)
+    metric: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    operator: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    target_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    actual_fact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_facts.id"), nullable=True, index=True
+    )
+    actual_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    management_explanation: Mapped[str] = mapped_column(Text, default="")
+    verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    evidence: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)

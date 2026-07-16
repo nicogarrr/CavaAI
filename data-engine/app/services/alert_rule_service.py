@@ -17,6 +17,7 @@ from app.models import (
     Position,
 )
 from app.services.review_alert_service import ReviewAlertService
+from app.core.config import get_settings
 
 
 class AlertRuleService:
@@ -81,7 +82,8 @@ class AlertRuleService:
             return result
 
         observed, observation = self._observe(db, rule)
-        matched = self._matches(
+        stale_observation = observation.get("status") == "stale"
+        matched = False if stale_observation else self._matches(
             observed,
             str((rule.condition or {}).get("operator") or "=="),
             (rule.condition or {}).get("value"),
@@ -118,7 +120,13 @@ class AlertRuleService:
             rule.trigger_count += 1
         result = {
             "rule_id": rule.id,
-            "status": "triggered" if triggered else "evaluated",
+            "status": (
+                "triggered"
+                if triggered
+                else "skipped_stale_observation"
+                if stale_observation
+                else "evaluated"
+            ),
             "matched": bool(matched),
             "cooldown_active": cooldown_active,
             "observed": self._json_value(observed),
@@ -144,10 +152,17 @@ class AlertRuleService:
                 ).all()
             )
             if prices:
+                age_days = (date.today() - prices[0].date).days
                 return Decimal(prices[0].close), {
                     "kind": kind,
                     "market_price_id": prices[0].id,
                     "date": prices[0].date.isoformat(),
+                    "age_days": age_days,
+                    "status": (
+                        "stale"
+                        if age_days > get_settings().market_price_max_age_days
+                        else "fresh"
+                    ),
                 }
             position = db.scalar(
                 select(Position)
@@ -156,7 +171,21 @@ class AlertRuleService:
                 .limit(1)
             )
             return (
-                (Decimal(position.market_price), {"kind": kind, "position_id": position.id})
+                (
+                    Decimal(position.market_price),
+                    {
+                        "kind": kind,
+                        "position_id": position.id,
+                        "date": position.as_of.isoformat(),
+                        "age_days": (date.today() - position.as_of).days,
+                        "status": (
+                            "stale"
+                            if (date.today() - position.as_of).days
+                            > get_settings().market_price_max_age_days
+                            else "fresh"
+                        ),
+                    },
+                )
                 if position and position.market_price is not None
                 else (None, {"kind": kind, "status": "missing"})
             )
@@ -172,7 +201,18 @@ class AlertRuleService:
             if len(prices) < 2 or prices[1].close == 0:
                 return None, {"kind": kind, "status": "missing_two_prices"}
             change = (Decimal(prices[0].close) / Decimal(prices[1].close) - 1) * 100
-            return change, {"kind": kind, "price_ids": [prices[0].id, prices[1].id]}
+            age_days = (date.today() - prices[0].date).days
+            return change, {
+                "kind": kind,
+                "price_ids": [prices[0].id, prices[1].id],
+                "latest_date": prices[0].date.isoformat(),
+                "age_days": age_days,
+                "status": (
+                    "stale"
+                    if age_days > get_settings().market_price_max_age_days
+                    else "fresh"
+                ),
+            }
         since = self._aware(rule.last_evaluated_at) or self._aware(rule.created_at)
         if kind == "news_event":
             statement = (
