@@ -70,7 +70,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self._base_url = base_url.rstrip("/")
         self._extra_headers = dict(extra_headers or {})
         super().__init__(
-            model_router=TaskModelRouter(default_model, model_overrides or {}),
+            model_router=TaskModelRouter(default_model, model_overrides or {}, provider_name),
             client=client,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
@@ -169,7 +169,7 @@ class AnthropicProvider(LLMProvider):
         self._base_url = base_url.rstrip("/")
         self._api_version = api_version
         super().__init__(
-            model_router=TaskModelRouter(default_model, model_overrides or {}),
+            model_router=TaskModelRouter(default_model, model_overrides or {}, self.name),
             client=client,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
@@ -262,7 +262,7 @@ class GeminiProvider(LLMProvider):
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         super().__init__(
-            model_router=TaskModelRouter(default_model, model_overrides or {}),
+            model_router=TaskModelRouter(default_model, model_overrides or {}, self.name),
             client=client,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,

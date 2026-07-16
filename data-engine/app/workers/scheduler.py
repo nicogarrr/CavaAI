@@ -6,7 +6,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.workers.dramatiq_app import (
     consolidate_memory,
-    evaluate_alert_rules,
+    refresh_market_pipeline,
     refresh_ir_pages,
     refresh_news,
     refresh_rss_feeds,
@@ -54,10 +54,10 @@ def build_scheduler() -> BlockingScheduler:
     scheduler = BlockingScheduler(timezone="UTC")
     _register(
         scheduler,
-        partial(enqueue_for_all_tenants, evaluate_alert_rules),
+        partial(enqueue_for_all_tenants, refresh_market_pipeline),
         "interval",
-        job_id="alert_rule_evaluation",
-        minutes=5,
+        job_id="market_refresh",
+        hours=1,
     )
     _register(
         scheduler,

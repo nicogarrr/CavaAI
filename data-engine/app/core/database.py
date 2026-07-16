@@ -207,6 +207,14 @@ def init_db() -> None:
                     "actual_source_type": "VARCHAR(40)",
                     "semantics": "VARCHAR(40) NOT NULL DEFAULT 'higher_is_better'",
                 },
+                "fundamental_drivers": {
+                    "currency": "VARCHAR(10) NOT NULL DEFAULT 'N/A'",
+                    "time_basis": "VARCHAR(40) NOT NULL DEFAULT 'point_in_time'",
+                    "geography": "VARCHAR(120) NOT NULL DEFAULT 'global'",
+                    "segment": "VARCHAR(160) NOT NULL DEFAULT 'consolidated'",
+                    "period": "VARCHAR(40) NOT NULL DEFAULT 'unknown'",
+                    "source": "VARCHAR(240) NOT NULL DEFAULT 'financial_fact'",
+                },
             }
             table_names = set(inspector.get_table_names())
             for table_name, definitions in sqlite_forward_columns.items():

@@ -1,0 +1,240 @@
+"""Ten-year source-aware financial terminal projection."""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from datetime import date
+from typing import Any
+
+from sqlalchemy import desc, select
+from sqlalchemy.orm import Session
+
+from app.models import CalculatedMetric, Company, Document, FinancialFact
+from app.services.metric_calculation_service import METRIC_DEFINITIONS
+
+
+DEFAULT_TERMINAL_METRICS = (
+    "revenue",
+    "eps",
+    "free_cash_flow",
+    "fcf_per_share",
+    "roic",
+    "roce",
+    "incremental_roic",
+    "shares_diluted",
+    "stock_based_compensation",
+    "working_capital",
+    "capital_expenditure",
+    "owner_earnings",
+    "gross_margin",
+    "operating_margin",
+    "net_margin",
+    "total_assets",
+    "total_debt",
+    "total_equity",
+    "cash_and_equivalents",
+)
+
+
+METRIC_DEFINITIONS_TEXT = {
+    "revenue": "Reported consolidated or segment revenue.",
+    "eps": "Diluted earnings per share reported for the period.",
+    "free_cash_flow": "Operating cash flow less capital expenditure.",
+    "fcf_per_share": "Free cash flow divided by diluted shares.",
+    "roic": "After-tax operating profit divided by invested capital.",
+    "roce": "Operating profit divided by capital employed.",
+    "incremental_roic": "Change in operating profit after tax divided by change in invested capital.",
+    "shares_diluted": "Weighted-average diluted shares for the period.",
+    "stock_based_compensation": "Stock-based compensation expense.",
+    "working_capital": "Operating current assets less operating current liabilities.",
+    "capital_expenditure": "Cash investment in property, plant and equipment.",
+    "owner_earnings": "Net income plus D&A less maintenance capex and normalized working-capital needs.",
+}
+
+
+class FinancialTerminalService:
+    def build(
+        self,
+        db: Session,
+        company: Company,
+        *,
+        metrics: list[str] | None = None,
+        years: int = 10,
+        periodicity: str = "all",
+    ) -> dict[str, Any]:
+        requested = list(dict.fromkeys(metrics or DEFAULT_TERMINAL_METRICS))
+        years = max(1, min(years, 20))
+        if periodicity not in {"all", "annual", "quarterly"}:
+            raise ValueError("periodicity must be all, annual or quarterly")
+        facts = list(
+            db.scalars(
+                select(FinancialFact)
+                .where(
+                    FinancialFact.company_id == company.id,
+                    FinancialFact.metric.in_(requested),
+                )
+                .order_by(
+                    FinancialFact.metric,
+                    desc(FinancialFact.fiscal_year),
+                    desc(FinancialFact.created_at),
+                )
+            ).all()
+        )
+        calculated = list(
+            db.scalars(
+                select(CalculatedMetric)
+                .where(
+                    CalculatedMetric.company_id == company.id,
+                    CalculatedMetric.metric.in_(requested),
+                )
+                .order_by(
+                    CalculatedMetric.metric,
+                    desc(CalculatedMetric.fiscal_year),
+                    desc(CalculatedMetric.created_at),
+                )
+            ).all()
+        )
+        document_ids = {fact.source_id for fact in facts if fact.source_id}
+        documents = {
+            document.id: document
+            for document in db.scalars(
+                select(Document).where(Document.id.in_(document_ids))
+            ).all()
+        } if document_ids else {}
+        latest_year = max(
+            [row.fiscal_year for row in [*facts, *calculated] if row.fiscal_year],
+            default=date.today().year,
+        )
+        earliest_year = latest_year - years + 1
+        series: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        seen: set[tuple[str, str, str, str]] = set()
+        for fact in facts:
+            if fact.fiscal_year and fact.fiscal_year < earliest_year:
+                continue
+            frequency = self._frequency(fact.fiscal_quarter, fact.period)
+            if periodicity != "all" and frequency != periodicity:
+                continue
+            document = documents.get(fact.source_id)
+            segment = str((document.metadata_ or {}).get("segment") or "consolidated") if document else "consolidated"
+            key = (fact.metric, fact.period, segment, "reported" if fact.is_reported else "normalized")
+            if key in seen:
+                continue
+            seen.add(key)
+            series[fact.metric].append(
+                {
+                    "id": fact.id,
+                    "period": fact.period,
+                    "fiscal_year": fact.fiscal_year,
+                    "fiscal_quarter": fact.fiscal_quarter,
+                    "frequency": frequency,
+                    "segment": segment,
+                    "value": fact.value,
+                    "unit": fact.unit,
+                    "reported": fact.is_reported,
+                    "adjusted": fact.is_adjusted,
+                    "source": {
+                        "type": fact.source_type,
+                        "document_id": fact.source_id,
+                        "title": document.title if document else None,
+                        "url": document.source_url if document else None,
+                    },
+                    "confidence": fact.confidence,
+                    "status": "reported" if fact.is_reported else "normalized",
+                    "formula": None,
+                    "definition_version": None,
+                }
+            )
+        for metric in calculated:
+            if metric.fiscal_year and metric.fiscal_year < earliest_year:
+                continue
+            frequency = self._frequency(metric.fiscal_quarter, metric.period)
+            if periodicity != "all" and frequency != periodicity:
+                continue
+            key = (metric.metric, metric.period, "consolidated", "calculated")
+            if key in seen:
+                continue
+            seen.add(key)
+            series[metric.metric].append(
+                {
+                    "id": metric.id,
+                    "period": metric.period,
+                    "fiscal_year": metric.fiscal_year,
+                    "fiscal_quarter": metric.fiscal_quarter,
+                    "frequency": frequency,
+                    "segment": "consolidated",
+                    "value": metric.value,
+                    "unit": metric.unit,
+                    "reported": False,
+                    "adjusted": False,
+                    "source": {
+                        "type": "calculated_metric",
+                        "source_fact_ids": metric.source_fact_ids,
+                    },
+                    "confidence": metric.confidence,
+                    "status": metric.status,
+                    "formula": metric.formula,
+                    "definition_version": metric.definition_version,
+                    "calculation_trace": metric.calculation_trace,
+                }
+            )
+        metric_payloads = []
+        for metric in requested:
+            points = sorted(
+                series.get(metric, []),
+                key=lambda row: (
+                    row["fiscal_year"] or 0,
+                    self._quarter_order(row["fiscal_quarter"]),
+                    row["period"],
+                ),
+            )
+            formula_spec = METRIC_DEFINITIONS.get(metric)
+            metric_payloads.append(
+                {
+                    "metric": metric,
+                    "definition": METRIC_DEFINITIONS_TEXT.get(
+                        metric, metric.replace("_", " ").title()
+                    ),
+                    "canonical_formula": formula_spec[1] if formula_spec else None,
+                    "definition_version": formula_spec[0] if formula_spec else None,
+                    "status": "available" if points else "missing",
+                    "periods": len(points),
+                    "segments": sorted({row["segment"] for row in points}),
+                    "series": points,
+                    "chart": {
+                        "x": [row["period"] for row in points],
+                        "y": [row["value"] for row in points],
+                        "unit": next((row["unit"] for row in reversed(points)), None),
+                    },
+                }
+            )
+        available = sum(item["status"] == "available" for item in metric_payloads)
+        return {
+            "ticker": company.ticker,
+            "company": company.name,
+            "periodicity": periodicity,
+            "years": years,
+            "range": {"from_fiscal_year": earliest_year, "to_fiscal_year": latest_year},
+            "metrics": metric_payloads,
+            "coverage": {
+                "requested": len(requested),
+                "available": available,
+                "percent": round(100 * available / len(requested), 1) if requested else 100,
+                "missing": [
+                    item["metric"] for item in metric_payloads if item["status"] == "missing"
+                ],
+            },
+        }
+
+    @staticmethod
+    def _frequency(quarter: str | None, period: str) -> str:
+        return (
+            "quarterly"
+            if (quarter or "").upper().startswith("Q") or period.upper().startswith("Q")
+            else "annual"
+        )
+
+    @staticmethod
+    def _quarter_order(quarter: str | None) -> int:
+        return {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "FY": 5}.get(
+            (quarter or "FY").upper(), 5
+        )

@@ -56,11 +56,17 @@ def upgrade() -> None:
             name="uq_fundamental_valuation_market_snapshot",
         ),
     )
-    for column in (
-        "tenant_id", "model_version_id", "company_id",
-        "market_snapshot_fingerprint", "valuation_snapshot_fingerprint",
+    # Keep names explicit and below PostgreSQL's 63-character identifier limit.
+    # In particular, combining the full table and valuation fingerprint names
+    # produces an identifier PostgreSQL refuses before the E2E suite can start.
+    for column, index_name in (
+        ("tenant_id", "ix_fund_val_snapshots_tenant_id"),
+        ("model_version_id", "ix_fund_val_snapshots_model_version_id"),
+        ("company_id", "ix_fund_val_snapshots_company_id"),
+        ("market_snapshot_fingerprint", "ix_fund_val_snapshots_market_fingerprint"),
+        ("valuation_snapshot_fingerprint", "ix_fund_val_snapshots_valuation_fingerprint"),
     ):
-        op.create_index(f"ix_fundamental_valuation_snapshots_{column}", "fundamental_valuation_snapshots", [column])
+        op.create_index(index_name, "fundamental_valuation_snapshots", [column])
 
     with op.batch_alter_table("expectation_reviews") as batch:
         batch.add_column(sa.Column("actual_metric_id", sa.Integer(), nullable=True))

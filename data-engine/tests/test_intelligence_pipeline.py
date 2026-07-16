@@ -13,9 +13,12 @@ from app.llm.contracts import LLMRequest, LLMResponse, Message, Usage
 from app.llm.routing import TaskModelRouter
 from app.models import (
     Company,
+    CompanyKPI,
     Document,
     DocumentChunk,
+    FactRevision,
     FinancialFact,
+    KPIExtractionCandidate,
     MarketPrice,
     ResearchAlert,
     SourceAudit,
@@ -152,6 +155,95 @@ def test_kpi_extraction_requires_verified_locator_and_approval_before_fact():
         assert fact.value == Decimal("0.125")
         assert fact.source_id == document.id
         assert candidate.canonical_fact_id == fact.id
+
+
+def test_kpi_approval_versions_a_contradicting_canonical_fact():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        company = _company("REV")
+        db.add(company)
+        db.flush()
+        first_document = Document(
+            company_id=company.id,
+            title="Original filing",
+            source_type="sec_filing",
+        )
+        second_document = Document(
+            company_id=company.id,
+            title="Restated filing",
+            source_type="company_ir",
+        )
+        db.add_all([first_document, second_document])
+        db.flush()
+        chunk = DocumentChunk(
+            document_id=second_document.id,
+            chunk_index=0,
+            text="Penetration was restated to 12.5% for FY2025.",
+        )
+        db.add(chunk)
+        db.flush()
+        fact = FinancialFact(
+            company_id=company.id,
+            metric="penetration",
+            value=Decimal("0.10"),
+            unit="decimal",
+            period="FY2025",
+            fiscal_year=2025,
+            fiscal_quarter="FY",
+            source_id=first_document.id,
+            source_type=first_document.source_type,
+            confidence=Decimal("0.80"),
+        )
+        db.add(fact)
+        db.flush()
+        kpi = CompanyKPI(
+            company_id=company.id,
+            metric_key="penetration",
+            display_name="Penetration",
+            canonical_unit="decimal",
+        )
+        db.add(kpi)
+        db.flush()
+        candidate = KPIExtractionCandidate(
+            company_id=company.id,
+            company_kpi_id=kpi.id,
+            document_id=second_document.id,
+            document_chunk_id=chunk.id,
+            metric_key="penetration",
+            raw_label="Penetration",
+            raw_value="12.5%",
+            raw_unit="percent",
+            normalized_value=Decimal("0.125"),
+            canonical_unit="decimal",
+            period="FY2025",
+            fiscal_year=2025,
+            fiscal_quarter="FY",
+            source_locator={"chunk_id": chunk.id, "quote": chunk.text},
+            reconciliation_status="reconciled",
+            status="pending_approval",
+            confidence=Decimal("0.95"),
+        )
+        db.add(candidate)
+        db.commit()
+        canonical_id = fact.id
+
+        approved = KPIExtractionService(StaticProvider({})).approve(
+            db, candidate, actor="analyst"
+        )
+
+        revision = db.scalar(select(FactRevision))
+        assert approved.id == canonical_id
+        assert approved.value == Decimal("0.125")
+        assert approved.source_id == second_document.id
+        assert db.query(FinancialFact).count() == 1
+        assert revision is not None
+        assert revision.previous_value == Decimal("0.10")
+        assert revision.new_value == Decimal("0.125")
+        assert revision.canonical_version == 1
+        assert revision.approved_by == "analyst"
+        assert revision.status == "approved"
+        assert revision.source["candidate_id"] == candidate.id
 
 
 def test_alert_rule_is_evaluated_and_respects_cooldown():
