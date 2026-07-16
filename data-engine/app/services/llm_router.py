@@ -39,4 +39,21 @@ def route_model(task: str, materiality_score: int = 0, portfolio_weight: float =
 
 
 def route_table() -> list[dict]:
-    return [route.__dict__ for route in ROUTES.values()]
+    from app.llm.model_aliases import MODEL_ALIASES
+
+    rows = []
+    for route in ROUTES.values():
+        alias = MODEL_ALIASES.get(route.model)
+        rows.append(
+            {
+                **route.__dict__,
+                "provider": alias.provider if alias else None,
+                "provider_model_id": alias.provider_model_id if alias else None,
+                "enabled": alias.enabled if alias else False,
+                "context_window": alias.context_window if alias else None,
+                "input_cost": str(alias.input_cost) if alias else None,
+                "output_cost": str(alias.output_cost) if alias else None,
+                "supported_capabilities": sorted(alias.supported_capabilities) if alias else [],
+            }
+        )
+    return rows

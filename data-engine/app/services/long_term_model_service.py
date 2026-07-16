@@ -29,6 +29,8 @@ from app.models import (
 )
 from app.services.company_framework import CompanyFramework, resolve_company_framework
 from app.services.driver_operating_model import DriverOperatingModel
+from app.services.driver_dimensions import driver_metadata
+from app.services.driver_assumption_service import DriverAssumptionService
 from app.services.fundamental_model_repository import FundamentalModelRepository
 from app.services.market_opportunity_service import MarketOpportunityEngine
 from app.valuation.engines.base import default_terminal_growth, default_wacc
@@ -230,7 +232,8 @@ class LongTermModelService:
             years=years,
             company=company,
         )
-        driver_model = self._driver_model(framework, fact_cache)
+        driver_assumptions = DriverAssumptionService().active_overrides(db, company)
+        driver_model = self._driver_model(company, framework, fact_cache)
         missing_mandatory_drivers = [
             driver["key"]
             for driver in driver_model
@@ -243,6 +246,7 @@ class LongTermModelService:
                 latest_year=latest_year,
                 horizon=horizon,
                 scenario="base",
+                assumption_overrides=driver_assumptions,
             )
             if latest_year is not None
             else {"status": "missing_formula_inputs", "missing_inputs": ["fiscal_year"]}
@@ -276,6 +280,7 @@ class LongTermModelService:
                     latest_year=latest_year,
                     horizon=horizon,
                     scenario=name,
+                    assumption_overrides=driver_assumptions,
                 )
                 forecast = self._forecast(
                     fact_cache=fact_cache,
@@ -336,6 +341,7 @@ class LongTermModelService:
                         latest_year=latest_year,
                         horizon=horizon,
                         scenario=name,
+                        assumption_overrides=driver_assumptions,
                     )
                     forecast = self._forecast(
                         fact_cache=fact_cache,
@@ -431,6 +437,7 @@ class LongTermModelService:
                 "active_modules": list(framework.active_modules),
             },
             "driver_model": driver_model,
+            "driver_assumptions": driver_assumptions,
             "driver_formula": {
                 "status": driver_preview.get("status"),
                 "formula_key": driver_preview.get("formula_key"),
@@ -532,6 +539,7 @@ class LongTermModelService:
 
     def _driver_model(
         self,
+        company: Company,
         framework: CompanyFramework,
         fact_cache: dict[str, list[FinancialFact]],
     ) -> list[dict[str, Any]]:
@@ -553,6 +561,13 @@ class LongTermModelService:
                     "unit": fact.unit if fact else "unknown",
                     "confidence": _float(fact.confidence) if fact else 0.0,
                     "source_fact_ids": [fact.id] if fact else [],
+                    **driver_metadata(
+                        key,
+                        raw_unit=fact.unit if fact else "unknown",
+                        company_currency=company.currency,
+                        period=fact.period if fact else None,
+                        source_type=fact.source_type if fact else None,
+                    ),
                     "trace": {
                         "period": fact.period if fact else None,
                         "fiscal_year": fact.fiscal_year if fact else None,

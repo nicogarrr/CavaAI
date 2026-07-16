@@ -1,5 +1,6 @@
 import asyncio
 import json
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -10,6 +11,7 @@ from app.llm import (
     DisabledProvider,
     GeminiProvider,
     LLMRequest,
+    MODEL_ALIASES,
     Message,
     OpenAICompatibleProvider,
     ProviderDisabledError,
@@ -18,7 +20,8 @@ from app.llm import (
     create_llm_provider,
     parse_json_response,
 )
-from app.services.llm_router import route_model
+from app.llm.model_aliases import ModelAlias, ModelAliasRegistry
+from app.services.llm_router import ModelRoute, ROUTES, route_model, route_table
 
 
 def run(coroutine):
@@ -63,6 +66,102 @@ def test_task_router_uses_existing_policy_and_configured_overrides():
         == "configured-model"
     )
 
+
+def test_internal_model_aliases_resolve_to_real_openrouter_ids():
+    expected = {
+        "qwen-flash": "qwen/qwen3.6-flash",
+        "qwen3.7-plus": "qwen/qwen3.7-plus",
+        "glm-5.2": "z-ai/glm-5.2",
+        "qwen3.7-max": "qwen/qwen3.7-max",
+        "kimi-k2.7-code": "moonshotai/kimi-k2.7-code",
+        "deepseek-v4-flash": "deepseek/deepseek-v4-flash",
+    }
+
+    assert {
+        alias: MODEL_ALIASES.resolve(alias, provider="openrouter")
+        for alias in expected
+    } == expected
+    assert TaskModelRouter(
+        default_model="qwen-flash",
+        provider="openrouter",
+    ).resolve(LLMRequest(messages=[Message("user", "Extract")], task="cheap_extraction")) == (
+        "qwen/qwen3.6-flash"
+    )
+
+    rows = {row["model"]: row for row in route_table()}
+    assert rows["qwen3.7-plus"]["provider_model_id"] == "qwen/qwen3.7-plus"
+    assert rows["glm-5.2"]["context_window"] == 1_048_576
+
+
+def test_active_route_validation_fails_for_unknown_or_wrong_provider_models():
+    with pytest.raises(ValueError, match="unknown model alias"):
+        MODEL_ALIASES.validate_active_routes(
+            [ModelRoute("broken", "does-not-exist", "test")],
+            provider="openrouter",
+        )
+
+    with pytest.raises(ValueError, match="not active provider"):
+        MODEL_ALIASES.validate_active_routes(
+            [ROUTES["chat"]],
+            provider="anthropic",
+        )
+
+    disabled = ModelAlias(
+        internal_alias="disabled-model",
+        provider="openrouter",
+        provider_model_id="vendor/disabled-model",
+        enabled=False,
+        context_window=1,
+        input_cost=Decimal("0"),
+        output_cost=Decimal("0"),
+        supported_capabilities=frozenset({"text"}),
+    )
+    registry = ModelAliasRegistry([disabled])
+    with pytest.raises(ValueError, match="is disabled"):
+        registry.validate_active_routes(
+            [ModelRoute("disabled", "disabled-model", "test")],
+            provider="openrouter",
+        )
+
+
+def test_factory_sends_provider_model_id_instead_of_internal_alias():
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["model"] == "qwen/qwen3.6-flash"
+        return httpx.Response(
+            200,
+            json={
+                "id": "alias-request",
+                "model": payload["model"],
+                "choices": [
+                    {"message": {"content": "ok"}, "finish_reason": "stop"}
+                ],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            },
+        )
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = create_llm_provider(
+                Settings(
+                    _env_file=None,
+                    llm_provider="openrouter",
+                    openrouter_api_key="test-secret",
+                ),
+                client=client,
+            )
+            return await provider.complete(
+                LLMRequest(
+                    messages=[Message("user", "Extract")],
+                    task="cheap_extraction",
+                )
+            )
+
+    assert run(scenario()).model == "qwen/qwen3.6-flash"
 
 def test_openai_compatible_completion_and_structured_output_use_mock_http():
     requests = []

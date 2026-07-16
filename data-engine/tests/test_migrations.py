@@ -8,6 +8,9 @@ from pathlib import Path
 from sqlalchemy import create_engine, inspect
 
 
+POSTGRESQL_MAX_IDENTIFIER_LENGTH = 63
+
+
 def test_alembic_upgrade_head_creates_research_memory_tables():
     data_engine_dir = Path(__file__).resolve().parents[1]
     temp_dir = Path(tempfile.mkdtemp(prefix="cavaai_migration_"))
@@ -28,7 +31,19 @@ def test_alembic_upgrade_head_creates_research_memory_tables():
 
         engine = create_engine(database_url)
         try:
-            tables = set(inspect(engine).get_table_names())
+            inspector = inspect(engine)
+            tables = set(inspector.get_table_names())
+            schema_identifiers = set(tables)
+            for table in tables:
+                for index in inspector.get_indexes(table):
+                    if index_name := index.get("name"):
+                        schema_identifiers.add(index_name)
+                for constraint in inspector.get_unique_constraints(table):
+                    if constraint_name := constraint.get("name"):
+                        schema_identifiers.add(constraint_name)
+                for foreign_key in inspector.get_foreign_keys(table):
+                    if foreign_key_name := foreign_key.get("name"):
+                        schema_identifiers.add(foreign_key_name)
         finally:
             engine.dispose()
     finally:
@@ -48,7 +63,13 @@ def test_alembic_upgrade_head_creates_research_memory_tables():
         "fundamental_forecasts",
         "decision_journal_entries",
         "expectation_reviews",
+        "model_aliases",
     }.issubset(tables)
+    assert not {
+        identifier
+        for identifier in schema_identifiers
+        if len(identifier) > POSTGRESQL_MAX_IDENTIFIER_LENGTH
+    }, "Committed migrations contain identifiers PostgreSQL cannot create"
 
 
 def test_latest_fundamental_migration_is_explicit_and_not_metadata_driven():

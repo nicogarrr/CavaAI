@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from app.models import FinancialFact
 from app.services.company_framework import CompanyFramework
+from app.services.driver_dimensions import DriverDimensionValidator
 
 
 RATE_DRIVERS = {
@@ -203,6 +204,9 @@ class DriverOperatingModel:
         latest_year: int,
         horizon: int,
         scenario: str,
+        assumption_overrides: dict[
+            str, dict[int, dict[str, dict[str, Any]]]
+        ] | None = None,
     ) -> dict[str, Any]:
         definition = FORMULAS[framework.key]
         missing = [key for key in definition.inputs if not self._annual_points(fact_cache.get(key, []))]
@@ -217,6 +221,22 @@ class DriverOperatingModel:
                 "years": [],
             }
 
+        dimensional_validation = DriverDimensionValidator().validate(
+            framework.key, fact_cache
+        )
+        if not dimensional_validation["valid"]:
+            return {
+                "status": "invalid_driver_dimensions",
+                "formula_key": definition.key,
+                "output_metric": definition.output_metric,
+                "expression": definition.expression,
+                "missing_inputs": [],
+                "dimension_errors": dimensional_validation["errors"],
+                "dimensional_validation": dimensional_validation,
+                "driver_forecasts": {},
+                "years": [],
+            }
+
         projected: dict[str, list[dict[str, Any]]] = {}
         for key in definition.inputs:
             projected[key] = self._project_driver(
@@ -225,6 +245,7 @@ class DriverOperatingModel:
                 latest_year=latest_year,
                 horizon=horizon,
                 scenario=scenario,
+                assumption_overrides=assumption_overrides or {},
             )
 
         rows: list[dict[str, Any]] = []
@@ -247,6 +268,7 @@ class DriverOperatingModel:
                     "drivers": values,
                     "source_fact_ids": source_ids,
                     "calculation": definition.expression,
+                    "output_dimension": dimensional_validation["output_dimension"],
                 }
             )
         return {
@@ -255,6 +277,7 @@ class DriverOperatingModel:
             "output_metric": definition.output_metric,
             "expression": definition.expression,
             "missing_inputs": [],
+            "dimensional_validation": dimensional_validation,
             "driver_forecasts": projected,
             "years": rows,
         }
@@ -267,6 +290,7 @@ class DriverOperatingModel:
         latest_year: int,
         horizon: int,
         scenario: str,
+        assumption_overrides: dict[str, dict[int, dict[str, dict[str, Any]]]],
     ) -> list[dict[str, Any]]:
         points = self._annual_points(facts)
         latest = points[-1]
@@ -278,7 +302,13 @@ class DriverOperatingModel:
         value = latest[1]
         result: list[dict[str, Any]] = []
         for offset in range(1, horizon + 1):
-            if key in RATE_DRIVERS:
+            year = latest_year + offset
+            override = (
+                assumption_overrides.get(key, {}).get(year, {}).get(scenario)
+            )
+            if override is not None:
+                value = float(override["value"])
+            elif key in RATE_DRIVERS:
                 value = value * (1 + change)
                 if key in {"penetration", "revenue_share", "utilization", "take_rate", "churn", "retention", "backlog_conversion", "fee_rate", "cash_yield", "occupancy", "royalty_rate", "return_on_tangible_equity", "roe"}:
                     value = max(0.0, min(1.0, value))
@@ -286,16 +316,25 @@ class DriverOperatingModel:
                 value = value * (1 + change)
             result.append(
                 {
-                    "year": latest_year + offset,
+                    "year": year,
                     "value": value,
                     "unit": latest[3],
                     "source_fact_ids": [point[2] for point in points],
-                    "assumption": {
-                        "change": change,
-                        "source": trend_source,
-                        "historical_change": trend,
-                        "scenario_shift": scenario_shift,
-                    },
+                    "assumption": (
+                        {
+                            **override,
+                            "source": override["source"],
+                            "method": "versioned_driver_override",
+                        }
+                        if override is not None
+                        else {
+                            "change": change,
+                            "source": trend_source,
+                            "historical_change": trend,
+                            "scenario_shift": scenario_shift,
+                            "user_override": False,
+                        }
+                    ),
                 }
             )
         return result

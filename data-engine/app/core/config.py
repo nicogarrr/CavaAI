@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     rate_limit_requests_per_minute: int = Field(default=120, ge=10, le=10000)
     rate_limit_expensive_requests_per_minute: int = Field(default=20, ge=1, le=1000)
     financial_document_retention_days: int = Field(default=2555, ge=1)
+    market_price_max_age_days: int = Field(default=3, ge=0, le=30)
 
     database_url: str = "sqlite:///./portfolio_research_os.db"
     redis_url: str = "redis://localhost:6379/0"
@@ -39,6 +40,7 @@ class Settings(BaseSettings):
     document_storage_backend: str = "minio"
 
     fmp_api_key: str | None = None
+    finnhub_api_key: str | None = None
     ibkr_flex_token: str | None = None
     ibkr_flex_query_id: str | None = None
     sec_user_agent: str = "CavaAI/0.1 contact@example.com"

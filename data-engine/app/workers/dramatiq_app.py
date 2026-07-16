@@ -154,6 +154,24 @@ def evaluate_alert_rules(
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
+def refresh_market_pipeline(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    from app.services.market_refresh_service import MarketRefreshService
+
+    db = _session(tenant_id, user_id)
+    try:
+        result = _run(MarketRefreshService().refresh(db))
+        return {"actor": "refresh_market_pipeline", **result}
+    except Exception as exc:
+        _rollback(db)
+        return _failure("refresh_market_pipeline", exc, tenant_id=tenant_id)
+    finally:
+        db.close()
+
+
+@dramatiq.actor(max_retries=2, min_backoff=15_000)
 def refresh_sec_filings(
     tenant_id: int | None = None,
     user_id: str | None = None,
@@ -719,7 +737,7 @@ def review_theses(
 def run_daily_research() -> dict[str, Any]:
     actor_name = "run_daily_research"
     jobs: list[tuple[str, Any]] = [
-        ("alert_rule_evaluation", evaluate_alert_rules),
+        ("market_refresh", refresh_market_pipeline),
         ("sec_refresh", refresh_sec_filings),
         ("ir_refresh", refresh_ir_pages),
         ("rss_refresh", refresh_rss_feeds),
