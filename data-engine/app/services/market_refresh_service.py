@@ -225,6 +225,14 @@ class MarketRefreshService:
             )
             revalued += 1
         db.commit()
+        from app.services.portfolio_snapshot_service import PortfolioSnapshotService
+
+        snapshot = PortfolioSnapshotService().capture(
+            db,
+            as_of=as_of,
+            source="market_refresh",
+        )
+        db.commit()
         stages.append(
             {
                 "step": 3,
@@ -232,6 +240,8 @@ class MarketRefreshService:
                 "status": "ok" if not stale_prices else "stale_data",
                 "updated": revalued,
                 "stale_prices": stale_prices,
+                "portfolio_snapshot_id": snapshot.id,
+                "snapshot_pricing_coverage": float(snapshot.pricing_coverage),
             }
         )
 

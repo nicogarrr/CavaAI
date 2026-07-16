@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CashBalance, Company, FinancialFact, MarketPrice, Position, Transaction
 from app.services.portfolio_fx_service import PortfolioFXService
+from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
 
 EXCHANGE_COUNTRY = {
@@ -67,7 +68,15 @@ class PortfolioIntelligenceService:
             company_id: self._returns(series)
             for company_id, series in price_series.items()
         }
-        portfolio_returns = self._portfolio_returns(returns, weights)
+        indicative_returns = self._portfolio_returns(returns, weights)
+        snapshots = PortfolioSnapshotService().history(db, start=cutoff)
+        snapshot_returns = {
+            snapshot.snapshot_date: float(snapshot.daily_return)
+            for snapshot in snapshots
+            if snapshot.daily_return is not None
+        }
+        snapshot_exact = self._snapshot_history_is_exact(snapshots)
+        portfolio_returns = snapshot_returns if snapshot_exact else indicative_returns
         twr = self._compound(list(portfolio_returns.values()))
         annualized_return = (
             (1 + twr) ** (252 / len(portfolio_returns)) - 1
@@ -109,6 +118,12 @@ class PortfolioIntelligenceService:
                 "xirr": xirr,
                 "annualized_return": annualized_return,
                 "trace": xirr_trace,
+                "twr_method": (
+                    "daily_portfolio_snapshots"
+                    if snapshot_exact
+                    else "static_current_weight_estimate"
+                ),
+                "twr_is_exact": snapshot_exact,
             },
             "risk": {
                 "max_drawdown": drawdown["max_drawdown"],
@@ -136,12 +151,36 @@ class PortfolioIntelligenceService:
                 "price_history_percent": (
                     round(100 * complete_price_series / len(rows), 1) if rows else 100
                 ),
-                "limitations": [
-                    "TWR uses static current weights when historical position snapshots are unavailable.",
-                    "Attribution is an evidence-aware decomposition, not transaction-lot Brinson attribution.",
+                "portfolio_snapshots": len(snapshots),
+                "snapshot_returns": len(snapshot_returns),
+                "snapshot_pricing_complete": sum(
+                    snapshot.pricing_coverage == Decimal("1") for snapshot in snapshots
+                ),
+                "limitations": (
+                    []
+                    if snapshot_exact
+                    else [
+                        "TWR uses static current weights until complete daily position and cash snapshots exist.",
+                    ]
+                )
+                + [
+                    "Attribution is an evidence-aware decomposition, not transaction-lot Brinson attribution."
                 ],
             },
         }
+
+    @staticmethod
+    def _snapshot_history_is_exact(snapshots: list[Any]) -> bool:
+        if len(snapshots) < 2:
+            return False
+        for previous, current in zip(snapshots, snapshots[1:]):
+            if current.daily_return is None or current.pricing_coverage != Decimal("1"):
+                return False
+            if (current.snapshot_date - previous.snapshot_date).days > 3:
+                return False
+            if (current.metadata_ or {}).get("ambiguous_external_flows"):
+                return False
+        return snapshots[0].pricing_coverage == Decimal("1")
 
     @staticmethod
     def _returns(series: list[MarketPrice]) -> dict[date, float]:
@@ -209,7 +248,15 @@ class PortfolioIntelligenceService:
                 sign = 1
             cashflows.append((transaction.trade_date, sign * amount))
         ending_value = sum(float(position.market_value_base or 0) for position, _ in positions)
-        ending_value += sum(float(cash.balance) for cash in db.scalars(select(CashBalance)).all())
+        for cash in db.scalars(select(CashBalance)).all():
+            rate = fx.rate(
+                db,
+                quote_currency=cash.currency,
+                base_currency=base,
+                as_of=date.today(),
+            )
+            if rate is not None:
+                ending_value += float(cash.balance * rate)
         if ending_value:
             cashflows.append((date.today(), ending_value))
         if len(cashflows) < 2 or not any(value < 0 for _, value in cashflows):

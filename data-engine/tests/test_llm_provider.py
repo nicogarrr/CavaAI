@@ -41,9 +41,44 @@ def test_factory_is_deterministically_disabled_without_keys():
     provider = create_llm_provider(settings)
 
     assert isinstance(provider, DisabledProvider)
-    assert provider.reason == "no_api_key_configured"
-    with pytest.raises(ProviderDisabledError, match="no_api_key_configured"):
+    assert provider.reason == "openrouter_api_key_not_configured"
+    with pytest.raises(ProviderDisabledError, match="openrouter_api_key_not_configured"):
         run(provider.complete(LLMRequest(messages=[Message("user", "Hello")])))
+
+
+def test_auto_policy_does_not_fall_back_to_unregistered_provider_aliases():
+    provider = create_llm_provider(
+        Settings(
+            _env_file=None,
+            llm_provider="auto",
+            openrouter_api_key=None,
+            openai_api_key="configured-but-not-selected",
+        )
+    )
+
+    assert isinstance(provider, DisabledProvider)
+    assert provider.reason == "openrouter_api_key_not_configured"
+
+
+def test_explicit_non_openrouter_provider_requires_complete_task_overrides():
+    with pytest.raises(ValueError, match="requires model overrides for every active task"):
+        create_llm_provider(
+            Settings(
+                _env_file=None,
+                llm_provider="openai",
+                openai_api_key="test-secret",
+            )
+        )
+
+    provider = create_llm_provider(
+        Settings(
+            _env_file=None,
+            llm_provider="openai",
+            openai_api_key="test-secret",
+            llm_model_overrides={route.task: "gpt-4o-mini" for route in ROUTES.values()},
+        )
+    )
+    assert isinstance(provider, OpenAICompatibleProvider)
 
 
 def test_task_router_uses_existing_policy_and_configured_overrides():
