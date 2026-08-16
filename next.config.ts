@@ -38,8 +38,8 @@ const nextConfig: NextConfig = {
         ignoreBuildErrors: false, // Habilitar verificación de TypeScript
     },
     
-    // Configuración para Docker (standalone output)
-    output: 'standalone',
+    // Docker needs standalone output; Vercel packages Next.js itself.
+    ...(process.env.VERCEL ? {} : { output: 'standalone' as const }),
     
     // Headers for better caching and security
     async headers() {
