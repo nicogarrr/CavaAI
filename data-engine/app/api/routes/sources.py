@@ -28,6 +28,7 @@ from app.services.budget import BudgetExceededError
 from app.services.manual_transcript_import_service import ManualTranscriptImportService
 from app.services.source_hierarchy_service import SOURCE_TIERS, classify_source
 from app.services.rag import RAGIndex
+from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
 
 router = APIRouter()
 
@@ -319,12 +320,16 @@ async def ingest_document_file(
     db: Session = Depends(get_db),
 ) -> dict:
     try:
-        content = await file.read()
+        content = bytearray()
+        while chunk := await file.read(1024 * 1024):
+            content.extend(chunk)
+            if len(content) > MAX_DOCUMENT_BYTES:
+                raise ValueError("Document exceeds 15MB local ingestion limit")
         return DocumentIngestionService().ingest_bytes(
             db,
             ticker=ticker,
             title=title,
-            content=content,
+            content=bytes(content),
             filename=file.filename or "upload.bin",
             source_type=source_type,
             source_url=source_url,

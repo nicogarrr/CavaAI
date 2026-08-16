@@ -9,13 +9,13 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models import Company, Document, DocumentChunk
 from app.services.document_store import DocumentStore
+from app.services.public_fetch import fetch_public_url
 
 
 MAX_DOCUMENT_BYTES = 15 * 1024 * 1024
@@ -245,17 +245,11 @@ class DocumentIngestionService:
         url: str,
         source_type: str,
     ) -> dict:
-        parsed_url = urlparse(url)
-        if parsed_url.scheme not in {"http", "https"}:
-            raise ValueError("Only http(s) URLs can be ingested")
-
-        with httpx.Client(timeout=20, follow_redirects=True) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            content = response.content
-            content_type = response.headers.get("content-type")
-
-        filename = Path(parsed_url.path).name or f"{parsed_url.netloc}.html"
+        content, content_type, final_url = fetch_public_url(
+            url, max_bytes=MAX_DOCUMENT_BYTES, timeout=20
+        )
+        final_parsed_url = urlparse(final_url)
+        filename = Path(final_parsed_url.path).name or f"{final_parsed_url.netloc}.html"
         return self.ingest_bytes(
             db,
             ticker=ticker,
@@ -263,7 +257,7 @@ class DocumentIngestionService:
             content=content,
             filename=filename,
             source_type=source_type,
-            source_url=url,
+            source_url=final_url,
             content_type=content_type,
         )
 

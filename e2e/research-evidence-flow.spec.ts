@@ -61,7 +61,7 @@ test("PDF upload -> chunk -> claim/evidence -> chat/memory", async ({ request })
   );
   expect(ingestion).toMatchObject({
     status: "ingested",
-    parser: "pypdf2",
+    parser: "pypdf",
   });
   expect(ingestion.chunks).toBeGreaterThan(0);
 

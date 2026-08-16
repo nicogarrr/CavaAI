@@ -49,6 +49,9 @@ class AlertRuleService:
         rule.target = target
         rule.severity = "medium"
         rule.channels = ["in_app"]
+        settings = get_settings()
+        if settings.telegram_enabled and settings.telegram_bot_token and settings.telegram_chat_id:
+            rule.channels.append("telegram")
         rule.active = True
         rule.cooldown_seconds = max(0, cooldown_seconds)
         rule.metadata_ = {"ticker": company.ticker, "source": "user"}

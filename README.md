@@ -171,6 +171,16 @@ Generate a production auth secret with:
 openssl rand -base64 32
 ```
 
+## Telegram alerts
+
+Telegram is an optional notification channel for persisted research alerts.
+Keep the BotFather token only in the local `.env` or deployment secret store;
+never commit it or paste it into chat. Configure `TELEGRAM_ENABLED=true`,
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to enable the channel.
+
+The bot does not read a Quartr account directly. Use CavaAI's manual transcript
+import plus RSS, IR and SEC connectors for source ingestion.
+
 ## Verification
 
 Frontend:
