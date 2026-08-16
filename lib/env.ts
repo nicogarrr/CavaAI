@@ -42,15 +42,10 @@ const envSchema = z.object({
   MARKETAUX_API_KEY: z.string().optional(),
   TRADING_ECONOMICS_API_KEY: z.string().optional(),
 
-  // Inngest AI
-  GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().optional(),
-  GEMINI_CHEAP_MODEL: z.string().optional(),
-  GEMINI_DEEP_MODEL: z.string().optional(),
-  GOOGLE_API_KEY: z.string().optional(),
-  OPENROUTER_API_KEY: z.string().optional(),
-  OPENAI_API_KEY: z.string().optional(),
-  ANTHROPIC_API_KEY: z.string().optional(),
+  // Single application LLM provider
+  OPENCODE_GO_API_KEY: z.string().optional(),
+  OPENCODE_GO_BASE_URL: z.string().url().default('https://opencode.ai/zen/go/v1'),
+  OPENCODE_GO_MODEL: z.string().default('deepseek-v4-flash'),
 
   // Email - Opcional
   NODEMAILER_EMAIL: z.string().email().optional(),

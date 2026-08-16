@@ -1,30 +1,33 @@
 # AI Provider Strategy
 
-Date: 2026-07-15
+Date: 2026-08-16
 
-## Recommendation
+## Decision
 
-Use the backend `LLMProvider` abstraction and keep provider choice configurable.
+CavaAI uses **OpenCode Go as its only LLM provider**. All backend research
+workflows and frontend Inngest jobs use the same OpenAI-compatible API:
 
-Reasons:
-
-- OpenRouter, OpenAI-compatible endpoints, Anthropic and Gemini share one completion/structured-output contract.
-- `LLM_PROVIDER=openrouter` is the supported application policy and never silently falls back to another provider.
-- OpenAI, Anthropic and Gemini adapters require explicit provider selection plus task-complete `LLM_MODEL_OVERRIDES`; they do not reuse OpenRouter aliases.
-- Task-level model overrides decouple extraction, classification, synthesis and red-team workloads.
-- Every run retains provider/model/prompt trace metadata; model output cannot create missing facts.
-
-Example configuration:
-
-```env
-LLM_PROVIDER=openrouter
-OPENROUTER_API_KEY=
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
-GEMINI_API_KEY=
+```text
+https://opencode.ai/zen/go/v1/chat/completions
 ```
 
-## Implemented interface
+The default model is `deepseek-v4-flash`, which is listed by the official
+OpenCode Go documentation as a chat-completions model. The model can be
+changed through `OPENCODE_GO_MODEL` without adding another provider.
+
+## Configuration
+
+```env
+OPENCODE_GO_API_KEY=replace_with_an_opencode_go_key
+OPENCODE_GO_BASE_URL=https://opencode.ai/zen/go/v1
+OPENCODE_GO_MODEL=deepseek-v4-flash
+```
+
+The API key is a secret and must live only in local `.env` files or deployment
+secret stores. It must never be committed, placed in `config.yaml`, or exposed
+in client-side code.
+
+## Application contract
 
 ```text
 LLMProvider
@@ -34,22 +37,34 @@ LLMProvider
 - provider/model trace metadata
 ```
 
-## Task Routing
+The backend uses one OpenAI-compatible adapter with provider name
+`opencode-go`. There are no OpenRouter, OpenAI, Anthropic, or Gemini provider
+settings in the application configuration.
 
-Use model tiers by work type:
+## Task routing
 
-- Extraction: cheap model
-- Classification: cheap model
-- News relevance/materiality: cheap or default model
-- Company chat: default model
-- Deep research: deep model
-- Red-team thesis review: deep model
-- Large document synthesis: deep model with caching where available
+All task routes default to `deepseek-v4-flash`:
 
-## Cost Control
+- Extraction
+- Classification and news materiality
+- Company chat
+- Thesis updates
+- Deep research
+- Red-team review
+- Document synthesis
+- Tool workflows
 
-- Keep prompts source-aware and short.
-- Chunk documents and summarize progressively.
-- Cache stable context.
-- Use batch/flex modes for offline jobs where supported.
-- Record model, prompt version and source set in Langfuse for expensive calls.
+If OpenCode Go publishes a different model, configure that model ID through
+`OPENCODE_GO_MODEL` or the task override map. A model override is still sent
+to OpenCode Go; it never selects another provider.
+
+## Cost and reliability
+
+OpenCode Go applies its own subscription quotas and model limits. CavaAI keeps
+request timeout, retry, daily cap, and monthly cap controls in the backend so
+expensive workflows remain bounded. Provider failures are surfaced as typed
+LLM errors and do not create unsupported financial facts.
+
+See the official model/endpoint list at:
+
+https://opencode.ai/docs/es/go/

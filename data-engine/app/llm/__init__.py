@@ -1,9 +1,4 @@
-from app.llm.adapters import (
-    AnthropicProvider,
-    DisabledProvider,
-    GeminiProvider,
-    OpenAICompatibleProvider,
-)
+from app.llm.adapters import DisabledProvider, OpenAICompatibleProvider
 from app.llm.base import LLMProvider
 from app.llm.contracts import (
     LLMMessage,
@@ -29,9 +24,7 @@ from app.llm.model_aliases import MODEL_ALIASES, ModelAlias, ModelAliasRegistry
 from app.llm.routing import TaskModelRouter
 
 __all__ = [
-    "AnthropicProvider",
     "DisabledProvider",
-    "GeminiProvider",
     "LLMError",
     "LLMMessage",
     "LLMProvider",
