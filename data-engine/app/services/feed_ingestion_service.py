@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
-import httpx
+
+from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
+from app.services.public_fetch import fetch_public_url_async
 
 from app.services.connectors import (
     ConnectorResult,
@@ -197,19 +199,15 @@ class FeedIngestionService:
         parsed_url = urlparse(url)
         if parsed_url.scheme not in {"http", "https"}:
             raise ValueError("Only http(s) URLs can be ingested")
+        is_sec_host = (parsed_url.hostname or "").lower() in {"sec.gov", "www.sec.gov"}
+        final_url = url
 
-        if (parsed_url.hostname or "").lower() in {"sec.gov", "www.sec.gov"}:
+        if is_sec_host:
             content, content_type = await SECClient().filing_document(url)
         else:
-            async with httpx.AsyncClient(
-                timeout=30,
-                follow_redirects=True,
-                headers={"User-Agent": "CavaAI Document Poller/1.0"},
-            ) as client:
-                response = await client.get(url)
-                response.raise_for_status()
-                content = response.content
-                content_type = response.headers.get("content-type")
+            content, content_type, final_url = await fetch_public_url_async(
+                url, max_bytes=MAX_DOCUMENT_BYTES, timeout=30
+            )
 
         from app.services.document_ingestion_service import DocumentIngestionService
 
@@ -221,7 +219,7 @@ class FeedIngestionService:
             content=content,
             filename=filename,
             source_type=source_type,
-            source_url=url,
+            source_url=final_url if not is_sec_host else url,
             content_type=content_type,
             published_at=published_at,
         )

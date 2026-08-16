@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     ibkr_flex_token: str | None = None
     ibkr_flex_query_id: str | None = None
     sec_user_agent: str = "CavaAI/0.1 contact@example.com"
+    telegram_enabled: bool = False
+    telegram_bot_token: str | None = Field(default=None, repr=False)
+    telegram_chat_id: str | None = None
+    telegram_api_base_url: str = "https://api.telegram.org"
+    telegram_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     fred_api_key: str | None = None
     openrouter_api_key: str | None = Field(default=None, repr=False)
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
