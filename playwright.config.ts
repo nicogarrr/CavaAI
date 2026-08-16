@@ -9,6 +9,7 @@ const uiPort = new URL(uiBaseURL).port || "3100";
 const apiPort = new URL(apiBaseURL).port || "8101";
 const uiBackendURL = process.env.E2E_UI_BACKEND_URL ?? "http://127.0.0.1:8100";
 const e2eResearchSecret = process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
+const pythonBin = process.env.PYTHON_BIN ?? "python";
 const apiTimestamp = Math.floor(Date.now() / 1000).toString();
 const apiTenant = "e2e-api-tenant";
 const apiUser = "e2e-api-user";
@@ -42,7 +43,7 @@ export default defineConfig({
   webServer: runUiE2E
     ? [
       {
-        command: "python -m uvicorn main:app --host 127.0.0.1 --port 8100",
+        command: `${pythonBin} -m uvicorn main:app --host 127.0.0.1 --port 8100`,
         cwd: "data-engine",
         env: {
           APP_ENV: "test",
@@ -74,7 +75,7 @@ export default defineConfig({
     ]
     : runE2E
     ? {
-        command: `python -m uvicorn main:app --host 127.0.0.1 --port ${apiPort}`,
+        command: `${pythonBin} -m uvicorn main:app --host 127.0.0.1 --port ${apiPort}`,
         cwd: "data-engine",
         env: {
           APP_ENV: process.env.APP_ENV ?? "test",

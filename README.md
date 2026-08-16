@@ -143,16 +143,14 @@ SEC_USER_AGENT=CavaAI/0.1 contact@example.com
 
 AI:
 
+CavaAI uses **OpenCode Go as its only LLM provider**. The OpenAI-compatible
+endpoint is `https://opencode.ai/zen/go/v1` and the default model is
+`deepseek-v4-flash`. Keep the API key in deployment secrets only.
+
 ```env
-LLM_PROVIDER=openrouter
-GEMINI_API_KEY=
-GOOGLE_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash
-GEMINI_CHEAP_MODEL=gemini-2.5-flash-lite
-GEMINI_DEEP_MODEL=gemini-3.5-flash
-OPENROUTER_API_KEY=
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
+OPENCODE_GO_API_KEY=
+OPENCODE_GO_BASE_URL=https://opencode.ai/zen/go/v1
+OPENCODE_GO_MODEL=deepseek-v4-flash
 CAVAAI_ENABLE_VECTOR_CHAT=0
 CAVAAI_ENABLE_VECTOR_INGEST=0
 CAVAAI_USE_DOCLING=0
@@ -170,6 +168,33 @@ Generate a production auth secret with:
 ```bash
 openssl rand -base64 32
 ```
+
+## Telegram alerts
+
+Telegram is an optional notification channel for persisted research alerts.
+The integration is included in the application, but it is **disabled by
+default** until you configure a rotated BotFather token and a private chat ID.
+
+Safe activation:
+
+1. Revoke any token that was pasted into chat in `@BotFather` with `/revoke`.
+2. Create a replacement token in `@BotFather`.
+3. Copy the local environment template and edit `.env` locally:
+
+```env
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=the_rotated_token
+TELEGRAM_CHAT_ID=your_private_chat_id
+```
+
+4. Send `/start` to the bot from the Telegram account that should receive alerts
+   and set that account's chat ID in the local secret store. Never commit or
+   paste the token into GitHub, source files, logs, or chat.
+5. Configure an alert with the `telegram` channel. New alert rules include the
+   channel automatically when Telegram is enabled and fully configured.
+
+The bot does not read a Quartr account directly. Use CavaAI's manual transcript
+import plus RSS, IR and SEC connectors for source ingestion.
 
 ## Verification
 
@@ -193,7 +218,7 @@ python -m pytest
 
 ## AI Provider Guidance
 
-The research engine is OpenRouter-first (`LLM_PROVIDER=openrouter`) and uses provider-specific aliases for every active task. OpenAI-compatible, Anthropic and Gemini adapters remain available only through explicit provider selection with a complete task-level model override map, so the application never silently routes OpenRouter aliases to another provider. Provider output never replaces the evidence contract or creates missing financial facts.
+The research engine uses OpenCode Go as its sole LLM provider through its OpenAI-compatible chat-completions endpoint. Every task routes to an OpenCode Go model, with `deepseek-v4-flash` as the default. Provider output never replaces the evidence contract or creates missing financial facts.
 
 ## Production Notes
 

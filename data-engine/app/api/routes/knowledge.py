@@ -14,6 +14,7 @@ from app.models import (
     ProcessingJob,
 )
 from app.services.knowledge_library_service import KnowledgeLibraryService
+from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
 
 
 router = APIRouter()
@@ -133,6 +134,15 @@ def create_collection(payload: CollectionCreate, db: Session = Depends(get_db)) 
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+async def _read_upload_limited(file: UploadFile) -> bytes:
+    content = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        content.extend(chunk)
+        if len(content) > MAX_DOCUMENT_BYTES:
+            raise ValueError("Document exceeds 15MB local ingestion limit")
+    return bytes(content)
+
+
 @router.get("/documents")
 def list_documents(
     collection_id: int | None = None,
@@ -163,7 +173,7 @@ async def upload_document(
             source_url=source_url,
             publication_date=publication_date,
             language=language,
-            content=await file.read(),
+            content=await _read_upload_limited(file),
             filename=file.filename or "knowledge-document.bin",
             content_type=file.content_type,
         )

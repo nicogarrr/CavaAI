@@ -34,7 +34,7 @@ def upgrade() -> None:
             sa.Column(
                 "semantic_duplicate_of_id",
                 sa.Integer(),
-                sa.ForeignKey("investment_principles.id"),
+                sa.ForeignKey("investment_principles.id", name="fk_investment_principles_semantic_duplicate_of"),
                 nullable=True,
             )
         )
@@ -42,7 +42,7 @@ def upgrade() -> None:
             sa.Column(
                 "canonical_principle_id",
                 sa.Integer(),
-                sa.ForeignKey("investment_principles.id"),
+                sa.ForeignKey("investment_principles.id", name="fk_investment_principles_canonical"),
                 nullable=True,
             )
         )
@@ -53,7 +53,7 @@ def upgrade() -> None:
             sa.Column(
                 "superseded_by_id",
                 sa.Integer(),
-                sa.ForeignKey("investment_principles.id"),
+                sa.ForeignKey("investment_principles.id", name="fk_investment_principles_superseded_by"),
                 nullable=True,
             )
         )

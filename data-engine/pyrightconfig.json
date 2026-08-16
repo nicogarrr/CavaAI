@@ -12,6 +12,8 @@
     "storage"
   ],
   "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": ".venv",
   "typeCheckingMode": "basic",
   "reportMissingImports": "warning",
   "reportMissingTypeStubs": "none",

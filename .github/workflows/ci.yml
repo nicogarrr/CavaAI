@@ -23,7 +23,7 @@ jobs:
       BETTER_AUTH_SECRET: ci-only-secret-that-is-long-enough-for-builds
       NEXT_PUBLIC_APP_URL: http://localhost:3000
       FMP_BACKEND_URL: http://127.0.0.1:8000
-      GEMINI_API_KEY: ci-placeholder
+      OPENCODE_GO_API_KEY: ci-placeholder
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

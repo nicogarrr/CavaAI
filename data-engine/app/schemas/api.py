@@ -625,7 +625,7 @@ class ResearchAlertAction(BaseModel):
 
 
 class ResearchAlertChannels(BaseModel):
-    channels: list[Literal["in_app", "email", "push"]] = Field(
+    channels: list[Literal["in_app", "email", "push", "telegram"]] = Field(
         min_length=1
     )
 

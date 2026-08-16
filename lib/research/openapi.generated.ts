@@ -1082,6 +1082,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/knowledge/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_api_knowledge_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_knowledge_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/knowledge/principles": {
         parameters: {
             query?: never;
@@ -1092,6 +1126,23 @@ export interface paths {
         /** List Principles */
         get: operations["list_principles_api_knowledge_principles_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/principles/{principle_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Revise Principle */
+        put: operations["revise_principle_api_knowledge_principles__principle_id__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1489,6 +1540,40 @@ export interface paths {
         put?: never;
         /** Refresh Portfolio Market Data */
         post: operations["refresh_portfolio_market_data_api_portfolio_refresh_market_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Portfolio Snapshots */
+        get: operations["portfolio_snapshots_api_portfolio_snapshots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/snapshots/capture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Capture Portfolio Snapshot */
+        post: operations["capture_portfolio_snapshot_api_portfolio_snapshots_capture_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1924,40 +2009,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sources/quartr/import-text": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Import Quartr Text */
-        post: operations["import_quartr_text_api_sources_quartr_import_text_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sources/quartr/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Quartr Status */
-        get: operations["quartr_status_api_sources_quartr_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/sources/tiers": {
         parameters: {
             query?: never;
@@ -1969,6 +2020,23 @@ export interface paths {
         get: operations["source_tiers_api_sources_tiers_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sources/transcripts/import-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Transcript Text */
+        post: operations["import_transcript_text_api_sources_transcripts_import_text_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3669,6 +3737,22 @@ export interface components {
             /** Ticker */
             ticker: string | null;
         };
+        /** ManualTranscriptImportRequest */
+        ManualTranscriptImportRequest: {
+            /**
+             * Period
+             * @default unknown
+             */
+            period: string;
+            /** Source Url */
+            source_url?: string | null;
+            /** Text */
+            text: string;
+            /** Ticker */
+            ticker: string;
+            /** Title */
+            title: string;
+        };
         /** MemoryItemCreate */
         MemoryItemCreate: {
             /** Company Id */
@@ -3905,22 +3989,34 @@ export interface components {
              * @default user
              */
             actor: string;
+            /** Canonical Principle Id */
+            canonical_principle_id?: number | null;
         };
-        /** QuartrManualImportRequest */
-        QuartrManualImportRequest: {
+        /** PrincipleRevision */
+        PrincipleRevision: {
             /**
-             * Period
-             * @default unknown
+             * Actor
+             * @default user
              */
-            period: string;
-            /** Source Url */
-            source_url?: string | null;
-            /** Text */
-            text: string;
-            /** Ticker */
-            ticker: string;
-            /** Title */
-            title: string;
+            actor: string;
+            /** Application Conditions */
+            application_conditions?: string[] | null;
+            /** Applies To Company Ids */
+            applies_to_company_ids?: number[] | null;
+            /** Author */
+            author?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Exact Fragment */
+            exact_fragment?: string | null;
+            /** Exceptions */
+            exceptions?: string[] | null;
+            /** Page Number */
+            page_number?: number | null;
+            /** Principle */
+            principle?: string | null;
         };
         /** ResearchAlertAction */
         ResearchAlertAction: {
@@ -3940,7 +4036,7 @@ export interface components {
         /** ResearchAlertChannels */
         ResearchAlertChannels: {
             /** Channels */
-            channels: ("in_app" | "email" | "push")[];
+            channels: ("in_app" | "email" | "push" | "telegram")[];
         };
         /** ResearchAlertOut */
         ResearchAlertOut: {
@@ -7261,7 +7357,84 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_api_knowledge_jobs_get: {
+        parameters: {
+            query?: {
+                document_id?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_api_knowledge_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -7302,6 +7475,48 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_principle_api_knowledge_principles__principle_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                principle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrincipleRevision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -8340,6 +8555,83 @@ export interface operations {
         };
     };
     refresh_portfolio_market_data_api_portfolio_refresh_market_post: {
+        parameters: {
+            query?: {
+                as_of?: string | null;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_snapshots_api_portfolio_snapshots_get: {
+        parameters: {
+            query?: {
+                start?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capture_portfolio_snapshot_api_portfolio_snapshots_capture_post: {
         parameters: {
             query?: {
                 as_of?: string | null;
@@ -9498,82 +9790,6 @@ export interface operations {
             };
         };
     };
-    import_quartr_text_api_sources_quartr_import_text_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["QuartrManualImportRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    quartr_status_api_sources_quartr_status_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     source_tiers_api_sources_tiers_get: {
         parameters: {
             query?: never;
@@ -9597,6 +9813,46 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_transcript_text_api_sources_transcripts_import_text_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualTranscriptImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
