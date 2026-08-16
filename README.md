@@ -172,9 +172,26 @@ openssl rand -base64 32
 ## Telegram alerts
 
 Telegram is an optional notification channel for persisted research alerts.
-Keep the BotFather token only in the local `.env` or deployment secret store;
-never commit it or paste it into chat. Configure `TELEGRAM_ENABLED=true`,
-`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to enable the channel.
+The integration is included in the application, but it is **disabled by
+default** until you configure a rotated BotFather token and a private chat ID.
+
+Safe activation:
+
+1. Revoke any token that was pasted into chat in `@BotFather` with `/revoke`.
+2. Create a replacement token in `@BotFather`.
+3. Copy the local environment template and edit `.env` locally:
+
+```env
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=the_rotated_token
+TELEGRAM_CHAT_ID=your_private_chat_id
+```
+
+4. Send `/start` to the bot from the Telegram account that should receive alerts
+   and set that account's chat ID in the local secret store. Never commit or
+   paste the token into GitHub, source files, logs, or chat.
+5. Configure an alert with the `telegram` channel. New alert rules include the
+   channel automatically when Telegram is enabled and fully configured.
 
 The bot does not read a Quartr account directly. Use CavaAI's manual transcript
 import plus RSS, IR and SEC connectors for source ingestion.
