@@ -113,6 +113,9 @@ services:
       - RESEARCH_AUTH_REQUIRED=true
       - RESEARCH_AUTH_SECRET=${RESEARCH_AUTH_SECRET:?Set RESEARCH_AUTH_SECRET in .env}
       - FMP_API_KEY=${FMP_API_KEY}
+      - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY}
+      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
@@ -215,7 +218,9 @@ services:
       - FMP_BACKEND_URL=http://backend:8000
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - FMP_API_KEY=${FMP_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY}
+      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - RESEARCH_AUTH_REQUIRED=true
       - RESEARCH_AUTH_SECRET=${RESEARCH_AUTH_SECRET:?Set RESEARCH_AUTH_SECRET in .env}
