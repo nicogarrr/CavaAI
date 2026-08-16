@@ -45,75 +45,15 @@ class _ModelRoute(Protocol):
     def model(self) -> str: ...
 
 
-OPENROUTER_MODEL_ALIASES = (
-    ModelAlias(
-        internal_alias="qwen-flash",
-        provider="openrouter",
-        provider_model_id="qwen/qwen3.6-flash",
-        enabled=True,
-        context_window=1_000_000,
-        input_cost=Decimal("0.1875"),
-        output_cost=Decimal("1.125"),
-        supported_capabilities=frozenset(
-            {"text", "image", "video", "reasoning", "tool_calling", "structured_output"}
-        ),
-    ),
-    ModelAlias(
-        internal_alias="qwen3.7-plus",
-        provider="openrouter",
-        provider_model_id="qwen/qwen3.7-plus",
-        enabled=True,
-        context_window=1_000_000,
-        input_cost=Decimal("0.32"),
-        output_cost=Decimal("1.28"),
-        supported_capabilities=frozenset(
-            {"text", "image", "reasoning", "tool_calling", "structured_output"}
-        ),
-    ),
-    ModelAlias(
-        internal_alias="glm-5.2",
-        provider="openrouter",
-        provider_model_id="z-ai/glm-5.2",
-        enabled=True,
-        context_window=1_048_576,
-        input_cost=Decimal("0.9702"),
-        output_cost=Decimal("3.0492"),
-        supported_capabilities=frozenset(
-            {"text", "reasoning", "tool_calling", "structured_output"}
-        ),
-    ),
-    ModelAlias(
-        internal_alias="qwen3.7-max",
-        provider="openrouter",
-        provider_model_id="qwen/qwen3.7-max",
-        enabled=True,
-        context_window=1_000_000,
-        input_cost=Decimal("1.475"),
-        output_cost=Decimal("4.425"),
-        supported_capabilities=frozenset(
-            {"text", "reasoning", "tool_calling", "structured_output"}
-        ),
-    ),
-    ModelAlias(
-        internal_alias="kimi-k2.7-code",
-        provider="openrouter",
-        provider_model_id="moonshotai/kimi-k2.7-code",
-        enabled=True,
-        context_window=262_144,
-        input_cost=Decimal("0.719"),
-        output_cost=Decimal("3.49"),
-        supported_capabilities=frozenset(
-            {"text", "image", "reasoning", "tool_calling", "structured_output"}
-        ),
-    ),
+OPENCODE_GO_MODEL_ALIASES = (
     ModelAlias(
         internal_alias="deepseek-v4-flash",
-        provider="openrouter",
-        provider_model_id="deepseek/deepseek-v4-flash",
+        provider="opencode-go",
+        provider_model_id="deepseek-v4-flash",
         enabled=True,
-        context_window=1_048_575,
-        input_cost=Decimal("0.098"),
-        output_cost=Decimal("0.196"),
+        context_window=1_048_576,
+        input_cost=Decimal("0"),
+        output_cost=Decimal("0"),
         supported_capabilities=frozenset(
             {"text", "reasoning", "tool_calling", "structured_output"}
         ),
@@ -209,7 +149,7 @@ class ModelAliasRegistry:
                 ) from exc
 
 
-MODEL_ALIASES = ModelAliasRegistry(OPENROUTER_MODEL_ALIASES)
+MODEL_ALIASES = ModelAliasRegistry(OPENCODE_GO_MODEL_ALIASES)
 
 
 def configure_model_aliases(db) -> ModelAliasRegistry:
@@ -224,7 +164,7 @@ def configure_model_aliases(db) -> ModelAliasRegistry:
         for row in db.scalars(select(PersistedModelAlias)).all()
     }
     changed = False
-    for alias in OPENROUTER_MODEL_ALIASES:
+    for alias in OPENCODE_GO_MODEL_ALIASES:
         if (alias.internal_alias, alias.provider) in existing:
             continue
         db.add(
@@ -243,7 +183,11 @@ def configure_model_aliases(db) -> ModelAliasRegistry:
     if changed:
         db.commit()
 
-    rows = db.scalars(select(PersistedModelAlias)).all()
+    rows = db.scalars(
+        select(PersistedModelAlias).where(
+            PersistedModelAlias.provider == "opencode-go"
+        )
+    ).all()
     MODEL_ALIASES.replace(
         ModelAlias(
             internal_alias=row.internal_alias,

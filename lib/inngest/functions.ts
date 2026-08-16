@@ -7,7 +7,7 @@ import {
 } from "@/lib/services/news-recipients";
 import { getNews } from "@/lib/actions/finnhub.actions";
 import { getFormattedTodayDate } from "@/lib/utils";
-import { getDefaultGeminiModel } from "@/lib/ai/modelConfig";
+import { completeWithOpenCodeGo } from "@/lib/ai/opencode-go";
 
 export const sendSignUpEmail = inngest.createFunction(
     { id: 'sign-up-email', triggers: [{ event: 'app/user.created' }] },
@@ -21,26 +21,17 @@ export const sendSignUpEmail = inngest.createFunction(
 
         const prompt = PERSONALIZED_WELCOME_EMAIL_PROMPT.replace('{{userProfile}}', userProfile)
 
-        const response = await step.ai.infer('generate-welcome-intro', {
-            model: step.ai.models.gemini({ model: getDefaultGeminiModel() }),
-            body: {
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [
-                            { text: prompt }
-                        ]
-                    }]
-            }
-        })
+        const introText = await step.run(
+            'generate-welcome-intro',
+            () => completeWithOpenCodeGo(prompt),
+        );
 
         await step.run('send-welcome-email', async () => {
-            const part = response.candidates?.[0]?.content?.parts?.[0];
-            const introText = (part && 'text' in part ? part.text : null) || 'Thanks for joining Openstock. You now have the tools to track markets and make smarter moves.'
+            const safeIntroText = introText || 'Thanks for joining Openstock. You now have the tools to track markets and make smarter moves.'
 
             const { data: { email, name } } = event;
 
-            return await sendWelcomeEmail({ email, name, intro: introText });
+            return await sendWelcomeEmail({ email, name, intro: safeIntroText });
         })
 
         return {
@@ -88,15 +79,10 @@ export const sendDailyNewsSummary = inngest.createFunction(
             try {
                 const prompt = NEWS_SUMMARY_EMAIL_PROMPT.replace('{{newsData}}', JSON.stringify(articles, null, 2));
 
-                const response = await step.ai.infer(`summarize-news-${user.email}`, {
-                    model: step.ai.models.gemini({ model: getDefaultGeminiModel() }),
-                    body: {
-                        contents: [{ role: 'user', parts: [{ text: prompt }] }]
-                    }
-                });
-
-                const part = response.candidates?.[0]?.content?.parts?.[0];
-                const newsContent = (part && 'text' in part ? part.text : null) || 'No market news.'
+                const newsContent = await step.run(
+                    `summarize-news-${user.email}`,
+                    () => completeWithOpenCodeGo(prompt),
+                );
 
                 userNewsSummaries.push({ user, newsContent });
             } catch (e) {

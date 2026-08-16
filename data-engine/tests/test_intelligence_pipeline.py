@@ -256,7 +256,7 @@ def test_alert_rule_is_evaluated_and_respects_cooldown():
         db.add(
             MarketPrice(
                 company_id=company.id,
-                date=date(2026, 7, 15),
+                date=date.today(),
                 close=Decimal("120"),
                 source="test",
             )
