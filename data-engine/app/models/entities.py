@@ -80,6 +80,19 @@ class Portfolio(TenantOwnedMixin, Base, TimestampMixin):
     is_default: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
 
+class WatchItem(TenantOwnedMixin, Base, TimestampMixin):
+    """A symbol the tenant is following (research watchlist)."""
+
+    __tablename__ = "watch_items"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "symbol", name="uq_watch_item_tenant_symbol"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(20), index=True)
+    company: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
 class FXRate(TenantOwnedMixin, Base, TimestampMixin):
     """Historical conversion where quote amount × rate = base amount."""
 

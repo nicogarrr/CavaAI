@@ -3,6 +3,23 @@
  * Reemplaza magic numbers y strings hardcodeados
  */
 
+import {
+  Bell,
+  BookOpen,
+  Briefcase,
+  Building2,
+  Download,
+  Filter,
+  FlaskConical,
+  Gauge,
+  Home,
+  Receipt,
+  Search,
+  Sparkles,
+  Star,
+  Target,
+} from 'lucide-react';
+
 // Timeouts (en milisegundos)
 export const TIMEOUTS = {
   API_REQUEST: 10000, // 10 segundos para requests de API
@@ -68,14 +85,20 @@ export const ERROR_MESSAGES = {
 } as const;
 
 export const NAV_ITEMS = [
-  { href: '/', label: 'Home' },
-  { href: '/portfolio', label: 'Cartera' },
-  { href: '/research', label: 'Research' },
-  { href: '/knowledge', label: 'Knowledge' },
-  { href: '/search', label: 'Search' },
-  { href: '/screeners', label: 'Screeners' },
-  { href: '/watchlist', label: 'Watchlist' },
-  { href: '/propicks', label: 'ProPicks' },
+  { href: '/', label: 'Home', icon: Home },
+  { href: '/portfolio', label: 'Cartera', icon: Briefcase },
+  { href: '/research', label: 'Research', icon: FlaskConical },
+  { href: '/knowledge', label: 'Knowledge', icon: BookOpen },
+  { href: '/search', label: 'Search', icon: Search },
+  { href: '/screeners', label: 'Screeners', icon: Filter },
+  { href: '/watchlist', label: 'Watchlist', icon: Star },
+  { href: '/propicks', label: 'ProPicks', icon: Sparkles },
+  { href: '/taxes', label: 'Taxes', icon: Receipt },
+  { href: '/plan', label: 'Plan', icon: Target },
+  { href: '/corporate-actions', label: 'Corporate', icon: Building2 },
+  { href: '/export', label: 'Export', icon: Download },
+  { href: '/risk', label: 'Risk', icon: Gauge },
+  { href: '/alerts', label: 'Alertas', icon: Bell },
 ] as const;
 
 // TradingView Widget Configurations

@@ -78,6 +78,7 @@ from app.models.entities import (
     ValuationAssumption,
     ValuationModel,
     ValuationOutput,
+    WatchItem,
 )
 
 __all__ = [
@@ -160,4 +161,5 @@ __all__ = [
     "ValuationAssumption",
     "ValuationModel",
     "ValuationOutput",
+    "WatchItem",
 ]

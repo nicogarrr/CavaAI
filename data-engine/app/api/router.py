@@ -9,6 +9,7 @@ from app.api.routes import (
     export,
     knowledge,
     knowledge_graph,
+    market,
     memory,
     news,
     plan,
@@ -22,6 +23,7 @@ from app.api.routes import (
     taxes,
     thesis,
     valuation,
+    watchlist,
     work_products,
     workflows,
 )
@@ -39,6 +41,7 @@ api_router.include_router(plan.router, prefix="/plan", tags=["plan"])
 api_router.include_router(taxes.router, prefix="/taxes", tags=["taxes"])
 api_router.include_router(thesis.router, prefix="/thesis", tags=["thesis"])
 api_router.include_router(valuation.router, prefix="/valuation", tags=["valuation"])
+api_router.include_router(watchlist.router, prefix="/watchlist", tags=["watchlist"])
 api_router.include_router(
     work_products.router, prefix="/work-products", tags=["work-products"]
 )
@@ -55,4 +58,5 @@ api_router.include_router(screeners.router, prefix="/screeners", tags=["screener
 api_router.include_router(memory.router, prefix="/memory", tags=["memory"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
+api_router.include_router(market.router, prefix="/market", tags=["market"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])

@@ -1,19 +1,22 @@
-import { generateEnhancedProPicks } from '@/lib/actions/proPicks.actions';
+import { generateEnhancedProPicks, getAvailableStrategies } from '@/lib/actions/proPicks.actions';
 import { Sparkles } from 'lucide-react';
-import EnhancedProPicksContent from '@/components/proPicks/EnhancedProPicksContent';
+import ProPicksTabs from '@/components/proPicks/ProPicksTabs';
 
 // Cache for 1 hour - don't regenerate on every visit
 export const revalidate = 3600;
 
 export default async function ProPicksPage() {
-    // Generate initial picks with default config
-    const initialPicks = await generateEnhancedProPicks({
-        timePeriod: 'month',
-        limit: 20,
-        minScore: 70,
-        sector: 'all',
-        sortBy: 'score',
-    });
+    // Preparar picks iniciales y estrategias disponibles en paralelo
+    const [initialPicks, strategies] = await Promise.all([
+        generateEnhancedProPicks({
+            timePeriod: 'month',
+            limit: 20,
+            minScore: 70,
+            sector: 'all',
+            sortBy: 'score',
+        }),
+        getAvailableStrategies(),
+    ]);
 
     const currentMonth = new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
     const generatedAt = new Date().toISOString();
@@ -37,8 +40,8 @@ export default async function ProPicksPage() {
                 </p>
             </div>
 
-            {/* Single ProPicks Content - No tabs */}
-            <EnhancedProPicksContent initialPicks={initialPicks} generatedAt={generatedAt} />
+            {/* Picks IA + Backtesting por estrategia */}
+            <ProPicksTabs strategies={strategies} initialPicks={initialPicks} generatedAt={generatedAt} />
         </div>
     );
 }

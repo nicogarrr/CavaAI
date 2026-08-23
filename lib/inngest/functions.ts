@@ -27,7 +27,7 @@ export const sendSignUpEmail = inngest.createFunction(
         );
 
         await step.run('send-welcome-email', async () => {
-            const safeIntroText = introText || 'Thanks for joining Openstock. You now have the tools to track markets and make smarter moves.'
+            const safeIntroText = introText || 'Thanks for joining CavaAI. You now have the tools to track markets and make smarter moves.'
 
             const { data: { email, name } } = event;
 

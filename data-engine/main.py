@@ -30,7 +30,20 @@ async def lifespan(_: FastAPI):
     validate_llm_configuration(settings)
     if settings.app_env.lower() != "production":
         ensure_company_master()
+
+    # Schedule the worker jobs (Dramatiq enqueues) in the background without
+    # blocking startup. Flagged off in tests via WORKERS_ENABLED=false.
+    scheduler = None
+    if settings.workers_enabled:
+        from app.workers.scheduler import build_scheduler
+
+        scheduler = build_scheduler(background=True)
+        scheduler.start()
+
     yield
+
+    if scheduler is not None:
+        scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="CavaAI Research Engine", version="1.0.0", lifespan=lifespan)

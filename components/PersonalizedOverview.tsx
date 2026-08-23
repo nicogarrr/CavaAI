@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Wallet, ArrowRight, Eye, Calendar, Newspaper, Brain, Sparkles, Loader2, BarChart3, Gem } from 'lucide-react';
 import { getPortfolioSummary, getPortfolioScores, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
-import { getCompanyNews, getStockFinancialData, getUpcomingEarnings, getStockQuote, type EarningsEvent } from '@/lib/actions/finnhub.actions';
+import { getMarketIndices } from '@/lib/actions/market.actions';
+import { getCompanyNews, getStockFinancialData, getUpcomingEarnings, getStockQuote, getNews, type EarningsEvent } from '@/lib/actions/finnhub.actions';
 import { getValuationData, getScreenerStocks } from '@/lib/actions/fmp.actions';
 
 
@@ -54,12 +55,8 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
         const loadData = async () => {
             setLoading(true);
             try {
-                // 1. Cargar Indices de Mercado (Paralelo)
-                const indicesProm = Promise.all([
-                    getStockQuote('SPY'),
-                    getStockQuote('QQQ'),
-                    getStockQuote('DIA')
-                ]);
+                // 1. Cargar Indices de Mercado (reales, via backend con cache)
+                const indicesProm = getMarketIndices();
 
                 // 2. Cargar Portfolio
                 const summaryProm = getPortfolioSummary(userId);
@@ -71,9 +68,10 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 const screenerRes = await getScreenerStocks({
                     marketCapMoreThan: 10000000000,
                     sector: 'Technology',
-                    limit: 30
+                    limit: 10
                 });
-                const candidates = screenerRes?.map((s: any) => s.symbol) || ['GOOGL', 'AMZN', 'META', 'AMD', 'NVDA'];
+                // Sin fallback hardcode: si el screener falla no se muestran oportunidades.
+                const candidates = (screenerRes?.map((s: any) => s.symbol) || []).slice(0, 6);
 
                 const opportunitiesProm = Promise.all(
                     candidates.map(async (sym: string) => {
@@ -109,16 +107,16 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     opportunitiesProm
                 ]);
 
-                // Procesar Indices
-                const indicesNames = ['S&P 500', 'Nasdaq 100', 'Dow Jones'];
-                const indicesSymbols = ['SPY', 'QQQ', 'DIA'];
-                const processedIndices = indicesData.map((data, i) => ({
-                    symbol: indicesSymbols[i],
-                    name: indicesNames[i],
-                    price: data?.c || 0,
-                    change: data?.d || 0,
-                    changePercent: data?.dp || 0
-                })).filter(i => i.price > 0);
+                // Procesar Indices (vienen ya con nombre, precio y variacion)
+                const processedIndices = (indicesData || [])
+                    .map((data) => ({
+                        symbol: data.symbol,
+                        name: data.name,
+                        price: data.price || 0,
+                        change: data.change || 0,
+                        changePercent: data.changePercent || 0
+                    }))
+                    .filter((i) => i.price > 0);
                 setMarketIndices(processedIndices);
 
                 setPortfolioSummary(summary);
@@ -169,8 +167,11 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         } catch { }
                     }
                     if (allNews.length < 5) {
-                        // Fallback global news
-                        // Implementar fetch general news si hace falta
+                        // Fallback: noticias generales con el mecanismo existente (getNews sin símbolos)
+                        try {
+                            const generalNews = await getNews();
+                            allNews.push(...(generalNews || []));
+                        } catch { }
                     }
                     setNews(allNews.slice(0, 6));
 
@@ -179,8 +180,13 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         setUpcomingEarnings(earnings.slice(0, 3));
                     } catch (e) { console.error("Earnings error", e); }
                 } else {
-                    // Cargar noticias generales si no hay acciones
-                    // (Podríamos implementar un getGeneralNews() aquí)
+                    // Sin acciones: cargar noticias generales (getNews sin símbolos)
+                    try {
+                        const generalNews = await getNews();
+                        setNews((generalNews || []).slice(0, 6));
+                    } catch (e) {
+                        console.error('General news error', e);
+                    }
                 }
 
                 // Generar insight IA
@@ -223,13 +229,13 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 <div className="flex gap-2">
                     <Badge className="bg-teal-600/20 text-teal-400 border-teal-600/50 hover:bg-teal-600/30">
                         <Sparkles className="w-4 h-4 mr-2" />
-                        AI Market Analysis
+                        Datos en tiempo real
                     </Badge>
                 </div>
             </div>
 
             {/* Market Indices Ticker */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
                 {marketIndices.map((index) => (
                     <Card key={index.symbol} className="bg-gray-800/40 border-gray-700/50 hover:bg-gray-800/60 transition-colors">
                         <CardContent className="p-4 flex items-center justify-between">

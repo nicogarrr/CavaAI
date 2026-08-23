@@ -1,7 +1,18 @@
 import { connectToDatabase } from '@/database/mongoose';
 import { Watchlist } from '@/database/models/watchlist.model';
 
-/** Internal Inngest service. This module is not exposed as a Next server action. */
+/**
+ * Internal Inngest service. This module is not exposed as a Next server action.
+ *
+ * Nota de migración: la watchlist del frontend ahora se gestiona vía el backend
+ * research (`/api/watchlist`, ver lib/actions/watchlist.actions.ts). Este módulo no
+ * puede usar `researchRequest` para leerla aquí: corre dentro de un cron de Inngest
+ * sin sesión de usuario, y la firma de identidad (researchIdentityHeaders) exige un
+ * usuario autenticado mientras `GET /api/watchlist` devuelve la watchlist del caller
+ * (scoped por usuario). Por eso el job mantiene la lectura directa sobre la colección
+ * `watchlist` compartida (la misma que respalda al backend). Migrar a la API cuando
+ * exista un endpoint con identidad de servicio/admin (no por usuario).
+ */
 export async function getAllUsersForNewsEmail() {
   const mongoose = await connectToDatabase();
   const db = mongoose.connection.db;

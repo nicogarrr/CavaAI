@@ -134,6 +134,20 @@ export const formatDateToday = new Date().toLocaleDateString('en-US', {
     timeZone: 'UTC',
 });
 
+/**
+ * Normaliza el nombre visible de una accion: quita guiones bajos crudos
+ * (datos de mercado tipo "Aduro_Inc"), recorta y evita duplicar el ticker.
+ * Los nombres autoritativos vienen de las APIs de datos; esto es solo el
+ * fallback de presentacion para datos crudos.
+ */
+export const displayCompanyName = (ticker: string, name?: string | null): string => {
+    const cleaned = (name ?? '').trim().replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!cleaned) return ticker.toUpperCase();
+    const tickerUpper = ticker.toUpperCase();
+    if (cleaned.toUpperCase() === tickerUpper) return tickerUpper;
+    return cleaned;
+};
+
 
 export const getAlertText = (alert: Alert) => {
     const condition = alert.alertType === 'upper' ? '>' : '<';
