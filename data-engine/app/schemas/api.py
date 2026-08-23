@@ -491,6 +491,7 @@ class SynthesisSection(BaseModel):
         "facts",
         "calculations",
         "user_hypotheses",
+        "unverified_claims",
         "inferences",
         "contradictions",
         "insufficient_data",

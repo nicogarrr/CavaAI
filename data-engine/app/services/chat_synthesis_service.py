@@ -15,11 +15,12 @@ from app.services.langfuse_client import LangfuseTracer
 from app.services.budget import BudgetController, BudgetExceededError
 
 
-PROMPT_VERSION = "source-aware-synthesis-v2"
+PROMPT_VERSION = "source-aware-synthesis-v3"
 SECTION_ORDER = (
     "facts",
     "calculations",
     "user_hypotheses",
+    "unverified_claims",
     "inferences",
     "contradictions",
     "insufficient_data",
@@ -29,6 +30,7 @@ SECTION_LABELS = {
     "facts": "FACT",
     "calculations": "CALCULATION",
     "user_hypotheses": "USER ASSUMPTION / MEMORY",
+    "unverified_claims": "UNVERIFIED CLAIM",
     "inferences": "INFERENCE",
     "contradictions": "CONTRADICTIONS",
     "insufficient_data": "INSUFFICIENT DATA",
@@ -40,8 +42,8 @@ RESPONSE_SCHEMA = {
     "properties": {
         "sections": {
             "type": "array",
-            "minItems": 7,
-            "maxItems": 7,
+            "minItems": 8,
+                        "maxItems": 8,
             "items": {
                 "type": "object",
                 "additionalProperties": False,

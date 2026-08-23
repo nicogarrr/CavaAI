@@ -1,11 +1,11 @@
 import asyncio
 import json
-from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import create_engine, delete, select
+from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal, init_db
+from app.core.database import Base
 from app.llm import LLMRequest, LLMResponse, Message, TaskModelRouter, Usage
 from app.llm.base import LLMProvider
 from app.models import (
@@ -71,11 +71,17 @@ def _cleanup(db) -> None:
 
 
 def test_knowledge_library_ingestion_deduplication_and_principle_approval():
-    init_db()
-    db = SessionLocal()
-    storage_path: Path | None = None
-    try:
-        _cleanup(db)
+    # BD aislada por test: evita interferencias con la BD compartida de la suite
+    # (causaba fallos dependientes del orden de ejecucion).
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        from app.models import Tenant
+
+        tenant = Tenant(external_id="knowledge-test", name="Knowledge")
+        db.add(tenant)
+        db.flush()
+        db.info["tenant_id"] = tenant.id
         service = KnowledgeLibraryService()
         collections = service.ensure_default_collections(db)
         assert {item.name for item in collections} == set(DEFAULT_KNOWLEDGE_COLLECTIONS)
@@ -95,7 +101,6 @@ def test_knowledge_library_ingestion_deduplication_and_principle_approval():
             language="en",
             content_type="text/plain",
         )
-        storage_path = Path(result["storage_uri"])
         assert result["status"] == "ingested"
         assert result["chunks"] == 1
 
@@ -150,8 +155,3 @@ def test_knowledge_library_ingestion_deduplication_and_principle_approval():
         assert revised.canonical_principle_id == approved.id
         assert approved.status == "superseded"
         assert approved.superseded_by_id == revised.id
-    finally:
-        _cleanup(db)
-        db.close()
-        if storage_path and storage_path.exists():
-            storage_path.unlink()
