@@ -1585,3 +1585,75 @@ class ManagementPromise(TenantOwnedMixin, Base, TimestampMixin):
     )
     evidence: Mapped[list[dict]] = mapped_column(JSON, default=list)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+class TaxReport(TenantOwnedMixin, Base, TimestampMixin):
+    """Persisted fiscal-year tax snapshot (IRPF-style) for the private portfolio."""
+
+    __tablename__ = "tax_reports"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "fiscal_year", name="uq_tax_report_tenant_year"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_id: Mapped[int | None] = mapped_column(
+        ForeignKey("portfolios.id"), nullable=True, index=True
+    )
+    fiscal_year: Mapped[int] = mapped_column(Integer, index=True)
+    base_currency: Mapped[str] = mapped_column(String(10), default="EUR")
+    summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    dividends: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    realized: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    misc: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+
+
+class InvestmentPlan(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "investment_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_id: Mapped[int | None] = mapped_column(
+        ForeignKey("portfolios.id"), nullable=True, index=True
+    )
+    monthly_contribution: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    start_date: Mapped[date] = mapped_column(Date)
+    horizon_years: Mapped[int] = mapped_column(Integer, default=30)
+    target_allocations: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+
+
+class PlanContribution(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "plan_contributions"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "plan_id", "external_id", name="uq_plan_contribution_tenant_external"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("investment_plans.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    currency: Mapped[str] = mapped_column(String(10), default="EUR")
+    external_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    note: Mapped[str] = mapped_column(String(500), default="")
+
+
+class CorporateAction(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "corporate_actions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    action_type: Mapped[str] = mapped_column(
+        String(40), default="split", index=True
+    )  # split | reverse_split | merger | spin_off | ticker_change
+    effective_date: Mapped[date] = mapped_column(Date, index=True)
+    ratio: Mapped[Decimal] = mapped_column(
+        Numeric(24, 10), default=1
+    )  # shares after / shares before
+    description: Mapped[str] = mapped_column(String(500), default="")
+    applied: Mapped[bool] = mapped_column(Boolean, default=False)
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

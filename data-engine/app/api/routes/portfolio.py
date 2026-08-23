@@ -27,8 +27,8 @@ class IBKRXmlImportRequest(BaseModel):
 
 class PortfolioTransactionInput(BaseModel):
     ticker: str = Field(min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.\-]+$")
-    action: Literal["buy", "sell"]
-    quantity: Decimal = Field(gt=0)
+    action: Literal["buy", "sell", "dividend", "interest", "fee", "cash_misc"]
+    quantity: Decimal = Field(ge=0)
     price: Decimal = Field(ge=0)
     trade_date: date
     fees: Decimal = Field(default=Decimal("0"), ge=0)

@@ -107,15 +107,20 @@ async def health_ready():
     except Exception as exc:  # noqa: BLE001
         checks["qdrant"] = f"error:{type(exc).__name__}"
 
-    # MinIO — best-effort TCP/HTTP probe via endpoint string
+    # MinIO — best-effort TCP/HTTP probe via endpoint string. MinIO answers
+    # anonymous GETs on the S3 API with 4xx, which still proves reachability.
     try:
+        import urllib.error
         import urllib.request
 
         endpoint = settings.minio_endpoint
         if not endpoint.startswith("http"):
             endpoint = f"http://{endpoint}"
-        with urllib.request.urlopen(endpoint, timeout=1) as resp:
-            checks["minio"] = "ok" if resp.status < 500 else f"error:status_{resp.status}"
+        try:
+            with urllib.request.urlopen(endpoint, timeout=2) as resp:
+                checks["minio"] = "ok" if resp.status < 500 else f"error:status_{resp.status}"
+        except urllib.error.HTTPError as exc:
+            checks["minio"] = "ok" if exc.code < 500 else f"error:status_{exc.code}"
     except Exception as exc:  # noqa: BLE001
         checks["minio"] = f"error:{type(exc).__name__}"
 
