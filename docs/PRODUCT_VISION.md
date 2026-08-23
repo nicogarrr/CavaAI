@@ -195,3 +195,25 @@ Passing local tests proves implementation integrity; it does not replace operati
 ## Success Criterion
 
 CavaAI is working when the user can add a company, upload filings/results/letters, create a thesis, ask source-aware questions, inspect traceable metrics, compare competitors, analyze moat, save hypotheses, receive material news, see whether the thesis changed, inspect sources, and improve the accumulated knowledge over months.
+
+
+## Estado de implementacion (2026-08-23)
+
+### Completado (verificable en main)
+- Produccion viva: cavaai.vercel.app (Vercel build READY, env vars configuradas) — auth (better-auth/Mongo), home, portfolio, research, watchlist. Backend FastAPI local en :8000 con scheduler de workers (autoarranque en login).
+- Watchlist unificada al backend (tabla watch_items, ruta /api/watchlist) — fuera el acceso directo a Mongo.
+- Indices reales en la home: ^GSPC, ^IXIC, BTC-USD, GC=F, SI=F (Yahoo Finance, cache 60s).
+- Screener real: /api/screeners/real (Finnhub free, 35 large caps, precios y market caps del dia).
+- Empresa real: /api/valuation/{ticker} (valoracion determinista: bear/base/bull, margin of safety).
+- Informes anuales y valoracion con trazabilidad (chat synthesis con contrato de 8 secciones incl. UNVERIFIED CLAIM).
+- Finanzas personales: taxes (IRPF FIFO), plan de inversion, corporate actions (apply), export anual, risk dashboard — con UI y paginas.
+- Alertas: UI (AlertsManager) + scheduler backend + Telegram como canal primario.
+- Limpieza profesional: FMP retirado del frontend, API legacy borrada, empresas de test purgadas, dead code eliminado, /api/health, docs/ARCHITECTURE.md.
+
+### Pendiente prioritario (depende de credenciales/decisiones)
+1. NODEMAILER (App Password de Gmail) para activar emails (welcome + resumen diario).
+2. IBKR: IBKR_FLEX_TOKEN + IBKR_FLEX_QUERY_ID para el import real de cartera (UI y pipeline listos).
+3. Rotar password de la cuenta de usuario (expuesto en logs de dev) y revocar token Vercel temporal.
+4. Hosting cloud del FastAPI cuando se quiera scheduler 24/7 sin depender del PC (render.yaml listo; free tier hiberna).
+5. E2E playwright en CI (specs existentes; ampliar cobertura de finanzas).
+6. Legal/privacidad (terminos, privacidad) y backup drills (Postgres + Mongo).
