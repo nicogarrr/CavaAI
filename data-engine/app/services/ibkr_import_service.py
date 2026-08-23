@@ -253,6 +253,13 @@ class IBKRImportService:
             db.add(company)
             db.flush()
         cache[ticker] = company
+        # Enriquecer el placeholder con el nombre real desde las APIs de datos.
+        try:
+            from app.services.company_enrichment_service import CompanyEnrichmentService
+
+            CompanyEnrichmentService().enrich(db, company)
+        except Exception:  # noqa: BLE001 — nunca bloquear el import por el enriquecimiento
+            pass
         return company
 
     def _action(self, value: str | None) -> str:

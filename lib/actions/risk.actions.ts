@@ -2,6 +2,8 @@
 
 import { getPortfolioSummary } from './portfolio.actions';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { researchRequest } from '@/lib/research/client';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -79,4 +81,12 @@ export async function generateRiskAnalysis(
         console.error('Error generating risk analysis:', error);
         return { error: String(error) };
     }
+}
+
+export type RiskDashboardRecord = Record<string, unknown>;
+
+/** GET /api/risk/dashboard — métricas agregadas de riesgo de la cartera */
+export async function getRiskDashboard(): Promise<RiskDashboardRecord> {
+    await requireAuthenticatedUser();
+    return researchRequest<RiskDashboardRecord>('/api/risk/dashboard');
 }

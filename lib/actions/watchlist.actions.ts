@@ -1,50 +1,49 @@
 'use server';
 
-import { connectToDatabase } from '@/database/mongoose';
-import { Watchlist } from '@/database/models/watchlist.model';
 import { revalidatePath } from 'next/cache';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { researchRequest, jsonBody } from '@/lib/research/client';
 
-// Helper para obtener userId
+// Helper para obtener userId (researchRequest añade la identidad firmada
+// vía researchIdentityHeaders usando el usuario autenticado).
 async function getUserId(): Promise<string> {
     return (await requireAuthenticatedUser()).id;
 }
 
-// Obtener watchlist del usuario actual
+/** Entrada devuelta por GET /api/watchlist del backend research. */
+interface WatchlistEntry {
+    symbol: string;
+    company?: string | null;
+    created_at?: string;
+}
+
+// Obtener watchlist del usuario actual desde el backend research (/api/watchlist)
 export async function getWatchlist(): Promise<{ symbol: string; addedAt: Date }[]> {
     try {
-        const userId = await getUserId();
-        await connectToDatabase();
-        const items = await Watchlist.find({ userId }).sort({ createdAt: -1 }).lean();
-        return items.map((item: any) => ({
+        await getUserId();
+        const items = await researchRequest<WatchlistEntry[]>('/api/watchlist');
+        if (!Array.isArray(items)) return [];
+        return items.map((item) => ({
             symbol: item.symbol,
-            addedAt: item.createdAt || new Date()
+            addedAt: item.created_at ? new Date(item.created_at) : new Date()
         }));
     } catch (error) {
+        // Backend no disponible / ruta aún no creada: degrada sin romper.
         console.error('getWatchlist error:', error);
         return [];
     }
 }
 
 // Añadir a watchlist
-// Añadir a watchlist
 export async function addToWatchlist(symbol: string, company?: string): Promise<{ success: boolean }> {
     try {
-        const userId = await getUserId();
-        await connectToDatabase();
-
-        // Verificar si ya existe
-        const existing = await Watchlist.findOne({ userId, symbol: symbol.toUpperCase() });
-        if (existing) {
-            return { success: true }; // Ya existe
-        }
-
-        const companyName = company || symbol; // Fallback
-
-        await Watchlist.create({
-            userId,
-            symbol: symbol.toUpperCase(),
-            company: companyName
+        await getUserId();
+        await researchRequest('/api/watchlist', {
+            method: 'POST',
+            body: jsonBody({
+                symbol: symbol.toUpperCase(),
+                ...(company ? { company } : {})
+            })
         });
         revalidatePath('/watchlist');
         return { success: true };
@@ -57,9 +56,10 @@ export async function addToWatchlist(symbol: string, company?: string): Promise<
 // Eliminar de watchlist
 export async function removeFromWatchlist(symbol: string): Promise<{ success: boolean }> {
     try {
-        const userId = await getUserId();
-        await connectToDatabase();
-        await Watchlist.deleteOne({ userId, symbol: symbol.toUpperCase() });
+        await getUserId();
+        await researchRequest(`/api/watchlist/${encodeURIComponent(symbol)}`, {
+            method: 'DELETE'
+        });
         revalidatePath('/watchlist');
         return { success: true };
     } catch (error) {

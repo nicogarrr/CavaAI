@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     research_auth_secret: str | None = Field(default=None, repr=False, min_length=32)
     research_auth_max_age_seconds: int = Field(default=300, ge=30, le=3600)
     rate_limit_enabled: bool = True
+    # Worker scheduler (APScheduler jobs that enqueue Dramatiq actors). Disabled
+    # in tests via WORKERS_ENABLED=false so TestClient lifespans stay quiet.
+    workers_enabled: bool = True
     rate_limit_requests_per_minute: int = Field(default=120, ge=10, le=10000)
     rate_limit_expensive_requests_per_minute: int = Field(default=20, ge=1, le=1000)
     financial_document_retention_days: int = Field(default=2555, ge=1)

@@ -18,12 +18,15 @@ interface Strategy {
 interface StrategySelectorProps {
     strategies: Strategy[];
     currentStrategy: string;
+    /** Callback opcional para notificar cambios sin depender de la navegación */
+    onStrategyChange?: (strategyId: string) => void;
 }
 
-export default function StrategySelector({ strategies, currentStrategy }: StrategySelectorProps) {
+export default function StrategySelector({ strategies, currentStrategy, onStrategyChange }: StrategySelectorProps) {
     const router = useRouter();
 
     const handleStrategyChange = (strategyId: string) => {
+        onStrategyChange?.(strategyId);
         router.push(`/propicks?strategy=${strategyId}`);
         router.refresh();
     };

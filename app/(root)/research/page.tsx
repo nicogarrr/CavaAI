@@ -1,5 +1,4 @@
 import {
-  Activity,
   BriefcaseBusiness,
   Database,
   FileText,
@@ -8,6 +7,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { getResearchDashboard } from '@/lib/actions/research.actions';
+import WorkProductButton from '@/components/work-products/WorkProductButton';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -63,9 +63,8 @@ export default async function ResearchPage() {
             Tesis versionadas, auditoria de fuentes, valoracion determinista, riesgo y workflows conectados al backend Python.
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
-          <Activity className="h-4 w-4 text-teal-300" />
-          {settings.app_env} - {settings.maf_version}
+        <div className="flex items-center gap-3">
+          <WorkProductButton />
         </div>
       </header>
 
@@ -119,11 +118,10 @@ export default async function ResearchPage() {
             <h2 className="text-lg font-semibold text-gray-100">Source Policy</h2>
           </div>
           <div className="grid gap-3 text-sm">
-            {['No source -> no claim', 'No trace -> no valuation', 'No date -> no event', 'No diff -> no thesis update'].map((rule) => (
-              <div key={rule} className="rounded-md border border-gray-800 bg-black/30 p-3 font-semibold text-gray-300">
-                {rule}
-              </div>
-            ))}
+            <p className="rounded-md border border-gray-800 bg-black/30 p-3 leading-6 text-gray-300">
+              Toda afirmacion o valoracion exige una fuente trazable con fecha y versionado:
+              sin evidencia contrastable no se incorpora a la tesis.
+            </p>
           </div>
           <Link className="mt-4 inline-flex text-sm font-semibold text-teal-300 hover:text-teal-200" href="/research/sources">
             Open sources

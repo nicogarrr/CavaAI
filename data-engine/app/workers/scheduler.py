@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import partial
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.workers.dramatiq_app import (
@@ -50,8 +51,9 @@ def enqueue_for_all_tenants(actor) -> dict:
     return {"actor": actor.actor_name, "queued": queued}
 
 
-def build_scheduler() -> BlockingScheduler:
-    scheduler = BlockingScheduler(timezone="UTC")
+def build_scheduler(*, background: bool = False) -> BlockingScheduler | BackgroundScheduler:
+    scheduler_cls = BackgroundScheduler if background else BlockingScheduler
+    scheduler = scheduler_cls(timezone="UTC")
     _register(
         scheduler,
         partial(enqueue_for_all_tenants, refresh_market_pipeline),
@@ -124,7 +126,7 @@ def build_scheduler() -> BlockingScheduler:
 
 
 def main() -> None:
-    scheduler = build_scheduler()
+    scheduler = build_scheduler(background=False)
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

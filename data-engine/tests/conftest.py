@@ -14,6 +14,8 @@ import pytest
 
 os.environ.setdefault("APP_ENV", "test")
 os.environ["RESEARCH_AUTH_REQUIRED"] = "false"
+# Keep TestClient lifespans quiet: the worker scheduler must not start in tests.
+os.environ["WORKERS_ENABLED"] = "false"
 # Hermetic tests: never inherit the local Postgres stack. Environment
 # variables take precedence over the .env file in pydantic-settings, so this
 # forces a disposable SQLite file for every test process.
