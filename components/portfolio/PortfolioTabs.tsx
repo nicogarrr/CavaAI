@@ -12,6 +12,7 @@ import PortfolioScores from '@/components/portfolio/PortfolioScores';
 import { PortfolioRiskSimulator } from '@/components/portfolio/PortfolioRiskSimulator';
 import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
+import ImportIBKRButton from '@/components/portfolio/ImportIBKRButton';
 import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
 import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, ShieldAlert, Activity } from 'lucide-react';
 import type { PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType } from '@/lib/actions/portfolio.actions';
@@ -78,7 +79,8 @@ export default function PortfolioTabs({ summary, transactions, scores, userId }:
                         <Activity className="h-4 w-4" /> Intelligence
                     </Link>
                     <RefreshPortfolioButton userId={userId} />
-                    <AddTransactionButton userId={userId} />
+                                        <ImportIBKRButton userId={userId} />
+                                        <AddTransactionButton userId={userId} />
                 </div>
             </div>
 
