@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown, Wallet, ArrowRight, Eye, Calendar, Newspaper, Brain, Sparkles, Loader2, BarChart3, Gem } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, ArrowRight, Eye, Calendar, Newspaper, Brain, Loader2, BarChart3, Gem } from 'lucide-react';
 import { getPortfolioSummary, getPortfolioScores, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getMarketIndices } from '@/lib/actions/market.actions';
@@ -225,12 +225,6 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 <div>
                     <h1 className="text-3xl font-bold text-gray-100">Bienvenido</h1>
                     <p className="text-gray-400 mt-1">Resumen de mercado y tus inversiones</p>
-                </div>
-                <div className="flex gap-2">
-                    <Badge className="bg-teal-600/20 text-teal-400 border-teal-600/50 hover:bg-teal-600/30">
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Datos en tiempo real
-                    </Badge>
                 </div>
             </div>
 
