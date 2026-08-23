@@ -12,6 +12,10 @@ import { completeWithOpenCodeGo } from "@/lib/ai/opencode-go";
 export const sendSignUpEmail = inngest.createFunction(
     { id: 'sign-up-email', triggers: [{ event: 'app/user.created' }] },
     async ({ event, step }) => {
+        // Email desactivado por decision del usuario (canal primario: Telegram).
+        if (!process.env.EMAIL_ENABLED) {
+            return { success: false, message: 'Email disabled' };
+        }
         const userProfile = `
             - Country: ${event.data.country}
             - Investment goals: ${event.data.investmentGoals}
@@ -44,6 +48,10 @@ export const sendSignUpEmail = inngest.createFunction(
 export const sendDailyNewsSummary = inngest.createFunction(
     { id: 'daily-news-summary', triggers: [{ event: 'app/send.daily.news' }, { cron: '0 12 * * *' }] },
     async ({ step }) => {
+        // Email desactivado por decision del usuario (canal primario: Telegram).
+        if (!process.env.EMAIL_ENABLED) {
+            return { success: false, message: 'Email disabled' };
+        }
         // Step #1: Get all users for news delivery
         const users = await step.run('get-all-users', getAllUsersForNewsEmail)
 
