@@ -9,7 +9,7 @@ import { getPortfolioSummary, getPortfolioScores, type PortfolioSummary } from '
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { getCompanyNews, getStockFinancialData, getUpcomingEarnings, getStockQuote, getNews, type EarningsEvent } from '@/lib/actions/finnhub.actions';
-import { getValuationData, getScreenerStocks } from '@/lib/actions/fmp.actions';
+import { getScreenerStocksReal, getFairValue } from '@/lib/actions/screener.actions';
 
 
 interface PersonalizedOverviewProps {
@@ -65,7 +65,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 const watchlistProm = getWatchlist();
 
                 // 4. Buscar Oportunidades (Screener + DCF)
-                const screenerRes = await getScreenerStocks({
+                const screenerRes = await getScreenerStocksReal({
                     marketCapMoreThan: 10000000000,
                     sector: 'Technology',
                     limit: 10
@@ -76,21 +76,18 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 const opportunitiesProm = Promise.all(
                     candidates.map(async (sym: string) => {
                         try {
-                            const valData = await getValuationData(sym);
+                            const fairValue = await getFairValue(sym);
                             const quote = await getStockQuote(sym);
-                            // valData.dcf is { symbol: string, dcf: [...] }
-                            // We need to access the inner dcf array, then the first item's dcf value
-                            const dcfValue = valData?.dcf?.dcf?.[0]?.dcf;
                             const currentPrice = quote?.c || 0;
 
-                            if (dcfValue && currentPrice > 0) {
-                                const upside = ((dcfValue - currentPrice) / currentPrice) * 100;
+                            if (fairValue && currentPrice > 0) {
+                                const upside = ((fairValue - currentPrice) / currentPrice) * 100;
                                 if (upside > 5) {
                                     return {
                                         symbol: sym,
                                         name: sym,
                                         price: currentPrice,
-                                        fairValue: dcfValue,
+                                        fairValue: fairValue,
                                         upside: upside
                                     };
                                 }

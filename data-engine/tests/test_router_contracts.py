@@ -1,57 +1,84 @@
+"""Contratos de rutas del data engine.
+
+Tras la consolidación del backend, la API legacy (data-engine/routers/) fue
+retirada: fundamentals, market y analytics ya no se montan en main.py.
+Estos contratos garantizan que las rutas retiradas devuelven 404 y que las
+rutas públicas/actuales siguen expuestas.
+
+Run from data-engine/:
+    pytest tests/test_router_contracts.py -v
+"""
+
 from fastapi.testclient import TestClient
 
 import main
-from routers import fundamentals, market
 
 
-def test_fundamentals_endpoint_uses_router_dependency(monkeypatch):
-    monkeypatch.setattr(fundamentals, "fetch_income_statement", lambda symbol, period: [{"symbol": symbol, "period": period}])
-    monkeypatch.setattr(fundamentals, "fetch_balance_sheet", lambda symbol, period: [{"balance": True}])
-    monkeypatch.setattr(fundamentals, "fetch_cash_flow", lambda symbol, period: [{"cashflow": True}])
-
-    response = TestClient(main.app).get("/fundamentals/aapl?period=quarter")
-
-    assert response.status_code == 200
-    assert response.json()["symbol"] == "AAPL"
-    assert response.json()["period"] == "quarter"
-
-
-def test_fundamentals_errors_propagate(monkeypatch):
-    monkeypatch.setattr(fundamentals, "fetch_ratios_ttm", lambda symbol: {"error": "restricted"})
-
-    response = TestClient(main.app).get("/ratios-ttm/AAPL")
-
-    assert response.status_code == 500
-    assert response.json()["detail"] == "restricted"
-
-
-def test_quote_and_batch_quotes_are_yfinance_backed(monkeypatch):
-    monkeypatch.setattr(market, "fetch_yf_single_quote", lambda symbol: {"c": 123, "d": 1, "dp": 0.8, "h": 125, "l": 120, "o": 121, "pc": 122})
-    monkeypatch.setattr(market, "fetch_yf_batch_quotes", lambda symbols: {symbol: {"price": 10} for symbol in symbols})
+def test_legacy_fundamentals_routes_are_retired():
     client = TestClient(main.app)
 
-    assert client.get("/quote/aapl").json()["c"] == 123
-    assert client.post("/batch-quotes", json=["aapl", "msft"]).json() == {"AAPL": {"price": 10}, "MSFT": {"price": 10}}
+    retired = [
+        "/fundamentals/aapl",
+        "/financial-growth/AAPL",
+        "/ratios-ttm/AAPL",
+        "/dcf/AAPL",
+        "/enterprise-value/AAPL",
+        "/key-metrics-ttm/AAPL",
+        "/financial-scores/AAPL",
+        "/owner-earnings/AAPL",
+        "/price-target/AAPL",
+        "/grades/AAPL",
+        "/peers/AAPL",
+        "/earnings-transcript/AAPL",
+        "/earnings-transcript-list/AAPL",
+        "/treasury-rates",
+        "/analyst-estimates/AAPL",
+        "/press-releases/AAPL",
+    ]
+    for path in retired:
+        response = client.get(path)
+        assert response.status_code == 404, f"{path} debe estar retirado, obtuvo {response.status_code}"
 
 
-def test_stock_peers_enriches_with_prices(monkeypatch):
-    monkeypatch.setattr(market, "fetch_stock_peers", lambda symbol: ["MSFT", "GOOGL"])
-    monkeypatch.setattr(market, "fetch_yf_batch_quotes", lambda symbols: {
-        "MSFT": {"companyName": "Microsoft", "price": 1, "marketCap": 2, "change": 3, "changePercent": 4},
-        "GOOGL": {"companyName": "Alphabet", "price": 5, "marketCap": 6, "change": 7, "changePercent": 8},
-    })
+def test_legacy_market_routes_are_retired():
+    client = TestClient(main.app)
 
-    response = TestClient(main.app).get("/stock-peers/aapl?with_prices=true")
+    retired = [
+        "/market-movers/gainers",
+        "/market-movers/losers",
+        "/market-movers/active",
+        "/screener",
+        "/news/fmp-articles",
+        "/news/general",
+        "/dividends/AAPL",
+        "/stock-peers/AAPL",
+        "/quote/aapl",
+        "/insider-trading/AAPL",
+        "/strategies/garp",
+        "/company-news/AAPL",
+        "/test",
+    ]
+    for path in retired:
+        response = client.get(path)
+        assert response.status_code == 404, f"{path} debe estar retirado, obtuvo {response.status_code}"
 
-    assert response.status_code == 200
-    assert response.json()[0] == {
-        "symbol": "MSFT",
-        "companyName": "Microsoft",
-        "price": 1,
-        "mktCap": 2,
-        "change": 3,
-        "changePercent": 4,
-    }
+    assert client.post("/batch-quotes", json=["aapl"]).status_code == 404
+
+
+def test_legacy_analytics_routes_are_retired():
+    client = TestClient(main.app)
+
+    retired = [
+        "/analytics/portfolio",
+        "/analytics/portfolio/returns",
+        "/analytics/holding/AAPL",
+        "/analytics/montecarlo",
+        "/analytics/correlation",
+        "/analytics/regime/AAPL",
+    ]
+    for path in retired:
+        response = client.post(path, json={"symbols": ["AAPL"]}, headers={"content-type": "application/json"})
+        assert response.status_code == 404, f"{path} debe estar retirado, obtuvo {response.status_code}"
 
 
 def test_legacy_direct_vector_knowledge_routes_are_retired():
@@ -61,3 +88,24 @@ def test_legacy_direct_vector_knowledge_routes_are_retired():
     )
 
     assert response.status_code == 404
+
+
+def test_api_prefix_still_serves_research_routes():
+    client = TestClient(main.app, raise_server_exceptions=False)
+
+    # Sin firma la API protegida responde 401; el 404 de ruta inexistente
+    # solo debe aparecer para paths legacy (no montados).
+    response = client.get("/api/news")
+    assert response.status_code in (401, 200)
+
+
+def test_health_is_public():
+    client = TestClient(main.app)
+
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["database"] == "ok"
+    assert "version" in payload
+    assert payload["version"].startswith("main-")

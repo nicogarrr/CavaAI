@@ -2,6 +2,7 @@
 
 import { cache } from 'react';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { researchRequest } from '@/lib/research/client';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY ?? process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
@@ -207,3 +208,87 @@ export async function exportScreenerResults(results: ScreenerResult[]): Promise<
   
   return csv;
 }
+
+// ============================================================================
+// SCREENER REAL (GET /api/screeners/real del data-engine)
+// ----------------------------------------------------------------------------
+// Respaldado por el endpoint real del backend (Finnhub free tier): precios del
+// día, market cap, sector y volumen REALES. Firma estándar vía researchRequest
+// (lib/research/client.ts). Mismo shape que consumía el front (array en
+// `screener`, mismos nombres de campo que ScreenerResult).
+// ============================================================================
+
+export type RealScreenerFilters = {
+  marketCapMoreThan?: number;
+  sector?: string;
+  limit?: number;
+};
+
+export type RealScreenerRow = {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  marketCap: number;
+  volume: number;
+  prevClose: number;
+  sector: string;
+  exchange: string;
+  type: string;
+  pe: number | null;
+  pb: number | null;
+  roe: number | null;
+  beta: number | null;
+};
+
+export type RealScreenerResponse = {
+  source: string;
+  as_of: number;
+  count: number;
+  screener: RealScreenerRow[];
+};
+
+/**
+ * Screener real: consulta el backend (Finnhub free) con precios y market caps
+ * reales del día. Devuelve [] si no hay datos (nunca datos inventados).
+ */
+export const getScreenerStocksReal = cache(
+  async (filters: RealScreenerFilters = {}): Promise<RealScreenerRow[]> => {
+    await requireAuthenticatedUser();
+    const params = new URLSearchParams();
+    if (filters.marketCapMoreThan) {
+      params.set('marketCapMoreThan', String(filters.marketCapMoreThan));
+    }
+    if (filters.sector) {
+      params.set('sector', filters.sector);
+    }
+    params.set('limit', String(filters.limit ?? 25));
+    const qs = params.toString();
+    const data = await researchRequest<RealScreenerResponse>(
+      `/api/screeners/real${qs ? `?${qs}` : ''}`,
+      { cache: 'no-store' },
+    );
+    return data?.screener ?? [];
+  },
+);
+
+
+/** Fair value determinista del Research OS (backend /api/valuation/{ticker}).
+ *  Devuelve null si no hay valoracion publicable (nunca datos inventados). */
+export const getFairValue = cache(
+  async (symbol: string): Promise<number | null> => {
+    await requireAuthenticatedUser();
+    try {
+      const data = await researchRequest<{
+        expected_value?: number | null;
+        base_value?: number | null;
+        publishable?: boolean;
+      }>(`/api/valuation/${encodeURIComponent(symbol)}`, { cache: 'no-store' });
+      if (!data?.publishable) return null;
+      return data.expected_value ?? data.base_value ?? null;
+    } catch {
+      return null;
+    }
+  },
+);

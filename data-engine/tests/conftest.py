@@ -21,10 +21,10 @@ os.environ["WORKERS_ENABLED"] = "false"
 # forces a disposable SQLite file for every test process.
 os.environ["DATABASE_URL"] = "sqlite:///./cavaai_test.db"
 
-# Importing main pulls in legacy market modules that call load_dotenv() at
-# import time, which would leak local development secrets (provider API keys,
-# storage backends and the research auth secret) into the process environment.
-# Tests must stay hermetic: Settings(_env_file=None) must observe no secrets.
+# Importing main no debe filtrar secretos locales al proceso de test. La API
+# legacy (routers/) fue retirada, pero los módulos de servicio (modules/) que
+# quedan pueden llamar load_dotenv() en import time. Tests must stay hermetic:
+# Settings(_env_file=None) must observe no secrets.
 _TEST_ISOLATED_ENV_VARS = (
     "RESEARCH_AUTH_SECRET",
     "DOCUMENT_STORAGE_BACKEND",

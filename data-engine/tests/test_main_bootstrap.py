@@ -27,60 +27,28 @@ def test_main_only_declares_root_and_health_routes():
     assert "/health" in app_routes
     assert "/health/live" in app_routes
     assert "/health/ready" in app_routes
-    assert "include_router(fundamentals_router, dependencies=private_dependencies)" in source
-    assert "include_router(market_router, dependencies=private_dependencies)" in source
+    assert "include_router(health_router, prefix=\"/api\")" in source
+    # La API legacy (routers/) fue retirada: nada de fundamentals/market/analytics.
+    assert "routers.analytics" not in source
+    assert "routers.fundamentals" not in source
+    assert "routers.market" not in source
     assert "knowledge_router" not in source
-    assert "include_router(analytics_router, dependencies=private_dependencies)" in source
     assert "research_api_router," in source
     assert "dependencies=private_dependencies" in source
+    assert "health_router" in source
 
 
 def test_public_routes_are_registered_once():
     routes = list(main.app.openapi()["paths"].keys())
 
     expected_routes = {
-        "/",
-        "/health",
-        "/health/live",
-        "/health/ready",
-        "/test",
-        "/fundamentals/{symbol}",
-        "/financial-growth/{symbol}",
-        "/ratios-ttm/{symbol}",
-        "/dcf/{symbol}",
-        "/enterprise-value/{symbol}",
-        "/key-metrics-ttm/{symbol}",
-        "/financial-scores/{symbol}",
-        "/owner-earnings/{symbol}",
-        "/price-target/{symbol}",
-        "/grades/{symbol}",
-        "/peers/{symbol}",
-        "/earnings-transcript/{symbol}",
-        "/earnings-transcript-list/{symbol}",
-        "/treasury-rates",
-        "/analyst-estimates/{symbol}",
-        "/press-releases/{symbol}",
-        "/market-movers/gainers",
-        "/market-movers/losers",
-        "/market-movers/active",
-        "/screener",
-        "/news/fmp-articles",
-        "/news/general",
-        "/dividends/{symbol}",
-        "/stock-peers/{symbol}",
-        "/quote/{symbol}",
-        "/batch-quotes",
-        "/insider-trading/{symbol}",
-        "/strategies/garp",
-        "/company-news/{symbol}",
-        "/analytics/portfolio",
-        "/analytics/portfolio/returns",
-        "/analytics/holding/{symbol}",
-        "/analytics/montecarlo",
-        "/analytics/correlation",
-        "/analytics/regime/{symbol}",
-        "/api/companies",
-        "/api/companies/{ticker}",
+            "/",
+            "/health",
+            "/health/live",
+            "/health/ready",
+            "/api/health",
+            "/api/companies",
+            "/api/companies/{ticker}",
         "/api/portfolio/summary",
         "/api/companies/{ticker}/metrics/calculated",
         "/api/companies/{ticker}/snapshot",

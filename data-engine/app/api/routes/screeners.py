@@ -1,10 +1,15 @@
 from typing import Any, Literal
 
+import httpx
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import CustomMetricDefinition, SavedScreen
 from app.services.screener_service import CustomMetricService, ScreenerService
@@ -132,3 +137,291 @@ def run_ad_hoc_screen(payload: AdHocScreen, db: Session = Depends(get_db)) -> di
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ============================================================================
+# REAL-TIME SCREENER  —  GET /api/screeners/real
+# ----------------------------------------------------------------------------
+# Fuente elegida: Finnhub (free tier) — /quote da el precio real del día
+# (c, d, dp, pc, v) y /stock/profile2 el nombre, market cap y sector reales.
+# Yahoo público fue descartado tras probarlo en vivo: el screener
+# (/v1/finance/screener/predefined) devuelve HTML bloqueado y /v7/finance/quote
+# responde "Unauthorized" (requiere crumb). /stock/screener de Finnhub responde
+# 404 sin plan premium.
+#
+# DISEÑO (screener mínimo HONESTO): universo fijo de ~35 grandes caps líquidos
+# (la tabla companies contiene entradas de prueba tipo MATBIG/TPEER1 y small
+# caps, así que el universo curado es la fuente primaria; la BD solo se usa
+# para enriquecer nombre/sector cuando coincide). Cada ticker se consulta con
+# precios y market cap REALES de Finnhub; los filtros marketCapMoreThan/sector
+# se aplican sobre esos datos reales. Nunca se inventan precios.
+#
+# Cache (como market.py): resultado agregado 60s; perfil (nombre/mktcap/sector)
+# 6h para no golpear el límite gratuito de 60 llamadas/min (refresco sostenido
+# = ~35 /quote por minuto).
+# ============================================================================
+
+# (symbol, nombre de respaldo, sector de respaldo)
+_REAL_UNIVERSE: list[tuple[str, str, str]] = [
+    ("AAPL", "Apple", "Technology"),
+    ("MSFT", "Microsoft", "Technology"),
+    ("GOOGL", "Alphabet", "Communication Services"),
+    ("AMZN", "Amazon", "Consumer Discretionary"),
+    ("NVDA", "NVIDIA", "Technology"),
+    ("TSLA", "Tesla", "Consumer Discretionary"),
+    ("META", "Meta Platforms", "Communication Services"),
+    ("BRK.B", "Berkshire Hathaway", "Financials"),
+    ("JPM", "JPMorgan Chase", "Financials"),
+    ("V", "Visa", "Financials"),
+    ("UNH", "UnitedHealth", "Health Care"),
+    ("WMT", "Walmart", "Consumer Staples"),
+    ("PG", "Procter & Gamble", "Consumer Staples"),
+    ("MA", "Mastercard", "Financials"),
+    ("HD", "Home Depot", "Consumer Discretionary"),
+    ("DIS", "Disney", "Communication Services"),
+    ("NFLX", "Netflix", "Communication Services"),
+    ("ADBE", "Adobe", "Technology"),
+    ("CRM", "Salesforce", "Technology"),
+    ("CSCO", "Cisco", "Technology"),
+    ("PFE", "Pfizer", "Health Care"),
+    ("INTC", "Intel", "Technology"),
+    ("KO", "Coca-Cola", "Consumer Staples"),
+    ("PEP", "PepsiCo", "Consumer Staples"),
+    ("MRK", "Merck", "Health Care"),
+    ("ABT", "Abbott", "Health Care"),
+    ("BAC", "Bank of America", "Financials"),
+    ("AMD", "Advanced Micro Devices", "Technology"),
+    ("ORCL", "Oracle", "Technology"),
+    ("AVGO", "Broadcom", "Technology"),
+    ("XOM", "Exxon Mobil", "Energy"),
+    ("CVX", "Chevron", "Energy"),
+    ("JNJ", "Johnson & Johnson", "Health Care"),
+    ("COST", "Costco", "Consumer Staples"),
+    ("LIN", "Linde", "Materials"),
+]
+
+_ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "VOO", "VTI", "GLD"}
+
+_FINNHUB_BASE = "https://finnhub.io/api/v1"
+_PROFILE_TTL = 6 * 3600.0  # 6h: nombre/market cap/sector cambian lento
+_QUOTE_TTL = 60.0  # precio real del día, refrescado cada minuto (como market.py)
+
+# symbol -> {"at": monotonic, "data": {...}}
+_real_profile_cache: dict[str, dict] = {}
+_real_quote_cache: dict[str, dict] = {}
+# Items crudos (todo el universo, sin filtrar) — los filtros se aplican por
+# request sobre los datos cacheados, así cada combinación de filtros funciona
+# sin golpear Finnhub de nuevo.
+_real_items_cache: dict = {"at": 0.0, "items": []}
+
+
+def _cs(_str: str | None) -> str:
+    return (_str or "").strip().lower()
+
+
+def _load_universe_from_db() -> dict[str, tuple[str, str]]:
+    """Enriquecimiento best-effort desde companies (nombre/sector reales)."""
+    try:
+        from sqlalchemy import text as _text
+
+        from app.core.database import SessionLocal
+
+        with SessionLocal() as db:
+            rows = db.execute(
+                _text("SELECT ticker, name, sector FROM companies")
+            ).fetchall()
+        return {str(r[0]).upper(): (str(r[1]), str(r[2])) for r in rows}
+    except Exception:  # noqa: BLE001 — el screener funciona sin BD
+        return {}
+
+
+def _finnhub_get(
+    client: httpx.Client, path: str, symbol: str, timeout: float
+) -> dict | None:
+    try:
+        resp = client.get(
+            f"{_FINNHUB_BASE}{path}",
+            params={"symbol": symbol},
+            timeout=timeout,
+        )
+        if resp.status_code == 429:  # rate limit free tier: saltar, cache sigue valiendo
+            return None
+        if resp.status_code != 200:
+            return None
+        payload = resp.json()
+        return payload if isinstance(payload, dict) else None
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+def _fetch_quote(client: httpx.Client, symbol: str) -> dict | None:
+    """Precio real del día vía Finnhub /quote (plan gratuito).
+
+    Retry único en 429 (límite 60 llamadas/minuto): un fallo puntual no debe
+    dejar el ticker fuera del screener.
+    """
+    now = time.monotonic()
+    cached = _real_quote_cache.get(symbol)
+    if cached and now - cached["at"] < _QUOTE_TTL:
+        return cached["data"]
+    raw = _finnhub_get(client, "/quote", symbol, timeout=8)
+    if raw is None:  # posible 429: reintentar una vez tras 1s
+        time.sleep(1.0)
+        raw = _finnhub_get(client, "/quote", symbol, timeout=8)
+    data = None
+    if raw and raw.get("c") and raw["c"] > 0:
+        data = {
+            "price": float(raw["c"]),
+            "change": float(raw.get("d") or 0.0),
+            "changePercent": float(raw.get("dp") or 0.0),
+            "volume": float(raw.get("v") or 0.0),
+            "prevClose": float(raw.get("pc") or 0.0),
+            "asOf": raw.get("t"),
+        }
+    if data:
+        _real_quote_cache[symbol] = {"at": now, "data": data}
+    return data
+
+
+def _fetch_profile(client: httpx.Client, symbol: str) -> dict | None:
+    """Perfil real (nombre, market cap en USD, sector, exchange) vía profile2."""
+    now = time.monotonic()
+    cached = _real_profile_cache.get(symbol)
+    if cached and now - cached["at"] < _PROFILE_TTL:
+        return cached["data"]
+    raw = _finnhub_get(client, "/stock/profile2", symbol, timeout=8)
+    data = None
+    if raw and raw.get("ticker"):
+        data = {
+            "name": raw.get("name") or symbol,
+            "marketCap": float(raw.get("marketCapitalization") or 0.0) * 1_000_000.0,
+            "sector": raw.get("finnhubIndustry") or None,
+            "exchange": raw.get("exchange") or "US",
+        }
+    if data:
+        _real_profile_cache[symbol] = {"at": now, "data": data}
+    return data
+
+
+@router.get("/real")
+def real_time_screener(
+    marketCapMoreThan: float | None = None,
+    sector: str | None = None,
+    limit: int = 25,
+) -> dict:
+    """Screener real: precios del día + market cap reales (Finnhub free).
+
+    marketCapMoreThan: mínimo de market cap en USD (real de Finnhub).
+    sector: filtro case-insensitive sobre el sector (BD/Finnhub).
+    """
+    now = time.monotonic()
+    # Refresco solo si caduca el cache de 60s; los filtros se aplican abajo
+    # sobre los items crudos, así cada combinación es correcta sin re-consultar.
+    if (
+        now - _real_items_cache["at"] >= _QUOTE_TTL
+        or not _real_items_cache["items"]
+    ):
+        items = _refetch_real_items()
+        if items:  # last-known-good si el refresco falla del todo
+            _real_items_cache["at"] = now
+            _real_items_cache["items"] = items
+
+    filtered = [
+        item
+        for item in _real_items_cache["items"]
+        if (
+            marketCapMoreThan is None
+            or (item["marketCap"] or 0.0) >= marketCapMoreThan
+        )
+        and (not sector or _cs(item["sector"]) == _cs(sector))
+    ]
+    filtered.sort(key=lambda item: (item["marketCap"] or 0.0), reverse=True)
+    limited = filtered[: max(1, min(limit, 200))]
+    return {
+        "source": "finnhub_free",
+        "as_of": time.time(),
+        "count": len(limited),
+        "screener": limited,
+    }
+
+
+def _refetch_real_items() -> list[dict]:
+    """Universo completo con precios/market cap reales (Finnhub free).
+
+    Fase 1: /quote en paralelo (35 llamadas, con retry en 429).
+    Fase 2: /stock/profile2 solo si el cache (6h) está vacío/caducado, con
+    pacing de 0.3s entre llamadas para respetar las 60 llamadas/minuto del
+    plan gratuito (a partir del segundo refresco los profiles vienen de cache
+    y solo se hacen ~35 /quote por minuto).
+    """
+    db_universe = _load_universe_from_db()
+    settings = get_settings()
+    headers = {"User-Agent": "CavaAI/0.1"}
+
+    quotes: dict[str, dict] = {}
+    with httpx.Client(headers=headers, timeout=15) as client:
+        fn_key = settings.finnhub_api_key
+        client.params = {"token": fn_key} if fn_key else {}
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {
+                pool.submit(_fetch_quote, client, symbol): symbol
+                for symbol, _, _ in _REAL_UNIVERSE
+            }
+            for future in futures:
+                symbol = futures[future]
+                quote = future.result()
+                if quote:
+                    quotes[symbol] = quote
+
+    profiles: dict[str, dict] = {}
+    with httpx.Client(headers=headers, timeout=15) as client:
+        fn_key = settings.finnhub_api_key
+        client.params = {"token": fn_key} if fn_key else {}
+        for symbol, _, _ in _REAL_UNIVERSE:
+            if symbol not in quotes:
+                continue
+            if time.monotonic() - _real_profile_cache.get(symbol, {}).get(
+                "at", 0.0
+            ) < _PROFILE_TTL:
+                profiles[symbol] = _real_profile_cache[symbol]["data"]
+                continue
+            profile = _fetch_profile(client, symbol)
+            if profile:
+                profiles[symbol] = profile
+            time.sleep(0.3)  # pacing: ~3.3 llamadas/s, muy por debajo de 60/min
+
+    items: list[dict] = []
+    for symbol, name_fb, sector_fb in _REAL_UNIVERSE:
+        quote = quotes.get(symbol)
+        if not quote:
+            continue
+        profile = profiles.get(symbol)
+        db_row = db_universe.get(symbol)
+        name = (db_row[0] if db_row else None) or (
+            profile["name"] if profile else name_fb
+        )
+        sector_value = (
+            db_row[1]
+            if db_row
+            else (profile["sector"] if profile and profile["sector"] else sector_fb)
+        )
+        items.append(
+            {
+                "symbol": symbol,
+                "name": name,
+                "price": quote["price"],
+                "change": quote["change"],
+                "changePercent": quote["changePercent"],
+                "marketCap": profile["marketCap"] if profile else 0.0,
+                "volume": quote["volume"],
+                "prevClose": quote["prevClose"],
+                "sector": sector_value,
+                "exchange": profile["exchange"] if profile else "US",
+                "type": "ETF" if symbol.upper() in _ETF_SYMBOLS else "Stock",
+                "pe": None,
+                "pb": None,
+                "roe": None,
+                "beta": None,
+            }
+        )
+    return items

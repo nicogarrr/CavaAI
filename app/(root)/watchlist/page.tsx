@@ -1,6 +1,5 @@
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getStockFinancialData } from '@/lib/actions/finnhub.actions';
-import { getValuationData } from '@/lib/actions/fmp.actions';
 import { Eye, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import WatchlistRemoveButton from '@/components/watchlist/WatchlistRemoveButton';
@@ -26,8 +25,6 @@ interface WatchlistStock {
     changePercent: number;
     marketCap: number | null;
     peRatio: number | null;
-    dcfValue: number | null;
-    dcfUpside: number | null;
     addedAt: Date;
 }
 
@@ -38,22 +35,15 @@ export default async function WatchlistPage() {
     const watchlistStocks: WatchlistStock[] = await Promise.all(
         watchlistItems.map(async (item) => {
             try {
-                // Fetch Financial Data and Valuation Data in parallel
-                const [financialData, valuationData] = await Promise.all([
-                    getStockFinancialData(item.symbol),
-                    getValuationData(item.symbol)
-                ]);
+                // Fetch Financial Data (Finnhub)
+                const financialData = await getStockFinancialData(item.symbol);
 
-                // Extract Valuation Metrics
-                const ratios = valuationData.ratios?.ratios?.[0];
-                const dcf = valuationData.dcf?.dcf?.[0];
-                const ev = valuationData.ev?.enterpriseValue?.[0];
+                // Extract metrics (Finnhub stock/metric)
+                const metrics = financialData?.metrics?.metric ?? {};
+                const marketCapM = typeof metrics.marketCapitalization === 'number' ? metrics.marketCapitalization : null;
+                const peRatio = typeof metrics.peTTM === 'number' ? metrics.peTTM : null;
 
                 const currentPrice = financialData?.quote?.c || 0;
-                const intrinsicValue = dcf?.dcf || 0;
-                const dcfUpside = (currentPrice > 0 && intrinsicValue > 0)
-                    ? ((intrinsicValue - currentPrice) / currentPrice) * 100
-                    : null;
 
                 return {
                     symbol: item.symbol,
@@ -61,10 +51,8 @@ export default async function WatchlistPage() {
                     price: currentPrice,
                     change: financialData?.quote?.d || 0,
                     changePercent: financialData?.quote?.dp || 0,
-                    marketCap: ev?.marketCapitalization || null,
-                    peRatio: ratios?.peRatioTTM || null,
-                    dcfValue: intrinsicValue || null,
-                    dcfUpside: dcfUpside,
+                    marketCap: marketCapM !== null ? marketCapM * 1e6 : null, // Finnhub devuelve M USD
+                    peRatio,
                     addedAt: item.addedAt
                 };
             } catch {
@@ -76,8 +64,6 @@ export default async function WatchlistPage() {
                     changePercent: 0,
                     marketCap: null,
                     peRatio: null,
-                    dcfValue: null,
-                    dcfUpside: null,
                     addedAt: item.addedAt
                 };
             }
@@ -134,8 +120,6 @@ export default async function WatchlistPage() {
                                 <TableHead className="text-right text-gray-300">Cambio 24h</TableHead>
                                 <TableHead className="text-right text-gray-300">Market Cap</TableHead>
                                 <TableHead className="text-right text-gray-300">PER (TTM)</TableHead>
-                                <TableHead className="text-right text-gray-300">DCF (Intrínseco)</TableHead>
-                                <TableHead className="text-right text-gray-300">Upside DCF</TableHead>
                                 <TableHead className="text-right text-gray-300">Acciones</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -177,20 +161,6 @@ export default async function WatchlistPage() {
                                                 stock.peRatio < 25 ? 'text-yellow-400' : 'text-red-400'
                                                 }`}>
                                                 {stock.peRatio.toFixed(1)}x
-                                            </Badge>
-                                        ) : (
-                                            <span className="text-gray-600">-</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="text-right font-mono text-gray-300">
-                                        {stock.dcfValue ? `$${formatNumber(stock.dcfValue)}` : '-'}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        {stock.dcfUpside !== null ? (
-                                            <Badge variant="outline" className={`font-mono border-gray-700 ${stock.dcfUpside > 20 ? 'text-green-400 bg-green-900/10' :
-                                                stock.dcfUpside > 0 ? 'text-green-300' : 'text-red-400'
-                                                }`}>
-                                                {stock.dcfUpside > 0 ? '+' : ''}{stock.dcfUpside.toFixed(1)}%
                                             </Badge>
                                         ) : (
                                             <span className="text-gray-600">-</span>
