@@ -1,0 +1,176 @@
+"""Annual full export of the private portfolio as CSV or JSON.
+
+A safety net: yearly snapshots of transactions, positions, plan metrics,
+tax summaries and journal entries, downloadable in one file.
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+import json
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models import (
+    Company,
+    DecisionJournalEntry,
+    PlanContribution,
+    Position,
+    TaxReport,
+    Transaction,
+)
+from app.services.investment_plan_service import InvestmentPlanService
+from app.services.portfolio_fx_service import PortfolioFXService
+from app.services.tax_report_service import TaxReportService
+
+router = APIRouter()
+
+
+@router.get("/{year}")
+def export_year(
+    year: int,
+    format: str = Query(default="json", pattern="^(json|csv)$"),
+    db: Session = Depends(get_db),
+):
+    if year < 2000 or year > 2200:
+        raise HTTPException(status_code=400, detail="year must be between 2000 and 2200")
+
+    start = date(year, 1, 1)
+    end = date(year, 12, 31)
+
+    transactions = db.execute(
+        select(Transaction, Company)
+        .join(Company, Transaction.company_id == Company.id)
+        .where(Transaction.trade_date >= start, Transaction.trade_date <= end)
+        .order_by(Transaction.trade_date)
+    ).all()
+
+    tx_rows = [
+        {
+            "date": t.trade_date.isoformat(),
+            "ticker": company.ticker,
+            "action": t.action,
+            "quantity": float(t.quantity),
+            "price": float(t.price),
+            "fees": float(t.fees),
+            "currency": t.currency,
+            "external_id": t.external_id,
+        }
+        for t, company in transactions
+    ]
+
+    positions = db.execute(
+        select(Position, Company).join(Company, Position.company_id == Company.id)
+    ).all()
+    position_rows = [
+        {
+            "ticker": company.ticker,
+            "quantity": float(p.quantity),
+            "average_cost": float(p.average_cost),
+            "market_price": float(p.market_price),
+            "market_value_base": float(p.market_value_base or 0),
+            "cost_basis_base": float(p.cost_basis_base or 0),
+            "unrealized_pnl_base": float(p.unrealized_pnl_base or 0),
+            "currency": p.currency,
+            "as_of": p.as_of.isoformat(),
+        }
+        for p, company in positions
+    ]
+
+    journal_rows = []
+    entries = db.scalars(
+        select(DecisionJournalEntry).where(
+            DecisionJournalEntry.created_at >= start,
+            DecisionJournalEntry.created_at <= end,
+        )
+    ).all()
+    for entry in entries:
+        journal_rows.append(
+            {
+                "id": entry.id,
+                "created_at": entry.created_at.isoformat() if entry.created_at else None,
+                "decision_date": entry.decision_date.isoformat(),
+                "decision": entry.decision,
+                "rationale": entry.rationale,
+                "status": entry.status,
+                "price": float(entry.price) if entry.price is not None else None,
+                "company_id": entry.company_id,
+            }
+        )
+
+    plan_service = InvestmentPlanService()
+    contributions = [
+        {
+            "date": c.date.isoformat(),
+            "amount": float(c.amount),
+            "currency": c.currency,
+            "note": c.note,
+        }
+        for c in plan_service.list_contributions(db)
+        if c.date >= start and c.date <= end
+    ]
+
+    tax = None
+    tax_report = db.scalar(
+        select(TaxReport).where(TaxReport.fiscal_year == year)
+    )
+    if tax_report is not None:
+        tax = {
+            "summary": tax_report.summary,
+            "dividends": tax_report.dividends,
+            "realized": tax_report.realized,
+            "misc": tax_report.misc,
+        }
+    else:
+        try:
+            tax = TaxReportService().compute_report(db, year)
+        except Exception:
+            tax = None
+
+    fx = PortfolioFXService()
+    payload = {
+        "year": year,
+        "exported_at": date.today().isoformat(),
+        "base_currency": (fx.portfolio(db).base_currency if fx.portfolio(db) else "EUR"),
+        "transactions": tx_rows,
+        "positions": position_rows,
+        "plan_contributions": contributions,
+        "tax": tax,
+        "journal_entries": journal_rows,
+    }
+
+    if format == "json":
+        content = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+        return StreamingResponse(
+            io.BytesIO(content.encode("utf-8")),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="cavaai-export-{year}.json"'
+            },
+        )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["type", "date", "ticker", "value1", "value2", "value3", "value4", "value5"])
+    for row in tx_rows:
+        writer.writerow(
+            ["transaction", row["date"], row["ticker"], row["action"], row["quantity"], row["price"], row["currency"], row["fees"]]
+        )
+    for row in position_rows:
+        writer.writerow(
+            ["position", row["as_of"], row["ticker"], row["quantity"], row["average_cost"], row["market_value_base"], row["currency"], row["unrealized_pnl_base"]]
+        )
+    for row in contributions:
+        writer.writerow(["contribution", row["date"], "", row["amount"], row["currency"], row["note"], "", ""])
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="cavaai-export-{year}.csv"'},
+    )
