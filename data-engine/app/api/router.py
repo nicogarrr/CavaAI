@@ -28,6 +28,11 @@ from app.api.routes import (
     workflows,
 )
 
+# NOTE: app.api.routes.health NO se registra aquí a propósito. main.py monta
+# su router directamente con prefix="/api" y SIN dependencies, porque /api/health
+# debe ser público (sin firma Research OS) para orquestación/monitoreo. Registrarlo
+# en api_router lo haría heredar la auth de main.py.
+
 api_router = APIRouter()
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 api_router.include_router(companies.router, prefix="/companies", tags=["companies"])

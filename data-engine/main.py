@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router as research_api_router
+from app.api.routes.health import router as health_router
 from app.core.config import get_settings
 from app.core.auth import get_research_principal
 from app.core.database import SessionLocal, init_db
@@ -13,9 +14,6 @@ from app.core.rate_limit import RateLimitMiddleware
 from app.llm.factory import validate_llm_configuration
 from app.llm.model_aliases import configure_model_aliases
 from app.seed import ensure_company_master
-from routers.analytics import router as analytics_router
-from routers.fundamentals import router as fundamentals_router
-from routers.market import router as market_router
 
 
 @asynccontextmanager
@@ -60,9 +58,10 @@ app.add_middleware(
 
 private_dependencies = [Depends(get_research_principal)]
 
-app.include_router(fundamentals_router, dependencies=private_dependencies)
-app.include_router(market_router, dependencies=private_dependencies)
-app.include_router(analytics_router, dependencies=private_dependencies)
+# /api/health es público (sin firma): lo montamos fuera del research API
+# para que orquestación/monitoreo pueda consultarlo sin identidad.
+app.include_router(health_router, prefix="/api")
+
 app.include_router(
     research_api_router,
     prefix="/api",
