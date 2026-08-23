@@ -2,6 +2,7 @@ from collections.abc import Generator
 
 from fastapi import Depends
 from sqlalchemy import create_engine, event, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, with_loader_criteria
 
 from app.core.auth import ResearchPrincipal, get_research_principal
@@ -77,7 +78,18 @@ def get_db(
                     metadata_={"created_by": principal.user_id},
                 )
                 db.add(tenant)
-                db.commit()
+                try:
+                    db.commit()
+                except IntegrityError:
+                    # Race: otra peticion concurrente creo el mismo tenant primero.
+                    db.rollback()
+                    tenant = db.scalar(
+                        select(Tenant).where(
+                            Tenant.external_id == principal.tenant_external_id
+                        )
+                    )
+                    if tenant is None:
+                        raise
                 db.refresh(tenant)
             db.info["tenant_id"] = tenant.id
             db.info["user_id"] = principal.user_id
