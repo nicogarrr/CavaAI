@@ -470,6 +470,15 @@ class ChatService:
                     ],
                 },
                 {
+                    "key": "unverified_claims",
+                    "body": unverified_text,
+                    "citations": [
+                        f"claim:{claim.id}"
+                        for claim in claims[:5]
+                        if claim.status != "supported"
+                    ],
+                },
+                {
                     "key": "inferences",
                     "body": thesis_text,
                     "citations": (
@@ -582,6 +591,11 @@ class ChatService:
                         f"memory_item:{item.id}"
                         for item in portfolio_memories[:5]
                     ],
+                },
+                {
+                    "key": "unverified_claims",
+                    "body": "Ask about a specific ticker to check company claims and evidence.",
+                    "citations": [],
                 },
                 {
                     "key": "inferences",

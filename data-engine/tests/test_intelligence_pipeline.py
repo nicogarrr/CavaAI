@@ -289,7 +289,7 @@ def test_metric_semantics_distinguish_lower_is_better_and_context_metrics():
 
 def _chat_payload(citation: str) -> dict:
     keys = (
-        "facts", "calculations", "user_hypotheses", "inferences",
+        "facts", "calculations", "user_hypotheses", "unverified_claims", "inferences",
         "contradictions", "insufficient_data", "conclusion",
     )
     return {
@@ -312,7 +312,7 @@ def test_chat_llm_synthesis_verifies_citations_and_falls_back_on_hallucination()
         sections=[
             {"key": key, "body": key, "citations": ["financial_fact:1"] if key in {"facts", "calculations", "inferences", "conclusion"} else []}
             for key in (
-                "facts", "calculations", "user_hypotheses", "inferences",
+                "facts", "calculations", "user_hypotheses", "unverified_claims", "inferences",
                 "contradictions", "insufficient_data", "conclusion",
             )
         ],
