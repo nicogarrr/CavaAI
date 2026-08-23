@@ -1,0 +1,31 @@
+# Render Blueprint — despliegue cloud opcional del data-engine.
+# Nota: en el tier FREE los web services hibernan tras ~15 min de inactividad,
+# por lo que el scheduler de workers NO corre 24/7. Para workers siempre
+# activos en cloud se requiere el tier paid (o el PC local como Scheduled Task).
+services:
+  - type: web
+    name: cavaai-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: RESEARCH_AUTH_SECRET
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: OPENCODE_GO_API_KEY
+        sync: false
+      - key: OPENCODE_GO_BASE_URL
+        sync: false
+      - key: OPENCODE_GO_MODEL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: WORKERS_ENABLED
+        value: "false"
+      # Postgres externo recomendado (Supabase free): DATABASE_URL se define
+      # en el dashboard de Render; las migraciones corren en el arranque del Dockerfile.
