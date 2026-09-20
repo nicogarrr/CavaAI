@@ -4,11 +4,10 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { CommandDialog, CommandEmpty, CommandInput, CommandList } from "@/components/ui/command"
 import { Button } from "@/components/ui/button";
-import { Loader2, TrendingUp, ExternalLink, Search } from "lucide-react";
-import Link from "next/link";
+import { Loader2, TrendingUp, Search } from "lucide-react";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 
-export default function SearchCommand({ renderAs = 'button', label = 'Add stock', initialStocks }: SearchCommandProps) {
+export default function SearchCommand({ renderAs = 'button', label = 'Añadir acción', initialStocks }: SearchCommandProps) {
     const router = useRouter();
     const [open, setOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState("")
@@ -136,6 +135,13 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
         router.push(`/research/${symbol.toUpperCase()}`);
     }, [initialStocks, router]);
 
+    // Prefetch de la ficha al pasar el cursor o enfocar: navegación instantánea
+    const handlePrefetchStock = useCallback((symbol: string) => {
+        router.prefetch(`/research/${symbol.toUpperCase()}`);
+    }, [router]);
+
+    void navigating;
+
     // Evitar hydration mismatch
     if (!mounted) {
         return (
@@ -171,31 +177,34 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
             )}
             <CommandDialog open={open} onOpenChange={setOpen} className="search-dialog">
                 <div className="search-field">
-                    <CommandInput value={searchTerm} onValueChange={setSearchTerm} placeholder="Search stocks..." className="search-input" />
+                    <CommandInput value={searchTerm} onValueChange={setSearchTerm} placeholder="Buscar acciones..." className="search-input" />
                     {loading && <Loader2 className="search-loader" />}
                 </div>
                 <CommandList className="search-list">
                     {loading ? (
-                        <CommandEmpty className="search-list-empty">Loading stocks...</CommandEmpty>
+                        <CommandEmpty className="search-list-empty">Cargando acciones...</CommandEmpty>
                     ) : displayStocks?.length === 0 ? (
                         <div className="search-list-indicator">
-                            {isSearchMode ? 'No results found' : 'No stocks available'}
+                            {isSearchMode ? 'Sin resultados' : 'No hay acciones disponibles'}
                         </div>
                     ) : (
                         <ul>
                             <div className="search-count">
-                                {isSearchMode ? 'Search results' : 'Popular stocks'}
+                                {isSearchMode ? 'Resultados de búsqueda' : 'Acciones populares'}
                                 {` `}({displayStocks?.length || 0})
                             </div>
                             {displayStocks?.map((stock, index) => (
                                 <li key={`${stock.symbol}-${index}`} className="search-item">
                                     <button
                                         onClick={() => handleSelectStock(stock.symbol)}
+                                        onMouseEnter={() => handlePrefetchStock(stock.symbol)}
+                                        onFocus={() => handlePrefetchStock(stock.symbol)}
+                                        title={`${stock.name} (${stock.symbol})`}
                                         className="search-item-link w-full text-left"
                                     >
                                         <TrendingUp className="h-4 w-4 text-gray-500" />
-                                        <div className="flex-1">
-                                            <div className="search-item-name">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="search-item-name truncate" title={stock.name}>
                                                 {stock.name}
                                             </div>
                                             <div className="text-sm text-gray-500">
