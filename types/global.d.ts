@@ -1,8 +1,9 @@
 declare global {
     type SignInFormData = {
-        email: string;
-        password: string;
-    };
+            email: string;
+            password: string;
+            totpCode?: string;
+        };
 
     type SignUpFormData = {
         fullName: string;
