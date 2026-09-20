@@ -1,5 +1,6 @@
 import Header from "@/components/Header";
 import OnlineBanner from "@/components/OnlineBanner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { requireAuthenticatedUser } from "@/lib/auth/require-user";
 import { redirect } from "next/navigation";
@@ -31,7 +32,9 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             <Header user={user} initialStocks={initialStocks} />
 
             <div className="container py-10">
-                {children}
+                <ErrorBoundary>
+                    {children}
+                </ErrorBoundary>
             </div>
         </main>
     );

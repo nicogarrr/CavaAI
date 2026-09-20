@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { getScreenerStocksReal } from '@/lib/actions/screener.actions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,7 +47,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: { 
                       <th className="pb-3 pr-4">Ticker</th>
                       <th className="pb-3 pr-4">Nombre</th>
                       <th className="pb-3 pr-4 text-right">Precio</th>
-                      <th className="pb-3 pr-4 text-right">24h</th>
+                      <th className="pb-3 pr-4 text-right">Cambio sesión</th>
                       <th className="pb-3 text-right">Market Cap</th>
                     </tr>
                   </thead>
@@ -56,9 +55,9 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: { 
                     {rows.map((r) => (
                       <tr key={r.symbol} className="border-b border-gray-800/60 last:border-0 hover:bg-gray-800/30">
                         <td className="py-3 pr-4 font-semibold text-gray-100">
-                          <Link href={`/stocks/${r.symbol}`} className="text-teal-300 hover:text-teal-200">{r.symbol}</Link>
+                          <Link href={`/stocks/${r.symbol}`} prefetch className="text-teal-300 hover:text-teal-200">{r.symbol}</Link>
                         </td>
-                        <td className="py-3 pr-4 text-gray-300">{r.name}</td>
+                        <td className="py-3 pr-4 text-gray-300 max-w-[220px] truncate" title={r.name}>{r.name}</td>
                         <td className="py-3 pr-4 text-right text-gray-200">${r.price.toFixed(2)}</td>
                         <td className={`py-3 pr-4 text-right ${r.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {r.changePercent >= 0 ? '+' : ''}{r.changePercent.toFixed(2)}%
