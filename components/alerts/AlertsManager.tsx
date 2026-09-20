@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -245,18 +246,30 @@ export default function AlertsManager() {
                                 <p className="text-sm font-medium text-gray-200">
                                     {getAlertLabel(alert)}
                                 </p>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Creada: {new Date(alert.createdAt).toLocaleDateString('es-ES')}
-                                </p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                    <p className="text-xs text-gray-500">
+                                        Creada: {new Date(alert.createdAt).toLocaleDateString('es-ES')}
+                                    </p>
+                                    {alert.symbol ? (
+                                        <Link
+                                            href={`/research/${encodeURIComponent(alert.symbol)}`}
+                                            className="text-xs text-teal-400 hover:text-teal-300"
+                                        >
+                                            Ver research →
+                                        </Link>
+                                    ) : null}
+                                </div>
                             </div>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteAlert(alert._id)}
-                                className="text-gray-400 hover:text-red-400"
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteAlert(alert._id)}
+                                    className="text-gray-400 hover:text-red-400"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
                         </div>
                     ))}
                 </div>

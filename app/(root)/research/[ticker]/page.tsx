@@ -46,6 +46,7 @@ import {
   type ResearchValuation,
 } from '@/lib/actions/research.actions';
 import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
+import QuickAlertButton from '@/components/research/QuickAlertButton';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -428,6 +429,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <p className="mt-2 text-gray-400">{company.name} · {company.sector} · {company.industry}</p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />read-only snapshot</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{company.company_type}</span></div>
+          <QuickAlertButton ticker={ticker} />
         </header>
         <nav aria-label="Research modules" className="mb-7 flex gap-2 overflow-x-auto pb-2">
           {views.map(([key, label]) => (
