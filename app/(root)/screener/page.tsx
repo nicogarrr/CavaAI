@@ -4,6 +4,7 @@ import { getScreenerStocksReal } from '@/lib/actions/screener.actions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import FollowButton from '@/components/screener/FollowButton';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -49,7 +50,8 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: { 
                       <th className="pb-3 pr-4">Nombre</th>
                       <th className="pb-3 pr-4 text-right">Precio</th>
                       <th className="pb-3 pr-4 text-right">24h</th>
-                      <th className="pb-3 text-right">Market Cap</th>
+                      <th className="pb-3 pr-4 text-right">Market Cap</th>
+                      <th className="pb-3 text-right">Seguir</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -63,8 +65,11 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: { 
                         <td className={`py-3 pr-4 text-right ${r.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {r.changePercent >= 0 ? '+' : ''}{r.changePercent.toFixed(2)}%
                         </td>
-                        <td className="py-3 text-right text-gray-300">
+                        <td className="py-3 pr-4 text-right text-gray-300">
                           ${(r.marketCap / 1e9).toFixed(1)}B
+                        </td>
+                        <td className="py-3 text-right">
+                          <FollowButton symbol={r.symbol} company={r.name} />
                         </td>
                       </tr>
                     ))}

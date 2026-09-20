@@ -5,9 +5,11 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { TrendingUp, Sparkles, ArrowRight, Loader2, RefreshCw, Clock } from 'lucide-react';
+import { TrendingUp, Sparkles, ArrowRight, Loader2, RefreshCw, Clock, Plus, Check } from 'lucide-react';
 import EnhancedProPicksFilters, { ProPicksFilters } from './EnhancedProPicksFilters';
 import { generateEnhancedProPicks, type ProPick } from '@/lib/actions/proPicks.actions';
+import { addToWatchlist } from '@/lib/actions/watchlist.actions';
+import { toast } from 'sonner';
 
 interface EnhancedProPicksContentProps {
     initialPicks: ProPick[];
@@ -26,6 +28,28 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
         sector: 'all',
         sortBy: 'score',
     });
+    const [followed, setFollowed] = useState<Record<string, boolean>>({});
+    const [following, setFollowing] = useState<string | null>(null);
+
+    const handleFollow = async (e: React.MouseEvent, symbol: string, company: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (followed[symbol] || following) return;
+        setFollowing(symbol);
+        try {
+            const res = await addToWatchlist(symbol, company);
+            if (res.success) {
+                setFollowed((prev) => ({ ...prev, [symbol]: true }));
+                toast.success(`${symbol} añadido a la watchlist`);
+            } else {
+                toast.error('No se pudo añadir a la watchlist');
+            }
+        } catch {
+            toast.error('No se pudo añadir a la watchlist');
+        } finally {
+            setFollowing(null);
+        }
+    };
 
     const handleApplyFilters = async () => {
         setLoading(true);
@@ -281,7 +305,23 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                         </div>
                                     )}
 
-                                    <div className="flex items-center justify-end pt-3 border-t border-gray-700 mt-auto">
+                                    <div className="flex items-center justify-between pt-3 border-t border-gray-700 mt-auto">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={(e) => handleFollow(e, pick.symbol, pick.company)}
+                                            disabled={!!followed[pick.symbol] || following === pick.symbol}
+                                            className="gap-1.5 text-gray-400 hover:text-teal-400 h-8 text-xs"
+                                        >
+                                            {following === pick.symbol ? (
+                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                            ) : followed[pick.symbol] ? (
+                                                <Check className="h-3 w-3 text-teal-400" />
+                                            ) : (
+                                                <Plus className="h-3 w-3" />
+                                            )}
+                                            {followed[pick.symbol] ? 'Siguiendo' : 'Seguir'}
+                                        </Button>
                                         <Button variant="ghost" size="sm" className="gap-2 text-gray-400 group-hover:text-teal-400 h-8 text-xs">
                                             Ver análisis completo
                                             <ArrowRight className="h-3 w-3" />
