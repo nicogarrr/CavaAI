@@ -2,11 +2,13 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     alerts,
+    calendar,
     chat,
     companies,
     corporate_actions,
     earnings,
     export,
+    insider,
     knowledge,
     knowledge_graph,
     market,
@@ -35,12 +37,14 @@ from app.api.routes import (
 
 api_router = APIRouter()
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
+api_router.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
 api_router.include_router(companies.router, prefix="/companies", tags=["companies"])
 api_router.include_router(
     corporate_actions.router, prefix="/corporate-actions", tags=["corporate-actions"]
 )
 api_router.include_router(earnings.router, prefix="/earnings", tags=["earnings"])
 api_router.include_router(export.router, prefix="/export", tags=["export"])
+api_router.include_router(insider.router, prefix="/insider", tags=["insider"])
 api_router.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
 api_router.include_router(plan.router, prefix="/plan", tags=["plan"])
 api_router.include_router(taxes.router, prefix="/taxes", tags=["taxes"])
