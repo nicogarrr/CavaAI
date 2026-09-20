@@ -21,125 +21,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/analyst-estimates/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Analyst Estimates */
-        get: operations["get_analyst_estimates_analyst_estimates__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/analytics/correlation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Correlation Matrix */
-        post: operations["correlation_matrix_analytics_correlation_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/analytics/holding/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Holding Analytics */
-        get: operations["holding_analytics_analytics_holding__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/analytics/montecarlo": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Portfolio Montecarlo */
-        post: operations["portfolio_montecarlo_analytics_montecarlo_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/analytics/portfolio": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Portfolio Analytics */
-        post: operations["portfolio_analytics_analytics_portfolio_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/analytics/portfolio/returns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Portfolio Returns */
-        post: operations["portfolio_returns_analytics_portfolio_returns_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/analytics/regime/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Regime Drift */
-        get: operations["regime_drift_analytics_regime__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/alerts": {
         parameters: {
             query?: never;
@@ -997,6 +878,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health
+         * @description Readiness: BD (SELECT 1), scheduler y versión.
+         */
+        get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/knowledge-graph": {
         parameters: {
             query?: never;
@@ -1230,6 +1131,23 @@ export interface paths {
         put?: never;
         /** Action Principle */
         post: operations["action_principle_api_knowledge_principles__principle_id__action_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/market/indices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Market Indices */
+        get: operations["market_indices_api_market_indices_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1858,6 +1776,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/screeners/real": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Real Time Screener
+         * @description Screener real: precios del día + market cap reales (Finnhub free).
+         *
+         *     marketCapMoreThan: mínimo de market cap en USD (real de Finnhub).
+         *     sector: filtro case-insensitive sobre el sector (BD/Finnhub).
+         */
+        get: operations["real_time_screener_api_screeners_real_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/screeners/run": {
         parameters: {
             query?: never;
@@ -2352,6 +2293,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/watchlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Watchlist
+         * @description Watch items of the active tenant, most recently added first.
+         *
+         *     Tenant scoping is applied implicitly by the session (see database.py):
+         *     rows are only visible when their tenant_id matches the signed identity.
+         */
+        get: operations["list_watchlist_api_watchlist_get"];
+        put?: never;
+        /**
+         * Upsert Watch Item
+         * @description Add a symbol to the watchlist, or update its label if it exists.
+         */
+        post: operations["upsert_watch_item_api_watchlist_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watchlist/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Watch Item */
+        delete: operations["delete_watch_item_api_watchlist__symbol__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-products/generate": {
         parameters: {
             query?: never;
@@ -2420,193 +2405,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/batch-quotes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Get Batch Quotes */
-        post: operations["get_batch_quotes_batch_quotes_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/company-news/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Company News */
-        get: operations["get_company_news_company_news__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dcf/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Dcf */
-        get: operations["get_dcf_dcf__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dividends/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Dividends */
-        get: operations["get_dividends_dividends__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/earnings-transcript-list/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Earnings Transcripts List */
-        get: operations["get_earnings_transcripts_list_earnings_transcript_list__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/earnings-transcript/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Earnings Transcript */
-        get: operations["get_earnings_transcript_earnings_transcript__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/enterprise-value/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Enterprise Value */
-        get: operations["get_enterprise_value_enterprise_value__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/financial-growth/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Financial Growth */
-        get: operations["get_financial_growth_financial_growth__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/financial-scores/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Financial Scores Endpoint */
-        get: operations["get_financial_scores_endpoint_financial_scores__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/fundamentals/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Fundamentals */
-        get: operations["get_fundamentals_fundamentals__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/grades/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Grades */
-        get: operations["get_grades_grades__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health": {
         parameters: {
             query?: never;
@@ -2659,312 +2457,6 @@ export interface paths {
          * @description Readiness — verifies critical dependencies when configured.
          */
         get: operations["health_ready_health_ready_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/insider-trading/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Insider Trading */
-        get: operations["get_insider_trading_insider_trading__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/key-metrics-ttm/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Key Metrics Ttm */
-        get: operations["get_key_metrics_ttm_key_metrics_ttm__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/market-movers/active": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Most Actives */
-        get: operations["get_most_actives_market_movers_active_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/market-movers/gainers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Biggest Gainers */
-        get: operations["get_biggest_gainers_market_movers_gainers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/market-movers/losers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Biggest Losers */
-        get: operations["get_biggest_losers_market_movers_losers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/news/fmp-articles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Fmp Articles Endpoint */
-        get: operations["get_fmp_articles_endpoint_news_fmp_articles_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/news/general": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get General News Endpoint */
-        get: operations["get_general_news_endpoint_news_general_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/owner-earnings/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Owner Earnings */
-        get: operations["get_owner_earnings_owner_earnings__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/peers/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Peers */
-        get: operations["get_peers_peers__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/press-releases/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Press Releases */
-        get: operations["get_press_releases_press_releases__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/price-target/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Price Target */
-        get: operations["get_price_target_price_target__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/quote/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Stock Quote Endpoint */
-        get: operations["get_stock_quote_endpoint_quote__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/ratios-ttm/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Ratios Ttm */
-        get: operations["get_ratios_ttm_ratios_ttm__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/screener": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Screener Stocks */
-        get: operations["get_screener_stocks_screener_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/stock-peers/{symbol}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Stock Peers Endpoint */
-        get: operations["get_stock_peers_endpoint_stock_peers__symbol__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/strategies/garp": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Garp Strategy */
-        get: operations["get_garp_strategy_strategies_garp_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Test Endpoint */
-        get: operations["test_endpoint_test_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/treasury-rates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Treasury Rates */
-        get: operations["get_treasury_rates_treasury_rates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3468,21 +2960,6 @@ export interface components {
             ratio: number;
             /** Ticker */
             ticker: string;
-        };
-        /** CorrelationRequest */
-        CorrelationRequest: {
-            /**
-             * Method
-             * @default pearson
-             */
-            method: string;
-            /**
-             * Period
-             * @default 1y
-             */
-            period: string;
-            /** Symbols */
-            symbols: string[];
         };
         /** Criterion */
         Criterion: {
@@ -4060,40 +3537,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /** MonteCarloRequest */
-        MonteCarloRequest: {
-            /**
-             * Bust
-             * @default -0.5
-             */
-            bust: number;
-            /**
-             * Goal
-             * @default 0.5
-             */
-            goal: number;
-            /**
-             * Horizon
-             * @default 252
-             */
-            horizon: number;
-            /** Models */
-            models?: string[] | null;
-            /**
-             * Period
-             * @default 3y
-             */
-            period: string;
-            /**
-             * Sims
-             * @default 1000
-             */
-            sims: number;
-            /** Symbols */
-            symbols: string[];
-            /** Weights */
-            weights?: number[] | null;
-        };
         /** NewsFeedItem */
         NewsFeedItem: {
             /** Published At */
@@ -4168,28 +3611,6 @@ export interface components {
             /** Target Allocations */
             target_allocations?: components["schemas"]["PlanTarget"][];
         };
-        /** PortfolioAnalyticsRequest */
-        PortfolioAnalyticsRequest: {
-            /**
-             * Benchmark
-             * @default SPY
-             */
-            benchmark: string;
-            /**
-             * Period
-             * @default 2y
-             */
-            period: string;
-            /**
-             * Rf
-             * @default 0
-             */
-            rf: number;
-            /** Symbols */
-            symbols: string[];
-            /** Weights */
-            weights?: number[] | null;
-        };
         /** PortfolioConfigurationInput */
         PortfolioConfigurationInput: {
             /** Base Currency */
@@ -4203,18 +3624,6 @@ export interface components {
             price: number | string;
             /** Ticker */
             ticker: string;
-        };
-        /** PortfolioReturnsRequest */
-        PortfolioReturnsRequest: {
-            /**
-             * Period
-             * @default 2y
-             */
-            period: string;
-            /** Symbols */
-            symbols?: string[] | null;
-            /** Transactions */
-            transactions?: components["schemas"]["TransactionLike"][] | null;
         };
         /** PortfolioTransactionInput */
         PortfolioTransactionInput: {
@@ -4673,7 +4082,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "facts" | "calculations" | "user_hypotheses" | "inferences" | "contradictions" | "insufficient_data" | "conclusion";
+            key: "facts" | "calculations" | "user_hypotheses" | "unverified_claims" | "inferences" | "contradictions" | "insufficient_data" | "conclusion";
         };
         /** ThesisChangeCreate */
         ThesisChangeCreate: {
@@ -4910,19 +4319,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /** TransactionLike */
-        TransactionLike: {
-            /** Date */
-            date: string;
-            /** Price */
-            price: number;
-            /** Quantity */
-            quantity: number;
-            /** Symbol */
-            symbol: string;
-            /** Type */
-            type: string;
-        };
         /** UniversalSearchRequest */
         UniversalSearchRequest: {
             /** Collection Id */
@@ -5041,6 +4437,13 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** WatchItemCreate */
+        WatchItemCreate: {
+            /** Company */
+            company?: string | null;
+            /** Symbol */
+            symbol: string;
+        };
         /** WorkProductRequest */
         WorkProductRequest: {
             /**
@@ -5090,277 +4493,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-        };
-    };
-    get_analyst_estimates_analyst_estimates__symbol__get: {
-        parameters: {
-            query?: {
-                /** @description annual or quarter */
-                period?: string;
-                /** @description Number of estimates to return */
-                limit?: number;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    correlation_matrix_analytics_correlation_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CorrelationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    holding_analytics_analytics_holding__symbol__get: {
-        parameters: {
-            query?: {
-                /** @description yfinance period string */
-                period?: string;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    portfolio_montecarlo_analytics_montecarlo_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MonteCarloRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    portfolio_analytics_analytics_portfolio_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PortfolioAnalyticsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    portfolio_returns_analytics_portfolio_returns_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PortfolioReturnsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    regime_drift_analytics_regime__symbol__get: {
-        parameters: {
-            query?: {
-                /** @description yfinance period string */
-                period?: string;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -7440,6 +6572,28 @@ export interface operations {
             };
         };
     };
+    health_api_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     knowledge_graph_api_knowledge_graph_get: {
         parameters: {
             query?: {
@@ -8002,6 +7156,42 @@ export interface operations {
                 "application/json": components["schemas"]["PrincipleAction"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    market_indices_api_market_indices_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -9762,6 +8952,46 @@ export interface operations {
             };
         };
     };
+    real_time_screener_api_screeners_real_get: {
+        parameters: {
+            query?: {
+                marketCapMoreThan?: number | null;
+                sector?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_ad_hoc_screen_api_screeners_run_post: {
         parameters: {
             query?: never;
@@ -10916,6 +10146,116 @@ export interface operations {
             };
         };
     };
+    list_watchlist_api_watchlist_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_watch_item_api_watchlist_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_watch_item_api_watchlist__symbol__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_work_product_api_work_products_generate_post: {
         parameters: {
             query?: never;
@@ -11072,417 +10412,6 @@ export interface operations {
             };
         };
     };
-    get_batch_quotes_batch_quotes_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": string[];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_company_news_company_news__symbol__get: {
-        parameters: {
-            query?: {
-                /** @description News limit */
-                limit?: number;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_dcf_dcf__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_dividends_dividends__symbol__get: {
-        parameters: {
-            query?: {
-                /** @description Number of dividend records */
-                limit?: number;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_earnings_transcripts_list_earnings_transcript_list__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_earnings_transcript_earnings_transcript__symbol__get: {
-        parameters: {
-            query?: {
-                /** @description Year of earnings call */
-                year?: number | null;
-                /** @description Quarter (1-4) */
-                quarter?: number | null;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_enterprise_value_enterprise_value__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_financial_growth_financial_growth__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_financial_scores_endpoint_financial_scores__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_fundamentals_fundamentals__symbol__get: {
-        parameters: {
-            query?: {
-                period?: string;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_grades_grades__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     health_live_health_get: {
         parameters: {
             query?: never;
@@ -11539,661 +10468,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-        };
-    };
-    get_insider_trading_insider_trading__symbol__get: {
-        parameters: {
-            query?: {
-                /** @description Number of transactions to return */
-                limit?: number;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_key_metrics_ttm_key_metrics_ttm__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_most_actives_market_movers_active_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_biggest_gainers_market_movers_gainers_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_biggest_losers_market_movers_losers_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_fmp_articles_endpoint_news_fmp_articles_get: {
-        parameters: {
-            query?: {
-                /** @description Page number */
-                page?: number;
-                limit?: number;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_general_news_endpoint_news_general_get: {
-        parameters: {
-            query?: {
-                page?: number;
-                limit?: number;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_owner_earnings_owner_earnings__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_peers_peers__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_press_releases_press_releases__symbol__get: {
-        parameters: {
-            query?: {
-                /** @description Number of releases to return */
-                limit?: number;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_price_target_price_target__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_stock_quote_endpoint_quote__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_ratios_ttm_ratios_ttm__symbol__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_screener_stocks_screener_get: {
-        parameters: {
-            query?: {
-                /** @description Market Cap greater than */
-                marketCapMoreThan?: number | null;
-                /** @description Sector filter */
-                sector?: string | null;
-                /** @description Limit results */
-                limit?: number;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_stock_peers_endpoint_stock_peers__symbol__get: {
-        parameters: {
-            query?: {
-                /** @description Include current prices */
-                with_prices?: boolean;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path: {
-                symbol: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_garp_strategy_strategies_garp_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    test_endpoint_test_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_treasury_rates_treasury_rates_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-cavaai-user"?: string | null;
-                "x-cavaai-tenant"?: string | null;
-                "x-cavaai-timestamp"?: string | null;
-                "x-cavaai-signature"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
