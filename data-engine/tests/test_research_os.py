@@ -8,6 +8,7 @@ from sqlalchemy import delete, or_, select
 import main
 from app.core.database import SessionLocal, init_db
 from app.models import Company, ExternalClaim, FinancialFact, MemoryItem, NewsEvent, ThesisChange
+from app.data.company_master import COMPANY_MASTER
 from app.seed import seed
 from app.services.manual_transcript_import_service import ManualTranscriptImportService
 from app.services.source_auditor import SourceAuditor
@@ -152,7 +153,7 @@ def test_research_api_core_flow():
 
     companies = client.get("/api/companies")
     assert companies.status_code == 200
-    assert len(companies.json()) >= 24
+    assert len(companies.json()) >= len(COMPANY_MASTER)
 
     portfolio = client.get("/api/portfolio/summary")
     assert portfolio.status_code == 200
