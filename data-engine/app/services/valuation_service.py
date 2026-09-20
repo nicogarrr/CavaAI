@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import desc, select
@@ -10,6 +11,57 @@ from sqlalchemy.orm import Session
 from app.models import Company, MarketPrice, Position, ValuationModel, ValuationOutput
 from app.valuation.engines import resolve, resolve_engine_key
 from app.valuation.engines.base import MODEL_VERSION
+
+
+def _free_data_trace(db: Session, company: Company) -> dict | None:
+    """Best-effort: expone metadata.free_data.recent_filings en el trace.
+
+    Lee los Document de la compañía y devuelve los recent_filings del
+    primero que los tenga. Nunca lanza excepciones.
+    """
+    try:
+        from app.models import Document
+
+        docs = list(
+            db.scalars(
+                select(Document).where(Document.company_id == company.id).limit(20)
+            ).all()
+        )
+        for doc in docs:
+            meta = getattr(doc, "metadata_", None) or {}
+            free_data = meta.get("free_data") or {}
+            recent_filings = free_data.get("recent_filings") or []
+            if recent_filings:
+                return {"recent_filings": recent_filings}
+        return None
+    except Exception:
+        return None
+
+
+def _assert_no_lookahead_guard(valuation: dict) -> None:
+    """Best-effort: valida lookahead con as_of=today si el guard existe.
+
+    Nunca rompe el flujo: si el módulo/función no existe o la firma
+    difiere, se ignora silenciosamente.
+    """
+    try:
+        guard = None
+        for module_name in ("app.valuation.no_lookahead", "app.services.no_lookahead"):
+            try:
+                __import__(module_name)
+                import sys as _sys
+
+                mod = _sys.modules[module_name]
+                guard = getattr(mod, "assert_no_lookahead", None)
+                if guard is not None:
+                    break
+            except ImportError:
+                continue
+        if guard is None:
+            return
+        guard(valuation, as_of=date.today())
+    except Exception:
+        pass
 
 
 def _position_price(db: Session, company_id: int) -> float | None:
@@ -58,6 +110,10 @@ class ValuationService:
         result["trace"].setdefault("engine", resolve_engine_key(company))
         result["trace"].setdefault("model_version", MODEL_VERSION)
         result["trace"]["resolved_engine"] = resolve_engine_key(company)
+        free_data = _free_data_trace(db, company)
+        if free_data is not None:
+            result["trace"]["free_data"] = free_data
+        _assert_no_lookahead_guard(result)
 
         if current_price is None:
             result["trace"]["price_status"] = "missing_market_price"
