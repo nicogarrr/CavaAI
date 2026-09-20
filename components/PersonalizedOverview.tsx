@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown, Wallet, ArrowRight, Eye, Calendar, Newspaper, Brain, Loader2, BarChart3, Gem } from 'lucide-react';
-import { getPortfolioSummary, getPortfolioScores, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
+import { ChartLoadingSkeleton, StockCardSkeleton } from '@/components/LoadingState';
+import { TrendingUp, TrendingDown, Wallet, ArrowRight, Eye, Newspaper, Brain, Gem } from 'lucide-react';
+import { getPortfolioSummary, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { getCompanyNews, getStockFinancialData, getUpcomingEarnings, getStockQuote, getNews, type EarningsEvent } from '@/lib/actions/finnhub.actions';
@@ -38,6 +39,28 @@ interface UndervaluedStock {
     fairValue: number;
     upside: number;
 }
+
+// Tarjeta memorizada: la parrilla de índices re-renderiza con cada
+// actualización del dashboard; memo evita reconciliar tarjetas sin cambios.
+const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: MarketIndex }) {
+    return (
+        <Card className="bg-gray-800/40 border-gray-700/50 hover:bg-gray-800/60 transition-colors">
+            <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                    <p className="text-sm text-gray-400 font-medium">{index.name}</p>
+                    <p className="text-xl font-bold text-white mt-1">${index.price.toFixed(2)}</p>
+                </div>
+                <div className={`text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className="flex items-center justify-end gap-1">
+                        {index.changePercent >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                        <span className="font-bold">{Math.abs(index.changePercent).toFixed(2)}%</span>
+                    </div>
+                    <p className="text-xs mt-1">{index.change >= 0 ? '+' : ''}{index.change.toFixed(2)}</p>
+                </div>
+            </CardContent>
+        </Card>
+    );
+});
 
 
 
@@ -206,11 +229,26 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
         loadData();
     }, [userId]);
 
+    // Derivados memorizados: evita reordenar el estado en cada render
+    // (.sort() mutaba el array del estado) y recalcula solo si cambian los datos.
+    const sortedHoldings = useMemo(() => {
+        if (!portfolioSummary) return [];
+        return [...portfolioSummary.holdings]
+            .sort((a, b) => Math.abs(b.gainPercent) - Math.abs(a.gainPercent))
+            .slice(0, 4);
+    }, [portfolioSummary]);
+
+    const visibleNews = useMemo(() => news.slice(0, 4), [news]);
+
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="h-10 w-10 animate-spin text-teal-500" />
-                <span className="ml-3 text-gray-400 text-lg">Preparando tu dashboard de mercado...</span>
+            <div className="space-y-8" role="status" aria-live="polite" aria-label="Cargando dashboard">
+                <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
+                    {[1, 2, 3, 4].map((i) => (
+                        <StockCardSkeleton key={i} />
+                    ))}
+                </div>
+                <ChartLoadingSkeleton />
             </div>
         );
     }
@@ -228,21 +266,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             {/* Market Indices Ticker */}
             <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
                 {marketIndices.map((index) => (
-                    <Card key={index.symbol} className="bg-gray-800/40 border-gray-700/50 hover:bg-gray-800/60 transition-colors">
-                        <CardContent className="p-4 flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-gray-400 font-medium">{index.name}</p>
-                                <p className="text-xl font-bold text-white mt-1">${index.price.toFixed(2)}</p>
-                            </div>
-                            <div className={`text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                <div className="flex items-center justify-end gap-1">
-                                    {index.changePercent >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                                    <span className="font-bold">{Math.abs(index.changePercent).toFixed(2)}%</span>
-                                </div>
-                                <p className="text-xs mt-1">{index.change >= 0 ? '+' : ''}{index.change.toFixed(2)}</p>
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <MarketIndexCard key={index.symbol} index={index} />
                 ))}
             </div>
 
@@ -292,13 +316,12 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {portfolioSummary.holdings
-                                            .sort((a, b) => Math.abs(b.gainPercent) - Math.abs(a.gainPercent))
-                                            .slice(0, 4)
+                                        {sortedHoldings
                                             .map((h) => (
                                                 <Link
                                                     key={h.symbol}
                                                     href={`/research/${h.symbol}`}
+                                                    prefetch
                                                     className="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700/30"
                                                 >
                                                     <span className="text-white font-semibold">{h.symbol}</span>
@@ -337,7 +360,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                             <CardContent className="pt-4">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {opportunities.map((op) => (
-                                        <Link key={op.symbol} href={`/research/${op.symbol}`}>
+                                        <Link key={op.symbol} href={`/research/${op.symbol}`} prefetch>
                                             <div className="p-4 bg-gray-900/40 rounded-xl border border-gray-700/30 hover:border-purple-500/50 hover:bg-gray-800 transition-all group">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div>
@@ -345,7 +368,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                         <p className="text-xs text-gray-400">Precio: ${op.price.toFixed(2)}</p>
                                                     </div>
                                                     <Badge className="bg-green-900/30 text-green-400 border-green-800">
-                                                        +{op.upside.toFixed(1)}% Upside
+                                                        +{op.upside.toFixed(1)}% potencial
                                                     </Badge>
                                                 </div>
                                                 <div className="w-full bg-gray-800 h-1.5 rounded-full mt-2 overflow-hidden">
@@ -354,7 +377,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                         style={{ width: `${Math.min(op.upside, 100)}%` }}
                                                     />
                                                 </div>
-                                                <p className="text-xs text-gray-500 mt-2 text-right">Valor Justo: ${op.fairValue.toFixed(2)}</p>
+                                                <p className="text-xs text-gray-500 mt-2 text-right">Valor justo: ${op.fairValue.toFixed(2)}</p>
                                             </div>
                                         </Link>
                                     ))}
@@ -383,6 +406,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                         <Link
                                             key={stock.symbol}
                                             href={`/research/${stock.symbol}`}
+                                            prefetch
                                             className="flex items-center justify-between p-3 bg-gray-900/30 rounded-lg hover:bg-gray-800/80 transition-colors group"
                                         >
                                             <div className="flex items-center gap-3">
@@ -391,7 +415,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                 </div>
                                                 <div>
                                                     <span className="text-white font-medium group-hover:text-yellow-400 transition-colors">{stock.symbol}</span>
-                                                    <p className="text-xs text-gray-500 hidden sm:block">{stock.name.slice(0, 15)}...</p>
+                                                    <p className="text-xs text-gray-500 hidden sm:block" title={stock.name}>{stock.name.slice(0, 15)}...</p>
                                                 </div>
                                             </div>
                                             <div className="text-right">
@@ -422,7 +446,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         <CardContent className="pt-4">
                             {news.length > 0 ? (
                                 <div className="space-y-4">
-                                    {news.slice(0, 4).map((article, i) => (
+                                    {visibleNews.map((article, i) => (
                                         <a
                                             key={i}
                                             href={article.url}
@@ -430,7 +454,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             rel="noopener noreferrer"
                                             className="block group"
                                         >
-                                            <h4 className="text-sm text-gray-200 group-hover:text-blue-400 transition-colors line-clamp-2 leading-snug">
+                                            <h4 title={article.headline} className="text-sm text-gray-200 group-hover:text-blue-400 transition-colors line-clamp-2 leading-snug">
                                                 {article.headline}
                                             </h4>
                                             <div className="flex justify-between items-center mt-1">

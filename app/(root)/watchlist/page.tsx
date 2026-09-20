@@ -117,7 +117,7 @@ export default async function WatchlistPage() {
                             <TableRow className="hover:bg-gray-800/80 border-gray-700">
                                 <TableHead className="text-gray-300">Símbolo</TableHead>
                                 <TableHead className="text-right text-gray-300">Precio</TableHead>
-                                <TableHead className="text-right text-gray-300">Cambio 24h</TableHead>
+                                <TableHead className="text-right text-gray-300">Cambio sesión</TableHead>
                                 <TableHead className="text-right text-gray-300">Market Cap</TableHead>
                                 <TableHead className="text-right text-gray-300">PER (TTM)</TableHead>
                                 <TableHead className="text-right text-gray-300">Acciones</TableHead>
@@ -127,7 +127,7 @@ export default async function WatchlistPage() {
                             {watchlistStocks.map((stock) => (
                                 <TableRow key={stock.symbol} className="hover:bg-gray-800/30 border-gray-800 transition-colors">
                                     <TableCell>
-                                        <Link href={`/research/${stock.symbol}`} className="flex items-center gap-3 group">
+                                        <Link href={`/research/${stock.symbol}`} prefetch className="flex items-center gap-3 group">
                                             <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center font-bold text-gray-300 group-hover:bg-gray-700 transition-colors">
                                                 {stock.symbol.slice(0, 2)}
                                             </div>
@@ -135,7 +135,7 @@ export default async function WatchlistPage() {
                                                 <div className="font-bold text-gray-200 group-hover:text-blue-400 transition-colors">
                                                     {stock.symbol}
                                                 </div>
-                                                <div className="text-xs text-gray-500 max-w-[150px] truncate">
+                                                <div className="text-xs text-gray-500 max-w-[150px] truncate" title={stock.name}>
                                                     {stock.name}
                                                 </div>
                                             </div>
@@ -171,7 +171,9 @@ export default async function WatchlistPage() {
                                             <WatchlistRemoveButton symbol={stock.symbol} />
                                             <Link
                                                 href={`/research/${stock.symbol}`}
+                                                prefetch
                                                 className="p-2 hover:bg-gray-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+                                                aria-label={`Ver ${stock.symbol}`}
                                             >
                                                 <ArrowRight className="w-4 h-4" />
                                             </Link>
