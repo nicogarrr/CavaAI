@@ -103,7 +103,7 @@ def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
 def test_private_routers_reject_missing_and_invalid_signed_identity(required_auth):
     client = TestClient(main.app)
 
-    unsigned = client.get("/quote/MSFT")
+    unsigned = client.get("/api/news")
     assert unsigned.status_code == 401
     assert unsigned.json()["detail"] == "A signed Research OS identity is required"
 
