@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     telegram_chat_id: str | None = None
     telegram_api_base_url: str = "https://api.telegram.org"
     telegram_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    # Senales insider (Form 4 EDGAR): alerta Telegram 'insider buy' apagada
+    # por defecto. Env: INSIDER_ALERTS_ENABLED.
+    insider_alerts_enabled: bool = False
     fred_api_key: str | None = None
     opencode_go_api_key: str | None = Field(default=None, repr=False)
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
