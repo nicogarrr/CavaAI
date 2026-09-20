@@ -1,5 +1,22 @@
+"""Stable internal model names mapped to concrete OpenCode Go provider models.
+
+Costes: OpenCode Go factura vía suscripción de opencode.ai/zen, SIN lista
+pública de precios por token. Por eso ``input_cost``/``output_cost`` son
+``Decimal("0")`` con ``cost_basis="unknown"`: el 0 es un MARCADOR DE
+"DESCONOCIDO", nunca una afirmación de que el modelo sea gratis.
+``cost_basis="list_price"`` exige costes positivos y solo debe usarse con
+tarifas públicas verificables. La factura del proveedor siempre prevalece;
+``BudgetController.estimate_cost_eur`` usa además estimaciones heurísticas
+internas conservadoras para los topes de gasto (ver app/services/budget.py).
+
+Modelo por defecto: ``Settings.opencode_go_model`` (env ``OPENCODE_GO_MODEL``,
+ver app/core/config.py). ``default_model_from_env()`` expone la misma
+resolución para código que no pasa por Settings.
+"""
+
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from decimal import Decimal
 from types import MappingProxyType
@@ -10,7 +27,9 @@ from typing import Iterable, Mapping, Protocol
 class ModelAlias:
     """Stable internal name mapped to a concrete provider model.
 
-    Costs are current list prices in USD per million tokens.
+    Costs are list prices in USD per million tokens when ``cost_basis`` is
+    ``"list_price"``. With ``cost_basis="unknown"`` (default) the zero costs
+    are an explicit "unknown" placeholder, NOT a claim of being free.
     """
 
     internal_alias: str
@@ -21,6 +40,7 @@ class ModelAlias:
     input_cost: Decimal
     output_cost: Decimal
     supported_capabilities: frozenset[str]
+    cost_basis: str = "unknown"
 
     def __post_init__(self) -> None:
         if not self.internal_alias.strip():
@@ -33,8 +53,41 @@ class ModelAlias:
             raise ValueError("ModelAlias.context_window must be positive")
         if self.input_cost < 0 or self.output_cost < 0:
             raise ValueError("ModelAlias costs cannot be negative")
+        if self.cost_basis not in {"unknown", "list_price"}:
+            raise ValueError("ModelAlias.cost_basis must be 'unknown' or 'list_price'")
+        if self.cost_basis == "list_price" and (
+            self.input_cost <= 0 or self.output_cost <= 0
+        ):
+            raise ValueError(
+                "ModelAlias with cost_basis='list_price' requires positive costs; "
+                "use cost_basis='unknown' when tariffs are not public"
+            )
         if not self.supported_capabilities:
             raise ValueError("ModelAlias.supported_capabilities cannot be empty")
+
+    @property
+    def has_known_costs(self) -> bool:
+        """True only when costs are verified public list prices."""
+        return self.cost_basis == "list_price"
+
+
+#: Env var that overrides the default cheap-but-good OpenCode Go model.
+DEFAULT_MODEL_ENV_VAR = "OPENCODE_GO_MODEL"
+#: Fallback when the env var is unset/blank. Kept in sync with
+#: Settings.opencode_go_model in app/core/config.py.
+DEFAULT_MODEL_FALLBACK = "deepseek-v4-flash"
+
+
+def default_model_from_env(
+    *, env_var: str = DEFAULT_MODEL_ENV_VAR, fallback: str = DEFAULT_MODEL_FALLBACK
+) -> str:
+    """Resolve the default model, overridable via environment.
+
+    Lets ops switch to the current cheapest-good OpenCode Go model without a
+    code change (e.g. ``OPENCODE_GO_MODEL=qwen3.7-plus``). Blank values fall
+    back to ``fallback``.
+    """
+    return os.environ.get(env_var, fallback).strip() or fallback
 
 
 class _ModelRoute(Protocol):
@@ -52,8 +105,11 @@ OPENCODE_GO_MODEL_ALIASES = (
         provider_model_id="deepseek-v4-flash",
         enabled=True,
         context_window=1_048_576,
+        # OpenCode Go bills via subscription, no public per-token tariffs:
+        # 0 = UNKNOWN placeholder (cost_basis="unknown"), not "free".
         input_cost=Decimal("0"),
         output_cost=Decimal("0"),
+        cost_basis="unknown",
         supported_capabilities=frozenset(
             {"text", "reasoning", "tool_calling", "structured_output"}
         ),

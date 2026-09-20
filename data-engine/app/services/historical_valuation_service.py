@@ -10,6 +10,10 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models import Company, FinancialFact, MarketPrice
+from app.valuation.point_in_time import (
+    assert_fiscal_year_no_lookahead,
+    assert_no_lookahead,
+)
 
 
 class HistoricalValuationService:
@@ -23,9 +27,16 @@ class HistoricalValuationService:
     }
 
     def build(
-        self, db: Session, company: Company, *, years: int = 10
+        self, db: Session, company: Company, *, years: int = 10, as_of: date | None = None
     ) -> dict[str, Any]:
-        minimum_year = date.today().year - max(1, min(years, 20)) + 1
+        """Build per-year multiples using only data known on or before ``as_of``.
+
+        ``as_of`` defaults to today (previous behaviour). Any stored price or
+        fundamental dated after ``as_of`` raises ``LookaheadError`` instead of
+        silently leaking future information into the series.
+        """
+        as_of = as_of or date.today()
+        minimum_year = as_of.year - max(1, min(years, 20)) + 1
         prices = list(
             db.scalars(
                 select(MarketPrice)
@@ -53,9 +64,19 @@ class HistoricalValuationService:
         )
         annual_prices: dict[int, MarketPrice] = {}
         for row in prices:
+            assert_no_lookahead(
+                as_of=as_of,
+                data_date=row.date,
+                label=f"MarketPrice {company.ticker} {row.date.isoformat()}",
+            )
             annual_prices[row.date.year] = row
         annual_facts: dict[int, dict[str, FinancialFact]] = {}
         for row in facts:
+            assert_fiscal_year_no_lookahead(
+                as_of=as_of,
+                fiscal_year=row.fiscal_year,
+                label=f"FinancialFact {company.ticker} {row.metric}",
+            )
             if row.fiscal_year is None or (row.fiscal_quarter or "").upper().startswith("Q"):
                 continue
             annual_facts.setdefault(row.fiscal_year, {}).setdefault(row.metric, row)
