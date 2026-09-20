@@ -1789,6 +1789,8 @@ export interface paths {
          *
          *     marketCapMoreThan: mínimo de market cap en USD (real de Finnhub).
          *     sector: filtro case-insensitive sobre el sector (BD/Finnhub).
+         *     Vendor de quotes/profile (Finnhub ↔ Yahoo) configurable vía
+         *     SCREENER_QUOTE_VENDOR; default Finnhub.
          */
         get: operations["real_time_screener_api_screeners_real_get"];
         put?: never;
