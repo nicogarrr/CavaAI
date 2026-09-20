@@ -2,11 +2,15 @@ import { betterAuth } from "better-auth";
 import {mongodbAdapter} from "better-auth/adapters/mongodb";
 import {connectToDatabase} from "@/database/mongoose";
 import {nextCookies} from "better-auth/next-js";
+import {twoFactor} from "better-auth/plugins";
 import {env} from "@/lib/env";
 import {DatabaseError, toAppError} from "@/lib/types/errors";
 
 
-const authOptions = {
+const createAuthInstance = (database?: ReturnType<typeof mongodbAdapter>) => betterAuth({
+    ...(database ? { database } : {}),
+    secret: env.BETTER_AUTH_SECRET,
+    baseURL: env.BETTER_AUTH_URL || env.VERCEL_URL || 'http://localhost:3000',
     emailAndPassword: {
         enabled: true,
         disableSignUp: false,
@@ -15,14 +19,12 @@ const authOptions = {
         maxPasswordLength: 128,
         autoSignIn: true,
     },
-    plugins: [nextCookies()],
-};
-
-const createAuthInstance = (database?: ReturnType<typeof mongodbAdapter>) => betterAuth({
-    ...(database ? { database } : {}),
-    secret: env.BETTER_AUTH_SECRET,
-    baseURL: env.BETTER_AUTH_URL || env.VERCEL_URL || 'http://localhost:3000',
-    ...authOptions,
+    plugins: [
+        nextCookies(),
+        twoFactor({
+            issuer: "CavaAI",
+        }),
+    ],
 });
 
 type AuthInstance = ReturnType<typeof createAuthInstance>;

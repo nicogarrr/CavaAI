@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # default_model_from_env() en app/llm/model_aliases.py.
     opencode_go_model: str = "deepseek-v4-flash"
 
+    # TypeSafe Jev (capa de micro-decisiones, SystemOne API). Env: TYPESAFE_API_KEY.
+    # Factura por uso ($0.042/MTok in); sin key el cliente no se construye.
+    typesafe_api_key: str | None = None
+    typesafe_base_url: str = "https://api.typesafe.ai"
+    typesafe_model: str = "jev-latest"
     llm_enabled: bool = True
     # CavaAI intentionally uses one provider for every task.
     llm_provider: str = "opencode-go"
