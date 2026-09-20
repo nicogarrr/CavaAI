@@ -34,7 +34,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-.env
+# env (todos los locales; solo se versionan los .example)
+.env*
+!.env.example
+!docker.env.example
 
 # vercel
 .vercel
@@ -51,8 +54,14 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 *.db
+*.db-shm
+*.db-wal
+*.sqlite*
 data-engine/knowledge_base/
 data-engine/funds_cache.json
 data-engine/.pytest_cache/
 data-engine/storage/.pytest_cache/
 data-engine/storage/raw/
+
+# IDE
+.idea/

@@ -1408,32 +1408,6 @@
         "title": "CorporateActionInput",
         "type": "object"
       },
-      "CorrelationRequest": {
-        "properties": {
-          "method": {
-            "default": "pearson",
-            "title": "Method",
-            "type": "string"
-          },
-          "period": {
-            "default": "1y",
-            "title": "Period",
-            "type": "string"
-          },
-          "symbols": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Symbols",
-            "type": "array"
-          }
-        },
-        "required": [
-          "symbols"
-        ],
-        "title": "CorrelationRequest",
-        "type": "object"
-      },
       "Criterion": {
         "properties": {
           "left": {
@@ -3001,75 +2975,6 @@
         "title": "MemoryItemOut",
         "type": "object"
       },
-      "MonteCarloRequest": {
-        "properties": {
-          "bust": {
-            "default": -0.5,
-            "title": "Bust",
-            "type": "number"
-          },
-          "goal": {
-            "default": 0.5,
-            "title": "Goal",
-            "type": "number"
-          },
-          "horizon": {
-            "default": 252,
-            "title": "Horizon",
-            "type": "integer"
-          },
-          "models": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Models"
-          },
-          "period": {
-            "default": "3y",
-            "title": "Period",
-            "type": "string"
-          },
-          "sims": {
-            "default": 1000,
-            "title": "Sims",
-            "type": "integer"
-          },
-          "symbols": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Symbols",
-            "type": "array"
-          },
-          "weights": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weights"
-          }
-        },
-        "required": [
-          "symbols"
-        ],
-        "title": "MonteCarloRequest",
-        "type": "object"
-      },
       "NewsFeedItem": {
         "properties": {
           "published_at": {
@@ -3270,51 +3175,6 @@
         "title": "PlanUpsertInput",
         "type": "object"
       },
-      "PortfolioAnalyticsRequest": {
-        "properties": {
-          "benchmark": {
-            "default": "SPY",
-            "title": "Benchmark",
-            "type": "string"
-          },
-          "period": {
-            "default": "2y",
-            "title": "Period",
-            "type": "string"
-          },
-          "rf": {
-            "default": 0.0,
-            "title": "Rf",
-            "type": "number"
-          },
-          "symbols": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Symbols",
-            "type": "array"
-          },
-          "weights": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weights"
-          }
-        },
-        "required": [
-          "symbols"
-        ],
-        "title": "PortfolioAnalyticsRequest",
-        "type": "object"
-      },
       "PortfolioConfigurationInput": {
         "properties": {
           "base_currency": {
@@ -3370,45 +3230,6 @@
           "price"
         ],
         "title": "PortfolioPriceInput",
-        "type": "object"
-      },
-      "PortfolioReturnsRequest": {
-        "properties": {
-          "period": {
-            "default": "2y",
-            "title": "Period",
-            "type": "string"
-          },
-          "symbols": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Symbols"
-          },
-          "transactions": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/TransactionLike"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Transactions"
-          }
-        },
-        "title": "PortfolioReturnsRequest",
         "type": "object"
       },
       "PortfolioTransactionInput": {
@@ -4767,6 +4588,7 @@
               "facts",
               "calculations",
               "user_hypotheses",
+              "unverified_claims",
               "inferences",
               "contradictions",
               "insufficient_data",
@@ -5418,39 +5240,6 @@
         "title": "ThesisSectionOut",
         "type": "object"
       },
-      "TransactionLike": {
-        "properties": {
-          "date": {
-            "title": "Date",
-            "type": "string"
-          },
-          "price": {
-            "title": "Price",
-            "type": "number"
-          },
-          "quantity": {
-            "title": "Quantity",
-            "type": "number"
-          },
-          "symbol": {
-            "title": "Symbol",
-            "type": "string"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "symbol",
-          "type",
-          "quantity",
-          "price",
-          "date"
-        ],
-        "title": "TransactionLike",
-        "type": "object"
-      },
       "UniversalSearchRequest": {
         "properties": {
           "collection_id": {
@@ -5754,6 +5543,34 @@
         "title": "ValuationResponse",
         "type": "object"
       },
+      "WatchItemCreate": {
+        "properties": {
+          "company": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "symbol": {
+            "maxLength": 20,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9.\\-]+$",
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol"
+        ],
+        "title": "WatchItemCreate",
+        "type": "object"
+      },
       "WorkProductRequest": {
         "properties": {
           "product_type": {
@@ -5840,786 +5657,6 @@
           }
         },
         "summary": "Root"
-      }
-    },
-    "/analyst-estimates/{symbol}": {
-      "get": {
-        "operationId": "get_analyst_estimates_analyst_estimates__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "description": "annual or quarter",
-            "in": "query",
-            "name": "period",
-            "required": false,
-            "schema": {
-              "default": "annual",
-              "description": "annual or quarter",
-              "title": "Period",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Number of estimates to return",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 5,
-              "description": "Number of estimates to return",
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Analyst Estimates",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/analytics/correlation": {
-      "post": {
-        "operationId": "correlation_matrix_analytics_correlation_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CorrelationRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Correlation Matrix",
-        "tags": [
-          "analytics"
-        ]
-      }
-    },
-    "/analytics/holding/{symbol}": {
-      "get": {
-        "operationId": "holding_analytics_analytics_holding__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "description": "yfinance period string",
-            "in": "query",
-            "name": "period",
-            "required": false,
-            "schema": {
-              "default": "2y",
-              "description": "yfinance period string",
-              "title": "Period",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Holding Analytics",
-        "tags": [
-          "analytics"
-        ]
-      }
-    },
-    "/analytics/montecarlo": {
-      "post": {
-        "operationId": "portfolio_montecarlo_analytics_montecarlo_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MonteCarloRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Portfolio Montecarlo",
-        "tags": [
-          "analytics"
-        ]
-      }
-    },
-    "/analytics/portfolio": {
-      "post": {
-        "operationId": "portfolio_analytics_analytics_portfolio_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PortfolioAnalyticsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Portfolio Analytics",
-        "tags": [
-          "analytics"
-        ]
-      }
-    },
-    "/analytics/portfolio/returns": {
-      "post": {
-        "operationId": "portfolio_returns_analytics_portfolio_returns_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PortfolioReturnsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Portfolio Returns",
-        "tags": [
-          "analytics"
-        ]
-      }
-    },
-    "/analytics/regime/{symbol}": {
-      "get": {
-        "operationId": "regime_drift_analytics_regime__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "description": "yfinance period string",
-            "in": "query",
-            "name": "period",
-            "required": false,
-            "schema": {
-              "default": "2y",
-              "description": "yfinance period string",
-              "title": "Period",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Regime Drift",
-        "tags": [
-          "analytics"
-        ]
       }
     },
     "/api/alerts": {
@@ -12823,6 +11860,30 @@
         ]
       }
     },
+    "/api/health": {
+      "get": {
+        "description": "Readiness: BD (SELECT 1), scheduler y versi\u00f3n.",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/api/knowledge-graph": {
       "get": {
         "operationId": "knowledge_graph_api_knowledge_graph_get",
@@ -14571,6 +13632,105 @@
         "summary": "Action Principle",
         "tags": [
           "knowledge"
+        ]
+      }
+    },
+    "/api/market/indices": {
+      "get": {
+        "operationId": "market_indices_api_market_indices_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-cavaai-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-User"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-tenant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Tenant"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Signature"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Market Indices Api Market Indices Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Market Indices",
+        "tags": [
+          "market"
         ]
       }
     },
@@ -19661,6 +18821,148 @@
         ]
       }
     },
+    "/api/screeners/real": {
+      "get": {
+        "description": "Screener real: precios del d\u00eda + market cap reales (Finnhub free).\n\nmarketCapMoreThan: m\u00ednimo de market cap en USD (real de Finnhub).\nsector: filtro case-insensitive sobre el sector (BD/Finnhub).",
+        "operationId": "real_time_screener_api_screeners_real_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "marketCapMoreThan",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Marketcapmorethan"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sector",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sector"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-User"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-tenant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Tenant"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Signature"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Real Time Screener Api Screeners Real Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Real Time Screener",
+        "tags": [
+          "screeners"
+        ]
+      }
+    },
     "/api/screeners/run": {
       "post": {
         "operationId": "run_ad_hoc_screen_api_screeners_run_post",
@@ -23173,6 +22475,316 @@
         ]
       }
     },
+    "/api/watchlist": {
+      "get": {
+        "description": "Watch items of the active tenant, most recently added first.\n\nTenant scoping is applied implicitly by the session (see database.py):\nrows are only visible when their tenant_id matches the signed identity.",
+        "operationId": "list_watchlist_api_watchlist_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-cavaai-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-User"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-tenant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Tenant"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Signature"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Watchlist Api Watchlist Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Watchlist",
+        "tags": [
+          "watchlist"
+        ]
+      },
+      "post": {
+        "description": "Add a symbol to the watchlist, or update its label if it exists.",
+        "operationId": "upsert_watch_item_api_watchlist_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-cavaai-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-User"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-tenant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Tenant"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Signature"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchItemCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upsert Watch Item Api Watchlist Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upsert Watch Item",
+        "tags": [
+          "watchlist"
+        ]
+      }
+    },
+    "/api/watchlist/{symbol}": {
+      "delete": {
+        "operationId": "delete_watch_item_api_watchlist__symbol__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "title": "Symbol",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-User"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-tenant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Tenant"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Signature"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Watch Item",
+        "tags": [
+          "watchlist"
+        ]
+      }
+    },
     "/api/work-products/generate": {
       "post": {
         "operationId": "generate_work_product_api_work_products_generate_post",
@@ -23607,1226 +23219,6 @@
         ]
       }
     },
-    "/batch-quotes": {
-      "post": {
-        "operationId": "get_batch_quotes_batch_quotes_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "description": "List of stock symbols",
-                "items": {
-                  "type": "string"
-                },
-                "title": "Symbols",
-                "type": "array"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Batch Quotes",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/company-news/{symbol}": {
-      "get": {
-        "operationId": "get_company_news_company_news__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "description": "News limit",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "description": "News limit",
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Company News",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/dcf/{symbol}": {
-      "get": {
-        "operationId": "get_dcf_dcf__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Dcf",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/dividends/{symbol}": {
-      "get": {
-        "operationId": "get_dividends_dividends__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Number of dividend records",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "description": "Number of dividend records",
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Dividends",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/earnings-transcript-list/{symbol}": {
-      "get": {
-        "operationId": "get_earnings_transcripts_list_earnings_transcript_list__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Earnings Transcripts List",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/earnings-transcript/{symbol}": {
-      "get": {
-        "operationId": "get_earnings_transcript_earnings_transcript__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Year of earnings call",
-            "in": "query",
-            "name": "year",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Year of earnings call",
-              "title": "Year"
-            }
-          },
-          {
-            "description": "Quarter (1-4)",
-            "in": "query",
-            "name": "quarter",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Quarter (1-4)",
-              "title": "Quarter"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Earnings Transcript",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/enterprise-value/{symbol}": {
-      "get": {
-        "operationId": "get_enterprise_value_enterprise_value__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Enterprise Value",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/financial-growth/{symbol}": {
-      "get": {
-        "operationId": "get_financial_growth_financial_growth__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Financial Growth",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/financial-scores/{symbol}": {
-      "get": {
-        "operationId": "get_financial_scores_endpoint_financial_scores__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Financial Scores Endpoint",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/fundamentals/{symbol}": {
-      "get": {
-        "operationId": "get_fundamentals_fundamentals__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "period",
-            "required": false,
-            "schema": {
-              "default": "annual",
-              "title": "Period",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Fundamentals",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/grades/{symbol}": {
-      "get": {
-        "operationId": "get_grades_grades__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Grades",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
     "/health": {
       "get": {
         "description": "Liveness \u2014 process is up. Does not check dependencies.",
@@ -24876,1933 +23268,6 @@
           }
         },
         "summary": "Health Ready"
-      }
-    },
-    "/insider-trading/{symbol}": {
-      "get": {
-        "operationId": "get_insider_trading_insider_trading__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Number of transactions to return",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "description": "Number of transactions to return",
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Insider Trading",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/key-metrics-ttm/{symbol}": {
-      "get": {
-        "operationId": "get_key_metrics_ttm_key_metrics_ttm__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Key Metrics Ttm",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/market-movers/active": {
-      "get": {
-        "operationId": "get_most_actives_market_movers_active_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Most Actives",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/market-movers/gainers": {
-      "get": {
-        "operationId": "get_biggest_gainers_market_movers_gainers_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Biggest Gainers",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/market-movers/losers": {
-      "get": {
-        "operationId": "get_biggest_losers_market_movers_losers_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Biggest Losers",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/news/fmp-articles": {
-      "get": {
-        "operationId": "get_fmp_articles_endpoint_news_fmp_articles_get",
-        "parameters": [
-          {
-            "description": "Page number",
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "description": "Page number",
-              "title": "Page",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Fmp Articles Endpoint",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/news/general": {
-      "get": {
-        "operationId": "get_general_news_endpoint_news_general_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "title": "Page",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get General News Endpoint",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/owner-earnings/{symbol}": {
-      "get": {
-        "operationId": "get_owner_earnings_owner_earnings__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Owner Earnings",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/peers/{symbol}": {
-      "get": {
-        "operationId": "get_peers_peers__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Peers",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/press-releases/{symbol}": {
-      "get": {
-        "operationId": "get_press_releases_press_releases__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Number of releases to return",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "description": "Number of releases to return",
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Press Releases",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/price-target/{symbol}": {
-      "get": {
-        "operationId": "get_price_target_price_target__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Price Target",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/quote/{symbol}": {
-      "get": {
-        "operationId": "get_stock_quote_endpoint_quote__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Stock Quote Endpoint",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/ratios-ttm/{symbol}": {
-      "get": {
-        "operationId": "get_ratios_ttm_ratios_ttm__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Ratios Ttm",
-        "tags": [
-          "fundamentals"
-        ]
-      }
-    },
-    "/screener": {
-      "get": {
-        "operationId": "get_screener_stocks_screener_get",
-        "parameters": [
-          {
-            "description": "Market Cap greater than",
-            "in": "query",
-            "name": "marketCapMoreThan",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Market Cap greater than",
-              "title": "Marketcapmorethan"
-            }
-          },
-          {
-            "description": "Sector filter",
-            "in": "query",
-            "name": "sector",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Sector filter",
-              "title": "Sector"
-            }
-          },
-          {
-            "description": "Limit results",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "description": "Limit results",
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Screener Stocks",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/stock-peers/{symbol}": {
-      "get": {
-        "operationId": "get_stock_peers_endpoint_stock_peers__symbol__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "symbol",
-            "required": true,
-            "schema": {
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Include current prices",
-            "in": "query",
-            "name": "with_prices",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "Include current prices",
-              "title": "With Prices",
-              "type": "boolean"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Stock Peers Endpoint",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/strategies/garp": {
-      "get": {
-        "operationId": "get_garp_strategy_strategies_garp_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 10,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Garp Strategy",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/test": {
-      "get": {
-        "operationId": "test_endpoint_test_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Test Endpoint",
-        "tags": [
-          "market"
-        ]
-      }
-    },
-    "/treasury-rates": {
-      "get": {
-        "operationId": "get_treasury_rates_treasury_rates_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-cavaai-user",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-User"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-tenant",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Tenant"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-cavaai-signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Cavaai-Signature"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Treasury Rates",
-        "tags": [
-          "fundamentals"
-        ]
       }
     }
   }
