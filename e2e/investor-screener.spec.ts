@@ -1,0 +1,50 @@
+import { expect, test } from "@playwright/test";
+
+const runUiE2E = process.env.E2E_UI_RUN === "1";
+
+test.describe("investor screener flow", () => {
+  test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
+
+  test("screener table renders one Seguir button per row", async ({ page }) => {
+    await page.goto("/screener");
+
+    await expect(page.getByRole("heading", { name: "Screener", level: 1 })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Technology" })).toBeVisible();
+
+    const rows = page.locator("table tbody tr");
+    if ((await rows.count()) === 0) {
+      // Backend warming up or market data unavailable: the page degrades to an empty state.
+      await expect(page.getByText("No hay datos ahora mismo")).toBeVisible();
+      return;
+    }
+
+    await expect(page.getByRole("columnheader", { name: "Seguir" })).toBeVisible();
+    const rowCount = await rows.count();
+    expect(rowCount).toBeGreaterThan(0);
+    for (let i = 0; i < rowCount; i += 1) {
+      const followButton = rows.nth(i).getByRole("button", { name: "Seguir" });
+      await expect(followButton).toBeVisible();
+      await expect(followButton).toBeEnabled();
+    }
+    // Tickers link out to their stock page.
+    await expect(rows.first().locator("td").first().getByRole("link")).toHaveAttribute(
+      "href",
+      /\/stocks\//,
+    );
+  });
+
+  test("propicks cards expose Seguir per pick when picks render", async ({ page }) => {
+    await page.goto("/propicks");
+
+    await expect(page.getByRole("heading", { name: "ProPicks IA", level: 1 })).toBeVisible();
+
+    const followButtons = page.getByRole("button", { name: "Seguir" });
+    if ((await followButtons.count()) === 0) {
+      // AI picks not generated in this environment; the shell must still render.
+      await expect(page.getByText(/ProPicks IA/)).toBeVisible();
+      return;
+    }
+    await expect(followButtons.first()).toBeVisible();
+    await expect(followButtons.first()).toBeEnabled();
+  });
+});
