@@ -18823,7 +18823,7 @@
     },
     "/api/screeners/real": {
       "get": {
-        "description": "Screener real: precios del d\u00eda + market cap reales (Finnhub free).\n\nmarketCapMoreThan: m\u00ednimo de market cap en USD (real de Finnhub).\nsector: filtro case-insensitive sobre el sector (BD/Finnhub).",
+        "description": "Screener real: precios del d\u00eda + market cap reales (Finnhub free).\n\nmarketCapMoreThan: m\u00ednimo de market cap en USD (real de Finnhub).\nsector: filtro case-insensitive sobre el sector (BD/Finnhub).\nVendor de quotes/profile (Finnhub \u2194 Yahoo) configurable v\u00eda\nSCREENER_QUOTE_VENDOR; default Finnhub.",
         "operationId": "real_time_screener_api_screeners_real_get",
         "parameters": [
           {

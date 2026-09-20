@@ -44,6 +44,9 @@ class Settings(BaseSettings):
 
     fmp_api_key: str | None = None
     finnhub_api_key: str | None = None
+    # Vendor de quotes/profile del screener real ("finnhub" | "yahoo").
+    # Env: SCREENER_QUOTE_VENDOR. Default Finnhub (comportamiento actual).
+    screener_quote_vendor: str = "finnhub"
     ibkr_flex_token: str | None = None
     ibkr_flex_query_id: str | None = None
     sec_user_agent: str = "CavaAI/0.1 contact@example.com"
@@ -55,6 +58,9 @@ class Settings(BaseSettings):
     fred_api_key: str | None = None
     opencode_go_api_key: str | None = Field(default=None, repr=False)
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
+    # Default cheap-but-good model. Overridable WITHOUT code change via env
+    # OPENCODE_GO_MODEL (e.g. OPENCODE_GO_MODEL=qwen3.7-plus). Ver también
+    # default_model_from_env() en app/llm/model_aliases.py.
     opencode_go_model: str = "deepseek-v4-flash"
 
     llm_enabled: bool = True
