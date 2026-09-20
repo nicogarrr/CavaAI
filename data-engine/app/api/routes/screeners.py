@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import httpx
 import time
@@ -142,8 +142,13 @@ def run_ad_hoc_screen(payload: AdHocScreen, db: Session = Depends(get_db)) -> di
 # ============================================================================
 # REAL-TIME SCREENER  —  GET /api/screeners/real
 # ----------------------------------------------------------------------------
-# Fuente elegida: Finnhub (free tier) — /quote da el precio real del día
-# (c, d, dp, pc, v) y /stock/profile2 el nombre, market cap y sector reales.
+# Fuente elegida por defecto: Finnhub (free tier) — /quote da el precio real
+# del día (c, d, dp, pc, v) y /stock/profile2 el nombre, market cap y sector
+# reales. Yahoo Finance chart API es el vendor alternativo (gratuito, sin key;
+# solo quotes, sin profile): se elige con SCREENER_QUOTE_VENDOR=yahoo.
+# La fuente de quotes/profile es intercambiable vía SCREEN_VENDORS
+# (protocolo ScreenQuoteVendor); el default Finnhub preserva el
+# comportamiento actual.
 # Yahoo público fue descartado tras probarlo en vivo: el screener
 # (/v1/finance/screener/predefined) devuelve HTML bloqueado y /v7/finance/quote
 # responde "Unauthorized" (requiere crumb). /stock/screener de Finnhub responde
@@ -235,6 +240,22 @@ def _load_universe_from_db() -> dict[str, tuple[str, str]]:
         return {}
 
 
+class ScreenQuoteVendor(Protocol):
+    """Fuente intercambiable de quotes/profile para el screener (Finnhub ↔ Yahoo).
+
+    Cada vendor normaliza al mismo dict de quote
+    (price/change/changePercent/volume/prevClose/asOf) y de profile
+    (name/marketCap/sector/exchange). El default es Finnhub (comportamiento
+    actual); Yahoo es la alternativa gratuita sin key.
+    """
+
+    name: str
+    source_label: str
+
+    def fetch_quote(self, client: httpx.Client, symbol: str) -> dict | None: ...
+    def fetch_profile(self, client: httpx.Client, symbol: str) -> dict | None: ...
+
+
 def _finnhub_get(
     client: httpx.Client, path: str, symbol: str, timeout: float
 ) -> dict | None:
@@ -254,52 +275,159 @@ def _finnhub_get(
         return None
 
 
-def _fetch_quote(client: httpx.Client, symbol: str) -> dict | None:
-    """Precio real del día vía Finnhub /quote (plan gratuito).
+class FinnhubScreenVendor:
+    """Vendor por defecto: Finnhub free tier (comportamiento actual)."""
 
-    Retry único en 429 (límite 60 llamadas/minuto): un fallo puntual no debe
-    dejar el ticker fuera del screener.
+    name = "finnhub"
+    source_label = "finnhub_free"
+
+    def fetch_quote(self, client: httpx.Client, symbol: str) -> dict | None:
+        """Precio real del día vía Finnhub /quote (plan gratuito).
+
+        Retry único en 429 (límite 60 llamadas/minuto): un fallo puntual no debe
+        dejar el ticker fuera del screener.
+        """
+        raw = _finnhub_get(client, "/quote", symbol, timeout=8)
+        if raw is None:  # posible 429: reintentar una vez tras 1s
+            time.sleep(1.0)
+            raw = _finnhub_get(client, "/quote", symbol, timeout=8)
+        if raw and raw.get("c") and raw["c"] > 0:
+            return {
+                "price": float(raw["c"]),
+                "change": float(raw.get("d") or 0.0),
+                "changePercent": float(raw.get("dp") or 0.0),
+                "volume": float(raw.get("v") or 0.0),
+                "prevClose": float(raw.get("pc") or 0.0),
+                "asOf": raw.get("t"),
+            }
+        return None
+
+    def fetch_profile(self, client: httpx.Client, symbol: str) -> dict | None:
+        """Perfil real (nombre, market cap en USD, sector, exchange) vía profile2."""
+        raw = _finnhub_get(client, "/stock/profile2", symbol, timeout=8)
+        if raw and raw.get("ticker"):
+            return {
+                "name": raw.get("name") or symbol,
+                "marketCap": float(raw.get("marketCapitalization") or 0.0) * 1_000_000.0,
+                "sector": raw.get("finnhubIndustry") or None,
+                "exchange": raw.get("exchange") or "US",
+            }
+        return None
+
+
+_YAHOO_CHART_BASE = "https://query1.finance.yahoo.com/v8/finance/chart"
+_YAHOO_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+}
+
+
+class YahooScreenVendor:
+    """Vendor alternativo: Yahoo Finance chart API (gratuita, sin key).
+
+    Normaliza al mismo formato que Finnhub. Sin profile real (el endpoint
+    /v7/finance/quote de Yahoo requiere crumb y devuelve "Unauthorized"):
+    fetch_profile devuelve None y el nombre/sector caen al universo/DB.
     """
+
+    name = "yahoo"
+    source_label = "yahoo_finance"
+
+    def fetch_quote(self, client: httpx.Client, symbol: str) -> dict | None:
+        try:
+            resp = client.get(
+                f"{_YAHOO_CHART_BASE}/{symbol}",
+                params={"range": "5d", "interval": "1d"},
+                headers=_YAHOO_HEADERS,
+                timeout=15,
+            )
+        except httpx.HTTPError:
+            return None
+        if resp.status_code != 200:
+            return None
+        try:
+            payload = resp.json()
+            result = payload["chart"]["result"][0]
+            closes = [
+                value
+                for value in result["indicators"]["quote"][0]["close"]
+                if value is not None
+            ]
+            if not closes or closes[-1] <= 0:
+                return None
+            volumes = [
+                value
+                for value in result["indicators"]["quote"][0].get("volume") or []
+                if value is not None
+            ]
+            timestamps = result.get("timestamp") or []
+            meta = result.get("meta") or {}
+            last, previous = closes[-1], (
+                closes[-2] if len(closes) >= 2
+                else meta.get("chartPreviousClose") or closes[-1]
+            )
+            change = last - previous
+            return {
+                "price": float(last),
+                "change": float(change),
+                "changePercent": float(change / previous * 100) if previous else 0.0,
+                "volume": float(volumes[-1]) if volumes else 0.0,
+                "prevClose": float(previous),
+                "asOf": timestamps[-1] if timestamps else None,
+            }
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+
+    def fetch_profile(self, client: httpx.Client, symbol: str) -> dict | None:
+        return None
+
+
+SCREEN_VENDORS: dict[str, ScreenQuoteVendor] = {
+    FinnhubScreenVendor.name: FinnhubScreenVendor(),
+    YahooScreenVendor.name: YahooScreenVendor(),
+}
+DEFAULT_SCREENER_VENDOR = "finnhub"
+
+
+def resolve_screener_vendor(name: str | None) -> ScreenQuoteVendor:
+    """Devuelve el vendor pedido o el default (Finnhub) si es desconocido/vacío."""
+    if not name:
+        return SCREEN_VENDORS[DEFAULT_SCREENER_VENDOR]
+    return SCREEN_VENDORS.get(
+        name.strip().lower(), SCREEN_VENDORS[DEFAULT_SCREENER_VENDOR]
+    )
+
+
+def _fetch_quote(
+    client: httpx.Client, symbol: str, *, vendor: str | None = None
+) -> dict | None:
     now = time.monotonic()
-    cached = _real_quote_cache.get(symbol)
+    active = resolve_screener_vendor(vendor)
+    cache_key = f"{active.name}:{symbol}"
+    cached = _real_quote_cache.get(cache_key)
     if cached and now - cached["at"] < _QUOTE_TTL:
         return cached["data"]
-    raw = _finnhub_get(client, "/quote", symbol, timeout=8)
-    if raw is None:  # posible 429: reintentar una vez tras 1s
-        time.sleep(1.0)
-        raw = _finnhub_get(client, "/quote", symbol, timeout=8)
-    data = None
-    if raw and raw.get("c") and raw["c"] > 0:
-        data = {
-            "price": float(raw["c"]),
-            "change": float(raw.get("d") or 0.0),
-            "changePercent": float(raw.get("dp") or 0.0),
-            "volume": float(raw.get("v") or 0.0),
-            "prevClose": float(raw.get("pc") or 0.0),
-            "asOf": raw.get("t"),
-        }
+    data = active.fetch_quote(client, symbol)
     if data:
-        _real_quote_cache[symbol] = {"at": now, "data": data}
+        _real_quote_cache[cache_key] = {"at": now, "data": data}
     return data
 
 
-def _fetch_profile(client: httpx.Client, symbol: str) -> dict | None:
-    """Perfil real (nombre, market cap en USD, sector, exchange) vía profile2."""
+def _fetch_profile(
+    client: httpx.Client, symbol: str, *, vendor: str | None = None
+) -> dict | None:
     now = time.monotonic()
-    cached = _real_profile_cache.get(symbol)
+    active = resolve_screener_vendor(vendor)
+    cache_key = f"{active.name}:{symbol}"
+    cached = _real_profile_cache.get(cache_key)
     if cached and now - cached["at"] < _PROFILE_TTL:
         return cached["data"]
-    raw = _finnhub_get(client, "/stock/profile2", symbol, timeout=8)
-    data = None
-    if raw and raw.get("ticker"):
-        data = {
-            "name": raw.get("name") or symbol,
-            "marketCap": float(raw.get("marketCapitalization") or 0.0) * 1_000_000.0,
-            "sector": raw.get("finnhubIndustry") or None,
-            "exchange": raw.get("exchange") or "US",
-        }
+    data = active.fetch_profile(client, symbol)
     if data:
-        _real_profile_cache[symbol] = {"at": now, "data": data}
+        _real_profile_cache[cache_key] = {"at": now, "data": data}
     return data
 
 
@@ -313,7 +441,11 @@ def real_time_screener(
 
     marketCapMoreThan: mínimo de market cap en USD (real de Finnhub).
     sector: filtro case-insensitive sobre el sector (BD/Finnhub).
+    Vendor de quotes/profile (Finnhub ↔ Yahoo) configurable vía
+    SCREENER_QUOTE_VENDOR; default Finnhub.
     """
+    settings = get_settings()
+    vendor = resolve_screener_vendor(settings.screener_quote_vendor)
     now = time.monotonic()
     # Refresco solo si caduca el cache de 60s; los filtros se aplican abajo
     # sobre los items crudos, así cada combinación es correcta sin re-consultar.
@@ -321,7 +453,7 @@ def real_time_screener(
         now - _real_items_cache["at"] >= _QUOTE_TTL
         or not _real_items_cache["items"]
     ):
-        items = _refetch_real_items()
+        items = _refetch_real_items(vendor=vendor.name)
         if items:  # last-known-good si el refresco falla del todo
             _real_items_cache["at"] = now
             _real_items_cache["items"] = items
@@ -338,15 +470,15 @@ def real_time_screener(
     filtered.sort(key=lambda item: (item["marketCap"] or 0.0), reverse=True)
     limited = filtered[: max(1, min(limit, 200))]
     return {
-        "source": "finnhub_free",
+        "source": vendor.source_label,
         "as_of": time.time(),
         "count": len(limited),
         "screener": limited,
     }
 
 
-def _refetch_real_items() -> list[dict]:
-    """Universo completo con precios/market cap reales (Finnhub free).
+def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
+    """Universo completo con precios/market cap reales (vendor configurable).
 
     Fase 1: /quote en paralelo (35 llamadas, con retry en 429).
     Fase 2: /stock/profile2 solo si el cache (6h) está vacío/caducado, con
@@ -356,15 +488,18 @@ def _refetch_real_items() -> list[dict]:
     """
     db_universe = _load_universe_from_db()
     settings = get_settings()
+    active = resolve_screener_vendor(
+        vendor if vendor is not None else settings.screener_quote_vendor
+    )
     headers = {"User-Agent": "CavaAI/0.1"}
 
     quotes: dict[str, dict] = {}
     with httpx.Client(headers=headers, timeout=15) as client:
         fn_key = settings.finnhub_api_key
-        client.params = {"token": fn_key} if fn_key else {}
+        client.params = {"token": fn_key} if fn_key and active.name == "finnhub" else {}
         with ThreadPoolExecutor(max_workers=8) as pool:
             futures = {
-                pool.submit(_fetch_quote, client, symbol): symbol
+                pool.submit(_fetch_quote, client, symbol, vendor=active.name): symbol
                 for symbol, _, _ in _REAL_UNIVERSE
             }
             for future in futures:
@@ -376,16 +511,16 @@ def _refetch_real_items() -> list[dict]:
     profiles: dict[str, dict] = {}
     with httpx.Client(headers=headers, timeout=15) as client:
         fn_key = settings.finnhub_api_key
-        client.params = {"token": fn_key} if fn_key else {}
+        client.params = {"token": fn_key} if fn_key and active.name == "finnhub" else {}
         for symbol, _, _ in _REAL_UNIVERSE:
             if symbol not in quotes:
                 continue
-            if time.monotonic() - _real_profile_cache.get(symbol, {}).get(
-                "at", 0.0
-            ) < _PROFILE_TTL:
-                profiles[symbol] = _real_profile_cache[symbol]["data"]
+            if time.monotonic() - _real_profile_cache.get(
+                f"{active.name}:{symbol}", {}
+            ).get("at", 0.0) < _PROFILE_TTL:
+                profiles[symbol] = _real_profile_cache[f"{active.name}:{symbol}"]["data"]
                 continue
-            profile = _fetch_profile(client, symbol)
+            profile = _fetch_profile(client, symbol, vendor=active.name)
             if profile:
                 profiles[symbol] = profile
             time.sleep(0.3)  # pacing: ~3.3 llamadas/s, muy por debajo de 60/min
