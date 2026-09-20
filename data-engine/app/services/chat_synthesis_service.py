@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from pydantic import ValidationError
@@ -74,6 +75,7 @@ class ChatSynthesisService:
         ticker: str | None,
         baseline: ChatResponse,
         db: Session | None = None,
+        enable_debate: bool | None = None,
     ) -> ChatResponse:
         retrieval_ids = [
             f"{source.get('type')}:{source.get('id')}"
@@ -183,6 +185,7 @@ class ChatSynthesisService:
                     "insufficient_data": insufficient,
                     "citation_verification": True,
                 }
+                await self._maybe_attach_debate(baseline, ticker, enable_debate)
                 return baseline
             except Exception as exc:
                 # The deterministic response is the safe product contract and fallback.
@@ -248,3 +251,31 @@ class ChatSynthesisService:
             for source in baseline.sources
         )
         return min(0.75, 0.20 + facts * 0.06 + primary * 0.04)
+
+    @staticmethod
+    def _debate_enabled(enable_debate: bool | None) -> bool:
+        if enable_debate is not None:
+            return enable_debate
+        return os.getenv("CAVA_THESIS_DEBATE_ENABLED", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+
+    async def _maybe_attach_debate(
+        self,
+        baseline: ChatResponse,
+        ticker: str | None,
+        enable_debate: bool | None,
+    ) -> None:
+        """Enganche opcional del debate bull/bear. Nunca rompe el flujo."""
+        if not ticker or not self._debate_enabled(enable_debate):
+            return
+        try:
+            from app.services.thesis_debate_service import debate_thesis
+
+            baseline.llm_trace["thesis_debate"] = await debate_thesis(
+                ticker, baseline.answer, provider=self.provider
+            )
+        except Exception:
+            pass
