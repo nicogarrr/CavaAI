@@ -8,6 +8,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import Company, Document, FinancialFact, FinancialStatement, MarketPrice
+from app.services.connectors import fred as fred_connector
+from app.services.connectors import sec_edgar as sec_edgar_connector
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.sec import SECClient
 
@@ -116,6 +118,32 @@ def _rows(payload: list | dict) -> list[dict[str, Any]]:
     if isinstance(payload, dict):
         return [payload]
     return []
+
+
+async def _free_data_snapshot(ticker: str, cik: str) -> dict[str, Any]:
+    """Snapshot best-effort de filings EDGAR (10-K/10-Q) + macro FRED.
+
+    Nunca lanza excepciones: cada fuente falla por separado y sin clave FRED
+    el macro simplemente queda en None.
+    """
+    snapshot: dict[str, Any] = {
+        "status": "ok",
+        "recent_filings": [],
+        "macro": None,
+    }
+    try:
+        snapshot["recent_filings"] = await sec_edgar_connector.recent_filings(
+            cik, forms=("10-K", "10-Q"), limit=5
+        )
+    except Exception as exc:
+        snapshot["recent_filings"] = []
+        snapshot["filings_error"] = str(exc)[:200]
+    try:
+        snapshot["macro"] = await fred_connector.latest_observation("cpi")
+    except Exception as exc:  # pragma: no cover - red defensiva
+        snapshot["macro"] = None
+        snapshot["macro_error"] = str(exc)[:200]
+    return snapshot
 
 
 class FinancialIngestionService:
@@ -288,6 +316,13 @@ class FinancialIngestionService:
             "last_refreshed_at": datetime.now(UTC).isoformat(),
             "conflicts": conflicts,
         }
+        # Hook gratuito best-effort (EDGAR 10-K/10-Q + FRED): una llamada que
+        # nunca rompe el flujo principal de ingesta.
+        try:
+            free_data = await _free_data_snapshot(ticker, cik)
+        except Exception:
+            free_data = {"status": "unavailable", "recent_filings": [], "macro": None}
+        document.metadata_ = {**(document.metadata_ or {}), "free_data": free_data}
         db.commit()
 
         return {
@@ -298,6 +333,7 @@ class FinancialIngestionService:
             "facts_imported": facts_imported,
             "cik": cik,
             "conflicts": conflicts,
+            "free_data": free_data,
         }
 
     def latest_periods(self, db: Session, company: Company) -> dict[str, str | None]:
