@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import PersonalizedOverview from '@/components/PersonalizedOverview';
-import { Loader2 } from 'lucide-react';
+import NewsSection from '@/components/NewsSection';
+import { ChartLoadingSkeleton, NewsLoadingSkeleton, StockCardSkeleton } from '@/components/LoadingState';
 import { redirect } from 'next/navigation';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
@@ -16,11 +17,15 @@ async function getUserId(): Promise<string> {
     }
 }
 
-function LoadingSkeleton() {
+function DashboardSkeleton() {
     return (
-        <div className="flex items-center justify-center min-h-[400px]">
-            <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
-            <span className="ml-3 text-gray-400">Cargando tu dashboard...</span>
+        <div className="space-y-8" role="status" aria-live="polite" aria-label="Cargando dashboard">
+            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                    <StockCardSkeleton key={i} />
+                ))}
+            </div>
+            <ChartLoadingSkeleton />
         </div>
     );
 }
@@ -29,9 +34,12 @@ export default async function Home() {
     const userId = await getUserId();
 
     return (
-        <div className="flex min-h-screen flex-col p-6">
-            <Suspense fallback={<LoadingSkeleton />}>
+        <div className="flex min-h-screen flex-col p-6 gap-8">
+            <Suspense fallback={<DashboardSkeleton />}>
                 <PersonalizedOverview userId={userId} />
+            </Suspense>
+            <Suspense fallback={<NewsLoadingSkeleton />}>
+                <NewsSection />
             </Suspense>
         </div>
     );
