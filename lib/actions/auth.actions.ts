@@ -49,7 +49,7 @@ export const signUpWithEmail = async ({ email, password, fullName, country, inve
     }
 }
 
-export const signInWithEmail = async ({ email, password }: SignInFormData): Promise<{ success: boolean; data?: unknown; error?: string }> => {
+export const signInWithEmail = async ({ email, password }: SignInFormData): Promise<{ success: boolean; data?: unknown; error?: string; twoFactorRequired?: boolean }> => {
     try {
         const auth = await getAuth();
         if (!auth) {
@@ -62,7 +62,15 @@ export const signInWithEmail = async ({ email, password }: SignInFormData): Prom
     } catch (error: unknown) {
         const appError = toAppError(error);
 
-        // Mensajes de error más específicos
+        // better-auth blocks sign-in with HTTP 403 when the account has 2FA
+        // enabled. Surface a dedicated signal so the UI can show the TOTP step.
+        if (
+            appError.message.toLowerCase().includes('two factor')
+            || appError.message.toLowerCase().includes('2fa')
+        ) {
+            return { success: false, twoFactorRequired: true };
+        }
+
         let errorMessage: string = ERROR_MESSAGES.AUTH_FAILED;
 
         if (appError.message.includes('Invalid') || appError.message.includes('invalid')) {
@@ -75,6 +83,112 @@ export const signInWithEmail = async ({ email, password }: SignInFormData): Prom
 
         console.error('Sign in failed:', appError);
         return { success: false, error: errorMessage };
+    }
+}
+
+export const verifyTwoFactorTotp = async ({ email, password, totpCode }: { email: string; password: string; totpCode: string }): Promise<{ success: boolean; data?: unknown; error?: string }> => {
+    void email; void password; // the pending 2FA session is carried by the cookies
+    try {
+        const auth = await getAuth();
+        if (!auth) {
+            throw new AuthenticationError(ERROR_MESSAGES.AUTH_UNAVAILABLE);
+        }
+
+        const response = await auth.api.verifyTOTP({
+            body: { code: totpCode },
+            headers: await headers(),
+        });
+
+        return { success: true, data: response };
+    } catch (error: unknown) {
+        const appError = toAppError(error);
+        console.error('2FA verification failed:', appError);
+        return { success: false, error: 'Invalid authentication code. Please try again.' };
+    }
+}
+
+export const enableTwoFactorTotp = async ({ password }: { password: string }): Promise<{ success: boolean; data?: { totpURI?: string; backupCodes?: string[] }; error?: string }> => {
+    try {
+        const auth = await getAuth();
+        if (!auth) {
+            throw new AuthenticationError(ERROR_MESSAGES.AUTH_UNAVAILABLE);
+        }
+
+        const response = await auth.api.enableTwoFactor({
+            body: { password },
+            headers: await headers(),
+        });
+
+        return {
+            success: true,
+            data: {
+                totpURI: (response as { totpURI?: string })?.totpURI,
+                backupCodes: (response as { backupCodes?: string[] })?.backupCodes,
+            },
+        };
+    } catch (error: unknown) {
+        const appError = toAppError(error);
+        console.error('Enable 2FA failed:', appError);
+        return { success: false, error: getErrorMessage(error) };
+    }
+}
+
+export const activateTwoFactorTotp = async ({ totpCode }: { totpCode: string }): Promise<{ success: boolean; error?: string }> => {
+    try {
+        const auth = await getAuth();
+        if (!auth) {
+            throw new AuthenticationError(ERROR_MESSAGES.AUTH_UNAVAILABLE);
+        }
+
+        await auth.api.verifyTOTP({
+            body: { code: totpCode },
+            headers: await headers(),
+        });
+
+        return { success: true };
+    } catch (error: unknown) {
+        const appError = toAppError(error);
+        console.error('Activate 2FA failed:', appError);
+        return { success: false, error: 'Invalid authentication code. Please try again.' };
+    }
+}
+
+export const disableTwoFactor = async ({ password }: { password: string }): Promise<{ success: boolean; error?: string }> => {
+    try {
+        const auth = await getAuth();
+        if (!auth) {
+            throw new AuthenticationError(ERROR_MESSAGES.AUTH_UNAVAILABLE);
+        }
+
+        await auth.api.disableTwoFactor({
+            body: { password },
+            headers: await headers(),
+        });
+
+        return { success: true };
+    } catch (error: unknown) {
+        const appError = toAppError(error);
+        console.error('Disable 2FA failed:', appError);
+        return { success: false, error: getErrorMessage(error) };
+    }
+}
+
+export const getTwoFactorStatus = async (): Promise<{ success: boolean; enabled?: boolean; error?: string }> => {
+    try {
+        const auth = await getAuth();
+        if (!auth) {
+            throw new AuthenticationError(ERROR_MESSAGES.AUTH_UNAVAILABLE);
+        }
+
+        const session = await auth.api.getSession({ headers: await headers() });
+        return {
+            success: true,
+            enabled: Boolean((session?.user as { twoFactorEnabled?: boolean } | undefined)?.twoFactorEnabled),
+        };
+    } catch (error: unknown) {
+        const appError = toAppError(error);
+        console.error('2FA status check failed:', appError);
+        return { success: false, error: getErrorMessage(error) };
     }
 }
 
@@ -93,4 +207,3 @@ export const signOut = async (): Promise<{ success: boolean; error?: string }> =
         return { success: false, error: 'Unable to sign out. Please refresh the page and try again.' };
     }
 }
-
