@@ -1,29 +1,173 @@
+"""Serie macro de FRED (St. Louis Fed) con clave gratuita opcional.
+
+Idea originada en TauricResearch/TradingAgents
+``tradingagents/dataflows/fred.py`` (Apache-2.0): la clave gratuita se lee de
+``FRED_API_KEY`` y, si falta, el conector se degrada a "no disponible" en vez
+de romper el flujo. Implementacion propia para CavaAI: ``httpx`` asincrono con
+User-Agent de navegador, alias legibles -> series FRED, y funciones de modulo
+que devuelven ``None`` sin clave.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
 import httpx
 
 from app.core.config import get_settings
 
 
+_BROWSER_HEADERS: dict[str, str] = {
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; CavaAI/0.1; +mailto:contact@example.com)"
+    ),
+    "Accept": "application/json",
+}
+
+
 class FREDClient:
     base_url = "https://api.stlouisfed.org/fred"
 
-    def __init__(self) -> None:
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self.settings = get_settings()
+        self.client = client
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return dict(_BROWSER_HEADERS)
 
     def configured(self) -> bool:
-        return bool(self.settings.fred_api_key)
+        return bool(get_api_key())
 
     async def series(self, series_id: str, limit: int = 120) -> dict:
         if not self.configured():
             raise RuntimeError("FRED_API_KEY is not configured")
         params = {
             "series_id": series_id,
-            "api_key": self.settings.fred_api_key,
+            "api_key": get_api_key(),
             "file_type": "json",
             "limit": limit,
             "sort_order": "desc",
         }
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(f"{self.base_url}/series/observations", params=params)
-            response.raise_for_status()
-            return response.json()
+        if self.client is not None:
+            response = await self.client.get(
+                f"{self.base_url}/series/observations",
+                params=params,
+                headers=self.headers,
+            )
+        else:
+            async with httpx.AsyncClient(timeout=30, headers=self.headers) as client:
+                response = await client.get(
+                    f"{self.base_url}/series/observations", params=params
+                )
+        response.raise_for_status()
+        return response.json()
 
+
+# Alias legibles -> IDs de serie FRED. Un ID crudo valido se usa tal cual.
+MACRO_SERIES: dict[str, str] = {
+    "cpi": "CPIAUCSL",
+    "inflation": "CPIAUCSL",
+    "unemployment": "UNRATE",
+    "unemployment_rate": "UNRATE",
+    "fed_funds_rate": "FEDFUNDS",
+    "fed_funds": "FEDFUNDS",
+    "gdp": "GDP",
+    "real_gdp": "GDPC1",
+    "10y_treasury": "DGS10",
+    "2y_treasury": "DGS2",
+    "m2": "M2SL",
+    "industrial_production": "INDPRO",
+    "retail_sales": "RSAFS",
+    "housing_starts": "HOUST",
+}
+
+
+def get_api_key() -> str | None:
+    """Clave FRED desde el entorno (``FRED_API_KEY``) o settings; None si falta."""
+    return os.getenv("FRED_API_KEY") or get_settings().fred_api_key or None
+
+
+def is_configured() -> bool:
+    return bool(get_api_key())
+
+
+def resolve_series_id(indicator: str) -> str:
+    """Alias -> ID FRED; un ID crudo (corto, sin espacios) pasa tal cual."""
+    key = indicator.strip().lower().replace(" ", "_").replace("-", "_")
+    if key in MACRO_SERIES:
+        return MACRO_SERIES[key]
+    candidate = indicator.strip().upper()
+    if not candidate or len(candidate) > 30 or any(c.isspace() for c in candidate):
+        raise ValueError(
+            f"'{indicator}' no es un alias macro conocido ni un ID FRED valido. "
+            "Usa un alias (p. ej. 'cpi', 'unemployment', '10y_treasury') o un ID "
+            "crudo (p. ej. 'CPIAUCSL')."
+        )
+    return candidate
+
+
+async def fetch_observations(
+    indicator: str,
+    limit: int = 12,
+    client: httpx.AsyncClient | None = None,
+) -> dict[str, Any] | None:
+    """Observaciones FRED o ``None`` si no hay clave (degradacion gratuita)."""
+    api_key = get_api_key()
+    if not api_key:
+        return None
+    series_id = resolve_series_id(indicator)
+    params = {
+        "series_id": series_id,
+        "api_key": api_key,
+        "file_type": "json",
+        "limit": limit,
+        "sort_order": "desc",
+    }
+    if client is not None:
+        response = await client.get(
+            f"{FREDClient.base_url}/series/observations",
+            params=params,
+            headers=dict(_BROWSER_HEADERS),
+        )
+    else:
+        async with httpx.AsyncClient(
+            timeout=30, headers=dict(_BROWSER_HEADERS)
+        ) as owned:
+            response = await owned.get(
+                f"{FREDClient.base_url}/series/observations", params=params
+            )
+    response.raise_for_status()
+    data = response.json()
+    data.setdefault("series_id", series_id)
+    return data
+
+
+async def latest_observation(
+    indicator: str,
+    client: httpx.AsyncClient | None = None,
+) -> dict[str, Any] | None:
+    """Ultima observacion {series_id, date, value} o ``None`` sin clave/datos."""
+    try:
+        data = await fetch_observations(indicator, limit=12, client=client)
+    except ValueError:
+        raise
+    except Exception:
+        return None
+    if not data:
+        return None
+    series_id = data.get("series_id", resolve_series_id(indicator))
+    points = [
+        o
+        for o in (data.get("observations") or [])
+        if isinstance(o, dict) and o.get("value") not in (".", None, "")
+    ]
+    if not points:
+        return None
+    last = points[0]
+    try:
+        value: Any = float(last["value"])
+    except (KeyError, TypeError, ValueError):
+        value = last.get("value")
+    return {"series_id": series_id, "date": last.get("date"), "value": value}

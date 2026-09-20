@@ -1,3 +1,4 @@
+from app.services.connectors import sec_edgar as sec_edgar
 from app.services.connectors.base import ConnectorItem, ConnectorResult
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.fred import FREDClient
@@ -18,4 +19,5 @@ __all__ = [
     "IRConnector",
     "RSSConnector",
     "SECClient",
+    "sec_edgar",
 ]
