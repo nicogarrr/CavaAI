@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BrainCircuit,
   Database,
+  FileDown,
   FileText,
   RefreshCcw,
   Search,
@@ -46,9 +47,6 @@ import {
   type ResearchValuation,
 } from '@/lib/actions/research.actions';
 import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
-import { runResearchThesisDebate } from '@/lib/actions/market-signals.actions';
-import { EarningsCalendarPanel } from '@/components/research/EarningsCalendarPanel';
-import { InsiderSignalsPanel } from '@/components/research/InsiderSignalsPanel';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
 
 export const dynamic = 'force-dynamic';
@@ -73,7 +71,7 @@ type View = (typeof views)[number][0];
 
 type PageProps = {
   params: Promise<{ ticker: string }>;
-  searchParams: Promise<{ view?: string; chat?: string; debate?: string }>;
+  searchParams: Promise<{ view?: string; chat?: string }>;
 };
 
 function asView(value: string | undefined): View {
@@ -278,23 +276,22 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           </div>
         ) : null}
         <CompanyMarketPanel snapshot={market} />
-        <div className="grid gap-6 xl:grid-cols-2">
-          <InsiderSignalsPanel ticker={ticker} />
-          <EarningsCalendarPanel highlightTicker={ticker} />
-        </div>
       </div>
     );
   } else if (activeView === 'thesis') {
     const data = await getResearchThesisWorkspace(ticker);
     content = (
       <div className="space-y-6">
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <MutationForm action={generateResearchThesis.bind(null, ticker)} successMessage="New thesis version generated">
             <Button type="submit"><BrainCircuit className="mr-2 h-4 w-4" />Generate thesis</Button>
           </MutationForm>
-          <MutationForm action={runResearchThesisDebate.bind(null, ticker)} successMessage="Bull/bear debate persisted">
-            <Button type="submit" variant="outline">Run bull/bear debate</Button>
-          </MutationForm>
+          <Link
+            className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
+            href="/export"
+          >
+            <FileDown className="h-4 w-4" />Exportar journal
+          </Link>
           <Badge variant="outline">{data.history.length} versions</Badge>
           <Badge variant="outline">{data.claims.length} claims</Badge>
         </div>
@@ -418,13 +415,11 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     const audits = await getResearchSourceAuditsWorkspace(ticker);
     content = <Panel title="Source audits"><div className="space-y-3">{audits.length ? audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'passed' : 'failed'}</Badge><Badge variant="outline">coverage {audit.source_coverage_score}/100</Badge><Badge variant="outline">thesis {audit.thesis_version_id ?? 'unknown'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>) : <Empty>No source audits persisted.</Empty>}</div></Panel>;
   } else {
-    const response = query.chat
-      ? await askResearchCompanyChat(ticker, query.chat, query.debate === '1')
-      : null;
+    const response = query.chat ? await askResearchCompanyChat(ticker, query.chat) : null;
     content = (
       <div className="space-y-6">
         <Panel title="Source-aware company chat">
-          <form className="flex flex-wrap items-center gap-3" method="get"><input type="hidden" name="view" value="chat" /><Input name="chat" defaultValue={query.chat} placeholder={`Ask a source-aware question about ${ticker}`} minLength={3} required /><label className="flex items-center gap-2 text-xs text-gray-400"><input type="checkbox" name="debate" value="1" defaultChecked={query.debate === '1'} />Bull/bear debate</label><Button type="submit"><Search className="mr-2 h-4 w-4" />Ask</Button></form>
+          <form className="flex gap-3" method="get"><input type="hidden" name="view" value="chat" /><Input name="chat" defaultValue={query.chat} placeholder={`Ask a source-aware question about ${ticker}`} minLength={3} required /><Button type="submit"><Search className="mr-2 h-4 w-4" />Ask</Button></form>
         </Panel>
         {response ? <Panel title="Answer"><div className="whitespace-pre-wrap text-sm leading-7 text-gray-300">{response.answer}</div><div className="mt-4 flex flex-wrap gap-2"><Badge variant="outline">model {response.model ?? 'deterministic'}</Badge><Badge variant="outline">{response.sources.length} sources</Badge><Badge variant="outline">{response.blocked ? 'insufficient data' : 'grounded'}</Badge></div></Panel> : <Empty>Ask a question to retrieve the deterministic evidence contract and source-aware synthesis.</Empty>}
       </div>
