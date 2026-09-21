@@ -104,7 +104,7 @@ class InvestmentPlanService:
         db.refresh(contribution)
         return contribution
 
-    def list_contributions(self, db: Session) -> list[PlanContribution]:
+    def list_contributions(self, db: Session, *, limit: int = 500) -> list[PlanContribution]:
         plan = self.get_plan(db)
         if plan is None:
             return []
@@ -113,6 +113,7 @@ class InvestmentPlanService:
                 select(PlanContribution)
                 .where(PlanContribution.plan_id == plan.id)
                 .order_by(PlanContribution.date)
+                .limit(limit)
             )
         )
 

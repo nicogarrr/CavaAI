@@ -51,19 +51,21 @@ class PortfolioIntelligenceService:
             )
             for position, company in rows
         }
-        price_series = {
-            company.id: list(
+        price_series: dict[int, list[MarketPrice]] = {company.id: [] for _, company in rows}
+        if rows:
+            # Lote: 1 query para todas las series (anti N+1 por posición).
+            all_prices = list(
                 db.scalars(
                     select(MarketPrice)
                     .where(
-                        MarketPrice.company_id == company.id,
+                        MarketPrice.company_id.in_([company.id for _, company in rows]),
                         MarketPrice.date >= cutoff,
                     )
-                    .order_by(MarketPrice.date)
+                    .order_by(MarketPrice.company_id, MarketPrice.date)
                 ).all()
             )
-            for _, company in rows
-        }
+            for price in all_prices:
+                price_series.setdefault(price.company_id, []).append(price)
         returns = {
             company_id: self._returns(series)
             for company_id, series in price_series.items()
@@ -231,9 +233,17 @@ class PortfolioIntelligenceService:
         fx = PortfolioFXService()
         base = fx.base_currency(db)
         cashflows: list[tuple[date, float]] = []
-        for transaction in db.scalars(select(Transaction).order_by(Transaction.trade_date)).all():
-            rate = fx.rate(
-                db,
+        all_transactions = list(db.scalars(select(Transaction).order_by(Transaction.trade_date)).all())
+        # Lote FX: 1 query para todos los flujos (anti N+1 por transacción).
+        flow_table = fx.fx_table(
+            db,
+            currencies={transaction.currency for transaction in all_transactions},
+            base_currency=base,
+            as_of_max=max((t.trade_date for t in all_transactions), default=None) or date.today(),
+        ) if all_transactions else {}
+        for transaction in all_transactions:
+            rate = PortfolioFXService.rate_from_table(
+                flow_table,
                 quote_currency=transaction.currency,
                 base_currency=base,
                 as_of=transaction.trade_date,
@@ -248,13 +258,16 @@ class PortfolioIntelligenceService:
                 sign = 1
             cashflows.append((transaction.trade_date, sign * amount))
         ending_value = sum(float(position.market_value_base or 0) for position, _ in positions)
-        for cash in db.scalars(select(CashBalance)).all():
-            rate = fx.rate(
-                db,
-                quote_currency=cash.currency,
-                base_currency=base,
-                as_of=date.today(),
-            )
+        cash_rows = list(db.scalars(select(CashBalance)).all())
+        # Lote FX: 1 query para todas las cajas (anti N+1).
+        ending_rates = fx.rates_for(
+            db,
+            quote_currencies={cash.currency for cash in cash_rows},
+            base_currency=base,
+            as_of=date.today(),
+        )
+        for cash in cash_rows:
+            rate = ending_rates.get(cash.currency.upper())
             if rate is not None:
                 ending_value += float(cash.balance * rate)
         if ending_value:
@@ -372,6 +385,32 @@ class PortfolioIntelligenceService:
     ) -> dict[str, Any]:
         positions = []
         totals = defaultdict(float)
+        company_ids = [company.id for _, company in rows]
+        # Lote: 1 query de facts + 1 de dividendos para todas las posiciones
+        # (anti N+1 por compañía en attribution).
+        all_facts: dict[int, dict[str, list[FinancialFact]]] = defaultdict(lambda: defaultdict(list))
+        if company_ids:
+            for fact in db.scalars(
+                select(FinancialFact)
+                .where(
+                    FinancialFact.company_id.in_(company_ids),
+                    FinancialFact.metric.in_(["eps", "shares_diluted"]),
+                )
+                .order_by(FinancialFact.company_id, FinancialFact.fiscal_year)
+            ).all():
+                all_facts[fact.company_id][fact.metric].append(fact)
+        all_dividends: dict[int, float] = defaultdict(float)
+        if company_ids:
+            for dividend in db.scalars(
+                select(Transaction).where(
+                    Transaction.company_id.in_(company_ids),
+                    Transaction.action == "dividend",
+                )
+            ).all():
+                if dividend.company_id is not None:
+                    all_dividends[dividend.company_id] += float(
+                        dividend.quantity * dividend.price
+                    )
         for position, company in rows:
             prices = price_series.get(company.id, [])
             total_return = (
@@ -379,32 +418,12 @@ class PortfolioIntelligenceService:
                 if len(prices) >= 2 and prices[0].adj_close
                 else None
             )
-            facts = list(
-                db.scalars(
-                    select(FinancialFact)
-                    .where(
-                        FinancialFact.company_id == company.id,
-                        FinancialFact.metric.in_(["eps", "shares_diluted"]),
-                    )
-                    .order_by(FinancialFact.fiscal_year)
-                ).all()
-            )
-            by_metric = defaultdict(list)
-            for fact in facts:
-                by_metric[fact.metric].append(fact)
-            fundamental_growth = self._series_change(by_metric["eps"])
-            share_change = self._series_change(by_metric["shares_diluted"])
+            by_metric = all_facts.get(company.id, {})
+            fundamental_growth = self._series_change(by_metric.get("eps", []))
+            share_change = self._series_change(by_metric.get("shares_diluted", []))
             dilution = max(share_change or 0, 0)
             buybacks = max(-(share_change or 0), 0)
-            dividends = sum(
-                float(transaction.quantity * transaction.price)
-                for transaction in db.scalars(
-                    select(Transaction).where(
-                        Transaction.company_id == company.id,
-                        Transaction.action == "dividend",
-                    )
-                ).all()
-            )
+            dividends = all_dividends.get(company.id, 0.0)
             dividend_return = (
                 dividends / float(position.cost_basis_native)
                 if position.cost_basis_native and position.cost_basis_native > 0

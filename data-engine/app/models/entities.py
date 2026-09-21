@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -105,6 +106,7 @@ class FXRate(TenantOwnedMixin, Base, TimestampMixin):
             "rate_date",
             name="uq_fx_rate_tenant_pair_date",
         ),
+        Index("ix_fx_rates_base_quote_date", "base_currency", "quote_currency", "rate_date"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -141,6 +143,9 @@ class Company(Base, TimestampMixin):
 
 class Position(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "positions"
+    __table_args__ = (
+        Index("ix_positions_portfolio_company", "portfolio_id", "company_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     portfolio_id: Mapped[int | None] = mapped_column(
@@ -196,6 +201,8 @@ class Transaction(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "transactions"
     __table_args__ = (
         UniqueConstraint("tenant_id", "external_id", name="uq_transaction_tenant_external"),
+        Index("ix_transactions_portfolio_trade_date", "portfolio_id", "trade_date"),
+        Index("ix_transactions_company_action", "company_id", "action"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -222,6 +229,7 @@ class PortfolioDailySnapshot(TenantOwnedMixin, Base, TimestampMixin):
             "snapshot_date",
             name="uq_portfolio_daily_snapshot_tenant_date",
         ),
+        Index("ix_portfolio_snapshots_portfolio_date", "portfolio_id", "snapshot_date"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -299,6 +307,9 @@ class CashDailySnapshot(TenantOwnedMixin, Base, TimestampMixin):
 
 class Document(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "documents"
+    __table_args__ = (
+        Index("ix_documents_company_id", "company_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
@@ -315,6 +326,9 @@ class Document(TenantOwnedMixin, Base, TimestampMixin):
 
 class DocumentChunk(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "document_chunks"
+    __table_args__ = (
+        Index("ix_document_chunks_doc_idx", "document_id", "chunk_index"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
@@ -329,6 +343,9 @@ class DocumentChunk(TenantOwnedMixin, Base, TimestampMixin):
 
 class FinancialFact(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "financial_facts"
+    __table_args__ = (
+        Index("ix_financial_facts_company_metric_year", "company_id", "metric", "fiscal_year"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
@@ -420,6 +437,7 @@ class CalculatedMetric(TenantOwnedMixin, Base, TimestampMixin):
             "definition_version",
             name="uq_calculated_metric_definition_period",
         ),
+        Index("ix_calculated_metrics_company_metric", "company_id", "metric"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -547,6 +565,9 @@ class Catalyst(TenantOwnedMixin, Base, TimestampMixin):
 
 class ValuationModel(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "valuation_models"
+    __table_args__ = (
+        Index("ix_valuation_models_company_version", "company_id", "version"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
@@ -591,6 +612,7 @@ class ThesisVersion(TenantOwnedMixin, Base, TimestampMixin):
         UniqueConstraint(
             "tenant_id", "company_id", "version", name="uq_thesis_tenant_company_version"
         ),
+        Index("ix_thesis_versions_company_version", "company_id", "version"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -647,6 +669,9 @@ class ThesisSection(TenantOwnedMixin, Base, TimestampMixin):
 
 class Claim(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "claims"
+    __table_args__ = (
+        Index("ix_claims_company_status", "company_id", "status"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
@@ -687,6 +712,9 @@ class ClaimEvidence(TenantOwnedMixin, Base, TimestampMixin):
 
 class ThesisChange(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "thesis_changes"
+    __table_args__ = (
+        Index("ix_thesis_changes_company_created", "company_id", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
@@ -835,6 +863,9 @@ class EvidenceSuggestion(TenantOwnedMixin, Base, TimestampMixin):
 
 class ResearchReview(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "research_reviews"
+    __table_args__ = (
+        Index("ix_research_reviews_company_status", "company_id", "status"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
@@ -898,6 +929,7 @@ class ResearchAlert(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "research_alerts"
     __table_args__ = (
         UniqueConstraint("tenant_id", "fingerprint", name="uq_research_alert_fingerprint"),
+        Index("ix_research_alerts_company_status", "company_id", "status"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

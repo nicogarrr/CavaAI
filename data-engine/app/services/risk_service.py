@@ -1,3 +1,5 @@
+from datetime import date
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -39,10 +41,17 @@ class RiskService:
             })
         cash_native: dict[str, float] = {}
         cash_base = 0.0
-        for row in db.scalars(select(CashBalance)).all():
+        cash_rows = list(db.scalars(select(CashBalance)).all())
+        cash_table = fx.fx_table(
+            db,
+            currencies={row.currency for row in cash_rows},
+            base_currency=base_currency,
+            as_of_max=max((row.as_of for row in cash_rows), default=None) or date.today(),
+        ) if cash_rows else {}
+        for row in cash_rows:
             cash_native[row.currency] = cash_native.get(row.currency, 0.0) + float(row.balance)
-            rate = fx.rate(
-                db,
+            rate = PortfolioFXService.rate_from_table(
+                cash_table,
                 quote_currency=row.currency,
                 base_currency=base_currency,
                 as_of=row.as_of,

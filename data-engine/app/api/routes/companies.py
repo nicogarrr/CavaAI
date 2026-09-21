@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -180,8 +180,14 @@ def ensure_company(payload: CompanyEnsureRequest, db: Session = Depends(get_db))
 
 
 @router.get("", response_model=list[CompanyOut])
-def list_companies(db: Session = Depends(get_db)) -> list[Company]:
-    return list(db.scalars(select(Company).order_by(Company.ticker)).all())
+def list_companies(
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    db: Session = Depends(get_db),
+) -> list[Company]:
+    return list(
+        db.scalars(select(Company).order_by(Company.ticker).limit(limit).offset(offset)).all()
+    )
 
 
 @router.get("/{ticker}", response_model=CompanyOut)
@@ -241,6 +247,7 @@ def financial_terminal(
 @router.get("/{ticker}/metrics/calculated", response_model=CalculatedMetricsResponse)
 def list_calculated_metrics(
     ticker: str,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
     db: Session = Depends(get_db),
 ) -> dict:
     company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
@@ -255,6 +262,7 @@ def list_calculated_metrics(
                 CalculatedMetric.fiscal_year.desc().nullslast(),
                 desc(CalculatedMetric.created_at),
             )
+            .limit(limit)
         ).all()
     )
     return {
