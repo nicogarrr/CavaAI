@@ -224,6 +224,16 @@ class ThesisService:
         RedTeamService().run(db, company, thesis, commit=False)
         db.commit()
         db.refresh(thesis)
+        # Human-in-the-loop mínimo viable: si TELEGRAM_APPROVAL_ENABLED, envía
+        # el mensaje con botones inline. Best-effort: nunca rompe la generación.
+        try:
+            from app.services.thesis_approval_service import (
+                maybe_request_thesis_approval,
+            )
+
+            maybe_request_thesis_approval(db, thesis, company.ticker)
+        except Exception:
+            pass
         return thesis
 
     def _persist_claims(

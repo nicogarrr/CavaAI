@@ -99,25 +99,42 @@ class AlertRuleService:
         )
         cooldown_active = bool(cooldown_until and cooldown_until > now)
         triggered = bool(matched and not cooldown_active)
+        # Triage Jev de la alerta: 1 sola llamada por alerta DISPARADA (nunca por
+        # evaluación). Coste ~$0.042/MTok in. Fallback: sin TYPESAFE_API_KEY o
+        # ante cualquier error, la alerta se emite igual sin `jev_urgency`.
+        jev_urgency: dict | None = None
         if triggered:
+            alert_message = (
+                f"{company.ticker} rule matched: observed={observed}; "
+                f"condition={rule.condition}"
+            )
+            try:
+                from app.services.jev_triage_service import (
+                    classify_urgency_sync,
+                    jev_metadata,
+                )
+
+                jev_urgency = jev_metadata(classify_urgency_sync(alert_message))
+            except Exception:  # noqa: BLE001 — Jev best-effort, nunca rompe alertas
+                jev_urgency = None
+            alert_metadata: dict[str, Any] = {
+                "alert_rule_id": rule.id,
+                "condition": rule.condition,
+                "target": rule.target,
+                "observation": observation,
+            }
+            if jev_urgency is not None:
+                alert_metadata["jev_urgency"] = jev_urgency
             ReviewAlertService().emit_alert(
                 db,
                 company_id=company.id,
                 alert_type=rule.rule_type,
                 severity=rule.severity,
                 title=rule.name,
-                message=(
-                    f"{company.ticker} rule matched: observed={observed}; "
-                    f"condition={rule.condition}"
-                ),
+                message=alert_message,
                 fingerprint_parts=["alert_rule", str(rule.id)],
                 channels=rule.channels,
-                metadata={
-                    "alert_rule_id": rule.id,
-                    "condition": rule.condition,
-                    "target": rule.target,
-                    "observation": observation,
-                },
+                metadata=alert_metadata,
             )
             rule.last_triggered_at = now
             rule.trigger_count += 1
@@ -134,6 +151,7 @@ class AlertRuleService:
             "cooldown_active": cooldown_active,
             "observed": self._json_value(observed),
             "observation": observation,
+            "jev_urgency": jev_urgency,
         }
         rule.last_evaluated_at = now
         rule.last_value = None if observed is None else str(observed)[:160]
