@@ -32,23 +32,27 @@ export default function QuickAlertButton({ ticker }: { ticker: string }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
       <Input
         value={price}
         onChange={(e) => setPrice(e.target.value)}
         type="number"
         min="0"
         step="0.01"
+        inputMode="decimal"
         placeholder="Precio objetivo $"
-        className="h-8 w-36 bg-[#101010] text-xs"
+        aria-label="Precio objetivo en dólares"
+        className="h-11 w-full bg-[#101010] text-base sm:h-8 sm:w-36 sm:text-xs"
       />
-      <Button size="sm" variant="outline" onClick={onCreate} disabled={busy} className="h-8 gap-1.5 text-xs">
-        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellPlus className="h-3.5 w-3.5" />}
-        + Alerta
-      </Button>
-      <Button size="sm" variant="ghost" asChild className="h-8 text-xs text-gray-400">
-        <Link href="/alerts">Ver alertas</Link>
-      </Button>
+      <div className="flex w-full gap-2 sm:w-auto">
+        <Button size="sm" variant="outline" onClick={onCreate} disabled={busy} className="min-h-[44px] flex-1 gap-1.5 px-4 text-sm sm:min-h-0 sm:h-8 sm:flex-none sm:text-xs">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin sm:h-3.5 sm:w-3.5" /> : <BellPlus className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
+          + Alerta
+        </Button>
+        <Button size="sm" variant="ghost" asChild className="min-h-[44px] flex-1 px-4 text-sm text-gray-300 sm:min-h-0 sm:h-8 sm:flex-none sm:text-xs">
+          <Link href="/alerts">Ver alertas</Link>
+        </Button>
+      </div>
     </div>
   );
 }

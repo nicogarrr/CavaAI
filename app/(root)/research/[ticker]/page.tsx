@@ -48,6 +48,7 @@ import {
 } from '@/lib/actions/research.actions';
 import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
+import FollowButton from '@/components/screener/FollowButton';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -101,9 +102,22 @@ function metricValue(value: number | string | null | undefined, unit: string) {
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(parsed);
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ title, children, collapsibleOnMobile = false }: { title: string; children: React.ReactNode; collapsibleOnMobile?: boolean }) {
+  if (collapsibleOnMobile) {
+    return (
+      <details className="rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+        <summary className="cursor-pointer list-none text-lg font-semibold text-gray-100 [&::-webkit-details-marker]:hidden">
+          <span className="flex min-h-[44px] items-center justify-between gap-2">
+            {title}
+            <span className="text-xs font-normal text-gray-500 sm:hidden">tocar para expandir</span>
+          </span>
+        </summary>
+        <div className="mt-4">{children}</div>
+      </details>
+    );
+  }
   return (
-    <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+    <section className="rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
       <h2 className="text-lg font-semibold text-gray-100">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
@@ -126,7 +140,26 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 function FactTable({ facts }: { facts: ResearchFact[] }) {
   if (!facts.length) return <Empty>No persisted financial facts yet.</Empty>;
   return (
-    <div className="overflow-x-auto">
+    <>
+      {/* Móvil: cards sin scroll horizontal */}
+      <div className="space-y-3 md:hidden">
+        {facts.slice(0, 50).map((fact) => (
+          <div key={fact.id} className="rounded-lg border border-gray-800 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-gray-200">{fact.metric}</span>
+              <span className="text-sm font-semibold text-teal-300">{metricValue(fact.value, fact.unit)}</span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-2 text-xs text-gray-500">
+              <span>{fact.period}</span>
+              <span>·</span>
+              <span>{fact.source_type}</span>
+            </div>
+          </div>
+        ))}
+        {facts.length > 50 ? <p className="text-xs text-gray-500">{facts.length - 50} hechos más visibles en escritorio.</p> : null}
+      </div>
+      {/* Escritorio: tabla completa */}
+      <div className="hidden overflow-x-auto md:block">
       <table className="w-full text-left text-sm">
         <thead className="text-xs uppercase text-gray-500">
           <tr>
@@ -147,14 +180,15 @@ function FactTable({ facts }: { facts: ResearchFact[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }
 
 function MetricsGrid({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
   if (!metrics.length) return <Empty>Calculated metrics have not been refreshed.</Empty>;
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {metrics.map((metric) => (
         <div className="rounded-lg border border-gray-800 p-4" key={`${metric.metric}-${metric.period}-${metric.definition_version}`}>
           <div className="flex items-center justify-between gap-3">
@@ -228,14 +262,21 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const [{ ticker: rawTicker }, query] = await Promise.all([params, searchParams]);
   const ticker = rawTicker.trim().toUpperCase();
   const activeView = asView(query.view);
-  const snapshot = await getResearchCompanySnapshot(ticker);
+  // Snapshot (backend) y market (Finnhub: profile+quote+candles) son
+  // independientes: se lanzan juntos y el coste pasa de suma a máximo.
+  // market solo se consume en 'overview'; en el resto de vistas la promesa
+  // ni se crea.
+  const snapshotPromise = getResearchCompanySnapshot(ticker);
+  const marketPromise = activeView === 'overview' ? getCompanyMarketSnapshot(ticker) : undefined;
+  const snapshot = await snapshotPromise;
   if (!snapshot) notFound();
 
   const company = snapshot.company;
   let content: React.ReactNode;
 
   if (activeView === 'overview') {
-    const market = await getCompanyMarketSnapshot(ticker);
+    // marketPromise ya se lanzó en paralelo al snapshot más arriba.
+    const market = await (marketPromise ?? getCompanyMarketSnapshot(ticker));
     content = (
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -304,8 +345,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             </div>
           ) : <Empty>No thesis exists.</Empty>}
         </Panel>
-        <Panel title="Company-specific thesis sections">
-          <div className="grid gap-3 lg:grid-cols-2">
+        <Panel title="Company-specific thesis sections" collapsibleOnMobile>
+          <div className="grid gap-3 sm:grid-cols-2">
             {data.sections.map((section) => (
               <div className="rounded-lg border border-gray-800 p-4" key={section.id}>
                 <div className="flex justify-between gap-3"><h3 className="font-medium text-gray-200">{section.title}</h3><Badge variant="outline">{section.status}</Badge></div>
@@ -315,10 +356,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           </div>
         </Panel>
         <Panel title="Claims and evidence">
-          <MutationForm action={createResearchClaim.bind(null, ticker)} className="mb-5 grid gap-3 md:grid-cols-[1fr_150px_auto]" resetOnSuccess successMessage="Claim created">
-            <Textarea name="statement" placeholder="A falsifiable company-specific claim" required />
-            <Input name="materiality_score" type="number" min="0" max="10" defaultValue="5" />
-            <Button type="submit">Add claim</Button>
+          <MutationForm action={createResearchClaim.bind(null, ticker)} className="mb-5 grid gap-3 sm:grid-cols-[1fr_150px_auto] sm:items-start" resetOnSuccess successMessage="Claim created">
+            <Textarea name="statement" placeholder="A falsifiable company-specific claim" required className="min-h-[44px] text-base sm:text-sm" />
+            <Input name="materiality_score" type="number" min="0" max="10" defaultValue="5" className="h-11 text-base sm:h-9 sm:text-sm" />
+            <Button type="submit" className="min-h-[44px] sm:min-h-0">Add claim</Button>
           </MutationForm>
           <div className="space-y-3">
             {data.claims.length ? data.claims.map((claim) => (
@@ -329,7 +370,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             )) : <Empty>No claims recorded.</Empty>}
           </div>
         </Panel>
-        <Panel title="Dependency graph and red team">
+        <Panel title="Dependency graph and red team" collapsibleOnMobile>
           <p className="text-sm text-gray-300">{data.graph ? `${data.graph.nodes.length} nodes · ${data.graph.edges.length} dependencies` : 'No persisted graph.'}</p>
           <p className="mt-2 text-sm text-gray-400">{data.redTeam?.strongest_bear_case ?? 'No red-team run persisted.'}</p>
         </Panel>
@@ -384,7 +425,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-5">
         <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Moat assessment refreshed"><Button type="submit" variant="outline"><ShieldCheck className="mr-2 h-4 w-4" />Refresh evidence assessment</Button></MutationForm>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {moat?.moats.length ? moat.moats.map((item) => <div className="rounded-xl border border-gray-800 bg-[#101010] p-4" key={item.type}><div className="flex justify-between gap-3"><span className="font-medium text-gray-200">{item.type.replaceAll('_', ' ')}</span><Badge>{item.strength}/100</Badge></div><p className="mt-3 text-sm text-gray-400">{item.status} · {item.trend} · persistence {item.persistence}</p><p className="mt-2 text-xs text-gray-600">{item.supporting_claim_ids.length} supporting · {item.contradicting_claim_ids.length} contradicting claims</p></div>) : <Empty>No persisted moat assessment.</Empty>}
         </div>
       </div>
@@ -394,7 +435,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <Panel title="Peer set"><p className="text-sm text-gray-300">{peers.comparison?.basis ?? 'No peer set'} · {peers.comparison?.peer_count ?? 0} peers</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
-        <Panel title="Comparable benchmarks"><div className="grid gap-3 md:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Target {value.target_value ?? 'unknown'} · median {value.peer_median ?? 'unknown'} · n={value.peer_sample_size}</div></div>)}</div></Panel>
+        <Panel title="Comparable benchmarks"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Target {value.target_value ?? 'unknown'} · median {value.peer_median ?? 'unknown'} · n={value.peer_sample_size}</div></div>)}</div></Panel>
         <Panel title="Advantages and disadvantages"><p className="text-sm text-gray-400">{peers.analysis?.methodology ?? 'No persisted peer analysis.'}</p><p className="mt-3 text-xs text-amber-300">{peers.analysis?.insufficient_data.join(', ')}</p></Panel>
       </div>
     );
@@ -419,7 +460,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <Panel title="Source-aware company chat">
-          <form className="flex gap-3" method="get"><input type="hidden" name="view" value="chat" /><Input name="chat" defaultValue={query.chat} placeholder={`Ask a source-aware question about ${ticker}`} minLength={3} required /><Button type="submit"><Search className="mr-2 h-4 w-4" />Ask</Button></form>
+          <form className="flex flex-col gap-3 sm:flex-row" method="get"><input type="hidden" name="view" value="chat" /><Input name="chat" defaultValue={query.chat} placeholder={`Ask a source-aware question about ${ticker}`} minLength={3} required className="h-11 text-base sm:h-9 sm:text-sm" /><Button type="submit" className="min-h-[44px] sm:min-h-0"><Search className="mr-2 h-4 w-4" />Ask</Button></form>
         </Panel>
         {response ? <Panel title="Answer"><div className="whitespace-pre-wrap text-sm leading-7 text-gray-300">{response.answer}</div><div className="mt-4 flex flex-wrap gap-2"><Badge variant="outline">model {response.model ?? 'deterministic'}</Badge><Badge variant="outline">{response.sources.length} sources</Badge><Badge variant="outline">{response.blocked ? 'insufficient data' : 'grounded'}</Badge></div></Panel> : <Empty>Ask a question to retrieve the deterministic evidence contract and source-aware synthesis.</Empty>}
       </div>
@@ -430,17 +471,22 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px]">
         <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
-        <header className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-3"><h1 className="text-3xl font-bold">{ticker}</h1><Badge variant="outline">{company.exchange}</Badge><Badge variant="outline">{company.currency}</Badge></div>
-            <p className="mt-2 text-gray-400">{company.name} · {company.sector} · {company.industry}</p>
+        <header className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-6">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3"><h1 className="text-2xl font-bold sm:text-3xl">{ticker}</h1><Badge variant="outline">{company.exchange}</Badge><Badge variant="outline">{company.currency}</Badge></div>
+            <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {company.sector} · {company.industry}</p>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />read-only snapshot</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{company.company_type}</span></div>
-          <QuickAlertButton ticker={ticker} />
+          <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
+            <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />read-only snapshot</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{company.company_type}</span></div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} /></div>
+              <FollowButton symbol={ticker} company={company.name} />
+            </div>
+          </div>
         </header>
-        <nav aria-label="Research modules" className="mb-7 flex gap-2 overflow-x-auto pb-2">
+        <nav aria-label="Research modules" className="-mx-4 mb-7 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
           {views.map(([key, label]) => (
-            <Link className={`whitespace-nowrap rounded-lg border px-3 py-2 text-sm transition ${activeView === key ? 'border-teal-600 bg-teal-950/40 text-teal-200' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'}`} href={`/research/${encodeURIComponent(ticker)}?view=${key}`} key={key}>{label}</Link>
+            <Link className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border px-4 py-2.5 text-sm transition sm:min-h-0 sm:px-3 sm:py-2 ${activeView === key ? 'border-teal-600 bg-teal-950/40 text-teal-200' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'}`} href={`/research/${encodeURIComponent(ticker)}?view=${key}`} key={key}>{label}</Link>
           ))}
           {[
             ['financial-terminal', 'Financial Terminal'],
@@ -448,7 +494,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             ['decision-lessons', 'Lessons'],
             ['management-credibility', 'Management'],
           ].map(([path, label]) => (
-            <Link className="whitespace-nowrap rounded-lg border border-teal-900/60 px-3 py-2 text-sm text-teal-300 transition hover:border-teal-700 hover:text-teal-200" href={`/research/${encodeURIComponent(ticker)}/${path}`} key={path}>{label}</Link>
+            <Link className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border border-teal-900/60 px-4 py-2.5 text-sm text-teal-300 transition hover:border-teal-700 hover:text-teal-200 sm:min-h-0 sm:px-3 sm:py-2" href={`/research/${encodeURIComponent(ticker)}/${path}`} key={path}>{label}</Link>
           ))}
         </nav>
         {content}

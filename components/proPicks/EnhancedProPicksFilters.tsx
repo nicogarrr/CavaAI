@@ -53,14 +53,14 @@ export default function EnhancedProPicksFilters({ filters, onFiltersChange, onAp
   };
 
   return (
-    <Card className="border-gray-700 bg-gray-800/50">
+    <Card className="w-full min-w-0 border-gray-700 bg-gray-800/50">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Filter className="h-5 w-5 text-teal-400" />
             <CardTitle className="text-lg">Filtros Avanzados</CardTitle>
           </div>
-          <Button variant="ghost" size="sm" onClick={resetFilters}>
+          <Button variant="ghost" size="sm" className="min-h-[44px]" onClick={resetFilters}>
             <X className="h-4 w-4 mr-1" />
             Limpiar
           </Button>
@@ -74,7 +74,7 @@ export default function EnhancedProPicksFilters({ filters, onFiltersChange, onAp
             value={filters.timePeriod} 
             onValueChange={(value: ProPicksFilters['timePeriod']) => updateFilter('timePeriod', value)}
           >
-            <SelectTrigger className="bg-gray-900 border-gray-700">
+            <SelectTrigger className="h-11 w-full border-gray-700 bg-gray-900 text-base md:text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -100,7 +100,7 @@ export default function EnhancedProPicksFilters({ filters, onFiltersChange, onAp
             min={5}
             max={50}
             step={5}
-            className="py-2"
+            className="py-3"
           />
           <div className="flex justify-between text-xs text-gray-500">
             <span>5</span>
@@ -119,7 +119,7 @@ export default function EnhancedProPicksFilters({ filters, onFiltersChange, onAp
             min={50}
             max={95}
             step={5}
-            className="py-2"
+            className="py-3"
           />
           <div className="flex justify-between text-xs text-gray-500">
             <span>50 (Aceptable)</span>
@@ -134,7 +134,7 @@ export default function EnhancedProPicksFilters({ filters, onFiltersChange, onAp
             value={filters.sector} 
             onValueChange={(value) => updateFilter('sector', value)}
           >
-            <SelectTrigger className="bg-gray-900 border-gray-700">
+            <SelectTrigger className="h-11 w-full border-gray-700 bg-gray-900 text-base md:text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -154,7 +154,7 @@ export default function EnhancedProPicksFilters({ filters, onFiltersChange, onAp
             value={filters.sortBy} 
             onValueChange={(value: ProPicksFilters['sortBy']) => updateFilter('sortBy', value)}
           >
-            <SelectTrigger className="bg-gray-900 border-gray-700">
+            <SelectTrigger className="h-11 w-full border-gray-700 bg-gray-900 text-base md:text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -168,7 +168,7 @@ export default function EnhancedProPicksFilters({ filters, onFiltersChange, onAp
         </div>
 
         {/* Botón Aplicar */}
-        <Button onClick={onApply} className="w-full bg-teal-600 hover:bg-teal-700">
+        <Button onClick={onApply} className="h-11 w-full bg-teal-600 hover:bg-teal-700">
           <Filter className="h-4 w-4 mr-2" />
           Aplicar Filtros
         </Button>

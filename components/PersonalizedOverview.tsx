@@ -262,7 +262,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             {/* Header Welcome */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-100">Bienvenido</h1>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-100 break-words">Bienvenido</h1>
                     <p className="text-gray-400 mt-1">Resumen de mercado y tus inversiones</p>
                 </div>
             </div>
@@ -282,7 +282,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     {/* Insights & Portfolio */}
                     {aiInsight && (
                         <Card className="bg-gradient-to-r from-teal-900/40 to-blue-900/40 border-teal-800/50">
-                            <CardContent className="p-4 flex items-center gap-4">
+                            <CardContent className="p-4 flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-4">
                                 <div className="p-3 bg-teal-500/10 rounded-full">
                                     <Brain className="h-6 w-6 text-teal-400" />
                                 </div>
@@ -300,17 +300,17 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 <Wallet className="h-5 w-5 text-blue-400" />
                                 Tu Cartera Hoy
                             </CardTitle>
-                            <Link href="/portfolio" className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1 transition-colors">
+                            <Link href="/portfolio" className="inline-flex min-h-[44px] items-center gap-1 px-2 -mr-2 text-blue-400 hover:text-blue-300 text-sm transition-colors">
                                 Ver detalles <ArrowRight className="w-4 h-4" />
                             </Link>
                         </CardHeader>
                         <CardContent className="pt-4">
                             {portfolioSummary && portfolioSummary.holdings.length > 0 ? (
                                 <div className="space-y-5">
-                                    <div className="flex justify-between items-center p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
-                                        <div>
+                                    <div className="flex flex-col min-[420px]:flex-row min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
+                                        <div className="min-w-0">
                                             <p className="text-sm text-gray-400">Valor Total Estimado</p>
-                                            <p className="text-3xl font-bold text-white mt-1">${portfolioSummary.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                                            <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">${portfolioSummary.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
                                         </div>
                                         <div className="text-right">
                                             <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>
@@ -326,7 +326,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                     key={h.symbol}
                                                     href={`/research/${h.symbol}`}
                                                     prefetch
-                                                    className="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700/30"
+                                                    className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700/30"
                                                 >
                                                     <span className="text-white font-semibold">{h.symbol}</span>
                                                     <span className={`font-mono ${h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -343,7 +343,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                     </div>
                                     <h3 className="text-lg font-medium text-white mb-2">Comienza tu viaje</h3>
                                     <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">Añade tu primera inversión para ver análisis y métricas detalladas.</p>
-                                    <Link href="/portfolio" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full transition-colors font-medium">
+                                    <Link href="/portfolio" className="inline-flex min-h-[44px] items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full transition-colors font-medium">
                                         Añadir Inversiones
                                     </Link>
                                 </div>
@@ -399,7 +399,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 <Eye className="h-5 w-5 text-yellow-400" />
                                 Watchlist
                             </CardTitle>
-                            <Link href="/watchlist" className="text-yellow-400 hover:text-yellow-300 text-sm flex items-center gap-1 transition-colors">
+                            <Link href="/watchlist" aria-label="Ver watchlist completa" className="inline-flex min-h-[44px] min-w-[44px] items-center justify-end px-1 text-yellow-400 hover:text-yellow-300 text-sm transition-colors">
                                 <ArrowRight className="w-4 h-4" />
                             </Link>
                         </CardHeader>
@@ -411,18 +411,18 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             key={stock.symbol}
                                             href={`/research/${stock.symbol}`}
                                             prefetch
-                                            className="flex items-center justify-between p-3 bg-gray-900/30 rounded-lg hover:bg-gray-800/80 transition-colors group"
+                                            className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-900/30 rounded-lg hover:bg-gray-800/80 transition-colors group"
                                         >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-2 rounded-full ${stock.changePercent >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                            <div className="flex min-w-0 items-center gap-3">
+                                                <div className={`shrink-0 p-2 rounded-full ${stock.changePercent >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
                                                     {stock.changePercent >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                                                 </div>
-                                                <div>
-                                                    <span className="text-white font-medium group-hover:text-yellow-400 transition-colors">{stock.symbol}</span>
-                                                    <p className="text-xs text-gray-500 hidden sm:block" title={stock.name}>{stock.name.slice(0, 15)}...</p>
+                                                <div className="min-w-0">
+                                                    <span className="block truncate text-white font-medium group-hover:text-yellow-400 transition-colors">{stock.symbol}</span>
+                                                    <p className="block truncate max-w-[140px] sm:max-w-none text-xs text-gray-500" title={stock.name}>{stock.name}</p>
                                                 </div>
                                             </div>
-                                            <div className="text-right">
+                                            <div className="shrink-0 text-right">
                                                 <div className="text-white font-mono">${stock.price.toFixed(2)}</div>
                                                 <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                                     {stock.changePercent >= 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
@@ -456,7 +456,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             href={article.url}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="block group"
+                                            className="block rounded-lg px-1 py-2 group"
                                         >
                                             <h4 title={article.headline} className="text-sm text-gray-200 group-hover:text-blue-400 transition-colors line-clamp-2 leading-snug">
                                                 {article.headline}

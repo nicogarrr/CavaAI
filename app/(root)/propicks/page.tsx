@@ -22,13 +22,13 @@ export default async function ProPicksPage() {
     const generatedAt = new Date().toISOString();
 
     return (
-        <div className="flex min-h-screen flex-col p-6">
+        <div className="mx-auto flex min-h-screen w-full min-w-0 max-w-7xl flex-col overflow-x-clip p-4 sm:p-6">
             {/* Header */}
             <div className="mb-8">
                 <div className="flex items-center gap-3 mb-4">
-                    <Sparkles className="h-8 w-8 text-teal-400" />
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-100">ProPicks IA</h1>
+                    <Sparkles className="h-7 w-7 shrink-0 text-teal-400 sm:h-8 sm:w-8" />
+                    <div className="min-w-0">
+                        <h1 className="break-words text-2xl font-bold text-gray-100 sm:text-3xl">ProPicks IA</h1>
                         <p className="text-gray-400 mt-1">
                             Selección de acciones por Inteligencia Artificial - {currentMonth}
                         </p>
