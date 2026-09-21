@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -49,6 +50,13 @@ export function pickColumns(records: DataRecord[], preferred?: string[]): string
     return keys;
 }
 
+/** Construye el href a /research/[ticker] desde la clave `ticker` del registro (o null si no hay) */
+export function researchHrefFor(record: DataRecord, key = 'ticker'): string | null {
+    const value = record[key];
+    if (typeof value !== 'string' || !value.trim()) return null;
+    return `/research/${encodeURIComponent(value.trim().toUpperCase())}`;
+}
+
 export interface RecordListProps {
     title: string;
     description?: string;
@@ -62,6 +70,8 @@ export interface RecordListProps {
     emptyMessage?: string;
     /** Acciones por fila (botón Aplicar, eliminar, etc.) */
     rowActions?: (record: DataRecord, index: number) => ReactNode;
+    /** Columnas cuyo valor se renderiza como enlace (p.ej. ticker -> /research/[ticker]) */
+    linkColumns?: Record<string, (record: DataRecord, index: number) => string | null | undefined>;
     footer?: ReactNode;
 }
 
@@ -74,6 +84,7 @@ export function RecordList({
     columns,
     emptyMessage = 'No hay datos disponibles todavía',
     rowActions,
+    linkColumns,
     footer,
 }: RecordListProps) {
     const [records, setRecords] = useState<DataRecord[]>(initialRecords);
@@ -147,11 +158,23 @@ export function RecordList({
                         <TableBody>
                             {records.map((record, index) => (
                                 <TableRow key={index} className="border-gray-700/50">
-                                    {visibleColumns.map((column) => (
-                                        <TableCell key={column} className="text-sm text-gray-300">
-                                            <span className="line-clamp-3">{formatRecordValue(record[column])}</span>
-                                        </TableCell>
-                                    ))}
+                                    {visibleColumns.map((column) => {
+                                        const href = linkColumns?.[column]?.(record, index);
+                                        return (
+                                            <TableCell key={column} className="text-sm text-gray-300">
+                                                {href ? (
+                                                    <Link
+                                                        href={href}
+                                                        className="font-mono font-semibold text-teal-300 hover:text-teal-200 hover:underline"
+                                                    >
+                                                        {formatRecordValue(record[column])}
+                                                    </Link>
+                                                ) : (
+                                                    <span className="line-clamp-3">{formatRecordValue(record[column])}</span>
+                                                )}
+                                            </TableCell>
+                                        );
+                                    })}
                                     {rowActions && (
                                         <TableCell className="text-right">
                                             {rowActions(record, index)}
