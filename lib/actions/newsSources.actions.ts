@@ -33,33 +33,37 @@ async function getNewsFinnhub(symbols?: string[], maxArticles = 6): Promise<Mark
 
         // If we have symbols, try company news
         if (cleanSymbols.length > 0) {
-            const perSymbolArticles: Record<string, RawNewsArticle[]> = {};
             const limitedSymbols = cleanSymbols.slice(0, 3);
 
-            for (const sym of limitedSymbols) {
-                try {
-                    const url = `${FINNHUB_BASE_URL}/company-news?symbol=${encodeURIComponent(sym)}&from=${range.from}&to=${range.to}&token=${token}`;
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 8000);
+            // Requests en paralelo: cada símbolo es independiente (fetch con
+            // revalidate 60s). Mismo round-robin posterior, sin sleeps.
+            const perSymbolResults = await Promise.all(
+                limitedSymbols.map(async (sym) => {
+                    try {
+                        const url = `${FINNHUB_BASE_URL}/company-news?symbol=${encodeURIComponent(sym)}&from=${range.from}&to=${range.to}&token=${token}`;
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-                    const response = await fetch(url, {
-                        next: { revalidate: 60 },
-                        signal: controller.signal,
-                    });
+                        const response = await fetch(url, {
+                            next: { revalidate: 60 },
+                            signal: controller.signal,
+                        });
 
-                    clearTimeout(timeoutId);
+                        clearTimeout(timeoutId);
 
-                    if (response.ok) {
-                        const articles = await response.json();
-                        perSymbolArticles[sym] = (articles || []).filter(validateArticle);
+                        if (response.ok) {
+                            const articles = await response.json();
+                            return { sym, articles: (articles || []).filter(validateArticle) as RawNewsArticle[] };
+                        }
+                        return { sym, articles: [] as RawNewsArticle[] };
+                    } catch {
+                        return { sym, articles: [] as RawNewsArticle[] };
                     }
-
-                    if (limitedSymbols.indexOf(sym) < limitedSymbols.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 200));
-                    }
-                } catch (e: any) {
-                    perSymbolArticles[sym] = [];
-                }
+                }),
+            );
+            const perSymbolArticles: Record<string, RawNewsArticle[]> = {};
+            for (const { sym, articles } of perSymbolResults) {
+                perSymbolArticles[sym] = articles;
             }
 
             const collected: MarketNewsArticle[] = [];
