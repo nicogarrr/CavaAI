@@ -1,4 +1,12 @@
-"""Commodity-cycle engine — requires volume/cost facts; no bootstrap."""
+"""Commodity-cycle engine — requires volume/cost facts; no bootstrap.
+
+Supuestos: flujo = max(precio − coste_unitario, 0) × volumen × (1 − tasa);
+equity = flujo × múltiplo − net_debt (múltiplo y tasa de facts, tasa en
+[0, 1), múltiplo > 0). Escenarios bear/base/bull = grid de precios
+×(0.75/1.0/1.25) sobre el precio realizado/spot; probabilidades ponderadas
+por confianza de evidencia y spread operativo (precio − coste)/precio.
+Sensibilidad: la propia tabla de 3 filas del grid de precios.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +27,13 @@ from app.valuation.scenario_model import Scenario, probability_weighted_value
 
 
 class CommodityCycleEngine(ValuationEngine):
+    """Cíclicas de materias primas: valor sobre grid de precios.
+
+    Supuestos: margen unitario floorado en 0 (precio bajo coste = flujo 0,
+    nunca negativo); múltiplo sobre flujo después de impuestos.
+    Expone bear/base/bull del grid y la tabla de sensibilidad de precios.
+    """
+
     key = "commodity"
 
     def value(self, context: ValuationContext) -> dict:

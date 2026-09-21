@@ -1,4 +1,28 @@
-"""Dedicated fact-driven valuation engines for financials and REITs."""
+"""Dedicated fact-driven valuation engines for financials and REITs.
+
+Supuestos por motor (todos con inputs 100% de FinancialFact, sin bootstrap):
+
+- BankValuationEngine: modelo de price-to-book justificado ``P/B = (ROE - g) /
+  (CoE - g)`` con P/B acotado a [0.25, 3.0]. Supuestos: ``book_per_share`` =
+  tangible book / acciones diluidas; ``g`` = crecimiento del book value
+  (financial_facts, o 0.0 por política explícita si falta); escenarios
+  bear/base/bull mueven ROE ±(2.5-3pp), CoE ∓(1-1.5pp) y g ∓1pp/+0.5pp.
+  Sensibilidad: tabla de 3 filas variando CoE (-1pp / base / +1.5pp).
+- InsurerValuationEngine: mismo P/B justificado multiplicado por un factor de
+  calidad de suscripción ``clamp(1 + (1 - combined_ratio) * 2, 0.75, 1.25)``.
+  Supuestos: ROE, CoE y combined ratio de facts; escenarios mueven ROE
+  ±(2-2.5pp), CoE ∓(1-1.5pp) y combined ratio ±(2.5-3pp).
+  Sensibilidad: tabla de 3 filas variando CoE.
+- ReitValuationEngine: NAV directo ``(NOI / cap_rate - net_debt) / acciones``.
+  Supuestos: cap rate de mercado de facts (debe ser > 0); escenarios mueven
+  NOI ×(0.94/1.0/1.06) y cap rate ∓(50-75bp). Sensibilidad: tabla de 3 filas
+  variando cap rate (-50bp / base / +75bp).
+
+Probabilidades: ``source_confidence_plus_company_quality`` — peso base de la
+confianza media de los facts de origen más una señal direccional propia de
+cada motor (spread ROE-CoE en bancos, 1-combined_ratio en aseguradoras,
+-cap_rate en REITs).
+"""
 
 from __future__ import annotations
 
@@ -49,6 +73,70 @@ def _probabilities(values: list[SourcedValue], directional_quality: float = 0.0)
     return {"bear": tail - bull, "base": base, "bull": bull}
 
 
+def _pb_sensitivity_rows(
+    *,
+    book_per_share: float,
+    roe: float,
+    cost_of_equity: float,
+    growth: float,
+    underwriting_factor: float = 1.0,
+) -> dict:
+    """Tabla de sensibilidad 1-D sobre el coste del equity (±100bp/±150bp).
+
+    Revalúa el P/B justificado ``(ROE - g) / (CoE - g)`` acotado a [0.25, 3.0]
+    en tres puntos de CoE; el resto de supuestos (ROE, g, factor de
+    suscripción en aseguradoras) se mantiene en base. Devuelve el formato
+    estándar ``{"rows": [...], "trace": {...}}``.
+    """
+    rows = []
+    for label, cost in (
+        ("low_coe", max(cost_of_equity - 0.01, growth + 0.005)),
+        ("base_coe", cost_of_equity),
+        ("high_coe", cost_of_equity + 0.015),
+    ):
+        justified_pb = max(0.25, min(3.0, (roe - growth) / (cost - growth)))
+        rows.append(
+            {
+                "scenario": label,
+                "cost_of_equity": cost,
+                "roe": roe,
+                "growth": growth,
+                "justified_pb": justified_pb,
+                "value_per_share": book_per_share * justified_pb * underwriting_factor,
+            }
+        )
+    return {"rows": rows, "trace": {"method": "pb_cost_of_equity_sensitivity"}}
+
+
+def _reit_sensitivity_rows(
+    *,
+    noi: float,
+    cap_rate: float,
+    net_debt: float,
+    shares: float,
+) -> dict:
+    """Tabla de sensibilidad 1-D sobre el cap rate (-50bp / base / +75bp).
+
+    Revalúa ``(NOI / cap_rate - net_debt) / acciones`` con el NOI base;
+    el suelo de cap rate es 0.001 para evitar división por cero.
+    """
+    rows = []
+    for label, cap in (
+        ("low_cap_rate", max(cap_rate - 0.005, 0.001)),
+        ("base_cap_rate", cap_rate),
+        ("high_cap_rate", cap_rate + 0.0075),
+    ):
+        rows.append(
+            {
+                "scenario": label,
+                "cap_rate": cap,
+                "noi": noi,
+                "value_per_share": max(0.0, noi / cap - net_debt) / shares,
+            }
+        )
+    return {"rows": rows, "trace": {"method": "reit_cap_rate_sensitivity"}}
+
+
 def _result(
     context: ValuationContext,
     *,
@@ -58,9 +146,11 @@ def _result(
     fact_ids: dict[str, int],
     periods: dict[str, str],
     assumptions: dict,
+    sensitivity: dict | None = None,
 ) -> dict:
     expected = sum(scenario_values[name] * probabilities[name] for name in scenario_values)
     company = context.company
+    sensitivity = sensitivity if sensitivity is not None else {"rows": []}
     return {
         "ticker": company.ticker,
         "model_type": company.valuation_model,
@@ -74,7 +164,7 @@ def _result(
         "margin_of_safety": margin_of_safety(expected, context.current_price),
         "missing_inputs": [],
         "reverse_dcf": {},
-        "sensitivity": {"rows": []},
+        "sensitivity": sensitivity,
         "moat": empty_moat_framework(
             company.company_type,
             company.factor_tags or [],
@@ -98,6 +188,14 @@ def _result(
 
 
 class BankValuationEngine(ValuationEngine):
+    """Bancos: P/B justificado sobre tangible book value.
+
+    Supuestos: ``P/B = (ROE - g) / (CoE - g)`` acotado a [0.25, 3.0], con
+    ``g`` = crecimiento del book (facts, o 0.0 por política explícita).
+    Escenarios bear/base/bull: ROE ∓3pp/+2.5pp, CoE ±1.5pp/∓1pp, g ∓1pp/+0.5pp.
+    Sensibilidad: tabla CoE (-100bp / base / +150bp) a ROE y g base.
+    """
+
     key = "bank"
 
     def value(self, context: ValuationContext) -> dict:
@@ -147,6 +245,12 @@ class BankValuationEngine(ValuationEngine):
         }
         available = [value for value in sourced.values() if value is not None] + ([growth] if growth else [])
         probabilities = _probabilities(available, roe.value - cost_equity.value)
+        sensitivity = _pb_sensitivity_rows(
+            book_per_share=book_per_share,
+            roe=roe.value,
+            cost_of_equity=cost_equity.value,
+            growth=growth_value,
+        )
         return _result(
             context,
             engine_key=self.key,
@@ -165,10 +269,20 @@ class BankValuationEngine(ValuationEngine):
                 "scenario_roe_cost_growth": specs,
                 "growth_source": "financial_facts" if growth else "explicit_zero_growth_policy",
             },
+            sensitivity=sensitivity,
         )
 
 
 class InsurerValuationEngine(ValuationEngine):
+    """Aseguradoras: P/B justificado ajustado por calidad de suscripción.
+
+    Supuestos: ``valor = book/acc × P/B_justificado × factor_suscripción`` con
+    ``factor = clamp(1 + (1 - combined_ratio) × 2, 0.75, 1.25)``; ``g`` de
+    facts o 0.0 por política explícita. Escenarios: ROE ∓2.5pp/+2pp,
+    CoE ±1.5pp/∓1pp, combined ratio ±3pp/∓2.5pp. Sensibilidad: tabla CoE a
+    ROE, g y combined ratio base.
+    """
+
     key = "insurer"
 
     def value(self, context: ValuationContext) -> dict:
@@ -221,6 +335,14 @@ class InsurerValuationEngine(ValuationEngine):
             values[name] = book_per_share * max(0.25, min(3.0, justified_pb)) * underwriting_quality
         available = list(sourced.values()) + ([growth] if growth else [])
         probabilities = _probabilities(available, 1 - combined_ratio.value)
+        base_uw = max(0.75, min(1.25, 1 + (1 - combined_ratio.value) * 2))
+        sensitivity = _pb_sensitivity_rows(
+            book_per_share=book_per_share,
+            roe=roe.value,
+            cost_of_equity=cost_equity.value,
+            growth=growth_value,
+            underwriting_factor=base_uw,
+        )
         return _result(
             context,
             engine_key=self.key,
@@ -239,10 +361,19 @@ class InsurerValuationEngine(ValuationEngine):
                 "scenario_roe_cost_combined_ratio": specs,
                 "growth_source": "financial_facts" if growth else "explicit_zero_growth_policy",
             },
+            sensitivity=sensitivity,
         )
 
 
 class ReitValuationEngine(ValuationEngine):
+    """REITs: NAV directo por capitalización de NOI.
+
+    Supuestos: ``valor/acc = max(0, NOI / cap_rate - net_debt) / acciones``
+    con cap rate de mercado de facts (> 0). Escenarios: NOI ×(0.94/1.0/1.06),
+    cap rate +75bp/base/−50bp (suelo 0.001). Sensibilidad: tabla cap rate
+    (-50bp / base / +75bp) a NOI base.
+    """
+
     key = "reit"
 
     def value(self, context: ValuationContext) -> dict:
@@ -288,6 +419,12 @@ class ReitValuationEngine(ValuationEngine):
             for name, (scenario_noi, scenario_cap_rate) in specs.items()
         }
         probabilities = _probabilities(list(sourced.values()), -cap_rate.value)
+        sensitivity = _reit_sensitivity_rows(
+            noi=noi.value,
+            cap_rate=cap_rate.value,
+            net_debt=net_debt.value,
+            shares=shares.value,
+        )
         return _result(
             context,
             engine_key=self.key,
@@ -296,4 +433,5 @@ class ReitValuationEngine(ValuationEngine):
             fact_ids={key: value.fact_id for key, value in sourced.items() if value},
             periods={key: value.period for key, value in sourced.items() if value},
             assumptions={"scenario_noi_cap_rate": specs, "net_debt": net_debt.value},
+            sensitivity=sensitivity,
         )
