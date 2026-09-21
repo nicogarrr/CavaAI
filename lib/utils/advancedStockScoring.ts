@@ -1,15 +1,41 @@
 /**
  * Sistema Avanzado de Scoring de Acciones - Similar a Investing Pro
- * 
+ *
  * Incluye:
  * - Comparación con sector (crucial según Investing Pro)
  * - Múltiples categorías: Valor, Crecimiento, Rentabilidad, Flujo de Caja, Impulso, Deuda/Liquidez
  * - Scoring similar a Piotroski F-Score pero más completo
- * 
- * Motor multifactorial que pondera más de 100 métricas comparándolas siempre contra pares del sector
+ *
+ * Motor multifactorial que pondera métricas comparándolas siempre contra pares del sector.
+ *
+ * FÓRMULA DE SCORING (pesos calibrados, suman 1.0):
+ *   overallScore = round(
+ *     value * 0.15 + growth * 0.20 + profitability * 0.25 +
+ *     cashFlow * 0.15 + momentum * 0.10 + debtLiquidity * 0.15
+ *   )
+ * Cada categoría puntúa 0-100. Rentabilidad pesa más (25%) porque discrimina
+ * calidad del negocio; momentum pesa menos (10%) porque es el factor más ruidoso.
+ * Ver SCORING_WEIGHTS: es la única fuente de verdad de los pesos.
  */
 
 import { getSectorAverages, type SectorAverages } from '@/lib/actions/sectorData.actions';
+
+/**
+ * Pesos calibrados del scoring general. ÚNICA fuente de verdad:
+ * el cálculo de `overallScore` y la UI (desglose por categoría) deben usar
+ * esta constante, nunca literales duplicados.
+ * Suma total = 1.0 (validado por el test propicks-guard).
+ */
+export const SCORING_WEIGHTS = {
+    value: 0.15,
+    growth: 0.20,
+    profitability: 0.25,
+    cashFlow: 0.15,
+    momentum: 0.10,
+    debtLiquidity: 0.15,
+} as const;
+
+export type ScoringCategory = keyof typeof SCORING_WEIGHTS;
 
 export interface AdvancedScoreData {
     overallScore: number; // 0-100
@@ -47,16 +73,28 @@ export interface AdvancedScoreData {
         opportunities: string[];
         threats: string[];
     };
+    /** Instante de corte de los datos usados (ISO). Ningún dato posterior a asOf entra al cálculo. */
+    asOf: string;
+    /**
+     * Foto de las métricas reales que alimentaron el score (precio, PER, márgenes...).
+     * Todo número mostrado en UI o en `reasons` debe existir aquí: es la base
+     * de la validación anti-alucinación (ver lib/utils/propicksValidation.ts).
+     */
+    facts: Record<string, number | string>;
 }
 
 // Esta función ahora usa getSectorAverages de sectorData.actions que obtiene datos reales
 
 /**
- * Calcula score avanzado de una acción comparándola con su sector
+ * Calcula score avanzado de una acción comparándola con su sector.
+ * @param financialData métricas/quote/perfil (solo datos con timestamp <= asOf).
+ * @param historicalData velas hasta `asOf`; la última vela fija el corte si no se pasa `asOf`.
+ * @param asOf corte explícito (ISO). Por defecto: última vela o `now`. Nunca usa datos futuros.
  */
 export async function calculateAdvancedStockScore(
     financialData: any,
-    historicalData?: { prices: number[]; dates: number[] }
+    historicalData?: { prices: number[]; dates: number[] },
+    asOf?: string
 ): Promise<AdvancedScoreData> {
     const metrics = financialData.metrics?.metric || financialData.metrics || {};
     const profile = financialData.profile || {};
@@ -100,6 +138,16 @@ export async function calculateAdvancedStockScore(
     const weaknesses: string[] = [];
     const opportunities: string[] = [];
     const threats: string[] = [];
+
+    // Corte temporal: última vela disponible o instante actual. Garantiza no usar datos futuros.
+    const lastCandleTs = historicalData && historicalData.dates.length > 0
+        ? historicalData.dates[historicalData.dates.length - 1]
+        : null;
+    const resolvedAsOf = asOf
+        ?? (lastCandleTs !== null ? new Date(lastCandleTs * 1000).toISOString() : new Date().toISOString());
+
+    // Foto de métricas reales para trazabilidad (solo se rellena con valores no nulos).
+    const facts: Record<string, number | string> = { sector };
 
     // Helper para obtener valores numéricos
     const getNumeric = (value: any): number | null => {
@@ -234,7 +282,7 @@ export async function calculateAdvancedStockScore(
 
     if (fcfYield !== null && fcfYield > 0) {
         categoryScores.cashFlow += fcfYield > 0.05 ? 40 : fcfYield > 0.03 ? 35 : fcfYield > 0 ? 25 : 10;
-        if (fcfYield > 0.05) strengths.push('Alto rendimiento de flujo de caja libre (Yield)');
+        if (fcfYield > 0.05) strengths.push(`FCF yield alto (${(fcfYield * 100).toFixed(1)}%)`);
     } else if (priceToFcf && priceToFcf < 15) {
         // Si yield falla pero P/FCF es bueno
         categoryScores.cashFlow += 30;
@@ -242,7 +290,7 @@ export async function calculateAdvancedStockScore(
 
     if (cashFlowPerShare !== null && cashFlowPerShare > 0) {
         categoryScores.cashFlow += 30;
-        strengths.push('Flujo de caja por acción positivo');
+        strengths.push(`Flujo de caja por acción positivo (${cashFlowPerShare.toFixed(2)})`);
     } else if (cashFlowPerShare !== null && cashFlowPerShare < 0) {
         weaknesses.push('Flujo de caja por acción negativo');
     }
@@ -341,7 +389,7 @@ export async function calculateAdvancedStockScore(
 
     if (currentRatio !== null) {
         categoryScores.debtLiquidity += currentRatio > 2 ? 25 : currentRatio > 1.5 ? 20 : currentRatio > 1 ? 15 : 10;
-        if (currentRatio > 2) strengths.push('Excelente liquidez');
+        if (currentRatio > 2) strengths.push(`Excelente liquidez (ratio: ${currentRatio.toFixed(2)})`);
         else if (currentRatio < 1) threats.push('Problemas de liquidez');
     }
 
@@ -356,24 +404,57 @@ export async function calculateAdvancedStockScore(
 
     categoryScores.debtLiquidity = Math.min(100, categoryScores.debtLiquidity);
 
-    // ========== CALCULAR SCORE FINAL ==========
-    // Ponderación similar a Investing Pro (basado en importancia)
-    const weights = {
-        value: 0.15,
-        growth: 0.20,
-        profitability: 0.25,
-        cashFlow: 0.15,
-        momentum: 0.10,
-        debtLiquidity: 0.15,
+    // ========== FOTO DE MÉTRICAS REALES (trazabilidad anti-alucinación) ==========
+    // Solo entran valores no nulos leídos de financialData/historicalData con t <= asOf.
+    // Todo número que la UI muestre de este pick debe existir en `facts`.
+    const snapshot = (key: string, value: number | null | undefined) => {
+        if (value !== null && value !== undefined && Number.isFinite(value)) {
+            facts[key] = Math.round(value * 100) / 100;
+        }
     };
+    snapshot('pe', getMetric('peTTM', 'pe', 'priceToEarnings', 'peRatio'));
+    snapshot('pb', getMetric('pbTTM', 'pb', 'priceToBook'));
+    snapshot('ps', getMetric('psTTM', 'ps', 'priceToSales'));
+    snapshot('evEbitda', getMetric('evEbitdaTTM', 'evEbitda', 'enterpriseValueToEbitda'));
+    snapshot('revenueGrowth', getMetric('revenueGrowthTTMYoy', 'revenueGrowth3Y', 'revenueGrowthTTM', 'revenueGrowth'));
+    snapshot('epsGrowth', getMetric('epsGrowthTTMYoy', 'epsGrowth3Y', 'epsGrowthTTM', 'epsGrowth'));
+    snapshot('netMargin', getMetric('netProfitMarginTTM', 'netProfitMargin', 'profitMargin'));
+    snapshot('roe', getMetric('roeTTM', 'roe', 'returnOnEquity'));
+    snapshot('roa', getMetric('roaTTM', 'roa', 'returnOnAssets'));
+    snapshot('priceToFcf', getMetric('pfcfShareTTM', 'pfcfShareAnnual'));
+    snapshot('cashFlowPerShare', getMetric('cashFlowPerShareTTM', 'cashFlowPerShareQuarterly'));
+    snapshot('debtToEquity', getMetric('totalDebt/totalEquityQuarterly', 'totalDebt/totalEquityAnnual', 'longTermDebt/equityQuarterly'));
+    snapshot('currentRatio', getMetric('currentRatioQuarterly', 'currentRatioAnnual', 'currentRatioTTM'));
+    snapshot('quickRatio', getMetric('quickRatioQuarterly', 'quickRatioAnnual', 'quickRatioTTM'));
+    snapshot('interestCoverage', getMetric('netInterestCoverageTTM', 'netInterestCoverageAnnual'));
+    snapshot('price', getNumeric((quote as Record<string, unknown>)?.c ?? (quote as Record<string, unknown>)?.price));
+    snapshot('vsSP500', indexComparison.vsSP500?.change);
+    if (historicalData && historicalData.prices.length > 0) {
+        const priceList = historicalData.prices;
+        const lastPrice = priceList[priceList.length - 1];
+        const retBack = (back: number): number | null => {
+            if (priceList.length <= back) return null;
+            const base = priceList[priceList.length - back];
+            return base ? ((lastPrice - base) / base) * 100 : null;
+        };
+        snapshot('return3M', retBack(63));
+        snapshot('return6M', retBack(126));
+        snapshot('return12M', retBack(252));
+        if (priceList.length > 252) {
+            const max52W = Math.max(...priceList.slice(-252));
+            if (max52W > 0) snapshot('proximity52W', (lastPrice / max52W) * 100);
+        }
+    }
 
+    // ========== CALCULAR SCORE FINAL ==========
+    // Usa SCORING_WEIGHTS (única fuente de verdad; fórmula en el docstring del módulo).
     const overallScore = Math.round(
-        categoryScores.value * weights.value +
-        categoryScores.growth * weights.growth +
-        categoryScores.profitability * weights.profitability +
-        categoryScores.cashFlow * weights.cashFlow +
-        categoryScores.momentum * weights.momentum +
-        categoryScores.debtLiquidity * weights.debtLiquidity
+        categoryScores.value * SCORING_WEIGHTS.value +
+        categoryScores.growth * SCORING_WEIGHTS.growth +
+        categoryScores.profitability * SCORING_WEIGHTS.profitability +
+        categoryScores.cashFlow * SCORING_WEIGHTS.cashFlow +
+        categoryScores.momentum * SCORING_WEIGHTS.momentum +
+        categoryScores.debtLiquidity * SCORING_WEIGHTS.debtLiquidity
     );
 
     // Comparar con promedios del sector (solo si hay datos reales)
@@ -400,6 +481,8 @@ export async function calculateAdvancedStockScore(
         overallScore,
         grade,
         categoryScores,
+        asOf: resolvedAsOf,
+        facts,
         sectorComparison: sectorData ? {
             sector,
             sectorAverage: {

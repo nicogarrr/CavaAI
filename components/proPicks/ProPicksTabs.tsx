@@ -90,8 +90,23 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                 </Card>
 
                 {error && (
-                    <Card className="rounded-lg border border-red-700 bg-red-900/20 p-6">
+                    <Card className="rounded-lg border border-red-700 bg-red-900/20 p-6 text-center">
                         <p className="text-red-400">{error}</p>
+                        <p className="text-sm text-gray-400 mt-2">
+                            No se pudo calcular el backtest. Comprueba tu conexión e inténtalo de nuevo.
+                        </p>
+                        <Button
+                            onClick={() => runBacktest(currentStrategy)}
+                            disabled={loading}
+                            className="mt-4 gap-2 bg-teal-600 hover:bg-teal-700"
+                        >
+                            {loading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <Play className="h-4 w-4" />
+                            )}
+                            Reintentar
+                        </Button>
                     </Card>
                 )}
 

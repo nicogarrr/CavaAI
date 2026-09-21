@@ -196,22 +196,50 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                 </div>
 
                 {error && (
-                    <Card className="p-6 rounded-lg border border-red-700 bg-red-900/20 mb-4">
-                        <p className="text-red-400 text-center">{error}</p>
+                    <Card className="p-6 rounded-lg border border-red-700 bg-red-900/20 mb-4 text-center">
+                        <p className="text-red-400">{error}</p>
+                        <p className="text-sm text-gray-400 mt-2">
+                            No se pudieron cargar los picks. Comprueba tu conexión e inténtalo de nuevo.
+                        </p>
+                        <Button
+                            onClick={handleRefresh}
+                            disabled={loading}
+                            className="mt-4 gap-2 bg-teal-600 hover:bg-teal-700"
+                        >
+                            {loading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <RefreshCw className="h-4 w-4" />
+                            )}
+                            Reintentar
+                        </Button>
                     </Card>
                 )}
 
-                {picks.length === 0 ? (
+                {picks.length === 0 && !error ? (
                     <Card className="p-8 rounded-lg border border-gray-700 bg-gray-800/50 text-center">
                         <Sparkles className="h-12 w-12 mx-auto mb-4 text-gray-600" />
-                        <p className="text-gray-500">
-                            No se encontraron acciones con los filtros seleccionados
+                        <p className="text-gray-300 font-medium">
+                            Sin resultados con estos filtros
                         </p>
-                        <p className="text-sm text-gray-600 mt-2">
-                            Intenta ajustar los criterios o haz clic en "Regenerar Picks"
+                        <p className="text-sm text-gray-500 mt-2">
+                            No se encontraron acciones con los filtros seleccionados.
+                            Prueba a bajar el score mínimo o pulsa «Reintentar» para volver a intentarlo.
                         </p>
+                        <Button
+                            onClick={handleRefresh}
+                            disabled={loading}
+                            className="mt-4 gap-2 bg-teal-600 hover:bg-teal-700"
+                        >
+                            {loading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <RefreshCw className="h-4 w-4" />
+                            )}
+                            Reintentar
+                        </Button>
                     </Card>
-                ) : (
+                ) : picks.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {picks.map((pick, index) => (
                             <Link
@@ -294,15 +322,30 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                         </div>
                                     </div>
 
-                                    {pick.reasons.length > 0 && (
+                                    <div className="mb-3 rounded-md border border-teal-500/20 bg-teal-500/5 px-3 py-2">
+                                        <span className="text-xs text-gray-400">
+                                            Confianza:{' '}
+                                            <span className="font-semibold text-teal-300">
+                                                {pick.confidenceLevel} ({pick.confidence}/100)
+                                            </span>
+                                        </span>
+                                    </div>
+
+                                    {pick.confidenceReasons.length > 0 && (
                                         <div className="space-y-1.5 mb-3">
-                                            {pick.reasons.slice(0, 2).map((reason, reasonIndex) => (
-                                                <div key={reasonIndex} className="flex items-start gap-2 text-xs text-gray-300">
+                                            {pick.confidenceReasons.slice(0, 3).map((reason, reasonIndex) => (
+                                                <div key={reasonIndex} className="flex items-start gap-2 text-xs text-gray-300" title={`Dato verificado: ${reason.metric} = ${reason.value}`}>
                                                     <TrendingUp className="h-3 w-3 text-teal-400 flex-shrink-0 mt-0.5" />
-                                                    <span className="line-clamp-1">{reason}</span>
+                                                    <span className="line-clamp-1">{reason.text}</span>
                                                 </div>
                                             ))}
                                         </div>
+                                    )}
+
+                                    {pick.asOf && (
+                                        <p className="text-[11px] text-gray-500 mb-3">
+                                            Datos al {new Date(pick.asOf).toLocaleDateString('es-ES')}
+                                        </p>
                                     )}
 
                                     <div className="flex items-center justify-between pt-3 border-t border-gray-700 mt-auto">
@@ -331,7 +374,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                             </Link>
                         ))}
                     </div>
-                )}
+                ) : null}
             </div>
         </div>
     );

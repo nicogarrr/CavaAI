@@ -95,6 +95,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                   <TableHead className="text-right text-gray-400">Actual</TableHead>
                   <TableHead className="text-right text-gray-400">Valor</TableHead>
                   <TableHead className="text-right text-gray-400">G/P</TableHead>
+                  <TableHead className="text-center text-gray-400">Fiscal</TableHead>
                   <TableHead className="text-center text-gray-400">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -135,6 +136,34 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                             {isPositive ? '+' : ''}{holding.gainPercent.toFixed(2)}%
                           </Badge>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {holding.fiscalBucket ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <Badge
+                              variant="outline"
+                              className={
+                                holding.fiscalBucket === 'largo_plazo'
+                                  ? 'border-blue-700 text-blue-300'
+                                  : 'border-amber-700 text-amber-300'
+                              }
+                              title={
+                                holding.firstBuyDate
+                                  ? `En cartera desde ${holding.firstBuyDate}`
+                                  : undefined
+                              }
+                            >
+                              {holding.fiscalBucket === 'largo_plazo' ? 'Largo plazo' : 'Corto plazo'}
+                            </Badge>
+                            {holding.holdingDays !== null && (
+                              <span className="text-xs text-gray-500">{holding.holdingDays}d</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-600" title="Sin historial de compra registrado">
+                            N/D
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         <Button
