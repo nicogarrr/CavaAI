@@ -3,7 +3,7 @@
 import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import { cache } from 'react';
-import { requestCache } from '@/lib/cache/requestCache';
+import { cachedFetch } from '@/lib/cache/memoryTTL';
 
 import { env } from '@/lib/env';
 import { TIMEOUTS } from '@/lib/constants';
@@ -125,6 +125,17 @@ export async function getCandles(symbol: string, from: number, to: number, resol
 export type FinnhubProfile2 = { ticker?: string; name?: string; exchange?: string; currency?: string; country?: string; ipo?: string; logo?: string; weburl?: string };
 export const getProfile = cache(async (symbol: string): Promise<FinnhubProfile2 | null> => {
     await requireAuthenticatedUser();
+    // Caché corta en memoria (60s) para llamadas en bucle (watchlist,
+    // screener, market snapshot): el fetch interno ya revalida cada hora,
+    // esta capa evita repetir el round-trip dentro de la ventana.
+    return cachedFetch<FinnhubProfile2 | null>(
+        `finnhub:profile:${symbol.trim().toUpperCase()}`,
+        () => fetchProfile(symbol),
+        60,
+    );
+});
+
+async function fetchProfile(symbol: string): Promise<FinnhubProfile2 | null> {
     try {
         const token = env.FINNHUB_API_KEY;
         if (!token) return null;
@@ -138,7 +149,7 @@ export const getProfile = cache(async (symbol: string): Promise<FinnhubProfile2 
     } catch {
         return null;
     }
-});
+}
 
 export type FinnhubETFHoldings = { holdings?: Array<{ symbol?: string; name?: string; percent?: number }> };
 export const getETFHoldings = cache(async (symbol: string): Promise<FinnhubETFHoldings> => {
@@ -185,29 +196,27 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
         // If we have symbols, try to fetch company news per symbol and round-robin select
         // Limitar a máximo 3 símbolos para evitar rate limiting
         if (cleanSymbols.length > 0) {
-            const perSymbolArticles: Record<string, RawNewsArticle[]> = {};
             const limitedSymbols = cleanSymbols.slice(0, 3); // Limitar a 3 símbolos
 
-            // Hacer requests secuenciales con delay para evitar rate limiting
-            for (const sym of limitedSymbols) {
-                try {
-                    const url = `${FINNHUB_BASE_URL}/company-news?symbol=${encodeURIComponent(sym)}&from=${range.from}&to=${range.to}&token=${token}`;
-                    // Noticias siempre frescas - máximo 60 segundos de cache
-                    const articles = await fetchJSON<RawNewsArticle[]>(url, 60);
-                    perSymbolArticles[sym] = (articles || []).filter(validateArticle);
-
-                    // Delay de 200ms entre requests para evitar rate limiting
-                    if (limitedSymbols.indexOf(sym) < limitedSymbols.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 200));
+            // Requests en paralelo: cada símbolo es independiente y fetchJSON
+            // ya cachea 60s, así que el coste pasa de suma a máximo de RTTs.
+            const perSymbolResults = await Promise.all(
+                limitedSymbols.map(async (sym) => {
+                    try {
+                        const url = `${FINNHUB_BASE_URL}/company-news?symbol=${encodeURIComponent(sym)}&from=${range.from}&to=${range.to}&token=${token}`;
+                        // Noticias siempre frescas - máximo 60 segundos de cache
+                        const articles = await fetchJSON<RawNewsArticle[]>(url, 60);
+                        return { sym, articles: (articles || []).filter(validateArticle) };
+                    } catch {
+                        // Silenciar errores 429 (rate limit): ese símbolo aporta []
+                        // y el resto continúa; el fallback a generales sigue abajo.
+                        return { sym, articles: [] as RawNewsArticle[] };
                     }
-                } catch (e: any) {
-                    // Silenciar errores 429 (rate limit) y continuar
-                    if (e?.message?.includes('429') || e?.message?.includes('limit')) {
-                        // Si alcanzamos el límite, usar noticias generales
-                        break;
-                    }
-                    perSymbolArticles[sym] = [];
-                }
+                }),
+            );
+            const perSymbolArticles: Record<string, RawNewsArticle[]> = {};
+            for (const { sym, articles } of perSymbolResults) {
+                perSymbolArticles[sym] = articles;
             }
 
             const collected: MarketNewsArticle[] = [];
@@ -697,6 +706,17 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
 // Helper para obtener solo la cotización (más ligero que getStockFinancialData)
 export async function getStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
     await requireAuthenticatedUser();
+    // Caché corta en memoria (45s): quote se llama en bucle (watchlist,
+    // screener, oportunidades) y el dato es idéntico dentro de la ventana.
+    // Los misses (null) no se cachean.
+    return cachedFetch(
+        `finnhub:quote:${symbol.trim().toUpperCase()}`,
+        () => fetchStockQuote(symbol),
+        45,
+    );
+}
+
+async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
     // Try Finnhub first
     try {
         const token = env.FINNHUB_API_KEY;
@@ -759,45 +779,43 @@ export async function getUpcomingEarnings(symbols: string[]): Promise<EarningsEv
 
         // Limit symbols to avoid rate limiting (max 8 symbols)
         const limitedSymbols = symbols.slice(0, 8);
-        const allEarnings: EarningsEvent[] = [];
 
-        // Fetch earnings SEQUENTIALLY with delay to avoid rate limiting
-        for (let i = 0; i < limitedSymbols.length; i++) {
-            const symbol = limitedSymbols[i];
-            try {
-                const url = `${FINNHUB_BASE_URL}/stock/earnings-calendar?symbol=${encodeURIComponent(symbol)}&from=${fromDate}&to=${toDate}&token=${token}`;
-                const data = await fetchJSON<any>(url, 3600); // 1 hour cache
+        // Requests en paralelo: cada símbolo es independiente (caché 1h en
+        // fetchJSON). El coste pasa de suma+RTTs+sleeps a un solo máximo.
+        const perSymbolEarnings = await Promise.all(
+            limitedSymbols.map(async (symbol) => {
+                try {
+                    const url = `${FINNHUB_BASE_URL}/stock/earnings-calendar?symbol=${encodeURIComponent(symbol)}&from=${fromDate}&to=${toDate}&token=${token}`;
+                    const data = await fetchJSON<any>(url, 3600); // 1 hour cache
 
-                if (data && Array.isArray(data.earningsCalendar)) {
-                    // Filter for future dates only
-                    const events = data.earningsCalendar
-                        .filter((e: any) => e.date >= fromDate)
-                        .map((e: any) => ({
-                            symbol: e.symbol,
-                            date: e.date,
-                            quarter: e.quarter,
-                            year: e.year,
-                            epsEstimate: e.epsEstimate || null,
-                            hour: e.hour || '',
-                        }));
-                    allEarnings.push(...events);
+                    if (data && Array.isArray(data.earningsCalendar)) {
+                        // Filter for future dates only
+                        return data.earningsCalendar
+                            .filter((e: any) => e.date >= fromDate)
+                            .map((e: any) => ({
+                                symbol: e.symbol,
+                                date: e.date,
+                                quarter: e.quarter,
+                                year: e.year,
+                                epsEstimate: e.epsEstimate || null,
+                                hour: e.hour || '',
+                            })) as EarningsEvent[];
+                    }
+                    return [] as EarningsEvent[];
+                } catch (e: any) {
+                    // Rate limit u otro error: ese símbolo aporta [] y el
+                    // resto continúa (antes un 429 abortaba todo el loop).
+                    if (e?.message?.includes('429') || e?.message?.includes('limit') || e?.message?.includes('DOCTYPE')) {
+                        console.warn(`Rate limit hit fetching earnings for ${symbol}, skipping symbol`);
+                        return [] as EarningsEvent[];
+                    }
+                    // For other errors, just log and continue
+                    console.error(`Error fetching earnings for ${symbol}`, e);
+                    return [] as EarningsEvent[];
                 }
-
-                // Add delay between requests to avoid rate limiting (300ms)
-                // Skip delay for the last symbol
-                if (i < limitedSymbols.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                }
-            } catch (e: any) {
-                // If we hit rate limit, stop making more requests
-                if (e?.message?.includes('429') || e?.message?.includes('limit') || e?.message?.includes('DOCTYPE')) {
-                    console.warn(`Rate limit hit after ${i + 1} symbols, stopping earnings fetch`);
-                    break;
-                }
-                // For other errors, just log and continue
-                console.error(`Error fetching earnings for ${symbol}`, e);
-            }
-        }
+            }),
+        );
+        const allEarnings: EarningsEvent[] = perSymbolEarnings.flat();
 
         // Sort by date
         allEarnings.sort((a, b) => a.date.localeCompare(b.date));

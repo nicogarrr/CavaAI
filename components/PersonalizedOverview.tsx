@@ -99,8 +99,12 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 const opportunitiesProm = Promise.all(
                     candidates.map(async (sym: string) => {
                         try {
-                            const fairValue = await getFairValue(sym);
-                            const quote = await getStockQuote(sym);
+                            // fairValue (backend) y quote (Finnhub) son
+                            // independientes: en paralelo en vez de en serie.
+                            const [fairValue, quote] = await Promise.all([
+                                getFairValue(sym),
+                                getStockQuote(sym),
+                            ]);
                             const currentPrice = quote?.c || 0;
 
                             if (fairValue && currentPrice > 0) {
@@ -148,26 +152,28 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     .slice(0, 4);
                 setOpportunities(validOpportunities);
 
-                // Procesar Watchlist
-                const watchlistWithPrices: WatchlistItem[] = [];
-                for (const item of watchlistItems.slice(0, 5)) {
-                    try {
-                        const data = await getStockFinancialData(item.symbol);
-                        watchlistWithPrices.push({
-                            symbol: item.symbol,
-                            name: data?.profile?.name || item.symbol,
-                            price: data?.quote?.c || 0,
-                            changePercent: data?.quote?.dp || 0
-                        });
-                    } catch {
-                        watchlistWithPrices.push({
-                            symbol: item.symbol,
-                            name: item.symbol,
-                            price: 0,
-                            changePercent: 0
-                        });
-                    }
-                }
+                // Procesar Watchlist: los 5 símbolos son independientes, en
+                // paralelo en vez de en serie (cada uno trae ~9 endpoints).
+                const watchlistWithPrices: WatchlistItem[] = await Promise.all(
+                    watchlistItems.slice(0, 5).map(async (item) => {
+                        try {
+                            const data = await getStockFinancialData(item.symbol);
+                            return {
+                                symbol: item.symbol,
+                                name: data?.profile?.name || item.symbol,
+                                price: data?.quote?.c || 0,
+                                changePercent: data?.quote?.dp || 0
+                            } as WatchlistItem;
+                        } catch {
+                            return {
+                                symbol: item.symbol,
+                                name: item.symbol,
+                                price: 0,
+                                changePercent: 0
+                            } as WatchlistItem;
+                        }
+                    })
+                );
                 setWatchlist(watchlistWithPrices);
 
                 // Collect all symbols for News and Earnings
@@ -178,14 +184,12 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 if (allUniqueSymbols.length > 0) {
                     // Cargar noticias y earnings si hay acciones
                     const newsSymbols = allUniqueSymbols.slice(0, 5);
-                    const allNews: any[] = [];
-                    // Using default fetch for company news
-                    for (const symbol of newsSymbols) {
-                        try {
-                            const symbolNews = await getCompanyNews(symbol, 2);
-                            allNews.push(...symbolNews);
-                        } catch { }
-                    }
+                    // Using default fetch for company news: cada símbolo es
+                    // independiente, en paralelo en vez de en serie.
+                    const newsResults = await Promise.all(
+                        newsSymbols.map((symbol) => getCompanyNews(symbol, 2).catch(() => []))
+                    );
+                    const allNews: any[] = newsResults.flat();
                     if (allNews.length < 5) {
                         // Fallback: noticias generales con el mecanismo existente (getNews sin símbolos)
                         try {
