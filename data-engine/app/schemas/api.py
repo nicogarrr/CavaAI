@@ -484,6 +484,7 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=3)
     scope: str = "portfolio"
     ticker: str | None = None
+    enable_debate: bool | None = None
 
 
 class SynthesisSection(BaseModel):

@@ -1006,7 +1006,11 @@ export async function createResearchMemoryItem(ticker: string, formData: FormDat
   revalidatePath(`/research/${normalizedTicker}`);
 }
 
-export async function askResearchCompanyChat(ticker: string, question: string): Promise<ResearchChatResponse | null> {
+export async function askResearchCompanyChat(
+  ticker: string,
+  question: string,
+  enableDebate = false,
+): Promise<ResearchChatResponse | null> {
   const normalizedTicker = ticker.toUpperCase();
   const trimmedQuestion = question.trim();
   if (trimmedQuestion.length < 3) return null;
@@ -1025,6 +1029,7 @@ export async function askResearchCompanyChat(ticker: string, question: string): 
       ticker: normalizedTicker,
       scope: 'company',
       question: trimmedQuestion,
+      enable_debate: enableDebate,
     },
   );
 }

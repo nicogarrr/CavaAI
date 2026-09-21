@@ -2253,6 +2253,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/thesis/{ticker}/debate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Debate Thesis Endpoint
+         * @description Debate bull/bear sobre la última tesis y persiste el veredicto.
+         *
+         *     El debate en sí nunca lanza (degrada a veredicto determinista); si el
+         *     upsert de la sección falla, se devuelve el debate con persisted=False.
+         */
+        post: operations["debate_thesis_endpoint_api_thesis__ticker__debate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/thesis/{ticker}/graph": {
         parameters: {
             query?: never;
@@ -2683,6 +2706,8 @@ export interface components {
         };
         /** ChatRequest */
         ChatRequest: {
+            /** Enable Debate */
+            enable_debate?: boolean | null;
             /** Question */
             question: string;
             /**
@@ -10091,6 +10116,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThesisOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    debate_thesis_endpoint_api_thesis__ticker__debate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
