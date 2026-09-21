@@ -1,4 +1,15 @@
-"""Standard FCFF DCF engine — only runs on coherent financial_facts snapshots."""
+"""Standard FCFF DCF engine — only runs on coherent financial_facts snapshots.
+
+Supuestos: DCF a 5 años sobre ``revenue`` y ``fcf_margin`` del snapshot
+coherente (margen = FCF/ingresos si falta, acotado a [1%, 50%]); crecimiento
+de ingresos de facts o ``default_growth`` acotado a [-15%, +45%]; WACC y
+terminal de ``default_wacc``/``default_terminal_growth`` (fuente
+``tag_default``); ``net_debt`` del snapshot (negativo = caja neta, suma a
+equity). Escenarios bear/base/bull mecánicos anclados a facts
+(±8pp crecimiento, ±6pp margen, WACC +2pp/−1pp) con probabilidades
+ponderadas por confianza de evidencia; sensibilidad: grid 3×3
+crecimiento × WACC; reverse DCF: crecimiento requerido al precio actual.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +32,14 @@ from app.valuation.sensitivity import sensitivity_grid
 
 
 class StandardDCFEngine(ValuationEngine):
+    """DCF FCFF estándar sobre snapshot coherente.
+
+    Supuestos: margen FCF acotado a [1%, 50%], crecimiento a [-15%, +45%],
+    WACC/terminal por tags (ver ``base.default_wacc``); caja neta
+    (``net_debt`` negativo) aumenta el equity. Expone bear/base/bull,
+    grid de sensibilidad crecimiento × WACC y reverse DCF.
+    """
+
     key = "standard_dcf"
 
     def value(self, context: ValuationContext) -> dict:

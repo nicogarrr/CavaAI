@@ -308,6 +308,11 @@ class ChatService:
                         chunk.get("point_id"),
                         chunk.get("title") or "Indexed document chunk",
                         document_id=chunk.get("document_id"),
+                        knowledge_document_id=chunk.get("knowledge_document_id"),
+                        collection_id=chunk.get("collection_id"),
+                        page_number=chunk.get("page_number"),
+                        chunk_index=chunk.get("chunk_index"),
+                        entity_id=chunk.get("entity_id"),
                         source_type=chunk.get("source_type"),
                         source_tier=_source_tier(chunk.get("source_type")),
                         score=chunk.get("score"),
@@ -394,11 +399,23 @@ class ChatService:
                 if thesis
                 else f"No stored thesis exists yet for {company.ticker}."
             )
+            rag_evidence_lines = [
+                f"- {_short(chunk.get('text', ''), 180)} "
+                f"({chunk.get('source_type') or 'indexed'}) "
+                f"[rag_chunk:{chunk.get('point_id')}]"
+                for chunk in rag_chunks[:3]
+                if chunk.get("point_id") and chunk.get("text")
+            ]
             evidence_text = (
                 "\n".join(
-                    f"- {_short(chunk.text, 180)} ({document.source_type}) "
-                    f"[document_chunk:{chunk.id}]"
-                    for chunk, document in db_chunks[:3]
+                    [
+                        *[
+                            f"- {_short(chunk.text, 180)} ({document.source_type}) "
+                            f"[document_chunk:{chunk.id}]"
+                            for chunk, document in db_chunks[:3]
+                        ],
+                        *rag_evidence_lines,
+                    ]
                 )
                 or "- No local document chunk matched strongly enough; upload/ingest primary sources."
             )
@@ -487,10 +504,17 @@ class ChatService:
                 },
                 {
                     "key": "inferences",
-                    "body": thesis_text,
-                    "citations": (
-                        [f"thesis_version:{thesis.id}"] if thesis else []
-                    ),
+                    "body": "\n".join([thesis_text, *rag_evidence_lines])
+                    if rag_evidence_lines
+                    else thesis_text,
+                    "citations": [
+                        *([f"thesis_version:{thesis.id}"] if thesis else []),
+                        *[
+                            f"rag_chunk:{chunk.get('point_id')}"
+                            for chunk in rag_chunks[:3]
+                            if chunk.get("point_id") and chunk.get("text")
+                        ],
+                    ],
                 },
                 {
                     "key": "contradictions",

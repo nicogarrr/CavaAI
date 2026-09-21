@@ -1,4 +1,13 @@
-"""Sum-of-the-parts engine for multi-segment / holding-style names."""
+"""Sum-of-the-parts engine for multi-segment / holding-style names.
+
+Supuestos: NAV = Σ(métrica_operativa_segmento × múltiplo_segmento) − net_debt,
+todo de FinancialFact con contrato ``segment_{nombre}_operating_metric`` y
+``segment_{nombre}_valuation_multiple`` (múltiplos > 0, métricas > 0); holding
+discount de facts en [0, 1); valor/acc = NAV/acc × (1 − descuento).
+Escenarios bear/base/bull: descuento +15pp (techo 45%) / base / −8pp con NAV
+×1.12 en bull. Sensibilidad: tabla de 3 filas variando el descuento
+(−5pp / base / +5pp) a NAV base. Sin fallback a DCF de firma única.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +25,39 @@ from app.valuation.scenario_model import Scenario, probability_weighted_value
 from app.valuation.sotp import run_sotp
 from sqlalchemy import desc, select
 
+
+def sotp_discount_sensitivity(*, nav_per_share: float, base_discount: float) -> dict:
+    """Tabla de sensibilidad 1-D sobre el descuento holding.
+
+    Revalúa ``NAV/acc × (1 − descuento)`` en tres puntos
+    (−5pp / base / +5pp, acotado a [0, 0.60]); el NAV se mantiene en base.
+    Devuelve el formato estándar ``{"rows": [...], "trace": {...}}``.
+    """
+    rows = []
+    for label, discount in (
+        ("narrow_discount", max(base_discount - 0.05, 0.0)),
+        ("base_discount", base_discount),
+        ("wide_discount", min(base_discount + 0.05, 0.60)),
+    ):
+        rows.append(
+            {
+                "scenario": label,
+                "holding_discount": discount,
+                "nav_per_share": nav_per_share,
+                "value_per_share": nav_per_share * (1.0 - discount),
+            }
+        )
+    return {"rows": rows, "trace": {"method": "sotp_holding_discount_sensitivity"}}
+
+
 class SOTPEngine(ValuationEngine):
+    """SOTP: suma de segmentos menos deuda neta, con descuento holding.
+
+    Supuestos: múltiplos por segmento y descuento holding de FinancialFact;
+    NAV/acc × (1 − descuento). Sensibilidad: tabla de descuento holding
+    (−5pp / base / +5pp) a NAV base.
+    """
+
     key = "sotp"
 
     def value(self, context: ValuationContext) -> dict:
@@ -150,6 +191,11 @@ class SOTPEngine(ValuationEngine):
         )
         expected = weighted["expected_value"]
 
+        sensitivity = sotp_discount_sensitivity(
+            nav_per_share=nav_per_share,
+            base_discount=discount,
+        )
+
         return {
             "ticker": company.ticker,
             "model_type": company.valuation_model,
@@ -163,7 +209,7 @@ class SOTPEngine(ValuationEngine):
             "margin_of_safety": margin_of_safety(expected, current_price),
             "missing_inputs": missing_segments,
             "reverse_dcf": {},
-            "sensitivity": {"rows": []},
+            "sensitivity": sensitivity,
             "moat": empty_moat_framework(
                 company.company_type, company.factor_tags or [], company.special_risks or []
             ),
