@@ -1,235 +1,135 @@
-# CavaAI
+# CavaAI — Research OS de inversión personal
 
-CavaAI is a private Personal Investment Research OS for long-term investors. It combines company workspaces, thesis history, traceable evidence, document memory, portfolio context, news impact analysis, and valuation tools.
+![CI](https://github.com/nicogarrr/CavaAI/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey)
+![Stack](https://img.shields.io/badge/Next.js_16-%2B-FastAPI-blue)
 
-The core product is not a DCF factory. The core product is accumulated investment memory: why a company is owned or watched, what claims support the thesis, what evidence contradicts it, and what changed over time.
+**CavaAI es tu memoria de inversor a largo plazo.** No es un terminal más ni una fábrica de DCF: es donde vive por qué sigues o posees cada empresa, qué evidencias sostienen tu tesis, qué la contradice y qué ha cambiado con el tiempo.
 
-Nothing in this app is financial advice. Market data may be delayed or incomplete depending on each provider.
+> Esto no es asesoramiento financiero. Los datos pueden llegar con retraso o estar incompletos según el proveedor.
 
-## Product Principle
+## Qué hace
 
-CavaAI must treat the thesis and memory as the center of the product. Quantitative valuation is only one tool. No universal model, metric, or score should be forced onto a company when it is not appropriate.
+- **Workspace por empresa** (`/research/[ticker]`): snapshot coherente, tesis versionada con auditoría, claims con evidencia a favor/en contra, memoria y chat con fuentes.
+- **Tesis con abogado del diablo**: debate bull/bear automático con veredicto persistido en la tesis.
+- **Valoración determinista**: DCF, SOTP, pre-revenue, bancos, aseguradoras, REITs, holdings y materias primas — con traza de cálculo y regla anti-look-ahead (sin datos futuros).
+- **Señales insider**: compras de directivos desde SEC EDGAR (Form 4, gratis), con detección de cluster-buy y alerta en Telegram.
+- **Alertas en Telegram**: reglas de precio/noticias/earnings + urgencia puntuada por IA; las tesis se aprueban desde el propio Telegram (Publicar / Revisar).
+- **Biblioteca de conocimiento (RAG)**: sube PDFs/MDs, extrae principios, apruébalos y pregúntales con búsqueda semántica (Qdrant + embeddings locales).
+- **Tesis en EPUB**: descarga cada tesis para leerla en tu e-reader/Kindle.
+- **Screener real, portfolio con IBKR, calendario de earnings/dividendos, diario de decisión y fiscalidad.**
 
-See [docs/PRODUCT_VISION.md](docs/PRODUCT_VISION.md) for the full product direction.
+## De dónde vienen los datos (todo verificable)
 
-## Stack
+| Fuente | Qué aporta | Coste |
+|---|---|---|
+| Yahoo Finance | Índices reales (^GSPC, ^IXIC, BTC-USD, GC=F, SI=F), fallback de quotes | Gratis |
+| Finnhub | Quotes, perfiles, noticias, calendario (caché ~60 s) | Free tier |
+| SEC EDGAR | Filings 10-K/10-Q y Form 4 de insiders | Gratis, sin key |
+| FRED | Macro (IPC, paro, tipos) | Gratis (key gratuita) |
+| Calendario NASDAQ | Earnings y dividendos | Gratis |
+| OpenCode Go (+ Jev) | Solo texto de análisis y micro-decisiones; **nunca inventa cifras** | Suscripción / $0.042 por millón de tokens |
 
-Frontend:
-- Next.js 16 App Router
-- React 19
-- TypeScript
-- Tailwind CSS v4
-- shadcn/ui and Radix primitives
+FMP está retirado (su API legacy dejó de funcionar); no hay tickers ni nombres hardcodeados: todo nombre visible viene de una API real.
 
-App data and auth:
-- Better Auth
-- MongoDB only for Better Auth and the legacy watchlist boundary
-- PostgreSQL as the canonical store for portfolios, alerts, companies, facts, theses, evidence, models, journals and document metadata
-- Finnhub, FMP, Twelve Data, Alpha Vantage and other optional market data providers
+## Arranque rápido (< 30 min)
 
-Research engine:
-- FastAPI
-- PostgreSQL and SQLAlchemy
-- Qdrant for semantic retrieval
-- MinIO for raw documents
-- DuckDB for analytics
-- Redis and Dramatiq for jobs/cache
-- Langfuse optional observability
-
-## Current Capabilities
-
-- Email/password auth
-- Portfolio and watchlist
-- Company pages and market widgets
-- One canonical `/research/[ticker]` company workspace backed by a coherent snapshot contract
-- Research OS backend with companies, financial facts, thesis versions, source audits and valuation engines
-- Persistent claims, claim evidence, thesis sections, research sessions and company memory
-- Source-aware company chat with memory retrieval, user-directed memory write-back and typed source provenance
-- Company Research page connected to backend claims, support/contradiction evidence, document/chunk evidence links and memory capture
-- Source Evidence Lab for chunk previews, source-derived claim creation and support/contradiction evidence capture from imported documents
-- What Changed records for manual thesis updates, automatic claim contradictions and material news
-- News feed batch ingestion with dedupe, formal source tiers, portfolio-aware materiality and material thesis-change creation
-- Document ingestion for TXT/MD/HTML/PDF/DOCX/XLSX/CSV/TSV with checksum, raw storage, chunk metadata and duplicate detection
-- Traceable calculated metrics with formula, source fact ids, numerator/denominator, calculation trace, confidence and unavailable states
-- Peer comparison from same-industry/sector companies using traceable calculated metrics and peer median/average benchmarks
-- Versioned Long-Term Fundamental Modeling Engine with company-specific drivers, mandatory facts, scenarios, forecasts and source traces
-- Dedicated valuation engines for standard DCF, SOTP, pre-revenue/speculative, holding-company, commodity, bank, insurer and REIT models
-- Decision Journal and Expectation vs Reality linked to persisted thesis/model versions
-- Source/document ingestion path
-- Portfolio analytics and risk endpoints
-- News impact, deterministic ProPicks and provider-agnostic AI-assisted research flows
-
-## Quick Start
-
-Docker local stack:
+**Opción A — stack completo con Docker:**
 
 ```bash
 cp docker.env.example .env
-# edit .env and add the keys you want to use
+# edita .env con tus claves (Finnhub, Telegram, OpenCode Go…)
 docker compose up --build
 ```
 
-If an older checkout created `jlcava-*` Docker volumes, do not start writing to
-the new empty `cavaai-*` volumes. Stop the stack and migrate them explicitly:
+Abre http://localhost:3000. Servicios: PostgreSQL, MongoDB (auth), Qdrant (vectores), MinIO (documentos), Redis.
 
-```powershell
-.\scripts\migrate-docker-volumes.ps1 -DryRun
-.\scripts\migrate-docker-volumes.ps1
-docker compose up --build
-```
-
-The migration refuses to run while CavaAI containers are active and refuses to
-overwrite a non-empty target. Verify PostgreSQL, MongoDB, MinIO and Qdrant before
-removing any old volume. A new installation may consciously start from empty
-`cavaai-*` volumes without running the script.
-
-Operational runbooks:
-
-- [Backup and restore](docs/BACKUP_RESTORE.md)
-- [Financial document privacy and retention](docs/PRIVACY_AND_DATA_RETENTION.md)
-
-Authenticated API requests are rate-limited per tenant, user and client address;
-expensive LLM and model-refresh routes use a separate lower budget.
-
-Frontend only:
+**Opción B — desarrollo por piezas:**
 
 ```bash
+# Backend
+cd data-engine
+python -m venv .venv && ./.venv/Scripts/activate  # Windows
+pip install -r requirements.txt
+python -m alembic upgrade head
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
+
+# Frontend (otra terminal, desde la raíz)
 npm install
 npm run dev
 ```
 
-Backend only:
-
-```bash
-cd data-engine
-pip install -r requirements.txt
-pip install -e .[test]
-python -m alembic upgrade head
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-Open http://localhost:3000.
-
-## Environment
-
-Minimum local `.env`:
+**Variables mínimas** (ver `docker.env.example` para la lista completa):
 
 ```env
-NODE_ENV=development
-MONGODB_URI=mongodb://root:example@localhost:27017/cavaai?authSource=admin
-NEXT_PUBLIC_SUPPORT_EMAIL=support@cavaai.app
-BETTER_AUTH_SECRET=replace_with_a_32_char_minimum_secret
-BETTER_AUTH_URL=http://localhost:3000
-RESEARCH_AUTH_REQUIRED=true
-RESEARCH_AUTH_SECRET=replace_with_an_independent_32_char_research_secret
-FMP_BACKEND_URL=http://localhost:8000
-```
-
-Market data:
-
-```env
+MONGODB_URI=mongodb://root:***@localhost:27017/cavaai?authSource=admin
+BETTER_AUTH_SECRET=secreto_de_32_caracteres_minimo
+RESEARCH_AUTH_SECRET=otro_secreto_independiente_de_32
 FINNHUB_API_KEY=
-FINNHUB_BASE_URL=https://finnhub.io/api/v1
-FMP_API_KEY=
-TWELVE_DATA_API_KEY=
-ALPHA_VANTAGE_API_KEY=
-POLYGON_API_KEY=
-NEWSAPI_KEY=
-MARKETAUX_API_KEY=
-FRED_API_KEY=
-TRADING_ECONOMICS_API_KEY=
-SEC_USER_AGENT=CavaAI/0.1 contact@example.com
-```
-
-AI:
-
-CavaAI uses **OpenCode Go as its only LLM provider**. The OpenAI-compatible
-endpoint is `https://opencode.ai/zen/go/v1` and the default model is
-`deepseek-v4-flash`. Keep the API key in deployment secrets only.
-
-```env
 OPENCODE_GO_API_KEY=
-OPENCODE_GO_BASE_URL=https://opencode.ai/zen/go/v1
-OPENCODE_GO_MODEL=deepseek-v4-flash
-CAVAAI_ENABLE_VECTOR_CHAT=0
-CAVAAI_ENABLE_VECTOR_INGEST=0
-CAVAAI_USE_DOCLING=0
-```
-
-Email:
-
-```env
-NODEMAILER_EMAIL=
-NODEMAILER_PASSWORD=
-```
-
-Generate a production auth secret with:
-
-```bash
-openssl rand -base64 32
-```
-
-## Telegram alerts
-
-Telegram is an optional notification channel for persisted research alerts.
-The integration is included in the application, but it is **disabled by
-default** until you configure a rotated BotFather token and a private chat ID.
-
-Safe activation:
-
-1. Revoke any token that was pasted into chat in `@BotFather` with `/revoke`.
-2. Create a replacement token in `@BotFather`.
-3. Copy the local environment template and edit `.env` locally:
-
-```env
 TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=the_rotated_token
-TELEGRAM_CHAT_ID=your_private_chat_id
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
-4. Send `/start` to the bot from the Telegram account that should receive alerts
-   and set that account's chat ID in the local secret store. Never commit or
-   paste the token into GitHub, source files, logs, or chat.
-5. Configure an alert with the `telegram` channel. New alert rules include the
-   channel automatically when Telegram is enabled and fully configured.
+Genera secretos con `openssl rand -base64 32`. **Nunca commitees el `.env`** (está en `.gitignore`: solo se versionan los `.example`).
 
-The bot does not read a Quartr account directly. Use CavaAI's manual transcript
-import plus RSS, IR and SEC connectors for source ingestion.
-
-## Verification
-
-Frontend:
+## Verificación
 
 ```bash
+# Frontend
+./node_modules/.bin/tsc --noEmit
 npm run lint
 npm run build
+
+# Backend (suite completa ~2 min)
+cd data-engine && ./.venv/Scripts/python.exe -m pytest tests/ -q
+
+# El cliente OpenAPI no debe derivar (regenerar si tocas rutas)
 npm run generate:openapi
 git diff --exit-code -- data-engine/openapi.json lib/research/openapi.generated.ts
 ```
 
-Backend:
+El CI ejecuta 7 jobs: calidad frontend/backend, drift OpenAPI, migraciones Postgres, auditoría de dependencias y e2e (API + navegador).
 
-```bash
-cd data-engine
-python -m pytest
+## Arquitectura en 30 segundos
+
+Next.js (App Router, server actions firmadas HMAC) habla con FastAPI
+(`/api/*`, firma X-CavaAI-*): Postgres como canónico, Qdrant como índice
+semántico reconstruible, MinIO para originales y Redis/Dramatiq para jobs.
+OpenCode Go es el único LLM y Jev hace las micro-decisiones.
+
+Autenticación doble: sesiones Better Auth en MongoDB + firma HMAC con secreto
+de 32 mínimo en la research API (ventana 300 s, tenant = tu userId).
+
+## Estructura
+
+```
+app/(root)/          páginas: research, screener, watchlist, portfolio,
+                     alerts, knowledge, propicks, metodologia…
+components/          UI (shadcn/Radix + Tailwind oscuro)
+lib/actions/         server actions · lib/research/  cliente firmado
+data-engine/
+  app/api/routes/    26 routers bajo /api
+  app/services/      ingesta, tesis, debate, insider, RAG, alertas…
+  app/valuation/     motores + guardia point-in-time
+  app/llm/           factory OpenCode Go + cliente Jev
+  alembic/versions/  migraciones 0001→0020 (lineales, con downgrade)
+  tests/             250+ tests herméticos · evals/  evals financieras
+e2e/                 specs Playwright del flujo inversor
+docs/                PRODUCT_VISION, runbooks, privacidad
 ```
 
-`npm run lint` is configured as a gate for errors. React Compiler and legacy typing warnings are tracked as quality debt and must not grow.
+Ver [docs/PRODUCT_VISION.md](docs/PRODUCT_VISION.md) y la propia app en
+`/metodologia` (fuentes, límites y costes).
 
-## AI Provider Guidance
+## Producción
 
-The research engine uses OpenCode Go as its sole LLM provider through its OpenAI-compatible chat-completions endpoint. Every task routes to an OpenCode Go model, with `deepseek-v4-flash` as the default. Provider output never replaces the evidence contract or creates missing financial facts.
+- Frontend en Vercel; backend con autoarranque local o `render.yaml`.
+- Migraciones siempre explícitas (`alembic upgrade head`); el seed solo instala taxonomía pública, nunca tu cartera.
+- Puertos de BD cerrados al exterior; secretos solo en el dashboard de deploy.
+- Qdrant se reconstruye desde Postgres (`RAGIndex().rebuild_tenant`).
 
-## Production Notes
+## Licencia
 
-- Do not expose database ports publicly outside local development.
-- Do not use placeholder secrets in shared or production environments.
-- Run Alembic migrations explicitly in production. The optional seed command installs only the global company taxonomy; it never creates portfolio positions, cash or evidence.
-- Keep source lineage for every important financial fact, claim, calculation and thesis update.
-- Research APIs require signed tenant/user identity, and tenant-owned rows, workers, chunks and vector operations are scoped to that identity.
-- Raw source originals are canonical in MinIO in production; PostgreSQL stores metadata/chunks and Qdrant is a rebuildable semantic index.
-- Alembic revisions are explicit and immutable; do not import mutable application metadata from a migration.
-
-## License
-
-Copyright 2025 Nicolas Iglesias Garcia. All rights reserved.
+Copyright 2025 Nicolás Iglesias García. Todos los derechos reservados.
