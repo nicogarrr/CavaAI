@@ -17,7 +17,7 @@ import {
     validateScoreFormula,
     PROPICKS_SCORING_WEIGHTS,
     type PickLike,
-// @ts-ignore TS5097: la extensión .ts explícita la exige node --experimental-strip-types en runtime
+// @ts-expect-error TS5097: la extensión .ts explícita la exige node --experimental-strip-types en runtime
 } from '../lib/utils/propicksValidation.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
