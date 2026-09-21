@@ -11,6 +11,13 @@ export const metadata: Metadata = {
   keywords: ["fundamental analysis", "investment thesis", "financial modeling", "research OS", "análisis fundamental"],
   authors: [{ name: "CavaAI Team" }],
   creator: "CavaAI",
+  icons: {
+    icon: [
+      { url: '/assets/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/assets/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/assets/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   robots: {
     index: true,
     follow: true,
@@ -27,6 +34,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
+  themeColor: '#101010',
 };
 
 export default function RootLayout({
