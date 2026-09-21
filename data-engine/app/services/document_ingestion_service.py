@@ -146,6 +146,10 @@ class DocumentIngestionService:
                 "block_count": len(parsed.blocks),
                 "warnings": parsed.warnings,
                 "docling_opt_in": os.getenv("CAVAAI_USE_DOCLING") == "1",
+                # Tipo documental Jev (earnings/filing/macro/opinion): 1 llamada
+                # best-effort (~$0.042/MTok in). Sin TYPESAFE_API_KEY o ante
+                # error, la clave `jev_doc_type` simplemente no se guarda.
+                **self._jev_doc_type_meta(text),
             },
         )
         db.add(document)
@@ -260,6 +264,24 @@ class DocumentIngestionService:
             source_url=final_url,
             content_type=content_type,
         )
+
+    @staticmethod
+    def _jev_doc_type_meta(text: str) -> dict:
+        """Clasifica el tipo documental con Jev (1 llamada best-effort).
+
+        Coste ~$0.042/MTok in. Fallback: sin TYPESAFE_API_KEY o ante error
+        devuelve {} y el documento se ingiere sin `jev_doc_type`.
+        """
+        try:
+            from app.services.jev_triage_service import (
+                classify_doc_type_sync,
+                jev_metadata,
+            )
+
+            meta = jev_metadata(classify_doc_type_sync(text))
+        except Exception:  # noqa: BLE001 — Jev nunca rompe la ingesta
+            return {}
+        return {"jev_doc_type": meta} if meta is not None else {}
 
     def _parse(self, content: bytes, filename: str, ext: str, content_type: str | None) -> ParsedDocument:
         docling = self._parse_with_docling(content, filename, ext)
