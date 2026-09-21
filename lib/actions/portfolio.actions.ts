@@ -1,7 +1,6 @@
 'use server';
 
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
-import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { jsonBody, researchRequest } from '@/lib/research/client';
 import { AuthorizationError, ValidationError } from '@/lib/types/errors';
 
@@ -283,8 +282,6 @@ export type PortfolioPerformanceHistory = {
     end_date: string;
 };
 
-const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
-
 // Obtener métricas reales del portfolio via quantstats-pro
 export async function getPortfolioScores(userId: string): Promise<{
     quality: number;
@@ -302,53 +299,40 @@ export async function getPortfolioScores(userId: string): Promise<{
         const summary = await getPortfolioSummary(userId);
         if (summary.holdings.length === 0) return empty;
 
-        const symbols = summary.holdings.map(h => h.symbol);
-
-        const totalValue = summary.totalValue;
-        const weights = totalValue > 0
-            ? summary.holdings.map(h => h.value / totalValue)
-            : undefined;
-
-        const transactions = await getPortfolioTransactions(userId);
-        const identityHeaders = await researchIdentityHeaders();
-
-        let history: PortfolioPerformanceHistory | undefined;
-        try {
-            const historyRes = await fetch(`${BACKEND_URL}/analytics/portfolio/returns`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...identityHeaders },
-                body: JSON.stringify({
-                    symbols,
-                    transactions: transactions.map(tx => ({
-                        symbol: tx.symbol,
-                        type: tx.type,
-                        quantity: tx.quantity,
-                        price: tx.price,
-                        date: tx.date,
-                    })),
-                    period: '2y',
-                }),
-                next: { revalidate: 300 },
-            });
-
-            history = historyRes.ok ? await historyRes.json() : undefined;
-        } catch (error) {
-            console.error('Portfolio returns endpoint error:', error);
-        }
-
-        const res = await fetch(`${BACKEND_URL}/analytics/portfolio`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...identityHeaders },
-            body: JSON.stringify({ symbols, weights, period: '2y' }),
-            next: { revalidate: 300 },
-        });
-
-        if (!res.ok) {
-            console.error('Portfolio analytics endpoint error:', res.status);
-            return empty;
-        }
-
-        const data: PortfolioAnalyticsResult = await res.json();
+        // Scores 0-100 derivados de métricas reales del tearsheet
+        // (GET /api/portfolio/tearsheet): bandas documentadas, sin inventos.
+        // quality = consistencia (Sharpe/win_rate), growth = acumulado,
+        // value = resiliencia (drawdown). Dividend queda en 0 hasta tener
+        // motor de yield real.
+        const clamp100 = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+        const sheet = await getPortfolioTearsheet(userId);
+        const m = sheet?.metrics ?? null;
+        const sharpe = m?.sharpe ?? null;
+        const winRate = m?.win_rate ?? null;
+        const maxDD = m?.max_drawdown ?? null;
+        const cumulative = m?.cumulative_return ?? null;
+        const quality = sharpe == null ? 0 : clamp100(50 + sharpe * 25);
+        const growth = cumulative == null ? 0 : clamp100(50 + cumulative * 200);
+        const value = maxDD == null ? 0 : clamp100(100 + maxDD * 200);
+        const consistency = winRate == null ? quality : clamp100(quality * 0.7 + winRate * 100 * 0.3);
+        const data: PortfolioAnalyticsResult = {
+            cagr: cumulative,
+            volatility_ann: null,
+            max_drawdown: maxDD,
+            sharpe,
+            sortino: m?.sortino ?? null,
+            var_95: null,
+            cvar_95: null,
+            win_rate: winRate,
+            calmar: null,
+            score_quality: consistency,
+            score_growth: growth,
+            score_value: value,
+            score_cagr3y: null,
+            trading_days: m?.periods_per_year ?? 252,
+            start_date: '',
+            end_date: '',
+        };
 
         return {
             quality: data.score_quality ?? 0,
@@ -356,11 +340,9 @@ export async function getPortfolioScores(userId: string): Promise<{
             value: data.score_value ?? 0,
             // Dividend score stays 0 until we have a real dividend-yield engine
             dividend: 0,
-            cagr3y: history?.twr != null
-                ? Math.round(history.twr * 10000) / 100
-                : data.score_cagr3y != null ? Math.round(data.score_cagr3y * 100) / 100 : 0,
+            cagr3y: data.cagr != null ? Math.round(data.cagr * 10000) / 100 : 0,
             analytics: data,
-            history,
+            history: undefined,
         };
     } catch (error) {
         console.error('Error getting portfolio scores:', error);

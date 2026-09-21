@@ -1,4 +1,5 @@
 import Header from "@/components/Header";
+import Sidebar from "@/components/layout/Sidebar";
 import OnlineBanner from "@/components/OnlineBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
@@ -31,10 +32,13 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             <OnlineBanner />
             <Header user={user} initialStocks={initialStocks} />
 
-            <div className="container py-10">
-                <ErrorBoundary>
-                    {children}
-                </ErrorBoundary>
+            <div className="flex items-start">
+                <Sidebar />
+                <div className="container py-10 flex-1 min-w-0">
+                    <ErrorBoundary>
+                        {children}
+                    </ErrorBoundary>
+                </div>
             </div>
         </main>
     );
