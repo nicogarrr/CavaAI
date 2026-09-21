@@ -486,6 +486,7 @@ class NewsEvent(TenantOwnedMixin, Base, TimestampMixin):
     affected_assumptions: Mapped[list[str]] = mapped_column(JSON, default=list)
     requires_update: Mapped[bool] = mapped_column(Boolean, default=False)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 
 class ExternalClaim(TenantOwnedMixin, Base, TimestampMixin):

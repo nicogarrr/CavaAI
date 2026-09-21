@@ -3,6 +3,10 @@
 Si Jev clasifica la noticia como "routine" con confianza alta, se guardinga
 la ruta del LLM principal (news_triage barato) y se abre la gate para
 degradar profundidad. Nunca decide solo: solo ajusta materiality/reasoning.
+
+Coste: Jev factura ~$0.042 / millón de tokens de entrada (salida gratis).
+Fallback: sin TYPESAFE_API_KEY el cliente no se construye y cada
+classify_*_sync devuelve None (el llamador sigue sin Jev, sin romper nada).
 """
 from __future__ import annotations
 
@@ -56,6 +60,14 @@ CRITERIA = {
     ),
 }
 
+# Coste: ~$0.042/MTok in. Fallback: sin key, build_client() -> None y esto -> None.
+DOC_TYPE_CRITERIA = {
+    "earnings": "quarterly/annual results, EPS, revenue, guidance, earnings call",
+    "filing": "SEC filing, 10-K, 10-Q, 8-K, prospectus, regulatory submission",
+    "macro": "central banks, rates, inflation, GDP, employment, market-wide data",
+    "opinion": "op-ed, analyst opinion, commentary without new facts or filings",
+}
+
 
 def classify_urgency_sync(text: str) -> JevTriageResult | None:
     """Clasifica urgencia con Jev. Devuelve None si no está configurado o falla."""
@@ -85,6 +97,54 @@ def classify_urgency_sync(text: str) -> JevTriageResult | None:
         applied=False,
         latency_s=decision.latency_s,
     )
+
+
+def classify_doc_type_sync(text: str) -> JevTriageResult | None:
+    """Clasifica tipo documental con Jev (1 llamada). None sin key; error suave.
+
+    Coste: ~$0.042/MTok in. Fallback: sin TYPESAFE_API_KEY devuelve None y el
+    llamador ingiere sin `jev_doc_type` en metadata (best-effort, nunca rompe).
+    """
+    client = build_client()
+    if client is None:
+        return None
+    import asyncio
+
+    try:
+        decision = asyncio.run(
+            client.classify(
+                text[:2000],
+                name="doc_type",
+                instructions="What kind of financial document is this?",
+                criteria=DOC_TYPE_CRITERIA,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort, nunca rompe ingesta
+        logger.warning("jev doc-type failed: %s", exc)
+        return JevTriageResult(
+            label="", confidence=0.0, applied=False, latency_s=0.0,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+    return JevTriageResult(
+        label=decision.label,
+        confidence=decision.confidence,
+        applied=False,
+        latency_s=decision.latency_s,
+    )
+
+
+def jev_metadata(triage: JevTriageResult | None) -> dict | None:
+    """Serializa un veredicto Jev para metadata (alerta/documento). None sin veredicto."""
+    if triage is None or not triage.label:
+        return None
+    payload: dict = {
+        "label": triage.label,
+        "confidence": round(triage.confidence, 4),
+        "latency_s": triage.latency_s,
+    }
+    if triage.error:
+        payload["error"] = triage.error[:200]
+    return payload
 
 
 def apply_to_materiality(

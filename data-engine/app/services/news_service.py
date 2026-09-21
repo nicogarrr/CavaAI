@@ -82,6 +82,21 @@ class NewsService:
         )
 
         summary = " ".join(text.strip().split())[:320]
+        # Tipo de noticia con Jev (earnings/filing/macro/opinion): 1 llamada
+        # best-effort (~$0.042/MTok in) guardada en metadata. Sin
+        # TYPESAFE_API_KEY o ante error, la noticia se ingiere sin `jev_doc_type`.
+        news_metadata: dict = {}
+        try:
+            from app.services.jev_triage_service import (
+                classify_doc_type_sync,
+                jev_metadata,
+            )
+
+            doc_type = jev_metadata(classify_doc_type_sync(text))
+            if doc_type is not None:
+                news_metadata["jev_doc_type"] = doc_type
+        except Exception:  # noqa: BLE001 — Jev nunca rompe la ingesta
+            pass
         news = NewsEvent(
             company_id=company.id if company else None,
             date=datetime.now(UTC),
@@ -96,6 +111,7 @@ class NewsService:
             affected_assumptions=assessment.affected_assumptions,
             requires_update=requires_update,
             processed_at=datetime.now(UTC),
+            metadata_=news_metadata,
         )
         db.add(news)
         db.flush()

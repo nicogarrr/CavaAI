@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     telegram_chat_id: str | None = None
     telegram_api_base_url: str = "https://api.telegram.org"
     telegram_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    # Aprobación de tesis por Telegram (human-in-the-loop mínimo viable).
+    # Apagado por defecto: sin este flag no se envía nada ni se sondea nada.
+    # Env: TELEGRAM_APPROVAL_ENABLED.
+    telegram_approval_enabled: bool = False
+    # Fichero donde el poller persiste el offset de getUpdates.
+    # Env: TELEGRAM_APPROVAL_STATE_PATH.
+    telegram_approval_state_path: str = "./storage/telegram_approval_offset"
+    # Intervalo del poller entre pasadas getUpdates (solo scripts/poller).
+    # Env: TELEGRAM_APPROVAL_POLL_INTERVAL_SECONDS.
+    telegram_approval_poll_interval_seconds: int = Field(default=15, ge=5, le=300)
     # Senales insider (Form 4 EDGAR): alerta Telegram 'insider buy' apagada
     # por defecto. Env: INSIDER_ALERTS_ENABLED.
     insider_alerts_enabled: bool = False

@@ -147,6 +147,11 @@ def init_db() -> None:
                     conn.execute(
                         text("ALTER TABLE thesis_versions ADD COLUMN input_fingerprint VARCHAR(64)")
                     )
+        if "news_events" in inspector.get_table_names():
+            columns = {col["name"] for col in inspector.get_columns("news_events")}
+            if "metadata" not in columns:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE news_events ADD COLUMN metadata JSON"))
         if settings.database_url.startswith("sqlite"):
             thesis_columns = {
                 column["name"]: column

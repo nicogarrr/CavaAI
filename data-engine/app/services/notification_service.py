@@ -13,6 +13,9 @@ class NotificationService:
     def dispatch(self, db: Session, alert: ResearchAlert) -> dict:
         settings = get_settings()
         deliveries = dict((alert.metadata_ or {}).get("deliveries", {}))
+        # Score Jev adjuntado por el emisor (alert_rule_service, best-effort):
+        # sin TYPESAFE_API_KEY no hay `jev_urgency` y el texto sale sin línea Jev.
+        jev_urgency = (alert.metadata_ or {}).get("jev_urgency") or {}
         payload = {
             "alert_id": alert.id,
             "tenant_id": alert.tenant_id,
@@ -22,6 +25,7 @@ class NotificationService:
             "title": alert.title,
             "message": alert.message,
             "created_at": alert.created_at.isoformat(),
+            "jev_urgency": jev_urgency,
         }
         for channel in alert.channels:
             if channel == "in_app":
@@ -95,6 +99,15 @@ class NotificationService:
             f"Ticker/company id: {payload['company_id']}\n"
             f"Alert id: {payload['alert_id']}"
         )
+        # Urgencia Jev (1 llamada en el emisor, ~$0.042/MTok in): solo aparece
+        # si el emisor adjuntó `jev_urgency`; sin key no hay línea (fallback).
+        jev = payload.get("jev_urgency") or {}
+        if jev.get("label"):
+            try:
+                conf = float(jev.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                conf = 0.0
+            text += f"\nJev urgency: {jev['label']} (conf {conf:.2f})"
         # Telegram's plain-text sendMessage limit is 4096 characters.
         return text[:4090]
 
