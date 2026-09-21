@@ -180,7 +180,13 @@ class ChatService:
         return payload
 
     async def answer(
-        self, db: Session, question: str, scope: str, ticker: str | None
+        self,
+        db: Session,
+        question: str,
+        scope: str,
+        ticker: str | None,
+        *,
+        enable_debate: bool | None = None,
     ) -> ChatResponse:
         baseline = self._deterministic_answer(db, question, scope, ticker)
         return await ChatSynthesisService(self.provider).synthesize(
@@ -188,6 +194,7 @@ class ChatService:
             ticker=ticker,
             baseline=baseline,
             db=db,
+            enable_debate=enable_debate,
         )
 
     def _deterministic_answer(

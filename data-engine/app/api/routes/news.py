@@ -32,7 +32,11 @@ def news_events(db: Session = Depends(get_db)) -> list[dict]:
     materiality = MaterialityService()
     events = []
     for event, company in rows:
-        assessment = materiality.assess_news(db, company, event.summary or event.title, event.source, event.url)
+        # Solo lectura: sin Jev (evita N llamadas externas; el score
+        # persistido en ingesta ya incluye el ajuste Jev).
+        assessment = materiality.assess_news(
+            db, company, event.summary or event.title, event.source, event.url, use_jev=False
+        )
         events.append(
             {
                 "id": event.id,
