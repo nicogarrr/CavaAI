@@ -58,28 +58,59 @@ class NewsService:
         ticker: str | None = None,
     ) -> ManualNewsResponse:
         company = self._company_for_item(db, text, ticker)
+        # Gate Jev (3): duplicate/noise con confianza >= 0.85 -> via ligera:
+        # se registra el evento en el tracker pero se omite el analisis
+        # semantico, el ThesisChange/review y el claim scan. Best-effort:
+        # sin key o ante fallo, via completa como siempre.
+        jev_light = False
+        jev_light_marker = ""
+        try:
+            from app.services.jev_gates import NEWS_ACTION_THRESHOLD, jev_news_action_sync
+
+            decision = jev_news_action_sync(text)
+            if (
+                decision is not None
+                and decision.label in {"duplicate", "noise"}
+                and decision.confidence >= NEWS_ACTION_THRESHOLD
+            ):
+                jev_light = True
+                jev_light_marker = (
+                    f"jev_news_action({decision.label}, "
+                    f"conf={decision.confidence:.2f}) -> analisis ligero "
+                    "(sin ThesisChange ni claim scan)"
+                )
+        except Exception:  # noqa: BLE001 — Jev nunca rompe ingesta
+            jev_light = False
         assessment = self.materiality.assess_news(db, company, text, source, url)
-        semantic_impact = (
-            self.thesis_graph.assess_impact(
-                db,
-                company,
-                text,
-                base_materiality=assessment.materiality_score,
-                impact_direction=assessment.impact_direction,
+        materiality_reasons = list(assessment.reasons)
+        if jev_light_marker:
+            materiality_reasons.append(jev_light_marker)
+        if jev_light:
+            semantic_impact = None
+            materiality_score = assessment.materiality_score
+            requires_update = False
+        else:
+            semantic_impact = (
+                self.thesis_graph.assess_impact(
+                    db,
+                    company,
+                    text,
+                    base_materiality=assessment.materiality_score,
+                    impact_direction=assessment.impact_direction,
+                )
+                if company
+                else None
             )
-            if company
-            else None
-        )
-        materiality_score = (
-            semantic_impact.impact_score
-            if semantic_impact
-            else assessment.materiality_score
-        )
-        requires_update = assessment.requires_update or bool(
-            semantic_impact
-            and semantic_impact.affected_claim_ids
-            and materiality_score >= 7
-        )
+            materiality_score = (
+                semantic_impact.impact_score
+                if semantic_impact
+                else assessment.materiality_score
+            )
+            requires_update = assessment.requires_update or bool(
+                semantic_impact
+                and semantic_impact.affected_claim_ids
+                and materiality_score >= 7
+            )
 
         summary = " ".join(text.strip().split())[:320]
         news = NewsEvent(
@@ -142,7 +173,7 @@ class NewsService:
                 used_in_model=False,
             )
         )
-        if company:
+        if company and not jev_light:
             self.claim_intelligence.scan_text(
                 db,
                 company=company,
@@ -152,7 +183,7 @@ class NewsService:
                 source_reference={"type": "news_event", "id": news.id},
                 auto_apply=True,
             )
-        else:
+        elif not company:
             db.commit()
 
         action = (
@@ -174,7 +205,7 @@ class NewsService:
             source_tier=assessment.source_tier,
             source_trust_score=assessment.source_trust_score,
             portfolio_weight=assessment.portfolio_weight,
-            materiality_reasons=assessment.reasons,
+            materiality_reasons=materiality_reasons,
             model_route=assessment.model_route,
             affected_claim_ids=(
                 semantic_impact.affected_claim_ids if semantic_impact else []

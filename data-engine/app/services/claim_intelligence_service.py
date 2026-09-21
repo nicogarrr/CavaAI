@@ -245,6 +245,7 @@ class ClaimIntelligenceService:
         candidate: str,
         similarity: float,
         evidence_date: datetime | None = None,
+        use_jev: bool = True,
     ) -> RelationClassification:
         now = evidence_date or datetime.now(UTC)
         valid_until = (claim.metadata_ or {}).get("valid_until")
@@ -296,6 +297,31 @@ class ClaimIntelligenceService:
                 confidence=min(0.94, 0.60 + similarity * 0.35),
                 rationale="The new statement closely matches the historical claim without a polarity or numeric conflict.",
             )
+        # Rama uncertain: unico punto donde se consulta a Jev (best-effort).
+        # Si Jev devuelve supported/contradicted/superseded/stale se adopta;
+        # sin key, ante fallo o veredicto debil, uncertain determinista.
+        if use_jev:
+            try:
+                from app.services.jev_gates import jev_claim_relation_sync
+
+                decision = jev_claim_relation_sync(claim.statement, candidate)
+            except Exception:  # noqa: BLE001 — Jev nunca rompe clasificacion
+                decision = None
+            if decision is not None and decision.label in {
+                "supported",
+                "contradicted",
+                "superseded",
+                "stale",
+            }:
+                return RelationClassification(
+                    relation=decision.label,
+                    confidence=max(0.0, min(1.0, decision.confidence)),
+                    rationale=(
+                        f"Jev claim_relation: {decision.label} "
+                        f"(confianza {decision.confidence:.2f}) sobre un par "
+                        "que el analisis determinista dejo en uncertain."
+                    ),
+                )
         return RelationClassification(
             relation="uncertain",
             confidence=max(0.45, min(0.74, 0.35 + similarity)),

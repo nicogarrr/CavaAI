@@ -187,8 +187,45 @@ class ChatService:
         ticker: str | None,
         *,
         enable_debate: bool | None = None,
+        use_jev: bool = True,
     ) -> ChatResponse:
         baseline = self._deterministic_answer(db, question, scope, ticker)
+        # Fast-path Jev (4): si la pregunta es una consulta factual simple
+        # (baseline_ok, conf >= 0.8), el contexto determinista ya responde y
+        # se ahorra la llamada LLM de sintesis. Sin key o ante fallo,
+        # sintesis como siempre.
+        if use_jev:
+            try:
+                from app.services.jev_gates import (
+                    CHAT_BASELINE_OK_THRESHOLD,
+                    CHAT_NEEDS_LLM_CRITERIA,
+                    CHAT_NEEDS_LLM_INSTRUCTIONS,
+                    jev_choice_or_none,
+                )
+
+                gate = await jev_choice_or_none(
+                    name="chat_needs_llm",
+                    text=question,
+                    instructions=CHAT_NEEDS_LLM_INSTRUCTIONS,
+                    criteria=CHAT_NEEDS_LLM_CRITERIA,
+                )
+                if (
+                    gate is not None
+                    and gate.label == "baseline_ok"
+                    and gate.confidence >= CHAT_BASELINE_OK_THRESHOLD
+                ):
+                    baseline.model = "deterministic"
+                    baseline.llm_trace = {
+                        "fast_path": True,
+                        "reason": "jev_baseline_ok",
+                        "jev_gate": {
+                            "label": gate.label,
+                            "confidence": gate.confidence,
+                        },
+                    }
+                    return baseline
+            except Exception:  # noqa: BLE001 — Jev nunca rompe el chat
+                pass
         return await ChatSynthesisService(self.provider).synthesize(
             question=question,
             ticker=ticker,

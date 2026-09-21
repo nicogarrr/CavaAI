@@ -272,10 +272,41 @@ class ChatSynthesisService:
         if not ticker or not self._debate_enabled(enable_debate):
             return
         try:
+            from app.services.jev_gates import (
+                DEBATE_WORTHWHILE_CRITERIA,
+                DEBATE_WORTHWHILE_INSTRUCTIONS,
+                DEBATE_WORTHWHILE_THRESHOLD,
+                jev_choice_or_none,
+            )
+
+            gate = await jev_choice_or_none(
+                name="debate_worthwhile",
+                text=baseline.answer,
+                instructions=DEBATE_WORTHWHILE_INSTRUCTIONS,
+                criteria=DEBATE_WORTHWHILE_CRITERIA,
+            )
+            if (
+                gate is not None
+                and gate.label == "clear_cut"
+                and gate.confidence >= DEBATE_WORTHWHILE_THRESHOLD
+            ):
+                baseline.llm_trace["thesis_debate"] = {
+                    "skipped": True,
+                    "reason": "jev_clear_cut",
+                    "jev_gate": {
+                        "label": gate.label,
+                        "confidence": gate.confidence,
+                    },
+                }
+                return
+        except Exception:
+            pass
+        try:
             from app.services.thesis_debate_service import debate_thesis
 
             baseline.llm_trace["thesis_debate"] = await debate_thesis(
-                ticker, baseline.answer, provider=self.provider
+                ticker, baseline.answer, provider=self.provider,
+                skip_jev_gate=True,
             )
         except Exception:
             pass
