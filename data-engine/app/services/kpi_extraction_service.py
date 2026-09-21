@@ -149,6 +149,19 @@ class KPIExtractionService:
         )
         if not chunks:
             return []
+        try:
+            from app.services.jev_gates import kpi_chunk_keep_flags
+
+            keep_flags = await kpi_chunk_keep_flags([chunk.text for chunk in chunks])
+        except Exception:  # noqa: BLE001 — Jev best-effort: sin filtro, como hoy
+            keep_flags = None
+        if keep_flags is not None:
+            chunks = [
+                chunk for chunk, keep in zip(chunks, keep_flags) if keep
+            ]
+            if not chunks:
+                # Jev no ve senal KPI en ningun chunk: se ahorra la llamada LLM.
+                return []
         chunk_map = {chunk.id: chunk for chunk in chunks}
         source_text = "\n\n".join(
             f"[chunk:{chunk.id}]\n{chunk.text}" for chunk in chunks

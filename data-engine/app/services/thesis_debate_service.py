@@ -17,6 +17,14 @@ from typing import Any
 
 from app.llm import LLMRequest, LLMResponse, Message
 from app.llm.base import LLMProvider
+from app.services.jev_gates import (
+    DEBATE_VERDICT_CRITERIA,
+    DEBATE_VERDICT_INSTRUCTIONS,
+    DEBATE_WORTHWHILE_CRITERIA,
+    DEBATE_WORTHWHILE_INSTRUCTIONS,
+    DEBATE_WORTHWHILE_THRESHOLD,
+    jev_choice_or_none,
+)
 
 # Coste fijo por operacion (techo, solo si el LLM responde a todo).
 LLM_CALLS_PER_DEBATE = 3
@@ -149,12 +157,21 @@ async def debate_thesis(
     provider: LLMProvider | None = None,
     materiality_score: int = 0,
     portfolio_weight: float = 0.0,
+    use_jev: bool = True,
+    skip_jev_gate: bool = False,
 ) -> dict[str, Any]:
     """Debate bull -> bear -> veredicto. Nunca lanza excepcion.
 
     Devuelve ``{ticker, bull_case, bear_case, verdict, verdict_rationale,
     llm_calls, degraded, model}`` con ``verdict`` en
     ``{bullish, bearish, neutral}``.
+
+    Gates Jev (best-effort, sin key todo sigue igual):
+    - gate ``debate_worthwhile``: si la tesis es ``clear_cut`` con
+      confianza >= 0.8 se omite el debate LLM (ahorra hasta 3 llamadas).
+    - juez Jev: el veredicto (bullish/bearish/neutral) lo emite Jev sobre
+      los casos bull/bear y reemplaza la 3ª llamada LLM; si Jev no esta
+      disponible o falla, el juez LLM actua como siempre.
     """
     llm = _resolve_provider(provider)
     ticker = (ticker or "UNKNOWN").strip().upper() or "UNKNOWN"
@@ -162,6 +179,42 @@ async def debate_thesis(
     llm_calls = 0
     degraded = False
     model: str | None = None
+    jev_gate: dict[str, Any] | None = None
+    jev_judge: dict[str, Any] | None = None
+
+    if use_jev and not skip_jev_gate:
+        gate = await jev_choice_or_none(
+            name="debate_worthwhile",
+            text=thesis,
+            instructions=DEBATE_WORTHWHILE_INSTRUCTIONS,
+            criteria=DEBATE_WORTHWHILE_CRITERIA,
+        )
+        if gate is not None:
+            jev_gate = {"label": gate.label, "confidence": gate.confidence}
+            if (
+                gate.label == "clear_cut"
+                and gate.confidence >= DEBATE_WORTHWHILE_THRESHOLD
+            ):
+                jev_gate["skipped_llm"] = True
+                bull_case = _deterministic_side(ticker, thesis, "bull")
+                bear_case = _deterministic_side(ticker, thesis, "bear")
+                fallback = _deterministic_verdict(
+                    ticker, thesis, bull_case, bear_case
+                )
+                return {
+                    "ticker": ticker,
+                    "bull_case": bull_case,
+                    "bear_case": bear_case,
+                    "verdict": fallback["verdict"],
+                    "verdict_rationale": fallback["verdict_rationale"],
+                    "llm_calls": 0,
+                    "degraded": False,
+                    "model": "deterministic",
+                    "materiality_score": materiality_score,
+                    "portfolio_weight": portfolio_weight,
+                    "jev_gate": jev_gate,
+                    "jev_judge": None,
+                }
 
     try:
         bull_case, resp = await _complete_text(
@@ -204,29 +257,48 @@ async def debate_thesis(
 
     verdict: str | None = None
     verdict_rationale = ""
-    try:
-        judge_text, resp = await _complete_text(
-            llm,
-            system=(
-                "Eres el JUEZ neutral. Lee el caso alcista y el bajista y emite un "
-                "veredicto con una sola palabra (bullish, bearish o neutral) seguida "
-                "de una frase de justificacion. Formato: VEREDICTO: <palabra> | <frase>."
-            ),
-            user=(
+    if use_jev:
+        judge = await jev_choice_or_none(
+            name="verdict",
+            text=(
                 f"Ticker: {ticker}\nTesis: {thesis or '(sin tesis aportada)'}\n"
                 f"ALCISTA: {bull_case[:1000]}\nBAJISTA: {bear_case[:1000]}"
             ),
-            task="red_team",
-            max_tokens=300,
-            temperature=0.1,
+            instructions=DEBATE_VERDICT_INSTRUCTIONS,
+            criteria=DEBATE_VERDICT_CRITERIA,
         )
-        llm_calls += 1
-        model = model or resp.model
-        match = re.search(r"(bullish|bearish|neutral)", judge_text.lower())
-        verdict = match.group(1) if match else None
-        verdict_rationale = judge_text.strip()[:600]
-    except Exception:
-        verdict = None
+        if judge is not None and judge.label in {"bullish", "bearish", "neutral"}:
+            verdict = judge.label
+            verdict_rationale = (
+                f"Juez Jev para {ticker}: {judge.label} "
+                f"(confianza {judge.confidence:.2f}) a partir del caso "
+                "alcista y el bajista."
+            )
+            jev_judge = {"label": judge.label, "confidence": judge.confidence}
+    if verdict is None:
+        try:
+            judge_text, resp = await _complete_text(
+                llm,
+                system=(
+                    "Eres el JUEZ neutral. Lee el caso alcista y el bajista y emite un "
+                    "veredicto con una sola palabra (bullish, bearish o neutral) seguida "
+                    "de una frase de justificacion. Formato: VEREDICTO: <palabra> | <frase>."
+                ),
+                user=(
+                    f"Ticker: {ticker}\nTesis: {thesis or '(sin tesis aportada)'}\n"
+                    f"ALCISTA: {bull_case[:1000]}\nBAJISTA: {bear_case[:1000]}"
+                ),
+                task="red_team",
+                max_tokens=300,
+                temperature=0.1,
+            )
+            llm_calls += 1
+            model = model or resp.model
+            match = re.search(r"(bullish|bearish|neutral)", judge_text.lower())
+            verdict = match.group(1) if match else None
+            verdict_rationale = judge_text.strip()[:600]
+        except Exception:
+            verdict = None
 
     if verdict not in {"bullish", "bearish", "neutral"}:
         degraded = True
@@ -246,6 +318,8 @@ async def debate_thesis(
         "model": model or "deterministic",
         "materiality_score": materiality_score,
         "portfolio_weight": portfolio_weight,
+        "jev_gate": jev_gate,
+        "jev_judge": jev_judge,
     }
 
 
