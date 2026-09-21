@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getPortfolioSummary, getPortfolioTransactions, getPortfolioScores } from '@/lib/actions/portfolio.actions';
+import { getPortfolioSummary, getPortfolioTransactions, getPortfolioScores, getPortfolioTearsheet } from '@/lib/actions/portfolio.actions';
 import PortfolioTabs from '@/components/portfolio/PortfolioTabs';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
@@ -16,10 +16,11 @@ export default async function PortfolioPage() {
     redirect('/sign-in');
   }
 
-  const [summary, transactions, scores] = await Promise.all([
+  const [summary, transactions, scores, tearsheet] = await Promise.all([
     getPortfolioSummary(userId),
     getPortfolioTransactions(userId),
     getPortfolioScores(userId),
+    getPortfolioTearsheet(userId),
   ]);
 
   return (
@@ -27,6 +28,7 @@ export default async function PortfolioPage() {
       summary={summary}
       transactions={transactions}
       scores={scores}
+      tearsheet={tearsheet}
       userId={userId}
     />
   );

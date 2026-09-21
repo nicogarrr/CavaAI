@@ -1,4 +1,5 @@
 import { generateProPicks, getAvailableStrategies, type ProPick } from '@/lib/actions/proPicks.actions';
+import { SCORING_WEIGHTS } from '@/lib/utils/advancedStockScoring';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -18,9 +19,18 @@ export default async function ProPicksSection() {
 
     if (picks.length === 0) {
         return (
-            <Card className="p-6 rounded-lg border border-gray-700 bg-gray-800/50">
-                <h2 className="text-xl font-semibold mb-4 text-gray-200">ProPicks IA</h2>
-                <p className="text-sm text-gray-500">No hay picks disponibles en este momento.</p>
+            <Card className="p-6 rounded-lg border border-gray-700 bg-gray-800/50 text-center">
+                <h2 className="text-xl font-semibold mb-2 text-gray-200">ProPicks IA</h2>
+                <p className="text-sm text-gray-400">
+                    No hay picks disponibles ahora mismo. Puede ser un problema temporal
+                    con los datos de mercado.
+                </p>
+                <Button asChild variant="outline" size="sm" className="gap-2 mt-4">
+                    <Link href="/propicks">
+                        Reintentar
+                        <ArrowRight className="h-4 w-4" />
+                    </Link>
+                </Button>
             </Card>
         );
     }
@@ -50,36 +60,27 @@ export default async function ProPicksSection() {
             {/* Mostrar desglose de categorías si hay picks */}
             {picks.length > 0 && (
                 <div className="mb-6 p-4 bg-gray-900/50 rounded-lg border border-gray-700/50">
-                    <h3 className="text-sm font-semibold text-gray-300 mb-3">Estrategia: Batir al S&P 500</h3>
+                    <h3 className="text-sm font-semibold text-gray-300 mb-3">Estrategia: Selección Adaptativa IA</h3>
                     <p className="text-xs text-gray-400 mb-3">
-                        Selecciona las mejores acciones del S&P 500 con alta salud financiera y valor relativo, 
-                        comparando métricas con el promedio del sector.
+                        La IA analiza datos actuales del mercado y selecciona las mejores oportunidades,
+                        comparando métricas con el promedio del sector. Pesos del score general:
                     </p>
                     <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
-                        <div>
-                            <div className="text-gray-500">Valor</div>
-                            <div className="text-gray-300 font-medium">15%</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500">Crecimiento</div>
-                            <div className="text-gray-300 font-medium">15%</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500">Rentabilidad</div>
-                            <div className="text-gray-300 font-medium">25%</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500">Flujo Caja</div>
-                            <div className="text-gray-300 font-medium">15%</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500">Impulso</div>
-                            <div className="text-gray-300 font-medium">15%</div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500">Deuda</div>
-                            <div className="text-gray-300 font-medium">15%</div>
-                        </div>
+                        {(
+                            [
+                                ['Valor', SCORING_WEIGHTS.value],
+                                ['Crecimiento', SCORING_WEIGHTS.growth],
+                                ['Rentabilidad', SCORING_WEIGHTS.profitability],
+                                ['Flujo Caja', SCORING_WEIGHTS.cashFlow],
+                                ['Impulso', SCORING_WEIGHTS.momentum],
+                                ['Deuda', SCORING_WEIGHTS.debtLiquidity],
+                            ] as const
+                        ).map(([label, weight]) => (
+                            <div key={label}>
+                                <div className="text-gray-500">{label}</div>
+                                <div className="text-gray-300 font-medium">{Math.round(weight * 100)}%</div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
@@ -135,15 +136,18 @@ export default async function ProPicksSection() {
                             {pick.currentPrice > 0 && (
                                 <div className="text-sm text-gray-300 mb-3">
                                     <span className="font-medium">${pick.currentPrice.toFixed(2)}</span>
+                                    <span className="ml-2 text-xs text-teal-400">
+                                        Confianza {pick.confidenceLevel} ({pick.confidence}/100)
+                                    </span>
                                 </div>
                             )}
 
-                            {pick.reasons.length > 0 && (
+                            {pick.confidenceReasons.length > 0 && (
                                 <div className="space-y-1">
-                                    {pick.reasons.slice(0, 3).map((reason, index) => (
-                                        <div key={index} className="flex items-center gap-2 text-xs text-gray-400">
+                                    {pick.confidenceReasons.slice(0, 3).map((reason, index) => (
+                                        <div key={index} className="flex items-center gap-2 text-xs text-gray-400" title={`Dato verificado: ${reason.metric} = ${reason.value}`}>
                                             <TrendingUp className="h-3 w-3 text-teal-400" />
-                                            {reason}
+                                            {reason.text}
                                         </div>
                                     ))}
                                 </div>

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree
@@ -9,6 +11,222 @@ from sqlalchemy.orm import Session
 
 from app.models import CashBalance, Company, Position, Transaction
 from app.services.portfolio_fx_service import PortfolioFXService
+
+
+class IBKRImportError(ValueError):
+    """Fichero IBKR inválido: mensaje accionable en español."""
+
+
+def _is_number(value: str | None) -> bool:
+    if value in (None, ""):
+        return False
+    try:
+        Decimal(str(value).replace(",", ""))
+    except (InvalidOperation, ValueError):
+        return False
+    return True
+
+
+def _is_date(value: str | None) -> bool:
+    if not value:
+        return False
+    normalized = value.split(";", 1)[0].split(" ", 1)[0]
+    for fmt in ("%Y-%m-%d", "%Y%m%d", "%m/%d/%Y"):
+        try:
+            datetime.strptime(normalized, fmt)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def validate_flex_xml(xml_text: str) -> list[str]:
+    """Valida un Flex Query XML de IBKR.
+
+    Devuelve una lista de errores accionables en español
+    (``fila N (TAG …): qué falla y cómo arreglarlo``).
+    Lista vacía = fichero válido. No toca la base de datos.
+    """
+    errors: list[str] = []
+    if not xml_text or not xml_text.strip():
+        return ["El fichero está vacío: descarga de nuevo el Flex Query XML desde IBKR (Informes > Flex Queries)."]
+    try:
+        root = ElementTree.fromstring(xml_text)
+    except ElementTree.ParseError as exc:
+        return [
+            f"El XML no se puede leer ({exc}): el fichero está incompleto o no es XML. "
+            "Descarga de nuevo el Flex Query completo desde IBKR sin abrirlo ni editarlo."
+        ]
+    if _tag_name(root) != "FlexQueryResponse":
+        # Aceptamos cualquier raíz que contenga statements; si no hay
+        # ninguna etiqueta conocida, no es un Flex Query.
+        tags = {_tag_name(el) for el in root.iter()}
+        if not tags & {"OpenPosition", "Trade", "CashTransaction", "CashReport", "CorporateAction", "FlexStatement"}:
+            return [
+                f"La raíz <{_tag_name(root)}> no parece un Flex Query de IBKR: no contiene "
+                "OpenPosition, Trade, CashTransaction ni CashReport. Revisa que el fichero "
+                "sea el XML del Flex Query (no el CSV ni un extracto parcial)."
+            ]
+    for index, element in enumerate(root.iter(), start=1):
+        tag = _tag_name(element)
+        if tag == "OpenPosition":
+            symbol = _attr(element, "symbol", "underlyingSymbol")
+            if not symbol:
+                errors.append(
+                    f"Fila {index} (OpenPosition): falta el símbolo (atributo symbol). "
+                    "Esa posición se omite; revisa la query en IBKR para que incluya la columna Symbol."
+                )
+            for attr in ("position", "quantity"):
+                raw = _attr(element, attr)
+                if raw is not None and not _is_number(raw):
+                    errors.append(
+                        f"Fila {index} (OpenPosition {symbol or '?'}): la cantidad '{raw}' "
+                        f"(atributo {attr}) no es un número. Corrige el valor o excluye la fila."
+                    )
+                    break
+            for attr in ("markPrice", "marketPrice", "price", "positionValue", "marketValue",
+                         "costBasisPrice", "costPrice", "avgPrice"):
+                raw = _attr(element, attr)
+                if raw is not None and not _is_number(raw):
+                    errors.append(
+                        f"Fila {index} (OpenPosition {symbol or '?'}): el precio/valor '{raw}' "
+                        f"(atributo {attr}) no es un número. Corrige el valor o excluye la fila."
+                    )
+                    break
+        elif tag == "Trade":
+            symbol = _attr(element, "symbol", "underlyingSymbol")
+            if not symbol:
+                errors.append(
+                    f"Fila {index} (Trade): falta el símbolo (atributo symbol). "
+                    "Esa operación se omite; revisa que la query incluya la columna Symbol."
+                )
+            raw_qty = _attr(element, "quantity", "shares")
+            if raw_qty is not None and not _is_number(raw_qty):
+                errors.append(
+                    f"Fila {index} (Trade {symbol or '?'}): la cantidad '{raw_qty}' no es un número. "
+                    "Corrige el valor o excluye la fila."
+                )
+            raw_price = _attr(element, "tradePrice", "price")
+            if raw_price is not None and not _is_number(raw_price):
+                errors.append(
+                    f"Fila {index} (Trade {symbol or '?'}): el precio '{raw_price}' no es un número. "
+                    "Corrige el valor o excluye la fila."
+                )
+            raw_date = _attr(element, "tradeDate", "dateTime", "date")
+            if raw_date is not None and not _is_date(raw_date):
+                errors.append(
+                    f"Fila {index} (Trade {symbol or '?'}): la fecha '{raw_date}' no tiene un formato "
+                    "reconocido (usa AAAA-MM-DD). Corrige el valor o excluye la fila."
+                )
+        elif tag == "CashTransaction":
+            raw_amount = _attr(element, "amount", "netCash", "proceeds")
+            if raw_amount is not None and not _is_number(raw_amount):
+                errors.append(
+                    f"Fila {index} (CashTransaction): el importe '{raw_amount}' no es un número. "
+                    "Corrige el valor o excluye la fila."
+                )
+            raw_date = _attr(element, "dateTime", "date", "tradeDate")
+            if raw_date is not None and not _is_date(raw_date):
+                errors.append(
+                    f"Fila {index} (CashTransaction): la fecha '{raw_date}' no tiene un formato "
+                    "reconocido (usa AAAA-MM-DD). Corrige el valor o excluye la fila."
+                )
+        elif tag == "CashReport":
+            if not _attr(element, "currency"):
+                errors.append(
+                    f"Fila {index} (CashReport): falta la divisa (atributo currency). "
+                    "Ese saldo se omite; revisa que la query incluya la columna Currency."
+                )
+            raw_cash = _attr(element, "endingCash", "cash", "balance")
+            if raw_cash is not None and not _is_number(raw_cash):
+                errors.append(
+                    f"Fila {index} (CashReport): el saldo '{raw_cash}' no es un número. "
+                    "Corrige el valor o excluye la fila."
+                )
+    return errors
+
+
+# Columnas aceptadas (minúsculas) para el CSV de actividad de IBKR.
+_CSV_REQUIRED_COLUMNS = ("symbol", "quantity", "price", "date")
+_CSV_COLUMN_ALIASES = {
+    "symbol": {"symbol", "ticker", "underlyingsymbol"},
+    "action": {"action", "buysell", "transactiontype", "type", "side"},
+    "quantity": {"quantity", "shares", "position"},
+    "price": {"price", "tradeprice", "avgprice"},
+    "date": {"date", "tradedate", "datetime"},
+    "fees": {"fees", "commission", "ibcommission"},
+    "currency": {"currency"},
+}
+
+
+def _map_csv_columns(header: list[str]) -> dict[str, int] | None:
+    normalized = [cell.strip().lower() for cell in header]
+    mapping: dict[str, int] = {}
+    for canonical, aliases in _CSV_COLUMN_ALIASES.items():
+        for position, cell in enumerate(normalized):
+            if cell in aliases:
+                mapping.setdefault(canonical, position)
+                break
+    if any(column not in mapping for column in _CSV_REQUIRED_COLUMNS):
+        return None
+    return mapping
+
+
+def validate_ibkr_csv(csv_text: str) -> list[str]:
+    """Valida un CSV de actividad de IBKR (cabecera + filas).
+
+    Devuelve errores accionables en español con número de fila.
+    Lista vacía = fichero válido. No toca la base de datos.
+    """
+    if not csv_text or not csv_text.strip():
+        return ["El fichero está vacío: exporta de nuevo la actividad desde IBKR en formato CSV."]
+    try:
+        rows = list(csv.reader(io.StringIO(csv_text.strip())))
+    except csv.Error as exc:
+        return [
+            f"El CSV no se puede leer ({exc}): revisa que el fichero use comas como separador "
+            "y que no esté corrupto."
+        ]
+    rows = [row for row in rows if any(cell.strip() for cell in row)]
+    if len(rows) < 2:
+        return [
+            "El CSV no contiene filas de datos: debe tener una fila de cabecera "
+            "(symbol, action, quantity, price, date) y al menos una operación."
+        ]
+    mapping = _map_csv_columns(rows[0])
+    if mapping is None:
+        return [
+            "La cabecera del CSV no tiene las columnas obligatorias: symbol, quantity, price y date "
+            "(se aceptan alias como ticker, shares, tradePrice o tradeDate). "
+            f"Cabecera encontrada: {', '.join(rows[0])}."
+        ]
+    errors: list[str] = []
+    for line_number, row in enumerate(rows[1:], start=2):
+        symbol = row[mapping["symbol"]].strip() if mapping["symbol"] < len(row) else ""
+        if not symbol:
+            errors.append(
+                f"Fila {line_number} del CSV: falta el símbolo. Indica el ticker (p. ej. AAPL) o elimina la fila."
+            )
+            continue
+        quantity = row[mapping["quantity"]].strip() if mapping["quantity"] < len(row) else ""
+        if not _is_number(quantity):
+            errors.append(
+                f"Fila {line_number} del CSV ({symbol}): la cantidad '{quantity}' no es un número. "
+                "Corrige el valor o elimina la fila."
+            )
+        price = row[mapping["price"]].strip() if mapping["price"] < len(row) else ""
+        if not _is_number(price):
+            errors.append(
+                f"Fila {line_number} del CSV ({symbol}): el precio '{price}' no es un número. "
+                "Corrige el valor o elimina la fila."
+            )
+        day = row[mapping["date"]].strip() if mapping["date"] < len(row) else ""
+        if not _is_date(day):
+            errors.append(
+                f"Fila {line_number} del CSV ({symbol}): la fecha '{day}' no tiene un formato "
+                "reconocido (usa AAAA-MM-DD). Corrige el valor o elimina la fila."
+            )
+    return errors
 
 
 def _tag_name(element: ElementTree.Element) -> str:
@@ -47,6 +265,18 @@ def _attr(element: ElementTree.Element, *names: str) -> str | None:
 
 class IBKRImportService:
     def import_flex_xml(self, db: Session, xml_text: str) -> dict:
+        # Los errores de fila ("se omite…", "excluye la fila") no bloquean:
+        # se importan las filas válidas y se devuelven en row_errors. Solo los
+        # errores fatales (XML ilegible, raíz incorrecta) interrumpen.
+        parse_errors = validate_flex_xml(xml_text)
+        fatal_errors = [
+            error
+            for error in parse_errors
+            if "se omite" not in error and "excluye la fila" not in error
+        ]
+        if fatal_errors:
+            raise IBKRImportError(" ".join(fatal_errors))
+        row_errors = [error for error in parse_errors if error not in fatal_errors]
         root = ElementTree.fromstring(xml_text)
         fx_service = PortfolioFXService()
         portfolio = fx_service.ensure_portfolio(db)
@@ -57,12 +287,24 @@ class IBKRImportService:
         dividends_imported = 0
         fees_imported = 0
         cash_transactions_imported = 0
+        rows_skipped = 0
 
         for element in root.iter():
             tag = _tag_name(element)
             if tag == "OpenPosition":
                 symbol = _attr(element, "symbol", "underlyingSymbol")
                 if not symbol:
+                    rows_skipped += 1
+                    continue
+                raw_quantity = _attr(element, "position", "quantity")
+                raw_price = _attr(element, "markPrice", "marketPrice", "price")
+                raw_value = _attr(element, "positionValue", "marketValue")
+                raw_cost = _attr(element, "costBasisPrice", "costPrice", "avgPrice")
+                if any(
+                    raw is not None and not _is_number(raw)
+                    for raw in (raw_quantity, raw_price, raw_value, raw_cost)
+                ):
+                    rows_skipped += 1
                     continue
                 company = self._company(db, companies, symbol)
                 quantity = _decimal(_attr(element, "position", "quantity"))
@@ -109,6 +351,11 @@ class IBKRImportService:
             elif tag == "CashReport":
                 currency = _attr(element, "currency")
                 if not currency:
+                    rows_skipped += 1
+                    continue
+                raw_cash = _attr(element, "endingCash", "cash", "balance")
+                if raw_cash is not None and not _is_number(raw_cash):
+                    rows_skipped += 1
                     continue
                 cash = db.scalar(select(CashBalance).where(CashBalance.currency == currency))
                 if cash is None:
@@ -124,6 +371,17 @@ class IBKRImportService:
             elif tag == "Trade":
                 symbol = _attr(element, "symbol", "underlyingSymbol")
                 if not symbol:
+                    rows_skipped += 1
+                    continue
+                raw_qty = _attr(element, "quantity", "shares")
+                raw_price = _attr(element, "tradePrice", "price")
+                raw_date = _attr(element, "tradeDate", "dateTime", "date")
+                if (
+                    (raw_qty is not None and not _is_number(raw_qty))
+                    or (raw_price is not None and not _is_number(raw_price))
+                    or (raw_date is not None and not _is_date(raw_date))
+                ):
+                    rows_skipped += 1
                     continue
                 external_id = _attr(element, "tradeID", "transactionID", "ibExecID")
                 if external_id and db.scalar(select(Transaction).where(Transaction.external_id == external_id)):
@@ -147,6 +405,14 @@ class IBKRImportService:
                 trades_imported += 1
 
             elif tag == "CashTransaction":
+                raw_amount = _attr(element, "amount", "netCash", "proceeds")
+                raw_date = _attr(element, "dateTime", "date", "tradeDate")
+                if (
+                    (raw_amount is not None and not _is_number(raw_amount))
+                    or (raw_date is not None and not _is_date(raw_date))
+                ):
+                    rows_skipped += 1
+                    continue
                 type_attr = (_attr(element, "type", "transactionType", "activityType") or "").lower()
                 if "dividend" in type_attr:
                     action = "dividend"
@@ -228,7 +494,71 @@ class IBKRImportService:
             "dividends_imported": dividends_imported,
             "fees_imported": fees_imported,
             "cash_transactions_imported": cash_transactions_imported,
+            "rows_skipped": rows_skipped,
+            "row_errors": row_errors,
             "portfolio_snapshot_id": snapshot.id,
+        }
+
+    def import_ibkr_csv(self, db: Session, csv_text: str) -> dict:
+        """Importa operaciones desde un CSV de actividad de IBKR.
+
+        Formato: cabecera con symbol, quantity, price y date (más action,
+        fees y currency opcionales) + una fila por operación. Las filas
+        inválidas se omiten y se describen en ``row_errors`` en español;
+        los errores fatales (cabecera ausente, fichero vacío) lanzan
+        :class:`IBKRImportError`.
+        """
+        from app.services.portfolio_ledger_service import PortfolioLedgerService
+
+        errors = validate_ibkr_csv(csv_text)
+        fatal_errors = [error for error in errors if not error.startswith("Fila ")]
+        if fatal_errors:
+            raise IBKRImportError(" ".join(fatal_errors))
+        row_errors = [error for error in errors if error.startswith("Fila ")]
+        bad_lines = {int(error.split(" ")[1]) for error in row_errors if error.split(" ")[1].isdigit()}
+
+        data_rows = [row for row in csv.reader(io.StringIO(csv_text.strip())) if any(cell.strip() for cell in row)]
+        mapping = _map_csv_columns(data_rows[0])
+        assert mapping is not None  # garantizado por validate_ibkr_csv
+        ledger = PortfolioLedgerService()
+        trades_imported = 0
+        rows_skipped = len(bad_lines)
+        for line_number, row in enumerate(data_rows[1:], start=2):
+            if line_number in bad_lines:
+                continue
+            def _cell(name: str) -> str:
+                position = mapping.get(name)
+                if position is None or position >= len(row):
+                    return ""
+                return row[position].strip()
+
+            symbol = _cell("symbol").upper()
+            raw_action = _cell("action").lower()
+            action = "sell" if raw_action.startswith(("sell", "sold", "s")) else "buy"
+            try:
+                ledger.create_transaction(
+                    db,
+                    ticker=symbol,
+                    action=action,
+                    quantity=abs(Decimal(_cell("quantity").replace(",", ""))),
+                    price=Decimal(_cell("price").replace(",", "")),
+                    trade_date=_date(_cell("date")),
+                    fees=abs(Decimal(_cell("fees").replace(",", ""))) if _cell("fees") else Decimal("0"),
+                    currency=_cell("currency").upper() or "USD",
+                )
+                trades_imported += 1
+            except ValueError as exc:
+                rows_skipped += 1
+                row_errors.append(
+                    f"Fila {line_number} del CSV ({symbol}): no se pudo registrar "
+                    f"({exc}). Revisa los valores de la fila."
+                )
+        db.commit()
+        return {
+            "status": "imported",
+            "trades_imported": trades_imported,
+            "rows_skipped": rows_skipped,
+            "row_errors": row_errors,
         }
 
     def _company(self, db: Session, cache: dict[str, Company], symbol: str) -> Company:

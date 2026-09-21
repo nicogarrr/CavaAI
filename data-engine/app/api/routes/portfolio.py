@@ -4,25 +4,56 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import CashBalance, Company, FXRate, Position, Transaction
 from app.services.connectors.ibkr import IBKRFlexClient
-from app.services.ibkr_import_service import IBKRImportService
+from app.services.ibkr_import_service import IBKRImportError, IBKRImportService
 from app.services.risk_service import RiskService
 from app.services.portfolio_ledger_service import PortfolioLedgerService
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.market_refresh_service import MarketRefreshService
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
+from app.services.tearsheet_service import TearsheetService
 
 router = APIRouter()
 
 
 class IBKRXmlImportRequest(BaseModel):
     xml: str = Field(min_length=20)
+
+
+class IBKRCsvImportRequest(BaseModel):
+    csv: str = Field(min_length=10)
+
+
+# Umbral fiscal: más de 365 días en cartera = largo plazo.
+LONG_TERM_HOLDING_DAYS = 365
+
+
+def _fiscal_info(db: Session, company_id: int, as_of: date) -> dict:
+    """Antigüedad de la posición y bucket fiscal (corto/largo plazo).
+
+    La antigüedad se mide desde la primera compra registrada en el ledger;
+    sin compras registradas no hay bucket (None).
+    """
+    first_buy = db.scalar(
+        select(func.min(Transaction.trade_date)).where(
+            Transaction.company_id == company_id,
+            Transaction.action == "buy",
+        )
+    )
+    if first_buy is None:
+        return {"first_buy_date": None, "holding_days": None, "fiscal_bucket": None}
+    holding_days = (as_of - first_buy).days
+    return {
+        "first_buy_date": first_buy.isoformat(),
+        "holding_days": holding_days,
+        "fiscal_bucket": "largo_plazo" if holding_days > LONG_TERM_HOLDING_DAYS else "corto_plazo",
+    }
 
 
 class PortfolioTransactionInput(BaseModel):
@@ -229,12 +260,26 @@ def upsert_fx_rate(payload: FXRateInput, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/tearsheet")
+def portfolio_tearsheet(db: Session = Depends(get_db)) -> dict:
+    """Tearsheet del portfolio: Sharpe, Sortino, drawdown, win rate y exposición.
+
+    Lee la serie de retornos de los snapshots persistidos (ver
+    ``TearsheetService``); sin portfolio o sin historial suficiente las
+    métricas llegan a None en lugar de fallar.
+    """
+    return TearsheetService().build(db)
+
+
 @router.get("/positions")
 def positions(db: Session = Depends(get_db)) -> list[dict]:
     rows = db.execute(select(Position, Company).join(Company, Position.company_id == Company.id)).all()
-    return [
-        {
-            "ticker": company.ticker,
+    payloads = []
+    for position, company in rows:
+        fiscal = _fiscal_info(db, company.id, position.as_of)
+        payloads.append(
+            {
+                "ticker": company.ticker,
             "name": company.name,
             "sector": company.sector,
             "quantity": float(position.quantity),
@@ -285,9 +330,12 @@ def positions(db: Session = Depends(get_db)) -> list[dict]:
             ),
             "fx_rate": float(position.fx_rate) if position.fx_rate is not None else None,
             "source": position.source,
-        }
-        for position, company in rows
-    ]
+            "first_buy_date": fiscal["first_buy_date"],
+            "holding_days": fiscal["holding_days"],
+            "fiscal_bucket": fiscal["fiscal_bucket"],
+            }
+        )
+    return payloads
 
 
 @router.get("/transactions")
@@ -441,4 +489,15 @@ async def import_ibkr(db: Session = Depends(get_db)) -> dict:
 
 @router.post("/import/ibkr/xml")
 def import_ibkr_xml(payload: IBKRXmlImportRequest, db: Session = Depends(get_db)) -> dict:
-    return IBKRImportService().import_flex_xml(db, payload.xml)
+    try:
+        return IBKRImportService().import_flex_xml(db, payload.xml)
+    except IBKRImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/import/ibkr/csv")
+def import_ibkr_csv(payload: IBKRCsvImportRequest, db: Session = Depends(get_db)) -> dict:
+    try:
+        return IBKRImportService().import_ibkr_csv(db, payload.csv)
+    except IBKRImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

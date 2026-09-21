@@ -29,6 +29,13 @@ export interface ProPickStrategy {
 
 /**
  * Estrategia única adaptativa - La IA selecciona las mejores acciones según datos reales actuales
+ *
+ * Pesos calibrados (suman 1.0): valor 20% + crecimiento 20% + rentabilidad 20% +
+ * flujo de caja 15% + momentum 15% + deuda/liquidez 10%.
+ * Fórmula: strategyScore = round(Σ categoría_i × peso_i).
+ * Difiere del score general (que pondera rentabilidad 25% y momentum 10%):
+ * la estrategia adaptativa equilibra valor/crecimiento/rentabilidad a partes
+ * iguales para rotar entre estilos según el momento de mercado.
  */
 export const PROPICKS_STRATEGIES: ProPickStrategy[] = [
     {

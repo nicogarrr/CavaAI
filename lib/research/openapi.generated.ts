@@ -1578,6 +1578,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portfolio/import/ibkr/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Ibkr Csv */
+        post: operations["import_ibkr_csv_api_portfolio_import_ibkr_csv_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portfolio/import/ibkr/xml": {
         parameters: {
             query?: never;
@@ -1706,6 +1723,30 @@ export interface paths {
         };
         /** Portfolio Summary */
         get: operations["portfolio_summary_api_portfolio_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/tearsheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Tearsheet
+         * @description Tearsheet del portfolio: Sharpe, Sortino, drawdown, win rate y exposición.
+         *
+         *     Lee la serie de retornos de los snapshots persistidos (ver
+         *     ``TearsheetService``); sin portfolio o sin historial suficiente las
+         *     métricas llegan a None en lugar de fallar.
+         */
+        get: operations["portfolio_tearsheet_api_portfolio_tearsheet_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3349,6 +3390,11 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** IBKRCsvImportRequest */
+        IBKRCsvImportRequest: {
+            /** Csv */
+            csv: string;
         };
         /** IBKRXmlImportRequest */
         IBKRXmlImportRequest: {
@@ -8471,6 +8517,46 @@ export interface operations {
             };
         };
     };
+    import_ibkr_csv_api_portfolio_import_ibkr_csv_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IBKRCsvImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     import_ibkr_xml_api_portfolio_import_ibkr_xml_post: {
         parameters: {
             query?: never;
@@ -8741,6 +8827,42 @@ export interface operations {
         };
     };
     portfolio_summary_api_portfolio_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_tearsheet_api_portfolio_tearsheet_get: {
         parameters: {
             query?: never;
             header?: {

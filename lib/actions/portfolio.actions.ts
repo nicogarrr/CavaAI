@@ -43,6 +43,9 @@ export type PortfolioHolding = {
     nativeCurrency: string;
     baseCurrency: string;
     fxMissing: boolean;
+    firstBuyDate: string | null;
+    holdingDays: number | null;
+    fiscalBucket: 'corto_plazo' | 'largo_plazo' | null;
 };
 
 export type PortfolioSummary = {
@@ -90,6 +93,9 @@ type ResearchPortfolioPosition = {
     unrealized_pnl_base: number | null;
     realized_pnl_base: number | null;
     fx_rate: number | null;
+    first_buy_date: string | null;
+    holding_days: number | null;
+    fiscal_bucket: 'corto_plazo' | 'largo_plazo' | null;
 };
 
 type ResearchPortfolioSummaryResponse = {
@@ -170,6 +176,9 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
             nativeCurrency: position.native_currency,
             baseCurrency: position.base_currency,
             fxMissing: position.market_value_base === null || position.cost_basis_base === null,
+            firstBuyDate: position.first_buy_date ?? null,
+            holdingDays: position.holding_days ?? null,
+            fiscalBucket: position.fiscal_bucket ?? null,
         };
     });
     const totalValue = backendSummary.total_value;
@@ -423,6 +432,8 @@ export type IBKRImportResult = {
     dividends_imported: number;
     fees_imported: number;
     cash_transactions_imported: number;
+    rows_skipped?: number;
+    row_errors?: string[];
     portfolio_snapshot_id: number | null;
 };
 
@@ -446,4 +457,57 @@ export async function importIBKRXml(userId: string, xml: string): Promise<IBKRIm
         method: 'POST',
         body: jsonBody({ xml }),
     });
+}
+
+/**
+ * Importa un CSV de actividad de IBKR (symbol, quantity, price, date + action/fees/currency opcionales).
+ */
+export async function importIBKRCsv(userId: string, csv: string): Promise<IBKRImportResult> {
+    await resolveUserId(userId);
+    return researchRequest<IBKRImportResult>('/api/portfolio/import/ibkr/csv', {
+        method: 'POST',
+        body: jsonBody({ csv }),
+    });
+}
+
+export type PortfolioTearsheetMetrics = {
+    status: string;
+    n_observations: number;
+    cumulative_return: number | null;
+    sharpe: number | null;
+    sortino: number | null;
+    max_drawdown: number | null;
+    win_rate: number | null;
+    best_day: number | null;
+    worst_day: number | null;
+    periods_per_year: number;
+};
+
+export type PortfolioTearsheet = {
+    status: string;
+    metrics: PortfolioTearsheetMetrics | null;
+    exposure: {
+        snapshot_date: string;
+        base_currency: string;
+        total_value_base: number;
+        equity_weight: number | null;
+        cash_weight: number | null;
+        n_positions: number;
+        top_1_weight: number | null;
+        top_5_weight: number | null;
+    } | null;
+};
+
+/**
+ * Tearsheet del portfolio (Sharpe, drawdown, win rate) desde los snapshots persistidos.
+ * Degrada a null sin historial; nunca lanza por falta de datos.
+ */
+export async function getPortfolioTearsheet(userId: string): Promise<PortfolioTearsheet | null> {
+    await resolveUserId(userId);
+    try {
+        return await researchRequest<PortfolioTearsheet>('/api/portfolio/tearsheet');
+    } catch (error) {
+        console.error('Error getting portfolio tearsheet:', error);
+        return null;
+    }
 }

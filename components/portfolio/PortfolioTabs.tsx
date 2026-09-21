@@ -9,13 +9,14 @@ import PortfolioHoldings from '@/components/portfolio/PortfolioHoldings';
 import PortfolioTransactions from '@/components/portfolio/PortfolioTransactions';
 import PortfolioAllocation from '@/components/portfolio/PortfolioAllocation';
 import PortfolioScores from '@/components/portfolio/PortfolioScores';
+import PortfolioTearsheet from '@/components/portfolio/PortfolioTearsheet';
 import { PortfolioRiskSimulator } from '@/components/portfolio/PortfolioRiskSimulator';
 import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
 import ImportIBKRButton from '@/components/portfolio/ImportIBKRButton';
 import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
 import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, ShieldAlert, Activity } from 'lucide-react';
-import type { PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType } from '@/lib/actions/portfolio.actions';
+import type { PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType, PortfolioTearsheet as PortfolioTearsheetType } from '@/lib/actions/portfolio.actions';
 
 type Transaction = {
     _id: string;
@@ -31,10 +32,11 @@ type Props = {
     summary: PortfolioSummaryType;
     transactions: Transaction[];
     scores: { quality: number; growth: number; value: number; dividend: number; cagr3y: number; history?: PortfolioPerformanceHistory };
+    tearsheet: PortfolioTearsheetType | null;
     userId: string;
 };
 
-export default function PortfolioTabs({ summary, transactions, scores, userId }: Props) {
+export default function PortfolioTabs({ summary, transactions, scores, tearsheet, userId }: Props) {
     const [activeTab, setActiveTab] = useState('resumen');
     const [chartPeriod, setChartPeriod] = useState('1M');
 
@@ -228,6 +230,11 @@ export default function PortfolioTabs({ summary, transactions, scores, userId }:
                             holdings={summary.holdings}
                             totalValue={summary.totalValue}
                         />
+                    </div>
+
+                    {/* Tearsheet: Sharpe, drawdown, win rate */}
+                    <div className="mt-6">
+                        <PortfolioTearsheet tearsheet={tearsheet} />
                     </div>
                 </TabsContent>
 

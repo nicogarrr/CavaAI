@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
@@ -48,7 +49,9 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
 
         return (
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 shadow-xl">
-                <p className="font-bold text-teal-400 mb-1">{data.symbol}</p>
+                <Link href={`/research/${data.symbol}`} className="font-bold text-teal-400 hover:text-teal-300 mb-1 block">
+                    {data.symbol}
+                </Link>
                 <p className="text-gray-300 text-sm">
                     Valor: <span className="font-semibold text-white">${data.value.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                 </p>
@@ -184,7 +187,12 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
                                     className="w-3 h-3 rounded-full"
                                     style={{ backgroundColor: COLORS[index % COLORS.length] }}
                                 />
-                                <span className="text-sm text-gray-300">{item.symbol}</span>
+                                <Link
+                                    href={`/research/${item.symbol}`}
+                                    className="text-sm text-gray-300 hover:text-teal-300 transition-colors"
+                                >
+                                    {item.symbol}
+                                </Link>
                             </div>
                             <span className="text-sm text-gray-400 tabular-nums">
                                 {item.percentage.toFixed(1)}%
