@@ -194,7 +194,11 @@ class RAGIndex:
             if result.get("error"):
                 errors.append({"document_id": document.id, "error": result["error"]})
         knowledge_documents = list(
-            db.scalars(select(KnowledgeDocument).order_by(KnowledgeDocument.id)).all()
+            db.scalars(
+                select(KnowledgeDocument)
+                .where(KnowledgeDocument.tenant_id == tenant_id)
+                .order_by(KnowledgeDocument.id)
+            ).all()
         )
         for document in knowledge_documents:
             result = self.ingest_knowledge_document(db, document)
@@ -253,6 +257,9 @@ class RAGIndex:
                     "text": r.payload.get("text", ""),
                     "ticker": r.payload.get("ticker"),
                     "document_id": r.payload.get("document_id"),
+                    "knowledge_document_id": r.payload.get("knowledge_document_id"),
+                    "collection_id": r.payload.get("collection_id"),
+                    "page_number": r.payload.get("page_number"),
                     "source_type": r.payload.get("source_type"),
                     "title": r.payload.get("title"),
                     "score": r.score,

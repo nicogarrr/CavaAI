@@ -39,6 +39,11 @@ jobs:
     name: Backend quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.12.5
+        ports:
+          - 6333:6333
     defaults:
       run:
         working-directory: data-engine
@@ -59,6 +64,19 @@ jobs:
       - run: python -m ruff check .
       - run: pyright
       - run: python -m pytest
+      - name: Wait for Qdrant
+        run: for i in $(seq 1 30); do curl -fs http://localhost:6333/collections && break || sleep 2; done
+      - name: RAG activation against real Qdrant (must not skip)
+        env:
+          CAVAAI_ENABLE_VECTOR_INGEST: "1"
+          CAVAAI_ENABLE_VECTOR_SEARCH: "1"
+          CAVAAI_ENABLE_VECTOR_CHAT: "1"
+        run: |
+          python -m pytest tests/test_rag_activation.py -v -rs | tee /tmp/rag_activation.log
+          if grep -Eq "[0-9]+ skipped" /tmp/rag_activation.log; then
+            echo "RAG activation tests skipped: Qdrant service not reachable" >&2
+            exit 1
+          fi
       - run: python scripts/run_financial_evals.py
 
   openapi-drift:

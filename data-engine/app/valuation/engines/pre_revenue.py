@@ -1,4 +1,15 @@
-"""Pre-revenue / speculative scenario engine with funding-gap dilution."""
+"""Pre-revenue / speculative scenario engine with funding-gap dilution.
+
+Supuestos: DCF a 5 años con ingresos floor de 1.0 (permite revenue ~0 sin
+romper la matemática) y margen acotado a [1%, 40%]; crecimiento de facts o
+``default_growth`` (20% para tags pre-FCF/speculative) acotado a
+[-15%, +60%]; WACC 13% por defecto en estos nombres; escenarios causales
+(retraso de ejecución/estrés de financiación, comercialización base,
+monetización acelerada) con dilución extra por escenario (bear ≥ 15%,
+cap 80% sobre el valor); funding gap estimado de caja/OCF/capex con
+horizonte de 2 años y buffer de 50. Sensibilidad: grid crecimiento × WACC;
+sin ingresos coherentes devuelve insufficient_data (no bootstrap).
+"""
 
 from __future__ import annotations
 
@@ -22,7 +33,13 @@ from app.valuation.sensitivity import sensitivity_grid
 
 
 class PreRevenueScenarioEngine(ValuationEngine):
-    """For ASTS-like names: requires facts; applies causal scenarios + funding gap."""
+    """Nombres pre-revenue/especulativos: escenarios causales + dilución por funding gap.
+
+    Supuestos: requiere snapshot coherente (revenue + acciones) más drivers
+    operativos; mapea 3 escenarios causales a bear/base/bull compatibles con
+    la API; expone grid de sensibilidad y reverse DCF. Sin facts coherentes
+    devuelve insufficient_data con la lista de inputs operativos requeridos.
+    """
 
     key = "pre_revenue"
 

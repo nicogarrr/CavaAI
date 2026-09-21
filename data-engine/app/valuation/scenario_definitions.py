@@ -42,7 +42,12 @@ def mechanical_dcf_scenarios(
     terminal: float,
     evidence_confidence: float,
 ) -> list[ScenarioDefinition]:
-    """Fact-anchored mechanical sensitivities with evidence-weighted probabilities."""
+    """Fact-anchored mechanical sensitivities with evidence-weighted probabilities.
+
+    El suelo del margen bear (0.005) está por debajo del margen mínimo que
+    aceptan los motores (0.01) para garantizar bear <= base también cuando
+    el FCF observado es negativo y el margen base queda clampado al mínimo.
+    """
     direction = (growth - wacc) * 3.0 + (margin - 0.10) * 2.0
     probabilities = evidence_weighted_probabilities(
         evidence_confidence=evidence_confidence,
@@ -54,7 +59,7 @@ def mechanical_dcf_scenarios(
             probability=probabilities["bear"],
             assumptions={
                 "revenue_growth": max(growth - 0.08, -0.05),
-                "fcf_margin": max(margin - 0.06, 0.02),
+                "fcf_margin": max(margin - 0.06, 0.005),
                 "wacc": wacc + 0.02,
                 "terminal_growth": terminal,
             },

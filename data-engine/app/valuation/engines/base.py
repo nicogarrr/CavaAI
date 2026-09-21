@@ -106,6 +106,12 @@ class ValuationEngine(ABC):
 
 
 def default_growth(company: Company) -> float:
+    """Crecimiento de ingresos por defecto cuando el snapshot no trae ``revenue_growth``.
+
+    Supuesto por tags: pre-FCF/speculative 20%, software/IA 10%,
+    commodities 4%, resto 7%. El motor lo acota a [-15%, +45%]
+    (+60% en pre-revenue).
+    """
     tags = company.factor_tags or []
     if "pre_fcf" in tags or "speculative" in tags:
         return 0.20
@@ -117,6 +123,12 @@ def default_growth(company: Company) -> float:
 
 
 def default_wacc(company: Company) -> float:
+    """WACC por defecto (fuente ``tag_default`` en el trace).
+
+    Supuesto por tags: pre-FCF/speculative 13%, commodities/china 11%,
+    quality 8.5%, resto 10%. El DCF exige ``WACC > crecimiento terminal``;
+    los escenarios lo mueven +2pp (bear) / −1pp (bull, con suelo).
+    """
     tags = company.factor_tags or []
     if "pre_fcf" in tags or "speculative" in tags:
         return 0.13
@@ -128,6 +140,12 @@ def default_wacc(company: Company) -> float:
 
 
 def default_terminal_growth(company: Company) -> float:
+    """Crecimiento terminal por defecto (Gordon en el valor terminal).
+
+    Supuesto por tags: commodities 1.5%, pre-FCF/speculative 2.5%,
+    resto 3%. Fijo en los tres escenarios; el DCF lo valida con
+    ``WACC > terminal``.
+    """
     tags = company.factor_tags or []
     if "commodities" in tags:
         return 0.015
