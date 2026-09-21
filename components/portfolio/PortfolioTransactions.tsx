@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -76,7 +77,12 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-gray-200">{tx.symbol}</span>
+                          <Link
+                            href={`/research/${tx.symbol}`}
+                            className="font-bold text-gray-200 hover:text-teal-300 transition-colors"
+                          >
+                            {tx.symbol}
+                          </Link>
                           <span className={`text-xs px-1.5 py-0.5 rounded ${tx.type === 'buy' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
                             }`}>
                             {tx.type === 'buy' ? 'Compra' : 'Venta'}
