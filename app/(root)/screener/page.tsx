@@ -12,8 +12,12 @@ const SECTORES = ['Technology', 'Health Care', 'Financial Services', 'Consumer C
 
 export default async function ScreenerPage({ searchParams }: { searchParams?: { sector?: string } }) {
   const sector = searchParams?.sector ?? 'Technology';
-  const rows = await getScreenerStocksReal({ sector, limit: 25 }).catch(() => []);
-  const indices = await getMarketIndices().catch(() => []);
+  // Screener (backend) e índices (backend) son independientes: en paralelo
+  // en vez de en serie.
+  const [rows, indices] = await Promise.all([
+    getScreenerStocksReal({ sector, limit: 25 }).catch(() => []),
+    getMarketIndices().catch(() => []),
+  ]);
 
   return (
     <div className="space-y-6 p-6">
@@ -57,9 +61,9 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: { 
                     {rows.map((r) => (
                       <tr key={r.symbol} className="border-b border-gray-800/60 last:border-0 hover:bg-gray-800/30">
                         <td className="py-3 pr-4 font-semibold text-gray-100">
-                          <Link href={`/stocks/${r.symbol}`} prefetch className="text-teal-300 hover:text-teal-200">{r.symbol}</Link>
+                          <Link href={`/research/${r.symbol}`} prefetch className="text-teal-300 hover:text-teal-200">{r.symbol}</Link>
                         </td>
-                        <td className="py-3 pr-4 text-gray-300 max-w-[220px] truncate" title={r.name}>{r.name}</td>
+                        <td className="py-3 pr-4 text-gray-300 max-w-[220px] truncate" title={r.name}><Link href={`/research/${r.symbol}`} prefetch className="hover:text-teal-200">{r.name}</Link></td>
                         <td className="py-3 pr-4 text-right text-gray-200">${r.price.toFixed(2)}</td>
                         <td className={`py-3 pr-4 text-right ${r.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {r.changePercent >= 0 ? '+' : ''}{r.changePercent.toFixed(2)}%

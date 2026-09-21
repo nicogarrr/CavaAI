@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { CavaAIWordmark } from "@/components/CavaAIWordmark";
-import NavItems from "@/components/NavItems";
 import UserDropdown from "@/components/UserDropdown";
 import SearchCommand from "@/components/SearchCommand";
 
@@ -21,9 +20,6 @@ const Header = ({ user, initialStocks }: { user: User, initialStocks: StockWithW
                     />
                 </div>
 
-                <nav className="hidden sm:block">
-                    <NavItems initialStocks={initialStocks} />
-                </nav>
 
                 <UserDropdown user={user} initialStocks={initialStocks} />
             </div>
