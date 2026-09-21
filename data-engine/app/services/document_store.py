@@ -22,20 +22,6 @@ class DocumentStore:
             secure=secure,
         )
 
-    def put_text_local(
-        self,
-        ticker: str,
-        category: str,
-        filename: str,
-        text: str,
-        tenant_id: int | None = None,
-    ) -> str:
-        directory = self._directory(ticker, category, tenant_id)
-        directory.mkdir(parents=True, exist_ok=True)
-        path = directory / filename
-        path.write_text(text, encoding="utf-8")
-        return str(path)
-
     def put_bytes_local(
         self,
         ticker: str,
