@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import Link from 'next/link';
 import { SUPPORT_EMAIL } from '@/lib/config/brand';
 
 export const metadata: Metadata = {
@@ -66,6 +67,8 @@ export default function TermsPage() {
               </p>
               <p>
                 <strong>Siempre haz tu propia investigación.</strong> Usa múltiples fuentes, consulta profesionales, y nunca inviertas más de lo que puedes permitirte perder.
+                Nuestra <Link href="/metodologia" className="text-blue-300 hover:text-blue-200 underline underline-offset-2">metodología</Link> explica
+                de dónde vienen los datos y cómo se genera cada tesis.
               </p>
             </div>
           </div>

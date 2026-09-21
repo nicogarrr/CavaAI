@@ -60,7 +60,10 @@ export default async function ResearchPage() {
           <p className="text-sm font-semibold uppercase text-teal-300">Research OS</p>
           <h1 className="mt-1 text-3xl font-bold text-gray-100">Portfolio Research Desk</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            Tesis versionadas, auditoria de fuentes, valoracion determinista, riesgo y workflows conectados al backend Python.
+            Tesis versionadas, auditoria de fuentes, valoracion determinista, riesgo y workflows conectados al backend Python.{' '}
+            <Link href="/metodologia" className="text-teal-300 hover:text-teal-200 underline underline-offset-2">
+              Cómo se genera una tesis
+            </Link>
           </p>
         </div>
         <div className="flex items-center gap-3">

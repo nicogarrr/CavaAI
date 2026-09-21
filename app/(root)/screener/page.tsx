@@ -19,7 +19,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: { 
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-semibold text-gray-100">Screener</h1>
-        <p className="text-sm text-gray-400 mt-1">Large caps líquidos con precios y market caps reales (Finnhub, caché 60s)</p>
+        <p className="text-sm text-gray-400 mt-1">Large caps líquidos con precios y market caps reales (Finnhub, caché 60s). <Link href="/metodologia" prefetch className="text-teal-300 hover:text-teal-200 underline underline-offset-2">¿De dónde vienen estos datos? Ver metodología</Link></p>
       </div>
 
       <div className="flex flex-wrap gap-2">

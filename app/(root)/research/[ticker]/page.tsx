@@ -47,6 +47,7 @@ import {
 } from '@/lib/actions/research.actions';
 import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
+import { ThesisEpubDownload } from '@/components/research/ThesisEpubDownload';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -286,6 +287,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <Button type="submit"><BrainCircuit className="mr-2 h-4 w-4" />Generate thesis</Button>
           </MutationForm>
           <Badge variant="outline">{data.history.length} versions</Badge>
+        {data.thesis ? <ThesisEpubDownload ticker={ticker} /> : null}
           <Badge variant="outline">{data.claims.length} claims</Badge>
         </div>
         <Panel title="Current thesis">

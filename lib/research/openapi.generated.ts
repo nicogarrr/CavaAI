@@ -2253,6 +2253,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/thesis/{ticker}/epub": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Thesis Epub
+         * @description Descarga la última tesis del ticker en formato EPUB.
+         *
+         *     Degrada a 404 limpio si no hay tesis (ni empresa) para el ticker.
+         */
+        get: operations["download_thesis_epub_api_thesis__ticker__epub_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/thesis/{ticker}/graph": {
         parameters: {
             query?: never;
@@ -10091,6 +10113,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThesisOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_thesis_epub_api_thesis__ticker__epub_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
