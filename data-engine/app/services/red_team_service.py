@@ -112,18 +112,39 @@ class RedTeamService:
             else None
         )
         if latest_audit and not latest_audit.passed:
-            findings.append(
-                self._finding(
-                    "high",
-                    "source_audit_failed",
-                    (
-                        f"Source audit failed with coverage "
-                        f"{latest_audit.source_coverage_score}."
-                    ),
-                    source_audit_id=latest_audit.id,
-                    required_fixes=latest_audit.required_fixes,
+            unsupported = list(latest_audit.unsupported_claims or [])
+            conflicts = list(latest_audit.data_conflicts or [])
+            if unsupported or conflicts:
+                findings.append(
+                    self._finding(
+                        "high",
+                        "source_audit_failed",
+                        (
+                            "Source audit failed with coverage "
+                            f"{latest_audit.source_coverage_score}: "
+                            f"{len(unsupported)} unsupported, {len(conflicts)} conflicts."
+                        ),
+                        source_audit_id=latest_audit.id,
+                        required_fixes=latest_audit.required_fixes,
+                    )
                 )
-            )
+            else:
+                # Claims limpios (coverage 100, sin unsupported): no es un
+                # "failed" sino un bloqueo aguas abajo (p.ej. valuation sin
+                # inputs). Mensaje sin contradiccion.
+                findings.append(
+                    self._finding(
+                        "medium",
+                        "source_audit_blocked",
+                        (
+                            "Source audit blocked downstream with coverage "
+                            f"{latest_audit.source_coverage_score} and no unsupported claims: "
+                            f"{'; '.join(latest_audit.required_fixes or [])[:300]}"
+                        ),
+                        source_audit_id=latest_audit.id,
+                        required_fixes=latest_audit.required_fixes,
+                    )
+                )
 
         valuation = ValuationService().value_company(db, company)
         if not valuation.get("publishable", False):

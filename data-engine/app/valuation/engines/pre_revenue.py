@@ -50,6 +50,13 @@ class PreRevenueScenarioEngine(ValuationEngine):
 
         # Still refuse bootstrap — speculative names need at least revenue + shares.
         if not snapshot.coherent:
+            shares = snapshot.value("shares_diluted")
+            if current_price is not None and current_price > 0 and shares is not None and shares > 0:
+                # Precio de mercado + acciones (con o sin revenue coherente)
+                # pero sin margen/FCF: rango indicativo con supuestos
+                # documentados en vez de NO VALUATION. Nunca final.
+                # Sin acciones no hay matematica por-accion posible.
+                return self._indicative_partial(company, snapshot, current_price)
             result = insufficient_result(
                 ticker=company.ticker,
                 model_type=company.valuation_model,
@@ -275,6 +282,186 @@ class PreRevenueScenarioEngine(ValuationEngine):
                     None
                     if publishable
                     else "Scenario values computed but funding-gap dilution is incomplete; treat as non-final."
+                ),
+            },
+        }
+
+    def _indicative_partial(self, company, snapshot, current_price: float) -> dict:
+        """Rango indicativo cuando hay precio + acciones sin snapshot coherente.
+
+        Supuestos documentados (nunca facts): revenue floor $1 si no hay
+        revenue coherente, margen FCF base 15% con banda bear/bull [1%, 35%],
+        crecimiento y WACC tag-default. El reverse DCF usa los supuestos
+        base. Status ``partial`` y ``publishable=False``: orientativo, no final.
+        """
+        revenue = snapshot.value("revenue")
+        revenue_assumed = revenue is None or revenue <= 0
+        if revenue_assumed:
+            revenue = 1.0
+        else:
+            revenue = float(revenue)
+        shares = float(snapshot.value("shares_diluted"))
+        growth = snapshot.value("revenue_growth")
+        growth_source = "financial_facts" if growth is not None else "tag_default"
+        if growth is None:
+            growth = default_growth(company)
+        growth = max(min(growth, 0.60), -0.15)
+        assumed_margin_base = 0.15
+        wacc = default_wacc(company)
+        terminal = default_terminal_growth(company)
+        net_debt = snapshot.value("net_debt") or 0.0
+
+        preview = run_dcf(
+            DCFInputs(
+                revenue=max(revenue, 1.0),
+                revenue_growth=growth,
+                fcf_margin=assumed_margin_base,
+                wacc=wacc,
+                terminal_growth=terminal,
+                net_debt=net_debt,
+                shares_outstanding=shares,
+            )
+        )
+        funding = estimate_funding_gap(
+            snapshot,
+            current_price=current_price,
+            value_per_share=preview.value_per_share,
+        )
+        dilution_pct = 0.0
+        if funding.dilution:
+            dilution_pct = float(funding.dilution.get("dilution_pct") or 0.0)
+
+        scenarios = speculative_causal_scenarios(
+            growth, assumed_margin_base, wacc, terminal, dilution_pct, 0.5
+        )
+        scenario_results = {}
+        for scenario in scenarios:
+            dcf = run_dcf(
+                DCFInputs(
+                    revenue=max(revenue, 1.0),
+                    revenue_growth=float(scenario.assumptions["revenue_growth"]),
+                    fcf_margin=float(scenario.assumptions["fcf_margin"]),
+                    wacc=float(scenario.assumptions["wacc"]),
+                    terminal_growth=float(scenario.assumptions["terminal_growth"]),
+                    net_debt=net_debt,
+                    shares_outstanding=shares,
+                )
+            )
+            extra_dilution = float(scenario.assumptions.get("extra_dilution_pct") or 0.0)
+            value = dcf.value_per_share * (1.0 - min(extra_dilution, 0.80))
+            scenario_results[scenario.name] = {
+                "definition": {
+                    "name": scenario.name,
+                    "probability": scenario.probability,
+                    "drivers": scenario.drivers,
+                    "description": scenario.description,
+                    "assumptions": scenario.assumptions,
+                },
+                "value_per_share": value,
+                "undiluted_value_per_share": dcf.value_per_share,
+                "trace": dcf.trace,
+            }
+
+        ordered = list(scenario_results.values())
+        bear_v = ordered[0]["value_per_share"]
+        base_v = ordered[1]["value_per_share"]
+        bull_v = ordered[2]["value_per_share"]
+        weighted = probability_weighted_value(
+            [
+                Scenario(s["definition"]["name"], s["definition"]["probability"], s["value_per_share"])
+                for s in ordered
+            ]
+        )
+        expected = weighted["expected_value"]
+
+        reverse = solve_required_growth(
+            ReverseDCFInputs(
+                market_price=current_price,
+                revenue=max(revenue, 1.0),
+                fcf_margin=assumed_margin_base,
+                wacc=wacc,
+                terminal_growth=terminal,
+                net_debt=net_debt,
+                shares_outstanding=shares,
+            )
+        )
+        sensitivity = sensitivity_grid(
+            DCFInputs(
+                revenue=max(revenue, 1.0),
+                revenue_growth=growth,
+                fcf_margin=assumed_margin_base,
+                wacc=wacc,
+                terminal_growth=terminal,
+                net_debt=net_debt,
+                shares_outstanding=shares,
+            ),
+            growth_values=[growth - 0.05, growth, growth + 0.05],
+            wacc_values=[wacc - 0.01, wacc, wacc + 0.02],
+        )
+        missing = list(snapshot.missing_inputs)
+        return {
+            "ticker": company.ticker,
+            "model_type": company.valuation_model,
+            "status": "partial",
+            "publishable": False,
+            "current_price": current_price,
+            "bear_value": bear_v,
+            "base_value": base_v,
+            "bull_value": bull_v,
+            "expected_value": expected,
+            "margin_of_safety": margin_of_safety(expected, current_price),
+            "missing_inputs": missing,
+            "reverse_dcf": reverse,
+            "sensitivity": sensitivity,
+            "moat": empty_moat_framework(
+                company.company_type, company.factor_tags or [], company.special_risks or []
+            ),
+            "trace": {
+                "method": company.valuation_model,
+                "engine": self.key,
+                "input_source": "financial_facts",
+                "valuation_basis": "indicative_assumptions",
+                "publishable": False,
+                "status": "partial",
+                "model_version": MODEL_VERSION,
+                "growth_source": growth_source,
+                "scenario_style": "causal_speculative_indicative",
+                "probability_method": "source_confidence_plus_growth_and_funding_risk",
+                "fact_ids": snapshot.fact_ids(),
+                "periods": snapshot.periods(),
+                "assumed": {
+                    "revenue_floor_used": revenue_assumed,
+                    "revenue_base": revenue,
+                    "fcf_margin_base": assumed_margin_base,
+                    "fcf_margin_band": [0.01, assumed_margin_base, 0.35],
+                    "revenue_growth": growth,
+                    "wacc": wacc,
+                    "terminal_growth": terminal,
+                    "reason": (
+                        "Snapshot has revenue+shares but no coherent FCF margin; "
+                        "indicative band used instead of blocking valuation."
+                    ),
+                },
+                "snapshot": {
+                    "as_of": snapshot.as_of_period,
+                    "income_statement": snapshot.income_statement,
+                    "balance_sheet": snapshot.balance_sheet,
+                    "shares": snapshot.shares_period,
+                    "warnings": snapshot.warnings,
+                },
+                "funding_gap": {
+                    "status": funding.status,
+                    "funding_gap": funding.funding_gap,
+                    "missing_inputs": funding.missing_inputs,
+                    "dilution": funding.dilution,
+                },
+                "scenarios": scenario_results,
+                "weighted": weighted["trace"],
+                "notice": (
+                    "INDICATIVE RANGE — uses assumed FCF margin (base 15%, band 1-35%)"
+                    + (" and $1 revenue floor (no coherent revenue)" if revenue_assumed else "")
+                    + " because no coherent snapshot exists. Not a final fair value; "
+                    "resolve missing inputs before publishing."
                 ),
             },
         }
