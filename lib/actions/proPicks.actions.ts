@@ -175,24 +175,29 @@ function buildConfidence(
 
 async function evaluateSymbol(symbol: string, strategyId: string): Promise<ProPick | null> {
   try {
-    const financialData: FinancialData = await getStockFinancialDataLight(symbol);
-    if (!financialData?.profile) return null;
+    // financialData y candles son independientes: en paralelo en vez de en
+    // serie (ahorra ~1 RTT Finnhub por símbolo × 70 del universo).
+    const to = Math.floor(Date.now() / 1000);
+    const [financialData, candles] = await Promise.all([
+      getStockFinancialDataLight(symbol),
+      getCandles(symbol, to - 365 * 24 * 60 * 60, to, 'D', 3600).catch(() => null),
+    ]);
+    const typedFinancialData: FinancialData = financialData;
+    if (!typedFinancialData?.profile) return null;
 
-    const profile = financialData.profile as Record<string, unknown>;
-    const quote = financialData.quote as Record<string, unknown> | undefined;
+    const profile = typedFinancialData.profile as Record<string, unknown>;
+    const quote = typedFinancialData.quote as Record<string, unknown> | undefined;
     const currentPrice = Number(quote?.c ?? quote?.price ?? 0);
     const sector = String(profile.finnhubIndustry ?? profile.industry ?? 'Unknown');
     const strategy = getStrategyById(strategyId) ?? PROPICKS_STRATEGIES[0];
 
     let historicalData: { prices: number[]; dates: number[] } | undefined;
-    const to = Math.floor(Date.now() / 1000);
-    const candles = await getCandles(symbol, to - 365 * 24 * 60 * 60, to, 'D', 3600).catch(() => null);
     if (candles?.s === 'ok' && candles.c.length > 0) {
       historicalData = { prices: candles.c, dates: candles.t };
     }
 
-    const advanced = await calculateAdvancedStockScore(financialData, historicalData);
-    const targetPrice = Number(financialData.priceTarget?.targetMean ?? 0);
+    const advanced = await calculateAdvancedStockScore(typedFinancialData, historicalData);
+    const targetPrice = Number(typedFinancialData.priceTarget?.targetMean ?? 0);
     const upsidePotential = currentPrice > 0 && targetPrice > 0
       ? ((targetPrice - currentPrice) / currentPrice) * 100
       : 0;
