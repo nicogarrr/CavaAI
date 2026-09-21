@@ -54,6 +54,8 @@ class MaterialityService:
         text: str,
         source: str,
         url: str | None,
+        *,
+        use_jev: bool = True,
     ) -> MaterialityAssessment:
         lower_text = text.lower()
         matched_types = [
@@ -94,6 +96,19 @@ class MaterialityService:
         if impact_direction == "negative" and portfolio_weight >= 0.05:
             materiality += 1
             reasons.append("negative event on meaningful position +1")
+
+        if use_jev:
+            try:
+                from app.services.jev_triage_service import (
+                    apply_to_materiality,
+                    classify_urgency_sync,
+                )
+
+                triage = classify_urgency_sync(text)
+                if triage is not None and not triage.error:
+                    materiality = apply_to_materiality(materiality, reasons, triage)
+            except Exception:  # noqa: BLE001 — Jev es best-effort, nunca rompe ingesta
+                pass
 
         materiality = max(1, min(materiality, 10))
         requires_update = materiality >= 7 or (portfolio_weight >= 0.10 and materiality >= 6)
