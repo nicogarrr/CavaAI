@@ -41,7 +41,7 @@ test.describe("investor screener flow", () => {
     const followButtons = page.getByRole("button", { name: "Seguir" });
     if ((await followButtons.count()) === 0) {
       // AI picks not generated in this environment; the shell must still render.
-      await expect(page.getByText(/ProPicks IA/)).toBeVisible();
+      await expect(page.getByRole("heading", { name: "ProPicks IA", exact: true })).toBeVisible();
       return;
     }
     await expect(followButtons.first()).toBeVisible();
