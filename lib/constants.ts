@@ -18,6 +18,7 @@ import {
   Sparkles,
   Star,
   Target,
+  Users,
 } from 'lucide-react';
 
 // Timeouts (en milisegundos)
@@ -98,6 +99,7 @@ export const NAV_ITEMS = [
   { href: '/corporate-actions', label: 'Corporate', icon: Building2 },
   { href: '/export', label: 'Export', icon: Download },
   { href: '/risk', label: 'Risk', icon: Gauge },
+  { href: '/insider', label: 'Insider', icon: Users },
   { href: '/alerts', label: 'Alertas', icon: Bell },
 ] as const;
 

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Building2, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { RecordList, type DataRecord } from '@/components/data/RecordViews';
+import { RecordList, researchHrefFor, type DataRecord } from '@/components/data/RecordViews';
 import { applyCorporateAction, getCorporateActions } from '@/lib/actions/corporate-actions.actions';
 import { getErrorMessage } from '@/lib/types/errors';
 import { toast } from 'sonner';
@@ -53,6 +53,7 @@ export default function CorporateActionsView({ initialActions }: CorporateAction
             fetchRecords={getCorporateActions}
             columns={['ticker', 'action_type', 'description', 'effective_date', 'ratio', 'status']}
             emptyMessage="No hay acciones corporativas pendientes. ¡Todo al día!"
+            linkColumns={{ ticker: (record) => researchHrefFor(record) }}
             rowActions={(record) => {
                 const actionId = recordActionId(record);
                 if (isApplied(record)) {
