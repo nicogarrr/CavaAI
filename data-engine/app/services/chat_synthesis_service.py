@@ -16,7 +16,9 @@ from app.services.langfuse_client import LangfuseTracer
 from app.services.budget import BudgetController, BudgetExceededError
 
 
-PROMPT_VERSION = "source-aware-synthesis-v3"
+from app.services.prompt_registry import get_prompt
+
+PROMPT_VERSION = get_prompt("chat_source_synthesis", allow_remote=False).version
 SECTION_ORDER = (
     "facts",
     "calculations",
@@ -100,11 +102,7 @@ class ChatSynthesisService:
                     messages=[
                         Message(
                             "system",
-                            "You are CavaAI's financial synthesis layer. Use only the supplied "
-                            "deterministic context. Never invent a number, event or citation. "
-                            "Separate facts, calculations, user hypotheses and inferences. "
-                            "If support is insufficient, say so explicitly. Every citation must "
-                            "exactly match one of the allowed source IDs.",
+                            get_prompt("chat_source_synthesis").text,
                         ),
                         Message(
                             "user",
@@ -131,7 +129,10 @@ class ChatSynthesisService:
                         name="source_aware_chat",
                         strict=True,
                     ),
-                    metadata={"prompt_version": PROMPT_VERSION},
+                    metadata={
+                        "prompt_version": PROMPT_VERSION,
+                        **get_prompt("chat_source_synthesis").trace_metadata(),
+                    },
                 )
                 response = await self.provider.complete(request)
                 cost = budget.estimate_cost_eur(
