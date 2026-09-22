@@ -31,6 +31,12 @@ def sync_managers(cik: str | None = None, db: Session = Depends(get_db)) -> dict
     return service.sync_all(db)
 
 
+@router.get("/managers/{cik}/changes")
+def manager_changes(cik: str, db: Session = Depends(get_db)) -> dict:
+    """Quarter-over-quarter 13F position changes for a reviewed manager."""
+    return ManagerHoldingIngestionService().changes(db, cik=cik)
+
+
 @router.get("/managers/{cik}/holdings")
 def manager_holdings(cik: str, db: Session = Depends(get_db)) -> dict:
     """Latest 13F report holdings for a reviewed manager, as filed."""

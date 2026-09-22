@@ -1857,6 +1857,7 @@ class ManagerHolding(TenantOwnedMixin, Base, TimestampMixin):
     manager_id: Mapped[int] = mapped_column(ForeignKey("fund_managers.id"), index=True)
     accession_number: Mapped[str] = mapped_column(String(25), index=True)
     report_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    filing_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_amendment: Mapped[bool] = mapped_column(Boolean, default=False)
     name_of_issuer: Mapped[str] = mapped_column(String(200), default="")
     title_of_class: Mapped[str] = mapped_column(String(150), default="")
