@@ -50,6 +50,7 @@ import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
+import ThesisMemo from '@/components/research/ThesisMemo';
 import FollowButton from '@/components/screener/FollowButton';
 
 export const dynamic = 'force-dynamic';
@@ -355,13 +356,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <Badge variant="outline">{data.claims.length} claims</Badge>
         </div>
         <Panel title="Current thesis">
-          {data.thesis ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap gap-2"><Badge>{data.thesis.rating}</Badge><Badge variant="outline">{data.thesis.status}</Badge></div>
-              <p className="text-sm leading-6 text-gray-300">{data.thesis.executive_summary}</p>
-              <div className="whitespace-pre-wrap rounded-lg border border-gray-800 bg-black/20 p-4 text-sm leading-6 text-gray-400">{data.thesis.thesis_markdown}</div>
-            </div>
-          ) : <Empty>No thesis exists.</Empty>}
+          {data.thesis ? <ThesisMemo thesis={data.thesis} /> : <Empty>No thesis exists.</Empty>}
         </Panel>
         <Panel title="Company-specific thesis sections" collapsibleOnMobile>
           <div className="grid gap-3 sm:grid-cols-2">
