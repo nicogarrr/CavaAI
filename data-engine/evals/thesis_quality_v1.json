@@ -1,0 +1,379 @@
+{
+  "dataset": "thesis_quality_v1",
+  "date": "2026-09-22",
+  "note": "Initial frozen set per the workflow assessment categories: sufficient evidence, insufficient/partial (must refuse fair value), contradictory/stale, debate bounds, provider-failure shapes, approval/replay. Deterministic hard gates only; no LLM judging LLM. Expand toward 30-50 cases as real anonymized runs accumulate.",
+  "cases": [
+    {
+      "id": "sufficient-001",
+      "category": "sufficient_evidence",
+      "frozen_facts": {"revenue": 394328, "fcf": 99585, "fair_value": 195.5, "wacc": 9.2},
+      "artifact": {
+        "ticker": "ACME", "status": "approved", "fair_value": 195.5,
+        "valuation_hash": "vf-acme-001",
+        "scenario_probabilities": {"bull": 0.25, "base": 0.55, "bear": 0.2},
+        "sections": [{"key": "hypothesis", "content": "..."}],
+        "claims": [
+          {"text": "FCF de 99585 millones con WACC 9.2", "material": true, "evidence_ids": ["ev-1"]},
+          {"text": "Fair value 195.5 por DCF", "material": true, "evidence_ids": ["ev-2"]}
+        ],
+        "evidence": [{"id": "ev-1"}, {"id": "ev-2"}]
+      },
+      "expected": {"status": "approved", "fair_value": "present", "valuation_hash": "vf-acme-001"}
+    },
+    {
+      "id": "sufficient-002",
+      "category": "sufficient_evidence",
+      "frozen_facts": {"revenue": 8800, "ebitda": 2100, "fair_value": 64.0, "wacc": 10.4},
+      "artifact": {
+        "ticker": "INDX", "status": "published", "fair_value": 64.0,
+        "valuation_hash": "vf-indx-002",
+        "scenario_probabilities": {"bull": 0.3, "base": 0.5, "bear": 0.2},
+        "sections": [{"key": "hypothesis", "content": "..."}],
+        "claims": [
+          {"text": "EBITDA de 2100 millones", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}]
+      },
+      "expected": {"status": "published", "fair_value": "present", "valuation_hash": "vf-indx-002"}
+    },
+    {
+      "id": "sufficient-003",
+      "category": "sufficient_evidence",
+      "frozen_facts": {"revenue": 15200, "fcf": 3100, "fair_value": 112.75, "wacc": 8.8},
+      "artifact": {
+        "ticker": "HLTH", "status": "approved", "fair_value": 112.75,
+        "valuation_hash": "vf-hlth-003",
+        "scenario_probabilities": {"bull": 0.2, "base": 0.6, "bear": 0.2},
+        "sections": [{"key": "hypothesis", "content": "..."}],
+        "claims": [
+          {"text": "Revenue 15200 con FCF 3100", "material": true, "evidence_ids": ["ev-1", "ev-2"]}
+        ],
+        "evidence": [{"id": "ev-1"}, {"id": "ev-2"}]
+      },
+      "expected": {"status": "approved", "fair_value": "present", "valuation_hash": "vf-hlth-003"}
+    },
+    {
+      "id": "sufficient-004",
+      "category": "sufficient_evidence",
+      "frozen_facts": {"revenue": 61000, "fcf": 12400, "fair_value": 301.1, "wacc": 9.6},
+      "artifact": {
+        "ticker": "SEMI", "status": "approved", "fair_value": 301.1,
+        "valuation_hash": "vf-semi-004",
+        "scenario_probabilities": {"bull": 0.35, "base": 0.45, "bear": 0.2},
+        "sections": [{"key": "hypothesis", "content": "..."}],
+        "claims": [
+          {"text": "FCF 12400 soporta el caso base", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}]
+      },
+      "expected": {"status": "approved", "fair_value": "present", "valuation_hash": "vf-semi-004"}
+    },
+    {
+      "id": "sufficient-005",
+      "category": "sufficient_evidence",
+      "frozen_facts": {"revenue": 4200, "fcf": 640, "fair_value": 28.4, "wacc": 11.1},
+      "artifact": {
+        "ticker": "RETL", "status": "approved", "fair_value": 28.4,
+        "valuation_hash": "vf-retl-005",
+        "scenario_probabilities": {"bull": 0.2, "base": 0.55, "bear": 0.25},
+        "sections": [{"key": "hypothesis", "content": "..."}],
+        "claims": [
+          {"text": "WACC 11.1 por riesgo retail", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}]
+      },
+      "expected": {"status": "approved", "fair_value": "present", "valuation_hash": "vf-retl-005"}
+    },
+    {
+      "id": "sufficient-006",
+      "category": "sufficient_evidence",
+      "frozen_facts": {"revenue": 230000, "fcf": 41000, "fair_value": 88.9, "wacc": 8.1},
+      "artifact": {
+        "ticker": "ENRG", "status": "published", "fair_value": 88.9,
+        "valuation_hash": "vf-enrg-006",
+        "scenario_probabilities": {"bull": 0.25, "base": 0.5, "bear": 0.25},
+        "sections": [{"key": "hypothesis", "content": "..."}],
+        "claims": [
+          {"text": "Revenue 230000 con FCF 41000", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}]
+      },
+      "expected": {"status": "published", "fair_value": "present", "valuation_hash": "vf-enrg-006"}
+    },
+    {
+      "id": "insufficient-001",
+      "category": "insufficient_evidence",
+      "frozen_facts": {"revenue": 900},
+      "artifact": {
+        "ticker": "THIN", "status": "draft", "fair_value": null,
+        "scenario_probabilities": null,
+        "sections": [{"key": "hypothesis", "content": "pendiente"}],
+        "claims": [],
+        "evidence": []
+      },
+      "expected": {"status": "draft", "fair_value": "absent"}
+    },
+    {
+      "id": "insufficient-002",
+      "category": "insufficient_evidence",
+      "frozen_facts": {},
+      "artifact": {
+        "ticker": "EMPTY", "status": "draft", "fair_value": null,
+        "scenario_probabilities": null,
+        "sections": [],
+        "claims": [],
+        "evidence": []
+      },
+      "expected": {"status": "draft", "fair_value": "absent"}
+    },
+    {
+      "id": "insufficient-003",
+      "category": "insufficient_evidence",
+      "frozen_facts": {"revenue": 1500},
+      "artifact": {
+        "ticker": "PART", "status": "draft", "fair_value": null,
+        "scenario_probabilities": null,
+        "sections": [{"key": "hypothesis", "content": "pendiente de datos"}],
+        "claims": [
+          {"text": "Revenue 1500 reportado", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}]
+      },
+      "expected": {"status": "draft", "fair_value": "absent"}
+    },
+    {
+      "id": "insufficient-004",
+      "category": "insufficient_evidence",
+      "frozen_facts": {"revenue": 300, "note": "stale"},
+      "artifact": {
+        "ticker": "STAL", "status": "draft", "fair_value": null,
+        "scenario_probabilities": null,
+        "sections": [{"key": "hypothesis", "content": "datos obsoletos"}],
+        "claims": [],
+        "evidence": []
+      },
+      "expected": {"status": "draft", "fair_value": "absent"}
+    },
+    {
+      "id": "contradictory-001",
+      "category": "contradictory_stale_evidence",
+      "frozen_facts": {"revenue_old": 5000, "revenue_new": 4300},
+      "artifact": {
+        "ticker": "CONT", "status": "changes_requested", "fair_value": null,
+        "scenario_probabilities": null,
+        "sections": [{"key": "contradictions", "content": "revenue 5000 vs 4300"}],
+        "claims": [
+          {"text": "Revenue reportado 5000 y despues 4300", "material": true, "evidence_ids": ["ev-1", "ev-2"]}
+        ],
+        "evidence": [{"id": "ev-1"}, {"id": "ev-2"}]
+      },
+      "expected": {"status": "changes_requested", "fair_value": "absent"}
+    },
+    {
+      "id": "contradictory-002",
+      "category": "contradictory_stale_evidence",
+      "frozen_facts": {"guidance_up": 1200, "guidance_down": 800},
+      "artifact": {
+        "ticker": "GUID", "status": "changes_requested", "fair_value": null,
+        "scenario_probabilities": null,
+        "sections": [{"key": "contradictions", "content": "guidance contradictoria"}],
+        "claims": [
+          {"text": "Guidance 1200 revisada a 800", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}]
+      },
+      "expected": {"status": "changes_requested", "fair_value": "absent"}
+    },
+    {
+      "id": "contradictory-003",
+      "category": "contradictory_stale_evidence",
+      "frozen_facts": {"filing_a": 77, "filing_b": 71},
+      "artifact": {
+        "ticker": "AMLN", "status": "draft", "fair_value": null,
+        "scenario_probabilities": null,
+        "sections": [{"key": "contradictions", "content": "cifras distintas entre filings"}],
+        "claims": [
+          {"text": "Metrica 77 en filing A y 71 en filing B", "material": true, "evidence_ids": ["ev-1", "ev-2"]}
+        ],
+        "evidence": [{"id": "ev-1"}, {"id": "ev-2"}]
+      },
+      "expected": {"status": "draft", "fair_value": "absent"}
+    },
+    {
+      "id": "debate-001",
+      "category": "debate_bounds",
+      "frozen_facts": {"revenue": 10000, "fcf": 2200},
+      "artifact": {
+        "ticker": "DEB1", "status": "approved", "fair_value": 50.0,
+        "valuation_hash": "vf-deb1",
+        "scenario_probabilities": {"bull": 0.3, "base": 0.5, "bear": 0.2},
+        "sections": [{"key": "debate", "content": "bull vs bear"}],
+        "claims": [
+          {"text": "FCF 2200", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}],
+        "debate_verdict": "neutral"
+      },
+      "expected": {"status": "approved", "debate_verdict_in": ["bullish", "bearish", "neutral"]}
+    },
+    {
+      "id": "debate-002",
+      "category": "debate_bounds",
+      "frozen_facts": {"revenue": 7000, "debt": 9000},
+      "artifact": {
+        "ticker": "DEB2", "status": "approved", "fair_value": 12.0,
+        "valuation_hash": "vf-deb2",
+        "scenario_probabilities": {"bull": 0.15, "base": 0.45, "bear": 0.4},
+        "sections": [{"key": "debate", "content": "deuda alta"}],
+        "claims": [
+          {"text": "Deuda 9000 contra revenue 7000", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}],
+        "debate_verdict": "bearish"
+      },
+      "expected": {"status": "approved", "debate_verdict_in": ["bullish", "bearish", "neutral"]}
+    },
+    {
+      "id": "provider-failure-001",
+      "category": "provider_failure_shape",
+      "frozen_facts": {"revenue": 2000},
+      "artifact": {
+        "ticker": "TIMO", "status": "draft", "fair_value": null,
+        "scenario_probabilities": null,
+        "sections": [{"key": "hypothesis", "content": "proveedor LLM en timeout; sintesis pendiente"}],
+        "claims": [],
+        "evidence": [{"id": "ev-1"}],
+        "degraded": true
+      },
+      "expected": {"status": "draft", "fair_value": "absent"}
+    },
+    {
+      "id": "provider-failure-002",
+      "category": "provider_failure_shape",
+      "frozen_facts": {"revenue": 2000},
+      "artifact": {
+        "ticker": "MALJ", "status": "draft", "fair_value": null,
+        "scenario_probabilities": null,
+        "sections": [{"key": "hypothesis", "content": "JSON malformado del proveedor; fallback determinista"}],
+        "claims": [],
+        "evidence": [{"id": "ev-1"}],
+        "degraded": true
+      },
+      "expected": {"status": "draft", "fair_value": "absent"}
+    },
+    {
+      "id": "replay-001",
+      "category": "approval_replay_idempotency",
+      "frozen_facts": {"revenue": 5000, "fcf": 1100},
+      "artifact": {
+        "ticker": "RPL1", "status": "approved", "fair_value": 42.0,
+        "valuation_hash": "vf-rpl1",
+        "scenario_probabilities": {"bull": 0.25, "base": 0.55, "bear": 0.2},
+        "sections": [{"key": "hypothesis", "content": "..."}],
+        "claims": [
+          {"text": "FCF 1100", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}],
+        "versions": [3, 3]
+      },
+      "expected": {"status": "approved"},
+      "expect_gate_failure": "replay_no_duplicate_version"
+    },
+    {
+      "id": "replay-002",
+      "category": "approval_replay_idempotency",
+      "frozen_facts": {"revenue": 5000, "fcf": 1100},
+      "artifact": {
+        "ticker": "RPL2", "status": "approved", "fair_value": 42.0,
+        "valuation_hash": "vf-rpl2",
+        "scenario_probabilities": {"bull": 0.25, "base": 0.55, "bear": 0.2},
+        "sections": [{"key": "hypothesis", "content": "..."}],
+        "claims": [
+          {"text": "FCF 1100", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}],
+        "versions": [3]
+      },
+      "expected": {"status": "approved"}
+    },
+    {
+      "id": "replay-003",
+      "category": "approval_replay_idempotency",
+      "frozen_facts": {"revenue": 5000},
+      "artifact": {
+        "ticker": "RPL3", "status": "published", "fair_value": 42.0,
+        "valuation_hash": "vf-rpl3",
+        "scenario_probabilities": {"bull": 0.25, "base": 0.55, "bear": 0.2},
+        "sections": [{"key": "hypothesis", "content": "..."}],
+        "claims": [
+          {"text": "Revenue 5000", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}],
+        "versions": [1, 2, 3]
+      },
+      "expected": {"status": "published"}
+    },
+    {
+      "id": "negative-schema-001",
+      "category": "negative_control",
+      "frozen_facts": {"revenue": 100},
+      "artifact": {
+        "ticker": "BAD1", "status": "approved", "fair_value": 10.0,
+        "sections": "no-es-lista",
+        "claims": [],
+        "evidence": []
+      },
+      "expected": {"status": "approved"},
+      "expect_gate_failure": "schema_valid"
+    },
+    {
+      "id": "negative-probabilities-001",
+      "category": "negative_control",
+      "frozen_facts": {"revenue": 100},
+      "artifact": {
+        "ticker": "BAD2", "status": "approved", "fair_value": 10.0,
+        "valuation_hash": "vf-bad2",
+        "scenario_probabilities": {"bull": 0.5, "base": 0.5, "bear": 0.5},
+        "sections": [],
+        "claims": [],
+        "evidence": []
+      },
+      "expected": {"status": "approved"},
+      "expect_gate_failure": "probabilities_sum_to_one"
+    },
+    {
+      "id": "negative-invented-001",
+      "category": "negative_control",
+      "frozen_facts": {"revenue": 100},
+      "artifact": {
+        "ticker": "BAD3", "status": "approved", "fair_value": 10.0,
+        "valuation_hash": "vf-bad3",
+        "scenario_probabilities": {"bull": 0.3, "base": 0.5, "bear": 0.2},
+        "sections": [],
+        "claims": [
+          {"text": "FCF de 99999 millones", "material": true, "evidence_ids": ["ev-1"]}
+        ],
+        "evidence": [{"id": "ev-1"}]
+      },
+      "expected": {"status": "approved"},
+      "expect_gate_failure": "no_invented_numbers"
+    },
+    {
+      "id": "negative-evidence-001",
+      "category": "negative_control",
+      "frozen_facts": {"revenue": 100},
+      "artifact": {
+        "ticker": "BAD4", "status": "approved", "fair_value": 10.0,
+        "valuation_hash": "vf-bad4",
+        "scenario_probabilities": {"bull": 0.3, "base": 0.5, "bear": 0.2},
+        "sections": [],
+        "claims": [
+          {"text": "Revenue 100", "material": true, "evidence_ids": []}
+        ],
+        "evidence": [{"id": "ev-1"}]
+      },
+      "expected": {"status": "approved"},
+      "expect_gate_failure": "material_claims_have_evidence"
+    }
+  ]
+}
