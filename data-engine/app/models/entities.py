@@ -633,6 +633,12 @@ class ThesisVersion(TenantOwnedMixin, Base, TimestampMixin):
     red_team_score: Mapped[int] = mapped_column(Integer, default=0)
     valuation_risk_score: Mapped[int] = mapped_column(Integer, default=0)
     input_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Tesis profesional: hipotesis explicita, catalizadores con fecha,
+    # criterios de invalidacion y probabilidades por escenario.
+    hypothesis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    catalysts: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    invalidation_criteria: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    scenario_probabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="thesis_versions")
 

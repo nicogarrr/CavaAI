@@ -97,6 +97,10 @@ class CompanySnapshotService:
                 "margin_of_safety": thesis.margin_of_safety,
                 "data_confidence_score": thesis.data_confidence_score,
                 "source_coverage_score": thesis.source_coverage_score,
+                "hypothesis": getattr(thesis, "hypothesis", None),
+                "catalysts": getattr(thesis, "catalysts", None),
+                "invalidation_criteria": getattr(thesis, "invalidation_criteria", None),
+                "scenario_probabilities": getattr(thesis, "scenario_probabilities", None),
                 "created_at": thesis.created_at,
             }
 

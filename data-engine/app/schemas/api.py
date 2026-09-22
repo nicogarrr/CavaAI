@@ -147,6 +147,10 @@ class SnapshotThesisSummaryOut(BaseModel):
     margin_of_safety: Decimal | None
     data_confidence_score: int
     source_coverage_score: int
+    hypothesis: str | None = None
+    catalysts: list | None = None
+    invalidation_criteria: list | None = None
+    scenario_probabilities: dict | None = None
     created_at: datetime
 
 
@@ -252,6 +256,10 @@ class ThesisOut(BaseModel):
     red_team_score: int
     valuation_risk_score: int
     input_fingerprint: str | None = None
+    hypothesis: str | None = None
+    catalysts: list | None = None
+    invalidation_criteria: list | None = None
+    scenario_probabilities: dict | None = None
     created_at: datetime
 
 

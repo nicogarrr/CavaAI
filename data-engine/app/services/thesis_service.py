@@ -184,6 +184,11 @@ class ThesisService:
         else:
             status = "draft"
 
+        hypothesis = self._hypothesis(company, valuation)
+        catalysts = self._catalysts(evidence)
+        invalidation = self._invalidation_criteria(company, valuation)
+        scenario_probabilities = self._scenario_probabilities(long_term_model)
+
         summary = self._executive_summary(company, valuation)
         thesis_markdown = self._render_markdown(
             company,
@@ -193,6 +198,10 @@ class ThesisService:
             long_term_model=long_term_model,
             version=version,
             evidence=evidence,
+            hypothesis=hypothesis,
+            catalysts=catalysts,
+            invalidation_criteria=invalidation,
+            scenario_probabilities=scenario_probabilities,
         )
 
         def _dec(value) -> Decimal | None:
@@ -220,6 +229,10 @@ class ThesisService:
             red_team_score=0,
             valuation_risk_score=75 if "speculative" in (company.factor_tags or []) else 45,
             input_fingerprint=fingerprint,
+            hypothesis=hypothesis,
+            catalysts=catalysts,
+            invalidation_criteria=invalidation,
+            scenario_probabilities=scenario_probabilities,
         )
         db.add(thesis)
         db.flush()
@@ -316,6 +329,95 @@ class ThesisService:
         if valuation.get("publishable"):
             return 85
         return 55
+
+
+    def _hypothesis(self, company: Company, valuation: dict) -> str:
+        """Hipotesis comprobable derivada solo de datos del modelo (nunca inventada)."""
+        price = valuation.get("current_price")
+        base = valuation.get("base_value")
+        mos = valuation.get("margin_of_safety")
+        if price is None or base is None or mos is None:
+            return (
+                "Hipotesis en formacion: faltan datos de mercado o de valoracion "
+                "para formular una hipotesis comprobable."
+            )
+        reverse = valuation.get("reverse_dcf") or {}
+        required_growth = reverse.get("required_revenue_growth")
+        growth_txt = (
+            f" El reverse DCF exige un crecimiento de ingresos del {required_growth:.1%} anual."
+            if required_growth is not None
+            else ""
+        )
+        if mos >= 0:
+            return (
+                f"A {price:.2f}, el mercado valora {company.name} un {mos:.0%} por debajo "
+                f"del escenario base ({base:.2f}). Hipotesis: los fundamentales modelados "
+                f"son alcanzables y el mercado corrige ese descuento.{growth_txt}"
+            )
+        return (
+            f"A {price:.2f}, el mercado valora {company.name} un {abs(mos):.0%} por encima "
+            f"del escenario base ({base:.2f}). Hipotesis: el precio descuenta mas de lo "
+            f"que los fundamentales modelados soportan.{growth_txt}"
+        )
+
+    def _catalysts(self, evidence: dict) -> list[dict]:
+        """Catalizadores con fecha conocida (hoy: calendario de resultados)."""
+        sources = (evidence or {}).get("sources") or {}
+        earnings = sources.get("earnings") or {}
+        catalysts: list[dict] = []
+        if earnings.get("status") == "ok" and earnings.get("next_date"):
+            item: dict = {
+                "label": "Proximos resultados",
+                "date": earnings.get("next_date"),
+                "source": "earnings_calendar",
+            }
+            if earnings.get("time"):
+                item["time"] = earnings["time"]
+            if earnings.get("eps_forecast") is not None:
+                item["eps_forecast"] = earnings["eps_forecast"]
+            catalysts.append(item)
+        return catalysts
+
+    def _invalidation_criteria(self, company: Company, valuation: dict) -> list[str]:
+        """Condiciones observables que invalidarian la tesis, derivadas del modelo."""
+        criteria: list[str] = []
+        mos = valuation.get("margin_of_safety")
+        base = valuation.get("base_value")
+        if mos is not None and base is not None and mos >= 0:
+            criteria.append(
+                f"El precio supera de forma sostenida el valor base ({base:.2f}): "
+                "el margen de seguridad desaparece."
+            )
+        reverse = valuation.get("reverse_dcf") or {}
+        required_growth = reverse.get("required_revenue_growth")
+        if required_growth is not None:
+            criteria.append(
+                f"Los ingresos reales se desvian de forma persistente del "
+                f"{required_growth:.1%} anual que exige el reverse DCF."
+            )
+        moat = valuation.get("moat") or {}
+        declining = [
+            str(item.get("type"))
+            for item in (moat.get("moats") or [])
+            if item.get("trend") == "declining" and item.get("type")
+        ]
+        if declining:
+            criteria.append(f"Deterioro confirmado del moat: {', '.join(declining)}.")
+        if not criteria:
+            criteria.append(
+                "Tesis en formacion: sin criterios automaticos hasta completar la valoracion."
+            )
+        return criteria
+
+    def _scenario_probabilities(self, long_term_model: dict) -> dict | None:
+        """Probabilidades por escenario persistidas por el motor de modelado."""
+        scenarios = (long_term_model or {}).get("scenarios") or {}
+        probabilities = {
+            name: scenario.get("probability")
+            for name, scenario in scenarios.items()
+            if isinstance(scenario, dict) and scenario.get("probability") is not None
+        }
+        return probabilities or None
 
     def _rating(self, margin_of_safety: float | None, audit_passed: bool, status: str | None) -> str:
         if status == "insufficient_data":
@@ -680,6 +782,10 @@ class ThesisService:
         long_term_model: dict,
         version: int,
         evidence: dict | None = None,
+        hypothesis: str | None = None,
+        catalysts: list | None = None,
+        invalidation_criteria: list | None = None,
+        scenario_probabilities: dict | None = None,
     ) -> str:
         reverse = valuation.get("reverse_dcf") or {}
         required_growth = reverse.get("required_revenue_growth")
@@ -694,6 +800,31 @@ class ThesisService:
         market_opportunity = long_term_model.get("market_opportunity") or {}
         evidence = evidence or {}
         sources = evidence.get("sources") or {}
+        hypothesis = hypothesis or self._hypothesis(company, valuation)
+        catalysts = catalysts if catalysts is not None else self._catalysts(evidence)
+        invalidation_criteria = (
+            invalidation_criteria
+            if invalidation_criteria is not None
+            else self._invalidation_criteria(company, valuation)
+        )
+        scenario_probabilities = (
+            scenario_probabilities
+            if scenario_probabilities is not None
+            else self._scenario_probabilities(long_term_model)
+        )
+        probabilities_line = (
+            "Probabilities (model): "
+            + " · ".join(f"{name} {prob:.0%}" for name, prob in scenario_probabilities.items())
+            if scenario_probabilities
+            else "Probabilities: pendiente (el modelo no las ha persistido)."
+        )
+        catalysts_lines = "\n".join(
+            f"- {item.get('label')}: {item.get('date')}"
+            + (f" {item.get('time')}" if item.get('time') else "")
+            + (f" (EPS forecast {item.get('eps_forecast')})" if item.get("eps_forecast") is not None else "")
+            for item in catalysts
+        ) or "- Sin catalizadores con fecha conocida; pendiente del calendario de resultados."
+        invalidation_lines = "\n".join(f"- {criterion}" for criterion in invalidation_criteria)
 
         return f"""# {company.ticker} Thesis v{version}
 
@@ -702,7 +833,8 @@ class ThesisService:
 Valuation input source: `{(valuation.get("trace") or {}).get("input_source", "unknown")}`.
 Engine: `{(valuation.get("trace") or {}).get("engine", "unknown")}`.
 
-## 2. One-Line Thesis
+## 2. Hypothesis
+{hypothesis}
 The investable question is whether the evidence supports the assumptions behind the selected model, not whether a model output looks attractive in isolation.
 
 ## 3. Business Model
@@ -729,6 +861,7 @@ Tracked through filings, calls, buybacks, dilution and dividends. Funding-gap di
 {self._earnings_markdown(sources)}
 
 ## 10. News And Catalysts
+{catalysts_lines}
 {self._news_markdown(sources)}
 
 ## 11. Risks
@@ -748,13 +881,14 @@ Model status: `{long_term_model.get("status")}`. Market-opportunity verdict: `{(
 {reverse_line}
 
 ## 15. Bear / Base / Bull
-Scenario style: `{scenario_style}`. Probabilities and causal drivers are stored in the calculation trace.
+Scenario style: `{scenario_style}`. {probabilities_line}
 
 ## 16. Red Team
 Primary red-team question: what assumption would break first if the next filing contradicts the current model?
 
 ## 17. What Would Invalidate The Thesis
-Unsupported claims, missing calculation traces, adverse primary filings, incoherent snapshots, or material assumption drift.
+{invalidation_lines}
+Structural invalidators: unsupported claims, missing calculation traces, adverse primary filings, incoherent snapshots, or material assumption drift.
 
 ## 18. What To Watch
 {", ".join(company.special_sources)}
