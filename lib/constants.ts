@@ -19,7 +19,8 @@ import {
   Star,
   ShieldCheck,
   Target,
-  Users,
+  Landmark,
+    Users,
 } from 'lucide-react';
 
 // Timeouts (en milisegundos)
@@ -102,6 +103,7 @@ export const NAV_ITEMS = [
   { href: '/export', label: 'Exportar', icon: Download },
   { href: '/risk', label: 'Riesgo', icon: Gauge },
   { href: '/insider', label: 'Insider', icon: Users },
+  { href: '/ownership', label: '13F', icon: Landmark },
   { href: '/alerts', label: 'Alertas', icon: Bell },
   { href: '/security', label: 'Seguridad', icon: ShieldCheck },
 ] as const;
