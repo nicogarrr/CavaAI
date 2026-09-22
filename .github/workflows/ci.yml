@@ -35,6 +35,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:routes
       - run: npm run build
+      - name: Bundle budget
+        run: node scripts/check-bundle-budget.mjs
 
   auth-store:
     name: Auth store smoke (Mongo)
