@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.llm.factory import create_llm_provider
 from app.services.budget import BudgetController
 from app.services.llm_router import route_table
 
@@ -12,11 +13,21 @@ router = APIRouter()
 @router.get("")
 def settings(db: Session = Depends(get_db)) -> dict:
     app_settings = get_settings()
+    provider = create_llm_provider(app_settings)
+    llm_status: dict = {
+        "provider": provider.name,
+        "configured": provider.name != "disabled",
+        # Model only when active; the API key is never exposed here.
+        "model": app_settings.opencode_go_model if provider.name != "disabled" else None,
+    }
+    if provider.name == "disabled":
+        llm_status["reason"] = getattr(provider, "reason", "disabled")
     return {
         "app_env": app_settings.app_env,
         "maf_version": "agent-framework-core==1.10.0",
         "budget": BudgetController().current_usage(db),
         "routes": route_table(),
+        "llm": llm_status,
         "connectors": {
             "fmp": bool(app_settings.fmp_api_key),
             "ibkr": bool(app_settings.ibkr_flex_token and app_settings.ibkr_flex_query_id),
