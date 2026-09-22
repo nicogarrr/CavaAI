@@ -150,6 +150,41 @@ jobs:
           python -m alembic downgrade base
           python -m alembic upgrade head
 
+  arm64-smoke:
+    name: ARM64 compatibility smoke
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DATABASE_URL: sqlite:///./cavaai_arm_ci.db
+      CAVAAI_ENABLE_VECTOR_INGEST: "0"
+      CAVAAI_ENABLE_VECTOR_SEARCH: "0"
+      CAVAAI_ENABLE_VECTOR_CHAT: "0"
+      CI: "true"
+      MONGODB_URI: mongodb://localhost:27017/cavaai_ci
+      BETTER_AUTH_SECRET: ci-only-secret-that-is-long-enough-for-builds
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      FMP_BACKEND_URL: http://127.0.0.1:8000
+      OPENCODE_GO_API_KEY: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - name: Install backend deps on ARM64 (torch, pandas, scipy)
+        run: python -m pip install -r data-engine/requirements.txt
+      - name: Import backend app on ARM64
+        working-directory: data-engine
+        run: python -c "import platform; from main import app; print('backend import OK on', platform.machine())"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build frontend on ARM64 (native modules like tailwind oxide and sharp)
+        run: npm run build
+
   supply-chain:
     name: Dependency audits
     runs-on: ubuntu-latest
