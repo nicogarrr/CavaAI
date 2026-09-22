@@ -25,7 +25,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/types/errors';
+import { getFriendlyErrorMessage } from '@/lib/types/errors';
 
 export default function AlertsManager() {
     const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -49,7 +49,7 @@ export default function AlertsManager() {
             const data = await getUserAlerts();
             setAlerts(data);
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            toast.error(getFriendlyErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -86,7 +86,7 @@ export default function AlertsManager() {
             });
             loadAlerts();
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            toast.error(getFriendlyErrorMessage(error));
         }
     };
 
@@ -96,7 +96,7 @@ export default function AlertsManager() {
             await loadAlerts();
             toast.success('Alerta eliminada');
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            toast.error(getFriendlyErrorMessage(error));
         }
     };
 
