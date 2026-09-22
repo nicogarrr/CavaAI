@@ -40,11 +40,11 @@ const SignIn = () => {
                 setTwoFactorRequired(true);
                 return;
             }
-            toast.error('Sign in failed', {
+            toast.error('No se pudo iniciar sesión', {
                 description: result.error ?? 'Invalid email or password.',
             });
         } catch (e) {
-            toast.error('Sign in failed', {
+            toast.error('No se pudo iniciar sesión', {
                 description: e instanceof Error ? e.message : 'An unexpected error occurred. Please try again.'
             })
         }
@@ -64,12 +64,12 @@ const SignIn = () => {
                 router.refresh();
                 return;
             }
-            toast.error('Verification failed', {
-                description: result.error ?? 'Invalid authentication code.',
+            toast.error('Verificación fallida', {
+                description: result.error ?? 'Código de autenticación no válido.',
             });
         } catch (e) {
-            toast.error('Verification failed', {
-                description: e instanceof Error ? e.message : 'An unexpected error occurred.'
+            toast.error('Verificación fallida', {
+                description: e instanceof Error ? e.message : 'Ha ocurrido un error inesperado.'
             })
         } finally {
             setIsVerifying(false);
@@ -79,30 +79,30 @@ const SignIn = () => {
     if (twoFactorRequired) {
         return (
             <>
-                <h1 className="form-title">Two-factor authentication</h1>
+                <h1 className="form-title">Verificación en dos pasos</h1>
                 <p className="text-sm text-gray-500 mb-6">
-                    Enter the 6-digit code from your authenticator app to continue.
+                    Introduce el código de 6 dígitos de tu app de autenticación para continuar.
                 </p>
 
                 <form onSubmit={handleSubmit((_data) => onVerifyTotp(getValues('totpCode') ?? ''))} className="space-y-5">
                                     <InputField
                                         name="totpCode"
-                                        label="Authentication code"
+                                        label="Código de autenticación"
                                         placeholder="000000"
                                         autoComplete="one-time-code"
                                         register={register}
                                         error={errors.totpCode}
                                         validation={{
-                                            required: 'Authentication code is required',
+                                            required: 'El código de autenticación es obligatorio',
                                             pattern: {
                                                 value: /^\d{6}$/,
-                                                message: 'Code must be 6 digits'
+                                                message: 'El código debe tener 6 dígitos'
                                             }
                                         }}
                                     />
 
                     <Button type="submit" disabled={isVerifying} className="yellow-btn w-full mt-5">
-                        {isVerifying ? 'Verifying' : 'Verify & Sign In'}
+                        {isVerifying ? 'Verificando' : 'Verificar y entrar'}
                     </Button>
 
                     <button
@@ -113,7 +113,7 @@ const SignIn = () => {
                             setPendingCredentials(null);
                         }}
                     >
-                        Back to sign in
+                        Volver a iniciar sesión
                     </button>
                 </form>
             </>
@@ -122,7 +122,7 @@ const SignIn = () => {
 
     return (
         <>
-            <h1 className="form-title">Welcome back</h1>
+            <h1 className="form-title">Bienvenido de nuevo</h1>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 <InputField
@@ -132,29 +132,29 @@ const SignIn = () => {
                     register={register}
                     error={errors.email}
                     validation={{
-                      required: 'Email is required',
+                      required: 'El email es obligatorio',
                       pattern: {
                         value: /^[\w-.]+@([\w-]+\.)+[\w-]{2,}$/,
-                        message: 'Please enter a valid email address'
+                        message: 'Introduce un email válido'
                       }
                     }}
                 />
 
                 <InputField
                     name="password"
-                    label="Password"
-                    placeholder="Enter your password"
+                    label="Contraseña"
+                    placeholder="Introduce tu contraseña"
                     type="password"
                     register={register}
                     error={errors.password}
-                    validation={{ required: 'Password is required', minLength: 8 }}
+                    validation={{ required: 'La contraseña es obligatoria', minLength: 8 }}
                 />
 
                 <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
-                    {isSubmitting ? 'Signing In' : 'Sign In'}
+                    {isSubmitting ? 'Entrando' : 'Iniciar sesión'}
                 </Button>
 
-                <FooterLink text="Don't have an account?" linkText="Create an account" href="/sign-up" />
+                <FooterLink text="¿No tienes cuenta?" linkText="Crear cuenta" href="/sign-up" />
             </form>
         </>
     );

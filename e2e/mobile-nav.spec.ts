@@ -35,6 +35,7 @@ const NAV_ROUTES: { path: string; heading?: string }[] = [
   { path: "/watchlist", heading: "Watchlist" },
   { path: "/propicks" },
   { path: "/alerts", heading: "Alertas" },
+  { path: "/security", heading: "Seguridad" },
   { path: "/research/MSFT", heading: "MSFT" },
 ];
 
