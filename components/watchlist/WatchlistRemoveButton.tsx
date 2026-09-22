@@ -27,7 +27,8 @@ export default function WatchlistRemoveButton({ symbol }: WatchlistRemoveButtonP
             size="icon"
             onClick={handleRemove}
             disabled={loading}
-            className="text-gray-500 hover:text-red-400 hover:bg-red-900/20"
+            aria-label={`Eliminar ${symbol} de la watchlist`}
+            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-900/20"
             title="Eliminar de Watchlist"
         >
             <Trash2 className="w-4 h-4" />

@@ -12,7 +12,7 @@ export default function BacktestResults({ result }: BacktestResultsProps) {
     const { summary, details } = formatBacktestResult(result);
 
     return (
-        <Card className="p-6 rounded-lg border border-gray-700 bg-gray-800/50">
+        <Card className="w-full min-w-0 overflow-hidden rounded-lg border border-gray-700 bg-gray-800/50 p-4 sm:p-6">
             <div className="mb-6">
                 <div className="flex items-center gap-3 mb-2">
                     <BarChart3 className="h-6 w-6 text-teal-400" />
@@ -37,9 +37,9 @@ export default function BacktestResults({ result }: BacktestResultsProps) {
             </div>
 
             {/* Tabla de picks */}
-            <div className="mb-6">
+            <div className="mb-6 min-w-0">
                 <h4 className="text-sm font-semibold text-gray-300 mb-3">Desempeño Individual</h4>
-                <div className="overflow-x-auto">
+                <div className="hidden overflow-x-auto md:block">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-gray-700">
@@ -65,6 +65,23 @@ export default function BacktestResults({ result }: BacktestResultsProps) {
                         </tbody>
                     </table>
                 </div>
+                <div className="grid grid-cols-1 gap-3 md:hidden">
+                    {result.picks.slice(0, 10).map((pick, index) => (
+                        <div key={index} className="min-w-0 rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="min-w-0 truncate font-medium text-gray-200">{pick.symbol}</span>
+                                <span className={`shrink-0 font-bold ${pick.return > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {pick.return > 0 ? '+' : ''}{pick.return.toFixed(2)}%
+                                </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+                                <span>Entrada ${pick.entryPrice.toFixed(2)}</span>
+                                <span>Salida ${pick.exitPrice.toFixed(2)}</span>
+                                <span>{pick.holdPeriod} días</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
 
             {/* Resumen de benchmark */}
@@ -73,7 +90,7 @@ export default function BacktestResults({ result }: BacktestResultsProps) {
                     <Target className="h-4 w-4 text-teal-400" />
                     <h4 className="text-sm font-semibold text-gray-300">Comparación con Benchmark</h4>
                 </div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div>
                         <div className="text-xs text-gray-500 mb-1">Retorno Estrategia</div>
                         <div className={`text-lg font-bold ${result.performance.totalReturn > 0 ? 'text-green-400' : 'text-red-400'}`}>

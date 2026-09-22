@@ -29,8 +29,14 @@ export default function FollowButton({ symbol, company }: { symbol: string; comp
   };
 
   return (
-    <Button variant="ghost" size="sm" onClick={onClick} disabled={done || busy} className="h-7 px-2 text-xs text-gray-400 hover:text-teal-300">
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : done ? <Check className="h-3.5 w-3.5 text-teal-400" /> : <Plus className="h-3.5 w-3.5" />}
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={onClick}
+      disabled={done || busy}
+      className="min-h-[44px] px-3 py-2 text-sm text-gray-300 hover:text-teal-300 sm:h-7 sm:min-h-0 sm:px-2 sm:text-xs"
+    >
+      {busy ? <Loader2 className="h-4 w-4 animate-spin sm:h-3.5 sm:w-3.5" /> : done ? <Check className="h-4 w-4 text-teal-400 sm:h-3.5 sm:w-3.5" /> : <Plus className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
       {done ? 'Siguiendo' : 'Seguir'}
     </Button>
   );

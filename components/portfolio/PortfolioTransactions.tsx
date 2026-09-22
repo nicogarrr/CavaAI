@@ -103,15 +103,16 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
                     </div>
                   </div>
 
-                  {/* Acciones flotantes (solo visibles en hover) */}
-                  <div className="flex justify-end gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Acciones siempre visibles en táctil, solo hover en escritorio */}
+                  <div className="flex justify-end gap-2 mt-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                     <EditTransactionDialog transaction={tx} userId={userId} />
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => handleDelete(tx._id)}
                       disabled={deleting === tx._id}
-                      className="h-7 w-7 p-0 text-gray-500 hover:text-red-400 hover:bg-red-950/20"
+                      aria-label="Eliminar transacción"
+                      className="h-11 w-11 p-0 text-gray-400 hover:text-red-400 hover:bg-red-950/20 md:h-7 md:w-7"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>

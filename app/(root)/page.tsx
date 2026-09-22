@@ -34,7 +34,7 @@ export default async function Home() {
     const userId = await getUserId();
 
     return (
-        <div className="flex min-h-screen flex-col p-6 gap-8">
+        <div className="flex min-h-screen w-full max-w-full min-w-0 flex-col gap-6 overflow-x-clip p-4 sm:gap-8 sm:p-6">
             <Suspense fallback={<DashboardSkeleton />}>
                 <PersonalizedOverview userId={userId} />
             </Suspense>

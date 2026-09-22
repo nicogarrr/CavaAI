@@ -22,7 +22,7 @@ const NavItems = ({initialStocks}: { initialStocks: StockWithWatchlistStatus[]})
                     <Link 
                         href={href} 
                         prefetch
-                        className={`flex items-center gap-1.5 hover:text-teal-500 transition-colors cursor-pointer ${isActive(href) ? 'text-gray-100' : 'text-gray-400'}`}
+                        className={`flex min-h-[44px] items-center gap-1.5 rounded-lg px-1 py-2 text-base transition-colors hover:text-teal-500 sm:min-h-0 sm:px-0 sm:py-1 sm:text-sm cursor-pointer ${isActive(href) ? 'text-gray-100' : 'text-gray-400'}`}
                     >
                         {Icon && <Icon className="h-4 w-4" />}
                         {label}

@@ -112,9 +112,9 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
     };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid w-full min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-4">
             {/* Sidebar con filtros */}
-            <div className="lg:col-span-1">
+            <div className="min-w-0 lg:col-span-1">
                 <EnhancedProPicksFilters
                     filters={filters}
                     onFiltersChange={setFilters}
@@ -126,7 +126,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                     <Button
                         onClick={handleRefresh}
                         disabled={loading}
-                        className="w-full gap-2 bg-teal-600 hover:bg-teal-700"
+                        className="h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700"
                     >
                         {loading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -165,7 +165,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
             </div>
 
             {/* Resultados */}
-            <div className="lg:col-span-3">
+            <div className="min-w-0 lg:col-span-3">
                 {/* Header */}
                 <div className="mb-6">
                     <div className="flex items-center justify-between mb-2">
@@ -204,7 +204,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                         <Button
                             onClick={handleRefresh}
                             disabled={loading}
-                            className="mt-4 gap-2 bg-teal-600 hover:bg-teal-700"
+                            className="mt-4 h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 sm:w-auto"
                         >
                             {loading ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -229,7 +229,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                         <Button
                             onClick={handleRefresh}
                             disabled={loading}
-                            className="mt-4 gap-2 bg-teal-600 hover:bg-teal-700"
+                            className="mt-4 h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 sm:w-auto"
                         >
                             {loading ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -240,16 +240,16 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                         </Button>
                     </Card>
                 ) : picks.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
                         {picks.map((pick, index) => (
                             <Link
                                 key={pick.symbol}
                                 href={`/research/${pick.symbol}`}
                                 className="block"
                             >
-                                <Card className="p-5 rounded-lg border border-gray-700 bg-gray-800/50 hover:bg-gray-800 transition-all duration-200 group h-full">
-                                    <div className="flex items-start justify-between mb-3">
-                                        <div className="flex-1">
+                                <Card className="h-full min-w-0 rounded-lg border border-gray-700 bg-gray-800/50 p-4 transition-all duration-200 group hover:bg-gray-800 sm:p-5">
+                                    <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className="text-xs font-bold text-gray-500 px-2 py-1 bg-gray-900 rounded">
                                                     #{index + 1}
@@ -268,9 +268,9 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="text-sm text-gray-400 line-clamp-1">{pick.company}</p>
+                                            <p className="line-clamp-1 min-w-0 break-words text-sm text-gray-400">{pick.company}</p>
                                             {pick.sector && (
-                                                <p className="text-xs text-gray-500 mt-1">{pick.sector}</p>
+                                                <p className="mt-1 break-words text-xs text-gray-500">{pick.sector}</p>
                                             )}
                                         </div>
                                         <div className={`text-right px-3 py-2 rounded-lg border ${getScoreColor(pick.score)}`}>
@@ -281,7 +281,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center justify-between mb-3">
+                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                         {pick.currentPrice > 0 && (
                                             <div>
                                                 <div className="text-xl font-semibold text-gray-100">
@@ -334,9 +334,9 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                     {pick.confidenceReasons.length > 0 && (
                                         <div className="space-y-1.5 mb-3">
                                             {pick.confidenceReasons.slice(0, 3).map((reason, reasonIndex) => (
-                                                <div key={reasonIndex} className="flex items-start gap-2 text-xs text-gray-300" title={`Dato verificado: ${reason.metric} = ${reason.value}`}>
+                                                <div key={reasonIndex} className="flex min-w-0 items-start gap-2 text-xs text-gray-300" title={`Dato verificado: ${reason.metric} = ${reason.value}`}>
                                                     <TrendingUp className="h-3 w-3 text-teal-400 flex-shrink-0 mt-0.5" />
-                                                    <span className="line-clamp-1">{reason.text}</span>
+                                                    <span className="line-clamp-1 min-w-0 break-words">{reason.text}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -354,7 +354,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                             size="sm"
                                             onClick={(e) => handleFollow(e, pick.symbol, pick.company)}
                                             disabled={!!followed[pick.symbol] || following === pick.symbol}
-                                            className="gap-1.5 text-gray-400 hover:text-teal-400 h-8 text-xs"
+                                            className="h-11 gap-1.5 text-xs text-gray-400 hover:text-teal-400 sm:h-8"
                                         >
                                             {following === pick.symbol ? (
                                                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -365,7 +365,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                             )}
                                             {followed[pick.symbol] ? 'Siguiendo' : 'Seguir'}
                                         </Button>
-                                        <Button variant="ghost" size="sm" className="gap-2 text-gray-400 group-hover:text-teal-400 h-8 text-xs">
+                                        <Button variant="ghost" size="sm" className="h-11 gap-2 text-xs text-gray-400 group-hover:text-teal-400 sm:h-8">
                                             Ver análisis completo
                                             <ArrowRight className="h-3 w-3" />
                                         </Button>

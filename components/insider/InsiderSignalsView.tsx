@@ -48,7 +48,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
         : [];
 
     return (
-        <div className="grid gap-6">
+        <div className="grid w-full min-w-0 grid-cols-1 gap-6">
             <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
                 <CardHeader className="border-b border-gray-700/50 pb-4">
                     <div className="flex items-center gap-3">
@@ -64,15 +64,15 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                     </div>
                 </CardHeader>
                 <CardContent className="pt-4">
-                    <form onSubmit={handleSearch} className="flex max-w-md gap-3">
+                    <form onSubmit={handleSearch} className="flex w-full max-w-md flex-col gap-3 sm:flex-row">
                         <Input
                             value={ticker}
                             onChange={(event) => setTicker(event.target.value.toUpperCase())}
                             placeholder="AAPL"
                             maxLength={20}
-                            className="bg-gray-900 font-mono uppercase"
+                            className="h-11 w-full bg-gray-900 font-mono uppercase"
                         />
-                        <Button type="submit" className="gap-2 bg-teal-600 hover:bg-teal-700">
+                        <Button type="submit" className="h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 sm:w-auto">
                             <Search className="h-4 w-4" />
                             Buscar
                         </Button>
@@ -101,7 +101,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                 </p>
             ) : (
                 <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-gray-700/50 pb-4">
+                    <CardHeader className="flex flex-col gap-3 space-y-0 border-b border-gray-700/50 pb-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
                             <Users className="h-5 w-5 text-teal-400" />
                             <div>
@@ -120,12 +120,13 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                                 </CardDescription>
                             </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <Badge>cluster</Badge>
                             <Badge variant="outline">C-suite</Badge>
                         </div>
                     </CardHeader>
-                    <CardContent className="pt-4">
+                    <CardContent className="min-w-0 pt-4">
+                        <div className="hidden md:block">
                         <Table>
                             <TableHeader>
                                 <TableRow className="border-gray-700 hover:bg-transparent">
@@ -165,6 +166,23 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                                 ))}
                             </TableBody>
                         </Table>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 md:hidden">
+                            {signals.map((signal, index) => (
+                                <article className="min-w-0 rounded-lg border border-gray-700/50 bg-gray-900/50 p-4 break-words" key={index}>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Badge variant={signalTone(signal.signal)}>{formatRecordValue(signal.signal)}</Badge>
+                                        <span className="ml-auto text-sm font-semibold text-gray-100">{moneyText(signal.value ?? signal.total_value)}</span>
+                                    </div>
+                                    <div className="mt-3 text-sm font-medium text-gray-200">{formatRecordValue(signal.insider)}</div>
+                                    {signal.officer_title ?? signal.role ? (
+                                        <div className="text-xs text-gray-500">{formatRecordValue(signal.officer_title ?? signal.role)}</div>
+                                    ) : null}
+                                    <div className="mt-1 text-xs text-gray-500">{formatRecordValue(signal.date ?? signal.window_start)}</div>
+                                    <div className="mt-2 text-sm leading-6 text-gray-400"><span className="line-clamp-3">{formatRecordValue(signal.detail)}</span></div>
+                                </article>
+                            ))}
+                        </div>
                     </CardContent>
                 </Card>
             )}
