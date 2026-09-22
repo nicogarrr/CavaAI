@@ -10788,6 +10788,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "idempotency-key"?: string | null;
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
                 "x-cavaai-timestamp"?: string | null;

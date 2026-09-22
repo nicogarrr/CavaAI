@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import Company
+from app.services.workflow_run_service import WorkflowEnvelope, begin_run
 from app.workflows.catalog import WORKFLOW_CATALOG
 
 router = APIRouter()
@@ -28,33 +29,76 @@ def get_workflow(name: str) -> dict:
     return workflow
 
 
+def _replay_response(envelope: WorkflowEnvelope, workflow: dict, ticker: str | None) -> dict:
+    """Stored result for an idempotent re-delivery; the work does not run twice."""
+    stored = dict(envelope.run.result_payload or {})
+    return {
+        **stored,
+        "run_id": envelope.run.id,
+        "idempotent_replay": True,
+        "steps": workflow["steps"],
+        "estimated_minutes": 0,
+        "workflow": workflow["name"],
+        "ticker": ticker,
+    }
+
+
 @router.post("/{name}/run")
-async def run_workflow(name: str, payload: WorkflowRunRequest, db: Session = Depends(get_db)) -> dict:
+async def run_workflow(
+    name: str,
+    payload: WorkflowRunRequest,
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None),
+) -> dict:
     workflow = next((w for w in WORKFLOW_CATALOG if w["name"] == name), None)
     if not workflow:
         raise HTTPException(status_code=404, detail=f"Workflow '{name}' not found")
+
+    key = idempotency_key or payload.params.get("idempotency_key")
+
+    def open_envelope(input_payload: dict) -> WorkflowEnvelope:
+        return begin_run(
+            db,
+            name,
+            execution_mode=workflow.get("execution_mode"),
+            input_payload=input_payload,
+            idempotency_key=key,
+        )
 
     if name == "GenerateThesisWorkflow" and payload.ticker:
         ticker = payload.ticker.upper()
         company = db.scalar(select(Company).where(Company.ticker == ticker))
         if not company:
             raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
+        envelope = open_envelope({"ticker": ticker, "params": payload.params})
+        if envelope.replayed:
+            return _replay_response(envelope, workflow, ticker)
         try:
             from app.services.thesis_service import ThesisService
-            thesis = ThesisService().generate(db, ticker, force_new_version=True)
-            return {
-                "status": "completed",
-                "workflow": name,
-                "ticker": ticker,
-                "result": {
+
+            def generate() -> dict:
+                thesis = ThesisService().generate(db, ticker, force_new_version=True)
+                return {
                     "thesis_id": thesis.id,
                     "version": thesis.version,
                     "status": thesis.status,
                     "rating": thesis.rating,
-                },
+                }
+
+            # Un solo paso ejecutado: la generacion es una transaccion sincrona.
+            result = envelope.record_step(1, "generate_thesis", generate)
+            envelope.finish({"status": "completed", "result": result})
+            return {
+                "status": "completed",
+                "workflow": name,
+                "ticker": ticker,
+                "run_id": envelope.run.id,
+                "result": result,
                 "steps": workflow["steps"],
                 "estimated_minutes": 0,
             }
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -62,20 +106,30 @@ async def run_workflow(name: str, payload: WorkflowRunRequest, db: Session = Dep
         from app.schemas import NewsFeedItem
         from app.services.news_service import NewsService
 
+        envelope = open_envelope({"ticker": payload.ticker, "params": payload.params})
+        if envelope.replayed:
+            return _replay_response(envelope, workflow, payload.ticker)
         items = [NewsFeedItem.model_validate(item) for item in payload.params["news_items"]]
-        result = NewsService().ingest_news_items(
-            db,
-            items,
-            payload.params.get("source", "daily_research_feed"),
-        )
+
+        def ingest() -> dict:
+            result = NewsService().ingest_news_items(
+                db,
+                items,
+                payload.params.get("source", "daily_research_feed"),
+            )
+            return result.model_dump(mode="json")
+
+        result = envelope.record_step(1, "ingest_news_items", ingest)
+        envelope.finish({"status": "completed", "result": result})
         return {
             "status": "completed",
             "workflow": name,
             "ticker": payload.ticker,
+            "run_id": envelope.run.id,
             "message": "Daily research news ingestion completed.",
             "steps": workflow["steps"],
             "estimated_minutes": 0,
-            "result": result.model_dump(mode="json"),
+            "result": result,
         }
 
     if name == "EarningsWorkflow" and payload.ticker:
@@ -117,29 +171,43 @@ async def run_workflow(name: str, payload: WorkflowRunRequest, db: Session = Dep
                 }
             }
 
+        envelope = open_envelope({"ticker": ticker, "params": payload.params})
+        if envelope.replayed:
+            return _replay_response(envelope, workflow, ticker)
         maf_result = await NativeMAFWorkflowRunner(
             "EarningsWorkflow",
             [
                 NativeMAFStep("load_earnings_context", load_context),
                 NativeMAFStep("execute_earnings_review", execute_review),
             ],
+            recorder=envelope.record_step,
         ).run({"ticker": ticker})
         run = maf_result["run"]
+        result = {
+            "earnings_run_id": run["earnings_run_id"],
+            "thesis_change_id": run["thesis_change_id"],
+            "documents": run["documents"],
+            "metrics": run["metrics"],
+            "guidance_changes": run["guidance_changes"],
+        }
+        if run["status"] == "completed":
+            envelope.finish({"status": "completed", "result": result})
+        else:
+            envelope.run.status = "failed"
+            envelope.run.error_message = (run["error"] or "Earnings workflow failed")[:1000]
+            from app.services.workflow_run_service import _safe_commit
+
+            _safe_commit(db, "earnings run failed")
         return {
             "status": run["status"],
             "workflow": name,
             "execution_mode": maf_result["execution_mode"],
             "ticker": ticker,
+            "run_id": envelope.run.id,
             "message": run["error"] or "Earnings workflow completed.",
             "steps": workflow["steps"],
             "estimated_minutes": 0,
-            "result": {
-                "earnings_run_id": run["earnings_run_id"],
-                "thesis_change_id": run["thesis_change_id"],
-                "documents": run["documents"],
-                "metrics": run["metrics"],
-                "guidance_changes": run["guidance_changes"],
-            },
+            "result": result,
         }
 
     if name == "RedTeamWorkflow" and payload.ticker:
@@ -164,27 +232,34 @@ async def run_workflow(name: str, payload: WorkflowRunRequest, db: Session = Dep
                 }
             }
 
+        envelope = open_envelope({"ticker": ticker, "params": payload.params})
+        if envelope.replayed:
+            return _replay_response(envelope, workflow, ticker)
         maf_result = await NativeMAFWorkflowRunner(
             "RedTeamWorkflow",
             [
                 NativeMAFStep("load_review_evidence", load_evidence),
                 NativeMAFStep("execute_adversarial_review", execute_red_team),
             ],
+            recorder=envelope.record_step,
         ).run({"ticker": ticker})
         run = maf_result["run"]
+        result = {
+            "red_team_run_id": run["red_team_run_id"],
+            "score": run["score"],
+            "findings": run["findings"],
+        }
+        envelope.finish({"status": "completed", "result": result})
         return {
             "status": run["status"],
             "workflow": name,
             "execution_mode": maf_result["execution_mode"],
             "ticker": ticker,
+            "run_id": envelope.run.id,
             "message": "Red-team workflow completed.",
             "steps": workflow["steps"],
             "estimated_minutes": 0,
-            "result": {
-                "red_team_run_id": run["red_team_run_id"],
-                "score": run["score"],
-                "findings": run["findings"],
-            },
+            "result": result,
         }
 
     # Verdad por encima de apariencia: ningun worker generico consume una
