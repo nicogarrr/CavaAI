@@ -125,20 +125,20 @@ export default function AlertsManager() {
     };
 
     return (
-        <Card className="p-6 rounded-lg border border-gray-700 bg-gray-800/50">
-            <div className="flex items-center justify-between mb-4">
+        <Card className="p-4 sm:p-6 rounded-lg border border-gray-700 bg-gray-800/50">
+            <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                    <Bell className="h-5 w-5 text-teal-400" />
-                    <h2 className="text-xl font-semibold text-gray-200">Alertas en Tiempo Real</h2>
+                    <Bell className="h-5 w-5 shrink-0 text-teal-400" />
+                    <h2 className="text-lg sm:text-xl font-semibold text-gray-200">Alertas en Tiempo Real</h2>
                 </div>
                 <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
-                        <Button size="sm" className="gap-2">
+                        <Button size="sm" className="gap-2 min-h-[44px] px-4 text-sm sm:min-h-0 sm:text-xs">
                             <Plus className="h-4 w-4" />
                             Nueva Alerta
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="bg-gray-800 border-gray-700">
+                    <DialogContent className="bg-gray-800 border-gray-700 max-h-[90dvh] overflow-y-auto w-[calc(100vw-2rem)] sm:max-w-md">
                         <DialogHeader>
                             <DialogTitle className="text-gray-100">Crear Nueva Alerta</DialogTitle>
                             <DialogDescription className="text-gray-400">
@@ -153,7 +153,7 @@ export default function AlertsManager() {
                                     value={formData.symbol}
                                     onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
                                     placeholder="AAPL"
-                                    className="bg-gray-900 border-gray-600 text-gray-100"
+                                    className="bg-gray-900 border-gray-600 text-gray-100 h-11 text-base sm:h-9 sm:text-sm"
                                 />
                             </div>
                             <div>
@@ -162,7 +162,7 @@ export default function AlertsManager() {
                                     value={formData.type}
                                     onValueChange={(value: any) => setFormData({ ...formData, type: value })}
                                 >
-                                    <SelectTrigger className="bg-gray-900 border-gray-600 text-gray-100">
+                                    <SelectTrigger className="bg-gray-900 border-gray-600 text-gray-100 h-11 text-base sm:h-9 sm:text-sm">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent className="bg-gray-900 border-gray-600">
@@ -187,7 +187,7 @@ export default function AlertsManager() {
                                                 })
                                             }
                                         >
-                                            <SelectTrigger className="bg-gray-900 border-gray-600 text-gray-100">
+                                            <SelectTrigger className="bg-gray-900 border-gray-600 text-gray-100 h-11 text-base sm:h-9 sm:text-sm">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent className="bg-gray-900 border-gray-600">
@@ -214,12 +214,12 @@ export default function AlertsManager() {
                                                 })
                                             }
                                             placeholder={formData.type === 'price_change' ? "5" : "100.00"}
-                                            className="bg-gray-900 border-gray-600 text-gray-100"
+                                            className="bg-gray-900 border-gray-600 text-gray-100 h-11 text-base sm:h-9 sm:text-sm"
                                         />
                                     </div>
                                 </>
                             )}
-                            <Button onClick={handleCreateAlert} className="w-full">
+                            <Button onClick={handleCreateAlert} className="w-full min-h-[44px] text-sm sm:text-xs">
                                 Crear Alerta
                             </Button>
                         </div>
@@ -240,32 +240,33 @@ export default function AlertsManager() {
                     {alerts.map((alert) => (
                         <div
                             key={alert._id}
-                            className="flex items-center justify-between p-4 bg-gray-900/50 rounded-lg border border-gray-700/50"
+                            className="flex flex-col gap-3 p-4 bg-gray-900/50 rounded-lg border border-gray-700/50 sm:flex-row sm:items-center sm:justify-between"
                         >
-                            <div className="flex-1">
-                                <p className="text-sm font-medium text-gray-200">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-200 break-words">
                                     {getAlertLabel(alert)}
                                 </p>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <div className="mt-1.5 flex flex-wrap items-center gap-2">
                                     <p className="text-xs text-gray-500">
                                         Creada: {new Date(alert.createdAt).toLocaleDateString('es-ES')}
                                     </p>
                                     {alert.symbol ? (
                                         <Link
                                             href={`/research/${encodeURIComponent(alert.symbol)}`}
-                                            className="text-xs text-teal-400 hover:text-teal-300"
+                                            className="inline-flex min-h-[44px] items-center px-2 py-2 text-xs text-teal-400 hover:text-teal-300 sm:min-h-0 sm:p-0"
                                         >
                                             Ver research →
                                         </Link>
                                     ) : null}
                                 </div>
                             </div>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center justify-end gap-1">
                                 <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleDeleteAlert(alert._id)}
-                                    className="text-gray-400 hover:text-red-400"
+                                    aria-label="Eliminar alerta"
+                                    className="min-h-[44px] min-w-[44px] text-gray-400 hover:text-red-400"
                                 >
                                     <Trash2 className="h-4 w-4" />
                                 </Button>

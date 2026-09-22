@@ -15,19 +15,19 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
     const positive = (snapshot.quote.change ?? 0) >= 0;
     return (
         <div className="space-y-6">
-            <section className="rounded-xl border border-gray-800 bg-[#111111] p-5">
-                <div className="flex flex-wrap items-start gap-4">
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h2 className="text-2xl font-semibold text-gray-100">{snapshot.name}</h2>
-                            <Badge variant="outline">{snapshot.ticker}</Badge>
-                        </div>
-                        <p className="mt-1 text-sm text-gray-500">
-                            {[snapshot.exchange, snapshot.currency].filter(Boolean).join(' · ') || 'Market metadata unavailable'}
-                        </p>
-                    </div>
-                    <div className="ml-auto text-right">
-                        <div className="text-3xl font-bold text-gray-100">{money(snapshot.quote.price)}</div>
+              <section className="rounded-xl border border-gray-800 bg-[#111111] p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
+                      <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                              <h2 className="text-xl font-semibold text-gray-100 sm:text-2xl">{snapshot.name}</h2>
+                              <Badge variant="outline">{snapshot.ticker}</Badge>
+                          </div>
+                          <p className="mt-1 text-sm text-gray-500">
+                              {[snapshot.exchange, snapshot.currency].filter(Boolean).join(' · ') || 'Market metadata unavailable'}
+                          </p>
+                      </div>
+                      <div className="sm:ml-auto sm:text-right">
+                          <div className="text-2xl font-bold text-gray-100 sm:text-3xl">{money(snapshot.quote.price)}</div>
                         <div className={positive ? 'text-teal-300' : 'text-red-300'}>
                             {snapshot.quote.change == null ? 'N/A' : `${positive ? '+' : ''}${snapshot.quote.change.toFixed(2)}`}
                             {' · '}
@@ -35,7 +35,7 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                         </div>
                     </div>
                 </div>
-                <div className="mt-5 grid gap-3 sm:grid-cols-4">
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[
                         ['Open', snapshot.quote.open],
                         ['High', snapshot.quote.high],
@@ -50,13 +50,13 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                 </div>
             </section>
 
-            <section className="rounded-xl border border-gray-800 bg-[#111111] p-5">
-                <div className="mb-4 flex items-center justify-between">
+            <section className="rounded-xl border border-gray-800 bg-[#111111] p-4 sm:p-5">
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="font-semibold text-gray-100">Price history · 1 year</h3>
-                    <Badge variant="outline">{snapshot.status}</Badge>
+                    <Badge variant="outline" className="w-fit">{snapshot.status}</Badge>
                 </div>
                 {snapshot.history.length ? (
-                    <div className="h-[420px] w-full">
+                    <div className="h-[280px] w-full sm:h-[420px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={snapshot.history}>
                                 <defs>

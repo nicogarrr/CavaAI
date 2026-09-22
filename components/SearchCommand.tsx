@@ -165,7 +165,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             ) : (
                 <button
                     onClick={() => setOpen(true)}
-                    className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-gray-400 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700 rounded-lg transition-all duration-200 backdrop-blur-sm"
+                    className="flex min-h-[44px] items-center gap-2 w-full px-4 py-2.5 text-sm text-gray-400 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700 rounded-lg transition-all duration-200 backdrop-blur-sm"
                     aria-label="Abrir buscador"
                 >
                     <Search className="w-4 h-4 text-gray-500" />

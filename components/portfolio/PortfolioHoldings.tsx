@@ -63,7 +63,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
 
   return (
     <Card className="bg-gray-800/50 border-gray-700">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+      <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle className="text-gray-100 flex items-center gap-2">
           Posiciones Actuales
         </CardTitle>
@@ -72,7 +72,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
           size="sm"
           onClick={handleRefresh}
           disabled={refreshing || currentHoldings.length === 0}
-          className="h-8 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+          className="h-11 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white sm:h-8"
         >
           <RefreshCw className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
           Actualizar Precios
@@ -85,7 +85,78 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
             <p className="text-sm text-gray-500 mt-2">Agrega tu primera transacción para comenzar</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Móvil: cards sin scroll horizontal */}
+            <div className="space-y-3 md:hidden">
+              {currentHoldings.map((holding) => {
+                const isPositive = holding.gain >= 0;
+                return (
+                  <div key={holding.symbol} className="rounded-xl border border-gray-700 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <Link
+                        href={`/research/${holding.symbol}`}
+                        className="font-mono text-lg font-bold text-teal-400 hover:text-teal-300"
+                      >
+                        {holding.symbol}
+                      </Link>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(holding.symbol)}
+                        disabled={deleting === holding.symbol}
+                        className="min-h-[44px] min-w-[44px] text-red-400 hover:text-red-300 hover:bg-red-950/20"
+                        title="Eliminar posición completa"
+                        aria-label={`Eliminar posición en ${holding.symbol}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <dl className="mt-3 space-y-1.5 text-sm">
+                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Cantidad</dt><dd className="text-gray-200">{holding.quantity.toFixed(2)}</dd></div>
+                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Promedio</dt><dd className="text-gray-200">{format(holding.avgPrice, holding.nativeCurrency)}</dd></div>
+                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Actual</dt><dd className="font-medium text-gray-200">{format(holding.currentPrice, holding.nativeCurrency)}</dd></div>
+                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Valor</dt><dd className="font-semibold text-gray-100">{holding.fxMissing ? 'FX missing' : format(holding.value, holding.baseCurrency)}</dd></div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-gray-500">G/P</dt>
+                        <dd className="flex items-center gap-2">
+                          <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            {holding.fxMissing ? 'N/A' : `${isPositive ? '+' : ''}${format(holding.gain, holding.baseCurrency)}`}
+                          </span>
+                          <Badge
+                            variant={isPositive ? 'default' : 'destructive'}
+                            className={`${isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
+                          >
+                            {isPositive ? '+' : ''}{holding.gainPercent.toFixed(2)}%
+                          </Badge>
+                        </dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-gray-500">Fiscal</dt>
+                        <dd>
+                          {holding.fiscalBucket ? (
+                            <Badge
+                              variant="outline"
+                              className={
+                                holding.fiscalBucket === 'largo_plazo'
+                                  ? 'border-blue-700 text-blue-300'
+                                  : 'border-amber-700 text-amber-300'
+                              }
+                            >
+                              {holding.fiscalBucket === 'largo_plazo' ? 'Largo plazo' : 'Corto plazo'}
+                              {holding.holdingDays !== null ? ` · ${holding.holdingDays}d` : ''}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-gray-600">N/D</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Escritorio: tabla completa */}
+            <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-gray-700">
@@ -182,7 +253,8 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                 })}
               </TableBody>
             </Table>
-          </div>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

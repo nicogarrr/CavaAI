@@ -20,35 +20,45 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
   ]);
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-100">Screener</h1>
-        <p className="text-sm text-gray-400 mt-1">Large caps líquidos con precios y market caps reales (Finnhub, caché 60s)</p>
+    <div className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-semibold break-words text-gray-100">Screener</h1>
+        <p className="mt-1 text-sm text-gray-400">Large caps líquidos con precios y market caps reales (Finnhub, caché 60s)</p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por sector">
         {SECTORES.map((s) => (
-          <Button key={s} asChild variant={sector === s ? 'default' : 'outline'} size="sm" className="rounded-md">
+          <Button key={s} asChild variant={sector === s ? 'default' : 'outline'} size="sm" className="min-h-[44px] min-w-[44px] rounded-md px-4">
             <Link href={`/screener?sector=${encodeURIComponent(s)}`}>{s}</Link>
           </Button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 border-gray-800">
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
+        <Card className="min-w-0 border-gray-800 lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Oportunidades — {sector}</CardTitle>
+            <CardTitle className="text-base break-words">Oportunidades — {sector}</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0 px-3 sm:px-6">
             {rows.length === 0 ? (
-              <div className="py-10 text-center text-gray-500">
-                No hay datos ahora mismo — el backend puede estar arrancando. Reintenta en 30s.
+              <div className="px-4 py-10 text-center">
+                <p className="text-sm text-gray-500 sm:text-base">
+                  No hay datos ahora mismo — el backend puede estar arrancando. Reintenta en 30s.
+                </p>
+                <Button asChild variant="outline" className="mt-4 min-h-[44px] px-5">
+                  <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>Reintentar</Link>
+                </Button>
               </div>
             ) : (
               <div className="overflow-x-auto">
+                {/*
+                  Misma <table> en el DOM en todos los viewports (accesibilidad y
+                  tests): en <md las filas se muestran como cards apiladas
+                  (display block + etiquetas por celda) y desde md como tabla.
+                */}
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-gray-400 border-b border-gray-800">
+                  <thead className="hidden md:table-header-group">
+                    <tr className="border-b border-gray-800 text-left text-gray-400">
                       <th className="pb-3 pr-4">Ticker</th>
                       <th className="pb-3 pr-4">Nombre</th>
                       <th className="pb-3 pr-4 text-right">Precio</th>
@@ -57,21 +67,39 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                       <th className="pb-3 text-right">Seguir</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="block space-y-3 md:table-row-group md:space-y-0">
                     {rows.map((r) => (
-                      <tr key={r.symbol} className="border-b border-gray-800/60 last:border-0 hover:bg-gray-800/30">
-                        <td className="py-3 pr-4 font-semibold text-gray-100">
-                          <Link href={`/research/${r.symbol}`} prefetch className="text-teal-300 hover:text-teal-200">{r.symbol}</Link>
+                      <tr key={r.symbol} className="block rounded-xl border border-gray-800 bg-gray-900/40 p-4 hover:bg-gray-800/30 md:table-row md:rounded-none md:border-0 md:border-b md:border-gray-800/60 md:bg-transparent md:p-0 md:last:border-0">
+                        <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4">
+                          <span className="text-xs text-gray-500 md:hidden">Ticker</span>
+                          <Link
+                            href={`/research/${r.symbol}`}
+                            prefetch
+                            className="inline-flex min-h-[44px] items-center font-semibold text-teal-300 hover:text-teal-200"
+                          >
+                            {r.symbol}
+                          </Link>
                         </td>
-                        <td className="py-3 pr-4 text-gray-300 max-w-[220px] truncate" title={r.name}><Link href={`/research/${r.symbol}`} prefetch className="hover:text-teal-200">{r.name}</Link></td>
-                        <td className="py-3 pr-4 text-right text-gray-200">${r.price.toFixed(2)}</td>
-                        <td className={`py-3 pr-4 text-right ${r.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {r.changePercent >= 0 ? '+' : ''}{r.changePercent.toFixed(2)}%
+                        <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4">
+                          <span className="shrink-0 text-xs text-gray-500 md:hidden">Nombre</span>
+                          <Link href={`/research/${r.symbol}`} prefetch className="max-w-[180px] truncate text-right text-gray-300 hover:text-teal-200 md:max-w-[220px] md:text-left" title={r.name}>{r.name}</Link>
                         </td>
-                        <td className="py-3 pr-4 text-right text-gray-300">
-                          ${(r.marketCap / 1e9).toFixed(1)}B
+                        <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
+                          <span className="text-xs text-gray-500 md:hidden">Precio</span>
+                          <span className="font-semibold text-gray-200">${r.price.toFixed(2)}</span>
                         </td>
-                        <td className="py-3 text-right">
+                        <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
+                          <span className="text-xs text-gray-500 md:hidden">Cambio sesión</span>
+                          <span className={`font-mono ${r.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {r.changePercent >= 0 ? '+' : ''}{r.changePercent.toFixed(2)}%
+                          </span>
+                        </td>
+                        <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
+                          <span className="text-xs text-gray-500 md:hidden">Market Cap</span>
+                          <span className="font-mono text-gray-300">${(r.marketCap / 1e9).toFixed(1)}B</span>
+                        </td>
+                        <td className="mt-2 flex items-center justify-between gap-3 border-t border-gray-800/60 pt-3 md:table-cell md:mt-0 md:border-0 md:py-3 md:pt-3 md:text-right">
+                          <span className="text-xs text-gray-500 md:hidden">Seguir</span>
                           <FollowButton symbol={r.symbol} company={r.name} />
                         </td>
                       </tr>
@@ -83,21 +111,21 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
           </CardContent>
         </Card>
 
-        <Card className="border-gray-800">
+        <Card className="min-w-0 border-gray-800">
           <CardHeader>
             <CardTitle className="text-base">Índices y macro</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {indices.map((i) => (
-                <div key={i.symbol} className="flex items-center justify-between">
-                  <span className="text-gray-300">{i.name}</span>
-                  <span className="text-gray-100 font-semibold">${i.price.toFixed(2)}</span>
+                <div key={i.symbol} className="flex min-w-0 items-center justify-between gap-3">
+                  <span className="min-w-0 flex-1 truncate text-gray-300">{i.name}</span>
+                  <span className="shrink-0 font-semibold text-gray-100">${i.price.toFixed(2)}</span>
                 </div>
               ))}
               {indices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}
             </div>
-            <p className="mt-4 text-xs text-gray-500">S&P 500, Nasdaq, Bitcoin, Oro, Plata — valores reales.</p>
+            <p className="mt-4 text-xs text-gray-500">S&amp;P 500, Nasdaq, Bitcoin, Oro, Plata — valores reales.</p>
           </CardContent>
         </Card>
       </div>

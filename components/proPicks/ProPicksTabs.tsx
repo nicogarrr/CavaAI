@@ -54,12 +54,12 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
     };
 
     return (
-        <Tabs defaultValue="picks" className="mt-6">
-            <TabsList className="inline-flex border border-gray-700 bg-gray-800 text-gray-400">
-                <TabsTrigger value="picks" className="data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
+        <Tabs defaultValue="picks" className="mt-6 w-full min-w-0">
+            <TabsList className="grid w-full grid-cols-2 border border-gray-700 bg-gray-800 text-gray-400 sm:inline-flex sm:w-auto">
+                <TabsTrigger value="picks" className="min-h-[44px] data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Picks IA
                 </TabsTrigger>
-                <TabsTrigger value="backtest" className="data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
+                <TabsTrigger value="backtest" className="min-h-[44px] data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Backtesting
                 </TabsTrigger>
             </TabsList>
@@ -69,7 +69,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
             </TabsContent>
 
             <TabsContent value="backtest" className="mt-6 space-y-4">
-                <Card className="flex flex-col gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4 md:flex-row md:items-center md:justify-between">
+                <Card className="flex min-w-0 flex-col gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4 md:flex-row md:items-center md:justify-between">
                     <StrategySelector
                         strategies={strategies}
                         currentStrategy={currentStrategy}
@@ -78,7 +78,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                     <Button
                         onClick={() => runBacktest(currentStrategy)}
                         disabled={loading}
-                        className="gap-2 bg-teal-600 hover:bg-teal-700"
+                        className="h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 md:w-auto"
                     >
                         {loading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -98,7 +98,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                         <Button
                             onClick={() => runBacktest(currentStrategy)}
                             disabled={loading}
-                            className="mt-4 gap-2 bg-teal-600 hover:bg-teal-700"
+                            className="mt-4 h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 sm:w-auto"
                         >
                             {loading ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />

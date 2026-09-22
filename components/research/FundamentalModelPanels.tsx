@@ -75,17 +75,34 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
         <span className="font-semibold text-gray-300">KPIs:</span> {model.framework.kpis.join(' · ')}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <ModelStat label={`${year5?.year ?? '5Y'} Revenue`} value={compactNumber(year5?.revenue)} />
         <ModelStat label={`${year5?.year ?? '5Y'} FCF`} value={compactNumber(year5?.free_cash_flow)} positive />
         <ModelStat label="FCF margin" value={percentage(year5?.fcf_margin)} />
         <ModelStat label="FCF / share" value={compactNumber(year5?.fcf_per_share)} positive />
       </div>
 
-      <div className="mt-5 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className="mt-5 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div>
           <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Bear / Base / Bull</div>
-          <div className="overflow-x-auto">
+          {/* Móvil: cards sin scroll horizontal */}
+          <div className="space-y-3 md:hidden">
+            {Object.entries(model.scenarios).map(([name, scenario]) => {
+              const point = scenario.terminal_year;
+              return (
+                <div key={name} className="rounded-lg border border-gray-800 p-3">
+                  <div className="font-semibold capitalize text-gray-200">{name}</div>
+                  <dl className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">Revenue</dt><dd className="text-gray-300">{compactNumber(point?.revenue)}</dd></div>
+                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">FCF</dt><dd className="text-gray-300">{compactNumber(point?.free_cash_flow)}</dd></div>
+                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">FCF margin</dt><dd className="text-gray-300">{percentage(point?.fcf_margin)}</dd></div>
+                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">Value/share</dt><dd className="font-semibold text-teal-200">{compactNumber(scenario.valuation?.value_per_share)}</dd></div>
+                  </dl>
+                </div>
+              );
+            })}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="text-xs uppercase text-gray-500">
                 <tr>
@@ -135,7 +152,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
         </div>
       </div>
 
-      <div className="mt-5 grid gap-6 xl:grid-cols-3">
+      <div className="mt-5 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-md border border-gray-800 p-3 text-sm">
           <div className="text-xs font-semibold uppercase text-gray-500">Quality of growth</div>
           <div className="mt-2 text-xl font-semibold capitalize text-gray-200">{model.quality_of_growth.quality}</div>
@@ -156,7 +173,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
         </div>
       </div>
 
-      <div className="mt-5 grid gap-6 xl:grid-cols-2">
+      <div className="mt-5 grid gap-6 lg:grid-cols-2">
         <div>
           <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">What must be true</div>
           <ul className="space-y-2 text-sm">
@@ -199,7 +216,7 @@ export function DecisionAndRealityPanel({
   reviews: ResearchExpectationReview[];
 }) {
   return (
-    <section className="grid gap-6 xl:grid-cols-2">
+    <section className="grid gap-6 lg:grid-cols-2">
       <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
           <GitBranch className="h-5 w-5 text-teal-300" />
@@ -250,7 +267,21 @@ export function DecisionAndRealityPanel({
         {reviews.length === 0 ? (
           <p className="text-sm text-gray-500">Ejecuta la comparación cuando existan forecasts persistidos.</p>
         ) : (
-          <div className="max-h-[560px] overflow-auto">
+          <>
+            {/* Móvil: cards sin scroll horizontal */}
+            <div className="max-h-[560px] space-y-3 overflow-auto md:hidden">
+              {reviews.slice(0, 40).map((review) => (
+                <div className="rounded-md border border-gray-800 p-3 text-sm" key={review.id}>
+                  <div className="font-medium text-gray-200">{review.fiscal_year} · {review.metric}</div>
+                  <div className="mt-2 space-y-1 text-xs text-gray-400">
+                    <div className="flex justify-between gap-2"><span>Esperado</span><span className="text-gray-200">{compactNumber(review.expected_value)}</span></div>
+                    <div className="flex justify-between gap-2"><span>Real</span><span className="text-gray-200">{compactNumber(review.actual_value)}</span></div>
+                  </div>
+                  <div className="mt-2"><Badge variant="outline">{review.status}</Badge></div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden max-h-[560px] overflow-auto md:block">
             <table className="w-full text-left text-sm">
               <thead className="text-xs uppercase text-gray-500">
                 <tr>
@@ -271,7 +302,8 @@ export function DecisionAndRealityPanel({
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </section>
