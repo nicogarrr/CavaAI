@@ -275,6 +275,17 @@ export type PortfolioIntelligence = {
     portfolio_components: Record<string, number>;
     positions: Array<{ ticker: string; weight: number; total_return: number | null; components: Record<string, number | null> }>;
   };
+  benchmark: {
+    symbol: string;
+    status: 'calculated' | 'missing_benchmark' | 'insufficient_overlap';
+    benchmark_twr: number | null;
+    benchmark_annualized: number | null;
+    portfolio_annualized: number | null;
+    alpha_annualized: number | null;
+    tracking_error: number | null;
+    information_ratio: number | null;
+    observations: number;
+  };
   coverage: { positions: number; positions_with_price_history: number; price_history_percent: number; portfolio_snapshots: number; snapshot_returns: number; snapshot_pricing_complete: number; limitations: string[] };
 };
 
