@@ -85,6 +85,11 @@ export default function ThesisMemo({ thesis }: { thesis: ResearchThesis }) {
         {generatedLabel ? (
           <span className="text-xs text-gray-500">generada el {generatedLabel}</span>
         ) : null}
+        {thesis.stale ? (
+          <span className="rounded-full border border-amber-800/60 bg-amber-950/40 px-2.5 py-0.5 text-xs font-medium text-amber-300">
+            Datos nuevos disponibles — considera regenerar
+          </span>
+        ) : null}
       </div>
 
       <p className="text-sm leading-6 text-gray-300">{thesis.executive_summary}</p>

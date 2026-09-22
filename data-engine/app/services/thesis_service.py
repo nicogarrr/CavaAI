@@ -6,7 +6,9 @@ import hashlib
 import json
 from decimal import Decimal
 
-from sqlalchemy import desc, select
+from datetime import datetime
+
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -34,6 +36,24 @@ class ThesisService:
     def __init__(self) -> None:
         self.valuation_service = ValuationService()
         self.auditor = SourceAuditor()
+
+    def data_freshness(self, db: Session, company_id: int) -> datetime | None:
+        """Marca temporal del dato mas reciente que alimenta una tesis.
+
+        Mira hechos financieros, precios, noticias y documentos de la empresa;
+        si alguno es posterior a thesis.created_at, la version esta obsoleta
+        (stale) y conviene regenerar.
+        """
+        from app.models import Document, FinancialFact, MarketPrice, NewsEvent
+
+        latest_seen: datetime | None = None
+        for model in (FinancialFact, MarketPrice, NewsEvent, Document):
+            stamp = db.scalar(
+                select(func.max(model.updated_at)).where(model.company_id == company_id)
+            )
+            if stamp is not None and (latest_seen is None or stamp > latest_seen):
+                latest_seen = stamp
+        return latest_seen
 
     def latest(self, db: Session, ticker: str) -> ThesisVersion | None:
         company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
