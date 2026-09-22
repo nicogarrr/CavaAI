@@ -4712,6 +4712,8 @@ export interface operations {
             query?: {
                 ticker?: string | null;
                 active?: boolean | null;
+                limit?: number;
+                offset?: number;
             };
             header?: {
                 "x-cavaai-user"?: string | null;
@@ -5052,7 +5054,10 @@ export interface operations {
     };
     list_companies_api_companies_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -6031,7 +6036,9 @@ export interface operations {
     };
     list_calculated_metrics_api_companies__ticker__metrics_calculated_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -6521,7 +6528,9 @@ export interface operations {
     };
     list_actions_api_corporate_actions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -7078,6 +7087,7 @@ export interface operations {
         parameters: {
             query?: {
                 collection_id?: number | null;
+                limit?: number;
             };
             header?: {
                 "x-cavaai-user"?: string | null;
@@ -8115,7 +8125,9 @@ export interface operations {
     };
     list_contributions_api_plan_contributions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -8373,7 +8385,10 @@ export interface operations {
     };
     list_fx_rates_api_portfolio_fx_rates_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -8637,7 +8652,10 @@ export interface operations {
     };
     positions_api_portfolio_positions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -8900,7 +8918,10 @@ export interface operations {
     };
     transactions_api_portfolio_transactions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
