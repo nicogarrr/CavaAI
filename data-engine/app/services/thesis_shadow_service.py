@@ -7,9 +7,10 @@ domain artifacts: the graph writes control state only, and this service
 reads the classic path's persisted outputs.
 
 Comparison contract (honest by construction):
-- graph_execution: did all 12 nodes commit in order under the checkpointer,
-  and does an idempotent re-invoke on the same thread add zero new nodes
-  (crash-safe retry).
+- graph_execution: did all 12 nodes commit in order under the checkpointer
+  (resuming the 6c approval interrupt with an explicit synthetic shadow
+  decision), and does an idempotent re-invoke on the same thread add zero
+  new nodes (crash-safe retry).
 - phase_mapping: every classic THESIS_PHASES phase maps to a graph node;
   unmapped phases are listed, never silently dropped.
 - status_semantics: graph lifecycle status vs the latest persisted
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.types import Command
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -76,7 +78,7 @@ class ThesisShadowService:
 
         with sqlite_checkpointer() as saver:
             graph = build_thesis_graph(checkpointer=saver)
-            first = graph.invoke(
+            initial = graph.invoke(
                 {
                     "ticker": company.ticker,
                     "tenant_id": tenant_external_id,
@@ -85,6 +87,19 @@ class ThesisShadowService:
                 },
                 config=config,
             )
+            # 6c: the run pauses at the real approval_gate interrupt. The
+            # shadow resumes with an explicit synthetic decision so the
+            # comparison still validates full traversal; the decision is
+            # recorded in control state only, never in domain artifacts.
+            snapshot = graph.get_state(config)
+            interrupted_at_gate = snapshot.next == ("approval_gate",)
+            if interrupted_at_gate:
+                first = graph.invoke(
+                    Command(resume={"decision": "approve", "actor": "shadow-auto-approve"}),
+                    config=config,
+                )
+            else:
+                first = initial
             # Idempotent re-delivery: a retry on the same thread must add
             # zero newly committed nodes.
             second = graph.invoke(
@@ -107,6 +122,10 @@ class ThesisShadowService:
             "final_status": first.get("status"),
             "retry_added_nodes": retry_new_nodes,
             "idempotent_retry": retry_new_nodes == [],
+            "approval_interrupt": {
+                "interrupted_at_gate": interrupted_at_gate,
+                "resume_decision": {"decision": "approve", "actor": "shadow-auto-approve"},
+            },
         }
 
         unmapped_phases = [phase for phase in THESIS_PHASES if phase not in PHASE_TO_NODE]

@@ -48,6 +48,7 @@ def test_shadow_runs_graph_and_records_comparison(db):
     assert execution["completed_nodes"] == list(THESIS_GRAPH_NODES)
     assert execution["final_status"] == "published"
     assert execution["idempotent_retry"] is True
+    assert execution["approval_interrupt"]["interrupted_at_gate"] is True
     assert execution["retry_added_nodes"] == []
     assert result["phase_mapping"]["complete"] is True
     assert result["status_semantics"]["classic_latest_version"] == {

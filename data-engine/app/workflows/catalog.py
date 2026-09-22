@@ -14,6 +14,19 @@ WORKFLOW_CATALOG = [
         ],
     },
     {
+        "name": "ThesisApprovalWorkflow",
+        "implementation_status": "implemented",
+        "truth": "POST /run executes the 6a thesis graph skeleton under a durable checkpointer until the real 6c approval_gate interrupt and returns thread_id + approval payload (status awaiting_approval). POST /decide resumes the same thread with approve/request_changes; approve routes to publish, request_changes ends the run as changes_requested. Artifacts are still skeleton references - no domain publish happens yet, and the classic ThesisService path remains the source of truth.",
+        "execution_mode": "pilot",
+        "input": "ticker",
+        "steps": [
+            "run_until_approval_gate",
+            "persist_checkpoint",
+            "await_human_decision",
+            "resume_with_decision",
+        ],
+    },
+    {
         "name": "GenerateThesisWorkflow",
         "implementation_status": "partial",
         "truth": "POST /run ejecuta ThesisService.generate() sincrono en UNA transaccion; la lista de pasos describe fases internas, no pasos ejecutados separados. Sin resume a mitad de flujo. Langfuse: shadow tracing opcional (flag LANGFUSE_ENABLED), solo metadatos, nunca fuente de verdad.",
