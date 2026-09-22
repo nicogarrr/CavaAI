@@ -65,3 +65,6 @@ data-engine/storage/raw/
 
 # IDE
 .idea/
+
+# Runtime artifacts written by tests/app (never source)
+/storage/
