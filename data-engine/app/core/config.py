@@ -95,9 +95,16 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
 
+    @property
+    def is_production(self) -> bool:
+        # APP_ENV canonico: acepta los alias 'production' y 'prod'. Toda
+        # decision de seguridad debe usar esta propiedad; comparar solo con
+        # 'production' dejaba 'prod' sin forzar auth firmada.
+        return self.app_env.lower() in {"production", "prod"}
+
     @model_validator(mode="after")
     def validate_production_security(self) -> Self:
-        if self.app_env.lower() not in {"production", "prod"}:
+        if not self.is_production:
             return self
         if not self.research_auth_secret:
             raise ValueError("RESEARCH_AUTH_SECRET is required in production")

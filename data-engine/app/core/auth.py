@@ -43,7 +43,7 @@ def get_research_principal(
     x_cavaai_signature: str | None = Header(default=None),
 ) -> ResearchPrincipal | None:
     settings = get_settings()
-    required = settings.research_auth_required or settings.app_env.lower() == "production"
+    required = settings.research_auth_required or settings.is_production
     supplied = all(
         [x_cavaai_user, x_cavaai_tenant, x_cavaai_timestamp, x_cavaai_signature]
     )
