@@ -182,3 +182,45 @@ def test_ranking_dependencies_are_included_in_result_quality():
         assert missing_result["coverage_percent"] == 50
         assert missing_result["missing_fields"] == ["quality_score"]
         assert response["results"][0]["ticker"] == "COMP"
+
+
+def test_screen_query_count_is_constant_in_company_count():
+    """The screener evaluates every company; its query count must not grow
+    with the company count (2 queries per company became 2 total)."""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        tenant = Tenant(external_id="screen-count", name="Screen count")
+        db.add(tenant)
+        db.flush()
+        db.info["tenant_id"] = tenant.id
+        for index in range(6):
+            company = _company(f"C{index:02d}")
+            db.add(company)
+            db.flush()
+            _metric(db, company, "roic", "0.18")
+            _fact(db, company, "free_cash_flow", "10", 2024)
+            _fact(db, company, "free_cash_flow", "20", 2025)
+        db.commit()
+
+        from sqlalchemy import event
+
+        statements = []
+
+        def listener(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", listener)
+        try:
+            result = ScreenerService().run(
+                db,
+                criteria=[{"left": "roic", "operator": ">", "right": "0.05"}],
+            )
+        finally:
+            event.remove(engine, "before_cursor_execute", listener)
+
+        assert result["results"]
+        metric_queries = [s for s in statements if "calculated_metrics" in s]
+        fact_queries = [s for s in statements if "financial_facts" in s]
+        assert len(metric_queries) == 1
+        assert len(fact_queries) == 1
