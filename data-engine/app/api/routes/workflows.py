@@ -107,6 +107,33 @@ async def run_workflow(
             "estimated_minutes": 0,
         }
 
+    if name == "ThesisApprovalWorkflow" and payload.ticker:
+        from app.services.thesis_graph_approval_service import ThesisGraphApprovalService
+
+        ticker = payload.ticker.upper()
+        if not db.scalar(select(Company).where(Company.ticker == ticker)):
+            raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
+        result = ThesisGraphApprovalService().start(
+            db,
+            ticker=ticker,
+            idempotency_key=key,
+        )
+        run_id = db.scalar(
+            select(WorkflowRun.id)
+            .where(WorkflowRun.workflow_name == name)
+            .order_by(WorkflowRun.id.desc())
+            .limit(1)
+        )
+        return {
+            "status": result.get("status"),
+            "workflow": name,
+            "ticker": ticker,
+            "run_id": run_id,
+            "result": result,
+            "steps": workflow["steps"],
+            "estimated_minutes": 0,
+        }
+
     if name == "GenerateThesisWorkflow" and payload.ticker:
         ticker = payload.ticker.upper()
         company = db.scalar(select(Company).where(Company.ticker == ticker))
@@ -318,3 +345,37 @@ async def run_workflow(
         "steps": workflow["steps"],
         "estimated_minutes": 0,
     }
+
+
+class WorkflowDecisionRequest(BaseModel):
+    thread_id: str
+    decision: str
+    notes: str | None = None
+
+
+@router.post("/{name}/decide")
+def decide_workflow(
+    name: str,
+    payload: WorkflowDecisionRequest,
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None),
+) -> dict:
+    """Resume a paused workflow with a human decision (6c approval gate)."""
+    if name != "ThesisApprovalWorkflow":
+        raise HTTPException(status_code=404, detail=f"Workflow '{name}' does not accept decisions")
+    from app.services.thesis_graph_approval_service import DECISIONS, ThesisGraphApprovalService
+
+    if payload.decision not in DECISIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"decision must be one of {sorted(DECISIONS)}",
+        )
+    result = ThesisGraphApprovalService().decide(
+        db,
+        thread_id=payload.thread_id,
+        decision=payload.decision,
+        notes=payload.notes,
+        actor="api",
+        idempotency_key=idempotency_key,
+    )
+    return {"workflow": name, **result}

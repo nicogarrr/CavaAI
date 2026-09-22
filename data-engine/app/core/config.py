@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     market_price_max_age_days: int = Field(default=3, ge=0, le=30)
 
     database_url: str = "sqlite:///./portfolio_research_os.db"
+    thesis_graph_checkpoint_path: Path = Path("./storage/thesis_graph_checkpoints.db")
     redis_url: str = "redis://localhost:6379/0"
     qdrant_url: str = "http://localhost:6333"
     duckdb_path: Path = Path("./storage/analytics.duckdb")
