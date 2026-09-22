@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { SUPPORT_EMAIL } from '@/lib/config/brand';
 
 const faqs = [
@@ -41,6 +42,12 @@ export default function HelpTabs() {
             🤝 <strong>Nuestra Promesa:</strong> Cada pregunta importa. Cada principiante es bienvenido.
           </p>
         </div>
+        <p className="mt-4 text-sm text-gray-400">
+          ¿Quieres ver cómo analizamos y de dónde salen los datos?{' '}
+          <Link href="/metodologia" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">
+            Metodología y fuentes
+          </Link>
+        </p>
       </div>
 
       {/* Tabs */}
