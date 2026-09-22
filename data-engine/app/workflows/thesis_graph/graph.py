@@ -213,6 +213,127 @@ def _ensure_ingestion_complete_node(session_factory):
     return node
 
 
+def _build_fundamental_model_node(session_factory):
+    """Read-side deterministic node (stage 6d): latest fundamental model.
+
+    Records the latest persisted FundamentalModelVersion as the artifact
+    (version + input fingerprint prefix), or an honest ``model:none``.
+    The graph never writes model artifacts at this stage: the classic
+    ThesisService path builds and persists models.
+    """
+
+    def node(state: ThesisGraphState) -> dict:
+        artifacts = dict(state.get("artifacts") or {})
+        if "build_fundamental_model" in artifacts:
+            return {}
+        if session_factory is None:
+            artifacts["build_fundamental_model"] = "pending:build_fundamental_model"
+            return {
+                "artifacts": artifacts,
+                "completed_nodes": ["build_fundamental_model"],
+                "status": "running",
+            }
+        company_id = state.get("company_id")
+        if not company_id:
+            raise ValueError("build_fundamental_model requires company_id")
+        from sqlalchemy import desc, select
+
+        from app.models.entities import FundamentalModelVersion
+
+        with session_factory() as db:
+            model = db.scalar(
+                select(FundamentalModelVersion)
+                .where(FundamentalModelVersion.company_id == int(company_id))
+                .order_by(desc(FundamentalModelVersion.version))
+                .limit(1)
+            )
+        meta = dict(state.get("meta") or {})
+        if model is None:
+            artifacts["build_fundamental_model"] = "model:none"
+            meta["fundamental_model"] = None
+        else:
+            artifacts["build_fundamental_model"] = (
+                f"model:v{model.version}:{model.input_fingerprint[:12]}"
+            )
+            meta["fundamental_model"] = {
+                "version": model.version,
+                "status": model.status,
+                "publishable": model.publishable,
+                "framework_key": model.framework_key,
+            }
+        return {
+            "artifacts": artifacts,
+            "completed_nodes": ["build_fundamental_model"],
+            "status": "running",
+            "meta": meta,
+        }
+
+    node.__name__ = "build_fundamental_model"
+    return node
+
+
+def _deterministic_valuation_node(session_factory):
+    """Read-side deterministic node (stage 6d): latest valuation snapshot.
+
+    Records the latest persisted FundamentalValuationSnapshot id and
+    fingerprint, or an honest ``valuation:none``. The graph never computes
+    or writes valuations at this stage.
+    """
+
+    def node(state: ThesisGraphState) -> dict:
+        artifacts = dict(state.get("artifacts") or {})
+        if "deterministic_valuation" in artifacts:
+            return {}
+        if session_factory is None:
+            artifacts["deterministic_valuation"] = "pending:deterministic_valuation"
+            return {
+                "artifacts": artifacts,
+                "completed_nodes": ["deterministic_valuation"],
+                "status": "running",
+            }
+        company_id = state.get("company_id")
+        if not company_id:
+            raise ValueError("deterministic_valuation requires company_id")
+        from sqlalchemy import desc, select
+
+        from app.models.entities import FundamentalValuationSnapshot
+
+        with session_factory() as db:
+            snapshot = db.scalar(
+                select(FundamentalValuationSnapshot)
+                .where(FundamentalValuationSnapshot.company_id == int(company_id))
+                .order_by(
+                    desc(FundamentalValuationSnapshot.created_at),
+                    desc(FundamentalValuationSnapshot.id),
+                )
+                .limit(1)
+            )
+        meta = dict(state.get("meta") or {})
+        if snapshot is None:
+            artifacts["deterministic_valuation"] = "valuation:none"
+            meta["valuation_snapshot"] = None
+        else:
+            artifacts["deterministic_valuation"] = f"valuation:{snapshot.id}"
+            meta["valuation_snapshot"] = {
+                "id": snapshot.id,
+                "fingerprint": snapshot.valuation_snapshot_fingerprint[:12],
+                "current_price": (
+                    float(snapshot.current_price)
+                    if snapshot.current_price is not None
+                    else None
+                ),
+            }
+        return {
+            "artifacts": artifacts,
+            "completed_nodes": ["deterministic_valuation"],
+            "status": "running",
+            "meta": meta,
+        }
+
+    node.__name__ = "deterministic_valuation"
+    return node
+
+
 def _approval_gate_node(state: ThesisGraphState) -> dict:
     """Stage 6c: real approval interrupt with an idempotent resume contract.
 
@@ -279,6 +400,10 @@ def build_thesis_graph(checkpointer=None, session_factory=None):
             node = _freeze_input_snapshot_node()
         elif name == "ensure_ingestion_complete":
             node = _ensure_ingestion_complete_node(session_factory)
+        elif name == "build_fundamental_model":
+            node = _build_fundamental_model_node(session_factory)
+        elif name == "deterministic_valuation":
+            node = _deterministic_valuation_node(session_factory)
         else:
             node = _make_skeleton_node(name)
         graph.add_node(name, node)
