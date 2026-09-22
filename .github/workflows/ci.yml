@@ -176,7 +176,7 @@ jobs:
         run: python -m pip install -r data-engine/requirements.txt
       - name: Import backend app on ARM64
         working-directory: data-engine
-        run: python -c "import platform; from app.main import app; print('backend import OK on', platform.machine())"
+        run: python -c "import platform; from main import app; print('backend import OK on', platform.machine())"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
