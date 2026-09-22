@@ -17,15 +17,31 @@ from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
 
+# Exchange -> listing-market country. Best-effort fallback only: the owning
+# fact is issuer domicile, and positions without a known exchange are grouped
+# under "Unknown" rather than guessed.
 EXCHANGE_COUNTRY = {
     "NASDAQ": "United States",
     "NYSE": "United States",
     "AMEX": "United States",
+    "NYSEARCA": "United States",
     "LSE": "United Kingdom",
     "XETRA": "Germany",
+    "FWB": "Germany",
     "BME": "Spain",
+    "EPA": "France",
+    "EURONEXT": "Netherlands",
+    "BIT": "Italy",
+    "SIX": "Switzerland",
+    "STO": "Sweden",
     "TSX": "Canada",
+    "TSXV": "Canada",
     "TSE": "Japan",
+    "HKEX": "Hong Kong",
+    "ASX": "Australia",
+    "B3": "Brazil",
+    "NSE": "India",
+    "KRX": "South Korea",
 }
 
 
