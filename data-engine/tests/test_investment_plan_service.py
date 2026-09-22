@@ -1,0 +1,152 @@
+"""InvestmentPlanService contract tests.
+
+The plan is the user's savings discipline made measurable: one plan,
+idempotent contribution imports, expected-vs-actual tracking with an
+honest gap, and drift suggestions derived from real weights only.
+"""
+
+from datetime import date
+from decimal import Decimal
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.models.entities import Base
+from app.services.investment_plan_service import InvestmentPlanService
+
+
+@pytest.fixture
+def db():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.info["tenant_id"] = "tenant-test"
+        yield session
+
+
+def _plan(service, db, **overrides):
+    args = {
+        "monthly_contribution": Decimal("300"),
+        "start_date": date(2026, 1, 1),
+        "horizon_years": 30,
+        "target_allocations": [],
+    }
+    args.update(overrides)
+    return service.upsert_plan(db, **args)
+
+
+def test_no_plan_reports_absent_honestly(db):
+    service = InvestmentPlanService()
+    assert service.get_plan(db) is None
+    assert service.plan_metrics(db) == {"plan_exists": False}
+    assert service.list_contributions(db) == []
+    with pytest.raises(ValueError, match="create it first"):
+        service.add_contribution(db, date_=date(2026, 9, 1), amount=Decimal("300"))
+
+
+def test_upsert_keeps_single_plan_and_updates_in_place(db):
+    service = InvestmentPlanService()
+    first = _plan(service, db)
+    second = _plan(service, db, monthly_contribution=Decimal("450"))
+    assert first.id == second.id
+    assert service.get_plan(db).monthly_contribution == Decimal("450")
+
+
+def test_contribution_external_id_import_is_idempotent(db):
+    service = InvestmentPlanService()
+    _plan(service, db)
+    one = service.add_contribution(
+        db, date_=date(2026, 9, 1), amount=Decimal("300"), external_id="broker-1"
+    )
+    two = service.add_contribution(
+        db, date_=date(2026, 9, 1), amount=Decimal("300"), external_id="broker-1"
+    )
+    assert one.id == two.id
+    assert len(service.list_contributions(db)) == 1
+    assert service.delete_contribution(db, one.id) is True
+    assert service.delete_contribution(db, one.id) is False
+
+
+def test_plan_metrics_track_expected_vs_actual(db):
+    service = InvestmentPlanService()
+    _plan(service, db, monthly_contribution=Decimal("300"), start_date=date(2026, 7, 1))
+    service.add_contribution(db, date_=date(2026, 7, 5), amount=Decimal("300"))
+    service.add_contribution(db, date_=date(2026, 8, 5), amount=Decimal("300"))
+
+    metrics = service.plan_metrics(db)
+    assert metrics["plan_exists"] is True
+    today = date.today()
+    months = (today.year - 2026) * 12 + (today.month - 7)
+    assert metrics["months_elapsed"] == months
+    assert metrics["expected_contributions_base"] == pytest.approx(300 * months)
+    assert metrics["actual_contributions_base"] == 600.0
+    assert metrics["gap_base"] == pytest.approx(300 * months - 600)
+    assert metrics["on_track"] == (600 >= 300 * months)
+
+
+def test_drift_suggestions_follow_target_bands(db):
+    service = InvestmentPlanService()
+    _plan(
+        service, db,
+        target_allocations=[
+            {"kind": "sector", "label": "Tech", "target_pct": 60, "band_pct": 5},
+            {"kind": "asset_class", "label": "Cash", "target_pct": 40, "band_pct": 5},
+        ],
+    )
+    from app.models.entities import CashBalance, Company, Position
+
+    company = Company(
+        ticker="AAPL", name="Apple", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    db.add(
+        Position(
+            company_id=company.id, quantity=Decimal("10"), market_price=Decimal("100"),
+            currency="EUR", market_value_base=Decimal("1000"), as_of=date(2026, 9, 20),
+        )
+    )
+    db.add(CashBalance(currency="EUR", balance=Decimal("1000"), as_of=date(2026, 9, 20)))
+    db.commit()
+
+    drift = service.drift_analysis(db)
+    assert drift["plan_exists"] is True
+    assert drift["portfolio_value_base"] == pytest.approx(2000.0)
+    assert drift["current_weights"]["Tech"] == pytest.approx(50.0)
+    assert drift["current_weights"]["asset_class:Cash"] == pytest.approx(50.0)
+
+    assert drift["status"] == "ok"
+    assert drift["missing_fx"] == []
+    deviations = {d["label"]: d for d in drift["deviations"]}
+    assert deviations["Tech"]["within_band"] is False  # 50 vs 60+/-5
+    assert deviations["Cash"]["within_band"] is False  # 50 vs 40+/-5
+    suggestions = {(s["label"], s["direction"]): s for s in drift["suggestions"]}
+    assert suggestions[("Tech", "buy")]["amount_base"] == pytest.approx(200.0)
+    assert suggestions[("Cash", "sell")]["amount_base"] == pytest.approx(200.0)
+
+
+def test_drift_excludes_cash_without_fx_rate_instead_of_guessing_parity(db):
+    service = InvestmentPlanService()
+    _plan(service, db)
+    from app.models.entities import CashBalance
+
+    db.add(CashBalance(currency="EUR", balance=Decimal("500"), as_of=date(2026, 9, 20)))
+    db.add(CashBalance(currency="USD", balance=Decimal("900"), as_of=date(2026, 9, 20)))
+    db.commit()
+
+    drift = service.drift_analysis(db)
+    # USD cash has no stored rate: excluded from the base total, never par-guessed.
+    assert drift["status"] == "incomplete_fx"
+    assert drift["missing_fx"] == [
+        {
+            "kind": "cash",
+            "quote_currency": "USD",
+            "base_currency": "EUR",
+            "as_of": "2026-09-20",
+        }
+    ]
+    assert drift["cash_base"] == pytest.approx(500.0)
+    assert drift["portfolio_value_base"] == pytest.approx(500.0)

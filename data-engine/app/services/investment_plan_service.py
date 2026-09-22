@@ -160,6 +160,7 @@ class InvestmentPlanService:
         cash_rows = db.scalars(select(CashBalance)).all()
 
         cash_total = Decimal("0")
+        missing_fx: list[dict] = []
         for row in cash_rows:
             rate = self.fx.rate(
                 db,
@@ -167,13 +168,27 @@ class InvestmentPlanService:
                 base_currency=portfolio.base_currency,
                 as_of=date.today(),
             )
-            cash_total += row.balance if rate is None else row.balance * rate
+            if rate is None:
+                # Never count unpriced FX at par: exclude and report, same
+                # honesty contract as RiskService.dashboard.
+                missing_fx.append(
+                    {
+                        "kind": "cash",
+                        "quote_currency": row.currency,
+                        "base_currency": portfolio.base_currency,
+                        "as_of": row.as_of.isoformat(),
+                    }
+                )
+                continue
+            cash_total += row.balance * rate
 
         by_label: dict[str, Decimal] = {}
+        positions_total = Decimal("0")
         for position, company in positions:
             value = Decimal(position.market_value_base or 0)
             if value <= 0:
                 continue
+            positions_total += value
             by_label[company.sector or "Unknown"] = (
                 by_label.get(company.sector or "Unknown", Decimal("0")) + value
             )
@@ -182,7 +197,10 @@ class InvestmentPlanService:
             )
         by_label["asset_class:Cash"] = cash_total
 
-        total = sum(by_label.values(), Decimal("0"))
+        # The portfolio total counts each euro once: sector and ticker are two
+        # views of the same positions, so summing every label would double the
+        # invested value and distort every weight, deviation and suggestion.
+        total = positions_total + cash_total
         current_weights = {
             label: float((value / total * 100).quantize(Decimal("0.01")))
             for label, value in by_label.items()
@@ -195,7 +213,10 @@ class InvestmentPlanService:
         for target in targets:
             kind = target.get("kind", "sector")
             label = target.get("label", "")
-            key = label if kind != "ticker" else f"ticker:{label}"
+            # Weights are keyed sector name / ticker:X / asset_class:Y; the
+            # lookup must use the same namespacing or every non-sector target
+            # silently reads 0 and suggests buying from nothing.
+            key = label if kind == "sector" else f"{kind}:{label}"
             target_pct = Decimal(str(target.get("target_pct", 0)))
             band_pct = Decimal(str(target.get("band_pct", DEFAULT_BAND)))
             current = Decimal(str(current_weights.get(key, 0)))
@@ -238,8 +259,10 @@ class InvestmentPlanService:
 
         return {
             "plan_exists": True,
+            "status": "incomplete_fx" if missing_fx else "ok",
             "portfolio_value_base": float(total.quantize(Decimal("0.01"))),
             "cash_base": float(cash_total.quantize(Decimal("0.01"))),
+            "missing_fx": missing_fx,
             "current_weights": current_weights,
             "deviations": deviations,
             "suggestions": suggestions,
