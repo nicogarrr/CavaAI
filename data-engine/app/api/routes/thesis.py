@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Company, ThesisSection, ThesisVersion
+from app.models import Company, ThesisDiff, ThesisSection, ThesisVersion
 from app.schemas import ThesisGenerateRequest, ThesisGraphOut, ThesisOut
 from app.services.thesis_graph_service import ThesisGraphService
+from app.services.thesis_memo import build_memo_markdown
 from app.services.thesis_service import ThesisService
 
 router = APIRouter()
@@ -53,6 +55,80 @@ def thesis_versions(
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
+    )
+
+
+@router.get("/{ticker}/history")
+def thesis_history(ticker: str, db: Session = Depends(get_db)) -> dict:
+    """Historial de versiones/aprobaciones: que cambio, cuando y con que resultado.
+
+    Solo lectura de lo persistido (versions + diffs). El "quien" no se
+    registra hoy: el historial muestra estado, fecha y resumen del cambio,
+    sin inventar actores.
+    """
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    versions = list(
+        db.scalars(
+            select(ThesisVersion)
+            .where(ThesisVersion.company_id == company.id)
+            .order_by(desc(ThesisVersion.version))
+            .limit(50)
+        ).all()
+    )
+    diffs = {
+        diff.to_version_id: diff
+        for diff in db.scalars(
+            select(ThesisDiff).where(ThesisDiff.company_id == company.id)
+        ).all()
+        if diff.to_version_id is not None
+    }
+    items = []
+    for version in versions:
+        diff = diffs.get(version.id)
+        items.append(
+            {
+                "id": version.id,
+                "version": version.version,
+                "status": version.status,
+                "rating": version.rating,
+                "red_team_score": version.red_team_score,
+                "data_confidence_score": version.data_confidence_score,
+                "created_at": version.created_at.isoformat(),
+                "updated_at": version.updated_at.isoformat(),
+                "diff": (
+                    {
+                        "change_summary": diff.change_summary,
+                        "affected_assumptions": diff.affected_assumptions,
+                        "rating_changed": diff.rating_changed,
+                        "created_at": diff.created_at.isoformat(),
+                    }
+                    if diff
+                    else None
+                ),
+            }
+        )
+    return {"ticker": company.ticker, "count": len(items), "history": items}
+
+
+@router.get("/{ticker}/memo.md", response_class=PlainTextResponse)
+def thesis_memo(ticker: str, db: Session = Depends(get_db)) -> PlainTextResponse:
+    """Memo Markdown descargable de la ultima tesis persistida."""
+    service = ThesisService()
+    thesis = service.latest(db, ticker)
+    if not thesis:
+        raise HTTPException(status_code=404, detail="No thesis for ticker")
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    latest_data_at = service.data_freshness(db, thesis.company_id)
+    stale = latest_data_at is not None and latest_data_at > thesis.updated_at
+    markdown = build_memo_markdown(db, company, thesis, stale=stale, latest_data_at=latest_data_at)
+    return PlainTextResponse(
+        markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="tesis-{company.ticker.lower()}-v{thesis.version}.md"'
+        },
     )
 
 
