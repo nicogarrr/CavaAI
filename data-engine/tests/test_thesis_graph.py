@@ -35,7 +35,13 @@ def test_full_run_records_all_nodes_in_order():
         result = _resume_approve(graph, "thesis:t1:c1:fp1")
     assert result["completed_nodes"] == list(THESIS_GRAPH_NODES)
     assert result["status"] == "published"
-    assert all(ref == f"pending:{name}" for name, ref in result["artifacts"].items())
+    # freeze_input_snapshot is a real deterministic node (6d) and writes a
+    # sha256 ref; the rest stay skeleton references at this stage.
+    for name, ref in result["artifacts"].items():
+        if name == "freeze_input_snapshot":
+            assert ref.startswith("sha256:")
+        else:
+            assert ref == f"pending:{name}"
 
 
 def test_crash_resume_skips_committed_nodes():
