@@ -1,0 +1,36 @@
+# Imagen de produccion para Oracle Ampere A1 (ARM64, Always Free).
+#
+# Diferencia con Dockerfile (dev): torch se instala primero desde el indice
+# CPU de PyTorch. sentence-transformers/transformers arrastran torch; con el
+# indice por defecto eso son ~2-5 GB de wheels CUDA que en una VM CPU-only
+# solo ocupan disco (Always Free: 200 GB totales de boot volume). Las wheels
+# CPU de torch tienen soporte oficial linux/aarch64 desde torch 2.x.
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+# 1) torch CPU-only (linux/amd64 y linux/aarch64) antes que el resto.
+# 2) requirements: sentence-transformers vera torch ya satisfecho.
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install -r requirements.txt
+
+# quantstats va vendorizado dentro de data-engine/
+COPY . .
+
+EXPOSE 8000
+
+# Las migraciones son idempotentes (alembic upgrade head es seguro al
+# arrancar; con una sola replica no hay carreras).
+CMD ["sh", "-c", "python -m alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
