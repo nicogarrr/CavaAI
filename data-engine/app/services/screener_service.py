@@ -288,8 +288,40 @@ class ScreenerService:
         ranking = SafeFormula(ranking_formula) if ranking_formula else None
         definitions = CustomMetricService.active(db)
         results = []
-        for company in db.scalars(select(Company).order_by(Company.ticker)).all():
-            observations = self._observations(db, company)
+        companies = list(db.scalars(select(Company).order_by(Company.ticker)).all())
+        # Batch-fetch observations once: two queries per table instead of two
+        # queries per company (2N -> 2 on every screener run).
+        calculated_by_company: dict[int, list[CalculatedMetric]] = {}
+        for row in db.scalars(
+            select(CalculatedMetric)
+            .where(
+                CalculatedMetric.value.is_not(None),
+                CalculatedMetric.status == "ok",
+            )
+            .order_by(
+                CalculatedMetric.company_id,
+                CalculatedMetric.metric,
+                desc(CalculatedMetric.fiscal_year),
+                desc(CalculatedMetric.id),
+            )
+        ).all():
+            calculated_by_company.setdefault(row.company_id, []).append(row)
+        facts_by_company: dict[int, list[FinancialFact]] = {}
+        for row in db.scalars(
+            select(FinancialFact)
+            .order_by(
+                FinancialFact.company_id,
+                FinancialFact.metric,
+                desc(FinancialFact.fiscal_year),
+                desc(FinancialFact.id),
+            )
+        ).all():
+            facts_by_company.setdefault(row.company_id, []).append(row)
+        for company in companies:
+            observations = self._observations_from_rows(
+                calculated_by_company.get(company.id, []),
+                facts_by_company.get(company.id, []),
+            )
             self._custom_metrics(observations, definitions)
             values = {key: item.value for key, item in observations.items()}
             criterion_results = []
@@ -396,7 +428,6 @@ class ScreenerService:
         return {"left": left, "operator": operator_key, "right": right}
 
     def _observations(self, db: Session, company: Company) -> dict[str, Observation]:
-        result: dict[str, Observation] = {}
         calculated = db.scalars(
             select(CalculatedMetric)
             .where(
@@ -406,6 +437,21 @@ class ScreenerService:
             )
             .order_by(CalculatedMetric.metric, desc(CalculatedMetric.fiscal_year), desc(CalculatedMetric.id))
         ).all()
+        facts = list(
+            db.scalars(
+                select(FinancialFact)
+                .where(FinancialFact.company_id == company.id)
+                .order_by(FinancialFact.metric, desc(FinancialFact.fiscal_year), desc(FinancialFact.id))
+            ).all()
+        )
+        return self._observations_from_rows(calculated, facts)
+
+    def _observations_from_rows(
+        self,
+        calculated: list[CalculatedMetric],
+        facts: list[FinancialFact],
+    ) -> dict[str, Observation]:
+        result: dict[str, Observation] = {}
         for metric in calculated:
             if metric.metric not in result and metric.value is not None:
                 result[metric.metric] = Observation(
@@ -416,13 +462,6 @@ class ScreenerService:
                     "calculated_metric",
                     [metric.id],
                 )
-        facts = list(
-            db.scalars(
-                select(FinancialFact)
-                .where(FinancialFact.company_id == company.id)
-                .order_by(FinancialFact.metric, desc(FinancialFact.fiscal_year), desc(FinancialFact.id))
-            ).all()
-        )
         by_metric: dict[str, list[FinancialFact]] = {}
         for fact in facts:
             by_metric.setdefault(fact.metric, []).append(fact)
