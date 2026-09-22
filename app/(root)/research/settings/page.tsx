@@ -135,6 +135,26 @@ export default async function ResearchSettingsPage() {
               <span className="text-gray-400">MAF version</span>
               <span className="font-mono font-semibold text-gray-200">{settings.maf_version}</span>
             </div>
+            <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
+              <span className="text-gray-400">LLM provider</span>
+              <span className="font-semibold text-gray-200">{settings.llm.provider}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
+              <span className="text-gray-400">LLM model</span>
+              <span className="font-mono font-semibold text-gray-200">{settings.llm.model ?? '—'}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
+              <span className="text-gray-400">LLM status</span>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                  settings.llm.configured
+                    ? 'border-teal-800 bg-teal-950/30 text-teal-300'
+                    : 'border-gray-700 bg-gray-900 text-gray-500'
+                }`}
+              >
+                {settings.llm.configured ? 'configured' : (settings.llm.reason ?? 'disabled').replaceAll('_', ' ')}
+              </span>
+            </div>
           </div>
         </div>
       </section>
