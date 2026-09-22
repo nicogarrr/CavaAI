@@ -6,11 +6,13 @@ Cache en memoria de 60s para no golpear Yahoo en cada carga de la home.
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 
 import httpx
 from fastapi import APIRouter
 
 from app.core.config import get_settings
+from app.services.provenance import SourceKind, coverage_for_age, provenance
 
 router = APIRouter()
 
@@ -30,7 +32,7 @@ _HEADERS = {
     "Accept": "application/json",
 }
 
-_cache: dict = {"at": 0.0, "items": []}
+_cache: dict = {"at": 0.0, "items": [], "fetched_at": None}
 _CACHE_TTL = 60.0
 
 
@@ -71,6 +73,7 @@ def market_indices() -> dict:
     now = time.monotonic()
     if now - _cache["at"] < _CACHE_TTL and _cache["items"]:
         items = _cache["items"]
+        fetched_at = _cache["fetched_at"]
     else:
         items = []
         headers = dict(_HEADERS)
@@ -82,8 +85,20 @@ def market_indices() -> dict:
                     items.append({**index, **quote})
         _cache["at"] = now
         _cache["items"] = items
+        fetched_at = datetime.now(UTC)
+        _cache["fetched_at"] = fetched_at
     return {
         "source": "yahoo_finance",
         "as_of": time.time(),
         "indices": items,
+        "provenance": provenance(
+            "Yahoo Finance",
+            SourceKind.UNOFFICIAL,
+            source_url="https://finance.yahoo.com/",
+            fetched_at=fetched_at,
+            coverage=coverage_for_age(
+                "yahoo_finance", fetched_at, partial=0 < len(items) < len(_INDEXES), empty=not items
+            ),
+            note="Fuente no oficial (agregador); no usar como precio autoritativo.",
+        ),
     }
