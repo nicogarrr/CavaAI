@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 from app.core.config import get_settings
 from app.services.connectors import form4 as form4_connector
+from app.services.provenance import Coverage, SourceKind, provenance
 
 CLUSTER_MIN_INSIDERS = 3
 CLUSTER_WINDOW_DAYS = 30
@@ -227,6 +228,13 @@ def get_signals_for_ticker(
             "buy_count": len(open_market_buys(transactions)),
             "signals": signals,
             "fetched_at": datetime.now(UTC).isoformat(),
+            "provenance": provenance(
+                "SEC EDGAR",
+                SourceKind.OFFICIAL,
+                source_url=f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={resolved_cik}&type=4",
+                coverage=Coverage.PARTIAL if errors else Coverage.OK,
+                note="Form 4 XML; codigo P = mercado abierto o privado.",
+            ),
         }
         if errors:
             result["filing_errors"] = errors

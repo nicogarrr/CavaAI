@@ -1,0 +1,113 @@
+"""P1a: provenance envelope — unit + contract tests."""
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from app.services.provenance import Coverage, SourceKind, coverage_for_age, provenance
+
+
+def test_provenance_block_shape():
+    block = provenance("SEC EDGAR", SourceKind.OFFICIAL, source_url="https://www.sec.gov/", coverage=Coverage.OK)
+    assert block["source"] == "SEC EDGAR"
+    assert block["source_kind"] == "official"
+    assert block["source_url"] == "https://www.sec.gov/"
+    assert block["coverage"] == "ok"
+    datetime.fromisoformat(block["fetched_at"])  # parses, real timestamp
+    assert "note" not in block
+
+
+def test_source_kind_tiers_are_distinct():
+    assert {k.value for k in SourceKind} == {"official", "issuer", "exchange", "unofficial"}
+    block = provenance("Yahoo Finance", SourceKind.UNOFFICIAL, note="fuente no oficial")
+    assert block["source_kind"] == "unofficial"
+    assert block["note"] == "fuente no oficial"
+
+
+def test_invalid_kind_rejected():
+    with pytest.raises(ValueError):
+        provenance("X", "authoritative")  # not a tier — must fail loudly
+
+
+def test_coverage_for_age():
+    now = datetime.now(UTC)
+    assert coverage_for_age("sec_form4", now - timedelta(minutes=5)) == Coverage.OK
+    assert coverage_for_age("sec_form4", now - timedelta(hours=2)) == Coverage.STALE
+    assert coverage_for_age("fred", now - timedelta(days=3)) == Coverage.OK
+    assert coverage_for_age("unknown_family", now - timedelta(hours=7)) == Coverage.STALE
+    assert coverage_for_age("sec_form4", now, partial=True) == Coverage.PARTIAL
+    assert coverage_for_age("sec_form4", now, empty=True) == Coverage.UNAVAILABLE
+
+
+# ---- Contract tests: endpoints surface the standard provenance block ----
+
+
+def test_insider_signals_carry_provenance_block(monkeypatch):
+    """Contract: /api/insider/signals result includes official SEC provenance."""
+    from app.services import insider_service
+    from app.services.connectors import form4 as form4_connector
+
+    monkeypatch.setattr(insider_service, "_cik_for_ticker", lambda ticker, client=None: "0001234567")
+    filing = {
+        "form": "4",
+        "accession_number": "0001234567-24-000001",
+        "filing_date": "2024-03-16",
+        "document_url": "https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/f4.xml",
+    }
+    monkeypatch.setattr(form4_connector, "recent_form4_filings", lambda cik, limit=20, client=None: [filing])
+    xml = """<?xml version="1.0"?>
+<ownershipDocument>
+  <issuer><issuerCik>0001234567</issuerCik><issuerName>Acme Corp</issuerName><issuerTradingSymbol>ACME</issuerTradingSymbol></issuer>
+  <reportingOwner><reportingOwnerId><rptOwnerCik>0001111111</rptOwnerCik><rptOwnerName>Jane CEO</rptOwnerName></reportingOwnerId>
+  <reportingOwnerRelationship><isOfficer>true</isOfficer><officerTitle>CEO</officerTitle></reportingOwnerRelationship></reportingOwner>
+  <nonDerivativeTable><nonDerivativeTransaction>
+    <transactionDate><value>2024-03-15</value></transactionDate>
+    <transactionCoding><transactionFormType>4</transactionFormType><transactionCode>P</transactionCode></transactionCoding>
+    <transactionAmounts><transactionShares><value>50000</value></transactionShares>
+    <transactionPricePerShare><value>10.0</value></transactionPricePerShare>
+    <transactionAcquiredDisposedCode><value>A</value></transactionAcquiredDisposedCode></transactionAmounts>
+  </nonDerivativeTransaction></nonDerivativeTable>
+</ownershipDocument>"""
+    result = insider_service.get_signals_for_ticker("ACME", fetcher=lambda f: xml)
+    assert result["status"] == "ok"
+    block = result["provenance"]
+    assert block["source"] == "SEC EDGAR"
+    assert block["source_kind"] == "official"
+    assert block["coverage"] == "ok"
+    assert block["source_url"].startswith("https://www.sec.gov/")
+    datetime.fromisoformat(block["fetched_at"])
+
+
+def test_market_indices_carry_unofficial_provenance(monkeypatch):
+    """Contract: /api/market/indices labels Yahoo as unofficial, real fetch time."""
+    from app.api.routes import market
+
+    monkeypatch.setattr(market, "_cache", {"at": 0.0, "items": [], "fetched_at": None})
+    monkeypatch.setattr(market, "_fetch_index", lambda client, symbol: {"price": 100.0, "change_pct": 0.1})
+
+    class _Client:
+        def __init__(self, **kw): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(market.httpx, "Client", _Client)
+    result = market.market_indices()
+    block = result["provenance"]
+    assert block["source_kind"] == "unofficial"
+    assert "no oficial" in block["note"]
+    assert block["coverage"] == "ok"
+    first_fetch = block["fetched_at"]
+    datetime.fromisoformat(first_fetch)
+
+    # cached serve keeps the ORIGINAL fetch time, never a fresh fabrication
+    result2 = market.market_indices()
+    assert result2["provenance"]["fetched_at"] == first_fetch
+
+    # partial coverage when some indices fail
+    monkeypatch.setattr(market, "_cache", {"at": 0.0, "items": [], "fetched_at": None})
+    monkeypatch.setattr(
+        market, "_fetch_index",
+        lambda client, symbol: {"price": 1.0, "change_pct": 0.0} if symbol == market._INDEXES[0]["symbol"] else None,
+    )
+    result3 = market.market_indices()
+    assert result3["provenance"]["coverage"] == "partial"

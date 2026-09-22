@@ -134,7 +134,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                                 <CardDescription className="mt-0.5 text-sm text-gray-500">
                                     {signals.length} señales · {formatRecordValue(initialResult.buy_count)} compras ·{' '}
                                     {formatRecordValue(initialResult.filings_scanned)} filings · datos al{' '}
-                                    {formatFetchedAt(initialResult.fetched_at)}
+                                    {formatFetchedAt((initialResult.provenance as Record<string, unknown> | undefined)?.fetched_at ?? initialResult.fetched_at)}
                                 </CardDescription>
                             </div>
                         </div>
