@@ -151,3 +151,64 @@ def test_ingestion_probe_skeleton_without_session_factory():
         graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:i3"))
         state = graph.get_state(_config("t:i3")).values
     assert state["artifacts"]["ensure_ingestion_complete"] == "pending:ensure_ingestion_complete"
+
+# --- build_fundamental_model / deterministic_valuation: read-side probes ---
+
+def _seed_model_and_valuation(db: Session, company_id: int) -> None:
+    from app.models.entities import FundamentalModelVersion, FundamentalValuationSnapshot
+
+    model = FundamentalModelVersion(
+        company_id=company_id, version=3, engine_version="e1", algorithm_version="a1",
+        framework_key="quality_compounder", horizon_years=5, status="final",
+        publishable=True, input_fingerprint="fp-input-0123456789",
+        forecast_fingerprint="fp-forecast", market_snapshot_fingerprint="fp-market",
+        valuation_snapshot_fingerprint="fp-valuation", scenario_probabilities={},
+        model_snapshot={},
+    )
+    db.add(model)
+    db.flush()
+    db.add(FundamentalValuationSnapshot(
+        model_version_id=model.id, company_id=company_id, current_price=200,
+        market_snapshot_fingerprint="fp-market",
+        valuation_snapshot_fingerprint="fp-valuation-0123", snapshot={},
+    ))
+    db.commit()
+
+
+def test_fundamental_model_probe_reads_latest(db):
+    company = _company(db)
+    _seed_model_and_valuation(db, company.id)
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:m1"))
+        state = graph.get_state(_config("t:m1")).values
+    assert state["artifacts"]["build_fundamental_model"] == "model:v3:fp-input-012"
+    assert state["meta"]["fundamental_model"] == {
+        "version": 3,
+        "status": "final",
+        "publishable": True,
+        "framework_key": "quality_compounder",
+    }
+    assert state["artifacts"]["deterministic_valuation"] == "valuation:1"
+    assert state["meta"]["valuation_snapshot"]["current_price"] == 200.0
+
+
+def test_model_and_valuation_probes_honest_none(db):
+    _company(db)
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:m2"))
+        state = graph.get_state(_config("t:m2")).values
+    assert state["artifacts"]["build_fundamental_model"] == "model:none"
+    assert state["meta"]["fundamental_model"] is None
+    assert state["artifacts"]["deterministic_valuation"] == "valuation:none"
+    assert state["meta"]["valuation_snapshot"] is None
+
+
+def test_model_and_valuation_probes_skeleton_without_session_factory():
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver)
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:m3"))
+        state = graph.get_state(_config("t:m3")).values
+    assert state["artifacts"]["build_fundamental_model"] == "pending:build_fundamental_model"
+    assert state["artifacts"]["deterministic_valuation"] == "pending:deterministic_valuation"

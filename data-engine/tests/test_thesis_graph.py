@@ -47,7 +47,7 @@ def test_full_run_records_all_nodes_in_order():
 def test_crash_resume_skips_committed_nodes():
     """A crash after node N, then re-invoking the same thread, must not
     re-execute committed nodes (checkpoint resume, not a fresh run)."""
-    crash_at = "deterministic_valuation"
+    crash_at = "draft_synthesis"  # still a skeleton node; deterministic_valuation is real (6d)
     executed: list[str] = []
 
     import app.workflows.thesis_graph.graph as graph_mod
