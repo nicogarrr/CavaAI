@@ -18,7 +18,7 @@
  * Ver SCORING_WEIGHTS: es la única fuente de verdad de los pesos.
  */
 
-import { getSectorAverages, type SectorAverages } from '@/lib/actions/sectorData.actions';
+import { getSectorAverages } from '@/lib/actions/sectorData.actions';
 
 /**
  * Pesos calibrados del scoring general. ÚNICA fuente de verdad:
@@ -245,7 +245,6 @@ export async function calculateAdvancedStockScore(
     const netMargin = getMetric('netProfitMarginTTM', 'netProfitMargin', 'profitMargin');
     const roe = getMetric('roeTTM', 'roe', 'returnOnEquity');
     const roa = getMetric('roaTTM', 'roa', 'returnOnAssets');
-    const operatingMargin = getMetric('operatingMarginTTM', 'operatingMargin');
 
     if (netMargin !== null) {
         const margin = Math.abs(netMargin) > 1 ? Math.abs(netMargin) / 100 : Math.abs(netMargin);

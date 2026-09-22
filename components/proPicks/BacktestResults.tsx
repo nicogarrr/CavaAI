@@ -2,7 +2,7 @@
 
 import { Card } from '@/components/ui/card';
 import { formatBacktestResult, type BacktestResult } from '@/lib/utils/backtesting';
-import { TrendingUp, TrendingDown, BarChart3, Target } from 'lucide-react';
+import { BarChart3, Target } from 'lucide-react';
 
 interface BacktestResultsProps {
     result: BacktestResult;

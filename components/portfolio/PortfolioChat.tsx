@@ -4,8 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Brain, MessageSquare, X, Send, User, Bot, Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { Brain, X, Send, User, Bot, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { chatWithPortfolio } from '@/lib/actions/chat.actions';
 import ReactMarkdown from 'react-markdown';
 
@@ -49,7 +48,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
             } else {
                 setMessages(prev => [...prev, { role: 'assistant', content: result.message || "Lo siento, hubo un error desconocido." }]);
             }
-        } catch (error) {
+        } catch {
             setMessages(prev => [...prev, { role: 'assistant', content: "Error de conexión." }]);
         } finally {
             setLoading(false);

@@ -157,7 +157,6 @@ export async function getInterestRates(): Promise<InterestRateData> {
         const response = await fetch(url, { next: { revalidate: 3600 } });
         
         if (response.ok) {
-          const data = await response.json();
           // Procesar datos de ECB según formato de la API
           // Esto depende de la estructura de la respuesta de Trading Economics
         }

@@ -116,7 +116,7 @@ export async function getCandles(symbol: string, from: number, to: number, resol
             return { s: 'no_data', c: [], t: [], o: [], h: [], l: [], v: [] };
         }
         return result;
-    } catch (e) {
+    } catch {
         // Si el plan no permite el recurso (403) u otro error, devolvemos sin datos para no romper la UI
         return { s: 'no_data', c: [], t: [], o: [], h: [], l: [], v: [] };
     }
@@ -385,7 +385,6 @@ export async function getTechnicalAnalysis(symbol: string, days = 252): Promise<
         const lows = candles.l;
 
         // Soporte y resistencia simples (últimos 60 días)
-        const recentPrices = prices.slice(-60);
         const recentHighs = highs.slice(-60);
         const recentLows = lows.slice(-60);
 
@@ -616,7 +615,7 @@ export async function getStockFinancialDataLight(symbol: string): Promise<{
         ]);
 
         return { quote, profile, metrics, priceTarget };
-    } catch (error) {
+    } catch {
         // Silently fail for light version
         return null;
     }
@@ -645,7 +644,7 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
                         // Revalidate every hour
                         const profile = await fetchJSON<any>(url, 3600);
                         return { sym, profile } as { sym: string; profile: any };
-                    } catch (e) {
+                    } catch {
                         // Silently handle Finnhub timeouts - expected with rate limits
                         return { sym, profile: null } as { sym: string; profile: any };
                     }
@@ -728,7 +727,7 @@ async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; 
                 return data;
             }
         }
-    } catch (error) {
+    } catch {
         console.log(`Finnhub quote failed for ${symbol}, trying Yahoo Finance...`);
     }
     
@@ -972,7 +971,6 @@ export async function getInstitutionalHoldings(symbol: string): Promise<Institut
             }));
 
         // Calculate total ownership percent
-        const totalShares = holders.reduce((sum, h) => sum + h.share, 0);
         const ownershipPercent = data.ownershipPercent || 0;
 
         return {
