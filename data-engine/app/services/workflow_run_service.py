@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.entities import WorkflowRun, WorkflowStepRun
+from app.services import tracing
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,24 @@ class WorkflowEnvelope:
         self.db = db
         self.run = run
         self.replayed = replayed
+        # Stage 3: shadow tracing. Inerte salvo flag + keys + muestreo.
+        self._tracer_token = None
+        if not replayed:
+            self.tracer = tracing.begin_trace(
+                run.workflow_name,
+                run_id=run.id,
+                metadata={
+                    "workflow_name": run.workflow_name,
+                    "run_id": run.id,
+                    "tenant_hash": tracing.tenant_hash(run.tenant_id),
+                    "execution_mode": run.execution_mode,
+                    "trigger": "api",
+                    "input_fingerprint": tracing.input_fingerprint(run.input_payload),
+                },
+            )
+            self._tracer_token = tracing.set_current_tracer(self.tracer)
+        else:
+            self.tracer = None
 
     def record_step(
         self,
@@ -69,8 +88,12 @@ class WorkflowEnvelope:
         )
         self.db.add(step)
         _safe_commit(self.db, f"step {step_name} start")
+        from contextlib import nullcontext
+
+        span = self.tracer.step(position, step_name) if self.tracer else nullcontext()
         try:
-            result = handler()
+            with span:
+                result = handler()
         except Exception as exc:
             step.status = "failed"
             step.error_class = type(exc).__name__
@@ -83,6 +106,11 @@ class WorkflowEnvelope:
             self.run.finished_at = _utcnow()
             self.db.add(self.run)
             _safe_commit(self.db, f"step {step_name} failure")
+            if self.tracer:
+                self.tracer.finish(status="failed", error_class=type(exc).__name__)
+                if self._tracer_token is not None:
+                    tracing.reset_current_tracer(self._tracer_token)
+                    self._tracer_token = None
             raise
         step.status = "succeeded"
         # Async handlers resolve to a coroutine here; only persist real dicts.
@@ -98,6 +126,11 @@ class WorkflowEnvelope:
         self.run.finished_at = _utcnow()
         self.db.add(self.run)
         _safe_commit(self.db, "run finish")
+        if self.tracer:
+            self.tracer.finish(status="succeeded")
+            if self._tracer_token is not None:
+                tracing.reset_current_tracer(self._tracer_token)
+                self._tracer_token = None
         return self.run
 
 

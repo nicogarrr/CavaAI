@@ -68,6 +68,17 @@ class Settings(BaseSettings):
     # Senales insider (Form 4 EDGAR): alerta Telegram 'insider buy' apagada
     # por defecto. Env: INSIDER_ALERTS_ENABLED.
     insider_alerts_enabled: bool = False
+    # Langfuse Cloud EU shadow tracing (stage 3): SOLO observabilidad.
+    # Apagado por defecto; nunca es fuente de verdad de negocio (eso es
+    # Postgres). Sin payloads: solo metadatos de la allowlist. Muestreo del
+    # 10% en corridas OK; los fallos se trazan siempre (buffer en memoria).
+    # Env: LANGFUSE_ENABLED / LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY /
+    # LANGFUSE_HOST / LANGFUSE_SAMPLE_RATE.
+    langfuse_enabled: bool = False
+    langfuse_public_key: str | None = Field(default=None, repr=False)
+    langfuse_secret_key: str | None = Field(default=None, repr=False)
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
     fred_api_key: str | None = None
     opencode_go_api_key: str | None = Field(default=None, repr=False)
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
