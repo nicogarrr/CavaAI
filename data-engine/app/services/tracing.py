@@ -88,6 +88,10 @@ METADATA_ALLOWLIST = {
     "cache_read_tokens",
     "artifact_ids",
     "item_count",
+    "prompt_name",
+    "prompt_version",
+    "prompt_hash",
+    "prompt_source",
 }
 
 
