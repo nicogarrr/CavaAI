@@ -14,6 +14,8 @@ from app.models.entities import (
     ConnectorState,
     CorporateAction,
     DividendRecord,
+    FundManager,
+    ManagerHolding,
     DailyBrief,
     Document,
     DocumentChunk,
