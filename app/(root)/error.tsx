@@ -4,6 +4,14 @@ import { useEffect } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+
+// En producción, un fallo de renderizado de Server Components llega como
+// "Minified React error #441" sin mensaje útil. La causa más común es que el
+// backend FastAPI (FMP_BACKEND_URL) no es alcanzable desde Vercel.
+function isBackendUnavailable(error: Error): boolean {
+  return error.message.includes('Minified React error #441');
+}
+
 export default function RootError({
   error,
   reset,
@@ -22,7 +30,9 @@ export default function RootError({
         <div className="flex-1">
           <h1 className="text-lg font-semibold text-gray-100">No se pudo completar la operación</h1>
           <p className="mt-2 text-sm leading-6 text-gray-300">
-            {error.message || 'Se produjo un error inesperado. Inténtalo de nuevo.'}
+            {isBackendUnavailable(error)
+              ? 'El motor de datos no está disponible ahora mismo. Si el backend se está arrancando, espera unos segundos y pulsa Reintentar.'
+              : error.message || 'Se produjo un error inesperado. Inténtalo de nuevo.'}
           </p>
           {error.digest ? <p className="mt-2 text-xs text-gray-500">Referencia: {error.digest}</p> : null}
           <Button className="mt-4" onClick={reset} type="button" variant="outline">
