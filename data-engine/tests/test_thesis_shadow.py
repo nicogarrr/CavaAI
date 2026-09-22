@@ -66,8 +66,65 @@ def test_shadow_without_classic_thesis_reports_divergence(db):
     _company(db)
     result = ThesisShadowService().run(db, ticker="AAPL")
     assert any("no persisted thesis version" in d for d in result["divergences"])
-    # The expected 6b skeleton divergence is always stated, not hidden.
-    assert any("expected at 6b" in d for d in result["divergences"])
+    # The expected 6d skeleton divergence is always stated, not hidden.
+    assert any("expected at 6d" in d for d in result["divergences"])
+
+
+def _seed_model_and_valuation(db: Session, company_id: int):
+    from app.models.entities import FundamentalModelVersion, FundamentalValuationSnapshot
+
+    model = FundamentalModelVersion(
+        company_id=company_id, version=3, engine_version="e1", algorithm_version="a1",
+        framework_key="quality_compounder", horizon_years=5, status="final",
+        publishable=True, input_fingerprint="fp-input-0123456789",
+        forecast_fingerprint="fp-forecast", market_snapshot_fingerprint="fp-market",
+        valuation_snapshot_fingerprint="fp-valuation", scenario_probabilities={},
+        model_snapshot={},
+    )
+    db.add(model)
+    db.flush()
+    db.add(FundamentalValuationSnapshot(
+        model_version_id=model.id, company_id=company_id, current_price=200,
+        market_snapshot_fingerprint="fp-market",
+        valuation_snapshot_fingerprint="fp-valuation-0123", snapshot={},
+    ))
+    db.commit()
+    return model
+
+
+def test_probe_comparison_matches_classic_state(db):
+    company = _company(db)
+    model = _seed_model_and_valuation(db, company.id)
+    db.add(ThesisVersion(company_id=company.id, version=1, status="published",
+                         thesis_markdown="# t", executive_summary="s"))
+    db.commit()
+    result = ThesisShadowService().run(db, ticker="AAPL")
+    probes = {entry["node"]: entry for entry in result["probe_comparison"]}
+    assert set(probes) == {
+        "resolve_company",
+        "ensure_ingestion_complete",
+        "build_fundamental_model",
+        "deterministic_valuation",
+    }
+    assert all(entry["status"] == "match" for entry in probes.values())
+    assert probes["resolve_company"]["graph_artifact"] == f"company:{company.id}"
+    assert probes["build_fundamental_model"]["graph_artifact"] == (
+        f"model:v{model.version}:{model.input_fingerprint[:12]}"
+    )
+    assert probes["deterministic_valuation"]["graph_artifact"].startswith("valuation:")
+    assert not any("diverged" in d for d in result["divergences"])
+
+
+def test_probe_comparison_honest_when_classic_state_absent(db):
+    _company(db)
+    result = ThesisShadowService().run(db, ticker="AAPL")
+    probes = {entry["node"]: entry for entry in result["probe_comparison"]}
+    assert all(entry["status"] == "match" for entry in probes.values())
+    assert probes["build_fundamental_model"]["graph_artifact"] == "model:none"
+    assert probes["deterministic_valuation"]["graph_artifact"] == "valuation:none"
+    assert probes["ensure_ingestion_complete"]["graph_artifact"] == (
+        "evidence:facts=0,prices=0,docs=0"
+    )
 
 
 def test_every_classic_phase_is_mapped():
