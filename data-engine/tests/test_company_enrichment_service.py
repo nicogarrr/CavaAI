@@ -1,0 +1,109 @@
+"""CompanyEnrichmentService contract tests.
+
+The catalogue seed is NOT the source of truth for display names:
+placeholder names/exchanges get enriched from the market-data API, good
+records are never touched, and unusable API payloads change nothing.
+"""
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.models.entities import Base, Company
+from app.services.company_enrichment_service import CompanyEnrichmentService
+
+
+@pytest.fixture
+def db():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+
+
+class _Resp:
+    def __init__(self, data, status=200):
+        self._data = data
+        self.status_code = status
+
+    def json(self):
+        return self._data
+
+
+class _Client:
+    def __init__(self, data):
+        self._data = data
+        self.calls = []
+
+    def get(self, url, params=None):
+        self.calls.append(url)
+        return _Resp(self._data)
+
+
+class _Settings:
+    finnhub_api_key = "test-key"
+
+
+def _company(db: Session, *, name: str, exchange: str = "NASDAQ", ticker: str = "XYZ") -> Company:
+    company = Company(
+        ticker=ticker, name=name, exchange=exchange, currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.commit()
+    return company
+
+
+def test_needs_enrichment_detects_placeholders(db):
+    assert CompanyEnrichmentService.needs_enrichment(_company(db, name="T1", ticker="T1")) is True  # name equals its ticker
+    assert CompanyEnrichmentService.needs_enrichment(_company(db, name="ACME_CORP", ticker="T2")) is True
+    assert CompanyEnrichmentService.needs_enrichment(_company(db, name="", ticker="T3")) is True
+    assert CompanyEnrichmentService.needs_enrichment(
+        _company(db, name="Real Name", exchange="UNKNOWN", ticker="T4")
+    ) is True
+    assert CompanyEnrichmentService.needs_enrichment(
+        _company(db, name="Real Name", ticker="T5")
+    ) is False
+
+
+def test_enrich_applies_profile_and_marks_changed(db):
+    company = _company(db, name="XYZ", exchange="UNKNOWN")
+    client = _Client({
+        "name": "Xylem Robotics Inc",
+        "exchange": "NASDAQ NMS - GLOBAL MARKET",
+        "finnhubIndustry": "Technology",
+        "currency": "USD",
+    })
+    service = CompanyEnrichmentService(settings=_Settings(), client=client)
+    assert service.enrich(db, company) is True
+    assert company.name == "Xylem Robotics Inc"
+    assert company.exchange == "NASDAQ NMS - GLOBAL MARKET"
+    assert company.industry == "Technology"
+    assert "profile2" in client.calls[0]
+
+
+def test_enrich_never_touches_good_record_and_skips_api(db):
+    company = _company(db, name="Apple Inc")
+    client = _Client({"name": "Wrong Name"})
+    service = CompanyEnrichmentService(settings=_Settings(), client=client)
+    assert service.enrich(db, company) is False
+    assert company.name == "Apple Inc"
+    assert client.calls == []  # no API call for a healthy record
+
+
+def test_enrich_without_api_name_changes_nothing(db):
+    company = _company(db, name="XYZ")
+    client = _Client({"finnhubIndustry": "Technology"})  # no usable name
+    service = CompanyEnrichmentService(settings=_Settings(), client=client)
+    assert service.enrich(db, company) is False
+    assert company.name == "XYZ"
+
+
+def test_enrich_ignores_na_industry(db):
+    company = _company(db, name="XYZ")
+    client = _Client({"name": "Xylem Robotics", "finnhubIndustry": "N/A"})
+    service = CompanyEnrichmentService(settings=_Settings(), client=client)
+    assert service.enrich(db, company) is True
+    assert company.name == "Xylem Robotics"
+    assert company.industry == "Tech"  # N/A never overwrites
