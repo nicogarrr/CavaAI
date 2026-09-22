@@ -352,9 +352,48 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           >
             <FileDown className="h-4 w-4" />Exportar journal
           </Link>
+          <a
+            className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
+            href={`/api/thesis-memo/${encodeURIComponent(ticker)}`}
+          >
+            <FileDown className="h-4 w-4" />Exportar memo
+          </a>
           <Badge variant="outline">{data.history.length} versions</Badge>
           <Badge variant="outline">{data.claims.length} claims</Badge>
         </div>
+        <Panel title="Historial de versiones y aprobaciones" collapsibleOnMobile>
+          {data.historyDetail.history.length === 0 ? (
+            <Empty>Aún no hay historial de versiones.</Empty>
+          ) : (
+            <div className="space-y-3">
+              {data.historyDetail.history.map((entry) => (
+                <div className="rounded-lg border border-gray-800 p-4" key={entry.id}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">v{entry.version}</Badge>
+                    <Badge variant={entry.status === 'published' ? 'default' : 'outline'}>{entry.status}</Badge>
+                    <Badge variant="outline">{entry.rating}</Badge>
+                    {entry.diff?.rating_changed ? <Badge>rating cambiado</Badge> : null}
+                    <span className="ml-auto text-xs text-gray-500">
+                      {new Date(entry.updated_at).toLocaleString('es-ES')}
+                    </span>
+                  </div>
+                  {entry.diff ? (
+                    <p className="mt-2 text-sm leading-6 text-gray-400">{entry.diff.change_summary}</p>
+                  ) : (
+                    <p className="mt-2 text-xs text-gray-600">Primera versión registrada o sin diff persistido.</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                    <span>red-team {entry.red_team_score}/100</span>
+                    <span>confianza datos {entry.data_confidence_score}/100</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="mt-3 text-xs text-gray-600">
+            El historial muestra estado, fecha y resumen del cambio tal como están persistidos; el sistema no registra quién aprobó cada versión.
+          </p>
+        </Panel>
         <Panel title="Current thesis">
           {data.thesis ? <ThesisMemo thesis={data.thesis} /> : <Empty>No thesis exists.</Empty>}
         </Panel>

@@ -2351,6 +2351,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/thesis/{ticker}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Thesis History
+         * @description Historial de versiones/aprobaciones: que cambio, cuando y con que resultado.
+         *
+         *     Solo lectura de lo persistido (versions + diffs). El "quien" no se
+         *     registra hoy: el historial muestra estado, fecha y resumen del cambio,
+         *     sin inventar actores.
+         */
+        get: operations["thesis_history_api_thesis__ticker__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/thesis/{ticker}/latest": {
         parameters: {
             query?: never;
@@ -2360,6 +2384,26 @@ export interface paths {
         };
         /** Latest Thesis */
         get: operations["latest_thesis_api_thesis__ticker__latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thesis/{ticker}/memo.md": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Thesis Memo
+         * @description Memo Markdown descargable de la ultima tesis persistida.
+         */
+        get: operations["thesis_memo_api_thesis__ticker__memo_md_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -10409,6 +10453,44 @@ export interface operations {
             };
         };
     };
+    thesis_history_api_thesis__ticker__history_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     latest_thesis_api_thesis__ticker__latest_get: {
         parameters: {
             query?: never;
@@ -10432,6 +10514,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThesisOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    thesis_memo_api_thesis__ticker__memo_md_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
                 };
             };
             /** @description Validation Error */

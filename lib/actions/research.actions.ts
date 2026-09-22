@@ -210,6 +210,23 @@ export type ResearchThesis = {
   created_at: string;
 };
 
+export type ResearchThesisHistoryEntry = {
+  id: number;
+  version: number;
+  status: string;
+  rating: string;
+  red_team_score: number;
+  data_confidence_score: number;
+  created_at: string;
+  updated_at: string;
+  diff: {
+    change_summary: string;
+    affected_assumptions: string[];
+    rating_changed: boolean;
+    created_at: string;
+  } | null;
+};
+
 export type ResearchSourceDocument = {
   id: number;
   ticker: string | null;
@@ -734,15 +751,19 @@ export async function getResearchCompanySnapshot(
 
 export async function getResearchThesisWorkspace(ticker: string) {
   const encoded = encodeURIComponent(ticker.toUpperCase());
-  const [thesis, history, claims, sections, graph, redTeam] = await Promise.all([
+  const [thesis, history, claims, sections, graph, redTeam, historyDetail] = await Promise.all([
     getJson<ResearchThesis | null>(`/api/thesis/${encoded}/latest`, null),
     getJson<ResearchThesisVersion[]>(`/api/thesis/${encoded}/versions`, []),
     getJson<ResearchClaim[]>(`/api/memory/claims?ticker=${encoded}&limit=100`, []),
     getJson<ResearchThesisSection[]>(`/api/memory/thesis/${encoded}/sections`, []),
     getJson<ResearchThesisGraph | null>(`/api/thesis/${encoded}/graph`, null),
     getJson<ResearchRedTeam | null>(`/api/companies/${encoded}/red-team/latest`, null),
+    getJson<{ count: number; history: ResearchThesisHistoryEntry[] }>(
+      `/api/thesis/${encoded}/history`,
+      { count: 0, history: [] },
+    ),
   ]);
-  return { thesis, history, claims, sections, graph, redTeam };
+  return { thesis, history, claims, sections, graph, redTeam, historyDetail };
 }
 
 export async function getResearchChangesWorkspace(ticker: string) {
