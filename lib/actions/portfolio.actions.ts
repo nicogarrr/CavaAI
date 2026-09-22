@@ -306,6 +306,27 @@ export async function getPortfolioScores(userId: string): Promise<{
         // motor de yield real.
         const clamp100 = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
         const sheet = await getPortfolioTearsheet(userId);
+        // Real dividend score: trailing-12M declared-dividend yield from
+        // GET /api/portfolio/dividends (FMP-ingested records, provenance
+        // attached). Linear band documented here: 0% yield -> 0, 6% -> 100.
+        // When no position has ingested dividend records the score stays 0
+        // (same honest empty state as before, no fabricated yield).
+        let dividendScore = 0;
+        try {
+            const dividends = await researchRequest<{
+                portfolio_yield: number | null;
+                coverage: { positions_with_dividend_data: number };
+            }>('/api/portfolio/dividends');
+            if (
+                dividends.coverage.positions_with_dividend_data > 0 &&
+                dividends.portfolio_yield != null
+            ) {
+                dividendScore = clamp100((dividends.portfolio_yield / 0.06) * 100);
+            }
+        } catch {
+            // Endpoint unavailable: keep the honest zero state.
+            dividendScore = 0;
+        }
         const m = sheet?.metrics ?? null;
         const sharpe = m?.sharpe ?? null;
         const winRate = m?.win_rate ?? null;
@@ -338,8 +359,7 @@ export async function getPortfolioScores(userId: string): Promise<{
             quality: data.score_quality ?? 0,
             growth: data.score_growth ?? 0,
             value: data.score_value ?? 0,
-            // Dividend score stays 0 until we have a real dividend-yield engine
-            dividend: 0,
+            dividend: dividendScore,
             cagr3y: data.cagr != null ? Math.round(data.cagr * 10000) / 100 : 0,
             analytics: data,
             history: undefined,
