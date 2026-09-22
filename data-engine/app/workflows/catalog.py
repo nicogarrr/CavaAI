@@ -2,7 +2,7 @@ WORKFLOW_CATALOG = [
     {
         "name": "GenerateThesisWorkflow",
         "implementation_status": "partial",
-        "truth": "POST /run ejecuta ThesisService.generate() sincrono en UNA transaccion; la lista de pasos describe fases internas, no pasos ejecutados separados. Sin resume a mitad de flujo ni Langfuse (planificado).",
+        "truth": "POST /run ejecuta ThesisService.generate() sincrono en UNA transaccion; la lista de pasos describe fases internas, no pasos ejecutados separados. Sin resume a mitad de flujo. Langfuse: shadow tracing opcional (flag LANGFUSE_ENABLED), solo metadatos, nunca fuente de verdad.",
         "execution_mode": "deterministic",
         "input": "ticker",
         "steps": [
@@ -30,7 +30,7 @@ WORKFLOW_CATALOG = [
     {
         "name": "DailyResearchWorkflow",
         "implementation_status": "partial",
-        "truth": "POST /run solo ingiere news_items via NewsService; el resto de pasos corren via scheduler/Dramatiq, no por este endpoint. Langfuse no implementado.",
+        "truth": "POST /run solo ingiere news_items via NewsService; el resto de pasos corren via scheduler/Dramatiq, no por este endpoint. Langfuse: shadow tracing opcional via run envelope, solo metadatos.",
         "execution_mode": "deterministic",
         "input": "portfolio",
         "steps": [
@@ -90,7 +90,7 @@ WORKFLOW_CATALOG = [
     {
         "name": "ChatWorkflow",
         "implementation_status": "descriptive",
-        "truth": "El chat vive en su propia ruta de API, no en este endpoint de workflows. Langfuse no implementado.",
+        "truth": "El chat vive en su propia ruta de API, no en este endpoint de workflows. Langfuse: shadow tracing opcional via run envelope, solo metadatos.",
         "execution_mode": "deterministic_plus_llm_synthesis",
         "input": "user_question",
         "steps": [
