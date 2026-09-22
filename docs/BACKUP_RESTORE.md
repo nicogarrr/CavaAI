@@ -19,3 +19,11 @@ Restore only during a maintenance window. The restore command requires an explic
 ```
 
 After restore, run `docker compose run --rm backend alembic upgrade head`, verify `/health/ready`, compare tenant/document/position counts with the backup manifest, open one stored document, and execute a read-only company snapshot. Production backups should be copied to encrypted storage outside the Docker host and tested with a quarterly restore drill.
+
+## Produccion personal (Linux / Oracle VM)
+
+En la VM de produccion los equivalentes en bash son `scripts/backup.sh` y
+`scripts/restore.sh` (mismo contrato: Postgres `pg_dump -Fc`, snapshots de
+Qdrant, tar de MinIO y DuckDB, manifest por backup; restore exige
+`--confirm-restore`). `backup.sh` sube a Cloudflare R2 si se define
+`RCLONE_REMOTE`. Guia completa en `docs/oracle-setup.md`.

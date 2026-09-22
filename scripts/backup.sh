@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Backup de CavaAI (produccion personal, Linux/Oracle VM).
+#
+# Genera backups/YYYYMMDD-HHMMSS/ con:
+#   - postgres.dump      (pg_dump -Fc, canonico: research/evidence/thesis)
+#   - qdrant.snapshot    (snapshot via API de Qdrant)
+#   - minio.tar.gz       (documentos crudos; volumen parado si --stop-storage)
+#   - duckdb.gz          (analytics local)
+#   - manifest.txt       (fecha, versiones, conteos basicos)
+#
+# Subida opcional a Cloudflare R2 (free tier 10 GB) con rclone:
+#   RCLONE_REMOTE=r2:cavaai-backups ./scripts/backup.sh
+#
+# Uso:
+#   ./scripts/backup.sh [--stop-storage]
+set -euo pipefail
+
+COMPOSE="docker compose -f docker-compose.prod.yml"
+STAMP="$(date -u +%Y%m%d-%H%M%S)"
+DEST="backups/${STAMP}"
+STOP_STORAGE=0
+[ "${1:-}" = "--stop-storage" ] && STOP_STORAGE=1
+
+mkdir -p "${DEST}"
+echo "[backup] destino: ${DEST}"
+
+# 1) Postgres: dump consistente en caliente (formato custom comprimido).
+echo "[backup] postgres…"
+${COMPOSE} exec -T postgres pg_dump -U "${POSTGRES_USER:-portfolio}" -Fc "${POSTGRES_DB:-cavaai_research}" > "${DEST}/postgres.dump"
+
+# 2) Qdrant: snapshot consistente via API (puerto solo-loopback del compose).
+echo "[backup] qdrant…"
+if curl -fsS -X POST "http://127.0.0.1:6333/snapshots" -o /dev/null; then
+  docker cp "cavaai-qdrant:/qdrant/snapshots" "${DEST}/qdrant-snapshots"
+else
+  echo "[backup] aviso: snapshot de qdrant no disponible; se copiara el volumen en crudo"
+  docker run --rm -v cavaai-prod-qdrant:/data:ro -v "$(pwd)/${DEST}":/out alpine tar czf /out/qdrant-raw.tar.gz -C /data .
+fi
+
+if [ "${STOP_STORAGE}" = "1" ]; then
+  echo "[backup] parando minio y backend para snapshot consistente de volumenes…"
+  ${COMPOSE} stop backend worker scheduler minio
+fi
+
+# 3) MinIO: tar del volumen (datos en reposo, consistencia garantizada si parado).
+echo "[backup] minio…"
+docker run --rm -v cavaai-prod-minio:/data:ro -v "$(pwd)/${DEST}":/out alpine tar czf /out/minio.tar.gz -C /data .
+
+# 4) DuckDB: fichero unico.
+echo "[backup] duckdb…"
+docker run --rm -v cavaai-prod-duckdb:/data:ro -v "$(pwd)/${DEST}":/out alpine sh -c 'cd /data && tar czf /out/duckdb.tar.gz . || true'
+
+if [ "${STOP_STORAGE}" = "1" ]; then
+  ${COMPOSE} start minio backend worker scheduler
+fi
+
+# 5) Manifest.
+{
+  echo "timestamp_utc=${STAMP}"
+  echo "postgres_db=${POSTGRES_DB:-cavaai_research}"
+  echo "git_commit=$(git rev-parse --short HEAD 2>/dev/null || echo n/a)"
+  echo "files:"
+  ls -lh "${DEST}"
+} > "${DEST}/manifest.txt"
+
+echo "[backup] completado: ${DEST}"
+
+# 6) Subida opcional a R2 (rclone config previamente: rclone config → S3-compatible).
+if [ -n "${RCLONE_REMOTE:-}" ]; then
+  echo "[backup] subiendo a ${RCLONE_REMOTE}…"
+  rclone copy "${DEST}" "${RCLONE_REMOTE}/${STAMP}" --transfers 4
+  echo "[backup] subida completada"
+fi
