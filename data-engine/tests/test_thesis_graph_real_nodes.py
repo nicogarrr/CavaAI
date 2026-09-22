@@ -98,3 +98,56 @@ def test_caller_fingerprint_wins(db):
         state = graph.get_state(_config("t:r5")).values
     assert state["input_fingerprint"] == "caller-fp"
     assert state["artifacts"]["freeze_input_snapshot"].startswith("sha256:")
+
+
+# --- ensure_ingestion_complete: evidence coverage probe ---
+
+def _seed_evidence(db: Session, company_id: int) -> None:
+    from datetime import date
+
+    from app.models import Document, FinancialFact, MarketPrice
+
+    db.add(FinancialFact(
+        company_id=company_id, metric="revenue", fiscal_year=2025, value=100,
+        unit="USD", period="FY", source_type="test",
+    ))
+    db.add(MarketPrice(company_id=company_id, date=date(2026, 1, 2), close=200))
+    db.add(Document(company_id=company_id, title="10-K", source_type="sec_filing"))
+    db.commit()
+
+
+def test_ingestion_probe_counts_evidence(db):
+    company = _company(db)
+    _seed_evidence(db, company.id)
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:i1"))
+        state = graph.get_state(_config("t:i1")).values
+    assert state["artifacts"]["ensure_ingestion_complete"] == "evidence:facts=1,prices=1,docs=1"
+    assert state["meta"]["evidence_coverage"] == {
+        "financial_facts": 1,
+        "market_prices": 1,
+        "documents": 1,
+    }
+
+
+def test_ingestion_probe_zero_coverage_is_honest_not_error(db):
+    _company(db)
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:i2"))
+        state = graph.get_state(_config("t:i2")).values
+    assert state["artifacts"]["ensure_ingestion_complete"] == "evidence:facts=0,prices=0,docs=0"
+    assert state["meta"]["evidence_coverage"] == {
+        "financial_facts": 0,
+        "market_prices": 0,
+        "documents": 0,
+    }
+
+
+def test_ingestion_probe_skeleton_without_session_factory():
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver)
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:i3"))
+        state = graph.get_state(_config("t:i3")).values
+    assert state["artifacts"]["ensure_ingestion_complete"] == "pending:ensure_ingestion_complete"
