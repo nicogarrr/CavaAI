@@ -10,8 +10,8 @@ export const revalidate = 0;
 
 const SECTORES = ['Technology', 'Health Care', 'Financial Services', 'Consumer Cyclical', 'Energy', 'Utilities'];
 
-export default async function ScreenerPage({ searchParams }: { searchParams?: { sector?: string } }) {
-  const sector = searchParams?.sector ?? 'Technology';
+export default async function ScreenerPage({ searchParams }: { searchParams?: Promise<{ sector?: string }> }) {
+  const sector = (await searchParams)?.sector ?? 'Technology';
   // Screener (backend) e índices (backend) son independientes: en paralelo
   // en vez de en serie.
   const [rows, indices] = await Promise.all([
