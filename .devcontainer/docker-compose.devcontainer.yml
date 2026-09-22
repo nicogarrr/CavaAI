@@ -1,0 +1,9 @@
+# Override para el dev container: reutiliza toda la pila de docker-compose.yml
+# pero sustituye el servicio frontend por un contenedor de desarrollo que
+# queda vivo (sleep infinity) y lleva git + python3.
+services:
+  frontend:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    command: sleep infinity
