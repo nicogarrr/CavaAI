@@ -15,6 +15,7 @@ from app.workers.dramatiq_app import (
     review_theses,
     run_daily_research,
     scan_contradictions,
+    scan_insider_watchlist,
     tenant_contexts,
 )
 
@@ -35,6 +36,28 @@ def _register(scheduler: BlockingScheduler, func, trigger: str, *, job_id: str, 
         **JOB_DEFAULTS,
         **trigger_args,
     )
+
+
+def enqueue_insider_scan(*, lookback: int, max_new_fetches: int) -> dict:
+    """Fan-out del monitor insider con el alcance propio de cada cadencia."""
+    queued = []
+    for tenant_id, user_id in tenant_contexts():
+        message = scan_insider_watchlist.send(
+            tenant_id, user_id, lookback, max_new_fetches
+        )
+        queued.append(
+            {
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "message_id": str(message.message_id),
+            }
+        )
+    return {
+        "actor": scan_insider_watchlist.actor_name,
+        "lookback": lookback,
+        "max_new_fetches": max_new_fetches,
+        "queued": queued,
+    }
 
 
 def enqueue_for_all_tenants(actor) -> dict:
@@ -121,6 +144,34 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         job_id="daily_research",
         hour=6,
         minute=30,
+    )
+    # PR-3 insider monitor: 15 min durante el dia (jittered), catch-up diario
+    # mas profundo tras el cierre de EDGAR, reconciliacion semanal completa.
+    _register(
+        scheduler,
+        partial(enqueue_insider_scan, lookback=20, max_new_fetches=25),
+        "interval",
+        job_id="insider_watchlist_scan",
+        minutes=15,
+        jitter=120,
+    )
+    _register(
+        scheduler,
+        partial(enqueue_insider_scan, lookback=100, max_new_fetches=60),
+        "cron",
+        job_id="insider_watchlist_daily",
+        hour=22,
+        minute=30,
+        jitter=300,
+    )
+    _register(
+        scheduler,
+        partial(enqueue_insider_scan, lookback=500, max_new_fetches=200),
+        "cron",
+        job_id="insider_watchlist_weekly",
+        day_of_week="sun",
+        hour=3,
+        minute=45,
     )
     return scheduler
 

@@ -877,6 +877,46 @@ def run_daily_research() -> dict[str, Any]:
     }
 
 
+@dramatiq.actor(max_retries=2, min_backoff=15_000)
+def scan_insider_watchlist(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+    lookback: int = 20,
+    max_new_fetches: int = 25,
+) -> dict[str, Any]:
+    """PR-3: escaneo acotado de Form 4 para la watchlist/cartera.
+
+    Solo emisores seguidos; salta accessions ya persistidos (#82) y deja
+    watermark + metricas en connector_states. Reintentos Dramatiq solo para
+    fallos transitorios; los permanentes devuelven payload estructurado.
+    """
+    actor_name = "scan_insider_watchlist"
+    try:
+        from app.services import insider_monitor
+
+        db = _session(tenant_id, user_id)
+        try:
+            stats = insider_monitor.scan(
+                db,
+                tenant_id=tenant_id,
+                lookback=lookback,
+                max_new_fetches=max_new_fetches,
+            )
+        finally:
+            db.close()
+        return {
+            "status": stats["status"],
+            "actor": actor_name,
+            "tickers_scanned": stats["tickers_scanned"],
+            "filings_seen": stats["filings_seen"],
+            "filings_new": stats["filings_new"],
+            "transactions_created": stats["transactions_created"],
+            "errors": stats["errors"][:20],
+        }
+    except Exception as exc:
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id)
+
+
 # Short aliases keep operational imports stable while actor names remain descriptive.
 refresh_sec = refresh_sec_filings
 refresh_ir = refresh_ir_pages
