@@ -20,8 +20,9 @@ externas de datos/LLM, como hoy.
 
 ## Lo que Always Free incluye (limites a respetar)
 
-- VM.Standard.A1.Flex (Ampere ARM): hasta **4 OCPU y 24 GB RAM** en total.
-  Recomendado: **2 OCPU / 12 GB** para esta app y dejar margen.
+- VM.Standard.A1.Flex (Ampere ARM): hasta **2 OCPU y 12 GB RAM** en total
+  en cuentas Always Free sin ampliar (cuentas con upgrade llegan a 4/24).
+  Esta app esta dimensionada para **2 OCPU / 12 GB**.
 - **200 GB** de block storage en total (boot volumes incluidos).
 - 10 TB/mes de salida de red (de sobra para uso personal).
 - Cuentas nuevas de pago tardio ("Pay As You Go") pueden tener Always Free
@@ -29,7 +30,8 @@ externas de datos/LLM, como hoy.
   programa Always Free. Sigue estas reglas:
   - Crea la VM con shape `VM.Standard.A1.Flex` marcada **"Always Free
     Eligible"** (aparece la etiqueta en la consola).
-  - No superes 4 OCPU / 24 GB RAM / 200 GB disco en total.
+  - No superes 2 OCPU / 12 GB RAM / 200 GB disco en total (cuenta sin
+    upgrade; con upgrade el tope es 4 OCPU / 24 GB).
   - No crees Load Balancers, bases de datos gestionadas ni boot volumes
     extra de mas de 200 GB combinados.
   - Opcional pero recomendado: presupuesto con alerta a 1 EUR
