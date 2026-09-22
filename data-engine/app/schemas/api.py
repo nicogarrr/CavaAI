@@ -260,6 +260,8 @@ class ThesisOut(BaseModel):
     catalysts: list | None = None
     invalidation_criteria: list | None = None
     scenario_probabilities: dict | None = None
+    stale: bool = False
+    latest_data_at: datetime | None = None
     created_at: datetime
 
 
