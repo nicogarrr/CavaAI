@@ -15,9 +15,15 @@ Comparison contract (honest by construction):
   unmapped phases are listed, never silently dropped.
 - status_semantics: graph lifecycle status vs the latest persisted
   ThesisVersion status, with divergences listed explicitly.
-- artifact_coverage: graph artifacts are pending skeleton references while
-  the classic path produces real artifacts; this is an expected divergence
-  at 6b and is reported as such, not hidden.
+- probe_comparison (6d): the real read-side probes (resolve_company,
+  ensure_ingestion_complete, build_fundamental_model,
+  deterministic_valuation) are compared against the classic persisted
+  state they observe - match/divergent/skeleton per node. The write-side
+  nodes (draft_synthesis, source_audit, deterministic_red_team,
+  optional_bull_bear_debate, assemble_candidate, publish) remain pending
+  skeleton references while the classic path produces real artifacts;
+  this is an expected divergence at 6d and is reported as such, not
+  hidden.
 """
 
 from __future__ import annotations
@@ -55,6 +61,73 @@ PHASE_TO_NODE: dict[str, str] = {
     "compose_thesis": "draft_synthesis",
     "persist_thesis": "publish",
 }
+
+
+def _probe_entry(node: str, graph_artifact: str | None, classic_observed: str) -> dict[str, Any]:
+    """One probe comparison row: graph-observed artifact vs classic state."""
+    if graph_artifact is None or graph_artifact.startswith("pending:"):
+        status = "skeleton"
+    else:
+        status = "match" if graph_artifact == classic_observed else "divergent"
+    return {
+        "node": node,
+        "graph_artifact": graph_artifact,
+        "classic_observed": classic_observed,
+        "status": status,
+    }
+
+
+def _compare_probes(db: Session, company: Company, artifacts: dict[str, str]) -> list[dict[str, Any]]:
+    """Compare the graph's real read-side probes against classic persisted state.
+
+    The classic path owns every write; the probes are read-only
+    observations taken during the graph run. A divergence means the graph
+    observed different state than the classic side sees now, which the
+    caller records explicitly.
+    """
+    from sqlalchemy import desc, func, select
+
+    from app.models.entities import (
+        Document,
+        FinancialFact,
+        FundamentalModelVersion,
+        FundamentalValuationSnapshot,
+        MarketPrice,
+    )
+
+    cid = company.id
+    facts = db.scalar(select(func.count()).select_from(FinancialFact).where(FinancialFact.company_id == cid)) or 0
+    prices = db.scalar(select(func.count()).select_from(MarketPrice).where(MarketPrice.company_id == cid)) or 0
+    documents = db.scalar(select(func.count()).select_from(Document).where(Document.company_id == cid)) or 0
+
+    model = db.scalar(
+        select(FundamentalModelVersion)
+        .where(FundamentalModelVersion.company_id == cid)
+        .order_by(desc(FundamentalModelVersion.version))
+        .limit(1)
+    )
+    classic_model = (
+        f"model:v{model.version}:{model.input_fingerprint[:12]}" if model else "model:none"
+    )
+
+    snapshot = db.scalar(
+        select(FundamentalValuationSnapshot)
+        .where(FundamentalValuationSnapshot.company_id == cid)
+        .order_by(desc(FundamentalValuationSnapshot.created_at), desc(FundamentalValuationSnapshot.id))
+        .limit(1)
+    )
+    classic_valuation = f"valuation:{snapshot.id}" if snapshot else "valuation:none"
+
+    return [
+        _probe_entry("resolve_company", artifacts.get("resolve_company"), f"company:{cid}"),
+        _probe_entry(
+            "ensure_ingestion_complete",
+            artifacts.get("ensure_ingestion_complete"),
+            f"evidence:facts={facts},prices={prices},docs={documents}",
+        ),
+        _probe_entry("build_fundamental_model", artifacts.get("build_fundamental_model"), classic_model),
+        _probe_entry("deterministic_valuation", artifacts.get("deterministic_valuation"), classic_valuation),
+    ]
 
 
 class ThesisShadowService:
@@ -170,9 +243,17 @@ class ThesisShadowService:
             divergences.append(f"classic phases without graph node: {unmapped_phases}")
         if missing_nodes:
             divergences.append(f"mapped nodes missing from graph: {missing_nodes}")
+        probe_comparison = _compare_probes(db, company, first.get("artifacts") or {})
+        for entry in probe_comparison:
+            if entry["status"] == "divergent":
+                divergences.append(
+                    f"probe {entry['node']} diverged: graph observed "
+                    f"{entry['graph_artifact']}, classic persisted {entry['classic_observed']}"
+                )
         divergences.append(
-            "expected at 6b: graph artifacts are pending skeleton references; "
-            "the classic path owns real artifacts"
+            "expected at 6d: draft_synthesis, source_audit, deterministic_red_team, "
+            "optional_bull_bear_debate, assemble_candidate and publish remain pending "
+            "skeleton references; the classic path owns real write artifacts"
         )
 
         status_semantics = {
@@ -188,6 +269,7 @@ class ThesisShadowService:
             "graph_execution": graph_execution,
             "phase_mapping": phase_mapping,
             "status_semantics": status_semantics,
+            "probe_comparison": probe_comparison,
             "divergences": divergences,
             "shadow_only": True,
         }
