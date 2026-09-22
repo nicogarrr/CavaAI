@@ -52,6 +52,12 @@ export type ResearchSettings = {
     monthly_cap_eur: number;
   };
   connectors: Record<string, boolean | string>;
+  llm: {
+    provider: string;
+    configured: boolean;
+    model: string | null;
+    reason?: string;
+  };
 };
 
 export type ResearchFact = {
@@ -678,6 +684,7 @@ export async function getResearchDashboard() {
         monthly_cap_eur: 0,
       },
       connectors: {},
+      llm: { provider: 'unknown', configured: false, model: null, reason: 'backend_unreachable' },
     }),
   ]);
 

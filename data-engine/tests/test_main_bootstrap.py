@@ -147,3 +147,37 @@ def test_company_workspace_uses_small_read_only_typed_snapshot_contract():
     operation = main.app.openapi()["paths"]["/api/companies/{ticker}/snapshot"]["get"]
     schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
     assert schema["$ref"].endswith("/CompanySnapshotOut")
+
+
+def test_settings_exposes_llm_status_without_key_material():
+    """GET /settings reports provider/model/configured, never the API key."""
+    client = TestClient(main.app)
+    response = client.get("/api/settings")
+    assert response.status_code == 200
+    llm = response.json()["llm"]
+    assert llm["provider"] in {"opencode-go", "disabled"}
+    assert isinstance(llm["configured"], bool)
+    if llm["configured"]:
+        assert llm["model"]
+    else:
+        assert llm["model"] is None
+        assert llm["reason"]
+    # The env var NAME may appear in the disabled reason; key material never does.
+    assert "sk-" not in response.text
+
+
+def test_settings_llm_configured_never_leaks_the_key(monkeypatch):
+    from app.core.config import get_settings
+
+    canary = "sk-live-canary-9f8e7d6c"
+    monkeypatch.setattr(get_settings(), "opencode_go_api_key", canary)
+
+    client = TestClient(main.app)
+    response = client.get("/api/settings")
+    assert response.status_code == 200
+    llm = response.json()["llm"]
+    assert llm["provider"] == "opencode-go"
+    assert llm["configured"] is True
+    assert llm["model"]
+    assert canary not in response.text
+    assert "api_key" not in response.text.lower()
