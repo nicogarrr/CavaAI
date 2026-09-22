@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.database import batch_refresh
 from app.models import (
     CalculatedMetric,
     Company,
@@ -228,8 +229,7 @@ class ExpectationRealityService:
             review.reviewed_at = datetime.now(UTC)
             reviews.append(review)
         db.commit()
-        for review in reviews:
-            db.refresh(review)
+        batch_refresh(db, reviews)
         return reviews
 
     @staticmethod
