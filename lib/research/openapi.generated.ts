@@ -4393,6 +4393,8 @@ export interface components {
             input_fingerprint?: string | null;
             /** Invalidation Criteria */
             invalidation_criteria?: unknown[] | null;
+            /** Latest Data At */
+            latest_data_at?: string | null;
             /** Margin Of Safety */
             margin_of_safety: string | null;
             /** Rating */
@@ -4405,6 +4407,11 @@ export interface components {
             } | null;
             /** Source Coverage Score */
             source_coverage_score: number;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
             /** Status */
             status: string;
             /** Thesis Markdown */

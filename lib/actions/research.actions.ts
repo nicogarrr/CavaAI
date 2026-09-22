@@ -196,6 +196,8 @@ export type ResearchThesis = {
   catalysts?: ResearchThesisCatalyst[] | null;
   invalidation_criteria?: string[] | null;
   scenario_probabilities?: Record<string, number> | null;
+  stale?: boolean;
+  latest_data_at?: string | null;
   created_at: string;
 };
 

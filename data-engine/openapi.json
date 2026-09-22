@@ -5167,6 +5167,18 @@
             ],
             "title": "Invalidation Criteria"
           },
+          "latest_data_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Data At"
+          },
           "margin_of_safety": {
             "anyOf": [
               {
@@ -5202,6 +5214,11 @@
           "source_coverage_score": {
             "title": "Source Coverage Score",
             "type": "integer"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
           },
           "status": {
             "title": "Status",

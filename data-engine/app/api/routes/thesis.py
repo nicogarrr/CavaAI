@@ -20,11 +20,19 @@ def generate_thesis(payload: ThesisGenerateRequest, db: Session = Depends(get_db
 
 
 @router.get("/{ticker}/latest", response_model=ThesisOut)
-def latest_thesis(ticker: str, db: Session = Depends(get_db)) -> ThesisVersion:
-    thesis = ThesisService().latest(db, ticker)
+def latest_thesis(ticker: str, db: Session = Depends(get_db)) -> dict:
+    service = ThesisService()
+    thesis = service.latest(db, ticker)
     if not thesis:
         raise HTTPException(status_code=404, detail="No thesis for ticker")
-    return thesis
+    # Senal de frescura: hay datos mas nuevos que esta version (hechos,
+    # precios, noticias o documentos) -> conviene regenerar la tesis.
+    latest_data_at = service.data_freshness(db, thesis.company_id)
+    stale = latest_data_at is not None and latest_data_at > thesis.updated_at
+    payload = ThesisOut.model_validate(thesis).model_dump()
+    payload["stale"] = stale
+    payload["latest_data_at"] = latest_data_at
+    return payload
 
 
 @router.get("/{ticker}/versions", response_model=list[ThesisOut])
