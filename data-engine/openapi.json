@@ -4382,6 +4382,18 @@
             ],
             "title": "Bull Value"
           },
+          "catalysts": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalysts"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -4419,9 +4431,32 @@
             ],
             "title": "Expected Value"
           },
+          "hypothesis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypothesis"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "invalidation_criteria": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidation Criteria"
           },
           "margin_of_safety": {
             "anyOf": [
@@ -4438,6 +4473,18 @@
           "rating": {
             "title": "Rating",
             "type": "string"
+          },
+          "scenario_probabilities": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Probabilities"
           },
           "source_coverage_score": {
             "title": "Source Coverage Score",
@@ -5029,6 +5076,18 @@
             ],
             "title": "Bull Value"
           },
+          "catalysts": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalysts"
+          },
           "company_id": {
             "title": "Company Id",
             "type": "integer"
@@ -5070,6 +5129,17 @@
             ],
             "title": "Expected Value"
           },
+          "hypothesis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypothesis"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -5084,6 +5154,18 @@
               }
             ],
             "title": "Input Fingerprint"
+          },
+          "invalidation_criteria": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidation Criteria"
           },
           "margin_of_safety": {
             "anyOf": [
@@ -5104,6 +5186,18 @@
           "red_team_score": {
             "title": "Red Team Score",
             "type": "integer"
+          },
+          "scenario_probabilities": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Probabilities"
           },
           "source_coverage_score": {
             "title": "Source Coverage Score",
