@@ -9,18 +9,18 @@ test.describe("public authentication shell", () => {
     await page.goto("/sign-in");
 
     await expect(page).toHaveTitle(/CavaAI/);
-    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Bienvenido de nuevo" })).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
-    await expect(page.getByLabel("Password")).toBeVisible();
+    await expect(page.getByLabel("Contraseña")).toBeVisible();
 
-    await page.getByRole("button", { name: "Sign In" }).click();
-    await expect(page.getByText("Email is required")).toBeVisible();
-    await expect(page.getByText("Password is required")).toBeVisible();
+    await page.getByRole("button", { name: "Iniciar sesión" }).click();
+    await expect(page.getByText("El email es obligatorio")).toBeVisible();
+    await expect(page.getByText("La contraseña es obligatoria")).toBeVisible();
 
     await page.screenshot({ path: "test-results/cavaai-sign-in-validation.png", fullPage: true });
-    await page.getByRole("link", { name: "Create an account" }).click();
+    await page.getByRole("link", { name: "Crear cuenta" }).click();
     await expect(page).toHaveURL(/\/sign-up$/);
-    await expect(page.getByRole("heading", { name: "Sign Up & Personalize" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Crea tu cuenta" })).toBeVisible();
   });
 });
 
@@ -35,10 +35,10 @@ test.describe("mobile authentication layout", () => {
     // Regresión: .auth-layout usaba h-screen + overflow-hidden en móvil, lo que
     // comprimía el formulario en una tira de ~190px con scroll interno oculto
     // y dejaba el botón fuera del viewport.
-    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeInViewport();
+    await expect(page.getByRole("heading", { name: "Bienvenido de nuevo" })).toBeInViewport();
     await expect(page.getByLabel("Email")).toBeInViewport();
-    await expect(page.getByLabel("Password")).toBeInViewport();
-    await expect(page.getByRole("button", { name: "Sign In" })).toBeInViewport();
+    await expect(page.getByLabel("Contraseña")).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Iniciar sesión" })).toBeInViewport();
 
     // La página completa hace scroll normal en documento (no hay trampas internas).
     const metrics = await page.evaluate(() => ({

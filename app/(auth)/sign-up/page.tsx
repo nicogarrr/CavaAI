@@ -39,11 +39,11 @@ const SignUp = () => {
                 router.push('/');
                 return;
             }
-            toast.error('Sign up failed', {
+            toast.error('No se pudo crear la cuenta', {
                 description: result.error ?? 'We could not create your account.',
             });
         } catch (e) {
-            toast.error('Sign up failed', {
+            toast.error('No se pudo crear la cuenta', {
                 description: e instanceof Error ? e.message : 'An unexpected error occurred. Please try again.'
             })
         }
@@ -51,16 +51,16 @@ const SignUp = () => {
 
     return (
         <>
-            <h1 className="form-title">Sign Up & Personalize</h1>
+            <h1 className="form-title">Crea tu cuenta</h1>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 <InputField
                     name="fullName"
-                    label="Full Name"
-                    placeholder="Enter full name"
+                    label="Nombre completo"
+                    placeholder="Introduce tu nombre completo"
                     register={register}
                     error={errors.fullName}
-                    validation={{ required: 'Full name is required', minLength: 2 }}
+                    validation={{ required: 'El nombre es obligatorio', minLength: 2 }}
                 />
 
                 <InputField
@@ -70,28 +70,28 @@ const SignUp = () => {
                     register={register}
                     error={errors.email}
                     validation={{
-                      required: 'Email is required',
+                      required: 'El email es obligatorio',
                       pattern: {
                         value: /^[\w-.]+@([\w-]+\.)+[\w-]{2,}$/,
-                        message: 'Please enter a valid email address'
+                        message: 'Introduce un email válido'
                       }
                     }}
                 />
 
                 <InputField
                     name="password"
-                    label="Password"
-                    placeholder="Enter a strong password"
+                    label="Contraseña"
+                    placeholder="Crea una contraseña segura"
                     type="password"
                     autoComplete="new-password"
                     register={register}
                     error={errors.password}
-                    validation={{ required: 'Password is required', minLength: 8 }}
+                    validation={{ required: 'La contraseña es obligatoria', minLength: 8 }}
                 />
 
                 <CountrySelectField
                     name="country"
-                    label="Country"
+                    label="País"
                     control={control}
                     error={errors.country}
                     required
@@ -99,8 +99,8 @@ const SignUp = () => {
 
                 <SelectField
                     name="investmentGoals"
-                    label="Investment Goals"
-                    placeholder="Select your investment goal"
+                    label="Objetivo de inversión"
+                    placeholder="Selecciona tu objetivo"
                     options={INVESTMENT_GOALS}
                     control={control}
                     error={errors.investmentGoals}
@@ -109,8 +109,8 @@ const SignUp = () => {
 
                 <SelectField
                     name="riskTolerance"
-                    label="Risk Tolerance"
-                    placeholder="Select your risk level"
+                    label="Tolerancia al riesgo"
+                    placeholder="Selecciona tu nivel de riesgo"
                     options={RISK_TOLERANCE_OPTIONS}
                     control={control}
                     error={errors.riskTolerance}
@@ -119,8 +119,8 @@ const SignUp = () => {
 
                 <SelectField
                     name="preferredIndustry"
-                    label="Preferred Industry"
-                    placeholder="Select your preferred industry"
+                    label="Sector preferido"
+                    placeholder="Selecciona tu sector preferido"
                     options={PREFERRED_INDUSTRIES}
                     control={control}
                     error={errors.preferredIndustry}
@@ -128,10 +128,10 @@ const SignUp = () => {
                 />
 
                 <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
-                    {isSubmitting ? 'Creating Account' : 'Start Your Investing Journey'}
+                    {isSubmitting ? 'Creando cuenta' : 'Empieza tu viaje inversor'}
                 </Button>
 
-                <FooterLink text="Already have an account?" linkText="Sign in" href="/sign-in" />
+                <FooterLink text="¿Ya tienes cuenta?" linkText="Iniciar sesión" href="/sign-in" />
             </form>
         </>
     )

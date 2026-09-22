@@ -19,9 +19,9 @@ export default async function SecurityPage() {
     return (
         <div className="space-y-8">
             <div>
-                <h1 className="text-2xl font-bold text-white">Security</h1>
+                <h1 className="text-2xl font-bold text-white">Seguridad</h1>
                 <p className="text-sm text-gray-400 mt-1">
-                    Account security settings for <span className="text-gray-200">{user.email}</span>.
+                    Ajustes de seguridad de la cuenta de <span className="text-gray-200">{user.email}</span>.
                 </p>
             </div>
 
