@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -50,6 +50,8 @@ def create_alert(
 def list_alert_rules(
     ticker: str | None = None,
     active: bool | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
     db: Session = Depends(get_db),
 ) -> list[AlertRule]:
     statement = select(AlertRule)
@@ -60,7 +62,9 @@ def list_alert_rules(
         statement = statement.where(AlertRule.company_id == company.id)
     if active is not None:
         statement = statement.where(AlertRule.active.is_(active))
-    return list(db.scalars(statement.order_by(desc(AlertRule.created_at))).all())
+    return list(
+        db.scalars(statement.order_by(desc(AlertRule.created_at)).limit(limit).offset(offset)).all()
+    )
 
 
 @router.post("/rules/evaluate")

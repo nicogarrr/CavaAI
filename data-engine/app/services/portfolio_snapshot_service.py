@@ -75,14 +75,16 @@ class PortfolioSnapshotService:
         position_values: list[tuple[Position, Decimal | None, Decimal | None]] = []
         positions_value = Decimal("0")
         missing_pricing: list[dict[str, Any]] = []
+        # Lote FX: 1 query para todas las posiciones (anti N+1).
+        position_rates = self.fx.rates_for(
+            db,
+            quote_currencies={position.currency for position in positions},
+            base_currency=portfolio.base_currency,
+            as_of=snapshot_date,
+        )
         for position in positions:
             native = position.quantity * position.market_price
-            rate = self.fx.rate(
-                db,
-                quote_currency=position.currency,
-                base_currency=portfolio.base_currency,
-                as_of=snapshot_date,
-            )
+            rate = position_rates.get(position.currency.upper())
             base = native * rate if rate is not None else None
             if base is None or position.as_of != snapshot_date:
                 missing_pricing.append(
@@ -98,13 +100,15 @@ class PortfolioSnapshotService:
 
         cash_values: list[tuple[CashBalance, Decimal | None, Decimal | None]] = []
         cash_value = Decimal("0")
+        # Lote FX: 1 query para todas las cajas (anti N+1).
+        cash_rates = self.fx.rates_for(
+            db,
+            quote_currencies={cash.currency for cash in cash_rows},
+            base_currency=portfolio.base_currency,
+            as_of=snapshot_date,
+        )
         for cash in cash_rows:
-            rate = self.fx.rate(
-                db,
-                quote_currency=cash.currency,
-                base_currency=portfolio.base_currency,
-                as_of=snapshot_date,
-            )
+            rate = cash_rates.get(cash.currency.upper())
             base = cash.balance * rate if rate is not None else None
             if base is None or cash.as_of != snapshot_date:
                 missing_pricing.append(
@@ -244,16 +248,18 @@ class PortfolioSnapshotService:
         ).all()
         total = Decimal("0")
         ambiguous: list[int] = []
+        # Lote FX: 1 query para todos los flujos (anti N+1).
+        flow_rates = self.fx.rates_for(
+            db,
+            quote_currencies={transaction.currency for transaction in transactions},
+            base_currency=base_currency,
+            as_of=as_of,
+        )
         for transaction in transactions:
             if transaction.action == "cash_misc":
                 ambiguous.append(transaction.id)
                 continue
-            rate = self.fx.rate(
-                db,
-                quote_currency=transaction.currency,
-                base_currency=base_currency,
-                as_of=as_of,
-            )
+            rate = flow_rates.get(transaction.currency.upper())
             if rate is None:
                 ambiguous.append(transaction.id)
                 continue

@@ -635,8 +635,14 @@ class KnowledgeLibraryService:
         return contradictions
 
     @staticmethod
-    def list_documents(db: Session, *, collection_id: int | None = None) -> list[dict]:
-        statement = select(KnowledgeDocument).order_by(desc(KnowledgeDocument.created_at))
+    def list_documents(
+        db: Session, *, collection_id: int | None = None, limit: int = 200
+    ) -> list[dict]:
+        statement = (
+            select(KnowledgeDocument)
+            .order_by(desc(KnowledgeDocument.created_at))
+            .limit(limit)
+        )
         if collection_id is not None:
             statement = statement.where(KnowledgeDocument.collection_id == collection_id)
         return [

@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -54,6 +54,47 @@ def _fiscal_info(db: Session, company_id: int, as_of: date) -> dict:
         "holding_days": holding_days,
         "fiscal_bucket": "largo_plazo" if holding_days > LONG_TERM_HOLDING_DAYS else "corto_plazo",
     }
+
+
+def _fiscal_info_batch(
+    db: Session, as_of_by_company: dict[int, date]
+) -> dict[int, dict]:
+    """Primera compra por compañía en UNA query (anti N+1 de /positions).
+
+    Respeta el ``as_of`` propio de cada posición para el cálculo de
+    holding_days, igual que :func:`_fiscal_info` fila a fila.
+    """
+    if not as_of_by_company:
+        return {}
+    first_buys = dict(
+        db.execute(
+            select(Transaction.company_id, func.min(Transaction.trade_date))
+            .where(
+                Transaction.company_id.in_(set(as_of_by_company)),
+                Transaction.action == "buy",
+            )
+            .group_by(Transaction.company_id)
+        ).all()
+    )
+    result: dict[int, dict] = {}
+    for company_id, as_of in as_of_by_company.items():
+        first_buy = first_buys.get(company_id)
+        if first_buy is None:
+            result[company_id] = {
+                "first_buy_date": None,
+                "holding_days": None,
+                "fiscal_bucket": None,
+            }
+            continue
+        holding_days = (as_of - first_buy).days
+        result[company_id] = {
+            "first_buy_date": first_buy.isoformat(),
+            "holding_days": holding_days,
+            "fiscal_bucket": (
+                "largo_plazo" if holding_days > LONG_TERM_HOLDING_DAYS else "corto_plazo"
+            ),
+        }
+    return result
 
 
 class PortfolioTransactionInput(BaseModel):
@@ -211,7 +252,11 @@ def update_portfolio_configuration(
 
 
 @router.get("/fx-rates")
-def list_fx_rates(db: Session = Depends(get_db)) -> list[dict]:
+def list_fx_rates(
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    db: Session = Depends(get_db),
+) -> list[dict]:
     return [
         {
             "id": row.id,
@@ -222,9 +267,10 @@ def list_fx_rates(db: Session = Depends(get_db)) -> list[dict]:
             "source": row.source,
         }
         for row in db.scalars(
-            select(FXRate).order_by(
-                desc(FXRate.rate_date), FXRate.base_currency, FXRate.quote_currency
-            )
+            select(FXRate)
+            .order_by(desc(FXRate.rate_date), FXRate.base_currency, FXRate.quote_currency)
+            .limit(limit)
+            .offset(offset)
         ).all()
     ]
 
@@ -272,11 +318,24 @@ def portfolio_tearsheet(db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/positions")
-def positions(db: Session = Depends(get_db)) -> list[dict]:
-    rows = db.execute(select(Position, Company).join(Company, Position.company_id == Company.id)).all()
+def positions(
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    rows = db.execute(
+        select(Position, Company)
+        .join(Company, Position.company_id == Company.id)
+        .order_by(Company.ticker)
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    fiscal = _fiscal_info_batch(
+        db, {company.id: position.as_of for position, company in rows}
+    )
     payloads = []
     for position, company in rows:
-        fiscal = _fiscal_info(db, company.id, position.as_of)
+        fiscal_info = fiscal.get(company.id) or _fiscal_info(db, company.id, position.as_of)
         payloads.append(
             {
                 "ticker": company.ticker,
@@ -330,21 +389,27 @@ def positions(db: Session = Depends(get_db)) -> list[dict]:
             ),
             "fx_rate": float(position.fx_rate) if position.fx_rate is not None else None,
             "source": position.source,
-            "first_buy_date": fiscal["first_buy_date"],
-            "holding_days": fiscal["holding_days"],
-            "fiscal_bucket": fiscal["fiscal_bucket"],
+            "first_buy_date": fiscal_info["first_buy_date"],
+            "holding_days": fiscal_info["holding_days"],
+            "fiscal_bucket": fiscal_info["fiscal_bucket"],
             }
         )
     return payloads
 
 
 @router.get("/transactions")
-def transactions(db: Session = Depends(get_db)) -> list[dict]:
+def transactions(
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    db: Session = Depends(get_db),
+) -> list[dict]:
     rows = db.execute(
         select(Transaction, Company)
         .join(Company, Transaction.company_id == Company.id)
         .where(Transaction.action.in_(["buy", "sell"]))
         .order_by(desc(Transaction.trade_date), desc(Transaction.created_at))
+        .limit(limit)
+        .offset(offset)
     ).all()
     return [_transaction_payload(transaction, company) for transaction, company in rows]
 

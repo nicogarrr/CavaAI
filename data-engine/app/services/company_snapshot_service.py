@@ -163,31 +163,64 @@ class CompanySnapshotService:
 
     @staticmethod
     def _counts(db: Session, company_id: int) -> dict[str, int]:
-        def count(model, *criteria) -> int:
-            return int(db.scalar(select(func.count()).select_from(model).where(*criteria)) or 0)
-
+        """Los 8 conteos en UNA sola query (anti 8 round-trips por snapshot)."""
+        row = db.execute(
+            select(
+                select(func.count())
+                .select_from(FinancialFact)
+                .where(FinancialFact.company_id == company_id)
+                .scalar_subquery()
+                .label("facts"),
+                select(func.count())
+                .select_from(CalculatedMetric)
+                .where(CalculatedMetric.company_id == company_id)
+                .scalar_subquery()
+                .label("calculated_metrics"),
+                select(func.count())
+                .select_from(Document)
+                .where(Document.company_id == company_id)
+                .scalar_subquery()
+                .label("documents"),
+                select(func.count())
+                .select_from(Claim)
+                .where(Claim.company_id == company_id)
+                .scalar_subquery()
+                .label("claims"),
+                select(func.count())
+                .select_from(ThesisVersion)
+                .where(ThesisVersion.company_id == company_id)
+                .scalar_subquery()
+                .label("thesis_versions"),
+                select(func.count())
+                .select_from(FundamentalModelVersion)
+                .where(FundamentalModelVersion.company_id == company_id)
+                .scalar_subquery()
+                .label("model_versions"),
+                select(func.count())
+                .select_from(ResearchReview)
+                .where(
+                    ResearchReview.company_id == company_id,
+                    ResearchReview.status.in_(["open", "in_progress"]),
+                )
+                .scalar_subquery()
+                .label("open_reviews"),
+                select(func.count())
+                .select_from(ResearchAlert)
+                .where(
+                    ResearchAlert.company_id == company_id,
+                    ResearchAlert.status.in_(["open", "snoozed"]),
+                )
+                .scalar_subquery()
+                .label("open_alerts"),
+            )
+        ).one()
         return {
-            "facts": count(FinancialFact, FinancialFact.company_id == company_id),
-            "calculated_metrics": count(
-                CalculatedMetric, CalculatedMetric.company_id == company_id
-            ),
-            "documents": count(Document, Document.company_id == company_id),
-            "claims": count(Claim, Claim.company_id == company_id),
-            "thesis_versions": count(
-                ThesisVersion, ThesisVersion.company_id == company_id
-            ),
-            "model_versions": count(
-                FundamentalModelVersion,
-                FundamentalModelVersion.company_id == company_id,
-            ),
-            "open_reviews": count(
-                ResearchReview,
-                ResearchReview.company_id == company_id,
-                ResearchReview.status.in_(["open", "in_progress"]),
-            ),
-            "open_alerts": count(
-                ResearchAlert,
-                ResearchAlert.company_id == company_id,
-                ResearchAlert.status.in_(["open", "snoozed"]),
-            ),
+            "facts": int(row.facts or 0),
+            "calculated_metrics": int(row.calculated_metrics or 0),
+            "documents": int(row.documents or 0),
+            "claims": int(row.claims or 0),
+            "thesis_versions": int(row.thesis_versions or 0),
+            "model_versions": int(row.model_versions or 0),
+            "open_reviews": int(row.open_reviews or 0),
+            "open_alerts": int(row.open_alerts or 0),
         }

@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
@@ -146,9 +147,10 @@ async def _read_upload_limited(file: UploadFile) -> bytes:
 @router.get("/documents")
 def list_documents(
     collection_id: int | None = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    return KnowledgeLibraryService.list_documents(db, collection_id=collection_id)
+    return KnowledgeLibraryService.list_documents(db, collection_id=collection_id, limit=limit)
 
 
 @router.post("/documents/upload")

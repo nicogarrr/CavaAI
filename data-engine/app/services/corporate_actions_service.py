@@ -24,12 +24,13 @@ from app.models import Company, CorporateAction, Position, Transaction
 
 
 class CorporateActionService:
-    def list_actions(self, db: Session) -> list[CorporateAction]:
+    def list_actions(self, db: Session, *, limit: int = 500) -> list[CorporateAction]:
         return list(
             db.scalars(
                 select(CorporateAction)
                 .join(Company, CorporateAction.company_id == Company.id)
                 .order_by(CorporateAction.effective_date)
+                .limit(limit)
             )
         )
 
