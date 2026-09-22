@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
 
+from app.core.database import get_db
 from app.services import insider_service
 
 router = APIRouter()
@@ -15,8 +17,9 @@ def insider_signals(
     cik: str | None = Query(default=None, max_length=10),
     limit: int = Query(default=20, ge=1, le=50),
     notify: bool = Query(default=False),
+    db: Session = Depends(get_db),
 ) -> dict:
-    result = insider_service.get_signals_for_ticker(ticker, cik=cik, limit=limit)
+    result = insider_service.get_signals_for_ticker(ticker, cik=cik, limit=limit, db=db)
     if notify:
         # Enganche minimo Telegram: detras de INSIDER_ALERTS_ENABLED, nunca rompe.
         result["notification"] = insider_service.maybe_notify_insider_buy(
