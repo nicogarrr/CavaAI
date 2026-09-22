@@ -1,6 +1,7 @@
-"""Stage 6a: thesis lifecycle graph skeleton — compile, checkpoint, resume, idempotency."""
+"""Stage 6a+6c: thesis graph - compile, checkpoint, resume, idempotency, approval interrupt."""
 
 import pytest
+from langgraph.types import Command
 
 from app.workflows.thesis_graph import THESIS_GRAPH_NODES, build_thesis_graph, thesis_thread_id
 from app.workflows.thesis_graph.checkpointer import sqlite_checkpointer
@@ -8,6 +9,13 @@ from app.workflows.thesis_graph.checkpointer import sqlite_checkpointer
 
 def _config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}}
+
+
+def _resume_approve(graph, thread_id: str):
+    return graph.invoke(
+        Command(resume={"decision": "approve", "actor": "test"}),
+        config=_config(thread_id),
+    )
 
 
 def test_thread_id_format():
@@ -23,10 +31,8 @@ def test_graph_compiles_without_checkpointer():
 def test_full_run_records_all_nodes_in_order():
     with sqlite_checkpointer() as saver:
         graph = build_thesis_graph(checkpointer=saver)
-        result = graph.invoke(
-            {"ticker": "AAPL", "tenant_id": "t1"},
-            config=_config("thesis:t1:c1:fp1"),
-        )
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("thesis:t1:c1:fp1"))
+        result = _resume_approve(graph, "thesis:t1:c1:fp1")
     assert result["completed_nodes"] == list(THESIS_GRAPH_NODES)
     assert result["status"] == "published"
     assert all(ref == f"pending:{name}" for name, ref in result["artifacts"].items())
@@ -63,8 +69,11 @@ def test_crash_resume_skips_committed_nodes():
             first_pass = list(executed)
             assert crash_at in first_pass  # crashed at the intended node
 
-            # resume: None input continues from the last checkpoint
-            result = graph.invoke(None, config=_config(tid))
+            # resume: None input continues from the last checkpoint; the run
+            # then pauses at the 6c approval interrupt before publish.
+            graph.invoke(None, config=_config(tid))
+            assert graph.get_state(_config(tid)).next == ("approval_gate",)
+            result = _resume_approve(graph, tid)
             assert result["status"] == "published"
             assert result["completed_nodes"] == list(THESIS_GRAPH_NODES)
     finally:
@@ -84,17 +93,44 @@ def test_duplicate_delivery_is_idempotent():
     with sqlite_checkpointer() as saver:
         graph = build_thesis_graph(checkpointer=saver)
         tid = "thesis:t1:c3:fp3"
-        first = graph.invoke({"ticker": "NVDA", "tenant_id": "t1"}, config=_config(tid))
+        graph.invoke({"ticker": "NVDA", "tenant_id": "t1"}, config=_config(tid))
+        first = _resume_approve(graph, tid)
         second = graph.invoke({"ticker": "NVDA", "tenant_id": "t1"}, config=_config(tid))
     assert second["completed_nodes"] == first["completed_nodes"] == list(THESIS_GRAPH_NODES)
     assert second["artifacts"] == first["artifacts"]
 
 
-def test_approval_gate_marks_awaiting_approval_before_publish():
+def test_approval_gate_interrupts_before_publish():
     with sqlite_checkpointer() as saver:
         graph = build_thesis_graph(checkpointer=saver)
-        result = graph.invoke({"ticker": "GOOG", "tenant_id": "t1"}, config=_config("thesis:t1:c4:fp4"))
-    # final state is published; the gate must appear before publish in the audit log
-    nodes = result["completed_nodes"]
-    assert nodes.index("approval_gate") < nodes.index("publish")
-    assert result["artifacts"]["approval_gate"] == "pending:approval_gate"
+        tid = "thesis:t1:c4:fp4"
+        graph.invoke({"ticker": "GOOG", "tenant_id": "t1"}, config=_config(tid))
+        snapshot = graph.get_state(_config(tid))
+        assert snapshot.next == ("approval_gate",)
+        interrupts = [i for task in snapshot.tasks for i in task.interrupts]
+        assert interrupts and interrupts[0].value["type"] == "thesis_approval"
+        # the gate pauses before anything is published
+        assert "publish" not in snapshot.values["completed_nodes"]
+        result = _resume_approve(graph, tid)
+        nodes = result["completed_nodes"]
+        assert nodes.index("approval_gate") < nodes.index("publish")
+        assert result["artifacts"]["approval_gate"] == "pending:approval_gate"
+        assert result["meta"]["approval"]["decision"] == "approve"
+
+
+def test_request_changes_ends_run_without_publish():
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver)
+        tid = "thesis:t1:c5:fp5"
+        graph.invoke({"ticker": "MSFT", "tenant_id": "t1"}, config=_config(tid))
+        result = graph.invoke(
+            Command(resume={"decision": "request_changes", "notes": "redo valuation"}),
+            config=_config(tid),
+        )
+    assert result["status"] == "changes_requested"
+    assert "publish" not in result["completed_nodes"]
+    assert result["meta"]["approval"] == {
+        "decision": "request_changes",
+        "notes": "redo valuation",
+        "actor": None,
+    }
