@@ -9,6 +9,7 @@ from app.schemas import ThesisGenerateRequest, ThesisGraphOut, ThesisOut
 from app.services.thesis_graph_service import ThesisGraphService
 from app.services.thesis_memo import build_memo_markdown
 from app.services.thesis_service import ThesisService
+from app.services.provenance import Coverage, SourceKind, provenance
 
 router = APIRouter()
 
@@ -109,7 +110,19 @@ def thesis_history(ticker: str, db: Session = Depends(get_db)) -> dict:
                 ),
             }
         )
-    return {"ticker": company.ticker, "count": len(items), "history": items}
+    latest_at = versions[0].created_at.isoformat() if versions else None
+    return {
+        "ticker": company.ticker,
+        "count": len(items),
+        "history": items,
+        "data_as_of": latest_at,
+        "provenance": provenance(
+            "CavaAI Postgres",
+            SourceKind.INTERNAL,
+            coverage=Coverage.OK if versions else Coverage.UNAVAILABLE,
+            note="Historial calculado desde versiones y diffs persistidos; sin actores inventados.",
+        ),
+    }
 
 
 @router.get("/{ticker}/memo.md", response_class=PlainTextResponse)

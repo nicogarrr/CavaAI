@@ -18,7 +18,7 @@ def test_provenance_block_shape():
 
 
 def test_source_kind_tiers_are_distinct():
-    assert {k.value for k in SourceKind} == {"official", "issuer", "exchange", "unofficial"}
+    assert {k.value for k in SourceKind} == {"official", "issuer", "exchange", "unofficial", "internal"}
     block = provenance("Yahoo Finance", SourceKind.UNOFFICIAL, note="fuente no oficial")
     assert block["source_kind"] == "unofficial"
     assert block["note"] == "fuente no oficial"
@@ -111,3 +111,61 @@ def test_market_indices_carry_unofficial_provenance(monkeypatch):
     )
     result3 = market.market_indices()
     assert result3["provenance"]["coverage"] == "partial"
+
+
+def test_thesis_history_carries_computed_provenance():
+    """Contract: thesis history exposes internal-computation provenance + data_as_of."""
+    import main
+    from fastapi.testclient import TestClient
+    from tests.test_thesis_history_memo import TICKER, _clean, _seed_two_versions
+
+    _clean()
+    v1_id, v2_id = _seed_two_versions()
+    response = TestClient(main.app).get(f"/api/thesis/{TICKER}/history")
+    assert response.status_code == 200
+    payload = response.json()
+    block = payload["provenance"]
+    assert block["source_kind"] == "internal"
+    assert block["coverage"] == "ok"
+    assert payload["data_as_of"] is not None
+    datetime.fromisoformat(payload["data_as_of"])
+    _clean()
+
+
+def test_risk_dashboard_carries_computed_provenance(perf_db=None):
+    """Contract: risk dashboard exposes data_as_of (stalest input) + provenance."""
+    # reuse the perf fixture seeder indirectly: minimal synthetic portfolio
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.database import Base
+    import app.models  # noqa: F401
+    from app.models import Company, Portfolio, Position
+    from app.services.risk_service import RiskService
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    company = Company(
+        ticker="ACME", name="Acme", currency="USD", exchange="NASDAQ",
+        sector="Tech", industry="Software", company_type="research_candidate",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    portfolio = Portfolio(name="main", base_currency="USD", is_default=True)
+    db.add(portfolio)
+    db.flush()
+    db.add(Position(
+        portfolio_id=portfolio.id, company_id=company.id, quantity=10,
+        currency="USD", market_price=100, market_value=1000,
+        market_value_native=1000,
+        as_of=datetime(2026, 9, 20).date(),
+    ))
+    db.commit()
+    result = RiskService().dashboard(db)
+    block = result["provenance"]
+    assert block["source_kind"] == "internal"
+    assert result["data_as_of"] is not None
+    assert "2026-09-20" in result["data_as_of"]
+    db.close()
