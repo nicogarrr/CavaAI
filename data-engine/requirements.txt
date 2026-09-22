@@ -48,3 +48,8 @@ minio>=7.2.7,<8
 dramatiq[redis]>=1.17.0,<2
 apscheduler>=3.10.4,<4
 langfuse>=3.0.0,<4
+# LangGraph thesis lifecycle shadow pilot (stage 6): graph + durable checkpoints.
+# Control state only in a separate schema; business source of truth stays in Postgres domain tables.
+langgraph>=1.2,<2
+langgraph-checkpoint-sqlite>=3.1,<4
+langgraph-checkpoint-postgres>=3.1,<4
