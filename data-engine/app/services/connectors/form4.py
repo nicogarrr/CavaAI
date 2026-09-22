@@ -102,15 +102,17 @@ def recent_form4_filings(
         return values[index] if index < len(values) else None
 
     for index, accession in enumerate(accessions):
-        form = _col("form", index)
-        if str(form or "").upper() != "4":
+        form = str(_col("form", index) or "").strip().upper()
+        # Form 4 y sus enmiendas (4/A). Las enmiendas corrigen un filing
+        # previo; excluirlas dejaba correcciones invisibles.
+        if form not in {"4", "4/A"}:
             continue
         primary = _col("primaryDocument", index)
         accession_nodash = str(accession).replace("-", "")
         index_url = f"{ARCHIVES_URL}/{cik_number}/{accession_nodash}/"
         items.append(
             {
-                "form": "4",
+                "form": form,
                 "accession_number": accession,
                 "filing_date": _col("filingDate", index),
                 "report_date": _col("reportDate", index),
@@ -240,8 +242,13 @@ def parse_form4_xml(source: str | bytes) -> dict:
         (True, root.findall("derivativeTable/derivativeTransaction")),
     ]
     # Caso general: un Form 4 trae un solo reporter y todas las filas son suyas.
-    # Multi-reporter (raro): se asigna el primer reporter y se deja constancia.
+    # Multi-reporter (filing conjunto): el XML NO ata filas a reporters, asi
+    # que nunca se atribuye en silencio al primero — se marca la transaccion
+    # como filing conjunto y se listan todos los reporters.
     main_rep = (reporters or [{}])[0]
+    multi_reporter = len(reporters) > 1
+    if multi_reporter:
+        joint_names = " / ".join(rep.get("name", "") for rep in reporters if rep.get("name"))
     for is_derivative, nodes in tables:
         for node in nodes:
             coding = node.find("transactionCoding")
@@ -260,12 +267,15 @@ def parse_form4_xml(source: str | bytes) -> dict:
                     "issuer_name": issuer_name,
                     "issuer_cik": issuer_cik,
                     "period_of_report": period.isoformat() if period else None,
-                    "insider": main_rep.get("name", ""),
-                    "insider_cik": main_rep.get("cik", ""),
-                    "role": _role(main_rep) if reporters else "insider",
+                    "insider": joint_names if multi_reporter else main_rep.get("name", ""),
+                    "insider_cik": "" if multi_reporter else main_rep.get("cik", ""),
+                    "multi_reporter": multi_reporter,
+                    "reporters_count": len(reporters),
+                    "attribution": "joint_filing" if multi_reporter else "single_reporter",
+                    "role": ("multiple insiders" if multi_reporter else (_role(main_rep) if reporters else "insider")),
                     "officer_title": main_rep.get("officer_title"),
                     "is_officer": bool(main_rep.get("is_officer")),
-                    "type": code,  # P = compra open-market, S = venta
+                    "type": code,  # codigo SEC crudo: P = compra (mercado abierto O privada), S = venta
                     "acquired_disposed": acquired,  # A / D
                     "shares": float(shares) if shares is not None else None,
                     "price": float(price) if price is not None else None,
@@ -286,5 +296,11 @@ def parse_form4_xml(source: str | bytes) -> dict:
 
 
 def is_open_market_buy(tx: dict) -> bool:
-    """Compra open-market real: codigo P + adquirida (A)."""
+    """Compra insider por codigo P + adquirida (A).
+
+    OJO: el codigo P de la SEC cubre compras en mercado abierto Y compras
+    privadas; el XML no siempre lo distingue. El nombre de la funcion se
+    mantiene por compatibilidad, pero las cadenas visibles al usuario deben
+    decir "compra (codigo P: mercado abierto o privado)".
+    """
     return tx.get("type") == "P" and tx.get("acquired_disposed") == "A"
