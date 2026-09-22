@@ -22,6 +22,11 @@ test.describe("research thesis workspace", () => {
 
     // Without a persisted thesis the workspace says so - nothing invented.
     await expect(page.getByText("No thesis exists.")).toBeVisible();
+
+    // The version-history panel is a <details> collapsed by default.
+    await page
+      .locator("summary", { hasText: "Historial de versiones y aprobaciones" })
+      .click();
     await expect(
       page.getByText("Aún no hay historial de versiones."),
     ).toBeVisible();
