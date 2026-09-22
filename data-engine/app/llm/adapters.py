@@ -78,6 +78,47 @@ class OpenAICompatibleProvider(LLMProvider):
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         model = self.model_router.resolve(request)
+        # Stage 3: generation span sobre la traza activa (si la hay). Solo
+        # metadatos y contadores; prompts y completaciones jamas salen.
+        import time as _time
+
+        from app.services import tracing as _tracing
+
+        _started = _time.monotonic()
+        try:
+            response = await self._complete(request, model)
+        except Exception as exc:
+            _tracing.trace_generation(
+                name=f"llm.{request.task or 'complete'}",
+                model=model,
+                metadata={
+                    "provider": self.name,
+                    "task": request.task,
+                    "route": model,
+                    "duration_ms": int((_time.monotonic() - _started) * 1000),
+                },
+                error_class=type(exc).__name__,
+            )
+            raise
+        _tracing.trace_generation(
+            name=f"llm.{request.task or 'complete'}",
+            model=response.model,
+            metadata={
+                "provider": self.name,
+                "task": request.task,
+                "route": model,
+                "duration_ms": int((_time.monotonic() - _started) * 1000),
+            },
+            usage={
+                "input": response.usage.input_tokens,
+                "output": response.usage.output_tokens,
+                "total": response.usage.total_tokens,
+                "cache_read": response.usage.cache_read_tokens,
+            },
+        )
+        return response
+
+    async def _complete(self, request: LLMRequest, model: str) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": model,
             "messages": [
