@@ -23,10 +23,7 @@ test.describe("research thesis workspace", () => {
     // Without a persisted thesis the workspace says so - nothing invented.
     await expect(page.getByText("No thesis exists.")).toBeVisible();
 
-    // The version-history panel is a <details> collapsed by default.
-    await page
-      .locator("summary", { hasText: "Historial de versiones y aprobaciones" })
-      .click();
+    // Collapsible panels open by default on desktop viewports.
     await expect(
       page.getByText("Aún no hay historial de versiones."),
     ).toBeVisible();
@@ -39,5 +36,21 @@ test.describe("research thesis workspace", () => {
         "el sistema no registra quién aprobó cada versión",
       ),
     ).toBeVisible();
+  });
+
+  test("collapsible panels start collapsed on a 390px mobile viewport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/research/MSFT?view=thesis");
+
+    const emptyHistory = page.getByText("Aún no hay historial de versiones.");
+    await expect(emptyHistory).toBeHidden();
+
+    // The tap target expands the panel on demand.
+    await page
+      .locator("summary", { hasText: "Historial de versiones y aprobaciones" })
+      .click();
+    await expect(emptyHistory).toBeVisible();
   });
 });

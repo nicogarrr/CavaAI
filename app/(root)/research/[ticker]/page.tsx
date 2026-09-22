@@ -13,6 +13,7 @@ import {
 
 import { MutationForm } from '@/components/forms/MutationForm';
 import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
+import CollapsiblePanel from '@/components/research/CollapsiblePanel';
 import {
   DecisionAndRealityPanel,
   LongTermModelPanel,
@@ -106,17 +107,7 @@ function metricValue(value: number | string | null | undefined, unit: string) {
 
 function Panel({ title, children, collapsibleOnMobile = false }: { title: string; children: React.ReactNode; collapsibleOnMobile?: boolean }) {
   if (collapsibleOnMobile) {
-    return (
-      <details className="rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
-        <summary className="cursor-pointer list-none text-lg font-semibold text-gray-100 [&::-webkit-details-marker]:hidden">
-          <span className="flex min-h-[44px] items-center justify-between gap-2">
-            {title}
-            <span className="text-xs font-normal text-gray-500 sm:hidden">tocar para expandir</span>
-          </span>
-        </summary>
-        <div className="mt-4">{children}</div>
-      </details>
-    );
+    return <CollapsiblePanel title={title}>{children}</CollapsiblePanel>;
   }
   return (
     <section className="rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
