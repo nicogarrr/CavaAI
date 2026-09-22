@@ -27,6 +27,46 @@ def _failure(actor: str, exc: Exception, **context: Any) -> dict[str, Any]:
     }
 
 
+def _is_transient(exc: Exception) -> bool:
+    """True when the failure is worth retrying via Dramatiq.
+
+    Transient: connection/timeout problems against Postgres, Redis or
+    upstream HTTP APIs, and retryable HTTP statuses (429, 5xx).
+    Permanent: validation, not-found, bad payloads — retrying those would
+    just burn the retry budget and delay the failure signal.
+    """
+    import httpx
+    import redis.exceptions as redis_exc
+    from sqlalchemy import exc as sa_exc
+
+    transient_types = (
+        ConnectionError,
+        TimeoutError,
+        sa_exc.OperationalError,
+        sa_exc.TimeoutError,
+        redis_exc.RedisError,
+        httpx.TimeoutException,
+        httpx.TransportError,
+    )
+    if isinstance(exc, transient_types):
+        return True
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    return isinstance(status, int) and (status == 429 or status >= 500)
+
+
+def _handle_actor_error(actor: str, exc: Exception, **context: Any) -> dict[str, Any]:
+    """Re-raise transient errors so Dramatiq retries; record permanent ones.
+
+    Every actor declares max_retries/backoff, but those knobs were dead while
+    all exceptions were swallowed into the failure payload. Permanent errors
+    keep the previous behavior: a structured result the scheduler can log.
+    """
+    if _is_transient(exc):
+        raise exc
+    return _failure(actor, exc, **context)
+
+
 def _batch_status(processed: int, errors: list[dict]) -> str:
     if errors and processed:
         return "partial"
@@ -124,7 +164,7 @@ def extract_document_kpis(
         }
     except Exception as exc:
         _rollback(db)
-        return _failure("extract_document_kpis", exc, document_id=document_id)
+        return _handle_actor_error("extract_document_kpis", exc, document_id=document_id)
     finally:
         db.close()
 
@@ -177,7 +217,7 @@ def extract_knowledge_principles(
             job.error = f"{type(exc).__name__}: {exc}"
             job.completed_at = datetime.now(UTC)
             db.commit()
-        return _failure(
+        return _handle_actor_error(
             "extract_knowledge_principles",
             exc,
             processing_job_id=processing_job_id,
@@ -205,7 +245,7 @@ def evaluate_alert_rules(
         }
     except Exception as exc:
         _rollback(db)
-        return _failure("evaluate_alert_rules", exc, tenant_id=tenant_id)
+        return _handle_actor_error("evaluate_alert_rules", exc, tenant_id=tenant_id)
     finally:
         db.close()
 
@@ -223,7 +263,7 @@ def refresh_market_pipeline(
         return {"actor": "refresh_market_pipeline", **result}
     except Exception as exc:
         _rollback(db)
-        return _failure("refresh_market_pipeline", exc, tenant_id=tenant_id)
+        return _handle_actor_error("refresh_market_pipeline", exc, tenant_id=tenant_id)
     finally:
         db.close()
 
@@ -302,7 +342,7 @@ def refresh_sec_filings(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker, limit=limit)
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker, limit=limit)
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
@@ -374,7 +414,7 @@ def refresh_ir_pages(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker)
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker)
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
@@ -444,7 +484,7 @@ def refresh_rss_feeds(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(
+        return _handle_actor_error(
             actor_name,
             exc,
             tenant_id=tenant_id,
@@ -513,7 +553,7 @@ def refresh_news(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(
+        return _handle_actor_error(
             actor_name,
             exc,
             tenant_id=tenant_id,
@@ -558,7 +598,7 @@ def process_document(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(
+        return _handle_actor_error(
             actor_name,
             exc,
             tenant_id=tenant_id,
@@ -619,7 +659,7 @@ def consolidate_memory(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id)
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id)
 
 
 @dramatiq.actor(max_retries=1)
@@ -694,7 +734,7 @@ def scan_contradictions(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id)
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id)
 
 
 @dramatiq.actor(max_retries=1)
@@ -787,7 +827,7 @@ def review_theses(
         finally:
             db.close()
     except Exception as exc:
-        return _failure(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker)
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker)
 
 
 @dramatiq.actor(max_retries=1)
