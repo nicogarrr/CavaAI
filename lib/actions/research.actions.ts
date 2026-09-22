@@ -166,6 +166,14 @@ export type ResearchValuation = {
   };
 };
 
+export type ResearchThesisCatalyst = {
+  label?: string;
+  date?: string;
+  time?: string;
+  eps_forecast?: number;
+  source?: string;
+};
+
 export type ResearchThesis = {
   id: number;
   company_id: number;
@@ -184,6 +192,10 @@ export type ResearchThesis = {
   source_coverage_score: number;
   red_team_score: number;
   valuation_risk_score: number;
+  hypothesis?: string | null;
+  catalysts?: ResearchThesisCatalyst[] | null;
+  invalidation_criteria?: string[] | null;
+  scenario_probabilities?: Record<string, number> | null;
   created_at: string;
 };
 
