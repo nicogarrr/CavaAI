@@ -1,4 +1,4 @@
-"""Stage 6d: real deterministic nodes (resolve_company, freeze_input_snapshot)."""
+"""Stage 6d/6e: real deterministic nodes (resolve_company, freeze_input_snapshot, probes)."""
 
 import pytest
 from sqlalchemy import create_engine
@@ -212,3 +212,56 @@ def test_model_and_valuation_probes_skeleton_without_session_factory():
         state = graph.get_state(_config("t:m3")).values
     assert state["artifacts"]["build_fundamental_model"] == "pending:build_fundamental_model"
     assert state["artifacts"]["deterministic_valuation"] == "pending:deterministic_valuation"
+
+
+def _seed_facts_and_doc(db: Session, company_id: int):
+    from app.models.entities import Document, FinancialFact
+
+    db.add(FinancialFact(
+        company_id=company_id, metric="revenue", value=100, period="FY2024",
+        fiscal_year=2024, source_type="SEC", confidence=0.95,
+    ))
+    db.add(FinancialFact(
+        company_id=company_id, metric="revenue", value=110, period="FY2025",
+        fiscal_year=2025, source_type="SEC", confidence=0.90,
+    ))
+    db.add(FinancialFact(
+        company_id=company_id, metric="eps", value=1.5, period="FY2025",
+        fiscal_year=2025, source_type="FMP", confidence=0.40,
+    ))
+    db.add(Document(company_id=company_id, title="10-K", source_type="SEC"))
+    db.commit()
+
+
+def test_source_audit_probe_reports_observed_distribution(db):
+    company = _company(db)
+    _seed_facts_and_doc(db, company.id)
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:a1"))
+        state = graph.get_state(_config("t:a1")).values
+    assert state["artifacts"]["source_audit"] == (
+        "audit:facts={FMP:1,SEC:2}|docs={SEC:1}|lowconf=1"
+    )
+    assert state["meta"]["source_audit"] == {
+        "facts_by_source_type": {"SEC": 2, "FMP": 1},
+        "documents_by_source_type": {"SEC": 1},
+        "low_confidence_facts": 1,
+    }
+
+
+def test_source_audit_probe_honest_empty(db):
+    _company(db)
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:a2"))
+        state = graph.get_state(_config("t:a2")).values
+    assert state["artifacts"]["source_audit"] == "audit:facts={}|docs={}|lowconf=0"
+
+
+def test_source_audit_skeleton_without_session_factory():
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver)
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:a3"))
+        state = graph.get_state(_config("t:a3")).values
+    assert state["artifacts"]["source_audit"] == "pending:source_audit"

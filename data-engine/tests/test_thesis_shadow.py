@@ -105,6 +105,7 @@ def test_probe_comparison_matches_classic_state(db):
         "ensure_ingestion_complete",
         "build_fundamental_model",
         "deterministic_valuation",
+        "source_audit",
     }
     assert all(entry["status"] == "match" for entry in probes.values())
     assert probes["resolve_company"]["graph_artifact"] == f"company:{company.id}"
@@ -125,6 +126,7 @@ def test_probe_comparison_honest_when_classic_state_absent(db):
     assert probes["ensure_ingestion_complete"]["graph_artifact"] == (
         "evidence:facts=0,prices=0,docs=0"
     )
+    assert probes["source_audit"]["graph_artifact"] == "audit:facts={}|docs={}|lowconf=0"
 
 
 def test_every_classic_phase_is_mapped():
