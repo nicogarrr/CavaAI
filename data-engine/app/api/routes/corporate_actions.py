@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import Company
 from app.services.corporate_actions_service import CorporateActionService
+from app.services.split_ingestion_service import SplitIngestionService
 
 router = APIRouter()
 
@@ -38,6 +39,17 @@ def _payload(action, ticker: str | None) -> dict:
         "applied": action.applied,
         "applied_at": action.applied_at.isoformat() if action.applied_at else None,
     }
+
+
+@router.post("/splits/sync")
+async def sync_portfolio_splits(db: Session = Depends(get_db)) -> dict:
+    """Ingest historical splits for held companies from the data provider.
+
+    Rows arrive UNAPPLIED with source provenance; apply them explicitly via
+    /corporate-actions/{id}/apply after verifying against issuer/exchange
+    notices. Provider failures mark the symbol unavailable.
+    """
+    return await SplitIngestionService().sync_portfolio(db)
 
 
 @router.get("")

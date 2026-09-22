@@ -853,6 +853,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/corporate-actions/splits/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Portfolio Splits
+         * @description Ingest historical splits for held companies from the data provider.
+         *
+         *     Rows arrive UNAPPLIED with source provenance; apply them explicitly via
+         *     /corporate-actions/{id}/apply after verifying against issuer/exchange
+         *     notices. Provider failures mark the symbol unavailable.
+         */
+        post: operations["sync_portfolio_splits_api_corporate_actions_splits_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/corporate-actions/{action_id}": {
         parameters: {
             query?: never;
@@ -6803,6 +6827,42 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_portfolio_splits_api_corporate_actions_splits_sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

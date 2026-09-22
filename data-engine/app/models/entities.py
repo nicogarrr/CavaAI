@@ -1785,6 +1785,10 @@ class CorporateAction(TenantOwnedMixin, Base, TimestampMixin):
     applied_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    source: Mapped[str] = mapped_column(String(40), default="manual")
+    fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class DividendRecord(TenantOwnedMixin, Base, TimestampMixin):

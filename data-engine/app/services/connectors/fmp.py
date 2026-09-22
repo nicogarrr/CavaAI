@@ -41,6 +41,20 @@ class FMPClient:
             response.raise_for_status()
             return response.json()
 
+    async def splits(self, ticker: str) -> list | dict:
+        """Historical stock splits for a symbol (FMP stable/splits).
+
+        Errors surface as exceptions so callers mark coverage unavailable
+        instead of guessing share-count adjustments.
+        """
+        if not self.configured():
+            raise RuntimeError("FMP_API_KEY is not configured")
+        params = {"symbol": ticker.upper(), "apikey": self.settings.fmp_api_key}
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(f"{self.stable_base_url}/splits", params=params)
+            response.raise_for_status()
+            return response.json()
+
     async def income_statement(self, ticker: str, limit: int = 10) -> list | dict:
         return await self._get(f"/income-statement/{ticker.upper()}", {"limit": limit})
 
