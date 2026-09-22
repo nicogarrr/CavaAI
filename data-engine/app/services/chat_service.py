@@ -78,19 +78,25 @@ class ChatService:
         )
 
     def _key_facts(self, db: Session, company: Company, limit: int = 8) -> list[FinancialFact]:
-        facts: list[FinancialFact] = []
-        for metric in KEY_FACT_METRICS:
-            fact = db.scalar(
-                select(FinancialFact)
-                .where(FinancialFact.company_id == company.id, FinancialFact.metric == metric)
-                .order_by(
-                    FinancialFact.fiscal_year.desc().nullslast(),
-                    desc(FinancialFact.created_at),
-                )
-                .limit(1)
+        # One query instead of one per metric: pick the latest fact per
+        # metric in Python, preserving the per-metric ordering contract.
+        rows = db.scalars(
+            select(FinancialFact)
+            .where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric.in_(KEY_FACT_METRICS),
             )
-            if fact:
-                facts.append(fact)
+            .order_by(
+                FinancialFact.metric,
+                FinancialFact.fiscal_year.desc().nullslast(),
+                desc(FinancialFact.created_at),
+                desc(FinancialFact.id),
+            )
+        ).all()
+        latest: dict[str, FinancialFact] = {}
+        for row in rows:
+            latest.setdefault(row.metric, row)
+        facts = [latest[m] for m in KEY_FACT_METRICS if m in latest]
         return facts[:limit]
 
     def _sections(self, db: Session, thesis: ThesisVersion | None, limit: int = 6) -> list[ThesisSection]:
