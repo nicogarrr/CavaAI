@@ -1,0 +1,199 @@
+# ============================================================
+# Docker Compose - Produccion personal (Oracle Ampere Always Free)
+# ============================================================
+# Una sola VM ARM64 (2-4 OCPU / 12-24 GB RAM), un solo usuario.
+# El frontend sigue en Vercel Hobby; la auth vive en MongoDB Atlas
+# (M0 gratis), asi que aqui NO va ni frontend ni MongoDB.
+#
+# Uso: docker compose -f docker-compose.prod.yml up -d
+# Requisitos: .env.production (ver docs/oracle-setup.md)
+
+services:
+  # TLS + reverse proxy hacia el backend (un subdominio DuckDNS gratis).
+  caddy:
+    image: caddy:2-alpine
+    container_name: cavaai-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - BACKEND_DOMAIN=${BACKEND_DOMAIN:?Define BACKEND_DOMAIN (p.ej. cavaai-api.duckdns.org) en .env.production}
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:17
+    container_name: cavaai-postgres
+    restart: unless-stopped
+    # Sin puerto publico: solo red interna de compose.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-portfolio}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env.production}
+      - POSTGRES_DB=${POSTGRES_DB:-cavaai_research}
+      - TZ=UTC
+      - PGTZ=UTC
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portfolio} -d ${POSTGRES_DB:-cavaai_research}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  redis:
+    image: redis:7-alpine
+    container_name: cavaai-redis
+    restart: unless-stopped
+    # Cola Dramatiq + cache; AOF para no perder jobs en reinicio.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: cavaai-qdrant
+    restart: unless-stopped
+    # Solo loopback: operaciones (snapshots) y diagnostico, sin exponer a internet.
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: cavaai-minio
+    restart: unless-stopped
+    command: server --address ":9000" /data
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:?Define MINIO_ROOT_USER en .env.production}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?Define MINIO_ROOT_PASSWORD en .env.production}
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./data-engine
+      dockerfile: Dockerfile.prod
+    image: cavaai-backend:prod
+    container_name: cavaai-backend
+    restart: unless-stopped
+    environment:
+      - APP_ENV=production
+      - RESEARCH_AUTH_REQUIRED=true
+      - RESEARCH_AUTH_SECRET=${RESEARCH_AUTH_SECRET:?Obligatorio}
+      - FMP_API_KEY=${FMP_API_KEY:-}
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY:-}
+      - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
+      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - VECTOR_STORE=qdrant
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=research
+      - DUCKDB_PATH=/data/analytics.duckdb
+      - LANGFUSE_ENABLED=false
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
+    volumes:
+      - duckdb_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  worker:
+    image: cavaai-backend:prod
+    container_name: cavaai-worker
+    restart: unless-stopped
+    command: ["dramatiq", "app.workers.dramatiq_app", "--processes", "1", "--threads", "2"]
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
+      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - VECTOR_STORE=qdrant
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=research
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
+      - RSS_FEEDS=${RSS_FEEDS:-}
+    volumes:
+      - duckdb_data:/data
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+
+  scheduler:
+    image: cavaai-backend:prod
+    container_name: cavaai-scheduler
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.scheduler"]
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
+      - REDIS_URL=redis://redis:6379/0
+      - TZ=UTC
+    depends_on:
+      redis:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  postgres_data:
+    name: cavaai-prod-postgres
+  redis_data:
+    name: cavaai-prod-redis
+  qdrant_data:
+    name: cavaai-prod-qdrant
+  minio_data:
+    name: cavaai-prod-minio
+  duckdb_data:
+    name: cavaai-prod-duckdb
+  caddy_data:
+    name: cavaai-prod-caddy
+  caddy_config:
+    name: cavaai-prod-caddy-config

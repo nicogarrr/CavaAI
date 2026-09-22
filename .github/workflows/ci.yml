@@ -186,7 +186,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
-      - name: Install backend deps on ARM64 (torch, pandas, scipy)
+      # Mismo orden que data-engine/Dockerfile.prod: torch CPU-only primero
+      # (indice oficial PyTorch, tiene wheels linux/aarch64) y luego el resto.
+      # Asi CI prueba la estrategia exacta de la imagen de Oracle y evita
+      # descargar los wheels CUDA (multi-GB) tambien en CI.
+      - name: Install torch CPU-only on ARM64 (same as Dockerfile.prod)
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install backend deps on ARM64 (pandas, scipy, sentence-transformers)
         run: python -m pip install -r data-engine/requirements.txt
       - name: Import backend app on ARM64
         working-directory: data-engine
