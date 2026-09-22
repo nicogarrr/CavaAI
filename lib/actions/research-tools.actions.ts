@@ -275,6 +275,22 @@ export type PortfolioIntelligence = {
     portfolio_components: Record<string, number>;
     positions: Array<{ ticker: string; weight: number; total_return: number | null; components: Record<string, number | null> }>;
   };
+  ledger_contribution: {
+    positions: Array<{
+      ticker: string;
+      contribution_pnl: number | null;
+      contribution_share: number | null;
+      end_value: number;
+      start_value: number;
+      net_invested: number;
+      income: number;
+      reason: string | null;
+    }>;
+    total_pnl: number | null;
+    coverage: { positions: number; with_contribution: number; reasons: Record<string, number> };
+    methodology: string;
+    base_currency: string;
+  };
   benchmark: {
     symbol: string;
     status: 'calculated' | 'missing_benchmark' | 'insufficient_overlap';

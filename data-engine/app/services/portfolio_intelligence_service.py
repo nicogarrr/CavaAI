@@ -134,6 +134,7 @@ class PortfolioIntelligenceService:
         benchmark = self._benchmark_comparison(db, portfolio_returns, cutoff)
         exposures = self._exposures(rows, total_value)
         attribution = self._attribution(db, rows, weights, price_series)
+        ledger_contribution = self._ledger_contribution(db, rows, cutoff)
         complete_price_series = sum(len(series) >= 2 for series in price_series.values())
         return {
             "as_of": date.today(),
@@ -174,6 +175,7 @@ class PortfolioIntelligenceService:
             },
             "exposures": exposures,
             "attribution": attribution,
+            "ledger_contribution": ledger_contribution,
             "benchmark": benchmark,
             "coverage": {
                 "positions": len(rows),
@@ -404,6 +406,159 @@ class PortfolioIntelligenceService:
             covariance / variance if variance else None,
             {"status": "calculated", "benchmark": "SPY", "observations": len(dates)},
         )
+
+    def _ledger_contribution(
+        self, db: Session, rows: list[tuple[Position, Company]], cutoff: date
+    ) -> dict[str, Any]:
+        """Per-position P&L contribution over the horizon from the full ledger.
+
+        For each held company: contribution = end value - start value
+        - net invested + income, where start value reconstructs the quantity
+        held at the horizon cutoff from every prior transaction (the ledger
+        is split-adjusted through corporate actions) priced at the last
+        close before the cutoff, and net invested sums buys minus sells
+        inside the horizon. All flows convert to base currency with
+        point-in-time FX; rows without a pre-cutoff price or FX rate get a
+        null contribution with an explicit reason instead of an estimate.
+        """
+        fx = PortfolioFXService()
+        base = fx.base_currency(db)
+        company_ids = [company.id for _, company in rows]
+        empty = {
+            "positions": [],
+            "total_pnl": None,
+            "coverage": {"positions": len(rows), "with_contribution": 0, "reasons": {}},
+            "methodology": "ledger_reconstruction_v1",
+        }
+        if not company_ids:
+            return empty
+
+        transactions = list(
+            db.scalars(
+                select(Transaction)
+                .where(Transaction.company_id.in_(company_ids))
+                .order_by(Transaction.trade_date)
+            ).all()
+        )
+        by_company: dict[int, list[Transaction]] = defaultdict(list)
+        for transaction in transactions:
+            if transaction.company_id is not None:
+                by_company[transaction.company_id].append(transaction)
+
+        flow_table = fx.fx_table(
+            db,
+            currencies={t.currency for t in transactions} | {p.currency for p, _ in rows},
+            base_currency=base,
+            as_of_max=date.today(),
+        )
+
+        # Last close strictly before the cutoff per company (one query).
+        prior_prices: dict[int, MarketPrice] = {}
+        for price in db.scalars(
+            select(MarketPrice)
+            .where(MarketPrice.company_id.in_(company_ids), MarketPrice.date < cutoff)
+            .order_by(MarketPrice.company_id, MarketPrice.date.desc())
+        ).all():
+            prior_prices.setdefault(price.company_id, price)
+
+        positions_out = []
+        reasons: dict[str, int] = defaultdict(int)
+        total_pnl = 0.0
+        with_contribution = 0
+        for position, company in rows:
+            ledger = by_company.get(company.id, [])
+            qty_at_cutoff = 0.0
+            buys = 0.0
+            sells = 0.0
+            income = 0.0
+            fx_missing = False
+            for transaction in ledger:
+                rate = PortfolioFXService.rate_from_table(
+                    flow_table,
+                    quote_currency=transaction.currency,
+                    base_currency=base,
+                    as_of=transaction.trade_date,
+                )
+                if rate is None:
+                    fx_missing = True
+                    continue
+                amount = float(transaction.quantity * transaction.price) * float(rate)
+                fees = float(transaction.fees or 0) * float(rate)
+                if transaction.trade_date < cutoff:
+                    if transaction.action == "buy":
+                        qty_at_cutoff += float(transaction.quantity)
+                    elif transaction.action == "sell":
+                        qty_at_cutoff -= float(transaction.quantity)
+                else:
+                    if transaction.action == "buy":
+                        buys += amount + fees
+                    elif transaction.action == "sell":
+                        sells += amount - fees
+                    elif transaction.action in {"dividend", "interest"}:
+                        income += amount
+            start_price_row = prior_prices.get(company.id)
+            start_rate = (
+                PortfolioFXService.rate_from_table(
+                    flow_table,
+                    quote_currency=position.currency,
+                    base_currency=base,
+                    as_of=start_price_row.date,
+                )
+                if start_price_row is not None
+                else None
+            )
+            end_value = float(position.market_value_base or 0)
+            reason = None
+            contribution = None
+            if fx_missing:
+                reason = "missing_fx"
+            elif qty_at_cutoff > 0 and (start_price_row is None or not start_price_row.adj_close):
+                reason = "missing_start_price"
+            elif qty_at_cutoff > 0 and start_rate is None:
+                reason = "missing_start_fx"
+            if reason is None:
+                start_value = (
+                    qty_at_cutoff * float(start_price_row.adj_close) * float(start_rate)
+                    if qty_at_cutoff > 0 and start_price_row is not None and start_rate is not None
+                    else 0.0
+                )
+                contribution = end_value - start_value - buys + sells + income
+                total_pnl += contribution
+                with_contribution += 1
+            else:
+                reasons[reason] += 1
+            positions_out.append(
+                {
+                    "ticker": company.ticker,
+                    "contribution_pnl": contribution,
+                    "end_value": end_value,
+                    "start_value": (
+                        qty_at_cutoff * float(start_price_row.adj_close) * float(start_rate)
+                        if qty_at_cutoff > 0 and start_price_row is not None and start_rate is not None
+                        else 0.0
+                    ),
+                    "net_invested": buys - sells,
+                    "income": income,
+                    "reason": reason,
+                }
+            )
+        for entry in positions_out:
+            entry["contribution_share"] = (
+                entry["contribution_pnl"] / total_pnl
+                if entry["contribution_pnl"] is not None and total_pnl != 0
+                else None
+            )
+        return {
+            "positions": positions_out,
+            "total_pnl": total_pnl if with_contribution else None,
+            "coverage": {
+                "positions": len(rows),
+                "with_contribution": with_contribution,
+                "reasons": dict(reasons),
+            },
+            "methodology": "ledger_reconstruction_v1",
+            "base_currency": base,
+        }
 
     def _benchmark_comparison(
         self, db: Session, portfolio_returns: dict[date, float], cutoff: date
