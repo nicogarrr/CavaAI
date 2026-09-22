@@ -96,6 +96,7 @@ class OpenAICompatibleProvider(LLMProvider):
                     "task": request.task,
                     "route": model,
                     "duration_ms": int((_time.monotonic() - _started) * 1000),
+                    **dict(request.metadata or {}),
                 },
                 error_class=type(exc).__name__,
             )
@@ -108,6 +109,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 "task": request.task,
                 "route": model,
                 "duration_ms": int((_time.monotonic() - _started) * 1000),
+                **dict(request.metadata or {}),
             },
             usage={
                 "input": response.usage.input_tokens,

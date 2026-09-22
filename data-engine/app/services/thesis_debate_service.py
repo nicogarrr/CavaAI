@@ -16,6 +16,7 @@ import re
 from typing import Any
 
 from app.llm import LLMRequest, LLMResponse, Message
+from app.services.prompt_registry import get_prompt
 from app.llm.base import LLMProvider
 from app.services.jev_gates import (
     DEBATE_VERDICT_CRITERIA,
@@ -219,10 +220,7 @@ async def debate_thesis(
     try:
         bull_case, resp = await _complete_text(
             llm,
-            system=(
-                "Eres el analista ALCISTA. Defiende la tesis de inversion con los "
-                "datos aportados; no inventes cifras. Maximo 150 palabras."
-            ),
+            system=get_prompt("thesis_debate_bull").text,
             user=f"Ticker: {ticker}\nTesis: {thesis or '(sin tesis aportada)'}",
             task="red_team",
             max_tokens=400,
@@ -237,10 +235,7 @@ async def debate_thesis(
     try:
         bear_case, resp = await _complete_text(
             llm,
-            system=(
-                "Eres el ABOGADO DEL DIABLO bajista. Ataca la tesis: riesgos, "
-                "deuda, competencia, valoracion. No inventes cifras. Maximo 150 palabras."
-            ),
+            system=get_prompt("thesis_debate_bear").text,
             user=(
                 f"Ticker: {ticker}\nTesis: {thesis or '(sin tesis aportada)'}\n"
                 f"Caso alcista previo: {bull_case[:800]}"
@@ -279,11 +274,7 @@ async def debate_thesis(
         try:
             judge_text, resp = await _complete_text(
                 llm,
-                system=(
-                    "Eres el JUEZ neutral. Lee el caso alcista y el bajista y emite un "
-                    "veredicto con una sola palabra (bullish, bearish o neutral) seguida "
-                    "de una frase de justificacion. Formato: VEREDICTO: <palabra> | <frase>."
-                ),
+                system=get_prompt("thesis_debate_judge").text,
                 user=(
                     f"Ticker: {ticker}\nTesis: {thesis or '(sin tesis aportada)'}\n"
                     f"ALCISTA: {bull_case[:1000]}\nBAJISTA: {bear_case[:1000]}"
@@ -357,12 +348,7 @@ async def risk_lenses(
     try:
         request = LLMRequest(
             messages=[
-                Message(
-                    "system",
-                    "Eres el equipo de riesgo (TradingAgents): responde SOLO con tres "
-                    "lineas con formato exacto 'AGRESIVO: ...', 'NEUTRAL: ...' y "
-                    "'CONSERVADOR: ...', maximo 80 palabras cada una. Sin cifras inventadas.",
-                ),
+                Message("system", get_prompt("risk_three_lenses").text),
                 Message("user", f"Analisis: {analysis or '(sin analisis aportado)'}"),
             ],
             task="red_team",
