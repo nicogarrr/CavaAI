@@ -131,6 +131,7 @@ class PortfolioIntelligenceService:
         xirr, xirr_trace = self._xirr(db, rows)
         correlations = self._correlations(returns, rows)
         beta, beta_trace = self._beta(db, portfolio_returns, cutoff)
+        benchmark = self._benchmark_comparison(db, portfolio_returns, cutoff)
         exposures = self._exposures(rows, total_value)
         attribution = self._attribution(db, rows, weights, price_series)
         complete_price_series = sum(len(series) >= 2 for series in price_series.values())
@@ -173,6 +174,7 @@ class PortfolioIntelligenceService:
             },
             "exposures": exposures,
             "attribution": attribution,
+            "benchmark": benchmark,
             "coverage": {
                 "positions": len(rows),
                 "positions_with_price_history": complete_price_series,
@@ -402,6 +404,75 @@ class PortfolioIntelligenceService:
             covariance / variance if variance else None,
             {"status": "calculated", "benchmark": "SPY", "observations": len(dates)},
         )
+
+    def _benchmark_comparison(
+        self, db: Session, portfolio_returns: dict[date, float], cutoff: date
+    ) -> dict[str, Any]:
+        """Portfolio vs SPY over the horizon: returns, alpha, tracking error.
+
+        Honest states: missing_benchmark (SPY not ingested) and
+        insufficient_overlap (<20 shared trading days) surface as status
+        with null metrics instead of fabricated numbers.
+        """
+        base: dict[str, Any] = {
+            "symbol": "SPY",
+            "benchmark_twr": None,
+            "benchmark_annualized": None,
+            "portfolio_annualized": None,
+            "alpha_annualized": None,
+            "tracking_error": None,
+            "information_ratio": None,
+            "observations": 0,
+        }
+        benchmark = db.scalar(select(Company).where(Company.ticker == "SPY"))
+        if benchmark is None:
+            return {**base, "status": "missing_benchmark"}
+        prices = list(
+            db.scalars(
+                select(MarketPrice)
+                .where(MarketPrice.company_id == benchmark.id, MarketPrice.date >= cutoff)
+                .order_by(MarketPrice.date)
+            ).all()
+        )
+        benchmark_returns = self._returns(prices)
+        dates = sorted(portfolio_returns.keys() & benchmark_returns.keys())
+        if len(dates) < 20:
+            return {**base, "status": "insufficient_overlap", "observations": len(dates)}
+        port = [portfolio_returns[day] for day in dates]
+        bench = [benchmark_returns[day] for day in dates]
+        bench_twr = self._compound(bench)
+        bench_annualized = (
+            (1 + bench_twr) ** (252 / len(bench)) - 1 if bench_twr > -1 else None
+        )
+        port_twr = self._compound(port)
+        port_annualized = (
+            (1 + port_twr) ** (252 / len(port)) - 1 if port_twr > -1 else None
+        )
+        active = [p - b for p, b in zip(port, bench)]
+        tracking_error = pstdev(active) * math.sqrt(252) if len(active) >= 2 else None
+        alpha = (
+            port_annualized - bench_annualized
+            if port_annualized is not None and bench_annualized is not None
+            else None
+        )
+        information_ratio = (
+            alpha / tracking_error
+            # A near-zero tracking error would turn rounding noise into an
+            # absurd ratio; treat it as undefined instead.
+            if alpha is not None and tracking_error is not None and tracking_error > 1e-6
+            else None
+        )
+        return {
+            **base,
+            "status": "calculated",
+            "benchmark_twr": bench_twr,
+            "benchmark_annualized": bench_annualized,
+            "portfolio_annualized": port_annualized,
+            "alpha_annualized": alpha,
+            "tracking_error": tracking_error,
+            "information_ratio": information_ratio,
+            "observations": len(dates),
+        }
 
     @staticmethod
     def _exposures(
