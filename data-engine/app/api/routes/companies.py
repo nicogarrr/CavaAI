@@ -89,6 +89,7 @@ class CompanyEnsureRequest(BaseModel):
     currency: str | None = Field(default=None, min_length=3, max_length=10)
     sector: str | None = Field(default=None, max_length=120)
     industry: str | None = Field(default=None, max_length=160)
+    domicile_country: str | None = Field(default=None, max_length=120)
 
 
 class DecisionJournalCreate(BaseModel):
@@ -158,6 +159,9 @@ def ensure_company(payload: CompanyEnsureRequest, db: Session = Depends(get_db))
             currency=(payload.currency or "USD").strip().upper(),
             sector=(payload.sector or "Unknown").strip(),
             industry=(payload.industry or "Unknown").strip(),
+            domicile_country=(
+                payload.domicile_country.strip() if payload.domicile_country else None
+            ),
             company_type="research_candidate",
             valuation_model="unassigned",
             special_sources=[],
@@ -174,6 +178,8 @@ def ensure_company(payload: CompanyEnsureRequest, db: Session = Depends(get_db))
             company.sector = payload.sector.strip()
         if payload.industry and company.industry == "Unknown":
             company.industry = payload.industry.strip()
+        if payload.domicile_country and not company.domicile_country:
+            company.domicile_country = payload.domicile_country.strip()
     db.commit()
     db.refresh(company)
     return company
