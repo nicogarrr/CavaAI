@@ -416,7 +416,10 @@ class PortfolioIntelligenceService:
         for position, company in rows:
             weight = float(position.market_value_base or 0) / total_value if total_value else 0
             exposures["sectors"][company.sector] += weight
-            exposures["countries"][EXCHANGE_COUNTRY.get(company.exchange.upper(), "Unknown")] += weight
+            country = company.domicile_country or EXCHANGE_COUNTRY.get(
+                company.exchange.upper(), "Unknown"
+            )
+            exposures["countries"][country] += weight
             exposures["currencies"][position.currency] += weight
             for factor in company.factor_tags:
                 exposures["factors"][factor] += weight
