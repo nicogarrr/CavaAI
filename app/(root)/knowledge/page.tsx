@@ -125,6 +125,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
 
       <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
         <div className="mb-4 flex items-center gap-2"><BookOpen className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">Documents</h2></div>
+        {!documents.length ? <p className="py-2 text-sm text-gray-500">No knowledge documents yet.</p> : null}
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="text-xs uppercase text-gray-500"><tr><th className="border-b border-gray-800 py-2">Document</th><th className="border-b border-gray-800 py-2">Collection</th><th className="border-b border-gray-800 py-2">Type</th><th className="border-b border-gray-800 py-2">Parser</th><th className="border-b border-gray-800 py-2">Status</th><th className="border-b border-gray-800 py-2 text-right">Actions</th></tr></thead>
@@ -143,12 +144,10 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
                 </tr>
                 );
               })}
-              {!documents.length ? <tr><td className="py-5 text-gray-500" colSpan={6}>No knowledge documents yet.</td></tr> : null}
             </tbody>
           </table>
         </div>
         <div className="grid grid-cols-1 gap-3 md:hidden">
-          {!documents.length ? <p className="text-sm text-gray-500">No knowledge documents yet.</p> : null}
           {documents.map((document) => {
             const job = latestJobByDocument.get(document.id);
             const busy = job?.status === 'queued' || job?.status === 'running';
