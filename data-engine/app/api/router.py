@@ -4,6 +4,7 @@ from app.api.routes import (
     alerts,
     calendar,
     chat,
+    cnmv,
     companies,
     corporate_actions,
     earnings,
@@ -68,4 +69,5 @@ api_router.include_router(memory.router, prefix="/memory", tags=["memory"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(market.router, prefix="/market", tags=["market"])
+api_router.include_router(cnmv.router, prefix="/cnmv", tags=["cnmv"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
