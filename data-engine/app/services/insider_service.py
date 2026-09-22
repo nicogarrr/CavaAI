@@ -167,6 +167,8 @@ def get_signals_for_ticker(
     limit: int = 20,
     client=None,
     fetcher: Callable[..., list[dict]] | None = None,
+    db=None,
+    tenant_id: int | None = None,
 ) -> dict:
     """Pipeline ticker -> filings Form 4 -> parse XML -> senales. Best-effort.
 
@@ -193,6 +195,18 @@ def get_signals_for_ticker(
                         filing["document_url"], client=client
                     )
                 parsed = form4_connector.parse_form4_xml(xml_text)
+                if db is not None:
+                    # Persistencia durable idempotente (PR-2). Nunca rompe la lectura.
+                    try:
+                        from app.services import insider_persistence
+
+                        insider_persistence.persist_filing(
+                            db, filing, parsed, xml_text=xml_text, tenant_id=tenant_id
+                        )
+                    except Exception as persist_exc:  # noqa: BLE001
+                        errors.append(
+                            f"{filing.get('accession_number')}: persist {type(persist_exc).__name__}"
+                        )
                 for tx in parsed.get("transactions", []):
                     tx.setdefault("ticker", wanted)
                     tx["accession_number"] = filing.get("accession_number")

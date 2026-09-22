@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -303,6 +304,80 @@ class CashDailySnapshot(TenantOwnedMixin, Base, TimestampMixin):
     fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
     balance_base: Mapped[Decimal | None] = mapped_column(Numeric(24, 6), nullable=True)
     source: Mapped[str] = mapped_column(String(80), default="market_refresh")
+
+
+class InsiderFiling(TenantOwnedMixin, Base, TimestampMixin):
+    """Persisted SEC Form 4/4-A filing envelope (provenance, never overwritten).
+
+    One row per accession number. Amendments (4/A) get their own immutable
+    row; they never mutate the filing they amend.
+    """
+
+    __tablename__ = "insider_filings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "accession_number", name="uq_insider_filings_tenant_accession"),
+        Index("ix_insider_filings_issuer", "issuer_cik"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    accession_number: Mapped[str] = mapped_column(String(40))
+    form: Mapped[str] = mapped_column(String(10))
+    is_amendment: Mapped[bool] = mapped_column(Boolean, default=False)
+    amends_accession: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    issuer_cik: Mapped[str] = mapped_column(String(20))
+    issuer_ticker: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    issuer_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    filing_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    report_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    period_of_report: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    index_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    raw_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    parser_version: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="parsed")
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    transactions: Mapped[list["InsiderTransaction"]] = relationship(back_populates="filing")
+
+
+class InsiderTransaction(TenantOwnedMixin, Base, TimestampMixin):
+    """One persisted Form 4 transaction row, keyed by a stable fingerprint.
+
+    The fingerprint (accession + row ordinal + raw fields) makes re-ingestion
+    idempotent: the same SEC row is never stored twice, and an amendment adds
+    new rows instead of mutating the original ones.
+    """
+
+    __tablename__ = "insider_transactions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "fingerprint", name="uq_insider_transactions_tenant_fingerprint"),
+        Index("ix_insider_transactions_filing", "filing_id"),
+        Index("ix_insider_transactions_ticker_date", "issuer_ticker", "tx_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    filing_id: Mapped[int] = mapped_column(ForeignKey("insider_filings.id"))
+    accession_number: Mapped[str] = mapped_column(String(40))
+    form: Mapped[str] = mapped_column(String(10))
+    issuer_ticker: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    insider: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    insider_cik: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    officer_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    multi_reporter: Mapped[bool] = mapped_column(Boolean, default=False)
+    attribution: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    acquired_disposed: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    shares: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tx_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    is_derivative: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    data_quality: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    filing: Mapped["InsiderFiling"] = relationship(back_populates="transactions")
 
 
 class Document(TenantOwnedMixin, Base, TimestampMixin):
