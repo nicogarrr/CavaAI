@@ -24,6 +24,23 @@ class FMPClient:
     async def company_profile(self, ticker: str) -> list | dict:
         return await self._get(f"/profile/{ticker.upper()}")
 
+    stable_base_url = "https://financialmodelingprep.com/stable"
+
+    async def dividends(self, ticker: str) -> list | dict:
+        """Declared dividend records for a symbol (FMP stable/dividends).
+
+        Returns the raw provider payload. Entitlement/auth errors surface as
+        exceptions so callers can mark coverage unavailable instead of
+        fabricating dividend data.
+        """
+        if not self.configured():
+            raise RuntimeError("FMP_API_KEY is not configured")
+        params = {"symbol": ticker.upper(), "apikey": self.settings.fmp_api_key}
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(f"{self.stable_base_url}/dividends", params=params)
+            response.raise_for_status()
+            return response.json()
+
     async def income_statement(self, ticker: str, limit: int = 10) -> list | dict:
         return await self._get(f"/income-statement/{ticker.upper()}", {"limit": limit})
 

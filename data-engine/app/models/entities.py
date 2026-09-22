@@ -1787,6 +1787,28 @@ class CorporateAction(TenantOwnedMixin, Base, TimestampMixin):
     )
 
 
+class DividendRecord(TenantOwnedMixin, Base, TimestampMixin):
+    """Declared dividend ingested from a labeled data provider.
+
+    Deduped per (company, ex_date, amount). Powers real dividend-yield
+    analytics; dividend cash application to the ledger stays manual.
+    """
+
+    __tablename__ = "dividend_records"
+    __table_args__ = (
+        UniqueConstraint("company_id", "ex_date", "amount", name="uq_dividend_record"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    ex_date: Mapped[date] = mapped_column(Date, index=True)
+    pay_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(24, 10))
+    currency: Mapped[str] = mapped_column(String(10), default="USD")
+    source: Mapped[str] = mapped_column(String(40), default="fmp")
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class WorkflowRun(TenantOwnedMixin, Base, TimestampMixin):
     """Uniform execution envelope for every workflow run.
 

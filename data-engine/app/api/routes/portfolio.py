@@ -17,6 +17,7 @@ from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.market_refresh_service import MarketRefreshService
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
+from app.services.dividend_ingestion_service import DividendIngestionService
 from app.services.tearsheet_service import TearsheetService
 
 router = APIRouter()
@@ -306,6 +307,27 @@ def upsert_fx_rate(payload: FXRateInput, db: Session = Depends(get_db)) -> dict:
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/dividends/sync")
+async def sync_portfolio_dividends(db: Session = Depends(get_db)) -> dict:
+    """Ingest declared dividends for every held company from the data provider.
+
+    Deduped per (company, ex_date, amount). Provider failures mark the symbol
+    unavailable; nothing is fabricated. Dividend cash stays a manual ledger
+    entry.
+    """
+    return await DividendIngestionService().sync_portfolio(db)
+
+
+@router.get("/dividends")
+def portfolio_dividends(db: Session = Depends(get_db)) -> dict:
+    """Trailing-12-month declared dividend yield per position and portfolio.
+
+    Coverage is explicit: positions without ingested dividend records show
+    null yields instead of zeros.
+    """
+    return DividendIngestionService().portfolio_yields(db)
 
 
 @router.get("/tearsheet")
