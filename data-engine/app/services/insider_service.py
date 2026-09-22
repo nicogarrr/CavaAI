@@ -1,9 +1,10 @@
 """Senales insider a partir de Form 4 (SEC EDGAR, gratis).
 
-Senales:
-- cluster_buy: >=3 insiders distintos comprando (open-market) en 30 dias.
-- c_suite_buy: el CEO/CFO compra en mercado abierto (codigo P).
-- big_buy: una compra open-market supera 1M USD.
+Senales (codigo P = compra en mercado abierto O privada; el XML no
+siempre lo distingue, asi que los textos nunca afirman "mercado abierto"):
+- cluster_buy: >=3 insiders distintos comprando (codigo P) en 30 dias.
+- c_suite_buy: el CEO/CFO compra (codigo P).
+- big_buy: una compra (codigo P) supera 1M USD.
 
 Enganche minimo con Telegram (notification_service): `maybe_notify_insider_buy`
 solo actua si INSIDER_ALERTS_ENABLED=true y nunca rompe el flujo (todo
@@ -60,7 +61,7 @@ def _is_cfo(tx: dict) -> bool:
 
 
 def open_market_buys(transactions: list[dict]) -> list[dict]:
-    """Solo compras open-market reales (codigo P + adquirida)."""
+    """Compras por codigo P + adquirida (mercado abierto O privadas)."""
     return [tx for tx in transactions if form4_connector.is_open_market_buy(tx)]
 
 
@@ -86,6 +87,9 @@ def detect_signals(transactions: list[dict]) -> list[dict]:
                     "shares": tx.get("shares"),
                     "price": tx.get("price"),
                     "value": amount,
+                    "source_url": tx.get("source_url"),
+                    "form": tx.get("form"),
+                    "multi_reporter": tx.get("multi_reporter", False),
                     "detail": (
                         f"{tx.get('insider')} compra ${amount:,.0f} "
                         f"({tx.get('shares')} acc. @ ${tx.get('price')})"
@@ -105,7 +109,10 @@ def detect_signals(transactions: list[dict]) -> list[dict]:
                     "shares": tx.get("shares"),
                     "price": tx.get("price"),
                     "value": amount,
-                    "detail": f"{who} {tx.get('insider')} compra en mercado abierto",
+                    "source_url": tx.get("source_url"),
+                    "form": tx.get("form"),
+                    "multi_reporter": tx.get("multi_reporter", False),
+                    "detail": f"{who} {tx.get('insider')} compra (código P: mercado abierto o privado)",
                 }
             )
 
@@ -190,6 +197,8 @@ def get_signals_for_ticker(
                     tx.setdefault("ticker", wanted)
                     tx["accession_number"] = filing.get("accession_number")
                     tx["filing_date"] = filing.get("filing_date")
+                    tx["source_url"] = filing.get("document_url")
+                    tx["form"] = filing.get("form")
                     if not tx.get("date"):
                         tx["date"] = filing.get("filing_date")
                 transactions.extend(parsed.get("transactions", []))
