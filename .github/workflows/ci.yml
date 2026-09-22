@@ -33,6 +33,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run test:routes
       - run: npm run build
 
   auth-store:
