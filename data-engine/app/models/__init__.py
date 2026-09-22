@@ -13,6 +13,7 @@ from app.models.entities import (
     CompanyKPI,
     ConnectorState,
     CorporateAction,
+    DividendRecord,
     DailyBrief,
     Document,
     DocumentChunk,

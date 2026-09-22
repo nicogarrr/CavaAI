@@ -1,0 +1,168 @@
+"""Dividend ingestion and yield analytics tests."""
+
+import asyncio
+from datetime import date
+from decimal import Decimal
+
+import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from app.models.entities import Base, Company, DividendRecord, Portfolio, Position
+from app.services.dividend_ingestion_service import DividendIngestionService
+
+
+class FakeFMP:
+    def __init__(self, payload=None, error=None):
+        self.payload = payload if payload is not None else []
+        self.error = error
+
+    async def dividends(self, ticker: str):
+        if self.error:
+            raise self.error
+        return self.payload
+
+
+@pytest.fixture
+def db():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+
+
+def _company(db: Session, ticker: str = "AAPL", currency: str = "USD") -> Company:
+    company = Company(
+        ticker=ticker,
+        name=ticker,
+        exchange="NASDAQ",
+        currency=currency,
+        sector="Tech",
+        industry="Tech",
+        company_type="holding",
+        valuation_model="unassigned",
+        special_sources=[],
+        special_risks=[],
+        factor_tags=[],
+    )
+    db.add(company)
+    db.commit()
+    return company
+
+
+def _position(db: Session, company: Company, price: float = 200.0, currency: str = "USD") -> Position:
+    portfolio = Portfolio(name="p")
+    db.add(portfolio)
+    db.commit()
+    position = Position(
+        portfolio_id=portfolio.id,
+        company_id=company.id,
+        quantity=Decimal("10"),
+        average_cost=Decimal("150"),
+        market_price=Decimal(str(price)),
+        market_value=Decimal(str(10 * price)),
+        unrealized_pnl=Decimal("500"),
+        realized_pnl=Decimal("0"),
+        as_of=date.today(),
+        currency=currency,
+    )
+    db.add(position)
+    db.commit()
+    return position
+
+
+PAYLOAD = [
+    {
+        "symbol": "AAPL",
+        "date": str(date.today()),
+        "recordDate": str(date.today()),
+        "paymentDate": str(date.today()),
+        "declarationDate": str(date.today()),
+        "adjDividend": 0.25,
+        "dividend": 0.25,
+        "yield": 0.5,
+        "frequency": "Quarterly",
+    }
+]
+
+
+def test_sync_inserts_deduped_records(db):
+    service = DividendIngestionService(fmp=FakeFMP(payload=PAYLOAD * 2))
+    _company(db)
+    first = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert first["status"] == "ok"
+    assert first["inserted"] == 1 and first["existing"] == 1  # dup within payload skipped
+    second = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert second["inserted"] == 0 and second["existing"] == 2  # both payload rows match stored record
+    rows = db.scalars(select(DividendRecord)).all()
+    assert len(rows) == 1
+    assert rows[0].source == "fmp" and rows[0].fetched_at is not None
+
+
+def test_sync_provider_failure_is_unavailable_not_fabricated(db):
+    service = DividendIngestionService(fmp=FakeFMP(error=RuntimeError("402 Payment Required")))
+    _company(db)
+    result = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert result["status"] == "unavailable"
+    assert "402" in result["error"]
+    assert db.scalars(select(DividendRecord)).all() == []
+
+
+def test_sync_unknown_company(db):
+    service = DividendIngestionService(fmp=FakeFMP(payload=PAYLOAD))
+    result = asyncio.run(service.sync_company(db, ticker="NOPE"))
+    assert result["status"] == "unknown_company"
+
+
+def test_portfolio_yields_real_math_and_coverage(db):
+    company = _company(db)
+    _position(db, company, price=200.0)
+    # Four quarterly dividends of 0.50 in the last 12 months => TTM 2.00 => 1% yield.
+    for month in (1, 4, 7, 10):
+        db.add(
+            DividendRecord(
+                company_id=company.id,
+                ex_date=date(date.today().year, month, 15),
+                amount=Decimal("0.5"),
+                currency="USD",
+                source="fmp",
+            )
+        )
+    db.commit()
+    result = DividendIngestionService(fmp=FakeFMP()).portfolio_yields(db)
+    assert result["coverage"]["positions_with_dividend_data"] == 1
+    position = result["positions"][0]
+    assert position["ttm_dividend_per_share"] == pytest.approx(2.0)
+    assert position["dividend_yield"] == pytest.approx(0.01)
+    assert result["portfolio_yield"] == pytest.approx(0.01)
+    assert result["provenance"]["source_kind"] == "unofficial"
+
+
+def test_portfolio_yields_honest_nulls_without_data(db):
+    company = _company(db, ticker="BRK")
+    _position(db, company, price=400.0)
+    result = DividendIngestionService(fmp=FakeFMP()).portfolio_yields(db)
+    position = result["positions"][0]
+    assert position["dividend_yield"] is None
+    assert position["ttm_dividend_per_share"] is None
+    assert result["coverage"]["positions_with_dividend_data"] == 0
+    assert result["provenance"]["coverage"] == "unavailable"
+
+
+def test_currency_mismatch_excluded_from_yield(db):
+    company = _company(db)  # USD company
+    _position(db, company, price=200.0, currency="EUR")  # position priced in EUR
+    db.add(
+        DividendRecord(
+            company_id=company.id,
+            ex_date=date.today(),
+            amount=Decimal("0.5"),
+            currency="USD",  # dividend declared in USD
+            source="fmp",
+        )
+    )
+    db.commit()
+    result = DividendIngestionService(fmp=FakeFMP()).portfolio_yields(db)
+    position = result["positions"][0]
+    assert position["skipped_currency_mismatch"] == 1
+    assert position["dividend_yield"] == pytest.approx(0.0)  # USD record not mixed into EUR price
