@@ -262,6 +262,9 @@ export type PortfolioIntelligence = {
     volatility: number | null;
     sharpe: number | null;
     sortino: number | null;
+    var_95: number | null;
+    cvar_95: number | null;
+    calmar: number | null;
     beta: number | null;
     beta_trace: Record<string, unknown>;
     correlations: Record<string, Record<string, number | null>>;

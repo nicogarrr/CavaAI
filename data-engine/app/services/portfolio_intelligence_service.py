@@ -121,6 +121,13 @@ class PortfolioIntelligenceService:
             else None
         )
         drawdown = self._drawdown(portfolio_returns)
+        var_95, cvar_95 = self._historical_var(portfolio_returns)
+        calmar = (
+            annualized_return / abs(drawdown["max_drawdown"])
+            if annualized_return is not None
+            and drawdown["max_drawdown"] not in {None, 0}
+            else None
+        )
         xirr, xirr_trace = self._xirr(db, rows)
         correlations = self._correlations(returns, rows)
         beta, beta_trace = self._beta(db, portfolio_returns, cutoff)
@@ -149,6 +156,9 @@ class PortfolioIntelligenceService:
                 "volatility": volatility,
                 "sharpe": sharpe,
                 "sortino": sortino,
+                "var_95": var_95,
+                "cvar_95": cvar_95,
+                "calmar": calmar,
                 "beta": beta,
                 "beta_trace": beta_trace,
                 "correlations": correlations,
@@ -242,6 +252,26 @@ class PortfolioIntelligenceService:
             minimum = min(minimum, drawdown)
             series.append({"date": day, "drawdown": drawdown})
         return {"max_drawdown": minimum if returns else None, "series": series}
+
+    @staticmethod
+    def _historical_var(
+        returns: dict[date, float], confidence: float = 0.95
+    ) -> tuple[float | None, float | None]:
+        """Historical-simulation VaR/CVaR on the portfolio daily return series.
+
+        VaR is the return at the (1 - confidence) quantile of observed daily
+        returns; CVaR (expected shortfall) is the mean of returns at or below
+        that quantile. Both are negative numbers for losses. Requires enough
+        observations to be meaningful; otherwise (None, None).
+        """
+        values = sorted(returns.values())
+        if len(values) < 20:
+            return None, None
+        index = max(0, min(len(values) - 1, int(len(values) * (1 - confidence))))
+        var = values[index]
+        tail = values[: index + 1]
+        cvar = mean(tail) if tail else None
+        return var, cvar
 
     def _xirr(
         self, db: Session, positions: list[tuple[Position, Company]]
