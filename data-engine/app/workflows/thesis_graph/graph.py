@@ -150,6 +150,69 @@ def _freeze_input_snapshot_node():
     return node
 
 
+def _ensure_ingestion_complete_node(session_factory):
+    """Real deterministic node (stage 6d): evidence coverage probe.
+
+    Read-only: counts the persisted evidence the classic pipeline models
+    from (financial facts, market prices, documents) and records the counts
+    as the node artifact + state metadata. Zero coverage is an honest
+    state, never an error; the node never triggers network ingestion (the
+    classic ThesisService path owns that) and never claims completeness it
+    cannot verify.
+    """
+
+    def node(state: ThesisGraphState) -> dict:
+        artifacts = dict(state.get("artifacts") or {})
+        if "ensure_ingestion_complete" in artifacts:
+            return {}
+        if session_factory is None:
+            artifacts["ensure_ingestion_complete"] = "pending:ensure_ingestion_complete"
+            return {
+                "artifacts": artifacts,
+                "completed_nodes": ["ensure_ingestion_complete"],
+                "status": "running",
+            }
+        company_id = state.get("company_id")
+        if not company_id:
+            raise ValueError("ensure_ingestion_complete requires company_id")
+        from sqlalchemy import func, select
+
+        from app.models import Document, FinancialFact, MarketPrice
+
+        with session_factory() as db:
+            cid = int(company_id)
+            facts = db.scalar(
+                select(func.count()).select_from(FinancialFact).where(
+                    FinancialFact.company_id == cid
+                )
+            ) or 0
+            prices = db.scalar(
+                select(func.count()).select_from(MarketPrice).where(
+                    MarketPrice.company_id == cid
+                )
+            ) or 0
+            documents = db.scalar(
+                select(func.count()).select_from(Document).where(
+                    Document.company_id == cid
+                )
+            ) or 0
+        coverage = {"financial_facts": facts, "market_prices": prices, "documents": documents}
+        artifacts["ensure_ingestion_complete"] = (
+            f"evidence:facts={facts},prices={prices},docs={documents}"
+        )
+        meta = dict(state.get("meta") or {})
+        meta["evidence_coverage"] = coverage
+        return {
+            "artifacts": artifacts,
+            "completed_nodes": ["ensure_ingestion_complete"],
+            "status": "running",
+            "meta": meta,
+        }
+
+    node.__name__ = "ensure_ingestion_complete"
+    return node
+
+
 def _approval_gate_node(state: ThesisGraphState) -> dict:
     """Stage 6c: real approval interrupt with an idempotent resume contract.
 
@@ -214,6 +277,8 @@ def build_thesis_graph(checkpointer=None, session_factory=None):
             node = _resolve_company_node(session_factory)
         elif name == "freeze_input_snapshot":
             node = _freeze_input_snapshot_node()
+        elif name == "ensure_ingestion_complete":
+            node = _ensure_ingestion_complete_node(session_factory)
         else:
             node = _make_skeleton_node(name)
         graph.add_node(name, node)
