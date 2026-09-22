@@ -47,6 +47,8 @@ import {
   type ResearchValuation,
 } from '@/lib/actions/research.actions';
 import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
+import BackendOffline from '@/components/system/BackendOffline';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
 import FollowButton from '@/components/screener/FollowButton';
 
@@ -268,7 +270,15 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // ni se crea.
   const snapshotPromise = getResearchCompanySnapshot(ticker);
   const marketPromise = activeView === 'overview' ? getCompanyMarketSnapshot(ticker) : undefined;
-  const snapshot = await snapshotPromise;
+  let snapshot: Awaited<typeof snapshotPromise>;
+  try {
+    snapshot = await snapshotPromise;
+  } catch (error) {
+    if (isBackendUnavailableError(error)) {
+      return <BackendOffline feature={`Research de ${ticker}`} retryHref={`/research/${ticker}`} />;
+    }
+    throw error;
+  }
   if (!snapshot) notFound();
 
   const company = snapshot.company;
@@ -276,7 +286,15 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
 
   if (activeView === 'overview') {
     // marketPromise ya se lanzó en paralelo al snapshot más arriba.
-    const market = await (marketPromise ?? getCompanyMarketSnapshot(ticker));
+    let market: Awaited<ReturnType<typeof getCompanyMarketSnapshot>>;
+    try {
+      market = await (marketPromise ?? getCompanyMarketSnapshot(ticker));
+    } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        return <BackendOffline feature={`Datos de mercado de ${ticker}`} retryHref={`/research/${ticker}`} />;
+      }
+      throw error;
+    }
     content = (
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

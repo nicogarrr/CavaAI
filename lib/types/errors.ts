@@ -136,3 +136,27 @@ export function getErrorMessage(error: unknown): string {
   return 'An unknown error occurred';
 }
 
+
+/**
+ * Next.js enmascara en producción los errores de Server Actions y Server
+ * Components con un mensaje genérico + digest ("An error occurred in the
+ * Server Components render…"). Mostrar ese texto crudo en un toast no ayuda:
+ * lo traducimos a un mensaje accionable de "motor no disponible, reintenta".
+ * Los errores de negocio reales (AppError serializado, validaciones) se
+ * devuelven tal cual.
+ */
+const NEXT_PROD_GENERIC_MARKERS = [
+  'server components render',
+  'server action',
+  'unexpected response',
+  'digest',
+];
+
+export function getFriendlyErrorMessage(error: unknown): string {
+  const message = getErrorMessage(error);
+  const lower = message.toLowerCase();
+  if (NEXT_PROD_GENERIC_MARKERS.some((marker) => lower.includes(marker))) {
+    return 'El motor de análisis no responde ahora mismo. Reintenta en unos segundos.';
+  }
+  return message;
+}

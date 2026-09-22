@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { getResearchDashboard } from '@/lib/actions/research.actions';
+import BackendOffline from '@/components/system/BackendOffline';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 import WorkProductButton from '@/components/work-products/WorkProductButton';
 
 export const dynamic = 'force-dynamic';
@@ -49,7 +51,16 @@ function Stat({
 }
 
 export default async function ResearchPage() {
-  const { companies, portfolio, workflows, settings } = await getResearchDashboard();
+  let dashboard: Awaited<ReturnType<typeof getResearchDashboard>>;
+  try {
+    dashboard = await getResearchDashboard();
+  } catch (error) {
+    if (isBackendUnavailableError(error)) {
+      return <BackendOffline feature="Research" retryHref="/research" />;
+    }
+    throw error;
+  }
+  const { companies, portfolio, workflows, settings } = dashboard;
   const configuredConnectors = Object.entries(settings.connectors).filter(([, value]) => Boolean(value));
   const topCompanies = companies.slice(0, 8);
 
