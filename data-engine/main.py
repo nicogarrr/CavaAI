@@ -142,7 +142,12 @@ async def health_ready():
     if not settings.database_url.startswith("sqlite"):
         ready = all(value == "ok" for value in checks.values())
 
-    return {
-        "status": "ready" if ready else "degraded",
-        "checks": checks,
-    }
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={
+            "status": "ready" if ready else "degraded",
+            "checks": checks,
+        },
+    )
