@@ -24,7 +24,6 @@ export function extractTableData(tableMarkdown: string): TableData | null {
     if (lines.length < 2) return null;
     
     const headerLine = lines[0].trim();
-    const separatorLine = lines[1]?.trim() || '';
     const dataLines = lines.slice(2);
     
     // Extraer headers

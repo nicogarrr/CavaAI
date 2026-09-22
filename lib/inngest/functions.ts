@@ -93,7 +93,7 @@ export const sendDailyNewsSummary = inngest.createFunction(
                 );
 
                 userNewsSummaries.push({ user, newsContent });
-            } catch (e) {
+            } catch {
                 console.error('Failed to summarize news for : ', user.email);
                 userNewsSummaries.push({ user, newsContent: null });
             }

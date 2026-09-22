@@ -28,6 +28,17 @@ const eslintConfig = [
   },
   {
     rules: {
+      // Standard convention: intentionally-omitted identifiers use a leading
+      // underscore (destructured-rest siblings are deliberate omissions).
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
       "@typescript-eslint/no-explicit-any": "warn",
       "react-hooks/error-boundaries": "warn",
       "react-hooks/purity": "warn",

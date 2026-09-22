@@ -1,7 +1,6 @@
 'use client';
 
 import { Card } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface SectorComparisonChartProps {

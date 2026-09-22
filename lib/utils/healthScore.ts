@@ -31,7 +31,6 @@ export function calculateHealthScore(financialData: any): HealthScoreData {
 
     // Acceder a métricas - Finnhub devuelve diferentes estructuras
     const metrics = financialData.metrics?.metric || financialData.metrics || {};
-    const profile = financialData.profile || {};
     const quote = financialData.quote || {};
 
     // Helper para obtener valores numéricos de diferentes formatos

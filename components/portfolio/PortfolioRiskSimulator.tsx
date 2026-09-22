@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ShieldAlert, TrendingDown, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, RefreshCw } from 'lucide-react';
 import { generateRiskAnalysis, type MonteCarloResult } from '@/lib/actions/risk.actions';
 import { toast } from 'sonner';
 

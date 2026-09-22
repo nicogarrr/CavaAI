@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Bell, Plus, Trash2 } from 'lucide-react';
 import { createAlert, getUserAlerts, deleteAlert, type Alert, type CreateAlertInput } from '@/lib/actions/alerts.actions';
 import {

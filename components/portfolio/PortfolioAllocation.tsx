@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
 import { PieChart as PieChartIcon } from 'lucide-react';
 
@@ -67,38 +67,6 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
         );
     }
     return null;
-};
-
-interface LegendPayloadItem {
-    value: string;
-    color?: string;
-    payload?: {
-        percentage: number;
-    };
-}
-
-interface CustomLegendProps {
-    payload?: LegendPayloadItem[];
-}
-
-const CustomLegend = ({ payload }: CustomLegendProps) => {
-    if (!payload) return null;
-
-    return (
-        <div className="flex flex-wrap justify-center gap-3 mt-4">
-            {payload.map((entry, index) => (
-                <div key={`legend-${index}`} className="flex items-center gap-2">
-                    <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: entry.color }}
-                    />
-                    <span className="text-sm text-gray-300">
-                        {entry.value} ({entry.payload?.percentage?.toFixed(1)}%)
-                    </span>
-                </div>
-            ))}
-        </div>
-    );
 };
 
 export default function PortfolioAllocation({ holdings, totalValue }: Props) {
