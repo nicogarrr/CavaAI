@@ -1,5 +1,19 @@
 WORKFLOW_CATALOG = [
     {
+        "name": "ThesisShadowComparisonWorkflow",
+        "implementation_status": "implemented",
+        "truth": "POST /run executes the 6b shadow comparison: runs the LangGraph thesis skeleton under a checkpointer (control state only), verifies node order + idempotent retry, maps classic THESIS_PHASES to graph nodes, and records divergences in a durable WorkflowRun. The classic ThesisService path remains the source of truth; the shadow never mutates domain artifacts.",
+        "execution_mode": "shadow",
+        "input": "ticker",
+        "steps": [
+            "run_graph_shadow",
+            "verify_idempotent_retry",
+            "map_classic_phases",
+            "compare_status_semantics",
+            "persist_comparison",
+        ],
+    },
+    {
         "name": "GenerateThesisWorkflow",
         "implementation_status": "partial",
         "truth": "POST /run ejecuta ThesisService.generate() sincrono en UNA transaccion; la lista de pasos describe fases internas, no pasos ejecutados separados. Sin resume a mitad de flujo. Langfuse: shadow tracing opcional (flag LANGFUSE_ENABLED), solo metadatos, nunca fuente de verdad.",
