@@ -58,7 +58,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                                 Buscar señales por ticker
                             </CardTitle>
                             <CardDescription className="mt-0.5 text-sm text-gray-500">
-                                Compras open-market (Form 4): cluster, C-suite y grandes compras
+                                Compras insider (Form 4, código P — mercado abierto o privado): cluster, C-suite y grandes compras
                             </CardDescription>
                         </div>
                     </div>

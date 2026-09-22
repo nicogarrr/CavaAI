@@ -292,3 +292,101 @@ def test_insider_signals_endpoint_degrades_without_network(monkeypatch):
     response = client.get("/api/insider/signals?ticker=ACME")
     assert response.status_code == 200
     assert response.json()["signals"] == []
+
+
+# ---------------- PR-1 correctness: 4/A, multi-reporter, wording, source URL ----------------
+
+AMENDMENT_SUBMISSIONS = {
+    "filings": {
+        "recent": {
+            "accessionNumber": ["0001234567-24-000001", "0001234567-24-000002", "0001234567-24-000003"],
+            "form": ["4", "4/A", "8-K"],
+            "filingDate": ["2024-03-01", "2024-03-05", "2024-03-06"],
+            "reportDate": ["2024-02-28", "2024-02-28", "2024-03-06"],
+            "primaryDocument": ["f4.xml", "f4a.xml", "pr.htm"],
+        }
+    }
+}
+
+
+def test_recent_filings_include_4a_amendments_and_preserve_form():
+    """Las enmiendas 4/A no deben quedar invisibles; el form crudo se conserva."""
+    import httpx
+
+    def handler(request):
+        return httpx.Response(200, json=AMENDMENT_SUBMISSIONS)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    filings = form4_connector.recent_form4_filings(1234567, client=client)
+    forms = [f["form"] for f in filings]
+    assert forms == ["4", "4/A"]
+
+
+MULTI_REPORTER_XML = CEO_BUY_XML.replace(
+    "</reportingOwner>",
+    """</reportingOwner>
+  <reportingOwner>
+    <reportingOwnerId>
+      <rptOwnerCik>0003333333</rptOwnerCik>
+      <rptOwnerName>SECOND REPORTER</rptOwnerName>
+    </reportingOwnerId>
+    <reportingOwnerRelationship>
+      <isDirector>1</isDirector>
+    </reportingOwnerRelationship>
+  </reportingOwner>""",
+    1,
+)
+
+
+def test_multi_reporter_filing_is_never_silently_attributed():
+    """Un filing conjunto marca multi_reporter y lista a todos, sin atribuir al primero."""
+    parsed = form4_connector.parse_form4_xml(MULTI_REPORTER_XML)
+    tx = parsed["transactions"][0]
+    assert tx["multi_reporter"] is True
+    assert tx["reporters_count"] == 2
+    assert tx["attribution"] == "joint_filing"
+    assert "DOE JANE" in tx["insider"] and "SECOND REPORTER" in tx["insider"]
+    assert tx["insider_cik"] == ""
+    assert tx["role"] == "multiple insiders"
+
+    single = form4_connector.parse_form4_xml(CEO_BUY_XML)["transactions"][0]
+    assert single["multi_reporter"] is False
+    assert single["attribution"] == "single_reporter"
+    assert single["insider"] == "DOE JANE"
+
+
+def test_c_suite_wording_never_overstates_open_market():
+    tx = _buy("DOE JANE", "0001111111", "Chief Executive Officer", 10, value=100.0)
+    signals = insider_service.detect_signals([tx])
+    c_suite = [s for s in signals if s["signal"] == "c_suite_buy"]
+    assert c_suite, "expected a c_suite_buy signal"
+    assert "mercado abierto o privado" in c_suite[0]["detail"]
+    assert "compra en mercado abierto" not in c_suite[0]["detail"]
+
+
+def test_signals_carry_sec_source_url(monkeypatch):
+    """Las senales enlazan al filing SEC de origen (trazabilidad)."""
+    monkeypatch.setattr(
+        insider_service,
+        "_cik_for_ticker",
+        lambda ticker, client=None: "0001234567",
+    )
+    filing = {
+        "form": "4",
+        "accession_number": "0001234567-24-000001",
+        "filing_date": "2024-03-16",
+        "document_url": "https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/f4.xml",
+    }
+    monkeypatch.setattr(
+        form4_connector,
+        "recent_form4_filings",
+        lambda cik, limit=20, client=None: [filing],
+    )
+    big_xml = CEO_BUY_XML.replace("<value>5000</value>", "<value>50000</value>")
+    result = insider_service.get_signals_for_ticker("ACME", fetcher=lambda f: big_xml)
+    assert result["status"] == "ok"
+    big = [s for s in result["signals"] if s["signal"] == "big_buy"]
+    assert big and big[0]["source_url"] == filing["document_url"]
+    assert big[0]["form"] == "4"
+    c_suite = [s for s in result["signals"] if s["signal"] == "c_suite_buy"]
+    assert c_suite and c_suite[0]["source_url"] == filing["document_url"]
