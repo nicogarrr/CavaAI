@@ -49,6 +49,8 @@ class PortfolioIntelligenceService:
     def build(self, db: Session, *, years: int = 5) -> dict[str, Any]:
         years = max(1, min(years, 20))
         cutoff = date.today() - timedelta(days=365 * years)
+        fx = PortfolioFXService()
+        base_currency = fx.base_currency(db)
         rows = list(
             db.execute(
                 select(Position, Company).join(
@@ -56,16 +58,33 @@ class PortfolioIntelligenceService:
                 )
             ).all()
         )
-        total_value = sum(
-            float(position.market_value_base or 0) for position, _ in rows
-        )
+        # Honest valuation: a position without a base-currency value is excluded
+        # from totals/weights and reported, never silently counted as zero.
+        base_values: dict[int, float] = {}
+        missing_fx: list[dict[str, Any]] = []
+        for position, company in rows:
+            value_base = position.market_value_base
+            if value_base is None and position.currency == base_currency:
+                value_base = position.market_value_native or position.market_value
+            if value_base is None:
+                missing_fx.append(
+                    {
+                        "kind": "position",
+                        "ticker": company.ticker,
+                        "quote_currency": position.currency,
+                        "base_currency": base_currency,
+                        "as_of": position.as_of.isoformat() if position.as_of else None,
+                    }
+                )
+                continue
+            base_values[position.id] = float(value_base)
+        total_value = sum(base_values.values())
         weights = {
             company.id: (
-                float(position.market_value_base or 0) / total_value
-                if total_value > 0
-                else 0
+                base_values[position.id] / total_value if total_value > 0 else 0
             )
             for position, company in rows
+            if position.id in base_values
         }
         price_series: dict[int, list[MarketPrice]] = {company.id: [] for _, company in rows}
         if rows:
@@ -132,13 +151,14 @@ class PortfolioIntelligenceService:
         correlations = self._correlations(returns, rows)
         beta, beta_trace = self._beta(db, portfolio_returns, cutoff)
         benchmark = self._benchmark_comparison(db, portfolio_returns, cutoff)
-        exposures = self._exposures(rows, total_value)
+        exposures = self._exposures(rows, total_value, base_values)
         attribution = self._attribution(db, rows, weights, price_series)
         ledger_contribution = self._ledger_contribution(db, rows, cutoff)
         complete_price_series = sum(len(series) >= 2 for series in price_series.values())
         return {
             "as_of": date.today(),
-            "base_currency": PortfolioFXService().base_currency(db),
+            "base_currency": base_currency,
+            "missing_fx": missing_fx,
             "horizon_years": years,
             "performance": {
                 "twr": twr if portfolio_returns else None,
@@ -170,7 +190,9 @@ class PortfolioIntelligenceService:
                 "top_5": sum(sorted(weights.values(), reverse=True)[:5]),
                 "herfindahl": sum(weight**2 for weight in weights.values()),
                 "weights": {
-                    company.ticker: weights[company.id] for _, company in rows
+                    company.ticker: weights[company.id]
+                    for _, company in rows
+                    if company.id in weights
                 },
             },
             "exposures": exposures,
@@ -197,7 +219,14 @@ class PortfolioIntelligenceService:
                 )
                 + [
                     "Attribution is an evidence-aware decomposition, not transaction-lot Brinson attribution."
-                ],
+                ]
+                + (
+                    [
+                        f"{len(missing_fx)} position(s) excluded from totals, weights and exposures: no base-currency value (missing FX)."
+                    ]
+                    if missing_fx
+                    else []
+                ),
             },
         }
 
@@ -631,7 +660,9 @@ class PortfolioIntelligenceService:
 
     @staticmethod
     def _exposures(
-        rows: list[tuple[Position, Company]], total_value: float
+        rows: list[tuple[Position, Company]],
+        total_value: float,
+        base_values: dict[int, float],
     ) -> dict[str, dict[str, float]]:
         exposures: dict[str, dict[str, float]] = {
             "sectors": defaultdict(float),
@@ -640,7 +671,12 @@ class PortfolioIntelligenceService:
             "factors": defaultdict(float),
         }
         for position, company in rows:
-            weight = float(position.market_value_base or 0) / total_value if total_value else 0
+            value = base_values.get(position.id)
+            if value is None:
+                # No honest base-currency value: reported in missing_fx, never
+                # silently counted as zero exposure.
+                continue
+            weight = value / total_value if total_value else 0
             exposures["sectors"][company.sector] += weight
             country = company.domicile_country or EXCHANGE_COUNTRY.get(
                 company.exchange.upper(), "Unknown"
