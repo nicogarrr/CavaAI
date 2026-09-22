@@ -13,7 +13,7 @@ envuelto en try/except -> devuelve {"status": "skipped", ...}).
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Callable
 
 from app.core.config import get_settings
@@ -226,6 +226,7 @@ def get_signals_for_ticker(
             "filings_scanned": len(filings[:limit]),
             "buy_count": len(open_market_buys(transactions)),
             "signals": signals,
+            "fetched_at": datetime.now(UTC).isoformat(),
         }
         if errors:
             result["filing_errors"] = errors

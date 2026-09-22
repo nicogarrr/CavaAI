@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, Users } from 'lucide-react';
+import { ExternalLink, Search, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +30,23 @@ function moneyText(value: unknown): string {
         currency: 'USD',
         maximumFractionDigits: 0,
     }).format(value);
+}
+
+function formBadge(form: unknown): { label: string; amended: boolean } | null {
+    if (typeof form !== 'string' || !form) return null;
+    if (form.endsWith('/A')) return { label: 'Enmienda ' + form, amended: true };
+    return { label: 'Form ' + form, amended: false };
+}
+
+function secLink(sourceUrl: unknown): string | null {
+    return typeof sourceUrl === 'string' && sourceUrl.startsWith('https://') ? sourceUrl : null;
+}
+
+function formatFetchedAt(value: unknown): string {
+    if (typeof value !== 'string' || !value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 export default function InsiderSignalsView({ initialTicker, initialResult }: InsiderSignalsViewProps) {
@@ -116,7 +133,8 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                                 </CardTitle>
                                 <CardDescription className="mt-0.5 text-sm text-gray-500">
                                     {signals.length} señales · {formatRecordValue(initialResult.buy_count)} compras ·{' '}
-                                    {formatRecordValue(initialResult.filings_scanned)} filings
+                                    {formatRecordValue(initialResult.filings_scanned)} filings · datos al{' '}
+                                    {formatFetchedAt(initialResult.fetched_at)}
                                 </CardDescription>
                             </div>
                         </div>
@@ -161,6 +179,24 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                                         </TableCell>
                                         <TableCell className="max-w-md text-sm text-gray-400">
                                             <span className="line-clamp-3">{formatRecordValue(signal.detail)}</span>
+                                            <span className="mt-1 flex flex-wrap items-center gap-2">
+                                                {formBadge(signal.form) ? (
+                                                    <Badge variant="outline">{formBadge(signal.form)!.label}</Badge>
+                                                ) : null}
+                                                {signal.multi_reporter === true ? (
+                                                    <span className="text-xs text-gray-500">filing conjunto</span>
+                                                ) : null}
+                                                {secLink(signal.source_url) ? (
+                                                    <a
+                                                        href={secLink(signal.source_url)!}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-xs text-teal-300 hover:text-teal-200 hover:underline"
+                                                    >
+                                                        Ver filing SEC <ExternalLink className="h-3 w-3" />
+                                                    </a>
+                                                ) : null}
+                                            </span>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -180,6 +216,20 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                                     ) : null}
                                     <div className="mt-1 text-xs text-gray-500">{formatRecordValue(signal.date ?? signal.window_start)}</div>
                                     <div className="mt-2 text-sm leading-6 text-gray-400"><span className="line-clamp-3">{formatRecordValue(signal.detail)}</span></div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        {formBadge(signal.form) ? <Badge variant="outline">{formBadge(signal.form)!.label}</Badge> : null}
+                                        {signal.multi_reporter === true ? <span className="text-xs text-gray-500">filing conjunto</span> : null}
+                                        {secLink(signal.source_url) ? (
+                                            <a
+                                                href={secLink(signal.source_url)!}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-xs text-teal-300 hover:text-teal-200 hover:underline"
+                                            >
+                                                Ver filing SEC <ExternalLink className="h-3 w-3" />
+                                            </a>
+                                        ) : null}
+                                    </div>
                                 </article>
                             ))}
                         </div>

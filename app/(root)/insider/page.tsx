@@ -21,8 +21,10 @@ export default async function InsiderPage({ searchParams }: PageProps) {
                     <p className="text-sm font-semibold uppercase text-teal-300">Insider</p>
                     <h1 className="mt-1 text-3xl font-bold text-gray-100">Señales Insider</h1>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
-                        Compras en mercado abierto (Form 4, SEC EDGAR): clusters de insiders,
-                        compras de CEO/CFO y grandes operaciones. Cada ticker enlaza a su ficha de research.
+                        Compras insider codigo P (Form 4, SEC EDGAR; mercado abierto o privado,
+                        el XML no siempre lo distingue): clusters de insiders, compras de CEO/CFO
+                        y grandes operaciones. El monitor automatico revisa tu watchlist y cartera
+                        cada 15 minutos; esta vista es una lectura bajo demanda por ticker.
                     </p>
                 </div>
                 <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
