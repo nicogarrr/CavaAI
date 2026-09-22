@@ -101,11 +101,6 @@ class Settings(BaseSettings):
     llm_daily_cap_eur: float = Field(default=1.50, ge=0)
     llm_monthly_cap_eur: float = Field(default=40.00, ge=0)
 
-    langfuse_enabled: bool = False
-    langfuse_host: str = "http://localhost:3000"
-    langfuse_public_key: str | None = None
-    langfuse_secret_key: str | None = None
-
     @property
     def is_production(self) -> bool:
         # APP_ENV canonico: acepta los alias 'production' y 'prod'. Toda
