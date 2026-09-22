@@ -15,6 +15,7 @@ from app.api.routes import (
     market,
     memory,
     news,
+    ownership,
     plan,
     portfolio,
     risk,
@@ -48,6 +49,7 @@ api_router.include_router(export.router, prefix="/export", tags=["export"])
 api_router.include_router(insider.router, prefix="/insider", tags=["insider"])
 api_router.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
 api_router.include_router(plan.router, prefix="/plan", tags=["plan"])
+api_router.include_router(ownership.router, prefix="/ownership", tags=["ownership"])
 api_router.include_router(taxes.router, prefix="/taxes", tags=["taxes"])
 api_router.include_router(thesis.router, prefix="/thesis", tags=["thesis"])
 api_router.include_router(valuation.router, prefix="/valuation", tags=["valuation"])

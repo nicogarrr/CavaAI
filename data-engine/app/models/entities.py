@@ -1813,6 +1813,71 @@ class DividendRecord(TenantOwnedMixin, Base, TimestampMixin):
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class FundManager(TenantOwnedMixin, Base, TimestampMixin):
+    """Reviewed institutional manager tracked via SEC Form 13F (free, official).
+
+    Only managers in the reviewed code table are ingested: exact CIK mapped
+    to the official EDGAR name, never guessed.
+    """
+
+    __tablename__ = "fund_managers"
+    __table_args__ = (UniqueConstraint("cik", name="uq_fund_manager_cik"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cik: Mapped[str] = mapped_column(String(10), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    last_report_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    coverage: Mapped[str] = mapped_column(String(20), default="ok")
+    synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class ManagerHolding(TenantOwnedMixin, Base, TimestampMixin):
+    """One 13F information-table row, stored as filed (CUSIP + issuer name).
+
+    Tickers are never inferred. Amendments (13F-HR/A) are separate immutable
+    accessions; prior filings are never rewritten. 13F is quarterly with up
+    to a 45-day lag and long-only - consumers must show these limits.
+    """
+
+    __tablename__ = "manager_holdings"
+    __table_args__ = (
+        UniqueConstraint(
+            "manager_id",
+            "accession_number",
+            "cusip",
+            "title_of_class",
+            "put_call",
+            name="uq_manager_holding",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    manager_id: Mapped[int] = mapped_column(ForeignKey("fund_managers.id"), index=True)
+    accession_number: Mapped[str] = mapped_column(String(25), index=True)
+    report_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_amendment: Mapped[bool] = mapped_column(Boolean, default=False)
+    name_of_issuer: Mapped[str] = mapped_column(String(200), default="")
+    title_of_class: Mapped[str] = mapped_column(String(150), default="")
+    cusip: Mapped[str] = mapped_column(String(9))
+    value_usd_thousands: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 2), nullable=True
+    )
+    shares: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
+    share_type: Mapped[str] = mapped_column(String(10), default="SH")
+    put_call: Mapped[str] = mapped_column(String(10), default="")
+    investment_discretion: Mapped[str] = mapped_column(String(10), default="")
+    voting_sole: Mapped[Decimal | None] = mapped_column(Numeric(24, 0), nullable=True)
+    voting_shared: Mapped[Decimal | None] = mapped_column(Numeric(24, 0), nullable=True)
+    voting_none: Mapped[Decimal | None] = mapped_column(Numeric(24, 0), nullable=True)
+    filing_url: Mapped[str] = mapped_column(String(500), default="")
+    source: Mapped[str] = mapped_column(String(40), default="sec_edgar_13f")
+    fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class WorkflowRun(TenantOwnedMixin, Base, TimestampMixin):
     """Uniform execution envelope for every workflow run.
 
