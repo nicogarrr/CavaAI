@@ -451,6 +451,63 @@ def _source_audit_node(session_factory):
     return node
 
 
+def _deterministic_red_team_node(session_factory):
+    """Read-side deterministic node (stage 6e): latest red-team run.
+
+    Records the latest persisted RedTeamRun (id, status, score,
+    prompt_version) as the node artifact + state metadata, or an honest
+    ``redteam:none``. The graph never runs or writes red-team artifacts
+    at this stage: the classic RedTeamService path owns them.
+    """
+
+    def node(state: ThesisGraphState) -> dict:
+        artifacts = dict(state.get("artifacts") or {})
+        if "deterministic_red_team" in artifacts:
+            return {}
+        if session_factory is None:
+            artifacts["deterministic_red_team"] = "pending:deterministic_red_team"
+            return {
+                "artifacts": artifacts,
+                "completed_nodes": ["deterministic_red_team"],
+                "status": "running",
+            }
+        company_id = state.get("company_id")
+        if not company_id:
+            raise ValueError("deterministic_red_team requires company_id")
+        from sqlalchemy import desc, select
+
+        from app.models.entities import RedTeamRun
+
+        with session_factory() as db:
+            run = db.scalar(
+                select(RedTeamRun)
+                .where(RedTeamRun.company_id == int(company_id))
+                .order_by(desc(RedTeamRun.created_at), desc(RedTeamRun.id))
+                .limit(1)
+            )
+        meta = dict(state.get("meta") or {})
+        if run is None:
+            artifacts["deterministic_red_team"] = "redteam:none"
+            meta["red_team_run"] = None
+        else:
+            artifacts["deterministic_red_team"] = f"redteam:{run.id}:score={run.score}"
+            meta["red_team_run"] = {
+                "id": run.id,
+                "status": run.status,
+                "score": run.score,
+                "prompt_version": run.prompt_version,
+            }
+        return {
+            "artifacts": artifacts,
+            "completed_nodes": ["deterministic_red_team"],
+            "status": "running",
+            "meta": meta,
+        }
+
+    node.__name__ = "deterministic_red_team"
+    return node
+
+
 def build_thesis_graph(checkpointer=None, session_factory=None):
     """Compile the thesis lifecycle graph with an optional checkpointer.
 
@@ -477,6 +534,8 @@ def build_thesis_graph(checkpointer=None, session_factory=None):
             node = _deterministic_valuation_node(session_factory)
         elif name == "source_audit":
             node = _source_audit_node(session_factory)
+        elif name == "deterministic_red_team":
+            node = _deterministic_red_team_node(session_factory)
         else:
             node = _make_skeleton_node(name)
         graph.add_node(name, node)

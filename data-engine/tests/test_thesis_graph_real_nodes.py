@@ -265,3 +265,41 @@ def test_source_audit_skeleton_without_session_factory():
         graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:a3"))
         state = graph.get_state(_config("t:a3")).values
     assert state["artifacts"]["source_audit"] == "pending:source_audit"
+
+
+def test_red_team_probe_reads_latest_run(db):
+    from app.models.entities import RedTeamRun
+
+    company = _company(db)
+    db.add(RedTeamRun(company_id=company.id, status="completed", score=72,
+                      prompt_version="red-team-v1"))
+    db.commit()
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:rt1"))
+        state = graph.get_state(_config("t:rt1")).values
+    assert state["artifacts"]["deterministic_red_team"] == "redteam:1:score=72"
+    assert state["meta"]["red_team_run"] == {
+        "id": 1,
+        "status": "completed",
+        "score": 72,
+        "prompt_version": "red-team-v1",
+    }
+
+
+def test_red_team_probe_honest_none(db):
+    _company(db)
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:rt2"))
+        state = graph.get_state(_config("t:rt2")).values
+    assert state["artifacts"]["deterministic_red_team"] == "redteam:none"
+    assert state["meta"]["red_team_run"] is None
+
+
+def test_red_team_skeleton_without_session_factory():
+    with sqlite_checkpointer() as saver:
+        graph = build_thesis_graph(checkpointer=saver)
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:rt3"))
+        state = graph.get_state(_config("t:rt3")).values
+    assert state["artifacts"]["deterministic_red_team"] == "pending:deterministic_red_team"
