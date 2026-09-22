@@ -24,6 +24,32 @@ test.describe("public authentication shell", () => {
   });
 });
 
+
+test.describe("mobile authentication layout", () => {
+  test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("sign-in form is fully reachable at 390px without inner scroll traps", async ({ page }) => {
+    await page.goto("/sign-in");
+
+    // Regresión: .auth-layout usaba h-screen + overflow-hidden en móvil, lo que
+    // comprimía el formulario en una tira de ~190px con scroll interno oculto
+    // y dejaba el botón fuera del viewport.
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeInViewport();
+    await expect(page.getByLabel("Email")).toBeInViewport();
+    await expect(page.getByLabel("Password")).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Sign In" })).toBeInViewport();
+
+    // La página completa hace scroll normal en documento (no hay trampas internas).
+    const metrics = await page.evaluate(() => ({
+      scrollHeight: document.documentElement.scrollHeight,
+      innerHeight: window.innerHeight,
+    }));
+    expect(metrics.scrollHeight).toBeGreaterThan(metrics.innerHeight);
+    await page.screenshot({ path: "test-results/cavaai-sign-in-mobile.png", fullPage: true });
+  });
+});
+
 test.describe("company research workspace", () => {
   test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
 
