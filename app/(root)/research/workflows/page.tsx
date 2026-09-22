@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock, Layers, Play } from 'lucide-react';
+import { ArrowLeft, Layers, Play } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,17 +43,33 @@ export default async function ResearchWorkflowsPage() {
         {workflows.map((workflow) => {
           const needsTicker = workflow.input.toLowerCase().includes('ticker');
           const isGenerateThesis = workflow.name === 'GenerateThesisWorkflow';
-          const estimatedMin = workflow.steps.length * 2;
+          const status = workflow.implementation_status ?? 'descriptive';
+          const statusStyles: Record<string, string> = {
+            implemented: 'border-teal-800 bg-teal-950/30 text-teal-300',
+            partial: 'border-amber-800 bg-amber-950/30 text-amber-300',
+            descriptive: 'border-gray-700 bg-gray-900 text-gray-500',
+          };
+          const statusLabels: Record<string, string> = {
+            implemented: 'ejecutable',
+            partial: 'parcial',
+            descriptive: 'descriptivo',
+          };
 
           return (
             <div key={workflow.name} className="rounded-lg border border-gray-800 bg-[#111111] p-5">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Layers className="h-5 w-5 text-teal-300" />
                 <span className="font-semibold text-gray-100">{workflow.name}</span>
+                <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusStyles[status]}`}>
+                  {statusLabels[status]}
+                </span>
                 <span className="rounded-full border border-gray-700 bg-gray-900 px-2 py-0.5 text-xs text-gray-400">
                   input: {workflow.input}
                 </span>
               </div>
+              {workflow.truth ? (
+                <p className="mb-3 text-xs leading-5 text-gray-500">{workflow.truth}</p>
+              ) : null}
 
               <div className="mb-4 space-y-1">
                 {workflow.steps.map((step, index) => (
@@ -66,8 +82,11 @@ export default async function ResearchWorkflowsPage() {
 
               <div className="flex items-center justify-between gap-3 border-t border-gray-800 pt-3">
                 <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <Clock className="h-3.5 w-3.5" />
-                  ~{estimatedMin} min
+                  {status === 'implemented'
+                    ? 'Ejecutable via POST /run'
+                    : status === 'partial'
+                      ? 'Ejecucion parcial via POST /run'
+                      : 'Sin ejecucion via API (scheduler/Dramatiq)'}
                 </div>
                 {isGenerateThesis ? (
                   <MutationForm action={runWorkflow} className="flex items-center gap-2" successMessage="Workflow ejecutado">

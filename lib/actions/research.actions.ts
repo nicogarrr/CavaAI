@@ -40,6 +40,9 @@ export type ResearchWorkflow = {
   name: string;
   input: string;
   steps: string[];
+  execution_mode?: string;
+  implementation_status?: 'implemented' | 'partial' | 'descriptive';
+  truth?: string;
 };
 
 export type ResearchSettings = {
