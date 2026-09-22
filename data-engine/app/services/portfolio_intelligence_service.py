@@ -662,7 +662,7 @@ class PortfolioIntelligenceService:
     def _exposures(
         rows: list[tuple[Position, Company]],
         total_value: float,
-        base_values: dict[int, float],
+        base_values: dict[int, float] | None = None,
     ) -> dict[str, dict[str, float]]:
         exposures: dict[str, dict[str, float]] = {
             "sectors": defaultdict(float),
@@ -671,11 +671,14 @@ class PortfolioIntelligenceService:
             "factors": defaultdict(float),
         }
         for position, company in rows:
-            value = base_values.get(position.id)
-            if value is None:
-                # No honest base-currency value: reported in missing_fx, never
-                # silently counted as zero exposure.
-                continue
+            if base_values is None:
+                value = float(position.market_value_base or 0)
+            else:
+                value = base_values.get(position.id)
+                if value is None:
+                    # No honest base-currency value: reported in missing_fx,
+                    # never silently counted as zero exposure.
+                    continue
             weight = value / total_value if total_value else 0
             exposures["sectors"][company.sector] += weight
             country = company.domicile_country or EXCHANGE_COUNTRY.get(
