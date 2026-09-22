@@ -1,6 +1,8 @@
 WORKFLOW_CATALOG = [
     {
         "name": "GenerateThesisWorkflow",
+        "implementation_status": "partial",
+        "truth": "POST /run ejecuta ThesisService.generate() sincrono en UNA transaccion; la lista de pasos describe fases internas, no pasos ejecutados separados. Sin resume a mitad de flujo ni Langfuse (planificado).",
         "execution_mode": "deterministic",
         "input": "ticker",
         "steps": [
@@ -23,11 +25,12 @@ WORKFLOW_CATALOG = [
             "source_audit",
             "write_thesis",
             "save_thesis_version",
-            "trace_to_langfuse",
         ],
     },
     {
         "name": "DailyResearchWorkflow",
+        "implementation_status": "partial",
+        "truth": "POST /run solo ingiere news_items via NewsService; el resto de pasos corren via scheduler/Dramatiq, no por este endpoint. Langfuse no implementado.",
         "execution_mode": "deterministic",
         "input": "portfolio",
         "steps": [
@@ -40,11 +43,12 @@ WORKFLOW_CATALOG = [
             "create_alerts",
             "generate_daily_brief",
             "update_risk_dashboard",
-            "trace_to_langfuse",
         ],
     },
     {
         "name": "ManualNewsWorkflow",
+        "implementation_status": "descriptive",
+        "truth": "Sin ruta de ejecucion en la API; describe el flujo conceptual de noticias manuales.",
         "execution_mode": "deterministic",
         "input": "pasted_news",
         "steps": [
@@ -63,6 +67,8 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "EarningsWorkflow",
+        "implementation_status": "implemented",
+        "truth": "POST /run ejecuta EarningsWorkflowService via un wrapper MAF de 2 nodos (load_context + execute); la lista de pasos describe el servicio, no el grafo. EarningsRun persiste running->completed/failed.",
         "execution_mode": "microsoft_agent_framework",
         "input": "ticker + earnings docs",
         "steps": [
@@ -83,6 +89,8 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "ChatWorkflow",
+        "implementation_status": "descriptive",
+        "truth": "El chat vive en su propia ruta de API, no en este endpoint de workflows. Langfuse no implementado.",
         "execution_mode": "deterministic_plus_llm_synthesis",
         "input": "user_question",
         "steps": [
@@ -94,11 +102,12 @@ WORKFLOW_CATALOG = [
             "call_python_tools_if_needed",
             "answer_with_sources",
             "propose_actions_if_relevant",
-            "trace_to_langfuse",
         ],
     },
     {
         "name": "RedTeamWorkflow",
+        "implementation_status": "implemented",
+        "truth": "POST /run ejecuta RedTeamService (reglas DETERMINISTAS sobre claims/evidencia/valoracion) via wrapper MAF de 2 nodos. No es un agente autonomo: el modo MAF es solo la envoltura del grafo.",
         "execution_mode": "microsoft_agent_framework",
         "input": "ticker",
         "steps": [
@@ -115,6 +124,8 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "ContradictionWorkflow",
+        "implementation_status": "descriptive",
+        "truth": "Los escaneos de contradiccion corren como actors Dramatiq programados; este workflow no tiene ruta de ejecucion en la API.",
         "execution_mode": "deterministic",
         "input": "ticker + document/news",
         "steps": [
@@ -129,6 +140,8 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "DeepResearchWorkflow",
+        "implementation_status": "descriptive",
+        "truth": "Sin ruta de ejecucion en la API; describe el flujo conceptual.",
         "execution_mode": "microsoft_agent_framework",
         "input": "ticker + research question",
         "steps": [
@@ -141,6 +154,8 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "ThesisReviewWorkflow",
+        "implementation_status": "descriptive",
+        "truth": "Las revisiones de tesis corren via scheduler; este workflow no tiene ruta de ejecucion en la API.",
         "execution_mode": "microsoft_agent_framework",
         "input": "ticker + proposed thesis change",
         "steps": [

@@ -187,11 +187,17 @@ async def run_workflow(name: str, payload: WorkflowRunRequest, db: Session = Dep
             },
         }
 
+    # Verdad por encima de apariencia: ningun worker generico consume una
+    # peticion "queued". Si no hay ruta de ejecucion, se dice claro.
     return {
-        "status": "queued",
+        "status": "not_implemented",
         "workflow": name,
         "ticker": payload.ticker,
-        "message": f"Workflow {name} queued. Backend worker required to execute.",
+        "message": (
+            f"Workflow {name} no tiene ejecucion via API: es una entrada "
+            f"{workflow.get('implementation_status', 'descriptive')} del catalogo. "
+            "Los trabajos periodicos equivalentes corren via scheduler/Dramatiq."
+        ),
         "steps": workflow["steps"],
-        "estimated_minutes": len(workflow["steps"]) * 2,
+        "estimated_minutes": 0,
     }
