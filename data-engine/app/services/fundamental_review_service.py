@@ -106,30 +106,46 @@ class ExpectationRealityService:
             grouped.setdefault((forecast.fiscal_year, forecast.metric), []).append(
                 (forecast, model)
             )
-        reviews: list[ExpectationReview] = []
-        for (fiscal_year, metric), candidates in grouped.items():
-            actual_fact = db.scalar(
-                select(FinancialFact)
-                .where(
-                    FinancialFact.company_id == company.id,
-                    FinancialFact.metric == metric,
-                    FinancialFact.fiscal_year == fiscal_year,
-                )
-                .order_by(desc(FinancialFact.created_at))
-                .limit(1)
+        # Batch-fetch actuals once: two queries total instead of two per
+        # (year, metric) group, then pick the latest per group in Python.
+        group_keys = set(grouped)
+        metrics = {metric for _, metric in group_keys}
+        years = {fiscal_year for fiscal_year, _ in group_keys}
+        fact_rows = db.scalars(
+            select(FinancialFact)
+            .where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric.in_(metrics),
+                FinancialFact.fiscal_year.in_(years),
             )
-            actual_metric = db.scalar(
-                select(CalculatedMetric)
-                .where(
-                    CalculatedMetric.company_id == company.id,
-                    CalculatedMetric.metric == metric,
-                    CalculatedMetric.fiscal_year == fiscal_year,
-                    CalculatedMetric.value.is_not(None),
-                )
-                .order_by(desc(CalculatedMetric.created_at))
-                .limit(1)
+            .order_by(desc(FinancialFact.created_at), desc(FinancialFact.id))
+        ).all()
+        facts_by_key: dict[tuple[int, str], FinancialFact] = {}
+        for row in fact_rows:
+            key = (row.fiscal_year, row.metric)
+            if key in group_keys:
+                facts_by_key.setdefault(key, row)
+        metric_rows = db.scalars(
+            select(CalculatedMetric)
+            .where(
+                CalculatedMetric.company_id == company.id,
+                CalculatedMetric.metric.in_(metrics),
+                CalculatedMetric.fiscal_year.in_(years),
+                CalculatedMetric.value.is_not(None),
             )
-            actual = self._preferred_actual(actual_fact, actual_metric)
+            .order_by(desc(CalculatedMetric.created_at), desc(CalculatedMetric.id))
+        ).all()
+        metrics_by_key: dict[tuple[int, str], CalculatedMetric] = {}
+        for row in metric_rows:
+            key = (row.fiscal_year, row.metric)
+            if key in group_keys:
+                metrics_by_key.setdefault(key, row)
+
+        # First pass: pure eligibility per group against the prefetched
+        # actuals, so reviews can also be batch-fetched in one query.
+        selected: list[tuple[tuple[int, str], object, FundamentalForecast, FundamentalModelVersion]] = []
+        for key, candidates in grouped.items():
+            actual = self._preferred_actual(facts_by_key.get(key), metrics_by_key.get(key))
             actual_created_at = actual.created_at if actual is not None else None
             eligible = [
                 item
@@ -141,11 +157,22 @@ class ExpectationRealityService:
                 # A model created after the result is known is not a forecast.
                 continue
             forecast, model = eligible[-1]
-            review = db.scalar(
-                select(ExpectationReview).where(
-                    ExpectationReview.forecast_id == forecast.id
+            selected.append((key, actual, forecast, model))
+
+        review_rows = db.scalars(
+            select(ExpectationReview).where(
+                ExpectationReview.forecast_id.in_(
+                    [forecast.id for _, _, forecast, _ in selected]
                 )
             )
+        ).all() if selected else []
+        reviews_by_forecast: dict[int, ExpectationReview] = {}
+        for row in review_rows:
+            reviews_by_forecast.setdefault(row.forecast_id, row)
+
+        reviews: list[ExpectationReview] = []
+        for (fiscal_year, metric), actual, forecast, model in selected:
+            review = reviews_by_forecast.get(forecast.id)
             if review is None:
                 review = ExpectationReview(
                     company_id=company.id,
