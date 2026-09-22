@@ -84,11 +84,9 @@ class TaxReportService:
                 )
                 gross = transaction.price if transaction.price else transaction.quantity
                 amount_native = gross
-                amount_base = (
-                    amount_native * rate
-                    if rate is not None
-                    else self._approx_convert(db, transaction.currency, base_currency, transaction.trade_date, amount_native)
-                )
+                # Never convert at par: without a real FX rate the base
+                # amount is unknown and must stay None.
+                amount_base = amount_native * rate if rate is not None else None
                 bucket = dividends_by_company.setdefault(
                     ticker,
                     {
@@ -98,24 +96,31 @@ class TaxReportService:
                         "dividends_base": Decimal("0"),
                         "withholding_native": Decimal("0"),
                         "withholding_base": Decimal("0"),
+                        "missing_fx": False,
                         "payments": [],
                     },
                 )
                 if "withholding" in action or "tax" in action:
                     withheld = abs(amount_native)
                     bucket["withholding_native"] += withheld
-                    bucket["withholding_base"] += abs(amount_base)
+                    if amount_base is not None:
+                        bucket["withholding_base"] += abs(amount_base)
+                    else:
+                        bucket["missing_fx"] = True
                     bucket["payments"].append(
                         {
                             "date": transaction.trade_date.isoformat(),
                             "type": "withholding",
                             "amount_native": _money(withheld),
-                            "amount_base": _money(abs(amount_base)),
+                            "amount_base": _money(abs(amount_base)) if amount_base is not None else None,
                         }
                     )
                 else:
                     bucket["dividends_native"] += amount_native
-                    bucket["dividends_base"] += amount_base
+                    if amount_base is not None:
+                        bucket["dividends_base"] += amount_base
+                    else:
+                        bucket["missing_fx"] = True
                     bucket["payments"].append(
                         {
                             "date": transaction.trade_date.isoformat(),
@@ -217,6 +222,7 @@ class TaxReportService:
                     "cost_native": Decimal("0"),
                     "gain_native": Decimal("0"),
                     "gain_base": Decimal("0"),
+                    "missing_fx": False,
                     "sale_count": 0,
                     "sales": [],
                 },
@@ -226,6 +232,8 @@ class TaxReportService:
             bucket["gain_native"] += gain_native
             if gain_base is not None:
                 bucket["gain_base"] += gain_base
+            else:
+                bucket["missing_fx"] = True
             bucket["sale_count"] += 1
             bucket["sales"].append(
                 {
@@ -245,9 +253,10 @@ class TaxReportService:
                     "ticker": bucket["ticker"],
                     "currency": bucket["currency"],
                     "dividends_native": _money(bucket["dividends_native"]),
-                    "dividends_base": _money(bucket["dividends_base"]),
+                    "dividends_base": None if bucket["missing_fx"] else _money(bucket["dividends_base"]),
                     "withholding_native": _money(bucket["withholding_native"]),
-                    "withholding_base": _money(bucket["withholding_base"]),
+                    "withholding_base": None if bucket["missing_fx"] else _money(bucket["withholding_base"]),
+                    "missing_fx": bucket["missing_fx"],
                     "payments": bucket["payments"],
                 }
             )
@@ -261,28 +270,44 @@ class TaxReportService:
                     "proceeds_native": _money(bucket["proceeds_native"]),
                     "cost_native": _money(bucket["cost_native"]),
                     "gain_native": _money(bucket["gain_native"]),
-                    "gain_base": _money(bucket["gain_base"]),
+                    "gain_base": None if bucket["missing_fx"] else _money(bucket["gain_base"]),
+                    "missing_fx": bucket["missing_fx"],
                     "sale_count": bucket["sale_count"],
                     "sales": bucket["sales"],
                 }
             )
 
-        total_dividends = sum((Decimal(b["dividends_base"] or 0) for b in dividends), Decimal("0"))
-        total_withholding = sum(
-            (Decimal(b["withholding_base"] or 0) for b in dividends), Decimal("0")
+        dividend_incomplete = any(b["missing_fx"] for b in dividends)
+        realized_incomplete = any(b["missing_fx"] for b in realized)
+        incomplete_fx = dividend_incomplete or realized_incomplete
+
+        total_dividends = sum(
+            (Decimal(str(b["dividends_base"] or 0)) for b in dividends), Decimal("0")
         )
-        total_gain = sum((Decimal(b["gain_base"] or 0) for b in realized), Decimal("0"))
+        total_withholding = sum(
+            (Decimal(str(b["withholding_base"] or 0)) for b in dividends), Decimal("0")
+        )
+        total_gain = sum(
+            (Decimal(str(b["gain_base"] or 0)) for b in realized), Decimal("0")
+        )
 
         summary = {
             "fiscal_year": fiscal_year,
             "base_currency": base_currency,
-            "total_dividends_base": _money(total_dividends),
-            "total_withholding_base": _money(total_withholding),
-            "total_realized_gain_base": _money(total_gain),
-            "net_taxable_base": _money(total_dividends + total_gain),
+            # Totals stay None when any component could not be converted:
+            # a partial total would look authoritative and be wrong.
+            "total_dividends_base": None if dividend_incomplete else _money(total_dividends),
+            "total_withholding_base": None if dividend_incomplete else _money(total_withholding),
+            "total_realized_gain_base": None if realized_incomplete else _money(total_gain),
+            "net_taxable_base": None if incomplete_fx else _money(total_dividends + total_gain),
             "dividend_count": len(dividends),
             "sell_count": sum(b["sale_count"] for b in realized),
             "method": FIFO_METHOD,
+            "incomplete_fx": incomplete_fx,
+            "missing_fx": sorted(
+                {b["ticker"] for b in dividends if b["missing_fx"]}
+                | {b["ticker"] for b in realized if b["missing_fx"]}
+            ),
         }
 
         return {
@@ -332,20 +357,6 @@ class TaxReportService:
         data["persisted"] = True
         return data
 
-    def _approx_convert(
-        self,
-        db: Session,
-        quote_currency: str,
-        base_currency: str,
-        as_of: date,
-        amount: Decimal,
-    ) -> Decimal:
-        rate = self.fx.rate(
-            db, quote_currency=quote_currency, base_currency=base_currency, as_of=as_of
-        )
-        if rate is None:
-            return amount
-        return amount * rate
 
 
 def build_tax_summary_rows(db: Session, fiscal_year: int) -> list[dict]:
