@@ -31,6 +31,15 @@ from sqlalchemy.orm import Session
 from app.models import Company, ThesisVersion
 from app.services.thesis_job_service import THESIS_PHASES
 from app.services.workflow_run_service import begin_run
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def _session_scope(db):
+    """Adapt the request-scoped session to the node session factory."""
+    yield db
 from app.workflows.thesis_graph import THESIS_GRAPH_NODES, build_thesis_graph, thesis_thread_id
 from app.workflows.thesis_graph.checkpointer import sqlite_checkpointer
 
@@ -77,7 +86,9 @@ class ThesisShadowService:
         config = {"configurable": {"thread_id": thread_id}}
 
         with sqlite_checkpointer() as saver:
-            graph = build_thesis_graph(checkpointer=saver)
+            graph = build_thesis_graph(
+                checkpointer=saver, session_factory=lambda: _session_scope(db)
+            )
             initial = graph.invoke(
                 {
                     "ticker": company.ticker,

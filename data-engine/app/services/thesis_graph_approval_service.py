@@ -30,6 +30,15 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models import Company
 from app.services.workflow_run_service import begin_run
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def _session_scope(db):
+    """Adapt the request-scoped session to the node session factory."""
+    yield db
 from app.workflows.thesis_graph import build_thesis_graph, thesis_thread_id
 from app.workflows.thesis_graph.checkpointer import durable_checkpointer
 
@@ -91,7 +100,9 @@ class ThesisGraphApprovalService:
         config = {"configurable": {"thread_id": thread_id}}
 
         with self._checkpointer() as saver:
-            graph = build_thesis_graph(checkpointer=saver)
+            graph = build_thesis_graph(
+                checkpointer=saver, session_factory=lambda: _session_scope(db)
+            )
             snapshot = graph.get_state(config)
             pending = self._pending_approval(snapshot)
             if pending is None and not snapshot.next and not snapshot.values:
