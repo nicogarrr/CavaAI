@@ -380,6 +380,77 @@ def _route_after_approval(state: ThesisGraphState) -> str:
     return "publish" if approval.get("decision") == "approve" else END
 
 
+def _source_audit_node(session_factory):
+    """Read-side deterministic node (stage 6e): evidence provenance audit.
+
+    Records the observed distribution of persisted FinancialFact and
+    Document rows by ``source_type`` (sorted, deterministic) plus the
+    count of low-confidence facts (< 0.5). source_type is a free-form
+    vocabulary (SEC, FMP, FRED, IR, seed, ...); the probe reports the
+    observed distribution verbatim and never invents a classification.
+    Read-only: the classic path owns audit interpretation; the graph
+    never writes audit artifacts.
+    """
+
+    def node(state: ThesisGraphState) -> dict:
+        artifacts = dict(state.get("artifacts") or {})
+        if "source_audit" in artifacts:
+            return {}
+        if session_factory is None:
+            artifacts["source_audit"] = "pending:source_audit"
+            return {
+                "artifacts": artifacts,
+                "completed_nodes": ["source_audit"],
+                "status": "running",
+            }
+        company_id = state.get("company_id")
+        if not company_id:
+            raise ValueError("source_audit requires company_id")
+        from sqlalchemy import func, select
+
+        from app.models import Document, FinancialFact
+
+        with session_factory() as db:
+            cid = int(company_id)
+            fact_rows = db.execute(
+                select(FinancialFact.source_type, func.count())
+                .where(FinancialFact.company_id == cid)
+                .group_by(FinancialFact.source_type)
+            ).all()
+            doc_rows = db.execute(
+                select(Document.source_type, func.count())
+                .where(Document.company_id == cid)
+                .group_by(Document.source_type)
+            ).all()
+            low_confidence = db.scalar(
+                select(func.count())
+                .select_from(FinancialFact)
+                .where(FinancialFact.company_id == cid, FinancialFact.confidence < 0.5)
+            ) or 0
+        facts_by_source = {str(src): count for src, count in fact_rows}
+        docs_by_source = {str(src): count for src, count in doc_rows}
+        facts_part = ",".join(f"{k}:{facts_by_source[k]}" for k in sorted(facts_by_source))
+        docs_part = ",".join(f"{k}:{docs_by_source[k]}" for k in sorted(docs_by_source))
+        artifacts["source_audit"] = (
+            f"audit:facts={{{facts_part}}}|docs={{{docs_part}}}|lowconf={low_confidence}"
+        )
+        meta = dict(state.get("meta") or {})
+        meta["source_audit"] = {
+            "facts_by_source_type": facts_by_source,
+            "documents_by_source_type": docs_by_source,
+            "low_confidence_facts": low_confidence,
+        }
+        return {
+            "artifacts": artifacts,
+            "completed_nodes": ["source_audit"],
+            "status": "running",
+            "meta": meta,
+        }
+
+    node.__name__ = "source_audit"
+    return node
+
+
 def build_thesis_graph(checkpointer=None, session_factory=None):
     """Compile the thesis lifecycle graph with an optional checkpointer.
 
@@ -404,6 +475,8 @@ def build_thesis_graph(checkpointer=None, session_factory=None):
             node = _build_fundamental_model_node(session_factory)
         elif name == "deterministic_valuation":
             node = _deterministic_valuation_node(session_factory)
+        elif name == "source_audit":
+            node = _source_audit_node(session_factory)
         else:
             node = _make_skeleton_node(name)
         graph.add_node(name, node)

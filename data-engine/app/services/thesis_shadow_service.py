@@ -15,15 +15,15 @@ Comparison contract (honest by construction):
   unmapped phases are listed, never silently dropped.
 - status_semantics: graph lifecycle status vs the latest persisted
   ThesisVersion status, with divergences listed explicitly.
-- probe_comparison (6d): the real read-side probes (resolve_company,
+- probe_comparison (6d/6e): the real read-side probes (resolve_company,
   ensure_ingestion_complete, build_fundamental_model,
-  deterministic_valuation) are compared against the classic persisted
-  state they observe - match/divergent/skeleton per node. The write-side
-  nodes (draft_synthesis, source_audit, deterministic_red_team,
+  deterministic_valuation, source_audit) are compared against the
+  classic persisted state they observe - match/divergent/skeleton per
+  node. The write-side nodes (draft_synthesis, deterministic_red_team,
   optional_bull_bear_debate, assemble_candidate, publish) remain pending
   skeleton references while the classic path produces real artifacts;
-  this is an expected divergence at 6d and is reported as such, not
-  hidden.
+  this is an expected divergence at this stage and is reported as such,
+  not hidden.
 """
 
 from __future__ import annotations
@@ -118,6 +118,27 @@ def _compare_probes(db: Session, company: Company, artifacts: dict[str, str]) ->
     )
     classic_valuation = f"valuation:{snapshot.id}" if snapshot else "valuation:none"
 
+    fact_rows = db.execute(
+        select(FinancialFact.source_type, func.count())
+        .where(FinancialFact.company_id == cid)
+        .group_by(FinancialFact.source_type)
+    ).all()
+    doc_rows = db.execute(
+        select(Document.source_type, func.count())
+        .where(Document.company_id == cid)
+        .group_by(Document.source_type)
+    ).all()
+    low_confidence = db.scalar(
+        select(func.count())
+        .select_from(FinancialFact)
+        .where(FinancialFact.company_id == cid, FinancialFact.confidence < 0.5)
+    ) or 0
+    facts_by_source = {str(src): count for src, count in fact_rows}
+    docs_by_source = {str(src): count for src, count in doc_rows}
+    facts_part = ",".join(f"{k}:{facts_by_source[k]}" for k in sorted(facts_by_source))
+    docs_part = ",".join(f"{k}:{docs_by_source[k]}" for k in sorted(docs_by_source))
+    classic_audit = f"audit:facts={{{facts_part}}}|docs={{{docs_part}}}|lowconf={low_confidence}"
+
     return [
         _probe_entry("resolve_company", artifacts.get("resolve_company"), f"company:{cid}"),
         _probe_entry(
@@ -127,6 +148,7 @@ def _compare_probes(db: Session, company: Company, artifacts: dict[str, str]) ->
         ),
         _probe_entry("build_fundamental_model", artifacts.get("build_fundamental_model"), classic_model),
         _probe_entry("deterministic_valuation", artifacts.get("deterministic_valuation"), classic_valuation),
+        _probe_entry("source_audit", artifacts.get("source_audit"), classic_audit),
     ]
 
 
@@ -251,7 +273,7 @@ class ThesisShadowService:
                     f"{entry['graph_artifact']}, classic persisted {entry['classic_observed']}"
                 )
         divergences.append(
-            "expected at 6d: draft_synthesis, source_audit, deterministic_red_team, "
+            "expected at 6d: draft_synthesis, deterministic_red_team, "
             "optional_bull_bear_debate, assemble_candidate and publish remain pending "
             "skeleton references; the classic path owns real write artifacts"
         )
