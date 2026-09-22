@@ -253,3 +253,28 @@ async def debate_thesis_endpoint(ticker: str, db: Session = Depends(get_db)) -> 
         "persisted": persisted,
         **result,
     }
+
+
+@router.post("/generate-async", status_code=202)
+def generate_thesis_async(payload: ThesisGenerateRequest, db: Session = Depends(get_db)) -> dict:
+    """Enqueue background thesis generation (durable job envelope).
+
+    Returns 202 with the job state; poll GET /api/thesis/jobs/{id} for honest
+    phase progress. Re-posting the same ticker+force while active returns the
+    existing job (idempotent).
+    """
+    from app.services.thesis_job_service import enqueue_generation, job_payload
+
+    run, _created = enqueue_generation(db, payload.ticker, payload.force_new_version)
+    return job_payload(run)
+
+
+@router.get("/jobs/{run_id}")
+def thesis_job_status(run_id: int, db: Session = Depends(get_db)) -> dict:
+    from app.models.entities import WorkflowRun
+    from app.services.thesis_job_service import WORKFLOW_NAME, job_payload
+
+    run = db.get(WorkflowRun, run_id)
+    if run is None or run.workflow_name != WORKFLOW_NAME:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job_payload(run)

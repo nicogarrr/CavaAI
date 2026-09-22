@@ -120,17 +120,35 @@ class ThesisService:
         raw = json.dumps(payload, sort_keys=True, default=str)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def generate(self, db: Session, ticker: str, force_new_version: bool = False) -> ThesisVersion:
-        """Persist model, valuation, thesis, evidence, graph and red team atomically."""
+    def generate(
+        self,
+        db: Session,
+        ticker: str,
+        force_new_version: bool = False,
+        phase_callback=None,
+    ) -> ThesisVersion:
+        """Persist model, valuation, thesis, evidence, graph and red team atomically.
+
+        phase_callback(name) fires when generation ACTUALLY enters each real
+        phase (async job progress; never synthetic progress).
+        """
         try:
-            return self._generate_atomic(db, ticker, force_new_version)
+            return self._generate_atomic(db, ticker, force_new_version, phase_callback)
         except Exception:
             db.rollback()
             raise
 
     def _generate_atomic(
-        self, db: Session, ticker: str, force_new_version: bool = False
+        self,
+        db: Session,
+        ticker: str,
+        force_new_version: bool = False,
+        phase_callback=None,
     ) -> ThesisVersion:
+        def _phase(name: str) -> None:
+            if phase_callback is not None:
+                phase_callback(name)
+
         company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
         if not company:
             raise ValueError(f"Unknown ticker: {ticker}")
@@ -138,6 +156,7 @@ class ThesisService:
         # Auto-ingesta best-effort (ley: ninguna tesis insufficient_data si la
         # empresa tiene filings): SEC companyfacts + Finnhub quote/profile +
         # filings/news/earnings/IR/tesis. Nunca rompe la generacion.
+        _phase("collect_evidence")
         evidence: dict = {}
         try:
             from app.services.thesis_evidence_service import ThesisEvidenceService
@@ -146,9 +165,11 @@ class ThesisService:
         except Exception:
             evidence = {}
 
+        _phase("build_fundamental_model")
         long_term_model = LongTermModelService().build(
             db, company, horizon=5, commit=False
         )
+        _phase("run_valuation")
         valuation = self.valuation_service.value_company(db, company)
         missing_drivers = long_term_model.get("missing_mandatory_drivers") or []
         if missing_drivers:
@@ -176,10 +197,12 @@ class ThesisService:
                 return existing
             # Material evidence changed — fall through and create a new version.
 
+        _phase("persist_valuation_snapshot")
         self.valuation_service.persist_output(db, company, valuation, commit=False)
         snapshot = FinancialSnapshotBuilder().build(db, company)
         facts = snapshot.facts
 
+        _phase("source_audit")
         claims = self._build_claims(company, facts, valuation)
         audit = self.auditor.audit(
             claims=claims,
@@ -204,6 +227,7 @@ class ThesisService:
         else:
             status = "draft"
 
+        _phase("compose_thesis")
         hypothesis = self._hypothesis(company, valuation)
         catalysts = self._catalysts(evidence)
         invalidation = self._invalidation_criteria(company, valuation)
@@ -227,6 +251,7 @@ class ThesisService:
         def _dec(value) -> Decimal | None:
             return None if value is None else Decimal(str(value))
 
+        _phase("persist_thesis")
         thesis = ThesisVersion(
             company_id=company.id,
             version=version,
