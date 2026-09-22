@@ -4154,6 +4154,8 @@ export interface components {
             bear_value: string | null;
             /** Bull Value */
             bull_value: string | null;
+            /** Catalysts */
+            catalysts?: unknown[] | null;
             /**
              * Created At
              * Format: date-time
@@ -4167,12 +4169,20 @@ export interface components {
             executive_summary: string;
             /** Expected Value */
             expected_value: string | null;
+            /** Hypothesis */
+            hypothesis?: string | null;
             /** Id */
             id: number;
+            /** Invalidation Criteria */
+            invalidation_criteria?: unknown[] | null;
             /** Margin Of Safety */
             margin_of_safety: string | null;
             /** Rating */
             rating: string;
+            /** Scenario Probabilities */
+            scenario_probabilities?: {
+                [key: string]: unknown;
+            } | null;
             /** Source Coverage Score */
             source_coverage_score: number;
             /** Status */
@@ -4358,6 +4368,8 @@ export interface components {
             bear_value: string | null;
             /** Bull Value */
             bull_value: string | null;
+            /** Catalysts */
+            catalysts?: unknown[] | null;
             /** Company Id */
             company_id: number;
             /**
@@ -4373,16 +4385,24 @@ export interface components {
             executive_summary: string;
             /** Expected Value */
             expected_value: string | null;
+            /** Hypothesis */
+            hypothesis?: string | null;
             /** Id */
             id: number;
             /** Input Fingerprint */
             input_fingerprint?: string | null;
+            /** Invalidation Criteria */
+            invalidation_criteria?: unknown[] | null;
             /** Margin Of Safety */
             margin_of_safety: string | null;
             /** Rating */
             rating: string;
             /** Red Team Score */
             red_team_score: number;
+            /** Scenario Probabilities */
+            scenario_probabilities?: {
+                [key: string]: unknown;
+            } | null;
             /** Source Coverage Score */
             source_coverage_score: number;
             /** Status */
