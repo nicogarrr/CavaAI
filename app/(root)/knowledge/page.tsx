@@ -17,6 +17,8 @@ import {
   reviseKnowledgePrinciple,
   uploadKnowledgeDocument,
 } from '@/lib/actions/research-tools.actions';
+import BackendOffline from '@/components/system/BackendOffline';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -32,10 +34,18 @@ function statusTone(status: string) {
 export default async function KnowledgeLibraryPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const selectedDocumentId = Number(query.document) || null;
-  const [{ collections, documents, principles, jobs }, chunks] = await Promise.all([
-    getKnowledgeLibrary(),
-    getKnowledgeDocumentChunks(selectedDocumentId),
-  ]);
+  const fetchAll = () =>
+    Promise.all([getKnowledgeLibrary(), getKnowledgeDocumentChunks(selectedDocumentId)]);
+  let data: Awaited<ReturnType<typeof fetchAll>>;
+  try {
+    data = await fetchAll();
+  } catch (error) {
+    if (isBackendUnavailableError(error)) {
+      return <BackendOffline feature="Knowledge Library" retryHref="/knowledge" />;
+    }
+    throw error;
+  }
+  const [{ collections, documents, principles, jobs }, chunks] = data;
   const visiblePrinciples = query.status
     ? principles.filter((principle) => principle.status === query.status)
     : principles;

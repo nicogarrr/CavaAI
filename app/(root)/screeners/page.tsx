@@ -13,6 +13,8 @@ import {
   type ScreenCriterion,
   type ScreenResult,
 } from '@/lib/actions/research-tools.actions';
+import BackendOffline from '@/components/system/BackendOffline';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -35,16 +37,27 @@ function Results({ result }: { result: ScreenResult }) {
 export default async function ScreenersPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const operator = operators.includes(query.operator as ScreenCriterion['operator']) ? query.operator as ScreenCriterion['operator'] : '>=';
-  const [{ metrics, screens }, result] = await Promise.all([
-    getScreenerWorkspace(),
-    runAdHocScreen({
-      left: query.left ?? '',
-      operator,
-      right: query.right ?? '',
-      rankingFormula: query.ranking,
-      rankingDirection: query.direction === 'asc' ? 'asc' : 'desc',
-    }),
-  ]);
+  const fetchAll = () =>
+    Promise.all([
+      getScreenerWorkspace(),
+      runAdHocScreen({
+        left: query.left ?? '',
+        operator,
+        right: query.right ?? '',
+        rankingFormula: query.ranking,
+        rankingDirection: query.direction === 'asc' ? 'asc' : 'desc',
+      }),
+    ]);
+  let data: Awaited<ReturnType<typeof fetchAll>>;
+  try {
+    data = await fetchAll();
+  } catch (error) {
+    if (isBackendUnavailableError(error)) {
+      return <BackendOffline feature="Screeners" retryHref="/screeners" />;
+    }
+    throw error;
+  }
+  const [{ metrics, screens }, result] = data;
 
   return (
     <main className="mx-auto flex max-w-7xl flex-col gap-6">
