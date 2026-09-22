@@ -54,11 +54,20 @@ class ThesisService:
         long_term_model: dict,
     ) -> str:
         documents = list(
-            db.scalars(select(Document).where(Document.company_id == company.id).order_by(Document.id)).all()
+            db.execute(
+                select(Document.id, Document.checksum, Document.updated_at)
+                .where(Document.company_id == company.id)
+                .order_by(Document.id)
+            ).all()
         )
         facts = list(
-            db.scalars(
-                select(FinancialFact)
+            db.execute(
+                select(
+                    FinancialFact.id,
+                    FinancialFact.metric,
+                    FinancialFact.period,
+                    FinancialFact.value,
+                )
                 .where(FinancialFact.company_id == company.id)
                 .order_by(FinancialFact.id)
             ).all()

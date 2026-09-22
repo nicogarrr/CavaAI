@@ -87,7 +87,7 @@ def test_long_term_bucket_after_one_year():
             )
         )
         _position(db, company, date(2026, 9, 21))
-        rows = portfolio_route.positions(db)
+        rows = portfolio_route.positions(db=db)
     finally:
         db.close()
     assert len(rows) == 1
@@ -118,7 +118,7 @@ def test_short_term_bucket_within_one_year():
             )
         )
         _position(db, company, date(2026, 9, 21))
-        rows = portfolio_route.positions(db)
+        rows = portfolio_route.positions(db=db)
     finally:
         db.close()
     assert rows[0]["fiscal_bucket"] == "corto_plazo"
@@ -130,7 +130,7 @@ def test_no_bucket_without_buy_history():
     try:
         company = _company(db, "NOHIST")
         _position(db, company, date(2026, 9, 21))
-        rows = portfolio_route.positions(db)
+        rows = portfolio_route.positions(db=db)
     finally:
         db.close()
     assert rows[0]["fiscal_bucket"] is None

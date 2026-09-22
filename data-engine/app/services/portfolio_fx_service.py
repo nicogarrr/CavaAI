@@ -79,6 +79,120 @@ class PortfolioFXService:
             return Decimal("1") / inverse.rate
         return None
 
+    def fx_table(
+        self,
+        db: Session,
+        *,
+        currencies: set[str] | list[str],
+        base_currency: str,
+        as_of_max: date,
+    ) -> dict[tuple[str, str], list[tuple[date, Decimal]]]:
+        """Tabla FX (una query) para resolución point-in-time por fila.
+
+        Devuelve {(base, quote): [(rate_date, rate), ...]} ordenado por
+        fecha ascendente; combínese con :meth:`rate_from_table` para
+        replicar :meth:`rate` sin N+1 y sin filtrar futuro (lookahead).
+        """
+        base = base_currency.upper()
+        codes = {str(code).upper() for code in currencies if code}
+        codes.add(base)
+        rows = list(
+            db.scalars(
+                select(FXRate)
+                .where(
+                    FXRate.base_currency.in_(codes),
+                    FXRate.quote_currency.in_(codes),
+                    FXRate.rate_date <= as_of_max,
+                )
+                .order_by(FXRate.rate_date, FXRate.created_at)
+            ).all()
+        )
+        table: dict[tuple[str, str], list[tuple[date, Decimal]]] = {}
+        for row in rows:
+            if row.rate is None:
+                continue
+            table.setdefault(
+                (row.base_currency.upper(), row.quote_currency.upper()), []
+            ).append((row.rate_date, row.rate))
+        return table
+
+    @staticmethod
+    def rate_from_table(
+        table: dict[tuple[str, str], list[tuple[date, Decimal]]],
+        *,
+        quote_currency: str,
+        base_currency: str,
+        as_of: date,
+    ) -> Decimal | None:
+        """Equivalente puro en memoria de :meth:`rate` sobre ``fx_table``."""
+        from bisect import bisect_right
+
+        quote = quote_currency.upper()
+        base = base_currency.upper()
+        if quote == base:
+            return Decimal("1")
+        series = table.get((base, quote))
+        if series:
+            idx = bisect_right(series, (as_of, Decimal("Infinity"))) - 1
+            if idx >= 0:
+                return series[idx][1]
+        inverse = table.get((quote, base))
+        if inverse:
+            idx = bisect_right(inverse, (as_of, Decimal("Infinity"))) - 1
+            if idx >= 0 and inverse[idx][1]:
+                return Decimal("1") / inverse[idx][1]
+        return None
+
+    def rates_for(
+        self,
+        db: Session,
+        *,
+        quote_currencies: set[str] | list[str],
+        base_currency: str,
+        as_of: date,
+    ) -> dict[str, Decimal | None]:
+        """Resuelve N tipos de cambio con UNA sola query (anti N+1).
+
+        Carga todas las filas FX relevantes (directas e inversas con
+        rate_date <= as_of) y elige en Python la más reciente por par,
+        replicando la semántica de :meth:`rate`.
+        """
+        base = base_currency.upper()
+        quotes = {str(code).upper() for code in quote_currencies if code}
+        result: dict[str, Decimal | None] = {}
+        pending = set(quotes)
+        for code in quotes:
+            if code == base:
+                result[code] = Decimal("1")
+                pending.discard(code)
+        if not pending:
+            return result
+        pairs = set(pending) | {base}
+        rows = list(
+            db.scalars(
+                select(FXRate)
+                .where(
+                    FXRate.base_currency.in_(pairs),
+                    FXRate.quote_currency.in_(pairs),
+                    FXRate.rate_date <= as_of,
+                )
+                .order_by(desc(FXRate.rate_date), desc(FXRate.created_at))
+            ).all()
+        )
+        latest: dict[tuple[str, str], Decimal] = {}
+        for row in rows:
+            key = (row.base_currency.upper(), row.quote_currency.upper())
+            if key not in latest and row.rate is not None:
+                latest[key] = row.rate
+        for code in pending:
+            direct = latest.get((base, code))
+            if direct is not None:
+                result[code] = direct
+                continue
+            inverse = latest.get((code, base))
+            result[code] = Decimal("1") / inverse if inverse else None
+        return result
+
     def upsert_rate(
         self,
         db: Session,

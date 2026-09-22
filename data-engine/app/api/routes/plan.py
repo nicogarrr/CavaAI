@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -68,7 +69,10 @@ def upsert_plan(payload: PlanUpsertInput, db: Session = Depends(get_db)) -> dict
 
 
 @router.get("/contributions")
-def list_contributions(db: Session = Depends(get_db)) -> list[dict]:
+def list_contributions(
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    db: Session = Depends(get_db),
+) -> list[dict]:
     service = InvestmentPlanService()
     return [
         {
@@ -78,7 +82,7 @@ def list_contributions(db: Session = Depends(get_db)) -> list[dict]:
             "currency": c.currency,
             "note": c.note,
         }
-        for c in service.list_contributions(db)
+        for c in service.list_contributions(db, limit=limit)
     ]
 
 
