@@ -106,6 +106,17 @@ class ThesisService:
         if not company:
             raise ValueError(f"Unknown ticker: {ticker}")
 
+        # Auto-ingesta best-effort (ley: ninguna tesis insufficient_data si la
+        # empresa tiene filings): SEC companyfacts + Finnhub quote/profile +
+        # filings/news/earnings/IR/tesis. Nunca rompe la generacion.
+        evidence: dict = {}
+        try:
+            from app.services.thesis_evidence_service import ThesisEvidenceService
+
+            evidence = ThesisEvidenceService().collect(db, company) or {}
+        except Exception:
+            evidence = {}
+
         long_term_model = LongTermModelService().build(
             db, company, horizon=5, commit=False
         )
@@ -154,6 +165,9 @@ class ThesisService:
         publishable = bool(valuation.get("publishable"))
         if valuation.get("status") == "insufficient_data":
             status = "insufficient_data"
+        elif valuation.get("status") == "partial":
+            # Rango indicativo con precio: parcial-publicable, nunca final.
+            status = "draft_failed_audit" if not audit.passed else "draft"
         elif not audit.passed:
             status = "draft_failed_audit"
         elif publishable:
@@ -169,6 +183,7 @@ class ThesisService:
             facts,
             long_term_model=long_term_model,
             version=version,
+            evidence=evidence,
         )
 
         def _dec(value) -> Decimal | None:
@@ -315,6 +330,13 @@ class ThesisService:
                 f"{company.ticker} valuation is NOT PUBLISHABLE ({engine}). "
                 f"Missing: {missing}. No fair value should be trusted until inputs are sourced."
             )
+        if valuation.get("status") == "partial":
+            missing = ", ".join(valuation.get("missing_inputs") or []) or "remaining inputs"
+            return (
+                f"{company.ticker} valuation is PARTIAL-INDICATIVE ({engine}): "
+                f"bear/base/bull range and reverse DCF computed from documented fallback "
+                f"assumptions (see section 13). Still missing: {missing}. Not a final fair value."
+            )
         return (
             f"{company.ticker} is in the {company.company_type} bucket (engine={engine}). "
             f"Valuation input source: {source}. "
@@ -405,6 +427,34 @@ class ThesisService:
                 }
             )
 
+        assumed = (valuation.get("trace") or {}).get("assumed")
+        if (valuation.get("trace") or {}).get("valuation_basis") == "indicative_assumptions" and assumed:
+            claims.append(
+                {
+                    "claim_id": f"{company.ticker}:indicative_assumptions",
+                    "subject": company.ticker,
+                    "predicate": "valuation_assumptions",
+                    "object": "indicative",
+                    "claim": (
+                        f"{company.ticker} indicative range assumes "
+                        f"FCF margin base {assumed.get('fcf_margin_base')} "
+                        f"(band {assumed.get('fcf_margin_band')})"
+                        + (
+                            " and $1 revenue floor"
+                            if assumed.get("revenue_floor_used")
+                            else ""
+                        )
+                        + "; not reported facts."
+                    ),
+                    "source_id": None,
+                    "source_type": "valuation_engine",
+                    "confidence": 1.0,
+                    "material": False,
+                    "materiality": "process",
+                    "verification_state": "assumption",
+                }
+            )
+
         return claims
 
     def _facts_markdown(self, facts: dict[str, FinancialFact]) -> str:
@@ -434,6 +484,39 @@ class ThesisService:
                 "CavaAI will not publish a fair value from bootstrap assumptions."
             )
 
+        if valuation.get("status") == "partial":
+            trace = valuation.get("trace") or {}
+            assumed = trace.get("assumed") or {}
+            missing = "\n".join(f"- {item}" for item in (valuation.get("missing_inputs") or []))
+            supuestos = (
+                f"FCF margin base {assumed.get('fcf_margin_base')} "
+                f"(band {assumed.get('fcf_margin_band')})"
+                + ("; $1 revenue floor (no coherent revenue)" if assumed.get("revenue_floor_used") else "")
+                + f"; revenue growth {assumed.get('revenue_growth')}"
+                + f"; WACC {assumed.get('wacc')}"
+                + f"; terminal {assumed.get('terminal_growth')}"
+            )
+            return (
+                "**PARTIAL-INDICATIVE RANGE — not a final fair value**\n\n"
+                f"Engine: `{trace.get('engine', 'unknown')}` "
+                f"(basis: `{trace.get('valuation_basis', 'indicative_assumptions')}`).\n\n"
+                f"{self._range_lines(valuation)}\n\n"
+                f"Documented assumptions (NOT reported facts): {supuestos}.\n\n"
+                f"Reverse DCF vs market price: see section 14.\n\n"
+                f"Still missing before publishing:\n{missing or '- none listed'}\n\n"
+                f"{trace.get('notice', '')}"
+            )
+
+        return "\n".join(
+            [
+                f"- Status: `{valuation.get('status')}` publishable={valuation.get('publishable')}",
+                *self._range_lines(valuation).split("\n"),
+                f"- Input source: {(valuation.get('trace') or {}).get('input_source', 'unknown')}",
+                f"- Engine: {(valuation.get('trace') or {}).get('engine', 'unknown')}",
+            ]
+        )
+
+    def _range_lines(self, valuation: dict) -> str:
         price = valuation.get("current_price")
         mos = valuation.get("margin_of_safety")
         price_txt = f"{price:.2f}" if price is not None else "N/A (no market price)"
@@ -444,15 +527,12 @@ class ThesisService:
 
         return "\n".join(
             [
-                f"- Status: `{valuation.get('status')}` publishable={valuation.get('publishable')}",
                 f"- Current price: {price_txt}",
                 f"- Bear value: {fmt(valuation.get('bear_value'))}",
                 f"- Base value: {fmt(valuation.get('base_value'))}",
                 f"- Bull value: {fmt(valuation.get('bull_value'))}",
                 f"- Expected value: {fmt(valuation.get('expected_value'))}",
                 f"- Margin of safety: {mos_txt}",
-                f"- Input source: {(valuation.get('trace') or {}).get('input_source', 'unknown')}",
-                f"- Engine: {(valuation.get('trace') or {}).get('engine', 'unknown')}",
             ]
         )
 
@@ -473,6 +553,114 @@ class ThesisService:
             )
         return "\n".join(lines)
 
+    def _earnings_markdown(self, sources: dict) -> str:
+        earnings = sources.get("earnings") or {}
+        transcript = sources.get("transcript") or {}
+        lines = [
+            "Call claims are stored separately and later verified against reported outcomes."
+        ]
+        if earnings.get("status") == "ok":
+            extra = f" {earnings['time']}" if earnings.get("time") else ""
+            eps = earnings.get("eps_forecast")
+            eps_txt = f", EPS forecast {eps}" if eps is not None else ""
+            lines.append(f"Next earnings: {earnings.get('next_date')}{extra}{eps_txt}.")
+        else:
+            lines.append(
+                f"Next earnings: pendiente ({earnings.get('detail', 'sin fecha de earnings')})."
+            )
+            if earnings.get("action"):
+                lines.append(f"Accion: {earnings['action']}")
+        if transcript.get("status") == "ok":
+            lines.append(
+                f"Latest transcript: {transcript.get('title')} ({transcript.get('period')})."
+            )
+        else:
+            lines.append(
+                f"Transcripcion: {transcript.get('detail', 'pendiente transcripcion')}."
+            )
+            if transcript.get("action"):
+                lines.append(f"Accion: {transcript['action']}")
+        return "\n".join(lines)
+
+    def _news_markdown(self, sources: dict) -> str:
+        news = sources.get("news") or {}
+        base = (
+            "Material news updates require source audit and human approval "
+            "before thesis versioning."
+        )
+        items = news.get("items") or []
+        if not items:
+            pending = news.get("detail", "sin noticias ingeridas")
+            action = f" Accion: {news['action']}" if news.get("action") else ""
+            return f"{base}\nLatest material news: pendiente ({pending}).{action}"
+        rows = [base, "", "Latest material news:"]
+        for item in items:
+            rows.append(
+                f"- {item.get('date', '?')} [{item.get('source', '?')}] "
+                f"{item.get('title', '')} (materiality {item.get('materiality', '?')})"
+            )
+        return "\n".join(rows)
+
+    def _sources_markdown(self, sources: dict) -> str:
+        ok: list[str] = ["- Company master seed"]
+        pending: list[str] = []
+        labels = {
+            "fundamentals": "Fundamentals",
+            "market": "Market price/profile",
+            "filings": "Filings 10-K/10-Q/8-K",
+            "news": "News",
+            "earnings": "Earnings date",
+            "transcript": "Transcript",
+            "ir": "Investor-relations",
+            "external_theses": "Tesis externas",
+        }
+        for key, label in labels.items():
+            block = sources.get(key) or {}
+            if block.get("status") == "ok":
+                detail = self._source_ok_detail(key, block)
+                ok.append(f"- {label}: conseguido ({detail})")
+            else:
+                reason = block.get("detail", "pendiente") if block else "no intentado"
+                action = f" | Accion: {block['action']}" if block.get("action") else ""
+                pending.append(f"- {label}: pendiente ({reason}){action}")
+        lines = ["Conseguido:"] + ok
+        if pending:
+            lines += ["", "Pendiente:"] + pending
+        return "\n".join(lines)
+
+    def _source_ok_detail(self, key: str, block: dict) -> str:
+        if key == "fundamentals":
+            metrics = ", ".join(block.get("metrics") or [])
+            return f"{block.get('source')}, {block.get('facts_imported')} facts: {metrics}"
+        if key == "market":
+            parts = []
+            if block.get("price") is not None:
+                parts.append(f"price {block['price']}")
+            if block.get("market_cap") is not None:
+                parts.append(f"market cap {block['market_cap']:.0f}")
+            if block.get("name"):
+                parts.append(f"name '{block['name']}'")
+            return f"{block.get('source')}" + (f": {', '.join(parts)}" if parts else "")
+        if key == "filings":
+            forms = ", ".join(
+                f"{i.get('form')} {i.get('filing_date')}" for i in (block.get("items") or [])
+            )
+            return f"{block.get('source')}: {forms}"
+        if key == "news":
+            return f"{len(block.get('items') or [])} eventos materiales"
+        if key == "earnings":
+            return f"next {block.get('next_date')}"
+        if key == "transcript":
+            return f"{block.get('title')} ({block.get('period')})"
+        if key == "ir":
+            titles = "; ".join(
+                str(i.get("title") or "") for i in (block.get("items") or [])[:3]
+            )
+            return f"{block.get('source')}: {len(block.get('items') or [])} releases ({titles})"
+        if key == "external_theses":
+            return f"{len(block.get('items') or [])} tesis pegadas"
+        return str(block.get("source") or "ok")
+
     def _render_markdown(
         self,
         company: Company,
@@ -482,6 +670,7 @@ class ThesisService:
         *,
         long_term_model: dict,
         version: int,
+        evidence: dict | None = None,
     ) -> str:
         reverse = valuation.get("reverse_dcf") or {}
         required_growth = reverse.get("required_revenue_growth")
@@ -494,6 +683,8 @@ class ThesisService:
         framework = long_term_model.get("framework") or {}
         mandatory_missing = long_term_model.get("missing_mandatory_drivers") or []
         market_opportunity = long_term_model.get("market_opportunity") or {}
+        evidence = evidence or {}
+        sources = evidence.get("sources") or {}
 
         return f"""# {company.ticker} Thesis v{version}
 
@@ -526,10 +717,10 @@ Net debt / cash / shares must align with the income-statement anchor period (or 
 Tracked through filings, calls, buybacks, dilution and dividends. Funding-gap dilution replaces fixed $100 capital raises when cash/capex facts exist.
 
 ## 9. Management And Calls
-Call claims are stored separately and later verified against reported outcomes.
+{self._earnings_markdown(sources)}
 
 ## 10. News And Catalysts
-Material news updates require source audit and human approval before thesis versioning.
+{self._news_markdown(sources)}
 
 ## 11. Risks
 {", ".join(company.special_risks)}
@@ -565,5 +756,6 @@ Coverage score: {audit["source_coverage_score"]}
 Unsupported claims: {audit["unsupported_claims"]}
 
 ## 20. Sources
-Company master seed, then SEC/FMP/IR/FRED/GDELT documents as ingested. Fingerprint: evidence-set hash drives versioning.
+{self._sources_markdown(sources)}
+Fingerprint: evidence-set hash drives versioning.
 """
