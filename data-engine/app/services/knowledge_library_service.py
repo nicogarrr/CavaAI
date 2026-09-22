@@ -56,7 +56,9 @@ KNOWLEDGE_DOCUMENT_TYPES = {
     "personal_postmortem",
 }
 
-PRINCIPLE_PROMPT_VERSION = "investment-principles-v2-batched"
+from app.services.prompt_registry import get_prompt
+
+PRINCIPLE_PROMPT_VERSION = get_prompt("investment_principles", allow_remote=False).version
 PRINCIPLE_BATCH_MAX_CHARS = 24_000
 PRINCIPLE_BATCH_MAX_CHUNKS = 12
 
@@ -295,9 +297,7 @@ class KnowledgeLibraryService:
                     messages=[
                         Message(
                             "system",
-                            "Extract durable investment principles from this bounded source "
-                            "section. Every proposal must quote an exact fragment and identify "
-                            "its chunk. Do not invent principles that the source does not support.",
+                            get_prompt("investment_principles").text,
                         ),
                         Message("user", source),
                     ],

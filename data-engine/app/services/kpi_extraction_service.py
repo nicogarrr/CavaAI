@@ -26,7 +26,9 @@ from app.services.budget import BudgetController, BudgetExceededError
 from app.services.langfuse_client import LangfuseTracer
 
 
-PROMPT_VERSION = "company-kpi-extraction-v1"
+from app.services.prompt_registry import get_prompt
+
+PROMPT_VERSION = get_prompt("company_kpi_extraction", allow_remote=False).version
 RATE_KEYS = {
     "penetration", "revenue_share", "utilization", "take_rate", "churn",
     "retention", "backlog_conversion", "fee_rate", "cash_yield", "occupancy",
@@ -175,10 +177,7 @@ class KPIExtractionService:
                 messages=[
                     Message(
                         "system",
-                        "Extract only explicitly reported company KPIs. Do not infer, calculate "
-                        "or estimate missing values. The quote must be verbatim and chunk_id must "
-                        "identify the supplied chunk. Return no observation when period or value "
-                        "is ambiguous.",
+                        get_prompt("company_kpi_extraction").text,
                     ),
                     Message(
                         "user",
