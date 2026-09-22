@@ -14,6 +14,7 @@ from app.workers.dramatiq_app import (
     refresh_sec_filings,
     review_theses,
     run_daily_research,
+    dispatch_insider_alerts,
     scan_contradictions,
     scan_insider_watchlist,
     tenant_contexts,
@@ -172,6 +173,16 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         day_of_week="sun",
         hour=3,
         minute=45,
+    )
+    # PR-4 insider alert outbox: re-evaluacion frecuente es barata porque
+    # la dedupe es por fingerprint (rule_version + tx), nunca por ticker.
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, dispatch_insider_alerts),
+        "interval",
+        job_id="insider_alert_outbox",
+        minutes=20,
+        jitter=180,
     )
     return scheduler
 
