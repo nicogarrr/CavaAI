@@ -93,6 +93,23 @@ def test_root_and_health():
     assert "database" in ready.json()["checks"]
 
 
+def test_health_ready_returns_503_when_database_is_down(monkeypatch):
+    """/health/ready must not report HTTP 200 while degraded."""
+    import app.core.database as database_module
+
+    class FailingSession:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("database unreachable")
+
+    monkeypatch.setattr(database_module, "SessionLocal", FailingSession)
+
+    client = TestClient(main.app)
+    response = client.get("/health/ready")
+    assert response.status_code == 503
+    assert response.json()["status"] == "degraded"
+    assert response.json()["checks"]["database"].startswith("error:")
+
+
 def test_company_workspace_uses_small_read_only_typed_snapshot_contract():
     seed()
 
