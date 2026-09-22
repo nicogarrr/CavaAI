@@ -56,6 +56,7 @@ def required_auth(monkeypatch):
         "get_settings",
         lambda: SimpleNamespace(
             app_env="test",
+            is_production=False,
             research_auth_required=True,
             research_auth_secret=SECRET,
             research_auth_max_age_seconds=300,
@@ -98,6 +99,45 @@ def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
         minio_secret_key="production-minio-secret-not-a-default",
     )
     assert configured.document_storage_backend == "minio"
+
+
+@pytest.mark.parametrize("alias", ["production", "prod"])
+def test_production_aliases_force_signed_identity_even_without_flag(monkeypatch, alias):
+    # APP_ENV=prod debe forzar auth firmada igual que production (bug: antes
+    # solo 'production' activaba la exigencia y 'prod' quedaba abierto).
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            app_env=alias,
+            is_production=True,
+            research_auth_required=False,
+            research_auth_secret=SECRET,
+            research_auth_max_age_seconds=300,
+        ),
+    )
+    client = TestClient(main.app)
+    unsigned = client.get("/api/news")
+    assert unsigned.status_code == 401
+
+
+def test_is_production_accepts_both_aliases():
+    prod = Settings(
+        _env_file=None,
+        app_env="prod",
+        research_auth_secret=SECRET,
+        minio_secret_key="production-minio-secret-not-a-default",
+    )
+    production = Settings(
+        _env_file=None,
+        app_env="production",
+        research_auth_secret=SECRET,
+        minio_secret_key="production-minio-secret-not-a-default",
+    )
+    local = Settings(_env_file=None, app_env="local")
+    assert prod.is_production is True
+    assert production.is_production is True
+    assert local.is_production is False
 
 
 def test_private_routers_reject_missing_and_invalid_signed_identity(required_auth):
