@@ -1,26 +1,33 @@
-"""Target thesis lifecycle graph (stage 6a skeleton + 6c approval interrupt).
+"""Thesis lifecycle graph (stage 6 complete: control plane + read probes).
 
-Target flow (assessment §2):
+Flow:
     resolve_company -> freeze_input_snapshot -> ensure_ingestion_complete
     -> build_fundamental_model -> deterministic_valuation -> draft_synthesis
     -> source_audit -> deterministic_red_team -> optional_bull_bear_debate
     -> assemble_candidate -> approval_gate -> publish
 
-Design rules carried from the assessment:
-- Nodes are short and idempotent; each commits a durable domain artifact and
-  writes only its ID/hash into state. Skeleton nodes record the node name in
-  ``completed_nodes`` and a placeholder artifact reference; real logic lands
-  progressively (6b shadow comparison, 6c approval interrupt).
-- Financial calculations, source hierarchy, publishability gates and score
-  math stay deterministic Python nodes. LLM nodes are limited to synthesis,
-  debate and qualitative challenge; a model never writes published state.
-- The approval gate is a real ``interrupt()`` (6c) in its own node with no
-  side effects before the interrupt (a node restarts from the beginning on
-  resume). Publishing happens in the following idempotent node, and only
-  after an explicit ``approve`` decision; ``request_changes`` ends the run
-  with status ``changes_requested`` and the decision recorded in metadata.
+Stage-6 boundary (final):
+- The graph is the durable control plane for the thesis lifecycle:
+  crash-safe resume under a checkpointer, a real approval ``interrupt()``,
+  idempotent retry, and read-side probes that record the classic path's
+  persisted state (resolve_company, ensure_ingestion_complete,
+  build_fundamental_model, deterministic_valuation, source_audit,
+  deterministic_red_team) plus the freeze_input_snapshot fingerprint.
+- The classic ThesisService path remains the SOLE LLM/write executor.
+  draft_synthesis, optional_bull_bear_debate, assemble_candidate and
+  publish are deliberate control-state placeholders (``pending:<node>``):
+  they keep the control flow complete and resumable without duplicating
+  LLM cost or risking double writes, and they never execute business work
+  inside the graph.
+- The approval gate is a real ``interrupt()`` in its own node with no side
+  effects before the interrupt (a node restarts from the beginning on
+  resume); ``request_changes`` ends the run as ``changes_requested`` with
+  the decision recorded in metadata.
 - thread_id = thesis:{tenant_id}:{company_id}:{input_fingerprint}, so a
   Dramatiq retry resumes the same thread instead of starting a second thesis.
+- The shadow comparison (ThesisShadowService) validates node order,
+  idempotent retry and every probe observation against the classic
+  persisted state on each run; divergences are recorded explicitly.
 """
 
 from __future__ import annotations
