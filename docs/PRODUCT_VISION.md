@@ -10,6 +10,10 @@ CavaAI is a private Personal Investment Research OS. It should help the investor
 
 It should not become a generic stock screener, a DCF factory, an auto-trading bot, or a thin LLM wrapper without durable memory.
 
+### Global-first sourcing
+
+CavaAI is not centered on any single market. Source weighting follows the issuer's market: the owning regulator and exchange (SEC/EDGAR for US issuers, CNMV for Spanish issuers, FCA, BaFin, AMF, CONSOB, ASIC, JFSA, SEDAR and equivalents elsewhere), issuer IR materials, and reputable global media/data providers. Most filings, news and source documents will be in English; content is preserved in its original language with its source link, and optional Spanish summaries never replace source truth. Spanish coverage (CNMV filings, OIR) is additive for Spanish issuers, not the product axis. The UI remains comfortable in Spanish while research data keeps its original language.
+
 ## Core Objects
 
 - Company workspace

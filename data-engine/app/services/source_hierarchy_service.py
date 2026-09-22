@@ -16,7 +16,7 @@ SOURCE_TIERS: dict[str, SourceTier] = {
         label="Regulatory filing",
         rank=1,
         trust_score=1.0,
-        policy="Primary regulatory evidence. Prefer this over vendor or media conflicts.",
+        policy="Primary regulatory evidence (SEC, CNMV, exchange/regulator of the issuer's market). Prefer this over vendor or media conflicts.",
     ),
     "tier_2_company": SourceTier(
         key="tier_2_company",
@@ -44,7 +44,7 @@ SOURCE_TIERS: dict[str, SourceTier] = {
         label="Data provider",
         rank=5,
         trust_score=0.68,
-        policy="Useful normalized data. Reconcile important conflicts against SEC/company primary sources.",
+        policy="Useful normalized data. Reconcile important conflicts against the issuer's regulator and company primary sources.",
     ),
     "tier_6_bootstrap": SourceTier(
         key="tier_6_bootstrap",
@@ -79,6 +79,16 @@ SOURCE_TIER_BY_TYPE = {
     "10-q": "tier_1_regulatory",
     "20-f": "tier_1_regulatory",
     "8-k": "tier_1_regulatory",
+    "cnmv": "tier_1_regulatory",
+    "fca": "tier_1_regulatory",
+    "bafin": "tier_1_regulatory",
+    "amf": "tier_1_regulatory",
+    "consob": "tier_1_regulatory",
+    "asic": "tier_1_regulatory",
+    "jfsa": "tier_1_regulatory",
+    "sedar": "tier_1_regulatory",
+    "regulator": "tier_1_regulatory",
+    "exchange_filing": "tier_1_regulatory",
     "company_ir": "tier_2_company",
     "investor_relations": "tier_2_company",
     "earnings_release": "tier_2_company",
@@ -110,6 +120,18 @@ def classify_source(source_type: str | None = None, url: str | None = None) -> S
 
     compact_url = (url or "").lower()
     if "sec.gov" in compact_url or "edgar" in compact_url:
+        return SOURCE_TIERS["tier_1_regulatory"]
+    regulator_domains = (
+        "cnmv.es",
+        "fca.org.uk",
+        "bafin.de",
+        "amf-france.org",
+        "consob.it",
+        "asic.gov.au",
+        "fsa.go.jp",
+        "sedar.com",
+    )
+    if any(domain in compact_url for domain in regulator_domains):
         return SOURCE_TIERS["tier_1_regulatory"]
     if "/investor" in compact_url or "ir." in compact_url:
         return SOURCE_TIERS["tier_2_company"]

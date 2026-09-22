@@ -1,0 +1,62 @@
+"""Global-first source classification tests.
+
+The product is global: the owning regulator of the issuer's market is tier 1
+whether that is the SEC, CNMV, FCA or another exchange regulator. Spanish
+coverage (CNMV) is additive, not the product axis.
+"""
+
+from app.services.source_hierarchy_service import (
+    SOURCE_TIERS,
+    classify_source,
+    source_tier_key,
+)
+
+
+def test_cnmv_source_type_is_tier_1_regulatory() -> None:
+    assert source_tier_key(source_type="cnmv") == "tier_1_regulatory"
+
+
+def test_cnmv_url_is_tier_1_regulatory() -> None:
+    tier = classify_source(url="https://www.cnmv.es/Portal/Fintech/Fintech.aspx")
+    assert tier.key == "tier_1_regulatory"
+
+
+def test_global_regulator_source_types_are_tier_1() -> None:
+    for source_type in ("fca", "bafin", "amf", "consob", "asic", "jfsa", "sedar", "regulator", "exchange_filing"):
+        assert source_tier_key(source_type=source_type) == "tier_1_regulatory", source_type
+
+
+def test_global_regulator_urls_are_tier_1() -> None:
+    urls = [
+        "https://www.fca.org.uk/publication/final-notices/example.pdf",
+        "https://www.bafin.de/SharedDocs/Downloads/example.pdf",
+        "https://www.amf-france.org/en/example",
+        "https://www.consob.it/web/consob-and-its-activities/example",
+        "https://asic.gov.au/regulatory-resources/example",
+        "https://www.fsa.go.jp/en/example",
+        "https://www.sedar.com/example",
+    ]
+    for url in urls:
+        assert classify_source(url=url).key == "tier_1_regulatory", url
+
+
+def test_sec_classification_unchanged() -> None:
+    assert source_tier_key(source_type="sec_edgar") == "tier_1_regulatory"
+    assert classify_source(url="https://www.sec.gov/Archives/edgar/data/1/x.htm").key == "tier_1_regulatory"
+
+
+def test_tier_1_policy_names_global_regulators() -> None:
+    policy = SOURCE_TIERS["tier_1_regulatory"].policy
+    assert "SEC" in policy and "CNMV" in policy
+
+
+def test_data_provider_policy_not_sec_only() -> None:
+    policy = SOURCE_TIERS["tier_5_data_provider"].policy
+    assert "regulator" in policy
+
+
+def test_company_ir_and_media_unchanged() -> None:
+    assert source_tier_key(source_type="company_ir") == "tier_2_company"
+    assert source_tier_key(source_type="reuters") == "tier_4_reputable_media"
+    assert source_tier_key(source_type="yahoo") == "tier_5_data_provider"
+    assert source_tier_key(source_type="something-else") == "tier_unknown"
