@@ -72,7 +72,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     // Noticias company-specific solo si hay simbolos seguidos; sin ellos la
     // tarjeta duplicaba a NewsSection (noticias generales del dashboard).
     const [hasTrackedSymbols, setHasTrackedSymbols] = useState(false);
-    const [upcomingEarnings, setUpcomingEarnings] = useState<EarningsEvent[]>([]);
+    const [, setUpcomingEarnings] = useState<EarningsEvent[]>([]);
     const [aiInsight, setAiInsight] = useState('');
     const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
     const [opportunities, setOpportunities] = useState<UndervaluedStock[]>([]);

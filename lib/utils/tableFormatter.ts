@@ -5,13 +5,6 @@
 
 import { extractTableData, TableData } from './tableExtractor';
 
-interface TableBlock {
-    start: number;
-    end: number;
-    content: string;
-    fixed: string;
-}
-
 export function formatMarkdownTable(table: string): string {
     // Validar que table es un string
     if (typeof table !== 'string') {
@@ -112,7 +105,6 @@ export function fixAllMarkdownTables(content: string): string {
     const tableRegex = /(\|.*\|(?:\r?\n\|[:\-| ]+\|(?:\r?\n\|.*\|)+)?)/gm;
     
     let fixedContent = content;
-    const offset = 0;
     
     const matches = [...content.matchAll(tableRegex)];
     
@@ -121,7 +113,6 @@ export function fixAllMarkdownTables(content: string): string {
         if (!match.index) continue;
         
         const tableStart = match.index;
-        const originalTable = match[0];
         
         // Extraer el bloque completo de la tabla
         const tableBlock = extractTableBlock(content, tableStart);
@@ -221,7 +212,6 @@ function fixTablesLineByLine(content: string): string {
     const lines = content.split('\n');
     const fixedLines: string[] = [];
     let inTable = false;
-    let tableStart = -1;
     let tableLines: string[] = [];
     
     for (let i = 0; i < lines.length; i++) {
@@ -231,7 +221,6 @@ function fixTablesLineByLine(content: string): string {
         // Detectar inicio de tabla
         if (trimmed.startsWith('|') && !inTable) {
             inTable = true;
-            tableStart = i;
             tableLines = [line];
             continue;
         }

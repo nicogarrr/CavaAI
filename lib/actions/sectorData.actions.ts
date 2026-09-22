@@ -87,7 +87,7 @@ export const getSectorAverages = cache(async (sector: string): Promise<SectorAve
 
                 // Delay para evitar rate limiting
                 await new Promise(resolve => setTimeout(resolve, 200));
-            } catch (e) {
+            } catch {
                 // Continuar con siguiente acción
                 continue;
             }

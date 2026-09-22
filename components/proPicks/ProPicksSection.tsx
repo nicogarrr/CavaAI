@@ -1,10 +1,9 @@
-import { generateProPicks, getAvailableStrategies, type ProPick } from '@/lib/actions/proPicks.actions';
+import { generateProPicks, type ProPick } from '@/lib/actions/proPicks.actions';
 import { SCORING_WEIGHTS } from '@/lib/utils/advancedStockScoring';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowRight, TrendingUp, Sparkles } from 'lucide-react';
-import SectorComparisonChart from './SectorComparisonChart';
 
 export default async function ProPicksSection() {
     // Manejar errores silenciosamente para evitar fallos en build
