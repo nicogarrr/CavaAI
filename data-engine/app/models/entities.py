@@ -1784,3 +1784,65 @@ class CorporateAction(TenantOwnedMixin, Base, TimestampMixin):
     applied_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class WorkflowRun(TenantOwnedMixin, Base, TimestampMixin):
+    """Uniform execution envelope for every workflow run.
+
+    One row per run attempt, whatever the underlying runtime (deterministic
+    runner, MAF graph, or direct service call). Records the state machine
+    (queued/running/succeeded/failed), the idempotency key, and the final
+    result or classified error. Steps live in workflow_step_runs.
+    """
+
+    __tablename__ = "workflow_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "workflow_name", "idempotency_key",
+            name="uq_workflow_runs_idempotency",
+        ),
+        Index("ix_workflow_runs_name_status", "workflow_name", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workflow_name: Mapped[str] = mapped_column(String(120))
+    execution_mode: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    input_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_class: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    steps: Mapped[list["WorkflowStepRun"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="WorkflowStepRun.position"
+    )
+
+
+class WorkflowStepRun(TenantOwnedMixin, Base, TimestampMixin):
+    """One executed step inside a workflow run."""
+
+    __tablename__ = "workflow_step_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id", "position", "attempt", name="uq_workflow_step_runs_position_attempt"
+        ),
+        Index("ix_workflow_step_runs_run", "run_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("workflow_runs.id", ondelete="CASCADE"))
+    step_name: Mapped[str] = mapped_column(String(200))
+    position: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="running")
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    result_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_class: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    run: Mapped["WorkflowRun"] = relationship(back_populates="steps")

@@ -25,14 +25,23 @@ class WorkflowStep:
 class DeterministicWorkflowRunner:
     """Runner for ingestion, SQL, metrics, valuation and other deterministic work."""
 
-    def __init__(self, name: str, steps: list[WorkflowStep]) -> None:
+    def __init__(
+        self,
+        name: str,
+        steps: list[WorkflowStep],
+        recorder: Callable[[int, str, Callable[[], dict[str, Any]]], dict[str, Any]] | None = None,
+    ) -> None:
         self.name = name
         self.steps = steps
+        self.recorder = recorder
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         state = {"workflow": self.name, "execution_mode": "deterministic", "input": payload, "events": []}
-        for step in self.steps:
-            result = step.handler({**state, **payload})
+        for position, step in enumerate(self.steps, start=1):
+            if self.recorder is not None:
+                result = self.recorder(position, step.name, lambda s=step: s.handler({**state, **payload}))
+            else:
+                result = step.handler({**state, **payload})
             state["events"].append({"step": step.name, "result": result})
             state.update(result)
         return state
@@ -49,7 +58,12 @@ class NativeMAFStep:
 class NativeMAFWorkflowRunner:
     """Microsoft Agent Framework graph restricted to genuinely agentic reviews."""
 
-    def __init__(self, name: str, steps: list[NativeMAFStep]) -> None:
+    def __init__(
+        self,
+        name: str,
+        steps: list[NativeMAFStep],
+        recorder: Callable[[int, str, Callable[[], dict[str, Any]]], dict[str, Any]] | None = None,
+    ) -> None:
         if name not in MAF_WORKFLOWS:
             raise ValueError(
                 f"{name} is deterministic product infrastructure and may not run through MAF"
@@ -58,6 +72,7 @@ class NativeMAFWorkflowRunner:
             raise ValueError("A MAF workflow requires at least one step")
         self.name = name
         self.steps = steps
+        self.recorder = recorder
         self.workflow = self._build()
 
     def _build(self):
@@ -65,12 +80,15 @@ class NativeMAFWorkflowRunner:
         for index, step in enumerate(self.steps):
             is_last = index == len(self.steps) - 1
 
-            def make_execute(current_step: NativeMAFStep, last: bool):
+            def make_execute(current_step: NativeMAFStep, last: bool, position: int):
                 async def execute(
                     message: dict[str, Any],
                     ctx: WorkflowContext[dict[str, Any], dict[str, Any]],
                 ) -> None:
-                    result = current_step.handler(message)
+                    if self.recorder is not None:
+                        result = self.recorder(position, current_step.name, lambda: current_step.handler(message))
+                    else:
+                        result = current_step.handler(message)
                     if inspect.isawaitable(result):
                         result = await result
                     state = {
@@ -90,7 +108,7 @@ class NativeMAFWorkflowRunner:
 
                 return execute
 
-            execute = make_execute(step, is_last)
+            execute = make_execute(step, is_last, index + 1)
 
             executors.append(
                 FunctionExecutor(
