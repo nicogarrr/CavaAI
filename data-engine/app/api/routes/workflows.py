@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import Company
+from app.models.entities import WorkflowRun
 from app.services.workflow_run_service import WorkflowEnvelope, begin_run
 from app.workflows.catalog import WORKFLOW_CATALOG
 
@@ -64,6 +65,47 @@ async def run_workflow(
             input_payload=input_payload,
             idempotency_key=key,
         )
+
+    if name == "ThesisShadowComparisonWorkflow" and payload.ticker:
+        from app.services.thesis_shadow_service import ThesisShadowService
+
+        ticker = payload.ticker.upper()
+        envelope_check = db.scalar(select(Company).where(Company.ticker == ticker))
+        if not envelope_check:
+            raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
+        result = ThesisShadowService().run(
+            db,
+            ticker=ticker,
+            idempotency_key=key,
+        )
+        if result.get("idempotent_replay"):
+            run_id = db.scalar(
+                select(WorkflowRun.id).where(
+                    WorkflowRun.workflow_name == name,
+                    WorkflowRun.idempotency_key == key,
+                )
+            )
+            return {
+                **result,
+                "run_id": run_id,
+                "workflow": name,
+                "steps": workflow["steps"],
+                "estimated_minutes": 0,
+            }
+        run_id = db.scalar(
+            select(WorkflowRun.id).where(
+                WorkflowRun.workflow_name == name,
+            ).order_by(WorkflowRun.id.desc()).limit(1)
+        )
+        return {
+            "status": "completed",
+            "workflow": name,
+            "ticker": ticker,
+            "run_id": run_id,
+            "result": result,
+            "steps": workflow["steps"],
+            "estimated_minutes": 0,
+        }
 
     if name == "GenerateThesisWorkflow" and payload.ticker:
         ticker = payload.ticker.upper()
