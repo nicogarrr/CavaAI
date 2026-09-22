@@ -917,6 +917,39 @@ def scan_insider_watchlist(
         return _handle_actor_error(actor_name, exc, tenant_id=tenant_id)
 
 
+@dramatiq.actor(max_retries=2, min_backoff=15_000)
+def dispatch_insider_alerts(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """PR-4: evalua reglas insider sobre lo persistido y escribe el outbox.
+
+    Alert key = rule_version + fingerprint de transaccion: re-evaluar nunca
+    duplica; una enmienda 4/A llega con fingerprints propios y genera sus
+    propias alertas. Telegram es opt-in (INSIDER_ALERTS_ENABLED).
+    """
+    actor_name = "dispatch_insider_alerts"
+    try:
+        from app.services import insider_alerts
+
+        db = _session(tenant_id, user_id)
+        try:
+            stats = insider_alerts.evaluate(db, tenant_id=tenant_id)
+        finally:
+            db.close()
+        return {
+            "status": stats["status"],
+            "actor": actor_name,
+            "candidates": stats["candidates"],
+            "alerts_created": stats["alerts_created"],
+            "alerts_existing": stats["alerts_existing"],
+            "telegram_sent": stats["telegram_sent"],
+            "errors": stats["errors"][:20],
+        }
+    except Exception as exc:
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id)
+
+
 # Short aliases keep operational imports stable while actor names remain descriptive.
 refresh_sec = refresh_sec_filings
 refresh_ir = refresh_ir_pages
