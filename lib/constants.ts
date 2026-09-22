@@ -17,6 +17,7 @@ import {
   Search,
   Sparkles,
   Star,
+  ShieldCheck,
   Target,
   Users,
 } from 'lucide-react';
@@ -85,22 +86,24 @@ export const ERROR_MESSAGES = {
   VALIDATION_ERROR: 'Invalid input data.',
 } as const;
 
+// Etiquetas en espanol, alineadas con el titulo (H1) de cada pagina.
 export const NAV_ITEMS = [
-  { href: '/', label: 'Home', icon: Home },
+  { href: '/', label: 'Inicio', icon: Home },
   { href: '/portfolio', label: 'Cartera', icon: Briefcase },
-  { href: '/research', label: 'Research', icon: FlaskConical },
-  { href: '/knowledge', label: 'Knowledge', icon: BookOpen },
-  { href: '/search', label: 'Search', icon: Search },
+  { href: '/research', label: 'Análisis', icon: FlaskConical },
+  { href: '/knowledge', label: 'Conocimiento', icon: BookOpen },
+  { href: '/search', label: 'Buscar', icon: Search },
   { href: '/screeners', label: 'Screeners', icon: Filter },
   { href: '/watchlist', label: 'Watchlist', icon: Star },
   { href: '/propicks', label: 'ProPicks', icon: Sparkles },
-  { href: '/taxes', label: 'Taxes', icon: Receipt },
+  { href: '/taxes', label: 'Impuestos', icon: Receipt },
   { href: '/plan', label: 'Plan', icon: Target },
-  { href: '/corporate-actions', label: 'Corporate', icon: Building2 },
-  { href: '/export', label: 'Export', icon: Download },
-  { href: '/risk', label: 'Risk', icon: Gauge },
+  { href: '/corporate-actions', label: 'Corp.', icon: Building2 },
+  { href: '/export', label: 'Exportar', icon: Download },
+  { href: '/risk', label: 'Riesgo', icon: Gauge },
   { href: '/insider', label: 'Insider', icon: Users },
   { href: '/alerts', label: 'Alertas', icon: Bell },
+  { href: '/security', label: 'Seguridad', icon: ShieldCheck },
 ] as const;
 
 // TradingView Widget Configurations

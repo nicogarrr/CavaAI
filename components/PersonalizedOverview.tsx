@@ -69,6 +69,9 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
     const [news, setNews] = useState<any[]>([]);
+    // Noticias company-specific solo si hay simbolos seguidos; sin ellos la
+    // tarjeta duplicaba a NewsSection (noticias generales del dashboard).
+    const [hasTrackedSymbols, setHasTrackedSymbols] = useState(false);
     const [upcomingEarnings, setUpcomingEarnings] = useState<EarningsEvent[]>([]);
     const [aiInsight, setAiInsight] = useState('');
     const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
@@ -181,6 +184,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 const watchlistSymbols = watchlistItems.slice(0, 5).map(w => w.symbol);
                 const allUniqueSymbols = Array.from(new Set([...portfolioSymbols, ...watchlistSymbols]));
 
+                setHasTrackedSymbols(allUniqueSymbols.length > 0);
                 if (allUniqueSymbols.length > 0) {
                     // Cargar noticias y earnings si hay acciones
                     const newsSymbols = allUniqueSymbols.slice(0, 5);
@@ -204,13 +208,9 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         setUpcomingEarnings(earnings.slice(0, 3));
                     } catch (e) { console.error("Earnings error", e); }
                 } else {
-                    // Sin acciones: cargar noticias generales (getNews sin símbolos)
-                    try {
-                        const generalNews = await getNews();
-                        setNews((generalNews || []).slice(0, 6));
-                    } catch (e) {
-                        console.error('General news error', e);
-                    }
+                    // Sin acciones seguidas: no duplicar NewsSection (noticias
+                    // generales) — la tarjeta de Noticias no se renderiza.
+                    setNews([]);
                 }
 
                 // Generar insight IA
@@ -301,7 +301,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 Tu Cartera Hoy
                             </CardTitle>
                             <Link href="/portfolio" className="inline-flex min-h-[44px] items-center gap-1 px-2 -mr-2 text-blue-400 hover:text-blue-300 text-sm transition-colors">
-                                Ver detalles <ArrowRight className="w-4 h-4" />
+                                <span className="whitespace-nowrap">Ver detalles</span> <ArrowRight className="w-4 h-4 shrink-0" />
                             </Link>
                         </CardHeader>
                         <CardContent className="pt-4">
@@ -440,6 +440,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         </CardContent>
                     </Card>
 
+                    {hasTrackedSymbols && (
                     <Card className="bg-gray-800/50 border-gray-700">
                         <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
                             <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
@@ -473,6 +474,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                             )}
                         </CardContent>
                     </Card>
+                    )}
                 </div>
             </div>
         </div>

@@ -25,7 +25,7 @@ const UserDropdown = ({ user, initialStocks }: { user: User, initialStocks: Stoc
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button className="flex items-center gap-3 text-gray-4 hover:bg-gray-800 bg-gray-800" aria-label="User menu">
+                <Button className="flex items-center gap-3 text-gray-4 hover:bg-gray-800 bg-gray-800" aria-label="Menú de usuario">
                     <Avatar className="h-8 w-8">
                         <AvatarFallback className="bg-teal-500 text-teal-900 text-sm font-bold">
                             {user.name[0]}
