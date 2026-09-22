@@ -3046,6 +3046,8 @@ export interface components {
         CompanyEnsureRequest: {
             /** Currency */
             currency?: string | null;
+            /** Domicile Country */
+            domicile_country?: string | null;
             /** Exchange */
             exchange?: string | null;
             /** Industry */
@@ -3094,6 +3096,8 @@ export interface components {
             company_type: string;
             /** Currency */
             currency: string;
+            /** Domicile Country */
+            domicile_country?: string | null;
             /** Exchange */
             exchange: string;
             /** Factor Tags */

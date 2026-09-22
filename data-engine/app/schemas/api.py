@@ -17,6 +17,7 @@ class CompanyOut(BaseModel):
     industry: str
     cik: str | None
     ir_url: str | None
+    domicile_country: str | None = None
     company_type: str
     valuation_model: str
     special_sources: list[str]

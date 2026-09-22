@@ -1001,6 +1001,18 @@
             ],
             "title": "Currency"
           },
+          "domicile_country": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domicile Country"
+          },
           "exchange": {
             "anyOf": [
               {
@@ -1155,6 +1167,17 @@
           "currency": {
             "title": "Currency",
             "type": "string"
+          },
+          "domicile_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domicile Country"
           },
           "exchange": {
             "title": "Exchange",
