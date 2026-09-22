@@ -2,7 +2,7 @@ WORKFLOW_CATALOG = [
     {
         "name": "ThesisShadowComparisonWorkflow",
         "implementation_status": "implemented",
-        "truth": "POST /run executes the 6b shadow comparison: runs the LangGraph thesis skeleton under a checkpointer (control state only), verifies node order + idempotent retry, maps classic THESIS_PHASES to graph nodes, and records divergences in a durable WorkflowRun. The classic ThesisService path remains the source of truth; the shadow never mutates domain artifacts.",
+        "truth": "POST /run executes the stage-6 shadow comparison: runs the LangGraph thesis graph under a checkpointer (control state + read-side probes), verifies node order + idempotent retry, maps classic THESIS_PHASES to graph nodes, compares every probe observation against the classic persisted state, and records divergences in a durable WorkflowRun. The classic ThesisService path remains the sole LLM/write executor; the shadow never mutates domain artifacts.",
         "execution_mode": "shadow",
         "input": "ticker",
         "steps": [
@@ -16,7 +16,7 @@ WORKFLOW_CATALOG = [
     {
         "name": "ThesisApprovalWorkflow",
         "implementation_status": "implemented",
-        "truth": "POST /run executes the 6a thesis graph skeleton under a durable checkpointer until the real 6c approval_gate interrupt and returns thread_id + approval payload (status awaiting_approval). POST /decide resumes the same thread with approve/request_changes; approve routes to publish, request_changes ends the run as changes_requested. Artifacts are still skeleton references - no domain publish happens yet, and the classic ThesisService path remains the source of truth.",
+        "truth": "POST /run executes the stage-6 thesis graph under a durable checkpointer until the real approval_gate interrupt and returns thread_id + approval payload (status awaiting_approval). POST /decide resumes the same thread with approve/request_changes; approve routes to publish, request_changes ends the run as changes_requested. draft_synthesis/debate/assemble/publish artifacts are deliberate control-state placeholders: no domain publish happens inside the graph, and the classic ThesisService path remains the sole LLM/write executor.",
         "execution_mode": "pilot",
         "input": "ticker",
         "steps": [

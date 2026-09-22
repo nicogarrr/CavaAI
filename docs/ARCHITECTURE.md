@@ -87,6 +87,27 @@
   (`TELEGRAM_ENABLED`, `notification_service`), usado por los flujos del
   backend.
 
+## 5b. Grafo de ciclo de vida de tesis (etapa 6, límite final)
+
+- **Plano de control durable**: `app/workflows/thesis_graph/` (LangGraph)
+  gobierna el ciclo de vida de la tesis: reanudación ante fallos con
+  checkpointer, `interrupt()` de aprobación real (6c), reintento idempotente
+  y sondas de lectura que registran el estado persistido por la vía clásica
+  (resolve_company, ensure_ingestion_complete, build_fundamental_model,
+  deterministic_valuation, source_audit, deterministic_red_team) más la
+  huella de freeze_input_snapshot.
+- **Ejecutor único**: la vía clásica `ThesisService` sigue siendo el ÚNICO
+  ejecutor LLM/escritura. `draft_synthesis`, `optional_bull_bear_debate`,
+  `assemble_candidate` y `publish` son marcadores de control deliberados
+  (`pending:<nodo>`): mantienen el flujo completo y reanudable sin duplicar
+  coste LLM ni arriesgar dobles escrituras, y nunca ejecutan trabajo de
+  negocio dentro del grafo.
+- **Validación shadow**: `ThesisShadowService` compara en cada ejecución el
+  orden de nodos, el reintento idempotente y cada observación de las sondas
+  contra el estado persistido clásico; las divergencias quedan registradas
+  explícitamente en el WorkflowRun durable. El shadow nunca muta artefactos
+  de dominio.
+
 ## 6. Ejecución local
 
 ```bash
