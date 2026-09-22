@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   ArrowLeft,
-  BrainCircuit,
   Database,
   FileDown,
   FileText,
@@ -25,7 +24,6 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   askResearchCompanyChat,
   createResearchClaim,
-  generateResearchThesis,
   getResearchChangesWorkspace,
   getResearchCompanySnapshot,
   getResearchDocumentsWorkspace,
@@ -52,6 +50,7 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
 import ThesisMemo from '@/components/research/ThesisMemo';
 import FollowButton from '@/components/screener/FollowButton';
+import ThesisGenerateButton from '@/components/research/ThesisGenerateButton';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -343,9 +342,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
-          <MutationForm action={generateResearchThesis.bind(null, ticker)} successMessage="New thesis version generated">
-            <Button type="submit"><BrainCircuit className="mr-2 h-4 w-4" />Generate thesis</Button>
-          </MutationForm>
+          <ThesisGenerateButton ticker={ticker} />
           <Link
             className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
             href="/export"
