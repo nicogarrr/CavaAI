@@ -35,6 +35,20 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
 
+  auth-store:
+    name: Auth store smoke (Mongo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sign-up and sign-in against ephemeral MongoDB
+        run: node scripts/test-auth-signup.mjs
+
   backend:
     name: Backend quality
     runs-on: ubuntu-latest
