@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import CashBalance, Company, Position
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.valuation import calculate_portfolio_risk
+from app.services.provenance import Coverage, SourceKind, provenance
 
 
 class RiskService:
@@ -38,6 +39,7 @@ class RiskService:
                 "market_value": value_base,
                 "market_price": position.market_price,
                 "unrealized_pnl": position.unrealized_pnl_base,
+                "as_of": position.as_of.isoformat() if position.as_of else None,
             })
         cash_native: dict[str, float] = {}
         cash_base = 0.0
@@ -84,4 +86,12 @@ class RiskService:
             "fx_policy": "quote amount multiplied by latest rate on or before as_of",
             "excluded_for_missing_fx": len(missing_fx),
         }
+        position_dates = [p["as_of"] for p in positions if p.get("as_of")]
+        result["data_as_of"] = min(position_dates) if position_dates else None
+        result["provenance"] = provenance(
+            "CavaAI Postgres",
+            SourceKind.INTERNAL,
+            coverage=Coverage.PARTIAL if missing_fx else Coverage.OK,
+            note="Calculado desde posiciones/precios/FX persistidos; cada fila upstream lleva su propia procedencia.",
+        )
         return result
