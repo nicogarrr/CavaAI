@@ -1,0 +1,31 @@
+{
+  "name": "CavaAI (full stack)",
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "docker-compose.devcontainer.yml"
+  ],
+  "service": "frontend",
+  "workspaceFolder": "/app",
+  "remoteUser": "node",
+  "initializeCommand": "if [ ! -f .env ]; then cp docker.env.example .env; fi",
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": { "label": "Next.js (frontend)", "onAutoForward": "notify" },
+    "8000": { "label": "FastAPI (data-engine)", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "npm ci",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-python.python",
+        "charliermarsh.ruff"
+      ]
+    },
+    "codespaces": {
+      "openFiles": ["README.md"]
+    }
+  },
+  "shutdownAction": "stopCompose"
+}

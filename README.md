@@ -44,6 +44,20 @@ docker compose up --build
 
 Abre http://localhost:3000. Servicios: PostgreSQL, MongoDB (auth), Qdrant (vectores), MinIO (documentos), Redis.
 
+**Opción C — GitHub Codespaces (sin cargar tu portátil):**
+
+El repo incluye `.devcontainer/`: al crear un codespace se levanta la pila completa
+(PostgreSQL, MongoDB, Redis, Qdrant, MinIO, backend FastAPI y frontend Next.js) y
+quedas editando dentro del contenedor con Node 22 y Python 3.
+
+1. En GitHub: **Code -> Codespaces -> Create codespace on main**.
+2. Espera a que termine el arranque y abre el puerto 3000 (se reenvía solo).
+3. La cuenta personal gratuita incluye 120 core-hours/mes (~60 h con la máquina
+   de 2 cores) y 15 GB de almacenamiento; configura el auto-stop a 15-30 min en
+   tus ajustes de Codespaces para no gastar cuota.
+4. En una máquina de 2 cores puedes ahorrar RAM parando lo que no uses:
+   `docker compose stop worker scheduler`.
+
 **Opción B — desarrollo por piezas:**
 
 ```bash
