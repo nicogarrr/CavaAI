@@ -110,8 +110,11 @@ class ManagerHoldingIngestionService:
                 "provenance": provenance(SOURCE, SourceKind.OFFICIAL, coverage=Coverage.UNAVAILABLE),
             }
 
-        latest_report = filings[0]["report_date"]
-        group = [f for f in filings if f["report_date"] == latest_report]
+        # Latest two report periods (base filings + their amendments), so a
+        # quarter-over-quarter comparison is computable from stored rows.
+        report_dates = list(dict.fromkeys(f["report_date"] for f in filings))[:2]
+        latest_report = report_dates[0]
+        group = [f for f in filings if f["report_date"] in report_dates]
         ingested = 0
         errors: list[dict] = []
         fetched_at = datetime.now(UTC)
@@ -151,6 +154,7 @@ class ManagerHoldingIngestionService:
                         manager_id=manager.id,
                         accession_number=accession,
                         report_date=_date(filing["report_date"]),
+                        filing_date=_date(filing["filing_date"]),
                         is_amendment=filing["is_amendment"],
                         name_of_issuer=(row.get("name_of_issuer") or "").strip(),
                         title_of_class=title,
@@ -182,6 +186,7 @@ class ManagerHoldingIngestionService:
             "manager": manager.name,
             "status": "ok",
             "report_date": latest_report,
+            "report_window": report_dates,
             "filings": [
                 {
                     "accession_number": f["accession_number"],
@@ -202,6 +207,131 @@ class ManagerHoldingIngestionService:
         return {
             "results": [self.sync_manager(db, cik=cik) for cik in REVIEWED_MANAGERS],
             "limitations": LIMITATIONS,
+        }
+
+    def changes(self, db: Session, *, cik: str) -> dict[str, Any]:
+        """Quarter-over-quarter position changes for a reviewed manager.
+
+        Compares the latest accession per report period (amendments supersede
+        base filings in this view; every filing stays stored immutably).
+        Keys are (cusip, title_of_class, put_call) - tickers never inferred.
+        """
+        cik = str(cik).strip().zfill(10)
+        manager = db.scalar(select(FundManager).where(FundManager.cik == cik))
+        if manager is None:
+            return {
+                "cik": cik,
+                "status": "unavailable",
+                "changes": [],
+                "provenance": provenance(SOURCE, SourceKind.OFFICIAL, coverage=Coverage.UNAVAILABLE),
+            }
+        report_dates = [
+            row[0]
+            for row in db.execute(
+                select(ManagerHolding.report_date)
+                .where(ManagerHolding.manager_id == manager.id)
+                .group_by(ManagerHolding.report_date)
+                .order_by(ManagerHolding.report_date.desc())
+            )
+            if row[0] is not None
+        ]
+        if len(report_dates) < 2:
+            return {
+                "cik": cik,
+                "manager": manager.name,
+                "status": "insufficient_history",
+                "detail": "need two stored 13F report periods to compare; re-sync after the next quarter",
+                "changes": [],
+                "provenance": provenance(SOURCE, SourceKind.INTERNAL, coverage=Coverage.UNAVAILABLE),
+            }
+        latest_date, previous_date = report_dates[0], report_dates[1]
+
+        def period_rows(period: date) -> tuple[str, dict]:
+            rows = db.scalars(
+                select(ManagerHolding).where(
+                    ManagerHolding.manager_id == manager.id,
+                    ManagerHolding.report_date == period,
+                )
+            ).all()
+            # Latest accession wins (amendments supersede base filings).
+            accession = max(
+                {row.accession_number for row in rows},
+                key=lambda acc: (
+                    max(
+                        (r.filing_date or date.min)
+                        for r in rows
+                        if r.accession_number == acc
+                    ),
+                    acc,
+                ),
+            )
+            view = {
+                (row.cusip, row.title_of_class, row.put_call): row
+                for row in rows
+                if row.accession_number == accession
+            }
+            return accession, view
+
+        latest_accession, latest = period_rows(latest_date)
+        previous_accession, previous = period_rows(previous_date)
+
+        changes: list[dict] = []
+        for key in sorted(set(latest) | set(previous)):
+            now, before = latest.get(key), previous.get(key)
+            if now is not None and before is None:
+                change = "new"
+            elif now is None and before is not None:
+                change = "closed"
+            else:
+                assert now is not None and before is not None
+                now_shares = now.shares or Decimal(0)
+                before_shares = before.shares or Decimal(0)
+                if now_shares > before_shares:
+                    change = "increased"
+                elif now_shares < before_shares:
+                    change = "decreased"
+                else:
+                    change = "unchanged"
+            subject = now or before
+            assert subject is not None
+            changes.append(
+                {
+                    "change": change,
+                    "name_of_issuer": subject.name_of_issuer,
+                    "title_of_class": subject.title_of_class,
+                    "cusip": subject.cusip,
+                    "put_call": subject.put_call or None,
+                    "shares_latest": float(now.shares) if now and now.shares is not None else None,
+                    "shares_previous": (
+                        float(before.shares) if before and before.shares is not None else None
+                    ),
+                    "value_usd_thousands_latest": (
+                        float(now.value_usd_thousands)
+                        if now and now.value_usd_thousands is not None
+                        else None
+                    ),
+                    "value_usd_thousands_previous": (
+                        float(before.value_usd_thousands)
+                        if before and before.value_usd_thousands is not None
+                        else None
+                    ),
+                }
+            )
+
+        return {
+            "cik": cik,
+            "manager": manager.name,
+            "status": "ok",
+            "latest_report": latest_date.isoformat(),
+            "previous_report": previous_date.isoformat(),
+            "compared_accessions": {
+                "latest": latest_accession,
+                "previous": previous_accession,
+                "rule": "latest accession per period; amendments supersede base filings in this view, every filing stays stored immutably",
+            },
+            "changes": changes,
+            "limitations": LIMITATIONS,
+            "provenance": provenance(SOURCE, SourceKind.INTERNAL, coverage=Coverage.OK),
         }
 
     def latest_holdings(self, db: Session, *, cik: str) -> dict[str, Any]:
