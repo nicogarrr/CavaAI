@@ -93,8 +93,13 @@ def _seed_model_and_valuation(db: Session, company_id: int):
 
 
 def test_probe_comparison_matches_classic_state(db):
+    from app.models.entities import RedTeamRun
+
     company = _company(db)
     model = _seed_model_and_valuation(db, company.id)
+    db.add(RedTeamRun(company_id=company.id, status="completed", score=72,
+                      prompt_version="red-team-v1"))
+    db.commit()
     db.add(ThesisVersion(company_id=company.id, version=1, status="published",
                          thesis_markdown="# t", executive_summary="s"))
     db.commit()
@@ -106,6 +111,7 @@ def test_probe_comparison_matches_classic_state(db):
         "build_fundamental_model",
         "deterministic_valuation",
         "source_audit",
+        "deterministic_red_team",
     }
     assert all(entry["status"] == "match" for entry in probes.values())
     assert probes["resolve_company"]["graph_artifact"] == f"company:{company.id}"
@@ -113,6 +119,7 @@ def test_probe_comparison_matches_classic_state(db):
         f"model:v{model.version}:{model.input_fingerprint[:12]}"
     )
     assert probes["deterministic_valuation"]["graph_artifact"].startswith("valuation:")
+    assert probes["deterministic_red_team"]["graph_artifact"] == "redteam:1:score=72"
     assert not any("diverged" in d for d in result["divergences"])
 
 
@@ -127,6 +134,7 @@ def test_probe_comparison_honest_when_classic_state_absent(db):
         "evidence:facts=0,prices=0,docs=0"
     )
     assert probes["source_audit"]["graph_artifact"] == "audit:facts={}|docs={}|lowconf=0"
+    assert probes["deterministic_red_team"]["graph_artifact"] == "redteam:none"
 
 
 def test_every_classic_phase_is_mapped():

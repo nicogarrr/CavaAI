@@ -17,13 +17,13 @@ Comparison contract (honest by construction):
   ThesisVersion status, with divergences listed explicitly.
 - probe_comparison (6d/6e): the real read-side probes (resolve_company,
   ensure_ingestion_complete, build_fundamental_model,
-  deterministic_valuation, source_audit) are compared against the
-  classic persisted state they observe - match/divergent/skeleton per
-  node. The write-side nodes (draft_synthesis, deterministic_red_team,
-  optional_bull_bear_debate, assemble_candidate, publish) remain pending
-  skeleton references while the classic path produces real artifacts;
-  this is an expected divergence at this stage and is reported as such,
-  not hidden.
+  deterministic_valuation, source_audit, deterministic_red_team) are
+  compared against the classic persisted state they observe -
+  match/divergent/skeleton per node. The write-side nodes
+  (draft_synthesis, optional_bull_bear_debate, assemble_candidate,
+  publish) remain pending skeleton references while the classic path
+  produces real artifacts; this is an expected divergence at this stage
+  and is reported as such, not hidden.
 """
 
 from __future__ import annotations
@@ -93,6 +93,7 @@ def _compare_probes(db: Session, company: Company, artifacts: dict[str, str]) ->
         FundamentalModelVersion,
         FundamentalValuationSnapshot,
         MarketPrice,
+        RedTeamRun,
     )
 
     cid = company.id
@@ -139,6 +140,14 @@ def _compare_probes(db: Session, company: Company, artifacts: dict[str, str]) ->
     docs_part = ",".join(f"{k}:{docs_by_source[k]}" for k in sorted(docs_by_source))
     classic_audit = f"audit:facts={{{facts_part}}}|docs={{{docs_part}}}|lowconf={low_confidence}"
 
+    red_team = db.scalar(
+        select(RedTeamRun)
+        .where(RedTeamRun.company_id == cid)
+        .order_by(desc(RedTeamRun.created_at), desc(RedTeamRun.id))
+        .limit(1)
+    )
+    classic_red_team = f"redteam:{red_team.id}:score={red_team.score}" if red_team else "redteam:none"
+
     return [
         _probe_entry("resolve_company", artifacts.get("resolve_company"), f"company:{cid}"),
         _probe_entry(
@@ -149,6 +158,11 @@ def _compare_probes(db: Session, company: Company, artifacts: dict[str, str]) ->
         _probe_entry("build_fundamental_model", artifacts.get("build_fundamental_model"), classic_model),
         _probe_entry("deterministic_valuation", artifacts.get("deterministic_valuation"), classic_valuation),
         _probe_entry("source_audit", artifacts.get("source_audit"), classic_audit),
+        _probe_entry(
+            "deterministic_red_team",
+            artifacts.get("deterministic_red_team"),
+            classic_red_team,
+        ),
     ]
 
 
@@ -273,9 +287,9 @@ class ThesisShadowService:
                     f"{entry['graph_artifact']}, classic persisted {entry['classic_observed']}"
                 )
         divergences.append(
-            "expected at 6d: draft_synthesis, deterministic_red_team, "
-            "optional_bull_bear_debate, assemble_candidate and publish remain pending "
-            "skeleton references; the classic path owns real write artifacts"
+            "expected at 6d: draft_synthesis, optional_bull_bear_debate, "
+            "assemble_candidate and publish remain pending skeleton references; "
+            "the classic path owns real write artifacts"
         )
 
         status_semantics = {
