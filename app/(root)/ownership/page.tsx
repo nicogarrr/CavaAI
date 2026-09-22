@@ -2,12 +2,22 @@ import { Building2, ExternalLink, FileText } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import {
+    getManagerChanges,
     getManagerHoldings,
     getOwnershipManagers,
+    type ManagerChanges,
     type ManagerHoldings,
 } from '@/lib/actions/ownership.actions';
 
 import SyncButton from './SyncButton';
+
+const CHANGE_LABELS: Record<string, string> = {
+    new: 'nueva posicion',
+    closed: 'cerrada',
+    increased: 'aumentada',
+    decreased: 'reducida',
+    unchanged: 'sin cambios',
+};
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -35,6 +45,9 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
     const activeCik = selectedCik ?? managers[0]?.cik ?? null;
     const holdings: ManagerHoldings | null = activeCik
         ? await getManagerHoldings(activeCik).catch(() => null)
+        : null;
+    const changes: ManagerChanges | null = activeCik
+        ? await getManagerChanges(activeCik).catch(() => null)
         : null;
 
     return (
@@ -156,6 +169,63 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                         <p className="mt-2">
                             Este gestor aun no se ha sincronizado. Pulsa &quot;Sincronizar 13F&quot; para
                             descargar su ultimo informe desde SEC EDGAR (gratuito, fuente oficial).
+                        </p>
+                    </section>
+                )
+            ) : null}
+            {activeCik && changes ? (
+                changes.status === 'ok' ? (
+                    <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                            <h2 className="font-semibold text-gray-100">
+                                Cambios trimestre a trimestre ({changes.previous_report} → {changes.latest_report})
+                            </h2>
+                            <Badge className="md:ml-auto" variant="outline">
+                                {changes.changes.filter((c) => c.change !== 'unchanged').length} movimientos
+                            </Badge>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-500">{changes.compared_accessions?.rule}</p>
+                        <div className="mt-4 overflow-x-auto">
+                            <table className="w-full min-w-[720px] text-left text-sm">
+                                <thead className="text-xs uppercase text-gray-500">
+                                    <tr>
+                                        <th className="border-b border-gray-800 py-2">Emisor</th>
+                                        <th className="border-b border-gray-800 py-2">CUSIP</th>
+                                        <th className="border-b border-gray-800 py-2">Cambio</th>
+                                        <th className="border-b border-gray-800 py-2 text-right">Acciones antes</th>
+                                        <th className="border-b border-gray-800 py-2 text-right">Acciones ahora</th>
+                                        <th className="border-b border-gray-800 py-2 text-right">Valor antes</th>
+                                        <th className="border-b border-gray-800 py-2 text-right">Valor ahora</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {changes.changes.filter((row) => row.change !== 'unchanged').map((row) => (
+                                        <tr className="border-b border-gray-900" key={`${row.cusip}-${row.title_of_class}-${row.put_call ?? ''}`}>
+                                            <td className="py-3 text-gray-200">{row.name_of_issuer}</td>
+                                            <td className="py-3 font-mono text-xs text-gray-400">{row.cusip}</td>
+                                            <td className="py-3">
+                                                <Badge variant="outline">{CHANGE_LABELS[row.change]}</Badge>
+                                            </td>
+                                            <td className="py-3 text-right text-gray-400">{formatShares(row.shares_previous)}</td>
+                                            <td className="py-3 text-right text-gray-200">{formatShares(row.shares_latest)}</td>
+                                            <td className="py-3 text-right text-gray-400">{formatValueUsd(row.value_usd_thousands_previous)}</td>
+                                            <td className="py-3 text-right text-gray-200">{formatValueUsd(row.value_usd_thousands_latest)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        {changes.changes.every((c) => c.change === 'unchanged') ? (
+                            <p className="mt-3 text-sm text-gray-400">Sin movimientos entre los dos ultimos informes.</p>
+                        ) : null}
+                    </section>
+                ) : (
+                    <section className="rounded-xl border border-gray-800 bg-[#101010] p-5 text-sm text-gray-400">
+                        <h2 className="font-semibold text-gray-100">Cambios QoQ no disponibles todavia</h2>
+                        <p className="mt-2">
+                            {changes.status === 'insufficient_history'
+                                ? 'Hacen falta dos informes 13F almacenados para comparar; estara disponible tras el proximo trimestre.'
+                                : 'Sincroniza este gestor para poder comparar informes.'}
                         </p>
                     </section>
                 )
