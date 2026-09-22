@@ -69,6 +69,35 @@ export async function getManagerHoldings(cik: string): Promise<ManagerHoldings> 
   return requestJson(`/api/ownership/managers/${encodeURIComponent(cik)}/holdings`);
 }
 
+export type ManagerChangeRow = {
+  change: 'new' | 'closed' | 'increased' | 'decreased' | 'unchanged';
+  name_of_issuer: string;
+  title_of_class: string;
+  cusip: string;
+  put_call: string | null;
+  shares_latest: number | null;
+  shares_previous: number | null;
+  value_usd_thousands_latest: number | null;
+  value_usd_thousands_previous: number | null;
+};
+
+export type ManagerChanges = {
+  cik: string;
+  manager?: string;
+  status: 'ok' | 'insufficient_history' | 'unavailable';
+  detail?: string;
+  latest_report?: string;
+  previous_report?: string;
+  compared_accessions?: { latest: string; previous: string; rule: string };
+  changes: ManagerChangeRow[];
+  limitations?: string[];
+  provenance?: OwnershipProvenance;
+};
+
+export async function getManagerChanges(cik: string): Promise<ManagerChanges> {
+  return requestJson(`/api/ownership/managers/${encodeURIComponent(cik)}/changes`);
+}
+
 export async function syncOwnershipManagers(): Promise<void> {
   await requestJson('/api/ownership/managers/sync', { method: 'POST' });
   revalidatePath('/ownership');
