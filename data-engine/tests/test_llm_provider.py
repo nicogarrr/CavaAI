@@ -14,6 +14,7 @@ from app.llm import (
     OpenAICompatibleProvider,
     ProviderDisabledError,
     ProviderHTTPError,
+    ProviderResponseError,
     TaskModelRouter,
     create_llm_provider,
     parse_json_response,
@@ -138,6 +139,76 @@ def test_opencode_go_completion_uses_chat_completions_endpoint():
             )
             return await provider.complete(
                 LLMRequest(messages=[Message("user", "Extract")], task="chat")
+            )
+
+    assert run(scenario()).text == "ok"
+
+
+def test_openai_compatible_provider_rejects_missing_usage():
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {"message": {"content": "ok"}, "finish_reason": "stop"}
+                ],
+            },
+        )
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = OpenAICompatibleProvider(
+                api_key="test-secret",
+                base_url="https://opencode.test/zen/go/v1",
+                default_model="deepseek-v4-flash",
+                provider_name="opencode-go",
+                client=client,
+                max_retries=0,
+            )
+            return await provider.complete(
+                LLMRequest(messages=[Message("user", "Extract")])
+            )
+
+    with pytest.raises(ProviderResponseError, match="missing token usage"):
+        run(scenario())
+
+
+def test_openai_compatible_provider_caps_requested_max_tokens():
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["max_tokens"] == 8
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {"message": {"content": "ok"}, "finish_reason": "stop"}
+                ],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            },
+        )
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = OpenAICompatibleProvider(
+                api_key="test-secret",
+                base_url="https://opencode.test/zen/go/v1",
+                default_model="deepseek-v4-flash",
+                provider_name="opencode-go",
+                client=client,
+                max_retries=0,
+                max_output_tokens=8,
+            )
+            return await provider.complete(
+                LLMRequest(
+                    messages=[Message("user", "Extract")],
+                    max_tokens=1_000_000,
+                )
             )
 
     assert run(scenario()).text == "ok"

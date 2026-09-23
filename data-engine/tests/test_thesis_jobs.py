@@ -41,14 +41,56 @@ def _fake_generate(thesis_id=7):
     return generate
 
 
-def _enqueue_without_dispatch(monkeypatch, ticker="AAPL", force=False):
+def _enqueue_without_dispatch(
+    monkeypatch, ticker="AAPL", force=False, *, tenant_id=None, user_id=None
+):
     import app.workers.dramatiq_app as workers
 
     monkeypatch.setattr(workers.generate_thesis_job, "send", lambda run_id: None)
     db = SessionLocal()
+    if tenant_id is not None:
+        db.info["tenant_id"] = tenant_id
+    if user_id is not None:
+        db.info["user_id"] = user_id
     try:
         return jobs.enqueue_generation(db, ticker, force)
     finally:
+        db.close()
+
+
+def test_enqueue_persists_tenant_and_user_context(monkeypatch):
+    from app.models import Tenant
+    from uuid import uuid4
+
+    external_id = f"thesis-enqueue-tenant-{uuid4().hex[:8]}"
+    db = SessionLocal()
+    tenant = Tenant(
+        external_id=external_id,
+        name="Thesis enqueue tenant",
+        metadata_={"created_by": "thesis-enqueue-user"},
+    )
+    db.add(tenant)
+    db.commit()
+    tenant_id = tenant.id
+    db.close()
+
+    try:
+        run, created = _enqueue_without_dispatch(
+            monkeypatch,
+            ticker="AAPL",
+            tenant_id=tenant_id,
+            user_id="thesis-enqueue-user",
+        )
+
+        assert created is True
+        assert run.tenant_id == tenant_id
+        assert run.input_payload["user_id"] == "thesis-enqueue-user"
+    finally:
+        db = SessionLocal()
+        tenant = db.query(Tenant).filter_by(id=tenant_id).one_or_none()
+        if tenant is not None:
+            db.delete(tenant)
+            db.commit()
         db.close()
 
 
@@ -97,7 +139,7 @@ def test_run_job_failure_marks_failed_and_reraises(monkeypatch):
     stored = db.get(WorkflowRun, run.id)
     assert stored.status == "failed"
     assert stored.error_class == "RuntimeError"
-    assert "SEC timeout" in stored.error_message
+    assert stored.error_message == "Thesis generation failed"
     failed_step = db.scalars(
         select(WorkflowStepRun).where(WorkflowStepRun.run_id == run.id)
     ).first()

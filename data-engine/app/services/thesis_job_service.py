@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models.entities import WorkflowRun, WorkflowStepRun
 
@@ -43,8 +44,21 @@ def idempotency_key_for(ticker: str, force: bool) -> str:
 
 
 def enqueue_generation(db: Session, ticker: str, force: bool = False) -> tuple[WorkflowRun, bool]:
-    """Return (run, created). created=False when an active job already exists."""
+    """Return (run, created), carrying the authenticated worker context.
+
+    The HTTP response remains unchanged. The context is persisted on the
+    durable run so a worker never has to infer ownership from its process
+    environment or bypass tenant scoping globally.
+    """
     key = idempotency_key_for(ticker, force)
+    tenant_id = db.info.get("tenant_id")
+    user_id = str(db.info.get("user_id") or "").strip() or None
+    payload: dict = {"ticker": ticker.upper(), "force": bool(force)}
+    if tenant_id is not None:
+        payload["tenant_id"] = int(tenant_id)
+    if user_id is not None:
+        payload["user_id"] = user_id
+
     existing = db.scalar(
         select(WorkflowRun)
         .where(
@@ -58,11 +72,12 @@ def enqueue_generation(db: Session, ticker: str, force: bool = False) -> tuple[W
     if existing:
         return existing, False
     run = WorkflowRun(
+        tenant_id=tenant_id,
         workflow_name=WORKFLOW_NAME,
         execution_mode="async_dramatiq",
         status="queued",
         idempotency_key=key,
-        input_payload={"ticker": ticker.upper(), "force": bool(force)},
+        input_payload=payload,
     )
     db.add(run)
     db.commit()
@@ -105,21 +120,89 @@ def job_payload(run: WorkflowRun) -> dict:
     }
 
 
+def _is_retryable_error(exc: Exception) -> bool:
+    """Classify delivery failures without importing the worker module eagerly."""
+    import httpx
+    import redis.exceptions as redis_exc
+    from sqlalchemy import exc as sa_exc
+
+    if isinstance(
+        exc,
+        (
+            ConnectionError,
+            TimeoutError,
+            sa_exc.OperationalError,
+            sa_exc.TimeoutError,
+            redis_exc.RedisError,
+            httpx.TimeoutException,
+            httpx.TransportError,
+        ),
+    ):
+        return True
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    return isinstance(status, int) and (status == 429 or status >= 500)
+
+
 def run_thesis_job(run_id: int) -> None:
-    """Execute one queued thesis job. Idempotent re-entry: a run that already
-    reached a terminal state is left untouched (duplicate delivery safe)."""
+    """Execute one delivery of a thesis job with explicit tenant context.
+
+    A transient failure is recorded as ``retrying`` and re-raised so Dramatiq
+    can deliver the next attempt. Only the final failed attempt is terminal.
+    Local/test callers without Research auth retain their historical unscoped
+    behavior; production and authenticated runs fail closed without context.
+    """
+    from app.core.config import get_settings
+
     db = SessionLocal()
     try:
         run = db.get(
             WorkflowRun, run_id, execution_options={"include_all_tenants": True}
         )
-        if run is None or run.status in ("succeeded", "failed"):
+        if run is None or run.status in ("succeeded", "failed", "running"):
             return
+
+        settings = get_settings()
+        payload = run.input_payload or {}
+        tenant_id = payload.get("tenant_id")
+        user_id = payload.get("user_id")
+        tenant = None
+        if tenant_id is not None and user_id:
+            from app.models import Tenant
+
+            tenant = db.get(
+                Tenant, int(tenant_id), execution_options={"include_all_tenants": True}
+            )
+        if tenant_id is not None and (tenant is None or tenant.status != "active"):
+            run.status = "failed"
+            run.error_class = "TenantAccessError"
+            run.error_message = "Job tenant is not active"
+            run.finished_at = datetime.now(UTC)
+            db.commit()
+            raise ValueError(run.error_message)
+        if (
+            settings.research_auth_required or settings.is_production
+        ) and (tenant_id is None or not user_id):
+            run.status = "failed"
+            run.error_class = "MissingTenantContext"
+            run.error_message = "Thesis job is missing tenant/user context"
+            run.finished_at = datetime.now(UTC)
+            db.commit()
+            raise ValueError(run.error_message)
+
+        if run.status == "retrying":
+            run.attempt = max(int(run.attempt or 1) + 1, 2)
+        else:
+            run.attempt = max(int(run.attempt or 1), 1)
         run.status = "running"
         run.started_at = run.started_at or datetime.now(UTC)
+        run.finished_at = None
+        if tenant is not None:
+            db.info["tenant_id"] = tenant.id
+            db.info["user_id"] = str(user_id)
         db.commit()
 
-        state = {"position": 0, "open_step": None}
+        state: dict[str, object] = {"position": 0, "open_step": None}
 
         def on_phase(name: str) -> None:
             now = datetime.now(UTC)
@@ -127,19 +210,20 @@ def run_thesis_job(run_id: int) -> None:
             if previous is not None:
                 previous.status = "succeeded"
                 previous.finished_at = now
-            state["position"] += 1
+            state["position"] = int(state["position"]) + 1
             step = WorkflowStepRun(
                 run_id=run.id,
                 step_name=name,
-                position=state["position"],
+                position=int(state["position"]),
+                attempt=int(run.attempt or 1),
                 status="running",
                 started_at=now,
+                tenant_id=tenant.id if tenant is not None else None,
             )
             db.add(step)
             db.commit()
             state["open_step"] = step
 
-        payload = run.input_payload or {}
         try:
             from app.services.thesis_service import ThesisService
 
@@ -158,22 +242,33 @@ def run_thesis_job(run_id: int) -> None:
                 "version": thesis.version,
                 "status": thesis.status,
             }
+            run.error_class = None
+            run.error_message = None
             run.finished_at = datetime.now(UTC)
             db.commit()
-        except Exception as exc:  # noqa: BLE001 — clasificar y marcar, nunca ocultar
+        except Exception as exc:
             db.rollback()
             run = db.get(WorkflowRun, run_id, execution_options={"include_all_tenants": True})
+            retryable = _is_retryable_error(exc)
             if run is not None:
-                if state["open_step"] is not None:
-                    step = db.get(WorkflowStepRun, state["open_step"].id)
+                open_step = state.get("open_step")
+                if open_step is not None:
+                    step = db.get(WorkflowStepRun, int(open_step.id))
                     if step is not None and step.status == "running":
-                        step.status = "failed"
+                        step.status = "retrying" if retryable else "failed"
                         step.error_class = type(exc).__name__
-                        step.finished_at = datetime.now(UTC)
-                run.status = "failed"
+                        step.finished_at = None if retryable else datetime.now(UTC)
                 run.error_class = type(exc).__name__
-                run.error_message = str(exc)[:900]
-                run.finished_at = datetime.now(UTC)
+                run.error_message = (
+                    "Transient failure; delivery will be retried"
+                    if retryable
+                    else "Thesis generation failed"
+                )
+                if retryable and int(run.attempt or 1) < 2:
+                    run.status = "retrying"
+                else:
+                    run.status = "failed"
+                    run.finished_at = datetime.now(UTC)
                 db.commit()
             raise
     finally:
