@@ -147,7 +147,7 @@ def validate_flex_xml(xml_text: str) -> list[str]:
 
 
 # Columnas aceptadas (minúsculas) para el CSV de actividad de IBKR.
-_CSV_REQUIRED_COLUMNS = ("symbol", "quantity", "price", "date")
+_CSV_REQUIRED_COLUMNS = ("symbol", "action", "quantity", "price", "date")
 _CSV_COLUMN_ALIASES = {
     "symbol": {"symbol", "ticker", "underlyingsymbol"},
     "action": {"action", "buysell", "transactiontype", "type", "side"},
@@ -170,6 +170,15 @@ def _map_csv_columns(header: list[str]) -> dict[str, int] | None:
     if any(column not in mapping for column in _CSV_REQUIRED_COLUMNS):
         return None
     return mapping
+
+
+def _csv_trade_action(value: str | None) -> str | None:
+    normalized = (value or "").strip().lower()
+    if normalized in {"buy", "bot", "b"}:
+        return "buy"
+    if normalized in {"sell", "sold", "s"}:
+        return "sell"
+    return None
 
 
 def validate_ibkr_csv(csv_text: str) -> list[str]:
@@ -196,8 +205,8 @@ def validate_ibkr_csv(csv_text: str) -> list[str]:
     mapping = _map_csv_columns(rows[0])
     if mapping is None:
         return [
-            "La cabecera del CSV no tiene las columnas obligatorias: symbol, quantity, price y date "
-            "(se aceptan alias como ticker, shares, tradePrice o tradeDate). "
+            "La cabecera del CSV no tiene las columnas obligatorias: symbol, action, quantity, price y date "
+            "(se aceptan alias como ticker, buySell, shares, tradePrice o tradeDate). "
             f"Cabecera encontrada: {', '.join(rows[0])}."
         ]
     errors: list[str] = []
@@ -208,6 +217,18 @@ def validate_ibkr_csv(csv_text: str) -> list[str]:
                 f"Fila {line_number} del CSV: falta el símbolo. Indica el ticker (p. ej. AAPL) o elimina la fila."
             )
             continue
+        raw_action = row[mapping["action"]].strip() if mapping["action"] < len(row) else ""
+        action = _csv_trade_action(raw_action)
+        if not raw_action:
+            errors.append(
+                f"Fila {line_number} del CSV ({symbol}): falta la acción. Usa 'buy' o 'sell' "
+                "o elimina la fila."
+            )
+        elif action is None:
+            errors.append(
+                f"Fila {line_number} del CSV ({symbol}): la acción '{raw_action}' no es buy ni sell. "
+                "Corrige el valor o elimina la fila."
+            )
         quantity = row[mapping["quantity"]].strip() if mapping["quantity"] < len(row) else ""
         if not _is_number(quantity):
             errors.append(
@@ -533,7 +554,7 @@ class IBKRImportService:
     def import_ibkr_csv(self, db: Session, csv_text: str) -> dict:
         """Importa operaciones desde un CSV de actividad de IBKR.
 
-        Formato: cabecera con symbol, quantity, price y date (más action,
+        Formato: cabecera con symbol, action, quantity, price y date (más
         fees y currency opcionales) + una fila por operación. Las filas
         inválidas se omiten y se describen en ``row_errors`` en español;
         los errores fatales (cabecera ausente, fichero vacío) lanzan
@@ -564,8 +585,10 @@ class IBKRImportService:
                 return row[position].strip()
 
             symbol = _cell("symbol").upper()
-            raw_action = _cell("action").lower()
-            action = "sell" if raw_action.startswith(("sell", "sold", "s")) else "buy"
+            action = _csv_trade_action(_cell("action"))
+            if action is None:
+                # La validación anterior ya marca y omite estas filas.
+                continue
             try:
                 ledger.create_transaction(
                     db,

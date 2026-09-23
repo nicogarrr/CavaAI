@@ -3,8 +3,10 @@
 The report follows Spanish IRPF conventions:
 
 - Realized gains/losses use FIFO lot accounting on sells (required by law for
-  homogeneous securities). FX conversion to the portfolio base currency uses
-  the transaction-date rate from the FX ledger.
+  homogeneous securities). Each buy lot's unit cost includes acquisition fees;
+  a deferred wash-sale loss is added separately to preserve that basis. FX
+  conversion to the portfolio base currency uses the transaction-date rate
+  from the FX ledger.
 - Dividends are grouped by company and converted at the payment date rate.
 - Withholding is matched from cash transactions whose type contains
   "withholding" / "tax" (IBKR reports gross dividend and withheld tax as
@@ -17,6 +19,10 @@ The report follows Spanish IRPF conventions:
   as provisionally computable and flagged per sale and in the summary. The
   convention is labeled in the report (wash_sale_rule = "es-irpf-2m") and
   applies only to this Spanish IRPF report.
+  Limitation: Company metadata has no ISIN/security identifier or listing
+  flag, so the engine cannot prove that a ticker is a listed homogeneous
+  security or distinguish dividends from unlisted instruments. No such
+  inference is made here.
 """
 
 from __future__ import annotations
@@ -203,9 +209,14 @@ class TaxReportService:
             for transaction in events:
                 action = (transaction.action or "").lower()
                 if action in BUY_ACTIONS:
+                    acquisition_cost = transaction.quantity * transaction.price + transaction.fees
                     lot = {
                         "qty": transaction.quantity,
-                        "unit": transaction.price,
+                        "unit": (
+                            acquisition_cost / transaction.quantity
+                            if transaction.quantity
+                            else Decimal("0")
+                        ),
                         "deferred": Decimal("0"),
                         "capacity": transaction.quantity,
                         "date": transaction.trade_date,

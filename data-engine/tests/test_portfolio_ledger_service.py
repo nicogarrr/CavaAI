@@ -100,3 +100,14 @@ def test_missing_fx_history_leaves_base_fields_none(db):
     assert position.cost_basis_base is None
     assert position.unrealized_pnl_base is None
     assert position.realized_pnl_base is None
+
+
+def test_rebuild_position_uses_last_transaction_date_by_default(db):
+    service = PortfolioLedgerService()
+    _buy(service, db, trade_date=date(2026, 1, 10))
+    company = service.ensure_company(db, "AAPL")
+
+    position = service.rebuild_position(db, company.id)
+
+    assert position is not None
+    assert position.as_of == date(2026, 1, 10)
