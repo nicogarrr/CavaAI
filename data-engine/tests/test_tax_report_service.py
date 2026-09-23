@@ -77,6 +77,36 @@ def test_cost_basis_spans_fiscal_years(db):
     assert report["summary"]["sell_count"] == 1
 
 
+def test_fifo_buy_fees_increase_lot_unit_cost(db):
+    _eur_portfolio(db)
+    c = _company(db, "ACQ")
+    _tx(db, c, date(2026, 1, 10), "buy", 10, 100, fees="25")
+    _tx(db, c, date(2026, 2, 10), "buy", 10, 120, fees="40")
+    _tx(db, c, date(2026, 6, 1), "sell", 15, 200)
+    report = TaxReportService().compute_report(db, 2026)
+    row = next(r for r in report["realized"] if r["ticker"] == "ACQ")
+    assert row["proceeds_native"] == 3000.0
+    assert row["cost_native"] == 1645.0  # (1000+25) + 5/10*(1200+40)
+    assert row["gain_native"] == 1355.0
+
+
+def test_wash_sale_defers_loss_on_top_of_buy_fees(db):
+    _eur_portfolio(db)
+    c = _company(db, "ACQWS")
+    _tx(db, c, date(2026, 1, 5), "buy", 100, 10, fees="100")
+    _tx(db, c, date(2026, 1, 10), "sell", 100, 8, fees="0")
+    _tx(db, c, date(2026, 1, 20), "buy", 100, 8, fees="20")
+    _tx(db, c, date(2026, 6, 15), "sell", 100, 11, fees="0")
+    report = TaxReportService().compute_report(db, 2026)
+    row = next(r for r in report["realized"] if r["ticker"] == "ACQWS")
+    first, second = row["sales"]
+    assert first["raw_gain_native"] == -300.0
+    assert first["blocked_loss_native"] == 300.0
+    assert first["gain_native"] == 0.0
+    assert second["cost_native"] == 1120.0  # 800 purchase + 20 fees + 300 deferred
+    assert second["gain_native"] == -20.0
+
+
 def test_dividend_and_withholding_grouped_per_company(db):
     _eur_portfolio(db)
     c = _company(db, "CCC")

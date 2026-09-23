@@ -64,9 +64,10 @@ def test_tax_report_fifo_realized_gains(db: Session, rklb: Company):
     assert report["summary"]["fiscal_year"] == 2026
     assert report["summary"]["dividend_count"] == 1
     assert report["summary"]["sell_count"] == 1
-    # 40 shares sold at 35, FIFO cost = 40 x 20 = 800, proceeds = 1400 - 1 fee
+    # 40 shares sold at 35; acquisition fee prorates the old lot to 800.40.
+    # Net proceeds are 1399, so the FIFO gain is 598.60.
     assert report["realized"][0]["ticker"] == "RKLB"
-    assert report["realized"][0]["gain_native"] == 599.0  # 1400 - 800 - 1
+    assert report["realized"][0]["gain_native"] == 598.6
     assert report["dividends"][0]["dividends_native"] == 12.5
 
 
