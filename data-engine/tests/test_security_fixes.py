@@ -547,6 +547,7 @@ def test_production_settings_reject_weak_database_and_storage_defaults():
         app_env="production",
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
+        minio_access_key="production-minio-access-not-a-default",
     )
     with pytest.raises(ValidationError, match="DATABASE_URL"):
         Settings(
@@ -561,7 +562,7 @@ def test_production_settings_reject_weak_database_and_storage_defaults():
             mongodb_uri="mongodb://root:example@mongo:27017/cavaai",
         )
     with pytest.raises(ValidationError, match="MINIO_ACCESS_KEY"):
-        Settings(**common, minio_access_key="minioadmin")
+        Settings(**{**common, "minio_access_key": "minioadmin"})
 
     strong = Settings(
         **common,
