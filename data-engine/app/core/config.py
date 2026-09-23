@@ -150,6 +150,7 @@ class Settings(BaseSettings):
     langfuse_secret_key: str | None = Field(default=None, repr=False)
     langfuse_host: str = "https://cloud.langfuse.com"
     langfuse_sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
+    fmp_api_key: str | None = None
     fred_api_key: str | None = None
     opencode_go_api_key: str | None = Field(default=None, repr=False)
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"

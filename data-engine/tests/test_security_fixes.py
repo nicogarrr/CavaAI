@@ -34,7 +34,7 @@ from app.core.auth import body_digest, sign_research_identity
 from app.core.config import Settings
 from app.core.database import SessionLocal, init_db
 from app.core.errors import safe_detail
-from app.models import Claim, MemoryItem, Tenant
+from app.models import Claim, Company, MemoryItem, Tenant
 from app.services.knowledge_graph_service import KnowledgeGraphService
 
 SECRET = "research-security-test-secret-at-least-32-chars"
@@ -130,6 +130,27 @@ def _cleanup_claims_and_tenants(statements: list[str], tenants: list[str]) -> No
 
 def test_replayed_signed_request_is_rejected(auth_env):
     init_db()
+    # El claim necesita una compania real: se siembra MSFT (el test valida
+    # anti-replay, no el provisioning de companias).
+    db = SessionLocal()
+    if not db.scalar(select(Company).where(Company.ticker == "MSFT")):
+        db.add(
+            Company(
+                ticker="MSFT",
+                name="Microsoft",
+                exchange="NASDAQ",
+                currency="USD",
+                sector="Technology",
+                industry="Software",
+                company_type="tech",
+                valuation_model="standard_dcf",
+                special_sources=[],
+                special_risks=[],
+                factor_tags=[],
+            )
+        )
+        db.commit()
+    db.close()
     suffix = uuid4().hex[:8]
     tenant = f"replay-{suffix}"
     user = f"user-{suffix}"
@@ -150,6 +171,10 @@ def test_replayed_signed_request_is_rejected(auth_env):
     assert second.status_code == 401
     assert second.json()["detail"] == "Replayed Research OS identity"
     _cleanup_claims_and_tenants([statement], [tenant])
+    db = SessionLocal()
+    db.execute(delete(Company).where(Company.ticker == "MSFT"))
+    db.commit()
+    db.close()
 
 
 def test_future_timestamp_is_rejected_even_with_a_valid_signature(auth_env):

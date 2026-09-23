@@ -61,14 +61,20 @@ export const calculateCorrelationMatrix = cache(async (
     period: string = '1y',
     method: 'pearson' | 'spearman' = 'pearson',
 ): Promise<CorrelationMatrixResult | null> => {
-    const identityHeaders = await researchIdentityHeaders();
     if (symbols.length < 2) return null;
+
+    const body = JSON.stringify({ symbols: symbols.map(s => s.toUpperCase()), period, method });
+    const identityHeaders = await researchIdentityHeaders({
+        method: 'POST',
+        path: '/analytics/correlation',
+        body,
+    });
 
     try {
         const res = await fetch(`${BACKEND_URL}/analytics/correlation`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...identityHeaders },
-            body: JSON.stringify({ symbols: symbols.map(s => s.toUpperCase()), period, method }),
+            body,
             next: { revalidate: 3600 },
         });
 

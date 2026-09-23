@@ -45,7 +45,7 @@ async function safeGet<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
       cache: 'no-store',
-      headers: await researchIdentityHeaders(),
+      headers: await researchIdentityHeaders({ method: 'GET', path }),
     });
     if (!response.ok) return fallback;
     return (await response.json()) as T;
@@ -79,7 +79,10 @@ export async function runResearchThesisDebate(ticker: string): Promise<{ verdict
   try {
     const response = await fetch(`${BACKEND_URL}/api/thesis/${encodeURIComponent(normalized)}/debate`, {
       method: 'POST',
-      headers: await researchIdentityHeaders(),
+      headers: await researchIdentityHeaders({
+        method: 'POST',
+        path: `/api/thesis/${encodeURIComponent(normalized)}/debate`,
+      }),
       cache: 'no-store',
     });
     if (!response.ok) return null;

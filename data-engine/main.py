@@ -10,7 +10,7 @@ from app.api.routes.health import router as health_router
 from app.core.config import get_settings
 from app.core.auth import get_research_principal
 from app.core.database import SessionLocal, init_db
-from app.core.rate_limit import RateLimitMiddleware
+from app.core.rate_limit import enforce_rate_limit
 from app.llm.factory import validate_llm_configuration
 from app.llm.model_aliases import configure_model_aliases
 from app.seed import ensure_company_master
@@ -46,8 +46,6 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="CavaAI Research Engine", version="1.0.0", lifespan=lifespan)
 
-app.add_middleware(RateLimitMiddleware)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,
@@ -56,7 +54,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-private_dependencies = [Depends(get_research_principal)]
+private_dependencies = [Depends(get_research_principal), Depends(enforce_rate_limit)]
 
 # /api/health es público (sin firma): lo montamos fuera del research API
 # para que orquestación/monitoreo pueda consultarlo sin identidad.

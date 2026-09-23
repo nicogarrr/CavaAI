@@ -5,7 +5,6 @@ import { fetchJSON } from './finnhub.actions';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
-const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';
 
 /**
  * Obtiene promedios del sector desde Finnhub (si está disponible)
@@ -58,7 +57,7 @@ const SECTOR_REPRESENTATIVE_STOCKS: Record<string, string[]> = {
 export const getSectorAverages = cache(async (sector: string): Promise<SectorAverages | null> => {
     await requireAuthenticatedUser();
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = process.env.FINNHUB_API_KEY;
         if (!token) {
             // Sin API key, no podemos obtener datos reales
             console.warn(`No hay API key de Finnhub configurada. No se pueden obtener datos del sector ${sector}`);

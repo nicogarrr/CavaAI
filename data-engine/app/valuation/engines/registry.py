@@ -37,9 +37,8 @@ def resolve_engine_key(company: Company) -> str:
         or "sotp" in tags
         or "holding" in company_type
         or "asset_manager" in company_type
-        or company.ticker.upper() in {"BN", "BABA", "RKLB"}
     ):
-        if "holding" in company_type or company.ticker.upper() in {"BN", "BABA"}:
+        if "holding" in company_type or "asset_manager" in company_type:
             return "holding_company"
         return "sotp"
     if "commodity" in model or "commodities" in tags or "mining" in company_type or "uranium" in company_type:

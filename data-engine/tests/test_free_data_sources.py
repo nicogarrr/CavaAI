@@ -1,8 +1,8 @@
 """Fuentes gratuitas sin datos inventados.
 
 Cubre las correcciones de la auditoría de datos fabricados:
-- Cadena Finnhub -> EDGAR -> Yahoo con fallo aislado y errores honestos (FMP
-  eliminado: su key estaba muerta).
+- Cadena FMP: etiquetas de proveedor reales, readiness de valuation honesta
+  y cero fabricacion cuando la fuente cae.
 - registry de engines sin tickers mágicos: la decisión vive en company_master.
 - claim_intelligence: confidence/materiality derivados de reglas (nunca
   constantes redondas) y marcado confidence_source="heuristic".
@@ -20,7 +20,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, EvidenceSuggestion, ExternalClaim, FinancialFact, MarketPrice
+from app.models.entities import Base, Company, EvidenceSuggestion, ExternalClaim, FinancialFact
 from app.services.claim_intelligence_service import (
     ClaimIntelligenceService,
     _rule_scores,
@@ -99,80 +99,105 @@ def test_engine_registry_sin_tickers_magicos_y_dirigido_por_master():
 
 
 # --------------------------------------------------------------------------
-# (5) cadena Finnhub -> EDGAR -> Yahoo: fallback con errores honestos
+# (5) cadena FMP: etiquetas reales, readiness honesta, cero fabricacion
 # --------------------------------------------------------------------------
 
-class OkFinnhub:
-    name = "finnhub"
+class OkFMP:
+    async def income_statement(self, ticker: str, limit: int = 10):
+        return [
+            {
+                "date": "2025-09-30",
+                "calendarYear": "2025",
+                "period": "FY",
+                "revenue": 391_035_000_000,
+                "netIncome": 93_736_000_000,
+                "weightedAverageShsOutDil": 15_408_000_000,
+            }
+        ]
 
-    def configured(self) -> bool:
-        return True
+    async def balance_sheet(self, ticker: str, limit: int = 10):
+        return [
+            {
+                "date": "2025-09-30",
+                "calendarYear": "2025",
+                "period": "FY",
+                "totalAssets": 364_980_000_000,
+            }
+        ]
 
-    async def profile(self, ticker: str):
-        return {"marketCapitalization": 2_000_000}
+    async def cash_flow(self, ticker: str, limit: int = 10):
+        return [
+            {
+                "date": "2025-09-30",
+                "calendarYear": "2025",
+                "period": "FY",
+                "freeCashFlow": 108_807_000_000,
+            }
+        ]
 
-    async def quote(self, ticker: str):
-        return {"c": 21.5, "t": 1704153600}
+    async def ratios(self, ticker: str, limit: int = 10):
+        return [
+            {
+                "date": "2025-09-30",
+                "calendarYear": "2025",
+                "period": "FY",
+                "grossProfitMargin": 0.46,
+            }
+        ]
+
+    async def company_profile(self, ticker: str):
+        return [
+            {
+                "companyName": "AAA Inc.",
+                "price": 21.5,
+                "mktCap": 330_000_000_000,
+                "currency": "USD",
+            }
+        ]
 
 
-class BrokenSEC:
-    async def cik_for_ticker(self, ticker: str):
-        raise RuntimeError("SEC down")
+class BrokenFMP:
+    async def income_statement(self, ticker: str, limit: int = 10):
+        raise RuntimeError("FMP down")
+
+    async def balance_sheet(self, ticker: str, limit: int = 10):
+        raise RuntimeError("FMP down")
+
+    async def cash_flow(self, ticker: str, limit: int = 10):
+        raise RuntimeError("FMP down")
+
+    async def ratios(self, ticker: str, limit: int = 10):
+        raise RuntimeError("FMP down")
+
+    async def company_profile(self, ticker: str):
+        raise RuntimeError("FMP down")
 
 
-class OkYahoo:
-    name = "yahoo"
-
-    async def quote(self, ticker: str):
-        return {"regularMarketPrice": 22.0, "regularMarketTime": 1704153600}
-
-
-class Broken:
-    name = "broken"
-
-    def configured(self) -> bool:
-        return False
-
-    async def quote(self, ticker: str):
-        raise RuntimeError("down")
-
-    async def profile(self, ticker: str):
-        raise RuntimeError("down")
-
-
-def test_chain_financials_finnhub_edgar_yahoo_con_errores_reportados(db):
+def test_chain_fmp_etiquetas_reales_y_readiness(db):
     company = _company(db)
     result = asyncio.run(
-        FinancialIngestionService().refresh_financials(
-            db, company, finnhub=OkFinnhub(), sec_client=BrokenSEC(), yahoo=OkYahoo()
-        )
+        FinancialIngestionService().refresh_from_fmp(db, company, client=OkFMP())
     )
-    assert result["provider"] == "Finnhub+Yahoo"
-    assert any(err.startswith("EDGAR:") for err in result.get("errors", []))
+    assert result["provider"] == "FMP"
+    assert result["facts_imported"] > 0
 
     facts = db.scalars(select(FinancialFact)).all()
+    assert facts and {fact.source_type for fact in facts} <= {"FMP", "FMP_profile", "derived"}
     metrics = {fact.metric for fact in facts}
-    assert "market_cap" in metrics and "close_price" in metrics
-    # Toda fila declara su proveedor real: nunca FMP ni una etiqueta inventada.
-    assert {fact.source_type for fact in facts} <= {"Finnhub", "Yahoo", "derived"}
-    prices = db.scalars(select(MarketPrice)).all()
-    assert prices and prices[0].source in {"Finnhub", "Yahoo"}
-
-    # Sin estados financieros no hay FCF derivado: el input de valuation NO
-    # está listo (honesto: no se fabrica readiness).
-    assert result["valuation_input_ready"] is False
+    assert {"revenue", "free_cash_flow", "shares_diluted"} <= metrics
+    # revenue + FCF + shares presentes: el input de valuation esta listo.
+    assert result["valuation_input_ready"] is True
 
 
-def test_chain_sin_ninguna_fuente_no_fabrica_ingesta(db):
+def test_chain_fmp_caido_no_fabrica_ingesta(db):
     company = _company(db)
     with pytest.raises(RuntimeError):
         asyncio.run(
-            FinancialIngestionService().refresh_financials(
-                db, company, finnhub=Broken(), sec_client=BrokenSEC(), yahoo=Broken()
+            FinancialIngestionService().refresh_from_fmp(
+                db, company, client=BrokenFMP()
             )
         )
     assert db.scalars(select(FinancialFact)).all() == []
-    assert db.scalars(select(MarketPrice)).all() == []
 
 
 # --------------------------------------------------------------------------

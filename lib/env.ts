@@ -30,6 +30,7 @@ const envSchema = z.object({
   FINNHUB_BASE_URL: z.string().url().default('https://finnhub.io/api/v1'),
 
   // FMP - Financial Modeling Prep
+  FMP_API_KEY: z.string().optional(),
   FMP_BACKEND_URL: z.string().url().optional(),
 
   // Fuentes alternativas - Opcionales

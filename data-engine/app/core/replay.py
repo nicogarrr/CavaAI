@@ -1,10 +1,13 @@
 """Single-use nonce store for the signed identity bridge (anti-replay).
 
 Every bound signature carries a random nonce that must be consumed exactly
-once. Storage is Redis ``SET NX EX`` (atomic check-and-mark with TTL); when
-Redis is unreachable the store degrades to a process-local TTL cache so a
-Redis outage cannot turn into an auth outage (the local cache still blocks
-replays within the process).
+once. Storage is Redis ``SET NX EX`` (atomic check-and-mark with TTL).
+
+Honest availability posture: when Redis is unreachable the store degrades to
+a process-local TTL cache so a Redis outage cannot turn into an auth outage.
+That fallback only blocks replays seen by THIS process, so the single-use
+guarantee is weaker until Redis recovers (acceptable for the single-instance
+personal deployment; a multi-replica deployment must require Redis instead).
 """
 
 from __future__ import annotations
