@@ -2,14 +2,10 @@
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type {
-    StrategyBacktestOutput,
-    WalkForwardBacktestResult,
-} from '@/lib/actions/propicks-backtest.actions';
-import type { BacktestResult } from '@/lib/utils/backtesting';
+import type { WalkForwardBacktestResult } from '@/lib/actions/propicks-backtest.actions';
 
-/** La ficha acepta el backtest por estrategia o el walk-forward (métricas en español). */
-export type FactsheetBacktest = StrategyBacktestOutput | WalkForwardBacktestResult | null | undefined;
+/** La ficha acepta el backtest walk-forward point-in-time (métricas en español). */
+export type FactsheetBacktest = WalkForwardBacktestResult | null | undefined;
 
 interface StrategyFactsheetProps {
     strategyId: string;
@@ -22,78 +18,23 @@ interface StrategyFactsheetProps {
     error?: string | null;
 }
 
-/**
- * Métricas netas con optional chaining: otros agentes añaden los campos netos
- * (netReturn, netSharpe, netMaxDrawdown, turnover…). Si un campo aún no existe,
- * la métrica muestra «sin datos» en lugar de presentar el bruto como neto.
- */
-type NetPerformance = Partial<{
-    netReturn: number;
-    netTotalReturn: number;
-    netAnnualizedReturn: number;
-    netSharpeRatio: number;
-    netSharpe: number;
-    netMaxDrawdown: number;
-    maxDrawdownNet: number;
-    turnover: number;
-    turnoverAnnual: number;
-    annualTurnover: number;
-    costsApplied: boolean;
-    costDragBps: number;
-}>;
-
-type NetResult = Partial<{
-    turnover: number;
-    netReturn: number;
-    costs: Partial<{ turnover: number; dragBps: number }>;
-    net: Partial<{
-        totalReturn: number;
-        annualizedReturn: number;
-        sharpeRatio: number;
-        maxDrawdown: number;
-        turnover: number;
-    }>;
-}>;
-
 function netMetrics(backtest: FactsheetBacktest) {
-    const output = backtest as (StrategyBacktestOutput & Partial<WalkForwardBacktestResult>) | null | undefined;
     // Walk-forward trae las métricas netas a nivel raíz y en español.
-    const wf = (output ?? {}) as Partial<WalkForwardBacktestResult>;
-    const result = output && 'result' in output ? output.result : undefined;
-    const perf = (result?.performance ?? {}) as BacktestResult['performance'] & NetPerformance;
-    const ext = (result ?? {}) as BacktestResult & NetResult;
-    const net = ext.net ?? {};
+    const wf = (backtest ?? {}) as Partial<WalkForwardBacktestResult>;
     return {
-        retorno:
-            perf.netReturn ??
-            perf.netTotalReturn ??
-            net.totalReturn ??
-            ext.netReturn ??
-            wf.retornoNeto ??
-            undefined,
-        benchmark: result?.vsBenchmark?.benchmarkReturn ?? wf.spy ?? undefined,
-        alpha: result?.vsBenchmark?.alpha,
-        sharpe:
-            perf.netSharpeRatio ?? perf.netSharpe ?? net.sharpeRatio ?? wf.sharpe ?? undefined,
-        maxDD:
-            perf.netMaxDrawdown ?? perf.maxDrawdownNet ?? net.maxDrawdown ?? wf.maxDD ?? undefined,
-        turnover:
-            perf.turnover ??
-            perf.turnoverAnnual ??
-            perf.annualTurnover ??
-            net.turnover ??
-            ext.turnover ??
-            ext.costs?.turnover ??
-            wf.turnover ??
-            undefined,
+        retorno: wf.retornoNeto ?? undefined,
+        benchmark: wf.spy ?? undefined,
+        alpha: undefined as number | undefined,
+        sharpe: wf.sharpe ?? undefined,
+        maxDD: wf.maxDD ?? undefined,
+        turnover: wf.turnover ?? undefined,
         period:
-            result?.period ??
-            (wf.tablaMensual && wf.tablaMensual.length > 0
+            wf.tablaMensual && wf.tablaMensual.length > 0
                 ? {
                       start: wf.tablaMensual[0].asOf,
                       end: wf.tablaMensual[wf.tablaMensual.length - 1].asOf,
                   }
-                : undefined),
+                : undefined,
     };
 }
 
@@ -159,11 +100,10 @@ export default function StrategyFactsheet({
         );
     }
 
-    const hasStrategyResult = !!backtest && 'result' in backtest && !!backtest.result;
     const hasWalkForward =
         !!backtest && 'retornoNeto' in backtest && typeof backtest.retornoNeto === 'number';
 
-    if ((error && !backtest) || (!hasStrategyResult && !hasWalkForward)) {
+    if ((error && !backtest) || !hasWalkForward) {
         return (
             <Card className="rounded-lg border border-gray-700 bg-gray-800/50 p-6 text-center">
                 <Badge variant="outline" className="mb-3 border-amber-500/50 text-amber-300">
@@ -172,8 +112,9 @@ export default function StrategyFactsheet({
                 <h3 className="text-lg font-semibold text-gray-100">{name}</h3>
                 <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-gray-400">{description}</p>
                 <p className="mx-auto mt-3 max-w-xl text-xs leading-5 text-gray-500">
-                    {error ?? 'No se pudo calcular el backtest de esta estrategia.'} Los números
-                    solo se publican cuando hay datos reales que los respalden.
+                    {error ??
+                        'El backtest por estrategia se publicará cuando existan fundamentales point-in-time; mientras tanto, el backtest walk-forward global está en la pestaña Backtesting.'}{' '}
+                    Los números solo se publican cuando hay datos reales que los respalden.
                 </p>
             </Card>
         );

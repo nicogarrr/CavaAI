@@ -5,13 +5,13 @@ import { BarChart3, Loader2, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import BacktestResults from './BacktestResults';
 import EnhancedProPicksContent from './EnhancedProPicksContent';
 import MonthlyRebalanceView from './MonthlyRebalanceView';
 import StrategyFactsheet from './StrategyFactsheet';
 import StrategySelector from './StrategySelector';
+import WalkForwardResults from './WalkForwardResults';
 import { STRATEGY_CATALOG, mergeStrategies } from './monthlyRebalance';
-import { runStrategyBacktest, type StrategyBacktestOutput } from '@/lib/actions/propicks-backtest.actions';
+import { runWalkForwardBacktest, type WalkForwardBacktestResult } from '@/lib/actions/propicks-backtest.actions';
 import type { ProPick } from '@/lib/actions/proPicks.actions';
 
 interface ProPicksTabsProps {
@@ -23,7 +23,7 @@ interface ProPicksTabsProps {
 export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: ProPicksTabsProps) {
     const merged = mergeStrategies(strategies);
     const [currentStrategy, setCurrentStrategy] = useState<string>(merged[0]?.id ?? 'adaptive');
-    const [backtests, setBacktests] = useState<Record<string, StrategyBacktestOutput | null>>({});
+    const [walkForward, setWalkForward] = useState<WalkForwardBacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -31,45 +31,37 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
     const currentMerged = merged.find((s) => s.id === currentStrategy) ?? merged[0];
     const currentAvailable = currentMerged ? availableIds.has(currentMerged.id) : false;
 
-    const runBacktest = async (strategyId: string) => {
-        // Sin llamar al servidor cuando la estrategia aún no tiene datos:
-        // runStrategyBacktest caería al fallback 'adaptive' y mezclaría números.
-        if (!availableIds.has(strategyId)) {
-            setBacktests((prev) => ({ ...prev, [strategyId]: null }));
-            setError(null);
-            return;
-        }
+    const runBacktest = async () => {
+        // Motor walk-forward point-in-time: agnóstico de estrategia (momentum
+        // 12-1M sobre universo líquido, costes de 15pb por pata, benchmark SPY).
+        // El backtest por estrategia se publicará cuando haya fundamentales
+        // point-in-time; hasta entonces NO se simula nada con datos de hoy.
         setLoading(true);
         setError(null);
         try {
-            const output = await runStrategyBacktest(strategyId);
+            const output = await runWalkForwardBacktest();
             if ('error' in output) {
                 setError(output.error);
-                setBacktests((prev) => ({ ...prev, [strategyId]: null }));
+                setWalkForward(null);
             } else {
-                setBacktests((prev) => ({ ...prev, [strategyId]: output }));
+                setWalkForward(output);
             }
         } catch (caught) {
             setError(caught instanceof Error ? caught.message : String(caught));
-            setBacktests((prev) => ({ ...prev, [strategyId]: null }));
+            setWalkForward(null);
         } finally {
             setLoading(false);
         }
     };
 
-    // Backtest inicial con la primera estrategia disponible
+    // Backtest walk-forward inicial al abrir la página
     useEffect(() => {
-        const firstAvailable = merged.find((s) => availableIds.has(s.id))?.id ?? merged[0]?.id;
-        if (firstAvailable) void runBacktest(firstAvailable);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        void runBacktest();
     }, []);
 
     const handleStrategyChange = (strategyId: string) => {
         setCurrentStrategy(strategyId);
-        void runBacktest(strategyId);
     };
-
-    const currentBacktest = backtests[currentStrategy] ?? null;
 
     return (
         <Tabs defaultValue="picks" className="mt-6 w-full min-w-0">
@@ -100,18 +92,6 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                         currentStrategy={currentStrategy}
                         onStrategyChange={handleStrategyChange}
                     />
-                    <Button
-                        onClick={() => runBacktest(currentStrategy)}
-                        disabled={loading || !currentAvailable}
-                        className="h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 md:w-auto"
-                    >
-                        {loading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Play className="h-4 w-4" />
-                        )}
-                        {loading ? 'Calculando...' : 'Ejecutar Backtest'}
-                    </Button>
                 </Card>
 
                 {currentMerged && (
@@ -120,9 +100,6 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                         name={currentMerged.name}
                         description={currentMerged.description}
                         available={currentAvailable}
-                        backtest={currentBacktest}
-                        loading={loading}
-                        error={error}
                     />
                 )}
             </TabsContent>
@@ -137,15 +114,14 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
 
             <TabsContent value="backtest" className="mt-6 space-y-4">
                 <Card className="flex min-w-0 flex-col gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4 md:flex-row md:items-center md:justify-between">
-                    <StrategySelector
-                        strategies={strategies}
-                        catalog={STRATEGY_CATALOG}
-                        currentStrategy={currentStrategy}
-                        onStrategyChange={handleStrategyChange}
-                    />
+                    <p className="max-w-xl text-sm leading-6 text-gray-400">
+                        Motor walk-forward point-in-time: cada corte mensual solo usa precios
+                        anteriores a ese corte (momentum 12-1M, universo líquido de 30 valores),
+                        con costes de 15 pb por pata y SPY como benchmark.
+                    </p>
                     <Button
-                        onClick={() => runBacktest(currentStrategy)}
-                        disabled={loading || !currentAvailable}
+                        onClick={() => runBacktest()}
+                        disabled={loading}
                         className="h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 md:w-auto"
                     >
                         {loading ? (
@@ -153,7 +129,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                         ) : (
                             <Play className="h-4 w-4" />
                         )}
-                        {loading ? 'Calculando...' : 'Ejecutar Backtest'}
+                        {loading ? 'Calculando...' : 'Ejecutar backtest'}
                     </Button>
                 </Card>
 
@@ -164,7 +140,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                             No se pudo calcular el backtest. Comprueba tu conexión e inténtalo de nuevo.
                         </p>
                         <Button
-                            onClick={() => runBacktest(currentStrategy)}
+                            onClick={() => runBacktest()}
                             disabled={loading}
                             className="mt-4 h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 sm:w-auto"
                         >
@@ -178,19 +154,19 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                     </Card>
                 )}
 
-                {loading && !currentBacktest && (
+                {loading && !walkForward && (
                     <Card className="flex items-center justify-center gap-3 rounded-lg border border-gray-700 bg-gray-800/50 p-10 text-gray-400">
                         <Loader2 className="h-5 w-5 animate-spin text-teal-400" />
-                        <span>Calculando backtest con datos históricos... puede tardar unos segundos.</span>
+                        <span>Calculando backtest walk-forward con datos históricos... puede tardar unos segundos.</span>
                     </Card>
                 )}
 
-                {currentBacktest && !loading && <BacktestResults result={currentBacktest.result} />}
+                {walkForward && !loading && <WalkForwardResults result={walkForward} />}
 
-                {!loading && !error && !currentBacktest && (
+                {!loading && !error && !walkForward && (
                     <Card className="flex flex-col items-center gap-3 rounded-lg border border-gray-700 bg-gray-800/50 p-10 text-gray-500">
                         <BarChart3 className="h-10 w-10 text-gray-600" />
-                        <p className="text-sm">Selecciona una estrategia y pulsa «Ejecutar Backtest» para ver el desempeño simulado.</p>
+                        <p className="text-sm">Pulsa «Ejecutar backtest» para lanzar la simulación walk-forward point-in-time.</p>
                     </Card>
                 )}
             </TabsContent>
