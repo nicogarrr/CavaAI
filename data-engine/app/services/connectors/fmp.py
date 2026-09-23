@@ -4,7 +4,16 @@ from app.core.config import get_settings
 
 
 class FMPClient:
-    base_url = "https://financialmodelingprep.com/api/v3"
+    """FMP connector.
+
+    FMP retired the legacy /api/v3 endpoints for current API keys (they return
+    403 "Legacy Endpoint no longer supported"), so every method targets the
+    /stable API with ?symbol= query parameters. Provider/entitlement errors
+    (e.g. 402 on endpoints outside the current plan) surface as exceptions so
+    callers mark coverage unavailable instead of fabricating data.
+    """
+
+    base_url = "https://financialmodelingprep.com/stable"
 
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -22,9 +31,7 @@ class FMPClient:
             return response.json()
 
     async def company_profile(self, ticker: str) -> list | dict:
-        return await self._get(f"/profile/{ticker.upper()}")
-
-    stable_base_url = "https://financialmodelingprep.com/stable"
+        return await self._get("/profile", {"symbol": ticker.upper()})
 
     async def dividends(self, ticker: str) -> list | dict:
         """Declared dividend records for a symbol (FMP stable/dividends).
@@ -33,13 +40,7 @@ class FMPClient:
         exceptions so callers can mark coverage unavailable instead of
         fabricating dividend data.
         """
-        if not self.configured():
-            raise RuntimeError("FMP_API_KEY is not configured")
-        params = {"symbol": ticker.upper(), "apikey": self.settings.fmp_api_key}
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(f"{self.stable_base_url}/dividends", params=params)
-            response.raise_for_status()
-            return response.json()
+        return await self._get("/dividends", {"symbol": ticker.upper()})
 
     async def splits(self, ticker: str) -> list | dict:
         """Historical stock splits for a symbol (FMP stable/splits).
@@ -47,26 +48,25 @@ class FMPClient:
         Errors surface as exceptions so callers mark coverage unavailable
         instead of guessing share-count adjustments.
         """
-        if not self.configured():
-            raise RuntimeError("FMP_API_KEY is not configured")
-        params = {"symbol": ticker.upper(), "apikey": self.settings.fmp_api_key}
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(f"{self.stable_base_url}/splits", params=params)
-            response.raise_for_status()
-            return response.json()
+        return await self._get("/splits", {"symbol": ticker.upper()})
 
     async def income_statement(self, ticker: str, limit: int = 10) -> list | dict:
-        return await self._get(f"/income-statement/{ticker.upper()}", {"limit": limit})
+        return await self._get("/income-statement", {"symbol": ticker.upper(), "limit": limit})
 
     async def balance_sheet(self, ticker: str, limit: int = 10) -> list | dict:
-        return await self._get(f"/balance-sheet-statement/{ticker.upper()}", {"limit": limit})
+        return await self._get("/balance-sheet-statement", {"symbol": ticker.upper(), "limit": limit})
 
     async def cash_flow(self, ticker: str, limit: int = 10) -> list | dict:
-        return await self._get(f"/cash-flow-statement/{ticker.upper()}", {"limit": limit})
+        return await self._get("/cash-flow-statement", {"symbol": ticker.upper(), "limit": limit})
 
     async def ratios(self, ticker: str, limit: int = 10) -> list | dict:
-        return await self._get(f"/ratios/{ticker.upper()}", {"limit": limit})
+        return await self._get("/ratios", {"symbol": ticker.upper(), "limit": limit})
 
     async def news(self, ticker: str, limit: int = 25) -> list | dict:
-        return await self._get("/stock_news", {"tickers": ticker.upper(), "limit": limit})
+        """Latest stock news for a symbol (FMP stable/news/stock).
 
+        FMP plans without news coverage answer 402 here; the error propagates
+        so callers mark news coverage unavailable rather than showing stale or
+        invented headlines.
+        """
+        return await self._get("/news/stock", {"symbols": ticker.upper(), "limit": limit})
