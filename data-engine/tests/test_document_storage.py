@@ -124,3 +124,4 @@ def test_document_store_rejects_local_symlink_escape(tmp_path):
         )
 
     assert not (outside / "filing" / "escaped.pdf").exists()
+    assert not (outside / "filing").exists()

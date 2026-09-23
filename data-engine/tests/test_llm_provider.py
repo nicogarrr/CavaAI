@@ -174,6 +174,33 @@ def test_openai_compatible_provider_rejects_missing_usage():
         run(scenario())
 
 
+def test_openai_compatible_provider_rejects_incomplete_usage():
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                "usage": {"completion_tokens": 1},
+            },
+        )
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = OpenAICompatibleProvider(
+                api_key="test-secret",
+                base_url="https://opencode.test/zen/go/v1",
+                default_model="deepseek-v4-flash",
+                provider_name="opencode-go",
+                client=client,
+                max_retries=0,
+            )
+            return await provider.complete(LLMRequest(messages=[Message("user", "Extract")]))
+
+    with pytest.raises(ProviderResponseError, match="invalid prompt token usage"):
+        run(scenario())
+
+
 def test_openai_compatible_provider_caps_requested_max_tokens():
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)

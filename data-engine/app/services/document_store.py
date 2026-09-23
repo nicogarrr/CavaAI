@@ -1,6 +1,5 @@
 from io import BytesIO
 from pathlib import Path, PurePosixPath, PureWindowsPath
-import os
 import re
 
 from minio import Minio
@@ -37,10 +36,20 @@ class DocumentStore:
 
         root = self.local_root.resolve()
         directory = self._directory(ticker, category, tenant_id)
-        directory.mkdir(parents=True, exist_ok=True)
+        # Validate every existing parent before mkdir: a pre-existing symlink
+        # must be rejected before it can cause an out-of-root directory write.
+        relative_parts = directory.relative_to(self.local_root).parts
+        candidate = root
+        for part in relative_parts:
+            candidate = candidate / part
+            if candidate.is_symlink():
+                raise ValueError("Unsafe local document storage path")
         path = (directory / self._safe_filename(filename)).resolve()
-        if os.path.commonpath((str(root), str(path))) != str(root):
-            raise ValueError("Unsafe local document storage path")
+        try:
+            path.relative_to(root)
+        except ValueError:
+            raise ValueError("Unsafe local document storage path") from None
+        directory.mkdir(parents=True, exist_ok=True)
 
         path.write_bytes(content)
         return str(path)

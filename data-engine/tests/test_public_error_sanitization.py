@@ -70,3 +70,21 @@ def test_sources_url_ingestion_does_not_expose_provider_url_or_exception(monkeyp
     assert response.status_code == 502
     assert response.json()["detail"] == "URL ingestion failed"
     _assert_no_internal_detail(response)
+
+
+def test_sources_file_ingestion_does_not_expose_internal_exception(monkeypatch):
+    class FailingDocumentIngestionService:
+        def ingest_bytes(self, *args, **kwargs):
+            raise RuntimeError(_INTERNAL_DETAIL)
+
+    monkeypatch.setattr(sources, "DocumentIngestionService", FailingDocumentIngestionService)
+    client = TestClient(main.app, raise_server_exceptions=False)
+    response = client.post(
+        "/api/sources/documents/ingest-file",
+        data={"ticker": "MSFT", "title": "Private upload"},
+        files={"file": ("source.txt", b"private material", "text/plain")},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Document ingestion failed"
+    _assert_no_internal_detail(response)

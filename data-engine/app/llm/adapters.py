@@ -173,8 +173,14 @@ class OpenAICompatibleProvider(LLMProvider):
         usage_body = body.get("usage")
         if not isinstance(usage_body, dict):
             raise ProviderResponseError(f"{self.name} returned missing token usage")
-        input_tokens = _integer(usage_body.get("prompt_tokens"))
-        output_tokens = _integer(usage_body.get("completion_tokens"))
+        raw_input_tokens = usage_body.get("prompt_tokens")
+        raw_output_tokens = usage_body.get("completion_tokens")
+        if not isinstance(raw_input_tokens, int) or raw_input_tokens < 0:
+            raise ProviderResponseError(f"{self.name} returned invalid prompt token usage")
+        if not isinstance(raw_output_tokens, int) or raw_output_tokens < 0:
+            raise ProviderResponseError(f"{self.name} returned invalid completion token usage")
+        input_tokens = raw_input_tokens
+        output_tokens = raw_output_tokens
         prompt_details = usage_body.get("prompt_tokens_details") or {}
         prompt_details = prompt_details if isinstance(prompt_details, dict) else {}
         usage = Usage(

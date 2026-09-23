@@ -105,6 +105,39 @@ def test_configured_telegram_failure_does_not_leak_token_or_url(monkeypatch, db)
     assert endpoint not in error
 
 
+def test_webhook_failure_does_not_persist_url_or_body(monkeypatch, db):
+    endpoint = "https://hooks.example/secret?token=private"
+
+    class _FailingClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, url, json):
+            raise RuntimeError(f"request {url} failed with {json}")
+
+    monkeypatch.setattr(notification_service.httpx, "Client", _FailingClient)
+    monkeypatch.setattr(
+        notification_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            alert_email_webhook_url=endpoint,
+            alert_push_webhook_url=endpoint,
+        ),
+    )
+
+    deliveries = NotificationService().dispatch(db, _alert(db, ["email", "push"]))
+    for channel in ("email", "push"):
+        assert deliveries[channel]["status"] == "failed"
+        assert deliveries[channel]["error"] == "RuntimeError"
+        assert endpoint not in deliveries[channel]["error"]
+
+
 def test_telegram_text_format_and_jev_line():
     payload = {
         "severity": "high", "title": "AAPL price alert", "message": "matched",
