@@ -66,12 +66,13 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             if (!controller.signal.aborted) {
                 setStocks(results || []);
             }
-        } catch (error: any) {
-            // Ignorar errores de cancelación; el resto (incluido redirect,
-            // que se re-lanza) nunca falla en silencio.
-            if (error?.name !== 'AbortError' && !controller.signal.aborted) {
+        } catch (error: unknown) {
+            // Ignorar errores de cancelación; ante un fallo real, mostrar el
+            // error honesto SIN vaciar los resultados anteriores. El redirect
+            // de Next se re-lanza (forma parte de la navegación).
+            const aborted = error instanceof Error && error.name === 'AbortError';
+            if (!aborted && !controller.signal.aborted) {
                 if (isNextRedirectError(error)) throw error;
-                setStocks([]);
                 setSearchError(true);
                 showErrorToast(error, { onRetry: () => handleSearch(query.trim()) });
             }
