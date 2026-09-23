@@ -278,6 +278,28 @@ class IBKRImportService:
             raise IBKRImportError(" ".join(fatal_errors))
         row_errors = [error for error in parse_errors if error not in fatal_errors]
         root = ElementTree.fromstring(xml_text)
+        # Batch: all external ids referenced by this report, one existence query
+        # instead of one per row.
+        report_ids = {
+            value
+            for element in root.iter()
+            for key, value in element.attrib.items()
+            if key.lower()
+            in {"tradeid", "transactionid", "ibexecid", "trxid", "id"}
+            and value
+        }
+        existing_ids = (
+            {
+                row[0]
+                for row in db.execute(
+                    select(Transaction.external_id).where(
+                        Transaction.external_id.in_(report_ids)
+                    )
+                ).all()
+            }
+            if report_ids
+            else set()
+        )
         fx_service = PortfolioFXService()
         portfolio = fx_service.ensure_portfolio(db)
         companies: dict[str, Company] = {}
@@ -388,7 +410,7 @@ class IBKRImportService:
                     rows_skipped += 1
                     continue
                 external_id = _attr(element, "tradeID", "transactionID", "ibExecID")
-                if external_id and db.scalar(select(Transaction).where(Transaction.external_id == external_id)):
+                if external_id and external_id in existing_ids:
                     continue
                 company = self._company(db, companies, symbol)
                 action = self._action(_attr(element, "buySell", "transactionType", "tradeType"))
@@ -428,7 +450,7 @@ class IBKRImportService:
                 else:
                     action = "cash_misc"
                 external_id = _attr(element, "trxID", "transactionID", "id")
-                if external_id and db.scalar(select(Transaction).where(Transaction.external_id == external_id)):
+                if external_id and external_id in existing_ids:
                     continue
                 amount = _decimal(_attr(element, "amount", "netCash", "proceeds"))
                 transaction = Transaction(
@@ -457,7 +479,7 @@ class IBKRImportService:
                     continue
                 action = "dividend"
                 external_id = _attr(element, "transactionID", "id")
-                if external_id and db.scalar(select(Transaction).where(Transaction.external_id == external_id)):
+                if external_id and external_id in existing_ids:
                     continue
                 raw_date = _attr(element, "dateTime", "date", "tradeDate")
                 if raw_date is None or not _is_date(raw_date):
