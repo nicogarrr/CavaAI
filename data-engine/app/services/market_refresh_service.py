@@ -123,16 +123,25 @@ class MarketRefreshService:
         stages: list[dict] = []
 
         observations, price_errors = await self.price_provider.fetch(companies, as_of=as_of)
-        for company in companies:
-            observation = observations.get(company.ticker)
-            if observation is None:
-                continue
-            market = db.scalar(
-                select(MarketPrice).where(
-                    MarketPrice.company_id == company.id,
-                    MarketPrice.date == observation.price_date,
-                )
-            )
+        # Batch: one query for every (company, price_date) row we may update.
+        observed = [
+            (company, observations[company.ticker])
+            for company in companies
+            if company.ticker in observations
+        ]
+        existing_prices = {}
+        if observed:
+            existing_prices = {
+                (price.company_id, price.date): price
+                for price in db.scalars(
+                    select(MarketPrice).where(
+                        MarketPrice.company_id.in_([company.id for company, _ in observed]),
+                        MarketPrice.date.in_([obs.price_date for _, obs in observed]),
+                    )
+                ).all()
+            }
+        for company, observation in observed:
+            market = existing_prices.get((company.id, observation.price_date))
             if market is None:
                 market = MarketPrice(
                     company_id=company.id,
@@ -197,13 +206,18 @@ class MarketRefreshService:
         ledger = PortfolioLedgerService()
         revalued = 0
         stale_prices: list[dict] = []
-        for position, company in rows:
-            latest = db.scalar(
+        # Batch: latest price per position company in one ordered query.
+        position_company_ids = list({company.id for _, company in rows})
+        latest_prices: dict[int, MarketPrice] = {}
+        if position_company_ids:
+            for price in db.scalars(
                 select(MarketPrice)
-                .where(MarketPrice.company_id == company.id)
-                .order_by(desc(MarketPrice.date))
-                .limit(1)
-            )
+                .where(MarketPrice.company_id.in_(position_company_ids))
+                .order_by(MarketPrice.company_id, desc(MarketPrice.date))
+            ).all():
+                latest_prices.setdefault(price.company_id, price)
+        for position, company in rows:
+            latest = latest_prices.get(company.id)
             if latest is None:
                 stale_prices.append({"ticker": company.ticker, "status": "missing_market_price"})
                 continue
