@@ -89,7 +89,7 @@ services:
   # MinIO - local S3-compatible raw document store
   # ==========================================
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: cavaai-minio
     restart: unless-stopped
     command: server --address ":9000" --console-address ":9001" /data

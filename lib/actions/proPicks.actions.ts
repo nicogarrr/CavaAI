@@ -9,6 +9,11 @@ import {
   getStrategyById,
 } from '@/lib/utils/proPicksStrategies';
 
+import type { SignalOverlay } from '@/lib/utils/propicksSignals';
+
+/** Selección con tope de rotación (núcleo puro en proPicksStrategies, reexportada aquí para el pipeline). */
+import { selectRebalancedPicks, type RankedCandidate } from '@/lib/utils/proPicksStrategies';
+
 export interface ConfidenceReason {
   /** Texto mostrado en UI. Siempre incluye `value` para que sea verificable. */
   text: string;
@@ -61,6 +66,8 @@ export interface ProPick {
   upsidePotential?: number;
   isStrongBuy?: boolean;
   targetPrice?: number;
+  /** Overlays de señales externas (Fase 2). Cada uno vuelca su valor en `facts` como `ov_<metric>` (ver attachSignalOverlays, regla R5). */
+  overlays?: SignalOverlay[];
 }
 
 const LIQUID_UNIVERSE = [
@@ -86,6 +93,167 @@ const CATEGORY_LABELS: Record<keyof AdvancedScoreData['categoryScores'], string>
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+type OverlayRecord = Record<string, number | string | boolean | null | undefined>;
+
+/**
+ * Sentimiento de un overlay externo (+1 positivo, -1 negativo, 0 neutro/desconocido).
+ * Señal primaria: `impact` numérico con signo (contrato del módulo de señales
+ * @/lib/utils/propicksSignals: impact en [-10, +10]). Respaldo: campos de
+ * dirección en texto, por tolerancia a shapes externos.
+ */
+function overlaySentiment(overlay: SignalOverlay): 1 | -1 | 0 {
+  const raw = overlay as unknown as OverlayRecord;
+  const impact = raw['impact'];
+  if (typeof impact === 'number' && Number.isFinite(impact)) {
+    if (impact > 0) return 1;
+    if (impact < 0) return -1;
+    return 0;
+  }
+  const dir = String(raw['direction'] ?? raw['sentiment'] ?? raw['signal'] ?? raw['bias'] ?? '').trim().toLowerCase();
+  if (['positive', 'positivo', 'positiva', 'bullish', 'bull', 'long', 'overweight', 'up', '+1', '+'].includes(dir)) return 1;
+  if (['negative', 'negativo', 'negativa', 'bearish', 'bear', 'short', 'underweight', 'down', '-1', '-'].includes(dir)) return -1;
+  return 0;
+}
+
+/**
+ * Bonus de confianza por overlays externos: +2 por overlay positivo,
+ * -3 por overlay negativo, con tope total de ±6. Neutros o sin dirección no suman.
+ */
+function overlayConfidenceDelta(overlays: readonly SignalOverlay[] | undefined | null): number {
+  let delta = 0;
+  for (const overlay of overlays ?? []) {
+    const sentiment = overlaySentiment(overlay);
+    delta += sentiment > 0 ? 2 : sentiment < 0 ? -3 : 0;
+  }
+  return Math.max(-6, Math.min(6, delta));
+}
+
+type SignalOverlaysModule = {
+  getSignalOverlays?: (symbol: string, asOf: string) => Promise<SignalOverlay[]> | SignalOverlay[];
+};
+
+/**
+ * Carga perezosa del módulo de señales externas (Fase 2, otro agente).
+ * Devuelve null si el módulo aún no existe o falla al cargar: el pipeline
+ * sigue funcionando sin overlays (fallback []).
+ */
+async function loadSignalOverlaysModule(): Promise<SignalOverlaysModule | null> {
+  try {
+    // Especificador en variable (no literal): ni tsc ni el bundler lo resuelven
+    // estáticamente, así no se rompe aunque el otro agente aún no creó el módulo.
+    const specifier = '@/lib/utils/propicksSignals';
+    const mod = (await import(specifier)) as Partial<SignalOverlaysModule> | null;
+    return mod ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clave de `facts` para un overlay: `ov_<metric>`, sin duplicar el prefijo si
+ * la métrica ya lo trae (el módulo de señales emite `ov_revisiones`,
+ * `ov_insider`, `ov_shortInterest`, `ov_vix`). Misma normalización que R5.
+ */
+function overlayFactsKey(metric: string): string {
+  return metric.startsWith('ov_') ? metric : `ov_${metric}`;
+}
+
+/**
+ * Adjunta overlays externos SOLO a los finalistas (máx 20).
+ *
+ *  - Carga el módulo de señales con import dinámico + try/catch: si no existe
+ *    todavía o falla, devuelve los finalistas tal cual (fallback []).
+ *  - Llama a getSignalOverlays(symbol, asOf) por finalista con
+ *    Promise.allSettled: un símbolo que falle no tumba al resto ([] en ese pick).
+ *  - Cada overlay vuelca su valor en `facts` con `overlayFactsKey(metric)`
+ *    (regla R5: `metric` en facts, mismo valor, y `detail` contiene el valor).
+ *  - Ajusta la confianza con el bonus de overlays (+2 positivo / -3 negativo,
+ *    tope ±6) sin salir de 5-97 y recalcula el nivel.
+ */
+export async function attachSignalOverlays(picks: ProPick[], asOf?: string): Promise<ProPick[]> {
+  const finalists = picks.slice(0, 20);
+  if (finalists.length === 0) return finalists;
+  const mod = await loadSignalOverlaysModule();
+  const fetchOverlays = mod?.getSignalOverlays;
+  if (typeof fetchOverlays !== 'function') return finalists;
+  const settled = await Promise.allSettled(
+    finalists.map((pick) => fetchOverlays(pick.symbol, asOf ?? pick.asOf))
+  );
+  return finalists.map((pick, index) => {
+    const result = settled[index];
+    const overlays: SignalOverlay[] =
+      result.status === 'fulfilled' && Array.isArray(result.value)
+        ? (result.value as SignalOverlay[])
+        : [];
+    if (overlays.length === 0) return pick;
+    const facts: ProPick['facts'] = { ...pick.facts };
+    for (const overlay of overlays) {
+      const rec = overlay as unknown as OverlayRecord;
+      const metric = typeof rec['metric'] === 'string' ? rec['metric'] : '';
+      const value = rec['value'];
+      if (!metric || (typeof value !== 'number' && typeof value !== 'string')) continue;
+      facts[overlayFactsKey(metric)] = value;
+    }
+    const confidence = Math.max(5, Math.min(97, Math.round(pick.confidence + overlayConfidenceDelta(overlays))));
+    const confidenceLevel: ProPick['confidenceLevel'] = confidence >= 80 ? 'Alta' : confidence >= 65 ? 'Media' : 'Baja';
+    return { ...pick, overlays, facts, confidence, confidenceLevel };
+  });
+}
+
+export type SectorCategoryScores = {
+  value: number;
+  growth: number;
+  profitability: number;
+  cashFlow: number;
+  momentum: number;
+  debtLiquidity: number;
+};
+
+const SECTOR_NORM_CATEGORIES = ['value', 'growth', 'profitability', 'cashFlow', 'momentum', 'debtLiquidity'] as const;
+
+/**
+ * Normalización sectorial de las 6 categorías (z-score winsorizado ±3 por sector).
+ *
+ * Para cada sector y cada categoría: z = (x - media) / sd; se winsoriza a
+ * ±3 (recorta colas extremas) y se reescala a 0-100 como 50 + z·(50/3)
+ * (z=0 → 50, z=±3 → 0/100). Sectores de un solo miembro o sin dispersión
+ * dan z=0 (50, neutral).
+ *
+ * Los `categoryScores` finales del pick SIGUEN siendo los crudos y son los que
+ * alimentan R4 (score = Σ categoría × peso canónico ±1); lo normalizado solo
+ * sirve para comparar/ordenar entre sectores sin sesgo de nivel.
+ */
+function normalizeSectorCategoryScores(picks: readonly ProPick[]): Map<string, SectorCategoryScores> {
+  const bySector = new Map<string, ProPick[]>();
+  for (const pick of picks) {
+    const sector = pick.sector ?? 'Unknown';
+    const group = bySector.get(sector);
+    if (group) group.push(pick);
+    else bySector.set(sector, [pick]);
+  }
+  const normalized = new Map<string, SectorCategoryScores>();
+  for (const group of bySector.values()) {
+    const stats = new Map<(typeof SECTOR_NORM_CATEGORIES)[number], { mean: number; sd: number }>();
+    for (const key of SECTOR_NORM_CATEGORIES) {
+      const values = group.map((p) => p.categoryScores[key]);
+      const mean = values.reduce((a, b) => a + b, 0) / Math.max(1, values.length);
+      const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, values.length);
+      stats.set(key, { mean, sd: Math.sqrt(variance) });
+    }
+    for (const pick of group) {
+      const entry = {} as SectorCategoryScores;
+      for (const key of SECTOR_NORM_CATEGORIES) {
+        const { mean, sd } = stats.get(key) ?? { mean: 50, sd: 0 };
+        const z = sd < 1e-9 ? 0 : (pick.categoryScores[key] - mean) / sd;
+        const winsorized = Math.max(-3, Math.min(3, z));
+        entry[key] = Math.round((50 + winsorized * (50 / 3)) * 10) / 10;
+      }
+      normalized.set(pick.symbol, entry);
+    }
+  }
+  return normalized;
+}
+
 /**
  * Confianza explicada del pick (0-100).
  * Fórmula calibrada y sin magia:
@@ -93,7 +261,9 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
  *   +6 si upside real > 15% (precio objetivo de analista vs precio actual)
  *   +4 si ≥2 categorías superan a su sector en >5 puntos
  *   +4 si la mejor categoría ≥ 80
- *   techo 97. Nivel: Alta (>=80) · Media (>=65) · Baja (<65).
+ *   ±bonus por overlays externos: +2 por overlay positivo, -3 por negativo,
+ *   con tope total de ±6 (ver overlayConfidenceDelta). Sin overlays el bonus es 0.
+ *   techo 97 (suelo 5). Nivel: Alta (>=80) · Media (>=65) · Baja (<65).
  * Los motivos se eligen solo entre métricas presentes en `facts`.
  */
 function buildConfidence(
@@ -101,7 +271,8 @@ function buildConfidence(
   advanced: AdvancedScoreData,
   upsidePotential: number,
   targetPrice: number,
-  currentPrice: number
+  currentPrice: number,
+  overlays: SignalOverlay[] = []
 ): { confidence: number; confidenceLevel: ProPick['confidenceLevel']; confidenceReasons: ConfidenceReason[]; facts: Record<string, number | string> } {
   const facts: Record<string, number | string> = { ...advanced.facts };
   if (targetPrice > 0) facts['targetMean'] = round1(targetPrice);
@@ -117,6 +288,7 @@ function buildConfidence(
   const bestCategory = (Object.entries(advanced.categoryScores) as Array<[keyof AdvancedScoreData['categoryScores'], number]>)
     .sort((a, b) => b[1] - a[1])[0];
   if (bestCategory && bestCategory[1] >= 80) confidence += 4;
+  confidence += overlayConfidenceDelta(overlays);
   confidence = Math.max(5, Math.min(97, Math.round(confidence)));
   const confidenceLevel: ProPick['confidenceLevel'] = confidence >= 80 ? 'Alta' : confidence >= 65 ? 'Media' : 'Baja';
 
@@ -248,9 +420,11 @@ export async function generateProPicks(limit = 5, strategyId = 'adaptive'): Prom
   await requireAuthenticatedUser();
   const picks = await evaluateUniverse(strategyId);
   const qualified = picks.filter((pick) => pick.score >= 60);
-  return (qualified.length > 0 ? qualified : picks)
+  const finalists = (qualified.length > 0 ? qualified : picks)
     .sort((left, right) => (right.strategyScore ?? right.score) - (left.strategyScore ?? left.score))
     .slice(0, Math.max(1, Math.min(limit, 100)));
+  // Overlays externos SOLO sobre finalistas (máx 20); [] si el módulo aún no existe.
+  return attachSignalOverlays(finalists);
 }
 
 export async function generateProPicksForStrategy(strategyId: string, limit = 10): Promise<ProPick[]> {
@@ -297,5 +471,7 @@ export async function generateEnhancedProPicks(filters: EnhancedProPicksFilters 
     if (sortBy === 'score') return pick.strategyScore ?? pick.score;
     return pick.categoryScores[sortBy];
   };
-  return picks.sort((left, right) => scoreFor(right) - scoreFor(left)).slice(0, Math.max(1, Math.min(limit, 100)));
+  const finalists = picks.sort((left, right) => scoreFor(right) - scoreFor(left)).slice(0, Math.max(1, Math.min(limit, 100)));
+  // Overlays externos SOLO sobre finalistas (máx 20); [] si el módulo aún no existe.
+  return attachSignalOverlays(finalists);
 }

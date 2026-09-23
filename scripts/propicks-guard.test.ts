@@ -15,10 +15,17 @@ import {
     validateReasonsTraceable,
     validateNumbersTraceable,
     validateScoreFormula,
+    validateOverlays,
     PROPICKS_SCORING_WEIGHTS,
     type PickLike,
+    type OverlayLike,
 // @ts-expect-error TS5097: la extensión .ts explícita la exige node --experimental-strip-types en runtime
 } from '../lib/utils/propicksValidation.ts';
+import {
+    PROPICKS_STRATEGIES,
+    selectRebalancedPicks,
+// @ts-expect-error TS5097: la extensión .ts explícita la exige node --experimental-strip-types en runtime
+} from '../lib/utils/proPicksStrategies.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -62,6 +69,24 @@ function validPick(): PickLike {
             debtLiquidity: 65,
         },
     };
+}
+
+/** Overlay válido: metric volcada en facts como `ov_<metric>` y detail con el valor. */
+function validOverlay(): OverlayLike {
+    return {
+        metric: 'analystMomentum',
+        value: 12.5,
+        detail: 'Momentum de analistas +12.5 (revisiones al alza)',
+    };
+}
+
+/** Pick con overlay trazable (R5 en verde). */
+function validPickWithOverlay(): PickLike {
+    const pick = validPick();
+    const overlay = validOverlay();
+    pick.facts = { ...pick.facts, [`ov_${overlay.metric}`]: overlay.value };
+    pick.overlays = [overlay];
+    return pick;
 }
 
 describe('propicks-guard', () => {
@@ -160,5 +185,187 @@ describe('propicks-guard', () => {
         assert.ok(tabs.includes('Reintentar'));
         assert.ok(section.includes('Reintentar'));
         assert.ok(!content.includes('Regenerar Picks') || content.includes('Reintentar'));
+    });
+});
+
+describe('propicks R5 (overlays)', () => {
+    it('overlay trazable pasa R5 y validatePicks', () => {
+        const pick = validPickWithOverlay();
+        assert.deepEqual(validateOverlays(pick), []);
+        assert.deepEqual(validatePicks([pick], NOW), []);
+    });
+
+    it('R5: rechaza overlay sin volcado en facts (ov_<metric>)', () => {
+        const pick = validPick();
+        pick.overlays = [validOverlay()]; // sin facts.ov_analystMomentum
+        const issues = validateOverlays(pick);
+        assert.equal(issues.length, 1);
+        assert.equal(issues[0].rule, 'R5-overlays');
+        assert.ok(issues[0].message.includes('ov_analystMomentum'));
+    });
+
+    it('R5: rechaza overlay cuyo valor difiere de facts (±0.51)', () => {
+        const pick = validPickWithOverlay();
+        assert.ok(pick.overlays);
+        pick.overlays[0].value = 99; // facts dice 12.5
+        const issues = validateOverlays(pick);
+        assert.ok(issues.some((i) => i.rule === 'R5-overlays'));
+    });
+
+    it('R5: rechaza overlay cuyo detail no muestra el valor', () => {
+        const pick = validPickWithOverlay();
+        assert.ok(pick.overlays);
+        pick.overlays[0].detail = 'Momentum de analistas al alza (sin cifra)';
+        const issues = validateOverlays(pick);
+        assert.ok(issues.some((i) => i.rule === 'R5-overlays' && i.message.includes('detail')));
+    });
+
+    it('R5: rechaza overlay sin metric', () => {
+        const pick = validPickWithOverlay();
+        pick.overlays = [{ metric: '', value: 1, detail: 'valor 1' }];
+        const issues = validateOverlays(pick);
+        assert.ok(issues.some((i) => i.rule === 'R5-overlays'));
+    });
+
+    it('R5: acepta métricas que ya traen el prefijo ov_ (sin duplicar)', () => {
+        const pick = validPick();
+        pick.facts = { ...pick.facts, ov_revisiones: 3.2 };
+        pick.overlays = [{ metric: 'ov_revisiones', value: 3.2, detail: 'Sorpresa media +3.2% en 2 trimestres (valor 3.2)' }];
+        assert.deepEqual(validateOverlays(pick), []);
+        assert.deepEqual(validatePicks([pick], NOW), []);
+    });
+});
+
+describe('propicks estrategias (value, momentum, defensiva)', () => {
+    it('expone las 4 estrategias con pesos que suman 1.0', () => {
+        const ids = PROPICKS_STRATEGIES.map((s) => s.id).sort();
+        assert.deepEqual(ids, ['adaptive', 'defensiva', 'momentum', 'value']);
+        for (const strategy of PROPICKS_STRATEGIES) {
+            const total = Object.values(strategy.categoryWeights).reduce((a, b) => a + b, 0);
+            assert.ok(Math.abs(total - 1) < 1e-9, `${strategy.id}: suma = ${total}`);
+        }
+    });
+
+    it('value prima valor y rentabilidad (minScore 60)', () => {
+        const strategy = PROPICKS_STRATEGIES.find((s) => s.id === 'value');
+        assert.ok(strategy);
+        assert.deepEqual(strategy.categoryWeights, {
+            value: 0.35,
+            growth: 0.05,
+            profitability: 0.25,
+            cashFlow: 0.15,
+            momentum: 0.05,
+            debtLiquidity: 0.15,
+        });
+        assert.equal(strategy.filters.minScore, 60);
+    });
+
+    it('momentum prima impulso y crecimiento (minScore 65)', () => {
+        const strategy = PROPICKS_STRATEGIES.find((s) => s.id === 'momentum');
+        assert.ok(strategy);
+        assert.deepEqual(strategy.categoryWeights, {
+            value: 0.10,
+            growth: 0.25,
+            profitability: 0.15,
+            cashFlow: 0.10,
+            momentum: 0.40,
+            debtLiquidity: 0,
+        });
+        assert.equal(strategy.filters.minScore, 65);
+    });
+
+    it('defensiva prima rentabilidad y balance (minScore 65)', () => {
+        const strategy = PROPICKS_STRATEGIES.find((s) => s.id === 'defensiva');
+        assert.ok(strategy);
+        assert.deepEqual(strategy.categoryWeights, {
+            value: 0.15,
+            growth: 0.05,
+            profitability: 0.30,
+            cashFlow: 0.20,
+            momentum: 0.05,
+            debtLiquidity: 0.25,
+        });
+        assert.equal(strategy.filters.minScore, 65);
+    });
+});
+
+describe('propicks turnover cap (fixture determinista, sin red)', () => {
+    const asOf = '2026-09-21T12:00:00.000Z';
+    /** 35 candidatos con strategyScore 100..66 (rank S01 > S02 > … > S35). */
+    const mkCandidates = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({
+            symbol: `S${String(i + 1).padStart(2, '0')}`,
+            score: 100 - i,
+            strategyScore: 100 - i,
+            asOf,
+        }));
+
+    it('top-20, mantiene incumbentes del top-30 y topa altas en 8', () => {
+        const candidates = mkCandidates(35);
+        const previous = ['S01', 'S02', 'S25', 'S26', 'S27', 'S28', 'S29', 'S30', 'S31', 'S32'];
+        const out = selectRebalancedPicks(candidates, previous, asOf);
+        const symbols = out.map((p) => p.symbol);
+        // Incumbentes dentro del top-30 se mantienen…
+        for (const kept of ['S01', 'S02', 'S25', 'S26', 'S27', 'S28', 'S29', 'S30']) {
+            assert.ok(symbols.includes(kept), `${kept} debía mantenerse`);
+        }
+        // …los fuera del top-30 rotan.
+        assert.ok(!symbols.includes('S31'), 'S31 (rank 31) debía rotar');
+        assert.ok(!symbols.includes('S32'), 'S32 (rank 32) debía rotar');
+        // Tope: 8 mantenidos + 8 altas nuevas = 16 (S03-S10).
+        assert.deepEqual(symbols, [
+            'S01', 'S02', 'S03', 'S04', 'S05', 'S06', 'S07', 'S08', 'S09', 'S10',
+            'S25', 'S26', 'S27', 'S28', 'S29', 'S30',
+        ]);
+        assert.ok(out.length <= 20, `máx 20, hay ${out.length}`);
+        const fresh = symbols.filter((s) => !previous.includes(s));
+        assert.ok(fresh.length <= 8, `máx 8 altas nuevas, hay ${fresh.length}`);
+        // Ordenados por strategyScore descendente y con asOf del rebalanceo.
+        const scores = out.map((p) => p.strategyScore ?? p.score);
+        assert.deepEqual([...scores].sort((a, b) => b - a), scores);
+        assert.ok(out.every((p) => p.asOf === asOf));
+    });
+
+    it('bootstrap sin previous devuelve el top-20', () => {
+        const out = selectRebalancedPicks(mkCandidates(35), [], asOf);
+        assert.equal(out.length, 20);
+        assert.deepEqual(
+            out.map((p) => p.symbol),
+            mkCandidates(20).map((p) => p.symbol),
+        );
+    });
+
+    it('el action reexporta la selección con tope de rotación', () => {
+        const actionSrc = readSource('lib/actions/proPicks.actions.ts');
+        assert.ok(actionSrc.includes('selectRebalancedPicks'), 'proPicks.actions.ts debe reexportar selectRebalancedPicks');
+        const stratSrc = readSource('lib/utils/proPicksStrategies.ts');
+        for (const token of ['selectRebalancedPicks', 'previousSymbols']) {
+            assert.ok(stratSrc.includes(token), `proPicksStrategies.ts debe contener ${token}`);
+        }
+    });
+});
+
+describe('propicks overlays en el action (contrato fuente)', () => {
+    it('integra señales externas solo sobre finalistas con fallback', () => {
+        const src = readSource('lib/actions/proPicks.actions.ts');
+        for (const token of [
+            'SignalOverlay',
+            '@/lib/utils/propicksSignals',
+            'getSignalOverlays',
+            'Promise.allSettled',
+            'attachSignalOverlays',
+            'ov_',
+            'overlayConfidenceDelta',
+            'overlayFactsKey',
+        ]) {
+            assert.ok(src.includes(token), `proPicks.actions.ts debe contener ${token}`);
+        }
+    });
+
+    it('normaliza por sector (z-score winsorizado) sin tocar los scores de R4', () => {
+        const src = readSource('lib/actions/proPicks.actions.ts');
+        for (const token of ['normalizeSectorCategoryScores', 'z-score', 'winsoriz', 'R4']) {
+            assert.ok(src.includes(token), `proPicks.actions.ts debe contener ${token}`);
+        }
     });
 });
