@@ -47,10 +47,6 @@ const envSchema = z.object({
   OPENCODE_GO_BASE_URL: z.string().url().default('https://opencode.ai/zen/go/v1'),
   OPENCODE_GO_MODEL: z.string().default('deepseek-v4-flash'),
 
-  // Email - Opcional
-  NODEMAILER_EMAIL: z.string().email().optional(),
-  NODEMAILER_PASSWORD: z.string().optional(),
-
   // Vercel
   VERCEL_URL: z.string().optional(),
 });

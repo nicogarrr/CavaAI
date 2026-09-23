@@ -67,8 +67,13 @@ externas de datos/LLM, como hoy.
    cp .env.production.example .env.production   # rellena los secretos
    docker compose -f docker-compose.prod.yml up -d --build
    ```
-7. **Apuntar Vercel al backend**: en el proyecto de Vercel, variable
-   `FMP_BACKEND_URL=https://cavaai-api.duckdns.org` y redeploy.
+7. **Apuntar Vercel al backend**: en el proyecto de Vercel define estas
+   variables y redeploy (sin ellas el frontend prod no autentica ni firma
+   contra el backend):
+   `FMP_BACKEND_URL=https://cavaai-api.duckdns.org`,
+   `RESEARCH_AUTH_SECRET` (el mismo valor que en la VM),
+   `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL=https://<tu-app>.vercel.app`,
+   `MONGODB_URI` (Atlas M0), `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`.
 8. **Backups**: `crontab -e` y anade
    `17 4 * * * cd /home/ubuntu/CavaAI && RCLONE_REMOTE=r2:cavaai-backups ./scripts/backup.sh >> /var/log/cavaai-backup.log 2>&1`
    (configura rclone una vez con las claves R2; ver abajo).

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cavaai-data-engine"
-version = "0.1.0"
+version = "1.0.0"
 description = "FastAPI data engine for CavaAI"
 requires-python = ">=3.11"
 dependencies = [

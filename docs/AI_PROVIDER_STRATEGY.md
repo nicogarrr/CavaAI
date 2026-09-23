@@ -5,7 +5,7 @@ Date: 2026-08-16
 ## Decision
 
 CavaAI uses **OpenCode Go as its only LLM provider**. All backend research
-workflows and frontend Inngest jobs use the same OpenAI-compatible API:
+workflows use the same OpenAI-compatible API:
 
 ```text
 https://opencode.ai/zen/go/v1/chat/completions

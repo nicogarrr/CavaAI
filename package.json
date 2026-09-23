@@ -1,6 +1,6 @@
 {
   "name": "cavaai",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -35,13 +35,11 @@
     "cmdk": "^1.1.1",
     "country-data-list": "^1.5.5",
     "dotenv": "^17.2.3",
-    "inngest": "^4.11.0",
     "lucide-react": "^0.544.0",
     "mongodb": "^7.2.0",
     "mongoose": "^9.7.4",
     "next": "^16.2.10",
     "next-themes": "^0.4.6",
-    "nodemailer": "^9.0.3",
     "openapi-fetch": "^0.17.0",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^5.4.449",
@@ -63,7 +61,6 @@
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
-    "@types/nodemailer": "^7.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-select-country-list": "^2.2.3",
@@ -80,5 +77,6 @@
       "postcss": "8.5.26"
     },
     "postcss": "8.5.26"
-  }
+  },
+  "description": "CavaAI — Research OS de inversión personal (Next.js + FastAPI)"
 }

@@ -105,7 +105,8 @@ services:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:?Define MINIO_ROOT_USER en .env.production}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?Define MINIO_ROOT_PASSWORD en .env.production}
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # La imagen minio/minio no incluye `mc`: sonda HTTP al endpoint live (200 sin auth).
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 10

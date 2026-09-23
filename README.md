@@ -1,8 +1,7 @@
 # CavaAI — Research OS de inversión personal
 
 ![CI](https://github.com/nicogarrr/CavaAI/actions/workflows/ci.yml/badge.svg)
-![License](https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey)
-![Stack](https://img.shields.io/badge/Next.js_16-%2B-FastAPI-blue)
+![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 **CavaAI es tu memoria de inversor a largo plazo.** No es un terminal más ni una fábrica de DCF: es donde vive por qué sigues o posees cada empresa, qué evidencias sostienen tu tesis, qué la contradice y qué ha cambiado con el tiempo.
 
@@ -139,7 +138,7 @@ data-engine/
   app/valuation/     motores + guardia point-in-time
   app/llm/           factory OpenCode Go + cliente Jev
   alembic/versions/  migraciones 0001→0029 (lineales, con downgrade)
-  tests/             923 tests herméticos · evals/  evals financieras
+  tests/             978 tests herméticos · evals/  evals financieras
 e2e/                 specs Playwright del flujo inversor
 docs/                PRODUCT_VISION, runbooks, privacidad
 ```

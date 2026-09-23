@@ -79,13 +79,10 @@
   refresh de market/noticias/RSS/SEC/IR, consolidación de memoria, revisión de
   tesis, investigación diaria y escaneo de contradicciones. Se arranca en el
   lifespan de FastAPI solo si `WORKERS_ENABLED=true` (desactivado en tests).
-- **Secundario — frontend**: `lib/inngest/*` (Inngest) gestiona **emails**
-  (bienvenida, resumen diario de noticias). División documentada: los datos y
-  el research corren en el scheduler del backend; Inngest queda limitado a
-  comunicaciones por email.
-- **Canal de alertas**: Telegram es el canal primario de notificaciones
+- **Canal de alertas**: Telegram es el ÚNICO canal de notificaciones
   (`TELEGRAM_ENABLED`, `notification_service`), usado por los flujos del
-  backend.
+  backend. El stack de email del frontend (Inngest + nodemailer) se eliminó:
+  los emails están desactivados por decisión del usuario.
 
 ## 5b. Grafo de ciclo de vida de tesis (etapa 6, límite final)
 
