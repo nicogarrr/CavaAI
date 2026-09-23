@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
 import {
   ArrowLeft,
   Database,
@@ -365,7 +364,22 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     }
     throw error;
   }
-  if (!snapshot) notFound();
+  if (!snapshot) {
+    // Estado honesto en vez de 404 pelado: el backend responde 404 cuando
+    // la empresa aún no tiene research; el buscador lleva aquí siempre.
+    return (
+      <div className="mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col items-center justify-center gap-4 p-6 text-center">
+        <FileText className="h-10 w-10 text-gray-600" />
+        <h1 className="text-2xl font-bold text-gray-100">Aún no hay research de {ticker}</h1>
+        <p className="max-w-xl text-sm leading-6 text-gray-400">
+          Esta empresa todavía no tiene research generado. Puedes lanzarlo ahora: el motor
+          recopila evidencia con fuentes trazables y construye la tesis paso a paso
+          (puede tardar unos minutos).
+        </p>
+        <ThesisGenerateButton ticker={ticker} />
+      </div>
+    );
+  }
 
   const company = snapshot.company;
   // Estado "seguido" real del usuario para el botón seguir/dejar de seguir.
