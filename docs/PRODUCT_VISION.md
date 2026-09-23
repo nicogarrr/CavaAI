@@ -115,14 +115,9 @@ The long-term engine is therefore the quantitative spine of the thesis, not a se
 
 ## LLM Routing
 
-Use different model tiers by task:
+CavaAI uses a single LLM provider: OpenCode Go (see docs/AI_PROVIDER_STRATEGY.md). The default model is deepseek-v4-flash; task-level model overrides go through OPENCODE_GO_MODEL or the task override map and never select another provider. There is no OpenRouter/OpenAI/Anthropic/Gemini adapter in the application configuration.
 
-- Extraction and classification: Qwen Flash
-- Main financial synthesis: Qwen3.7 Plus
-- Agentic red team: GLM 5.2
-- Premium escalation: disabled unless a financial evaluation gate justifies the cost
-
-The backend connects an OpenRouter-first routing policy to productive chat and KPI extraction. Company chat keeps the deterministic context contract, then performs source-aware JSON synthesis, verifies citation IDs, calculates confidence / insufficient-data state and falls back safely when validation fails. Other provider adapters require explicit selection and complete task-level model overrides.
+Company chat keeps the deterministic context contract, then performs source-aware JSON synthesis, verifies citation IDs, calculates confidence / insufficient-data state and falls back safely when validation fails.
 
 Langfuse records workflow, provider, model, prompt version, retrieval set, tools, tokens and cache tokens, estimated cost, latency, citations, JSON validity, fallback, escalation and evaluation score. Native Microsoft Agent Framework workflows are reserved for Deep Research, Earnings Review, Thesis Review and Red Team; ingestion, SQL, metrics and DCF remain deterministic services.
 
@@ -218,6 +213,15 @@ CavaAI is working when the user can add a company, upload filings/results/letter
 1. NODEMAILER (App Password de Gmail) para activar emails (welcome + resumen diario).
 2. IBKR: IBKR_FLEX_TOKEN + IBKR_FLEX_QUERY_ID para el import real de cartera (UI y pipeline listos).
 3. Rotar password de la cuenta de usuario (expuesto en logs de dev) y revocar token Vercel temporal.
-4. Hosting cloud del FastAPI cuando se quiera scheduler 24/7 sin depender del PC (render.yaml listo; free tier hiberna).
+4. Hosting cloud del FastAPI: elegida la opcion Oracle Cloud Always Free (guia en docs/oracle-setup.md); despliegue en curso. render.yaml sigue como alternativa (free tier hiberna).
 5. E2E playwright en CI (specs existentes; ampliar cobertura de finanzas).
 6. Legal/privacidad (terminos, privacidad) y backup drills (Postgres + Mongo).
+
+## Cierre del programa de mejora (2026-09-23)
+
+Desde la instantanea de 2026-08-23 se han mergeado 145 PRs de endurecimiento: tests de contrato sobre los invariantes de honestidad (valoracion, insiders, corporate actions, import IBKR, terminal financiero, fiscalidad, refresh de mercado), correccion de los bugs reales que esos tests destaparon (matematicas de drift, FX a par en fiscalidad, pesos cero silenciosos, fechas fabricadas en import IBKR, valoraciones absurdas con WACC <= g) y batching de consultas N+1 en refresh de mercado, insiders, SEC e IBKR. Auditorias completas y limpias en todos los servicios principales.
+
+Pendiente conocido:
+1. Despliegue del backend en Oracle Always Free: en curso, bloqueado por capacidad A1 en la home region (reintento horario). El barrido visual de produccion (desktop + movil 390px) queda pendiente hasta que el despliegue este vivo; es el unico item abierto del programa.
+2. Regla de los dos meses (wash sale, IRPF): decision de producto pendiente del propietario; no implementada a proposito hasta que la confirme.
+3. Credenciales pendientes del propietario (NODEMAILER, IBKR Flex) sin cambios.
