@@ -13,9 +13,19 @@ import ipaddress
 import socket
 from collections.abc import Iterable
 from dataclasses import dataclass
-from httpcore._backends.anyio import AnyIOBackend
-from httpcore._backends.base import AsyncNetworkStream
-from httpcore._backends.sync import SyncBackend
+try:
+    # API privada de httpcore (no hay equivalente publico en httpx para
+    # conectar a una IP fijada manteniendo Host/SNI). Si un upgrade la mueve,
+    # falla cerrado y en voz alta en vez de romperse en silencio.
+    from httpcore._backends.anyio import AnyIOBackend
+    from httpcore._backends.base import AsyncNetworkStream
+    from httpcore._backends.sync import SyncBackend
+except ImportError as exc:  # pragma: no cover - defensa ante upgrades
+    raise RuntimeError(
+        "httpcore internal backend modules moved; public_fetch IP pinning "
+        "requires the httpcore 1.x private backends. Pin httpcore or update "
+        "the pinning code."
+    ) from exc
 from typing import Any
 from urllib.parse import urljoin, urlparse, urlunparse
 
