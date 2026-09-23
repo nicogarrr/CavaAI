@@ -16,6 +16,7 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
     const triggerRef = useRef<HTMLButtonElement>(null);
     const drawerRef = useRef<HTMLDivElement>(null);
     const closeButtonRef = useRef<HTMLButtonElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
     void initialStocks;
 
     // Cerrar con Escape y bloquear el scroll del body mientras está abierto.
@@ -25,7 +26,32 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
         if (!open) return;
         const trigger = triggerRef.current;
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setOpen(false);
+            if (e.key === 'Escape') {
+                setOpen(false);
+                return;
+            }
+            if (e.key !== 'Tab') return;
+            const dialog = dialogRef.current;
+            if (!dialog) return;
+            const focusable = Array.from(
+                dialog.querySelectorAll<HTMLElement>(
+                    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                ),
+            );
+            if (focusable.length === 0) {
+                e.preventDefault();
+                dialog.focus();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
         };
         document.addEventListener('keydown', onKey);
         closeButtonRef.current?.focus();
@@ -91,6 +117,8 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                 aplastaba el drawer sobre el contenido (capas solapadas). */}
             {open && createPortal(
                 <div
+                    ref={dialogRef}
+                    tabIndex={-1}
                     className="fixed inset-0 z-[60] sm:hidden"
                     role="dialog"
                     aria-modal="true"
@@ -99,7 +127,7 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                     <h2 id="mobile-nav-title" className="sr-only">Menú de navegación</h2>
                     <button
                         type="button"
-                        aria-label="Cerrar menú de navegación"
+                        aria-label="Cerrar menú por fondo"
                         onClick={() => setOpen(false)}
                         tabIndex={-1}
                         className="absolute inset-0 cursor-default bg-black/60 backdrop-blur-sm"

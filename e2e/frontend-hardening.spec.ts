@@ -44,6 +44,8 @@ test.describe("hardening frontend estático", () => {
 
     expect(mobileNav).toContain("closeButtonRef");
     expect(mobileNav).toContain("aria-labelledby=\"mobile-nav-title\"");
+    expect(mobileNav).toContain('aria-label="Cerrar menú por fondo"');
+    expect(mobileNav).toContain("querySelectorAll<HTMLElement>");
     expect(searchCommand).toContain("searchError");
     expect(searchCommand).toContain("No se pudo completar la búsqueda");
     expect(searchCommand).not.toMatch(/catch \(error: any\)[\s\S]*?setStocks\(\[\]\);[\s\S]*?\n\s*}/);
