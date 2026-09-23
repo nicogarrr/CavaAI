@@ -1,5 +1,5 @@
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 
 from minio import Minio
@@ -30,9 +30,38 @@ class DocumentStore:
         content: bytes,
         tenant_id: int | None = None,
     ) -> str:
-        directory = self._directory(ticker, category, tenant_id)
+        self._validate_local_component(ticker)
+        self._validate_local_component(category)
+        self._validate_local_component(filename)
+
+        root = self.local_root.resolve()
+        # Reconstruye la ruta SOLO con componentes que pasan una whitelist
+        # estricta (re.fullmatch): es el guard que CodeQL reconoce como
+        # sanitizador de py/path-injection. Los chequeos sobre los valores
+        # crudos (arriba) no bastan: el path se deriva de _safe_*.
+        parts = self._directory(ticker, category, tenant_id).relative_to(
+            self.local_root
+        ).parts
+        directory = self.local_root
+        for part in parts:
+            self._validate_path_component(part)
+            directory = directory / part
+        filename_safe = self._safe_filename(filename)
+        self._validate_path_component(filename_safe)
+        # Validate every existing parent before mkdir: a pre-existing symlink
+        # must be rejected before it can cause an out-of-root directory write.
+        candidate = root
+        for part in parts:
+            candidate = candidate / part
+            if candidate.is_symlink():
+                raise ValueError("Unsafe local document storage path")
+        path = (directory / filename_safe).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError:
+            raise ValueError("Unsafe local document storage path") from None
         directory.mkdir(parents=True, exist_ok=True)
-        path = directory / self._safe_filename(filename)
+
         path.write_bytes(content)
         return str(path)
 
@@ -88,6 +117,30 @@ class DocumentStore:
             / self._safe_path_part(ticker)
             / self._safe_path_part(category)
         )
+
+    _SAFE_COMPONENT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}")
+
+    @classmethod
+    def _validate_path_component(cls, value: str) -> None:
+        # Guard de whitelist reconocible por CodeQL: fullmatch de caracteres
+        # seguros y rechazo explicito de "..".
+        if (
+            not cls._SAFE_COMPONENT_RE.fullmatch(value)
+            or value in {".", ".."}
+            or ".." in value
+        ):
+            raise ValueError("Unsafe local document storage path")
+
+    @staticmethod
+    def _validate_local_component(value: str) -> None:
+        paths = (PurePosixPath(value), PureWindowsPath(value))
+        if (
+            any(path.is_absolute() for path in paths)
+            or value in {".", ".."}
+            or any(part == ".." for path in paths for part in path.parts)
+            or any(separator in value for separator in ("/", "\\"))
+        ):
+            raise ValueError("Unsafe local document storage path")
 
     def _safe_path_part(self, value: str) -> str:
         cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", value.strip())

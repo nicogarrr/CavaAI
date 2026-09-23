@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, with_loader_criteria
@@ -121,6 +121,11 @@ def get_db(
                     if tenant is None:
                         raise
                 db.refresh(tenant)
+            if tenant.status != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tenant access is not active",
+                )
             db.info["tenant_id"] = tenant.id
             db.info["user_id"] = principal.user_id
         yield db

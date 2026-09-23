@@ -6,12 +6,14 @@ leaking URLs or bodies, and every attempt is persisted on the alert.
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models.entities import Base, Company, ResearchAlert
+from app.services import notification_service
 from app.services.notification_service import NotificationService
 
 
@@ -62,6 +64,78 @@ def test_telegram_not_configured_without_credentials(db):
     deliveries = NotificationService().dispatch(db, alert)
     assert deliveries["telegram"]["status"] == "not_configured"
     assert "TELEGRAM_ENABLED" in deliveries["telegram"]["error"]
+
+
+def test_configured_telegram_failure_does_not_leak_token_or_url(monkeypatch, db):
+    token = "telegram-secret-token"
+    endpoint = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    class _FailingClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, url, json):
+            raise RuntimeError(f"request to {url} failed for {json}")
+
+    monkeypatch.setattr(notification_service.httpx, "Client", _FailingClient)
+    monkeypatch.setattr(
+        notification_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            telegram_enabled=True,
+            telegram_bot_token=token,
+            telegram_chat_id="12345",
+            telegram_api_base_url="https://api.telegram.org",
+            telegram_timeout_seconds=10,
+        ),
+    )
+
+    deliveries = NotificationService().dispatch(db, _alert(db, ["telegram"]))
+
+    assert deliveries["telegram"]["status"] == "failed"
+    error = deliveries["telegram"]["error"]
+    assert "RuntimeError" in error
+    assert token not in error
+    assert endpoint not in error
+
+
+def test_webhook_failure_does_not_persist_url_or_body(monkeypatch, db):
+    endpoint = "https://hooks.example/secret?token=private"
+
+    class _FailingClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, url, json):
+            raise RuntimeError(f"request {url} failed with {json}")
+
+    monkeypatch.setattr(notification_service.httpx, "Client", _FailingClient)
+    monkeypatch.setattr(
+        notification_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            alert_email_webhook_url=endpoint,
+            alert_push_webhook_url=endpoint,
+        ),
+    )
+
+    deliveries = NotificationService().dispatch(db, _alert(db, ["email", "push"]))
+    for channel in ("email", "push"):
+        assert deliveries[channel]["status"] == "failed"
+        assert deliveries[channel]["error"] == "RuntimeError"
+        assert endpoint not in deliveries[channel]["error"]
 
 
 def test_telegram_text_format_and_jev_line():

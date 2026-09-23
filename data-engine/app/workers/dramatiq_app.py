@@ -960,7 +960,7 @@ if __name__ == "__main__":
     print("Dramatiq actors registered. Run with: dramatiq app.workers.dramatiq_app")
 
 
-@dramatiq.actor(max_retries=1, min_backoff=15_000)
+@dramatiq.actor(max_retries=2, min_backoff=15_000)
 def generate_thesis_job(run_id: int) -> None:
     """Execute one queued async thesis generation job (durable envelope)."""
     from app.services.thesis_job_service import run_thesis_job

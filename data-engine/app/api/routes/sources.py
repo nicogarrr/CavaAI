@@ -338,7 +338,7 @@ async def ingest_document_file(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Document ingestion failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Document ingestion failed") from exc
 
 
 @router.post("/documents/ingest-url")
@@ -354,7 +354,7 @@ def ingest_document_url(payload: UrlIngestRequest, db: Session = Depends(get_db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"URL ingestion failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="URL ingestion failed") from exc
 
 
 @router.get("/audits")
