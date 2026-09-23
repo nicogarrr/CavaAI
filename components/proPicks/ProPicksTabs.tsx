@@ -65,7 +65,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
 
     return (
         <Tabs defaultValue="picks" className="mt-6 w-full min-w-0">
-            <TabsList className="grid w-full grid-cols-4 border border-gray-700 bg-gray-800 text-gray-400 sm:inline-flex sm:w-auto">
+            <TabsList className="grid w-full grid-cols-4 gap-1 border border-gray-700 bg-gray-800 text-gray-400 sm:inline-flex sm:w-auto">
                 <TabsTrigger value="picks" className="min-h-[44px] data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Picks IA
                 </TabsTrigger>

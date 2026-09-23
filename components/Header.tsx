@@ -26,7 +26,7 @@ const Header = ({ user, initialStocks }: { user: User, initialStocks: StockWithW
 
 
                 <div className="order-2 ml-auto flex items-center sm:order-3 sm:ml-0">
-                    <UserDropdown user={user} initialStocks={initialStocks} />
+                    <UserDropdown user={user} />
                 </div>
             </div>
         </header>

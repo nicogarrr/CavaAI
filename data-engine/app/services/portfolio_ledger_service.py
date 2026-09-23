@@ -76,7 +76,9 @@ class PortfolioLedgerService:
         self.rebuild_position(db, company.id)
         return row
 
-    def rebuild_position(self, db: Session, company_id: int) -> Position | None:
+    def rebuild_position(
+        self, db: Session, company_id: int, *, as_of: date | None = None
+    ) -> Position | None:
         transactions = list(
             db.scalars(
                 select(Transaction)
@@ -102,12 +104,16 @@ class PortfolioLedgerService:
         realized_base = Decimal("0")
         last_price = Decimal("0")
         currency = "USD"
-        as_of = date.today()
+        last_transaction_date = max(
+            (transaction.trade_date for transaction in transactions), default=None
+        )
+        valuation_date = as_of or last_transaction_date
+        if valuation_date is None:
+            return None
 
         for transaction in transactions:
             last_price = transaction.price
             currency = transaction.currency
-            as_of = max(as_of, transaction.trade_date)
             if transaction.action == "buy":
                 quantity += transaction.quantity
                 native_purchase = transaction.quantity * transaction.price + transaction.fees
@@ -170,7 +176,7 @@ class PortfolioLedgerService:
             db,
             quote_currency=currency,
             base_currency=base_currency,
-            as_of=as_of,
+            as_of=valuation_date,
         )
         position.portfolio_id = portfolio.id
         position.base_currency = base_currency
@@ -188,7 +194,7 @@ class PortfolioLedgerService:
         position.realized_pnl_base = realized_base if base_cost_complete else None
         position.fx_rate = current_rate
         position.source = "postgres_ledger"
-        position.as_of = as_of
+        position.as_of = valuation_date
         db.flush()
         return position
 
