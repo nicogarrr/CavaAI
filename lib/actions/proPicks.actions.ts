@@ -12,7 +12,7 @@ import {
 import type { SignalOverlay } from '@/lib/utils/propicksSignals';
 
 /** Selección con tope de rotación (núcleo puro en proPicksStrategies, reexportada aquí para el pipeline). */
-export { selectRebalancedPicks, type RankedCandidate } from '@/lib/utils/proPicksStrategies';
+import { selectRebalancedPicks, type RankedCandidate } from '@/lib/utils/proPicksStrategies';
 
 export interface ConfidenceReason {
   /** Texto mostrado en UI. Siempre incluye `value` para que sea verificable. */
@@ -119,7 +119,7 @@ function overlaySentiment(overlay: SignalOverlay): 1 | -1 | 0 {
  * Bonus de confianza por overlays externos: +2 por overlay positivo,
  * -3 por overlay negativo, con tope total de ±6. Neutros o sin dirección no suman.
  */
-export function overlayConfidenceDelta(overlays: readonly SignalOverlay[] | undefined | null): number {
+function overlayConfidenceDelta(overlays: readonly SignalOverlay[] | undefined | null): number {
   let delta = 0;
   for (const overlay of overlays ?? []) {
     const sentiment = overlaySentiment(overlay);
@@ -154,7 +154,7 @@ async function loadSignalOverlaysModule(): Promise<SignalOverlaysModule | null> 
  * la métrica ya lo trae (el módulo de señales emite `ov_revisiones`,
  * `ov_insider`, `ov_shortInterest`, `ov_vix`). Misma normalización que R5.
  */
-export function overlayFactsKey(metric: string): string {
+function overlayFactsKey(metric: string): string {
   return metric.startsWith('ov_') ? metric : `ov_${metric}`;
 }
 
@@ -223,7 +223,7 @@ const SECTOR_NORM_CATEGORIES = ['value', 'growth', 'profitability', 'cashFlow', 
  * alimentan R4 (score = Σ categoría × peso canónico ±1); lo normalizado solo
  * sirve para comparar/ordenar entre sectores sin sesgo de nivel.
  */
-export function normalizeSectorCategoryScores(picks: readonly ProPick[]): Map<string, SectorCategoryScores> {
+function normalizeSectorCategoryScores(picks: readonly ProPick[]): Map<string, SectorCategoryScores> {
   const bySector = new Map<string, ProPick[]>();
   for (const pick of picks) {
     const sector = pick.sector ?? 'Unknown';
