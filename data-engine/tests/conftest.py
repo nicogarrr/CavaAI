@@ -32,24 +32,57 @@ _TEST_ISOLATED_ENV_VARS = (
     "FINNHUB_API_KEY",
     "FRED_API_KEY",
     "OPENCODE_GO_API_KEY",
+    "TELEGRAM_ENABLED",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
+    "TELEGRAM_API_BASE_URL",
+    "TELEGRAM_TIMEOUT_SECONDS",
+    "TELEGRAM_APPROVAL_ENABLED",
+    "TELEGRAM_APPROVAL_STATE_PATH",
+    "TELEGRAM_APPROVAL_POLL_INTERVAL_SECONDS",
+    "INSIDER_ALERTS_ENABLED",
+    "ALERT_EMAIL_WEBHOOK_URL",
+    "ALERT_PUSH_WEBHOOK_URL",
 )
+
+# Pydantic Settings still reads .env when the environment variable is absent.
+# Explicit safe values therefore win over a developer's local dotenv file.
+_TEST_ISOLATED_ENV_DEFAULTS = {
+    "TELEGRAM_ENABLED": "false",
+    "TELEGRAM_BOT_TOKEN": "",
+    "TELEGRAM_CHAT_ID": "",
+    "TELEGRAM_API_BASE_URL": "https://api.telegram.org",
+    "TELEGRAM_TIMEOUT_SECONDS": "10",
+    "TELEGRAM_APPROVAL_ENABLED": "false",
+    "TELEGRAM_APPROVAL_STATE_PATH": "./storage/test-telegram-approval-offset",
+    "TELEGRAM_APPROVAL_POLL_INTERVAL_SECONDS": "15",
+    "INSIDER_ALERTS_ENABLED": "false",
+    "ALERT_EMAIL_WEBHOOK_URL": "",
+    "ALERT_PUSH_WEBHOOK_URL": "",
+}
+os.environ.update(_TEST_ISOLATED_ENV_DEFAULTS)
 
 
 @pytest.fixture(autouse=True)
 def isolate_local_dotenv():
-    """Scrub dotenv-injected secrets for every test, regardless of import order."""
+    """Remove local delivery config from every test, regardless of import order."""
     saved = {key: os.environ.pop(key) for key in _TEST_ISOLATED_ENV_VARS if key in os.environ}
-    yield
-    os.environ.update(saved)
+    os.environ.update(_TEST_ISOLATED_ENV_DEFAULTS)
+    try:
+        yield
+    finally:
+        for key in _TEST_ISOLATED_ENV_VARS:
+            os.environ.pop(key, None)
+        os.environ.update(saved)
 
 
 @pytest.fixture(autouse=True)
 def reset_settings_cache():
-    """Prevent environment/cache leakage between auth and service-level tests."""
+    """Clear cached settings after isolation, not just before the test starts."""
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        get_settings.cache_clear()

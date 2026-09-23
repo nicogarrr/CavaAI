@@ -60,14 +60,18 @@ class OpenAICompatibleProvider(LLMProvider):
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 30.0,
         max_retries: int = 2,
+        max_output_tokens: int = 16_000,
     ) -> None:
         if not api_key:
             raise ValueError("api_key is required")
         if not base_url.startswith(("https://", "http://")):
             raise ValueError("base_url must be an HTTP(S) URL")
+        if max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be positive")
         self.name = provider_name
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
+        self._max_output_tokens = max_output_tokens
         self._extra_headers = dict(extra_headers or {})
         super().__init__(
             model_router=TaskModelRouter(default_model, model_overrides or {}, provider_name),
@@ -131,7 +135,10 @@ class OpenAICompatibleProvider(LLMProvider):
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.max_tokens is not None:
-            payload["max_tokens"] = request.max_tokens
+            payload["max_tokens"] = min(
+                request.max_tokens,
+                self._max_output_tokens,
+            )
         if request.response_format is not None:
             response_format = request.response_format
             if response_format.type == "json_schema":
@@ -163,10 +170,17 @@ class OpenAICompatibleProvider(LLMProvider):
         if not content:
             raise ProviderResponseError(f"{self.name} returned an empty assistant message")
 
-        usage_body = body.get("usage", {})
-        usage_body = usage_body if isinstance(usage_body, dict) else {}
-        input_tokens = _integer(usage_body.get("prompt_tokens"))
-        output_tokens = _integer(usage_body.get("completion_tokens"))
+        usage_body = body.get("usage")
+        if not isinstance(usage_body, dict):
+            raise ProviderResponseError(f"{self.name} returned missing token usage")
+        raw_input_tokens = usage_body.get("prompt_tokens")
+        raw_output_tokens = usage_body.get("completion_tokens")
+        if not isinstance(raw_input_tokens, int) or raw_input_tokens < 0:
+            raise ProviderResponseError(f"{self.name} returned invalid prompt token usage")
+        if not isinstance(raw_output_tokens, int) or raw_output_tokens < 0:
+            raise ProviderResponseError(f"{self.name} returned invalid completion token usage")
+        input_tokens = raw_input_tokens
+        output_tokens = raw_output_tokens
         prompt_details = usage_body.get("prompt_tokens_details") or {}
         prompt_details = prompt_details if isinstance(prompt_details, dict) else {}
         usage = Usage(

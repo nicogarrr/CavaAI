@@ -170,6 +170,7 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(default=30.0, gt=0)
     llm_max_retries: int = Field(default=2, ge=0, le=5)
     llm_model_overrides: dict[str, str] = Field(default_factory=dict)
+    llm_max_output_tokens: int = Field(default=16_000, ge=1, le=1_000_000)
     llm_daily_cap_eur: float = Field(default=1.50, ge=0)
     llm_monthly_cap_eur: float = Field(default=40.00, ge=0)
 

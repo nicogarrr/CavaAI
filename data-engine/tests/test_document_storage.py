@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.services.document_store import DocumentStore
 
 
@@ -65,3 +67,61 @@ def test_document_store_rejects_local_originals_in_production():
         assert "must use MinIO" in str(exc)
     else:
         raise AssertionError("Production must not accept local canonical originals")
+
+
+@pytest.mark.parametrize(
+    ("ticker", "category", "filename"),
+    [
+        (".", "filing", "doc.pdf"),
+        ("..", "filing", "doc.pdf"),
+        ("MSFT", ".", "doc.pdf"),
+        ("MSFT", "..", "doc.pdf"),
+        ("MSFT", "filing", "."),
+        ("MSFT", "filing", ".."),
+        ("folder/../outside", "filing", "doc.pdf"),
+        ("/outside", "filing", "doc.pdf"),
+        (r"\outside", "filing", "doc.pdf"),
+        (r"C:\outside", "filing", "doc.pdf"),
+    ],
+)
+def test_document_store_rejects_unsafe_local_path_components(
+    tmp_path, ticker, category, filename
+):
+    store = DocumentStore()
+    store.local_root = tmp_path / "storage" / "raw"
+
+    with pytest.raises(ValueError, match="local document storage"):
+        store.put_bytes_local(
+            ticker,
+            category,
+            filename,
+            b"raw",
+            tenant_id=17,
+        )
+
+
+def test_document_store_rejects_local_symlink_escape(tmp_path):
+    raw_root = tmp_path / "storage" / "raw"
+    outside = tmp_path / "outside"
+    tenant_link = raw_root / "tenant-17"
+    raw_root.mkdir(parents=True)
+    outside.mkdir()
+    try:
+        tenant_link.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"Symlinks are not available: {exc}")
+
+    store = DocumentStore()
+    store.local_root = raw_root
+
+    with pytest.raises(ValueError, match="local document storage"):
+        store.put_bytes_local(
+            "MSFT",
+            "filing",
+            "escaped.pdf",
+            b"raw",
+            tenant_id=17,
+        )
+
+    assert not (outside / "filing" / "escaped.pdf").exists()
+    assert not (outside / "filing").exists()

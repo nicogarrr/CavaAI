@@ -182,7 +182,7 @@ async def upload_document(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Knowledge ingestion failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Knowledge ingestion failed") from exc
 
 
 @router.get("/documents/{document_id}/chunks")
