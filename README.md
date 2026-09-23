@@ -28,9 +28,10 @@
 | SEC EDGAR | Filings 10-K/10-Q y Form 4 de insiders | Gratis, sin key |
 | FRED | Macro (IPC, paro, tipos) | Gratis (key gratuita) |
 | Calendario NASDAQ | Earnings y dividendos | Gratis |
+| FMP (opcional, con `FMP_API_KEY`) | Perfiles, dividendos, splits y contraste de cifras SEC | Free tier |
 | OpenCode Go (+ Jev) | Solo texto de análisis y micro-decisiones; **nunca inventa cifras** | Suscripción / $0.042 por millón de tokens |
 
-FMP está retirado (su API legacy dejó de funcionar); no hay tickers ni nombres hardcodeados: todo nombre visible viene de una API real.
+Si FMP no está configurado o el proveedor falla, esa cobertura se marca como no disponible en lugar de inventarse; no hay tickers ni nombres hardcodeados: todo nombre visible viene de una API real.
 
 ## Arranque rápido (< 30 min)
 
@@ -104,7 +105,7 @@ npm run generate:openapi
 git diff --exit-code -- data-engine/openapi.json lib/research/openapi.generated.ts
 ```
 
-El CI ejecuta 7 jobs: calidad frontend/backend, drift OpenAPI, migraciones Postgres, auditoría de dependencias y e2e (API + navegador).
+El CI ejecuta 9 jobs: calidad frontend, auth-store, calidad backend, drift OpenAPI, migraciones Postgres, smoke ARM64, auditoría supply-chain y e2e (API + navegador).
 
 ## Arquitectura en 30 segundos
 
@@ -124,12 +125,12 @@ app/(root)/          páginas: research, screener, watchlist, portfolio,
 components/          UI (shadcn/Radix + Tailwind oscuro)
 lib/actions/         server actions · lib/research/  cliente firmado
 data-engine/
-  app/api/routes/    26 routers bajo /api
+  app/api/routes/    30 routers bajo /api
   app/services/      ingesta, tesis, debate, insider, RAG, alertas…
   app/valuation/     motores + guardia point-in-time
   app/llm/           factory OpenCode Go + cliente Jev
-  alembic/versions/  migraciones 0001→0020 (lineales, con downgrade)
-  tests/             250+ tests herméticos · evals/  evals financieras
+  alembic/versions/  migraciones 0001→0029 (lineales, con downgrade)
+  tests/             793 tests herméticos · evals/  evals financieras
 e2e/                 specs Playwright del flujo inversor
 docs/                PRODUCT_VISION, runbooks, privacidad
 ```

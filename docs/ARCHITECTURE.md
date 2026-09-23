@@ -1,6 +1,6 @@
 # Arquitectura de CavaAI
 
-> Estado: consolidación de backend completada (agosto 2026). La API legacy
+> Estado: consolidación de backend completada (agosto 2026; revisado septiembre 2026). La API legacy
 > (`data-engine/routers/`) fue retirada del servicio; el único API del data
 > engine es el research API bajo el prefijo `/api`.
 
@@ -59,7 +59,7 @@
     clásicos con checks de BD/Redis/Qdrant/MinIO).
 - **BD**: Postgres (`postgresql+psycopg://…`) en dev/producción; SQLite en
   tests (`cavaai_test.db`, hermético, `APP_ENV=test`). Migraciones con Alembic
-  (`alembic upgrade head`; última: `0019_watchlist`).
+  (`alembic upgrade head`; última: `0029_manager_holding_filing_date`).
 - **Rate limiting**: `RateLimitMiddleware` global (120 req/min; 20/min para
   endpoints caros).
 
@@ -69,7 +69,7 @@
 |---|---|---|
 | **Finnhub** | Quotes de acciones vía frontend (`lib/actions/finnhub.actions.ts`, `FINNHUB_API_KEY`) | Next.js |
 | **Yahoo Finance** | Índices (S&P 500, Nasdaq, BTC, oro, plata) vía `GET /api/market/indices` (`app/api/routes/market.py`), sin key, con cache en memoria de 60 s | data-engine |
-| **FMP** | Antigua fuente de fundamentales/market data en `modules/fmp` — **en proceso de retirada**; sus routers legacy se eliminaron | legado |
+| **FMP** (opcional) | Fuente secundaria: perfiles, dividendos, splits y contraste de hechos financieros (conflict detection SEC) vía `app/services/connectors/fmp.py`; solo activa con `FMP_API_KEY`. Los errores de proveedor se propagan para marcar la cobertura como no disponible, nunca se fabrican datos | data-engine |
 
 ## 5. Trabajos programados (workers)
 
