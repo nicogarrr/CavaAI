@@ -56,6 +56,9 @@ test.describe("hardening frontend estático", () => {
 
 test.describe("hardening frontend en navegador", () => {
   test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
+  // Viewport movil: el hamburger solo existe <sm (sm:hidden); sin esto el
+  // click del trigger hace timeout en el viewport desktop por defecto.
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   test("las páginas raíz exponen un único main", async ({ page }) => {
     await page.goto("/alerts");
