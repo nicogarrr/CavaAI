@@ -390,3 +390,31 @@ def test_signals_carry_sec_source_url(monkeypatch):
     assert big[0]["form"] == "4"
     c_suite = [s for s in result["signals"] if s["signal"] == "c_suite_buy"]
     assert c_suite and c_suite[0]["source_url"] == filing["document_url"]
+
+
+def test_cluster_survives_malformed_value_strings():
+    # Form 4 fields arrive from XML: a non-numeric value must not crash
+    # signal detection, and unknown values simply do not add to the total.
+    txs = [
+        _buy("A", "0000000001", None, 1, value=100_000.0),
+        _buy("B", "0000000002", None, 2, value=50_000.0),
+        _buy("C", "0000000003", None, 3, value=25_000.0),
+    ]
+    txs[1]["value"] = "not-a-number"
+    txs[2]["value"] = None
+    signals = insider_service.detect_signals(txs)
+    cluster = [s for s in signals if s["signal"] == "cluster_buy"]
+    assert len(cluster) == 1
+    assert cluster[0]["total_value"] == 100_000.0
+    assert cluster[0]["insider_count"] == 3
+
+
+def test_big_buy_ignores_malformed_value():
+    tx = _buy("DOE JANE", "0001111111", "Chief Executive Officer", 10, value=1_500_000.0)
+    tx["value"] = "$1.5M"
+    txs = [tx]
+    signals = insider_service.detect_signals(txs)
+    assert [s for s in signals if s["signal"] == "big_buy"] == []
+    # The c-suite signal still fires, with an honest null value.
+    c_suite = [s for s in signals if s["signal"] == "c_suite_buy"]
+    assert len(c_suite) == 1 and c_suite[0]["value"] is None
