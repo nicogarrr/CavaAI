@@ -14,6 +14,9 @@
  *    coherentes con `facts` (upside = (target-price)/price*100 ± 0.5).
  *  - R4 (score): el score general reproduce la fórmula documentada en
  *    SCORING_WEIGHTS con tolerancia ±1 (redondeo).
+ *  - R5 (overlays): cada overlay externo vuelca su valor en `facts` como
+ *    `ov_<metric>` (mismo valor ±0.51) y su `detail` contiene el valor,
+ *    para que lo mostrado sea verificable.
  */
 
 /** Pesos canónicos del scoring general. Debe coincidir con SCORING_WEIGHTS. */
@@ -32,6 +35,14 @@ export interface ConfidenceReasonLike {
     value: number | string;
 }
 
+/** Overlay externo mínimo validable (estructural: admite campos extra del módulo de señales). */
+export interface OverlayLike {
+    metric: string;
+    value: number | string;
+    /** Debe contener el valor (R5). Opcional en el tipo para tolerar shapes externos; la regla lo exige. */
+    detail?: string;
+}
+
 export interface PickLike {
     symbol: string;
     asOf: string;
@@ -42,11 +53,12 @@ export interface PickLike {
     upsidePotential?: number;
     score: number;
     categoryScores: Record<string, number>;
+    overlays?: OverlayLike[];
 }
 
 export interface PickIssue {
     symbol: string;
-    rule: 'R1-as_of' | 'R2-trazabilidad' | 'R3-numeros' | 'R4-score';
+    rule: 'R1-as_of' | 'R2-trazabilidad' | 'R3-numeros' | 'R4-score' | 'R5-overlays';
     message: string;
 }
 
@@ -180,12 +192,51 @@ export function validateScoreFormula(pick: PickLike): PickIssue[] {
     return [];
 }
 
-/** Ejecuta las 4 reglas sobre una lista de picks. Vacío = todo válido. */
+/** R5: cada overlay externo vuelca su valor en facts (clave `ov_<metric>`, sin duplicar el prefijo si la métrica ya lo trae) y lo muestra en `detail`. */
+export function validateOverlays(pick: PickLike): PickIssue[] {
+    const issues: PickIssue[] = [];
+    for (const overlay of pick.overlays ?? []) {
+        if (!overlay || typeof overlay.metric !== 'string' || overlay.metric.length === 0) {
+            issues.push({
+                symbol: pick.symbol,
+                rule: 'R5-overlays',
+                message: 'overlay sin metric: no se puede trazar a facts',
+            });
+            continue;
+        }
+        // Misma normalización que overlayFactsKey en proPicks.actions.ts.
+        const key = overlay.metric.startsWith('ov_') ? overlay.metric : `ov_${overlay.metric}`;
+        if (!(key in pick.facts)) {
+            issues.push({
+                symbol: pick.symbol,
+                rule: 'R5-overlays',
+                message: `overlay "${overlay.metric}": falta facts.${key} (valor ${String(overlay.value)}): número no verificable`,
+            });
+        } else if (!sameValue(pick.facts[key], overlay.value)) {
+            issues.push({
+                symbol: pick.symbol,
+                rule: 'R5-overlays',
+                message: `overlay "${overlay.metric}": valor ${String(overlay.value)} ≠ facts.${key} (${String(pick.facts[key])})`,
+            });
+        }
+        if (typeof overlay.detail !== 'string' || !overlay.detail.includes(String(overlay.value))) {
+            issues.push({
+                symbol: pick.symbol,
+                rule: 'R5-overlays',
+                message: `overlay "${overlay.metric}": detail no muestra su valor (${String(overlay.value)}): no es verificable en UI`,
+            });
+        }
+    }
+    return issues;
+}
+
+/** Ejecuta las 5 reglas sobre una lista de picks. Vacío = todo válido. */
 export function validatePicks(picks: PickLike[], now: Date = new Date()): PickIssue[] {
     return picks.flatMap((pick) => [
         ...validateNoFutureData(pick, now),
         ...validateReasonsTraceable(pick),
         ...validateNumbersTraceable(pick),
         ...validateScoreFormula(pick),
+        ...validateOverlays(pick),
     ]);
 }
