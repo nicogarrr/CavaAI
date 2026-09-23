@@ -41,7 +41,6 @@ export async function generateRiskAnalysis(
     horizon: number = 252,
     sims: number = 500,
 ): Promise<MonteCarloResult | { error: string }> {
-    const identityHeaders = await researchIdentityHeaders();
     try {
         const summary = await getPortfolioSummary(userId);
 
@@ -55,19 +54,25 @@ export async function generateRiskAnalysis(
             ? summary.holdings.map(h => h.value / totalValue)
             : undefined;
 
+        const requestBody = JSON.stringify({
+            symbols,
+            weights,
+            period: '3y',
+            horizon,
+            sims,
+            bust: -0.5,
+            goal: 0.5,
+            models: ['gbm', 'bootstrap', 'block_bootstrap', 'garch'],
+        });
+        const identityHeaders = await researchIdentityHeaders({
+            method: 'POST',
+            path: '/analytics/montecarlo',
+            body: requestBody,
+        });
         const res = await fetch(`${BACKEND_URL}/analytics/montecarlo`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...identityHeaders },
-            body: JSON.stringify({
-                symbols,
-                weights,
-                period: '3y',
-                horizon,
-                sims,
-                bust: -0.5,
-                goal: 0.5,
-                models: ['gbm', 'bootstrap', 'block_bootstrap', 'garch'],
-            }),
+            body: requestBody,
         });
 
         if (!res.ok) {

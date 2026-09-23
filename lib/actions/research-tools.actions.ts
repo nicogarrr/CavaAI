@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { researchIdentityHeaders } from '@/lib/auth/research-identity';
+import { normalizeResearchBody, researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { AppError, ExternalAPIError, ValidationError } from '@/lib/types/errors';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
@@ -325,13 +325,23 @@ async function apiError(response: Response, path: string): Promise<never> {
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   try {
-    const identity = await researchIdentityHeaders();
+    const normalized = await normalizeResearchBody(init?.body ?? null);
+    const identity = await researchIdentityHeaders({
+      method: init?.method ?? 'GET',
+      path,
+      body: normalized.body ?? null,
+    });
     const response = await fetch(`${BACKEND_URL}${path}`, {
       ...init,
+      body: normalized.body ?? undefined,
       cache: 'no-store',
       headers: {
         ...identity,
-        ...(init?.body instanceof FormData ? {} : init?.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(normalized.contentType
+          ? { 'Content-Type': normalized.contentType }
+          : normalized.body != null
+            ? { 'Content-Type': 'application/json' }
+            : {}),
         ...init?.headers,
       },
     });
