@@ -1291,31 +1291,40 @@ class LongTermModelService:
         latest_revenue = self._value_for_year(fact_cache["revenue"], latest_year)
         net_debt = self._value_for_year(fact_cache["net_debt"], latest_year)
         dcf = None
+        valuation_note = None
         terminal_shares = forecast[-1].get("shares_diluted") if forecast else None
         if forecast and net_debt is not None and terminal_shares not in (None, 0):
-            pv_explicit = sum(
-                point["free_cash_flow"] / ((1 + spec["wacc"]) ** index)
-                for index, point in enumerate(forecast, start=1)
-            )
-            terminal_fcf = forecast[-1]["free_cash_flow"] * (1 + spec["terminal_growth"])
-            terminal_value = terminal_fcf / (spec["wacc"] - spec["terminal_growth"])
-            pv_terminal = terminal_value / ((1 + spec["wacc"]) ** len(forecast))
-            enterprise_value = pv_explicit + pv_terminal
-            equity_value = enterprise_value - net_debt
-            dcf = {
-                "enterprise_value": enterprise_value,
-                "equity_value": equity_value,
-                "value_per_share": equity_value / terminal_shares,
-                "trace": {
-                    "method": "explicit_driver_fcff_dcf",
-                    "pv_explicit_fcf": pv_explicit,
-                    "terminal_fcf": terminal_fcf,
-                    "terminal_value": terminal_value,
-                    "pv_terminal_value": pv_terminal,
-                    "current_net_debt": net_debt,
-                    "terminal_diluted_shares": terminal_shares,
-                },
-            }
+            if spec["wacc"] <= spec["terminal_growth"]:
+                # Gordon growth needs wacc > g: never divide by zero or emit a
+                # negative/nonsense terminal value as if it were a valuation.
+                valuation_note = (
+                    "DCF skipped: WACC must exceed terminal growth "
+                    f"(wacc={spec['wacc']}, terminal_growth={spec['terminal_growth']})."
+                )
+            else:
+                pv_explicit = sum(
+                    point["free_cash_flow"] / ((1 + spec["wacc"]) ** index)
+                    for index, point in enumerate(forecast, start=1)
+                )
+                terminal_fcf = forecast[-1]["free_cash_flow"] * (1 + spec["terminal_growth"])
+                terminal_value = terminal_fcf / (spec["wacc"] - spec["terminal_growth"])
+                pv_terminal = terminal_value / ((1 + spec["wacc"]) ** len(forecast))
+                enterprise_value = pv_explicit + pv_terminal
+                equity_value = enterprise_value - net_debt
+                dcf = {
+                    "enterprise_value": enterprise_value,
+                    "equity_value": equity_value,
+                    "value_per_share": equity_value / terminal_shares,
+                    "trace": {
+                        "method": "explicit_driver_fcff_dcf",
+                        "pv_explicit_fcf": pv_explicit,
+                        "terminal_fcf": terminal_fcf,
+                        "terminal_value": terminal_value,
+                        "pv_terminal_value": pv_terminal,
+                        "current_net_debt": net_debt,
+                        "terminal_diluted_shares": terminal_shares,
+                    },
+                }
         first = forecast[0] if forecast else None
         return {
             "probability": spec["probability"],
@@ -1351,6 +1360,7 @@ class LongTermModelService:
             "revenue_bridge": self._revenue_bridge(latest_year, first, latest_revenue),
             "fcf_bridge": self._fcf_bridge(fact_cache, latest_year, first),
             "valuation": dcf,
+            "valuation_note": valuation_note,
         }
 
     def _revenue_bridge(self, latest_year: int, first: dict[str, Any] | None, current_revenue: float | None) -> dict[str, Any]:
@@ -1411,9 +1421,11 @@ class LongTermModelService:
         margin = assumptions["fcf_margin"].value
         wacc = assumptions["wacc"].value
         terminal = assumptions["terminal_growth"].value
-        if current_price is None or revenue is None or shares in (None, 0) or margin is None or wacc is None or terminal is None:
-            return {"status": "insufficient_data", "market_price": current_price, "missing_inputs": ["market_price", "revenue", "fcf_margin", "shares_diluted"], "trace": {"method": "binary_search_reverse_dcf", "source_fact_ids": assumptions["fcf_margin"].source_fact_ids}}
-        net_debt = self._value_for_year(fact_cache["net_debt"], source_year) or 0.0
+        net_debt = self._value_for_year(fact_cache["net_debt"], source_year)
+        if current_price is None or revenue is None or shares in (None, 0) or margin is None or wacc is None or terminal is None or net_debt is None:
+            # Missing net debt is never treated as "debt-free": the forward
+            # DCF refuses without it, the reverse DCF does the same.
+            return {"status": "insufficient_data", "market_price": current_price, "missing_inputs": ["market_price", "revenue", "fcf_margin", "shares_diluted", "net_debt"], "trace": {"method": "binary_search_reverse_dcf", "source_fact_ids": assumptions["fcf_margin"].source_fact_ids}}
         solved = solve_required_growth(
             ReverseDCFInputs(
                 market_price=current_price,
