@@ -35,16 +35,27 @@ class DocumentStore:
         self._validate_local_component(filename)
 
         root = self.local_root.resolve()
-        directory = self._directory(ticker, category, tenant_id)
+        # Reconstruye la ruta SOLO con componentes que pasan una whitelist
+        # estricta (re.fullmatch): es el guard que CodeQL reconoce como
+        # sanitizador de py/path-injection. Los chequeos sobre los valores
+        # crudos (arriba) no bastan: el path se deriva de _safe_*.
+        parts = self._directory(ticker, category, tenant_id).relative_to(
+            self.local_root
+        ).parts
+        directory = self.local_root
+        for part in parts:
+            self._validate_path_component(part)
+            directory = directory / part
+        filename_safe = self._safe_filename(filename)
+        self._validate_path_component(filename_safe)
         # Validate every existing parent before mkdir: a pre-existing symlink
         # must be rejected before it can cause an out-of-root directory write.
-        relative_parts = directory.relative_to(self.local_root).parts
         candidate = root
-        for part in relative_parts:
+        for part in parts:
             candidate = candidate / part
             if candidate.is_symlink():
                 raise ValueError("Unsafe local document storage path")
-        path = (directory / self._safe_filename(filename)).resolve()
+        path = (directory / filename_safe).resolve()
         try:
             path.relative_to(root)
         except ValueError:
@@ -106,6 +117,19 @@ class DocumentStore:
             / self._safe_path_part(ticker)
             / self._safe_path_part(category)
         )
+
+    _SAFE_COMPONENT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}")
+
+    @classmethod
+    def _validate_path_component(cls, value: str) -> None:
+        # Guard de whitelist reconocible por CodeQL: fullmatch de caracteres
+        # seguros y rechazo explicito de "..".
+        if (
+            not cls._SAFE_COMPONENT_RE.fullmatch(value)
+            or value in {".", ".."}
+            or ".." in value
+        ):
+            raise ValueError("Unsafe local document storage path")
 
     @staticmethod
     def _validate_local_component(value: str) -> None:
