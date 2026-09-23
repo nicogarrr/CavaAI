@@ -404,12 +404,37 @@ def test_export_none_is_not_zero_and_csv_escapes_formulas():
 
 
 def test_settings_contract_is_opaque():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
     from fastapi.testclient import TestClient
 
     import main
+    from app.core.database import get_db
+    from app.models.entities import Base
 
-    client = TestClient(main.app)
-    response = client.get("/api/settings")
+    # StaticPool: el TestClient sirve en otro hilo; la memoria debe compartirse.
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    session = factory()
+
+    def _override():
+        yield session
+
+    main.app.dependency_overrides[get_db] = _override
+    try:
+        client = TestClient(main.app)
+        response = client.get("/api/settings")
+    finally:
+        main.app.dependency_overrides.clear()
+        session.close()
+        engine.dispose()
     assert response.status_code == 200
     payload = response.json()
     assert isinstance(payload["connectors"]["qdrant_url"], bool)
