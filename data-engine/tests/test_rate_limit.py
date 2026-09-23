@@ -117,6 +117,7 @@ def test_production_store_unavailable_returns_honest_503(monkeypatch):
             app_env="production",
             research_auth_secret=SECRET,
             minio_secret_key="production-minio-secret-not-a-default",
+            minio_access_key="production-minio-access-not-a-default",
         ),
     )
     client = TestClient(_app(_principal("user-a")))
