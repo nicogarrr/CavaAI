@@ -157,7 +157,11 @@ class Settings(BaseSettings):
     # Default cheap-but-good model. Overridable WITHOUT code change via env
     # OPENCODE_GO_MODEL (e.g. OPENCODE_GO_MODEL=qwen3.7-plus). Ver también
     # default_model_from_env() en app/llm/model_aliases.py.
-    opencode_go_model: str = "deepseek-v4-flash"
+    opencode_go_model: str = "space-bunny-free"
+    # OpenCode Go exige cabecera x-opencode-session en todas las llamadas
+    # (sin ella: MissingSessionID). ID estable por despliegue, mejora el
+    # enrutado/cacheo del proveedor. Env: OPENCODE_GO_SESSION.
+    opencode_go_session: str = "cavaai-prod"
 
     # TypeSafe Jev (capa de micro-decisiones, SystemOne API). Env: TYPESAFE_API_KEY.
     # Factura por uso ($0.042/MTok in); sin key el cliente no se construye.

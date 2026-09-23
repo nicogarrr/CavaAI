@@ -44,7 +44,7 @@ def test_factory_only_accepts_opencode_go_and_routes_to_default_model():
             _env_file=None,
             opencode_go_api_key="test-secret",
             opencode_go_base_url="https://opencode.ai/zen/go/v1",
-            opencode_go_model="deepseek-v4-flash",
+            opencode_go_model="space-bunny-free",
         )
     )
 
@@ -61,23 +61,23 @@ def test_factory_only_accepts_opencode_go_and_routes_to_default_model():
 
 
 def test_task_router_uses_one_opencode_model_for_every_task():
-    assert all(route.model == "deepseek-v4-flash" for route in ROUTES.values())
-    assert route_model("deep_thesis").model == "deepseek-v4-flash"
-    assert route_model("cheap_extraction").model == "deepseek-v4-flash"
+    assert all(route.model == "space-bunny-free" for route in ROUTES.values())
+    assert route_model("deep_thesis").model == "space-bunny-free"
+    assert route_model("cheap_extraction").model == "space-bunny-free"
     assert (
-        TaskModelRouter(default_model="deepseek-v4-flash")
+        TaskModelRouter(default_model="space-bunny-free")
         .resolve(LLMRequest(messages=[Message("user", "Extract")], task="chat"))
-        == "deepseek-v4-flash"
+        == "space-bunny-free"
     )
 
 
 def test_opencode_model_alias_resolves_to_chat_completions_model():
     assert MODEL_ALIASES.resolve(
-        "deepseek-v4-flash", provider="opencode-go"
-    ) == "deepseek-v4-flash"
+        "space-bunny-free", provider="opencode-go"
+    ) == "space-bunny-free"
     rows = {row["model"]: row for row in route_table()}
-    assert rows["deepseek-v4-flash"]["provider"] == "opencode-go"
-    assert rows["deepseek-v4-flash"]["provider_model_id"] == "deepseek-v4-flash"
+    assert rows["space-bunny-free"]["provider"] == "opencode-go"
+    assert rows["space-bunny-free"]["provider_model_id"] == "space-bunny-free"
 
 
 def test_active_route_validation_rejects_other_providers():
