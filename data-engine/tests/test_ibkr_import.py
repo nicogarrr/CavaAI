@@ -124,3 +124,45 @@ def test_rows_without_dates_are_skipped_never_dated_today():
         assert result["dividends_imported"] == 0
         assert result["rows_skipped"] == 3
         assert db.query(Transaction).count() == 0
+
+
+def test_external_id_dedupe_is_one_query_for_many_trades():
+    # Re-import dedupe must be one batched IN query, not one SELECT per row.
+    from sqlalchemy import event
+
+    trades = "\n      ".join(
+        f'<Trade symbol="AAPL" tradeID="BT{i}" buySell="BUY" quantity="1" '
+        f'tradePrice="150" ibCommission="0" tradeDate="2026-06-01" currency="USD"/>'
+        for i in range(10)
+    )
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<FlexQueryResponse queryName="test">
+  <FlexStatements>
+    <FlexStatement accountId="U123456">
+      {trades}
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>"""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with _tenant_session(engine) as db:
+        first = IBKRImportService().import_flex_xml(db, xml)
+        assert first["trades_imported"] == 10
+
+        statements = []
+
+        def listener(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(db.get_bind(), "before_cursor_execute", listener)
+        try:
+            second = IBKRImportService().import_flex_xml(db, xml)
+        finally:
+            event.remove(db.get_bind(), "before_cursor_execute", listener)
+
+        assert second["trades_imported"] == 0  # all deduped
+        batched = [s for s in statements if "external_id IN" in s]
+        per_row = [s for s in statements if "external_id = ?" in s]
+        assert len(batched) == 1
+        assert per_row == []
