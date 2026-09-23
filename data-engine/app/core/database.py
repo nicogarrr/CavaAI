@@ -303,3 +303,21 @@ def init_db() -> None:
                     inspector = inspect(engine)
     except Exception:  # noqa: BLE001 — never block startup on optional alter
         pass
+
+
+def batch_refresh(db: Session, objects: list) -> None:
+    """Reload many persistent instances of one model with a single SELECT.
+
+    Equivalent to calling db.refresh on each object, but issues one query
+    instead of one per object. All objects must share the same mapped class
+    and already be persistent in the session.
+    """
+    if not objects:
+        return
+    model = type(objects[0])
+    ids = [obj.id for obj in objects]
+    db.scalars(
+        select(model)
+        .where(model.id.in_(ids))
+        .execution_options(populate_existing=True)
+    ).all()

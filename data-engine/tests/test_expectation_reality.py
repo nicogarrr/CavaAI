@@ -193,12 +193,49 @@ def test_review_query_count_is_constant_in_group_count(db):
     assert len(reviews) == 8
     fact_queries = [s for s in statements if "financial_facts" in s]
     metric_queries = [s for s in statements if "calculated_metrics" in s]
-    # Lookup queries only: the per-review refresh after commit is a separate
-    # established pattern (follow-up slice), not part of the eligibility path.
     review_lookups = [
         s for s in statements
         if "expectation_reviews" in s and "forecast_id IN" in s
     ]
+    refreshes = [
+        s for s in statements
+        if "expectation_reviews.id IN" in s
+    ]
     assert len(fact_queries) == 1
     assert len(metric_queries) == 1
     assert len(review_lookups) == 1
+    assert len(refreshes) == 1
+
+
+def test_review_refresh_is_batched(db):
+    """The post-commit reload of reviews must be one SELECT, not one per review."""
+    company = _company(db)
+    from datetime import UTC, datetime
+
+    from sqlalchemy import event
+
+    model = _model(db, company, created_at=datetime(2026, 1, 1, tzinfo=UTC))
+    metrics = ["revenue", "free_cash_flow", "net_income", "operating_cash_flow"]
+    for year in (2024, 2025):
+        for metric in metrics:
+            _forecast(db, model, company, fiscal_year=year, metric=metric, value="100")
+            _fact(db, company, metric=metric, fiscal_year=year, value="110",
+                  created_at=datetime(2026, 6, 1, tzinfo=UTC))
+
+    statements = []
+
+    def listener(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(db.get_bind(), "before_cursor_execute", listener)
+    try:
+        reviews = ExpectationRealityService().review(db, company)
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", listener)
+
+    assert len(reviews) == 8
+    refreshes = [s for s in statements if "expectation_reviews.id IN" in s]
+    assert len(refreshes) == 1
+    # Returned reviews are populated (no lazy reload needed by callers).
+    assert all(r.status in ("beat", "met") for r in reviews)
+
