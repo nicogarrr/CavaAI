@@ -365,19 +365,38 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     throw error;
   }
   if (!snapshot) {
-    // Estado honesto en vez de 404 pelado: el backend responde 404 cuando
-    // la empresa aún no tiene research; el buscador lleva aquí siempre.
+    // Ficha de la acción SIN research (aprobado por Nico 2026-09-23): los
+    // datos de mercado (Finnhub) no dependen del research, así que la página
+    // muestra el panel de mercado completo + estado honesto con CTA, en vez
+    // del 404 pelado que veía el buscador con la BD nueva.
+    let market: Awaited<ReturnType<typeof getCompanyMarketSnapshot>>;
+    try {
+      market = await getCompanyMarketSnapshot(ticker);
+    } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        return <BackendOffline feature={`Datos de mercado de ${ticker}`} retryHref={`/research/${ticker}`} />;
+      }
+      throw error;
+    }
     return (
-      <div className="mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col items-center justify-center gap-4 p-6 text-center">
-        <FileText className="h-10 w-10 text-gray-600" />
-        <h1 className="text-2xl font-bold text-gray-100">Aún no hay research de {ticker}</h1>
-        <p className="max-w-xl text-sm leading-6 text-gray-400">
-          Esta empresa todavía no tiene research generado. Puedes lanzarlo ahora: el motor
-          recopila evidencia con fuentes trazables y construye la tesis paso a paso
-          (puede tardar unos minutos).
-        </p>
-        <ThesisGenerateButton ticker={ticker} />
-      </div>
+      <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1600px] space-y-6">
+          <Link className="inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
+          <CompanyMarketPanel snapshot={market} />
+          <section className="rounded-xl border border-dashed border-gray-700 bg-[#111111] p-6 text-center">
+            <FileText className="mx-auto h-8 w-8 text-gray-600" />
+            <h1 className="mt-3 text-lg font-semibold text-gray-100">Research aún no generado</h1>
+            <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-gray-400">
+              Esta empresa todavía no tiene research generado. Puedes lanzarlo ahora: el motor
+              recopila evidencia con fuentes trazables y construye la tesis paso a paso
+              (puede tardar unos minutos).
+            </p>
+            <div className="mt-4 flex justify-center">
+              <ThesisGenerateButton ticker={ticker} />
+            </div>
+          </section>
+        </div>
+      </main>
     );
   }
 
