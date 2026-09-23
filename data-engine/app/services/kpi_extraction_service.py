@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.database import batch_refresh
 from app.llm import LLMRequest, Message, ResponseFormat, parse_json_response
 from app.llm.base import LLMProvider
 from app.llm.factory import create_llm_provider
@@ -107,8 +108,7 @@ class CompanyKPIRegistryService:
         db.flush()
         if commit:
             db.commit()
-            for row in rows:
-                db.refresh(row)
+            batch_refresh(db, rows)
         return rows
 
     @staticmethod
@@ -352,8 +352,7 @@ class KPIExtractionService:
         db.flush()
         if commit:
             db.commit()
-            for candidate in created:
-                db.refresh(candidate)
+            batch_refresh(db, created)
         return created
 
     def approve(
