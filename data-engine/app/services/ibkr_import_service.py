@@ -379,7 +379,11 @@ class IBKRImportService:
                 if (
                     (raw_qty is not None and not _is_number(raw_qty))
                     or (raw_price is not None and not _is_number(raw_price))
-                    or (raw_date is not None and not _is_date(raw_date))
+                    # A missing or invalid date is never replaced with today:
+                    # the row is skipped (a fabricated trade_date would poison
+                    # the FIFO tax ledger).
+                    or raw_date is None
+                    or not _is_date(raw_date)
                 ):
                     rows_skipped += 1
                     continue
@@ -409,7 +413,8 @@ class IBKRImportService:
                 raw_date = _attr(element, "dateTime", "date", "tradeDate")
                 if (
                     (raw_amount is not None and not _is_number(raw_amount))
-                    or (raw_date is not None and not _is_date(raw_date))
+                    or raw_date is None
+                    or not _is_date(raw_date)
                 ):
                     rows_skipped += 1
                     continue
@@ -453,6 +458,10 @@ class IBKRImportService:
                 action = "dividend"
                 external_id = _attr(element, "transactionID", "id")
                 if external_id and db.scalar(select(Transaction).where(Transaction.external_id == external_id)):
+                    continue
+                raw_date = _attr(element, "dateTime", "date", "tradeDate")
+                if raw_date is None or not _is_date(raw_date):
+                    rows_skipped += 1
                     continue
                 symbol = _attr(element, "symbol", "underlyingSymbol")
                 company_id = None

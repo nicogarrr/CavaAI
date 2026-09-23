@@ -98,3 +98,29 @@ def test_import_creates_unknown_companies_as_placeholders():
         assert company.company_type == "imported_holding"
         assert "IBKR" in company.special_sources
         assert company.currency == "USD"
+
+MISSING_DATE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<FlexQueryResponse queryName="test">
+  <FlexStatements>
+    <FlexStatement accountId="U123456">
+      <Trade symbol="AAPL" tradeID="T-NODATE" buySell="BUY" quantity="10" tradePrice="150" ibCommission="1" currency="USD"/>
+      <CashTransaction type="Dividends" trxID="D-NODATE" amount="15.5" currency="USD"/>
+      <CorporateAction type="DIV" transactionID="C-NODATE" symbol="AAPL" amount="20" currency="USD"/>
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>"""
+
+
+def test_rows_without_dates_are_skipped_never_dated_today():
+    # A fabricated date.today() on a money record would poison the FIFO tax
+    # ledger: rows with no usable date are skipped, not invented.
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with _tenant_session(engine) as db:
+        result = IBKRImportService().import_flex_xml(db, MISSING_DATE_XML)
+
+        assert result["trades_imported"] == 0
+        assert result["dividends_imported"] == 0
+        assert result["rows_skipped"] == 3
+        assert db.query(Transaction).count() == 0
