@@ -265,6 +265,10 @@ function parseFinraShortInterest(text: string, symbol: string, cutoffDay: string
             : dateTok.slice(0, 10) : null;
         if (!settle || settle > cutoffDay) continue; // NUNCA dato posterior a asOf
         const nums = tokens
+            // Excluir el token de fecha (yyyymmdd ~ 20M): si entraba en la
+            // lista, Math.max devolvía la fecha como "short interest" para
+            // cualquier valor con SI real menor que ~20M acciones.
+            .filter((t) => !/^\d{4}-?\d{2}-?\d{2}$/.test(t))
             .map((t) => Number(t.replace(/,/g, '')))
             .filter((n) => Number.isFinite(n) && n > 0 && Number.isInteger(n));
         if (nums.length === 0) continue;
