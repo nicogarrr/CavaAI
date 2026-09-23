@@ -1,12 +1,11 @@
 'use server';
 
 import { getAuth } from "@/lib/better-auth/auth";
-import { inngest } from "@/lib/inngest/client";
 import { headers } from "next/headers";
 import { AuthenticationError, toAppError, getErrorMessage } from "@/lib/types/errors";
 import { ERROR_MESSAGES } from "@/lib/constants";
 
-export const signUpWithEmail = async ({ email, password, fullName, country, investmentGoals, riskTolerance, preferredIndustry }: SignUpFormData): Promise<{ success: boolean; data?: unknown; error?: string }> => {
+export const signUpWithEmail = async ({ email, password, fullName }: SignUpFormData): Promise<{ success: boolean; data?: unknown; error?: string }> => {
     try {
         const auth = await getAuth();
         if (!auth) {
@@ -14,18 +13,6 @@ export const signUpWithEmail = async ({ email, password, fullName, country, inve
         }
 
         const response = await auth.api.signUpEmail({ body: { email, password, name: fullName } });
-
-        if (response) {
-            try {
-                await inngest.send({
-                    name: 'app/user.created',
-                    data: { email, name: fullName, country, investmentGoals, riskTolerance, preferredIndustry }
-                });
-            } catch (inngestError) {
-                // No fallar el signup si inngest falla
-                console.warn('Failed to send inngest event:', inngestError);
-            }
-        }
 
         return { success: true, data: response };
     } catch (error: unknown) {

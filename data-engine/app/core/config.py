@@ -45,7 +45,7 @@ _WEAK_MINIO_SECRET_KEYS = {
     "change-me",
     "secret",
 }
-_WEAK_MINIO_ACCESS_KEYS = {"minioadmin", "minio", "admin", "change-me"}
+_WEAK_MINIO_ACCESS_KEYS = {"minioadmin", "minio", "admin", "change-me", "portfolio"}
 
 
 def _url_credentials(url: str) -> tuple[str | None, str | None]:

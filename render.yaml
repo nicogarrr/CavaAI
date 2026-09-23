@@ -39,5 +39,22 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+      # /health/ready con DATABASE_URL no-sqlite exige TODOS los checks ok
+      # (postgres + redis + qdrant + minio). En Render free no hay servicios
+      # internos: usa externos gratuitos (Upstash Redis, Qdrant Cloud free,
+      # Cloudflare R2 con gateway S3 o MinIO propio) o el healthcheck jamás
+      # sanará y el servicio no se publicará.
+      - key: REDIS_URL
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_BUCKET
+        sync: false
       - key: WORKERS_ENABLED
         value: "false"
