@@ -216,6 +216,18 @@ class MarketRefreshService:
                 .order_by(MarketPrice.company_id, desc(MarketPrice.date))
             ).all():
                 latest_prices.setdefault(price.company_id, price)
+        # One FX table for every revaluation (point-in-time per row, no N+1).
+        refresh_dates = [
+            latest_prices[company.id].date
+            for _, company in rows
+            if company.id in latest_prices
+        ]
+        fx_table = fx.fx_table(
+            db,
+            currencies={position.currency for position, _ in rows},
+            base_currency=base_currency,
+            as_of_max=max(refresh_dates, default=as_of),
+        )
         for position, company in rows:
             latest = latest_prices.get(company.id)
             if latest is None:
@@ -236,6 +248,13 @@ class MarketRefreshService:
                 company_id=company.id,
                 price=latest.close,
                 as_of=latest.date,
+                position=position,
+                fx_rate=PortfolioFXService.rate_from_table(
+                    fx_table,
+                    quote_currency=position.currency,
+                    base_currency=position.base_currency or base_currency,
+                    as_of=latest.date,
+                ),
             )
             revalued += 1
         db.commit()
