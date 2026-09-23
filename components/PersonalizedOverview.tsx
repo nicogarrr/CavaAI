@@ -1,5 +1,6 @@
 'use client';
 
+import { formatMoney } from '@/lib/format';
 import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -310,7 +311,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                     <div className="flex flex-col min-[420px]:flex-row min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
                                         <div className="min-w-0">
                                             <p className="text-sm text-gray-400">Valor Total Estimado</p>
-                                            <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">${portfolioSummary.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                                            <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">{formatMoney(portfolioSummary.totalValue)}</p>
                                         </div>
                                         <div className="text-right">
                                             <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>

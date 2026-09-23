@@ -12,22 +12,22 @@ test.describe("investor knowledge flow", () => {
     await page.goto("/knowledge");
 
     await expect(
-      page.getByRole("heading", { name: "Knowledge Library", level: 1 }),
+      page.getByRole("heading", { name: "Biblioteca de conocimiento", level: 1 }),
     ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Upload knowledge" })).toBeVisible();
-    await expect(page.getByPlaceholder("Document title")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Subir conocimiento" })).toBeVisible();
+    await expect(page.getByPlaceholder("Título del documento")).toBeVisible();
     await expect(page.locator('input[type="file"]').first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Upload", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Subir", exact: true })).toBeVisible();
 
-    if (await page.getByText("No knowledge documents yet.").isVisible()) {
+    if (await page.getByText("Aún no hay documentos de conocimiento.").isVisible()) {
       return;
     }
 
     // Listed documents expose chunk browsing and principle extraction per row.
-    const chunksLinks = page.getByRole("link", { name: "Chunks" });
+    const chunksLinks = page.getByRole("link", { name: "Fragmentos" });
     expect(await chunksLinks.count()).toBeGreaterThan(0);
     await expect(chunksLinks.first()).toHaveAttribute("href", /\/knowledge\?document=\d+/);
-    await expect(page.getByRole("button", { name: "Extract" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Extraer" }).first()).toBeVisible();
   });
 
   test("knowledge upload ingests a document and lists it", async ({ page }) => {
@@ -35,8 +35,8 @@ test.describe("investor knowledge flow", () => {
     const title = `E2E investing notes ${marker}`;
 
     await page.goto("/knowledge");
-    const uploadForm = page.locator("form", { has: page.getByPlaceholder("Document title") });
-    await uploadForm.getByPlaceholder("Document title").fill(title);
+    const uploadForm = page.locator("form", { has: page.getByPlaceholder("Título del documento") });
+    await uploadForm.getByPlaceholder("Título del documento").fill(title);
     await uploadForm.locator('input[type="file"]').setInputFiles({
       name: `${marker}.txt`,
       mimeType: "text/plain",
@@ -44,9 +44,9 @@ test.describe("investor knowledge flow", () => {
         `Inversor E2E ${marker}: comprar calidad con margen de seguridad y paciencia.`,
       ),
     });
-    await uploadForm.getByRole("button", { name: "Upload", exact: true }).click();
+    await uploadForm.getByRole("button", { name: "Subir", exact: true }).click();
 
-    await expect(page.getByText("Document ingested")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Documento ingerido")).toBeVisible({ timeout: 30_000 });
 
     await page.goto("/knowledge");
     await expect(page.getByText(title).first()).toBeVisible({ timeout: 30_000 });

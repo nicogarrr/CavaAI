@@ -1,13 +1,12 @@
 'use client';
 
-import { useCallback, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Inbox, Loader2, RefreshCw } from 'lucide-react';
-import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 
 export type DataRecord = Record<string, unknown>;
 
@@ -68,6 +67,8 @@ export interface RecordListProps {
     /** Columnas explícitas; si se omite se infieren de los datos */
     columns?: string[];
     emptyMessage?: string;
+    /** CTA del estado vacío (primer paso: crear, importar, ir a...) */
+    emptyAction?: ReactNode;
     /** Acciones por fila (botón Aplicar, eliminar, etc.) */
     rowActions?: (record: DataRecord, index: number) => ReactNode;
     /** Columnas cuyo valor se renderiza como enlace (p.ej. ticker -> /research/[ticker]) */
@@ -83,6 +84,7 @@ export function RecordList({
     fetchRecords,
     columns,
     emptyMessage = 'No hay datos disponibles todavía',
+    emptyAction,
     rowActions,
     linkColumns,
     footer,
@@ -90,17 +92,17 @@ export function RecordList({
     const [records, setRecords] = useState<DataRecord[]>(initialRecords);
     const [loading, setLoading] = useState(false);
 
-    const refresh = useCallback(async () => {
+    const refresh = async () => {
         setLoading(true);
         try {
             const data = await fetchRecords();
             setRecords(toRecords(data));
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            showErrorToast(error, { onRetry: refresh });
         } finally {
             setLoading(false);
         }
-    }, [fetchRecords]);
+    };
 
     const visibleColumns = pickColumns(records, columns);
 
@@ -134,6 +136,7 @@ export function RecordList({
                     <div className="py-10 text-center text-gray-500">
                         <Inbox className="mx-auto mb-3 h-10 w-10 text-gray-600" />
                         <p className="text-sm">{emptyMessage}</p>
+                        {emptyAction ? <div className="mt-4 flex justify-center">{emptyAction}</div> : null}
                     </div>
                 ) : visibleColumns.length === 0 ? (
                     <div className="space-y-2">
@@ -198,6 +201,8 @@ export interface RecordDetailProps {
     record: DataRecord | null;
     fetchRecord?: () => Promise<unknown>;
     emptyMessage?: string;
+    /** CTA del estado vacío (primer paso: crear, importar, ir a...) */
+    emptyAction?: ReactNode;
     /** Contenido adicional (botones de acción sobre el objeto, p.ej. regenerar) */
     actions?: ReactNode;
     /** Máximo de claves a mostrar; por defecto todas */
@@ -212,12 +217,13 @@ export function RecordDetail({
     record,
     fetchRecord,
     emptyMessage = 'No hay datos disponibles todavía',
+    emptyAction,
     actions,
     maxKeys = 24,
 }: RecordDetailProps) {
     const [data, setData] = useState<DataRecord | null>(record);
 
-    const refresh = useCallback(async () => {
+    const refresh = async () => {
         if (!fetchRecord) return;
         try {
             const result = await fetchRecord();
@@ -225,9 +231,9 @@ export function RecordDetail({
                 setData(result as DataRecord);
             }
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            showErrorToast(error, { onRetry: refresh });
         }
-    }, [fetchRecord]);
+    };
 
     const entries = data ? Object.entries(data).slice(0, maxKeys) : [];
 
@@ -261,6 +267,7 @@ export function RecordDetail({
                     <div className="py-10 text-center text-gray-500">
                         <Inbox className="mx-auto mb-3 h-10 w-10 text-gray-600" />
                         <p className="text-sm">{emptyMessage}</p>
+                        {emptyAction ? <div className="mt-4 flex justify-center">{emptyAction}</div> : null}
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-gray-700/50 bg-gray-700/40 sm:grid-cols-2">

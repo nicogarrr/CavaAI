@@ -1,14 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { researchIdentityHeaders } from '@/lib/auth/research-identity';
+import { normalizeResearchBody, researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { AppError, ExternalAPIError, ValidationError } from '@/lib/types/errors';
 import { createResearchOpenApiClient } from '@/lib/research/openapi-client';
 import type { components } from '@/lib/research/openapi.generated';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
-export type ResearchCompany = {
+type ResearchCompany = {
   id: number;
   ticker: string;
   name: string;
@@ -21,7 +21,7 @@ export type ResearchCompany = {
   special_risks: string[];
 };
 
-export type ResearchPortfolioSummary = {
+type ResearchPortfolioSummary = {
   total_value: number;
   equity_value: number;
   cash: Record<string, number>;
@@ -36,7 +36,7 @@ export type ResearchPortfolioSummary = {
   }>;
 };
 
-export type ResearchWorkflow = {
+type ResearchWorkflow = {
   name: string;
   input: string;
   steps: string[];
@@ -45,7 +45,7 @@ export type ResearchWorkflow = {
   truth?: string;
 };
 
-export type ResearchSettings = {
+type ResearchSettings = {
   app_env: string;
   maf_version: string;
   budget: {
@@ -99,7 +99,7 @@ export type ResearchCalculatedMetric = {
   confidence: string;
 };
 
-export type ResearchPeerComparison = {
+type ResearchPeerComparison = {
   ticker: string;
   basis: string;
   selection_trace?: Record<string, unknown>;
@@ -175,7 +175,7 @@ export type ResearchValuation = {
   };
 };
 
-export type ResearchThesisCatalyst = {
+type ResearchThesisCatalyst = {
   label?: string;
   date?: string;
   time?: string;
@@ -210,7 +210,7 @@ export type ResearchThesis = {
   created_at: string;
 };
 
-export type ResearchThesisHistoryEntry = {
+type ResearchThesisHistoryEntry = {
   id: number;
   version: number;
   status: string;
@@ -227,7 +227,7 @@ export type ResearchThesisHistoryEntry = {
   } | null;
 };
 
-export type ResearchSourceDocument = {
+type ResearchSourceDocument = {
   id: number;
   ticker: string | null;
   title: string;
@@ -241,7 +241,7 @@ export type ResearchSourceDocument = {
   chunks?: ResearchSourceChunk[];
 };
 
-export type ResearchSourceChunk = {
+type ResearchSourceChunk = {
   id: number;
   document_id: number;
   chunk_index: number;
@@ -250,7 +250,7 @@ export type ResearchSourceChunk = {
   metadata?: Record<string, unknown>;
 };
 
-export type ResearchSourceAudit = {
+type ResearchSourceAudit = {
   id: number;
   thesis_version_id: number | null;
   passed: boolean;
@@ -261,7 +261,7 @@ export type ResearchSourceAudit = {
   required_fixes: string[];
 };
 
-export type ResearchClaimEvidence = {
+type ResearchClaimEvidence = {
   id: number;
   claim_id: number;
   document_id: number | null;
@@ -274,7 +274,7 @@ export type ResearchClaimEvidence = {
   created_at: string;
 };
 
-export type ResearchClaim = {
+type ResearchClaim = {
   id: number;
   company_id: number | null;
   thesis_version_id: number | null;
@@ -288,7 +288,7 @@ export type ResearchClaim = {
   created_at: string;
 };
 
-export type ResearchThesisSection = {
+type ResearchThesisSection = {
   id: number;
   thesis_version_id: number;
   company_id: number;
@@ -301,7 +301,7 @@ export type ResearchThesisSection = {
   updated_at: string;
 };
 
-export type ResearchThesisChange = {
+type ResearchThesisChange = {
   id: number;
   company_id: number | null;
   from_version_id: number | null;
@@ -316,20 +316,6 @@ export type ResearchThesisChange = {
   created_at: string;
   updated_at: string;
 };
-
-export type ResearchMemoryItem = {
-  id: number;
-  company_id: number | null;
-  research_session_id: number | null;
-  scope: string;
-  memory_type: string;
-  importance: number;
-  content: string;
-  status: string;
-  source_type: string;
-  created_at: string;
-};
-
 export type ResearchChatResponse = {
   answer: string;
   sections: Array<{
@@ -350,7 +336,7 @@ export type ResearchChatResponse = {
   model?: string | null;
 };
 
-export type ResearchEvidenceSuggestion = {
+type ResearchEvidenceSuggestion = {
   id: number;
   company_id: number | null;
   document_id: number | null;
@@ -368,7 +354,7 @@ export type ResearchEvidenceSuggestion = {
   created_at: string;
 };
 
-export type ResearchReview = {
+type ResearchReview = {
   id: number;
   company_id: number | null;
   review_type: string;
@@ -382,7 +368,7 @@ export type ResearchReview = {
   created_at: string;
 };
 
-export type ResearchAlert = {
+type ResearchAlert = {
   id: number;
   company_id: number | null;
   review_id: number | null;
@@ -396,7 +382,7 @@ export type ResearchAlert = {
   created_at: string;
 };
 
-export type ResearchThesisGraph = {
+type ResearchThesisGraph = {
   ticker: string;
   thesis_version_id: number;
   nodes: Array<{
@@ -420,7 +406,7 @@ export type ResearchThesisGraph = {
   }>;
 };
 
-export type ResearchPeerAnalysis = {
+type ResearchPeerAnalysis = {
   ticker: string;
   status: string;
   selection: {
@@ -434,7 +420,7 @@ export type ResearchPeerAnalysis = {
   methodology: string;
 };
 
-export type ResearchMoat = {
+type ResearchMoat = {
   ticker: string;
   status: string;
   methodology: string;
@@ -450,7 +436,7 @@ export type ResearchMoat = {
   }>;
 };
 
-export type ResearchRedTeam = {
+type ResearchRedTeam = {
   id: number;
   score: number;
   status: string;
@@ -467,7 +453,7 @@ export type ResearchRedTeam = {
   created_at: string;
 };
 
-export type ResearchLongTermForecast = {
+type ResearchLongTermForecast = {
   year: number;
   revenue: number | null;
   gross_profit: number | null;
@@ -489,7 +475,7 @@ export type ResearchLongTermForecast = {
   evidence: Record<string, { source_fact_ids: number[]; calculation: string }>;
 };
 
-export type ResearchLongTermScenario = {
+type ResearchLongTermScenario = {
   probability: number;
   assumptions: Record<string, { value: number | null; unit: string; source_type: string; basis: string; source_fact_ids: number[] }>;
   drivers: string[];
@@ -615,8 +601,12 @@ export type ResearchExpectationReview = {
   reviewed_at: string | null;
 };
 
-async function researchRequestHeaders(): Promise<Record<string, string>> {
-  return researchIdentityHeaders();
+async function researchRequestHeaders(target: {
+  method: string;
+  path: string;
+  body?: string | Uint8Array | ArrayBuffer | null;
+}): Promise<Record<string, string>> {
+  return researchIdentityHeaders(target);
 }
 
 async function researchApiError(response: Response, path: string): Promise<never> {
@@ -634,7 +624,7 @@ async function getJson<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
       cache: 'no-store',
-      headers: await researchRequestHeaders(),
+      headers: await researchRequestHeaders({ method: 'GET', path }),
     });
     if (response.status === 404) return fallback;
     if (!response.ok) return researchApiError(response, path);
@@ -647,13 +637,18 @@ async function getJson<T>(path: string, fallback: T): Promise<T> {
 
 async function postJson<T>(path: string, fallback: T, body?: unknown): Promise<T> {
   try {
-    const authHeaders = await researchRequestHeaders();
+    const requestBody = body ? JSON.stringify(body) : undefined;
+    const authHeaders = await researchRequestHeaders({
+      method: 'POST',
+      path,
+      body: requestBody ?? null,
+    });
     const response = await fetch(`${BACKEND_URL}${path}`, {
       method: 'POST',
       headers: body
         ? { ...authHeaders, 'Content-Type': 'application/json' }
         : authHeaders,
-      body: body ? JSON.stringify(body) : undefined,
+      body: requestBody,
       cache: 'no-store',
     });
     if (!response.ok) return researchApiError(response, path);
@@ -667,11 +662,20 @@ async function postJson<T>(path: string, fallback: T, body?: unknown): Promise<T
 
 async function postForm<T>(path: string, fallback: T, body: FormData): Promise<T> {
   try {
+    const normalized = await normalizeResearchBody(body);
+    const authHeaders = await researchRequestHeaders({
+      method: 'POST',
+      path,
+      body: normalized.body ?? null,
+    });
     const response = await fetch(`${BACKEND_URL}${path}`, {
       method: 'POST',
-      body,
+      body: normalized.body ?? undefined,
       cache: 'no-store',
-      headers: await researchRequestHeaders(),
+      headers: {
+        ...authHeaders,
+        ...(normalized.contentType ? { 'Content-Type': normalized.contentType } : {}),
+      },
     });
     if (!response.ok) return researchApiError(response, path);
     if (response.status === 204) return fallback;
@@ -715,19 +719,7 @@ export async function getResearchDashboard() {
     settings,
   };
 }
-
-export async function ensureResearchCompany(ticker: string, name?: string) {
-  const normalizedTicker = ticker.trim().toUpperCase();
-  if (!/^[A-Z0-9.\-]{1,20}$/.test(normalizedTicker)) {
-    throw new AppError('Invalid ticker', 'VALIDATION_ERROR', 400, { field: 'ticker' });
-  }
-  return postJson<ResearchCompany>('/api/companies/ensure', null as never, {
-    ticker: normalizedTicker,
-    name: name?.trim() || null,
-  });
-}
-
-export type ResearchCompanySnapshot = components['schemas']['CompanySnapshotOut'];
+type ResearchCompanySnapshot = components['schemas']['CompanySnapshotOut'];
 
 export async function getResearchCompanySnapshot(
   ticker: string,
@@ -885,21 +877,6 @@ export async function refreshCompanyResearchModel(ticker: string) {
   );
   revalidatePath(`/research/${normalizedTicker}`);
 }
-
-export async function generateResearchThesis(ticker: string) {
-  const normalizedTicker = ticker.toUpperCase();
-  await postJson(
-    '/api/thesis/generate',
-    null,
-    {
-      ticker: normalizedTicker,
-      force_new_version: true,
-    },
-  );
-  revalidatePath('/research');
-  revalidatePath(`/research/${normalizedTicker}`);
-}
-
 export async function createResearchClaim(ticker: string, formData: FormData) {
   const normalizedTicker = ticker.toUpperCase();
   const statement = String(formData.get('statement') ?? '').trim();
@@ -919,138 +896,6 @@ export async function createResearchClaim(ticker: string, formData: FormData) {
   revalidatePath('/research');
   revalidatePath(`/research/${normalizedTicker}`);
 }
-
-export async function addResearchClaimEvidence(ticker: string, claimId: number, formData: FormData) {
-  const normalizedTicker = ticker.toUpperCase();
-  const summary = String(formData.get('summary') ?? '').trim();
-  const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
-  const sourceUrl = String(formData.get('source_url') ?? '').trim();
-  const sourceRef = String(formData.get('source_ref') ?? '').trim();
-  const [sourceRefType, sourceRefId] = sourceRef.split(':');
-  const parsedSourceRefId = Number(sourceRefId);
-  const documentId = sourceRefType === 'document' ? parsedSourceRefId : Number(formData.get('document_id') ?? 0);
-  const documentChunkId = sourceRefType === 'chunk' ? parsedSourceRefId : Number(formData.get('document_chunk_id') ?? 0);
-
-  if (summary.length < 3) throw new ValidationError('El resumen de evidencia debe tener al menos 3 caracteres', 'summary');
-
-  await postJson(`/api/memory/claims/${claimId}/evidence`, null, {
-    evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
-    summary,
-    source_url: sourceUrl || null,
-    document_id: Number.isFinite(documentId) && documentId > 0 ? documentId : null,
-    document_chunk_id: Number.isFinite(documentChunkId) && documentChunkId > 0 ? documentChunkId : null,
-  });
-
-  revalidatePath('/research');
-  revalidatePath(`/research/${normalizedTicker}`);
-}
-
-export async function createResearchClaimFromChunk(ticker: string, chunkId: number, formData: FormData) {
-  const normalizedTicker = ticker.toUpperCase();
-  const statement = String(formData.get('statement') ?? '').trim();
-  const summary = String(formData.get('summary') ?? statement).trim();
-  const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
-  const sourceUrl = String(formData.get('source_url') ?? '').trim();
-  const materiality = Number(formData.get('materiality_score') ?? 5);
-
-  if (statement.length < 5) throw new ValidationError('La afirmación debe tener al menos 5 caracteres', 'statement');
-  if (summary.length < 3) throw new ValidationError('El resumen de evidencia debe tener al menos 3 caracteres', 'summary');
-  if (!Number.isFinite(chunkId) || chunkId <= 0) throw new ValidationError('El fragmento de origen no es válido', 'chunkId');
-
-  const claim = await postJson<ResearchClaim | null>('/api/memory/claims', null, {
-    ticker: normalizedTicker,
-    statement,
-    claim_type: 'source_extracted',
-    materiality_score: Number.isFinite(materiality) ? Math.max(0, Math.min(10, materiality)) : 5,
-    source_quality: 'backend_classified',
-    created_by: 'user',
-  });
-
-  if (!claim?.id) throw new AppError('No se pudo crear la afirmación', 'CLAIM_CREATION_FAILED', 502);
-
-  await postJson(`/api/memory/claims/${claim.id}/evidence`, null, {
-    evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
-    summary,
-    source_url: sourceUrl || null,
-    document_chunk_id: chunkId,
-  });
-
-  revalidatePath('/research');
-  revalidatePath(`/research/${normalizedTicker}`);
-}
-
-export async function addResearchChunkEvidence(ticker: string, chunkId: number, formData: FormData) {
-  const normalizedTicker = ticker.toUpperCase();
-  const claimId = Number(formData.get('claim_id') ?? 0);
-  const summary = String(formData.get('summary') ?? '').trim();
-  const evidenceType = String(formData.get('evidence_type') ?? 'supports').trim();
-  const sourceUrl = String(formData.get('source_url') ?? '').trim();
-
-  if (!Number.isFinite(claimId) || claimId <= 0) throw new ValidationError('La afirmación seleccionada no es válida', 'claim_id');
-  if (summary.length < 3) throw new ValidationError('El resumen de evidencia debe tener al menos 3 caracteres', 'summary');
-  if (!Number.isFinite(chunkId) || chunkId <= 0) throw new ValidationError('El fragmento de origen no es válido', 'chunkId');
-
-  await postJson(`/api/memory/claims/${claimId}/evidence`, null, {
-    evidence_type: evidenceType === 'contradicts' ? 'contradicts' : 'supports',
-    summary,
-    source_url: sourceUrl || null,
-    document_chunk_id: chunkId,
-  });
-
-  revalidatePath('/research');
-  revalidatePath(`/research/${normalizedTicker}`);
-}
-
-export async function createResearchThesisChange(ticker: string, formData: FormData) {
-  const normalizedTicker = ticker.toUpperCase();
-  const summary = String(formData.get('summary') ?? '').trim();
-  const changeType = String(formData.get('change_type') ?? 'manual').trim() || 'manual';
-  const impactDirection = String(formData.get('impact_direction') ?? 'neutral').trim() || 'neutral';
-  const materiality = Number(formData.get('materiality_score') ?? 5);
-  const affectedMetrics = String(formData.get('affected_metrics') ?? '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  if (summary.length < 5) throw new ValidationError('El cambio debe describirse con al menos 5 caracteres', 'summary');
-
-  await postJson('/api/memory/thesis/changes', null, {
-    ticker: normalizedTicker,
-    change_type: changeType,
-    impact_direction: ['positive', 'negative', 'neutral', 'mixed'].includes(impactDirection)
-      ? impactDirection
-      : 'neutral',
-    materiality_score: Number.isFinite(materiality) ? Math.max(0, Math.min(10, materiality)) : 5,
-    summary,
-    affected_metrics: affectedMetrics,
-    requires_review: true,
-  });
-
-  revalidatePath('/research');
-  revalidatePath(`/research/${normalizedTicker}`);
-}
-
-export async function createResearchMemoryItem(ticker: string, formData: FormData) {
-  const normalizedTicker = ticker.toUpperCase();
-  const content = String(formData.get('content') ?? '').trim();
-  const memoryType = String(formData.get('memory_type') ?? 'note').trim() || 'note';
-  const importance = Number(formData.get('importance') ?? 5);
-
-  if (content.length < 3) throw new ValidationError('La nota debe tener al menos 3 caracteres', 'content');
-
-  await postJson('/api/memory/memory-items', null, {
-    ticker: normalizedTicker,
-    scope: 'company',
-    memory_type: memoryType,
-    importance: Number.isFinite(importance) ? Math.max(0, Math.min(10, importance)) : 5,
-    content,
-    source_type: 'user',
-  });
-
-  revalidatePath('/research');
-  revalidatePath(`/research/${normalizedTicker}`);
-}
-
 export async function askResearchCompanyChat(
   ticker: string,
   question: string,
@@ -1147,7 +992,7 @@ export async function importResearchDocumentUrl(formData: FormData) {
   revalidatePath(`/research/${ticker}`);
 }
 
-export type ResearchNewsEvent = {
+type ResearchNewsEvent = {
   id: number;
   ticker: string | null;
   date: string;
@@ -1166,7 +1011,7 @@ export type ResearchNewsEvent = {
   model_route?: string;
 };
 
-export type ResearchWorkflowRun = {
+type ResearchWorkflowRun = {
   status: string;
   workflow: string;
   ticker: string | null;
@@ -1176,7 +1021,7 @@ export type ResearchWorkflowRun = {
   result?: unknown;
 };
 
-export type ResearchThesisVersion = {
+type ResearchThesisVersion = {
   id: number;
   version: number;
   status: string;
@@ -1265,66 +1110,4 @@ export async function runResearchWorkflow(name: string, ticker?: string): Promis
   revalidatePath('/research');
   if (ticker) revalidatePath(`/research/${ticker.toUpperCase()}`);
   return result;
-}
-
-export async function actionResearchEvidenceSuggestion(
-  ticker: string,
-  suggestionId: number,
-  action: 'accept' | 'reject',
-  claimId?: number,
-) {
-  await postJson(
-    `/api/sources/evidence-suggestions/${suggestionId}/action`,
-    null,
-    {
-      action,
-      claim_id: claimId ?? null,
-    },
-  );
-  revalidatePath(`/research/${ticker.toUpperCase()}`);
-}
-
-export async function runResearchRedTeam(ticker: string) {
-  const normalizedTicker = ticker.toUpperCase();
-  await postJson(
-    `/api/companies/${encodeURIComponent(normalizedTicker)}/red-team`,
-    null,
-  );
-  revalidatePath(`/research/${normalizedTicker}`);
-}
-
-export async function runResearchEarnings(ticker: string, formData: FormData) {
-  const normalizedTicker = ticker.toUpperCase();
-  const fiscalYear = Number(formData.get('fiscal_year'));
-  const fiscalQuarter = String(formData.get('fiscal_quarter') ?? 'FY');
-  const documentIds = String(formData.get('document_ids') ?? '')
-    .split(',')
-    .map((value) => Number(value.trim()))
-    .filter((value) => Number.isFinite(value) && value > 0);
-  if (!Number.isInteger(fiscalYear)) throw new ValidationError('El ejercicio fiscal no es válido', 'fiscal_year');
-  await postJson(
-    `/api/earnings/${encodeURIComponent(normalizedTicker)}/run`,
-    null,
-    {
-      fiscal_year: fiscalYear,
-      fiscal_quarter: ['Q1', 'Q2', 'Q3', 'Q4', 'FY'].includes(fiscalQuarter)
-        ? fiscalQuarter
-        : 'FY',
-      document_ids: documentIds,
-      force_new_thesis: false,
-    },
-  );
-  revalidatePath(`/research/${normalizedTicker}`);
-}
-
-export async function actionResearchAlert(
-  ticker: string,
-  alertId: number,
-  action: 'acknowledge' | 'resolve' | 'reopen',
-) {
-  await postJson(`/api/alerts/${alertId}/action`, null, {
-    action,
-    actor: 'user',
-  });
-  revalidatePath(`/research/${ticker.toUpperCase()}`);
 }

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Landmark, Upload } from 'lucide-react';
 import { importFromIBKR, importIBKRCsv, importIBKRXml } from '@/lib/actions/portfolio.actions';
 import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 
 interface ImportIBKRButtonProps {
     userId: string;
@@ -72,7 +72,7 @@ export default function ImportIBKRButton({ userId }: ImportIBKRButtonProps) {
             }
             router.refresh();
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            showErrorToast(error);
         } finally {
             // Small delay to allow the page to refresh
             setTimeout(() => setIsImporting(false), 1000);
@@ -103,7 +103,7 @@ export default function ImportIBKRButton({ userId }: ImportIBKRButtonProps) {
             }
             router.refresh();
         } catch (error) {
-            toast.error(getErrorMessage(error), { duration: 8000 });
+            showErrorToast(error);
         } finally {
             setIsUploading(false);
         }

@@ -13,7 +13,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { exportJournal, type ExportFormat } from '@/lib/actions/export.actions';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 
 const YEAR_RANGE = 10;
@@ -45,7 +45,7 @@ export default function ExportView() {
             setPreview(result.content.slice(0, 2000));
             toast.success(`Exportación completada: ${result.filename}`);
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            showErrorToast(error);
         } finally {
             setLoading(false);
         }

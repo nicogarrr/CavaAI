@@ -3,10 +3,12 @@
 import { jsonBody, researchRequest } from '@/lib/research/client';
 import { ValidationError } from '@/lib/types/errors';
 
+export type AlertType = 'price_above' | 'price_below' | 'price_change' | 'news' | 'earnings';
+
 export interface Alert {
     _id: string;
     symbol: string;
-    type: 'price_above' | 'price_below' | 'price_change' | 'news' | 'earnings';
+    type: AlertType;
     condition: {
         operator: '>' | '<' | '>=' | '<=' | '==';
         value: number | string;
@@ -19,7 +21,7 @@ export interface Alert {
 
 export interface CreateAlertInput {
     symbol: string;
-    type: Alert['type'];
+    type: AlertType;
     condition: Alert['condition'];
 }
 

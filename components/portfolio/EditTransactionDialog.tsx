@@ -17,7 +17,7 @@ import { Pencil } from 'lucide-react';
 import { updateTransaction } from '@/lib/actions/portfolio.actions';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 
 type Transaction = {
     _id: string;
@@ -70,7 +70,7 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
             toast.success('Transacción actualizada');
             router.refresh();
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            showErrorToast(error);
         } finally {
             setLoading(false);
         }

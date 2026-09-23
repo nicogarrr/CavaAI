@@ -119,6 +119,45 @@ class ExtractedStatement:
     quote: str
 
 
+def _rule_scores(text: str) -> tuple[float, int]:
+    """Rule-derived (confidence, materiality_score) for a statement.
+
+    Single source of truth for the heuristic scoring used both by
+    extract_statements and by the short-text fallback: scores always come
+    from observable features of the text (material terms, numbers,
+    forward-looking markers), never from an invented constant.
+    """
+    tokens = _tokens(text)
+    material_hits = len(tokens & MATERIAL_TERMS)
+    has_number = bool(_numbers(text))
+    forward_looking = any(
+        marker in text.lower()
+        for marker in ("expects", "guidance", "forecast", "will ", "target")
+    )
+    confidence = min(
+        0.92,
+        0.52 + material_hits * 0.07 + int(has_number) * 0.07,
+    )
+    score = min(10, 3 + material_hits * 2 + int(has_number) + int(forward_looking))
+    return confidence, score
+
+
+def heuristic_statement(text: str) -> ExtractedStatement:
+    """Fallback statement for short text with no extractable sentence.
+
+    Confidence and materiality are derived by the same rules as extracted
+    statements (_rule_scores) instead of a fabricated constant pair.
+    """
+    normalized = " ".join(text.split())[:700]
+    confidence, score = _rule_scores(normalized)
+    return ExtractedStatement(
+        text=normalized,
+        confidence=confidence,
+        materiality_score=score,
+        quote=normalized,
+    )
+
+
 @dataclass(frozen=True)
 class ClaimMatch:
     claim: Claim
@@ -195,11 +234,7 @@ class ClaimIntelligenceService:
             )
             if not (material_hits or has_number or forward_looking):
                 continue
-            score = min(10, 3 + material_hits * 2 + int(has_number) + int(forward_looking))
-            confidence = min(
-                0.92,
-                0.52 + material_hits * 0.07 + int(has_number) * 0.07,
-            )
+            confidence, score = _rule_scores(sentence)
             candidates.append(
                 ExtractedStatement(
                     text=sentence,
@@ -459,15 +494,10 @@ class ClaimIntelligenceService:
     ) -> dict:
         source_tier = classify_source(source_type, source_url)
         extracted_statements = self.extract_statements(text)
+        heuristic_fallback = False
         if not extracted_statements and len(text.strip()) >= 20:
-            extracted_statements = [
-                ExtractedStatement(
-                    text=" ".join(text.split())[:700],
-                    confidence=0.55,
-                    materiality_score=5,
-                    quote=" ".join(text.split())[:700],
-                )
-            ]
+            extracted_statements = [heuristic_statement(text)]
+            heuristic_fallback = True
         suggestions: list[EvidenceSuggestion] = []
         applied = 0
         for extracted in extracted_statements:
@@ -519,6 +549,9 @@ class ClaimIntelligenceService:
                     "source_type": source_type,
                     "source_url": source_url,
                     "source_reference": source_reference or {},
+                    "confidence_source": (
+                        "heuristic" if heuristic_fallback else "extraction_rules"
+                    ),
                     "automatic": True,
                 },
             )

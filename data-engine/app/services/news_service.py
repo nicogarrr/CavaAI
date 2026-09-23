@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, ExternalClaim, NewsEvent, ThesisChange, ThesisVersion
 from app.schemas import ManualNewsResponse, NewsFeedItem, NewsIngestResponse
+from app.services.source_hierarchy_service import classify_source
 from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.materiality_service import MaterialityService
 from app.services.review_alert_service import ReviewAlertService
@@ -185,7 +186,7 @@ class NewsService:
                 source_id=None,
                 claim=summary,
                 claim_type="manual_news_claim",
-                confidence=0.65,
+                confidence=classify_source(source, url).trust_score,
                 used_in_model=False,
             )
         )

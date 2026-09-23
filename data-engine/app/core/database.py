@@ -21,29 +21,59 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expi
 
 @event.listens_for(Session, "do_orm_execute")
 def _scope_tenant_queries(execute_state) -> None:
-    if (
-        not execute_state.is_select
-        or execute_state.execution_options.get("include_all_tenants")
-    ):
+    if execute_state.execution_options.get("include_all_tenants"):
         return
     tenant_id = execute_state.session.info.get("tenant_id")
     if tenant_id is None:
         return
     from app.models.entities import TenantOwnedMixin
 
-    execute_state.statement = execute_state.statement.options(
-        with_loader_criteria(
-            TenantOwnedMixin,
-            lambda model: model.tenant_id == tenant_id,
-            include_aliases=True,
+    if execute_state.is_select:
+        execute_state.statement = execute_state.statement.options(
+            with_loader_criteria(
+                TenantOwnedMixin,
+                lambda model: model.tenant_id == tenant_id,
+                include_aliases=True,
+            )
         )
-    )
+        return
+    if execute_state.is_update or execute_state.is_delete:
+        # Bulk UPDATE/DELETE Core: sin este filtro una sentencia sin WHERE de
+        # tenant barria todas las filas de todos los tenants.
+        _scope_tenant_dml(execute_state, tenant_id)
+
+
+def _scope_tenant_dml(execute_state, tenant_id) -> None:
+    statement = execute_state.statement
+    table = getattr(statement, "table", None)
+    if table is None or "tenant_id" not in table.c:
+        return
+    if execute_state.is_update:
+        values = getattr(statement, "_values", None) or {}
+        if any(getattr(column, "key", "") == "tenant_id" for column in values):
+            raise RuntimeError(
+                "Changing tenant_id through bulk updates is not allowed"
+            )
+    execute_state.statement = statement.where(table.c.tenant_id == tenant_id)
 
 
 @event.listens_for(Session, "before_flush")
 def _assign_tenant_to_new_rows(session: Session, _flush_context, _instances) -> None:
     tenant_id = session.info.get("tenant_id")
+    from sqlalchemy import inspect as sa_inspect
+
     from app.models.entities import TenantOwnedMixin
+
+    # P1-5: tenant_id es inmutable en filas persistentes. Reasignarlo (o
+    # vaciarlo) via session.dirty no debe poder hacer commit.
+    for instance in session.dirty:
+        if not isinstance(instance, TenantOwnedMixin):
+            continue
+        history = sa_inspect(instance).attrs.tenant_id.history
+        if history.has_changes() and list(history.deleted) != list(history.added):
+            raise RuntimeError(
+                "Cross-tenant writes are not allowed: tenant_id is immutable"
+            )
 
     tenant_rows = [instance for instance in session.new if isinstance(instance, TenantOwnedMixin)]
     if tenant_id is None:

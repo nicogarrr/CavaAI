@@ -13,7 +13,10 @@ export async function GET(
   if (!BACKEND_URL) {
     return NextResponse.json({ error: 'Backend no configurado' }, { status: 503 });
   }
-  const identity = await researchIdentityHeaders();
+  const identity = await researchIdentityHeaders({
+    method: 'GET',
+    path: `/api/thesis/${encodeURIComponent(ticker.toUpperCase())}/memo.md`,
+  });
   const upstream = await fetch(
     `${BACKEND_URL}/api/thesis/${encodeURIComponent(ticker.toUpperCase())}/memo.md`,
     { headers: identity, cache: 'no-store' },

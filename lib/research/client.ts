@@ -1,4 +1,7 @@
-import { researchIdentityHeaders } from '@/lib/auth/research-identity';
+import {
+  normalizeResearchBody,
+  researchIdentityHeaders,
+} from '@/lib/auth/research-identity';
 import { AppError, ExternalAPIError } from '@/lib/types/errors';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
@@ -18,10 +21,18 @@ export async function researchRequest<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const identityHeaders = await researchIdentityHeaders();
+  const method = (init.method ?? 'GET').toUpperCase();
+  const normalized = await normalizeResearchBody(init.body ?? null);
+  const identityHeaders = await researchIdentityHeaders({
+    method,
+    path,
+    body: normalized.body ?? null,
+  });
   const headers = new Headers(init.headers);
   for (const [key, value] of Object.entries(identityHeaders)) headers.set(key, value);
-  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+  if (normalized.contentType && !headers.has('Content-Type')) {
+    headers.set('Content-Type', normalized.contentType);
+  } else if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -29,6 +40,7 @@ export async function researchRequest<T>(
   try {
     response = await fetch(`${BACKEND_URL}${path}`, {
       ...init,
+      body: normalized.body ?? undefined,
       headers,
       cache: init.cache ?? 'no-store',
     });

@@ -2,26 +2,35 @@ import { ArrowLeft, CheckCircle2, Cpu, Database, DollarSign, XCircle } from 'luc
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { getResearchDashboard } from '@/lib/actions/research.actions';
+import { formatNumber } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const CONNECTOR_META: Record<string, { label: string; description: string }> = {
-  fmp: { label: 'FMP', description: 'Financial Modeling Prep — earnings, balance sheet, ratios' },
-  ibkr: { label: 'IBKR', description: 'Interactive Brokers Flex XML — live portfolio positions' },
-  fred: { label: 'FRED', description: 'Federal Reserve FRED — macro rates, CPI, GDP' },
-  manual_transcript_import: { label: 'Manual transcripts', description: 'Provider-neutral transcript text import' },
-  langfuse: { label: 'Langfuse', description: 'Langfuse — LLM observability and tracing' },
-  qdrant_url: { label: 'Qdrant', description: 'Qdrant — vector store for RAG search' },
+  edgar: { label: 'EDGAR', description: 'SEC EDGAR/XBRL — resultados, balance y ratios' },
+  ibkr: { label: 'IBKR', description: 'Interactive Brokers Flex XML — posiciones de cartera en vivo' },
+  fred: { label: 'FRED', description: 'FRED de la Reserva Federal — tipos macro, IPC, PIB' },
+  manual_transcript_import: { label: 'Transcripts manuales', description: 'Importación de texto de transcripts independiente del proveedor' },
+  langfuse: { label: 'Langfuse', description: 'Langfuse — observabilidad y trazas de LLM' },
+  qdrant_url: { label: 'Qdrant', description: 'Qdrant — almacén vectorial para búsqueda RAG' },
 };
 
-const CONNECTOR_ORDER = ['fmp', 'ibkr', 'fred', 'manual_transcript_import', 'langfuse', 'qdrant_url'];
+const CONNECTOR_ORDER = ['ibkr', 'fred', 'manual_transcript_import', 'langfuse', 'qdrant_url'];
 
-function connectorStatus(value: boolean | string): 'configured' | 'not_configured' | 'manual' {
+type ConnectorStatus = 'configured' | 'not_configured' | 'manual';
+
+function connectorStatus(value: boolean | string): ConnectorStatus {
   if (value === true || (typeof value === 'string' && value.length > 0 && value !== 'false')) return 'configured';
   if (value === 'manual') return 'manual';
   return 'not_configured';
 }
+
+const CONNECTOR_STATUS_LABELS: Record<ConnectorStatus, string> = {
+  configured: 'configurado',
+  not_configured: 'sin configurar',
+  manual: 'manual',
+};
 
 export default async function ResearchSettingsPage() {
   const { settings } = await getResearchDashboard();
@@ -50,10 +59,10 @@ export default async function ResearchSettingsPage() {
               Research
             </Link>
           </Button>
-          <p className="text-sm font-semibold uppercase text-teal-300">Configuration</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-100">Settings & Connectors</h1>
+          <p className="text-sm font-semibold uppercase text-teal-300">Configuración</p>
+          <h1 className="mt-1 text-3xl font-bold text-gray-100">Ajustes y conectores</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            Estado de conectores externos, presupuesto LLM y runtime del backend.
+            Estado de los conectores externos, presupuesto LLM y runtime del backend.
           </p>
         </div>
         <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
@@ -64,7 +73,7 @@ export default async function ResearchSettingsPage() {
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
           <Database className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Connectors</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Conectores</h2>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           {allConnectors.map(({ key, value }) => {
@@ -89,7 +98,7 @@ export default async function ResearchSettingsPage() {
                     <span className="font-semibold text-gray-200">{meta?.label ?? key}</span>
                   </div>
                   <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadge}`}>
-                    {status.replace('_', ' ')}
+                    {CONNECTOR_STATUS_LABELS[status]}
                   </span>
                 </div>
                 <p className="mt-2 text-xs text-gray-500">{meta?.description ?? key}</p>
@@ -103,19 +112,19 @@ export default async function ResearchSettingsPage() {
         <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
           <div className="mb-4 flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Budget</h2>
+            <h2 className="text-lg font-semibold text-gray-100">Presupuesto</h2>
           </div>
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
-              <span className="text-gray-400">Daily cost / cap</span>
+              <span className="text-gray-400">Coste diario / tope</span>
               <span className="font-semibold text-gray-200">
-                {settings.budget.daily_cost_eur.toFixed(2)} / {settings.budget.daily_cap_eur.toFixed(2)} EUR
+                {formatNumber(settings.budget.daily_cost_eur, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {formatNumber(settings.budget.daily_cap_eur, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR
               </span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
-              <span className="text-gray-400">Monthly cost / cap</span>
+              <span className="text-gray-400">Coste mensual / tope</span>
               <span className="font-semibold text-gray-200">
-                {settings.budget.monthly_cost_eur.toFixed(2)} / {settings.budget.monthly_cap_eur.toFixed(2)} EUR
+                {formatNumber(settings.budget.monthly_cost_eur, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {formatNumber(settings.budget.monthly_cap_eur, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR
               </span>
             </div>
           </div>
@@ -124,27 +133,27 @@ export default async function ResearchSettingsPage() {
         <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
           <div className="mb-4 flex items-center gap-2">
             <Cpu className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Runtime</h2>
+            <h2 className="text-lg font-semibold text-gray-100">Entorno de ejecución</h2>
           </div>
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
-              <span className="text-gray-400">Environment</span>
+              <span className="text-gray-400">Entorno</span>
               <span className="font-semibold text-gray-200">{settings.app_env}</span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
-              <span className="text-gray-400">MAF version</span>
+              <span className="text-gray-400">Versión MAF</span>
               <span className="font-mono font-semibold text-gray-200">{settings.maf_version}</span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
-              <span className="text-gray-400">LLM provider</span>
+              <span className="text-gray-400">Proveedor LLM</span>
               <span className="font-semibold text-gray-200">{settings.llm.provider}</span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
-              <span className="text-gray-400">LLM model</span>
+              <span className="text-gray-400">Modelo LLM</span>
               <span className="font-mono font-semibold text-gray-200">{settings.llm.model ?? '—'}</span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
-              <span className="text-gray-400">LLM status</span>
+              <span className="text-gray-400">Estado LLM</span>
               <span
                 className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
                   settings.llm.configured
@@ -152,7 +161,7 @@ export default async function ResearchSettingsPage() {
                     : 'border-gray-700 bg-gray-900 text-gray-500'
                 }`}
               >
-                {settings.llm.configured ? 'configured' : (settings.llm.reason ?? 'disabled').replaceAll('_', ' ')}
+                {settings.llm.configured ? 'configurado' : (settings.llm.reason ?? 'desactivado').replaceAll('_', ' ')}
               </span>
             </div>
           </div>

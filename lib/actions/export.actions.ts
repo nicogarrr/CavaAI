@@ -25,7 +25,10 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
         throw new AppError('Año de exportación inválido', 'VALIDATION_ERROR', 400);
     }
 
-    const identityHeaders = await researchIdentityHeaders();
+    const identityHeaders = await researchIdentityHeaders({
+        method: 'GET',
+        path: `/api/export/${year}`,
+    });
     const response = await fetch(`${BACKEND_URL}/api/export/${year}?format=${format}`, {
         headers: { ...identityHeaders },
         cache: 'no-store',

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatMoney } from '@/lib/format';
 import { TrendingUp, TrendingDown, DollarSign, PiggyBank } from 'lucide-react';
 import type { PortfolioSummary as PortfolioSummaryType } from '@/lib/actions/portfolio.actions';
 
@@ -9,12 +10,10 @@ type Props = {
 
 export default function PortfolioSummary({ summary }: Props) {
   const isPositive = summary.totalGain >= 0;
-  const format = (value: number) => new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: summary.baseCurrency,
+  const format = (value: number) => formatMoney(value, summary.baseCurrency, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value);
+  });
 
   return (
     <div className="space-y-3">

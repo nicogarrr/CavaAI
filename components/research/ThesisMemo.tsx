@@ -1,20 +1,20 @@
+import { formatMoney, formatPercent } from '@/lib/format';
+import { GlossaryTerm } from '@/components/GlossaryTerm';
+import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
 import { Badge } from '@/components/ui/badge';
 import type { ResearchThesis } from '@/lib/actions/research.actions';
+import type { GlossaryKey } from '@/lib/glossary';
 
 function money(value: number | string | null | undefined): string {
   const parsed = typeof value === 'string' ? Number(value) : value;
   if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return 'N/A';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2,
-  }).format(parsed);
+  return formatMoney(parsed, 'USD', { maximumFractionDigits: 2 });
 }
 
 function pct(value: number | string | null | undefined): string {
   const parsed = typeof value === 'string' ? Number(value) : value;
   if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return 'N/A';
-  return `${(parsed * 100).toFixed(1)}%`;
+  return formatPercent(parsed);
 }
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
@@ -39,11 +39,13 @@ function ScenarioCell({
   value,
   probability,
   highlight = false,
+  glossaryKey,
 }: {
   label: string;
   value: number | string | null | undefined;
   probability?: number | null;
   highlight?: boolean;
+  glossaryKey?: GlossaryKey;
 }) {
   return (
     <div
@@ -51,7 +53,15 @@ function ScenarioCell({
         highlight ? 'border-teal-800 bg-teal-950/20' : 'border-gray-800 bg-black/20'
       }`}
     >
-      <div className="text-xs uppercase text-gray-500">{label}</div>
+      <div className="text-xs uppercase text-gray-500">
+        {glossaryKey ? (
+          <GlossaryTerm k={glossaryKey} icon={false}>
+            {label}
+          </GlossaryTerm>
+        ) : (
+          label
+        )}
+      </div>
       <div className="mt-1 text-base font-semibold text-gray-100">{money(value)}</div>
       {probability !== null && probability !== undefined ? (
         <div className="mt-0.5 text-xs text-gray-500">p = {(probability * 100).toFixed(0)}%</div>
@@ -108,17 +118,22 @@ export default function ThesisMemo({ thesis }: { thesis: ResearchThesis }) {
         </h3>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           <ScenarioCell label="Precio" value={thesis.current_price} />
-          <ScenarioCell label="Bear" value={thesis.bear_value} probability={probabilities['bear']} />
-          <ScenarioCell label="Base" value={thesis.base_value} probability={probabilities['base']} highlight />
-          <ScenarioCell label="Bull" value={thesis.bull_value} probability={probabilities['bull']} />
+          <ScenarioCell label="Bear" value={thesis.bear_value} probability={probabilities['bear']} glossaryKey="bear" />
+          <ScenarioCell label="Base" value={thesis.base_value} probability={probabilities['base']} highlight glossaryKey="base" />
+          <ScenarioCell label="Bull" value={thesis.bull_value} probability={probabilities['bull']} glossaryKey="bull" />
           <ScenarioCell label="Valor esperado" value={thesis.expected_value} />
           <div className="rounded-lg border border-gray-800 bg-black/20 p-3">
-            <div className="text-xs uppercase text-gray-500">Margen seguridad</div>
+            <div className="text-xs uppercase text-gray-500">
+              <GlossaryTerm k="margen_seguridad" icon={false}>
+                Margen seguridad
+              </GlossaryTerm>
+            </div>
             <div className="mt-1 text-base font-semibold text-gray-100">
               {pct(thesis.margin_of_safety)}
             </div>
           </div>
         </div>
+        <ScenarioAssumptions />
       </section>
 
       <section>

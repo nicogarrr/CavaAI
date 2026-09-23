@@ -1,5 +1,6 @@
 'use client';
 
+import { formatMoney } from '@/lib/format';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -25,11 +26,7 @@ function signalTone(signal: unknown): 'default' | 'outline' {
 
 function moneyText(value: unknown): string {
     if (typeof value !== 'number' || !Number.isFinite(value)) return formatRecordValue(value);
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 0,
-    }).format(value);
+    return formatMoney(value, 'USD', { maximumFractionDigits: 0 });
 }
 
 function formBadge(form: unknown): { label: string; amended: boolean } | null {

@@ -42,29 +42,29 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
     <main className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-6 overflow-x-clip">
       <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase text-teal-300">Research retrieval</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-100">Universal Search</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">Search company evidence, facts, claims, thesis sections, decisions, lessons and the investment library in one ranked result set.</p>
+          <p className="text-sm font-semibold uppercase text-teal-300">Recuperación de research</p>
+          <h1 className="mt-1 text-3xl font-bold text-gray-100">Búsqueda universal</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">Busca evidencia de empresas, hechos, afirmaciones, secciones de tesis, decisiones, lecciones y la biblioteca de inversión en un único conjunto de resultados ordenado.</p>
         </div>
-        <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge"><BookOpen className="h-4 w-4" />Knowledge Library</Link></Button>
+        <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge"><BookOpen className="h-4 w-4" />Biblioteca de conocimiento</Link></Button>
       </header>
 
       <form className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5" method="get">
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Input autoFocus className="h-11 w-full text-base" defaultValue={query.q} name="q" placeholder="Search across all research..." required />
-          <Button className="h-11 w-full shrink-0 sm:w-auto" type="submit"><SearchIcon className="h-4 w-4" />Search</Button>
+          <Input autoFocus className="h-11 w-full text-base" defaultValue={query.q} name="q" placeholder="Busca en todo el research..." required />
+          <Button className="h-11 w-full shrink-0 sm:w-auto" type="submit"><SearchIcon className="h-4 w-4" />Buscar</Button>
         </div>
         <details className="mt-4">
-          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-gray-400"><Filter className="h-4 w-4" />Advanced filters</summary>
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-gray-400"><Filter className="h-4 w-4" />Filtros avanzados</summary>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Input className="h-11 w-full" defaultValue={query.ticker} name="ticker" placeholder="Ticker" />
-            <Input className="h-11 w-full" defaultValue={query.entity_types} name="entity_types" placeholder="Entity types, comma separated" />
-            <Input className="h-11 w-full" defaultValue={query.source_types} name="source_types" placeholder="Source types, comma separated" />
-            <Input className="h-11 w-full" defaultValue={query.statuses} name="statuses" placeholder="Statuses, comma separated" />
-            <Input className="h-11 w-full" defaultValue={query.collection_id} min="1" name="collection_id" placeholder="Collection ID" type="number" />
-            <Input className="h-11 w-full" defaultValue={query.date_from} name="date_from" type="date" />
-            <Input className="h-11 w-full" defaultValue={query.date_to} name="date_to" type="date" />
-            <select className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" defaultValue={query.vector ?? 'true'} name="vector"><option value="true">Lexical + vector</option><option value="false">Lexical only</option></select>
+            <Input className="h-11 w-full" defaultValue={query.entity_types} name="entity_types" placeholder="Tipos de entidad, separados por comas" />
+            <Input className="h-11 w-full" defaultValue={query.source_types} name="source_types" placeholder="Tipos de fuente, separados por comas" />
+            <Input className="h-11 w-full" defaultValue={query.statuses} name="statuses" placeholder="Estados, separados por comas" />
+            <Input className="h-11 w-full" defaultValue={query.collection_id} min="1" name="collection_id" placeholder="ID de colección" type="number" />
+            <Input aria-label="Fecha desde" className="h-11 w-full" defaultValue={query.date_from} name="date_from" type="date" />
+            <Input aria-label="Fecha hasta" className="h-11 w-full" defaultValue={query.date_to} name="date_to" type="date" />
+            <select aria-label="Tipo de búsqueda" className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" defaultValue={query.vector ?? 'true'} name="vector"><option value="true">Léxico + vectorial</option><option value="false">Solo léxico</option></select>
           </div>
         </details>
       </form>
@@ -72,7 +72,7 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
       {searched ? (
         <section className="grid min-w-0 grid-cols-1 gap-4">
           <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-gray-800 bg-[#101010] p-4 md:flex-row md:items-center">
-            <div><div className="text-sm font-semibold text-gray-100">{response.total} results for “{response.query}”</div><div className="mt-1 text-xs text-gray-500">Ranked with lexical/vector fusion, source hierarchy and canonical-status signals.</div></div>
+            <div><div className="text-sm font-semibold text-gray-100">{response.total} resultados para “{response.query}”</div><div className="mt-1 text-xs text-gray-500">Ordenado con fusión léxica/vectorial, jerarquía de fuentes y señales de estado canónico.</div></div>
             <div className="flex flex-wrap gap-2 md:ml-auto">
               {Object.entries(response.retrieval).filter(([, value]) => typeof value === 'string').map(([key, value]) => <Badge key={key} variant="outline">{key}: {String(value)}</Badge>)}
             </div>
@@ -86,15 +86,15 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
                   <div className="flex flex-wrap items-center gap-2"><Badge>{result.entity_type}</Badge>{result.ticker ? <Badge variant="outline">{result.ticker}</Badge> : null}<Badge variant="outline">{result.source_tier}</Badge><Badge variant="outline">{result.status}</Badge></div>
                   <h2 className="mt-3 break-words text-lg font-semibold text-gray-100">{result.title}</h2>
                   <p className="mt-2 line-clamp-5 whitespace-pre-wrap text-sm leading-6 text-gray-300">{result.text}</p>
-                  <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500"><span>{result.citation}</span><span>{result.collection ?? result.source_type}</span><span>{result.as_of ?? 'date unavailable'}</span><span>trust {(result.source_trust * 100).toFixed(0)}%</span><span>rank {result.scores.reranker.toFixed(4)}</span></div>
+                  <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500"><span>{result.citation}</span><span>{result.collection ?? result.source_type}</span><span>{result.as_of ?? 'fecha no disponible'}</span><span>confianza {(result.source_trust * 100).toFixed(0)}%</span><span>posición {result.scores.reranker.toFixed(4)}</span></div>
                 </div>
               </div>
             </article>
           ))}
-          {!response.results.length ? <div className="rounded-xl border border-dashed border-gray-800 p-8 text-center text-sm text-gray-500">No evidence matched the query and filters.</div> : null}
+          {!response.results.length ? <div className="rounded-xl border border-dashed border-gray-800 p-8 text-center text-sm text-gray-500">Ninguna evidencia coincide con la consulta y los filtros.</div> : null}
         </section>
       ) : (
-        <section className="rounded-xl border border-dashed border-gray-800 p-10 text-center"><SearchIcon className="mx-auto h-8 w-8 text-gray-600" /><h2 className="mt-3 font-semibold text-gray-300">Start with a company, concept, KPI or prior decision</h2><p className="mt-2 text-sm text-gray-500">Examples: dilution risk, incremental ROIC, management promises, selling too early.</p></section>
+        <section className="rounded-xl border border-dashed border-gray-800 p-10 text-center"><SearchIcon className="mx-auto h-8 w-8 text-gray-600" /><h2 className="mt-3 font-semibold text-gray-300">Empieza por una empresa, concepto, KPI o decisión previa</h2><p className="mt-2 text-sm text-gray-500">Ejemplos: riesgo de dilución, ROIC incremental, promesas de la directiva, vender demasiado pronto.</p></section>
       )}
     </main>
   );

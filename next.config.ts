@@ -30,7 +30,11 @@ const nextConfig: NextConfig = {
     experimental: {
         optimizePackageImports: ['lucide-react', 'recharts'], // Tree-shake large dependencies
         serverActions: {
-            bodySizeLimit: '20mb', // Máximo que soporta Gemini API
+            // 4mb: Vercel Hobby corta el body de las server actions en ~4.5 MB;
+            // un límite mayor solo cambia el error local por un fallo silencioso
+            // en producción. La UI avisa al elegir archivos > 4 MB
+            // (components/forms/FileUploadInput.tsx).
+            bodySizeLimit: '4mb',
         },
     },
     

@@ -3,11 +3,28 @@
 import { revalidatePath } from 'next/cache';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchRequest, jsonBody } from '@/lib/research/client';
+import { classifyError, getFriendlyErrorMessage, type ErrorCause } from '@/lib/types/errors';
 
 // Helper para obtener userId (researchRequest añade la identidad firmada
 // vía researchIdentityHeaders usando el usuario autenticado).
 async function getUserId(): Promise<string> {
     return (await requireAuthenticatedUser()).id;
+}
+
+/** Resultado de una mutación de watchlist (serializable a cliente). */
+export interface WatchlistMutationResult {
+    success: boolean;
+    /** Causa del fallo para decidir el toast (offline → Reintentar, duplicate...) */
+    code?: ErrorCause;
+    message?: string;
+}
+
+function failure(error: unknown): WatchlistMutationResult {
+    return {
+        success: false,
+        code: classifyError(error),
+        message: getFriendlyErrorMessage(error, { duplicateMessage: 'Ya sigues este ticker.' }),
+    };
 }
 
 /** Entrada devuelta por GET /api/watchlist del backend research. */
@@ -35,7 +52,7 @@ export async function getWatchlist(): Promise<{ symbol: string; addedAt: Date }[
 }
 
 // Añadir a watchlist
-export async function addToWatchlist(symbol: string, company?: string): Promise<{ success: boolean }> {
+export async function addToWatchlist(symbol: string, company?: string): Promise<WatchlistMutationResult> {
     try {
         await getUserId();
         await researchRequest('/api/watchlist', {
@@ -49,12 +66,12 @@ export async function addToWatchlist(symbol: string, company?: string): Promise<
         return { success: true };
     } catch (error) {
         console.error('addToWatchlist error:', error);
-        return { success: false };
+        return failure(error);
     }
 }
 
 // Eliminar de watchlist
-export async function removeFromWatchlist(symbol: string): Promise<{ success: boolean }> {
+export async function removeFromWatchlist(symbol: string): Promise<WatchlistMutationResult> {
     try {
         await getUserId();
         await researchRequest(`/api/watchlist/${encodeURIComponent(symbol)}`, {
@@ -64,6 +81,6 @@ export async function removeFromWatchlist(symbol: string): Promise<{ success: bo
         return { success: true };
     } catch (error) {
         console.error('removeFromWatchlist error:', error);
-        return { success: false };
+        return failure(error);
     }
 }

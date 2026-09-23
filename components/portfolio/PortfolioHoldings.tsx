@@ -1,5 +1,6 @@
 'use client';
 
+import { formatMoney } from '@/lib/format';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Trash2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 
 type Props = {
   holdings: PortfolioHolding[];
@@ -24,9 +25,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
   const [currentHoldings, setCurrentHoldings] = useState<PortfolioHolding[]>(holdings);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const format = (value: number, currency: string) => new Intl.NumberFormat('en-US', {
-    style: 'currency', currency, maximumFractionDigits: 2,
-  }).format(value);
+  const format = (value: number, currency: string) => formatMoney(value, currency, { maximumFractionDigits: 2 });
 
   // Sync props if they change (e.g. from server revalidation)
   useEffect(() => {
@@ -42,7 +41,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
       toast.success(`Posición ${symbol} eliminada`);
       router.refresh();
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      showErrorToast(error, { onRetry: () => handleDelete(symbol) });
     } finally {
       setDeleting(null);
     }
@@ -55,7 +54,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
       setCurrentHoldings(updated);
       toast.success('Precios actualizados');
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      showErrorToast(error);
     } finally {
       setRefreshing(false);
     }

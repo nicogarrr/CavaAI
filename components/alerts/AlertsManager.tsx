@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Bell, Plus, Trash2 } from 'lucide-react';
-import { createAlert, getUserAlerts, deleteAlert, type Alert, type CreateAlertInput } from '@/lib/actions/alerts.actions';
+import { Bell, History, Plus, RefreshCcw, Trash2 } from 'lucide-react';
+import { createAlert, getUserAlerts, deleteAlert, type Alert, type CreateAlertInput, type AlertType } from '@/lib/actions/alerts.actions';
 import {
     Dialog,
     DialogContent,
@@ -24,12 +25,27 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { getFriendlyErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
+import { formatDate, formatDateTime } from '@/lib/format';
+import { reviewResearchExpectations } from '@/lib/actions/research.actions';
 
-export default function AlertsManager() {
+const ALERT_TYPE_LABELS: Record<AlertType, string> = {
+    price_above: 'Precio por encima de',
+    price_below: 'Precio por debajo de',
+    price_change: 'Cambio de precio %',
+    news: 'Nueva noticia',
+    earnings: 'Reporte de ganancias',
+};
+
+const isAlertType = (value: string | null | undefined): value is AlertType =>
+    value === 'price_above' || value === 'price_below' || value === 'price_change' || value === 'news' || value === 'earnings';
+
+function AlertsManager() {
+    const searchParams = useSearchParams();
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [loading, setLoading] = useState(true);
     const [open, setOpen] = useState(false);
+    const [reviewing, setReviewing] = useState<string | null>(null);
     const [formData, setFormData] = useState<CreateAlertInput>({
         symbol: '',
         type: 'price_above',
@@ -41,6 +57,23 @@ export default function AlertsManager() {
 
     useEffect(() => {
         loadAlerts();
+        // Deep-link desde QuickAlertButton: /alerts?symbol=MSFT&type=price_below&value=300
+        // pre-rellena el diálogo de creación y lo abre directamente.
+        const symbol = searchParams.get('symbol');
+        if (symbol) {
+            const type = searchParams.get('type');
+            const value = searchParams.get('value') ?? '';
+            setFormData({
+                symbol: symbol.toUpperCase(),
+                type: isAlertType(type) ? type : 'price_above',
+                condition: {
+                    operator: type === 'price_below' || type === 'price_change' ? '<' : '>',
+                    value,
+                },
+            });
+            setOpen(true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const loadAlerts = async () => {
@@ -48,7 +81,7 @@ export default function AlertsManager() {
             const data = await getUserAlerts();
             setAlerts(data);
         } catch (error) {
-            toast.error(getFriendlyErrorMessage(error));
+            showErrorToast(error, { onRetry: loadAlerts });
         } finally {
             setLoading(false);
         }
@@ -56,10 +89,10 @@ export default function AlertsManager() {
 
     const handleCreateAlert = async () => {
         try {
-            const numericValue = formData.type === 'news' || formData.type === 'earnings' 
-                ? formData.condition.value 
+            const numericValue = formData.type === 'news' || formData.type === 'earnings'
+                ? formData.condition.value
                 : parseFloat(String(formData.condition.value));
-            
+
             if (isNaN(numericValue as number) && formData.type !== 'news' && formData.type !== 'earnings') {
                 toast.error('Introduce un valor numérico válido');
                 return;
@@ -73,7 +106,7 @@ export default function AlertsManager() {
                 },
             });
             toast.success('Alerta creada');
-            
+
             setOpen(false);
             setFormData({
                 symbol: '',
@@ -85,7 +118,10 @@ export default function AlertsManager() {
             });
             loadAlerts();
         } catch (error) {
-            toast.error(getFriendlyErrorMessage(error));
+            showErrorToast(error, {
+                duplicateMessage: 'Ya tienes esta alerta configurada.',
+                onRetry: handleCreateAlert,
+            });
         }
     };
 
@@ -95,7 +131,29 @@ export default function AlertsManager() {
             await loadAlerts();
             toast.success('Alerta eliminada');
         } catch (error) {
-            toast.error(getFriendlyErrorMessage(error));
+            showErrorToast(error, {
+                onRetry: () => handleDeleteAlert(alertId),
+            });
+        }
+    };
+
+    /**
+     * Revisión de expectativas vs realidad para el ticker de la alerta:
+     * dispara reviewResearchExpectations (POST expectation-reality/review)
+     * para contrastar lo prometido con los hechos canónicos.
+     */
+    const handleReview = async (alert: Alert) => {
+        if (!alert.symbol || reviewing) return;
+        setReviewing(alert._id);
+        try {
+            await reviewResearchExpectations(alert.symbol);
+            toast.success(`Revisión de expectativas lanzada para ${alert.symbol}`);
+        } catch (error) {
+            showErrorToast(error, {
+                onRetry: () => handleReview(alert),
+            });
+        } finally {
+            setReviewing(null);
         }
     };
 
@@ -159,17 +217,15 @@ export default function AlertsManager() {
                                 <Label htmlFor="type" className="text-gray-300">Tipo de Alerta</Label>
                                 <Select
                                     value={formData.type}
-                                    onValueChange={(value: any) => setFormData({ ...formData, type: value })}
+                                    onValueChange={(value: AlertType) => setFormData({ ...formData, type: value })}
                                 >
                                     <SelectTrigger className="bg-gray-900 border-gray-600 text-gray-100 h-11 text-base sm:h-9 sm:text-sm">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent className="bg-gray-900 border-gray-600">
-                                        <SelectItem value="price_above">Precio por encima de</SelectItem>
-                                        <SelectItem value="price_below">Precio por debajo de</SelectItem>
-                                        <SelectItem value="price_change">Cambio de precio %</SelectItem>
-                                        <SelectItem value="news">Nueva noticia</SelectItem>
-                                        <SelectItem value="earnings">Reporte de ganancias</SelectItem>
+                                        {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
+                                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -179,10 +235,10 @@ export default function AlertsManager() {
                                         <Label htmlFor="operator" className="text-gray-300">Operador</Label>
                                         <Select
                                             value={formData.condition.operator}
-                                            onValueChange={(value: any) => 
-                                                setFormData({ 
-                                                    ...formData, 
-                                                    condition: { ...formData.condition, operator: value } 
+                                            onValueChange={(value: CreateAlertInput['condition']['operator']) =>
+                                                setFormData({
+                                                    ...formData,
+                                                    condition: { ...formData.condition, operator: value }
                                                 })
                                             }
                                         >
@@ -206,10 +262,10 @@ export default function AlertsManager() {
                                             id="value"
                                             type="number"
                                             value={formData.condition.value}
-                                            onChange={(e) => 
-                                                setFormData({ 
-                                                    ...formData, 
-                                                    condition: { ...formData.condition, value: e.target.value } 
+                                            onChange={(e) =>
+                                                setFormData({
+                                                    ...formData,
+                                                    condition: { ...formData.condition, value: e.target.value }
                                                 })
                                             }
                                             placeholder={formData.type === 'price_change' ? "5" : "100.00"}
@@ -233,6 +289,15 @@ export default function AlertsManager() {
                     <Bell className="h-12 w-12 mx-auto mb-3 text-gray-600" />
                     <p>No tienes alertas configuradas</p>
                     <p className="text-sm mt-2">Crea tu primera alerta para recibir notificaciones en tiempo real</p>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-4 min-h-[44px] px-4 sm:min-h-0"
+                        onClick={() => setOpen(true)}
+                    >
+                        <Plus className="h-4 w-4" />
+                        Crear la primera alerta
+                    </Button>
                 </div>
             ) : (
                 <div className="space-y-3">
@@ -247,7 +312,13 @@ export default function AlertsManager() {
                                 </p>
                                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
                                     <p className="text-xs text-gray-500">
-                                        Creada: {new Date(alert.createdAt).toLocaleDateString('es-ES')}
+                                        Creada: {formatDate(alert.createdAt)}
+                                    </p>
+                                    <p className={`inline-flex items-center gap-1 text-xs ${alert.lastTriggered ? 'text-amber-300' : 'text-gray-600'}`}>
+                                        <History className="h-3.5 w-3.5" />
+                                        {alert.lastTriggered
+                                            ? `Disparada por última vez: ${formatDateTime(alert.lastTriggered)}`
+                                            : 'Todavía no se ha disparado'}
                                     </p>
                                     {alert.symbol ? (
                                         <Link
@@ -260,6 +331,19 @@ export default function AlertsManager() {
                                 </div>
                             </div>
                             <div className="flex items-center justify-end gap-1">
+                                {alert.symbol ? (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleReview(alert)}
+                                        disabled={reviewing === alert._id}
+                                        aria-label={`Revisar expectativas de ${alert.symbol}`}
+                                        className="min-h-[44px] gap-1.5 px-3 text-xs sm:min-h-0"
+                                    >
+                                        <RefreshCcw className={`h-3.5 w-3.5 ${reviewing === alert._id ? 'animate-spin' : ''}`} />
+                                        Revisar
+                                    </Button>
+                                ) : null}
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -278,3 +362,14 @@ export default function AlertsManager() {
     );
 }
 
+/**
+ * `useSearchParams` exige Suspense en el árbol del cliente; el contenido real
+ * vive en AlertsManager y aquí se envuelve para cumplir el contrato de Next.
+ */
+export default function AlertsManagerWithSuspense() {
+    return (
+        <Suspense fallback={<div className="py-8 text-center text-gray-500">Cargando alertas...</div>}>
+            <AlertsManager />
+        </Suspense>
+    );
+}
