@@ -13,6 +13,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
     const [open, setOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState("")
     const [loading, setLoading] = useState(false)
+    const [searchError, setSearchError] = useState(false)
     const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks);
     const [mounted, setMounted] = useState(false);
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -47,6 +48,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
 
         if (!query.trim()) {
             setStocks(initialStocks);
+            setSearchError(false);
             setLoading(false);
             return;
         }
@@ -56,6 +58,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         abortControllerRef.current = controller;
 
         setLoading(true);
+        setSearchError(false);
         try {
             const results = await searchStocks(query.trim());
 
@@ -69,6 +72,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             if (error?.name !== 'AbortError' && !controller.signal.aborted) {
                 if (isNextRedirectError(error)) throw error;
                 setStocks([]);
+                setSearchError(true);
                 showErrorToast(error, { onRetry: () => handleSearch(query.trim()) });
             }
         } finally {
@@ -94,6 +98,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
 
         if (!trimmedQuery) {
             setStocks(initialStocks);
+            setSearchError(false);
             setLoading(false);
             return;
         }
@@ -119,6 +124,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         if (!open) {
             setSearchTerm("");
             setStocks(initialStocks);
+            setSearchError(false);
             if (searchTimeoutRef.current) {
                 clearTimeout(searchTimeoutRef.current);
             }
@@ -194,6 +200,10 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 <CommandList className="search-list">
                     {loading ? (
                         <CommandEmpty className="search-list-empty">Cargando acciones...</CommandEmpty>
+                    ) : searchError ? (
+                        <div role="alert" className="search-list-indicator">
+                            No se pudo completar la búsqueda. Inténtalo de nuevo.
+                        </div>
                     ) : displayStocks?.length === 0 ? (
                         <div className="search-list-indicator">
                             {isSearchMode ? 'Sin resultados' : 'No hay acciones disponibles'}

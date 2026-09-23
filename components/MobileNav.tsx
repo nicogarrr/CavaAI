@@ -15,21 +15,28 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
     const [open, setOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const drawerRef = useRef<HTMLDivElement>(null);
+    const closeButtonRef = useRef<HTMLButtonElement>(null);
+    void initialStocks;
 
-    // Cerrar con Escape y bloquear el scroll del body mientras está abierto
+    // Cerrar con Escape y bloquear el scroll del body mientras está abierto.
+    // Accesibilidad: al abrir, el foco va al botón de cerrar; al cerrar,
+    // vuelve al disparador que abrió el drawer.
     useEffect(() => {
         if (!open) return;
+        const trigger = triggerRef.current;
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') setOpen(false);
         };
         document.addEventListener('keydown', onKey);
+        closeButtonRef.current?.focus();
         const prev = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         return () => {
             document.removeEventListener('keydown', onKey);
             document.body.style.overflow = prev;
+            trigger?.focus();
         };
-    }, [open ]);
+    }, [open]);
 
     // Al abrir: foco al botón de cerrar. Al cerrar: retorno al trigger.
     // (wasOpen evita robar el foco en el montaje inicial)
@@ -70,6 +77,7 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                 type="button"
                 ref={triggerRef}
                 onClick={() => setOpen(true)}
+                ref={triggerRef}
                 aria-label="Abrir menú de navegación"
                 aria-expanded={open}
                 aria-controls="mobile-nav-drawer"
@@ -82,7 +90,13 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                 position:fixed de los descendientes en relativo al header y
                 aplastaba el drawer sobre el contenido (capas solapadas). */}
             {open && createPortal(
-                <div className="fixed inset-0 z-[60] sm:hidden" role="dialog" aria-modal="true" aria-label="Menú de navegación">
+                <div
+                    className="fixed inset-0 z-[60] sm:hidden"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="mobile-nav-title"
+                >
+                    <h2 id="mobile-nav-title" className="sr-only">Menú de navegación</h2>
                     <button
                         type="button"
                         aria-label="Cerrar menú de navegación"
@@ -100,6 +114,7 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                             <CavaAIWordmark />
                             <button
                                 type="button"
+                                ref={closeButtonRef}
                                 onClick={() => setOpen(false)}
                                 aria-label="Cerrar menú de navegación"
                                 className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white"

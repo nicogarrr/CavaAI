@@ -21,10 +21,13 @@ export function MutationForm({
   const formRef = useRef<HTMLFormElement>(null);
   const lastFormData = useRef<FormData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
 
   async function submit(formData: FormData) {
+    if (isPending) return;
     lastFormData.current = formData;
     setError(null);
+    setIsPending(true);
     try {
       await action(formData);
       if (resetOnSuccess) formRef.current?.reset();
@@ -43,12 +46,21 @@ export function MutationForm({
         },
         successMessage,
       });
+    } finally {
+      setIsPending(false);
     }
   }
 
   return (
-    <form {...props} action={submit} ref={formRef}>
-      {children}
+    <form {...props} action={submit} aria-busy={isPending} ref={formRef}>
+      {isPending ? (
+        <span aria-live="polite" role="status" className="sr-only">
+          Enviando formulario
+        </span>
+      ) : null}
+      <fieldset disabled={isPending} className="contents">
+        {children}
+      </fieldset>
       {error ? (
         <p className="mt-3 text-sm text-red-300" role="alert">
           {error}
