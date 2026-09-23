@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Menu, X } from 'lucide-react';
 import { CavaAIWordmark } from '@/components/CavaAIWordmark';
 import NavItems from '@/components/NavItems';
@@ -42,7 +43,10 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                 <Menu className="h-6 w-6" aria-hidden="true" />
             </button>
 
-            {open && (
+            {/* Portal a document.body: el header usa backdrop-blur, que convierte
+                position:fixed de los descendientes en relativo al header y
+                aplastaba el drawer sobre el contenido (capas solapadas). */}
+            {open && createPortal(
                 <div className="fixed inset-0 z-[60] sm:hidden" role="dialog" aria-modal="true" aria-label="Menú de navegación">
                     <button
                         type="button"
@@ -72,7 +76,8 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                             Usa el buscador (Ctrl+K) para ir a cualquier acción.
                         </p>
                     </aside>
-                </div>
+                </div>,
+                document.body,
             )}
         </>
     );

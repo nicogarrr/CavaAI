@@ -156,7 +156,7 @@
         @apply w-full gap-8 grid-cols-1 md:grid-cols-2 xl:grid-cols-3;
     }
     .header {
-        @apply z-50 w-full h-16 bg-gray-800/80 backdrop-blur-md border-b border-gray-700/50;
+        @apply z-50 w-full min-h-16 bg-gray-800/80 backdrop-blur-md border-b border-gray-700/50;
     }
     .header-wrapper {
         @apply flex justify-between items-center px-6 py-3 text-gray-400;

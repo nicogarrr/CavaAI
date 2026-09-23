@@ -14,14 +14,13 @@ import {
   Gauge,
   Home,
   Receipt,
-  Search,
   Sparkles,
   Star,
-  ShieldCheck,
   Target,
   Landmark,
     Users,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 // Timeouts (en milisegundos)
 export const TIMEOUTS = {
@@ -88,25 +87,58 @@ export const ERROR_MESSAGES = {
 } as const;
 
 // Etiquetas en espanol, alineadas con el titulo (H1) de cada pagina.
-export const NAV_ITEMS = [
-  { href: '/', label: 'Inicio', icon: Home },
-  { href: '/portfolio', label: 'Cartera', icon: Briefcase },
-  { href: '/research', label: 'Análisis', icon: FlaskConical },
-  { href: '/knowledge', label: 'Conocimiento', icon: BookOpen },
-  { href: '/search', label: 'Buscar', icon: Search },
-  { href: '/screeners', label: 'Screeners', icon: Filter },
-  { href: '/watchlist', label: 'Watchlist', icon: Star },
-  { href: '/propicks', label: 'ProPicks', icon: Sparkles },
-  { href: '/taxes', label: 'Impuestos', icon: Receipt },
-  { href: '/plan', label: 'Plan', icon: Target },
-  { href: '/corporate-actions', label: 'Corp.', icon: Building2 },
-  { href: '/export', label: 'Exportar', icon: Download },
-  { href: '/risk', label: 'Riesgo', icon: Gauge },
-  { href: '/insider', label: 'Insider', icon: Users },
-  { href: '/ownership', label: '13F', icon: Landmark },
-  { href: '/alerts', label: 'Alertas', icon: Bell },
-  { href: '/security', label: 'Seguridad', icon: ShieldCheck },
-] as const;
+// Menu agrupado por secciones (aprobado por Nico 2026-09-23):
+// "Buscar" vive fijo en la cabecera (Ctrl+K) y "Seguridad" en el menu del
+// avatar, asi que no se repiten aqui; /search y /security siguen existiendo.
+export const NAV_SECTIONS = [
+  {
+    title: 'Principal',
+    items: [
+      { href: '/', label: 'Inicio', icon: Home },
+      { href: '/portfolio', label: 'Cartera', icon: Briefcase },
+      { href: '/propicks', label: 'ProPicks', icon: Sparkles },
+      { href: '/research', label: 'Análisis', icon: FlaskConical },
+    ],
+  },
+  {
+    title: 'Seguimiento',
+    items: [
+      { href: '/watchlist', label: 'Watchlist', icon: Star },
+      { href: '/alerts', label: 'Alertas', icon: Bell },
+      { href: '/screeners', label: 'Screeners', icon: Filter },
+    ],
+  },
+  {
+    title: 'Señales y datos',
+    items: [
+      { href: '/insider', label: 'Insider', icon: Users },
+      { href: '/ownership', label: '13F', icon: Landmark },
+      { href: '/risk', label: 'Riesgo', icon: Gauge },
+    ],
+  },
+  {
+    title: 'Mi plan',
+    items: [
+      { href: '/plan', label: 'Plan', icon: Target },
+      { href: '/taxes', label: 'Impuestos', icon: Receipt },
+      { href: '/corporate-actions', label: 'Corp.', icon: Building2 },
+      { href: '/export', label: 'Exportar', icon: Download },
+    ],
+  },
+  {
+    title: 'Sistema',
+    items: [
+      { href: '/knowledge', label: 'Conocimiento', icon: BookOpen },
+    ],
+  },
+];
+
+// Lista plana derivada, por compatibilidad con consumidores existentes.
+export const NAV_ITEMS: ReadonlyArray<{ href: string; label: string; icon: LucideIcon }> =
+  NAV_SECTIONS.reduce<Array<{ href: string; label: string; icon: LucideIcon }>>(
+    (acc, section) => acc.concat(section.items),
+    [],
+  );
 
 // TradingView Widget Configurations
 export const HEATMAP_WIDGET_CONFIG = {
