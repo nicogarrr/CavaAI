@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "FastAPI data engine for CavaAI"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.139.0,<0.140",
+    "fastapi>=0.139.0,<0.142",
     "starlette>=1.3.1,<1.4",
     "uvicorn[standard]>=0.29.0",
     "python-dotenv>=1.0.0",
