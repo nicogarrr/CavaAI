@@ -77,7 +77,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                             <p className="text-sm text-gray-500">Seguimiento de tus inversiones</p>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
                         <Link className="inline-flex min-h-[44px] col-span-2 items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2.5 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300 sm:col-span-1 sm:min-h-0 sm:h-9 sm:w-auto" href="/portfolio/intelligence">
                             <Activity className="h-4 w-4" /> Intelligence
                         </Link>
