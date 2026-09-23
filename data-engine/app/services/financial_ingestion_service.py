@@ -290,15 +290,19 @@ class FinancialIngestionService:
                 )
             )
         )
-        for sec_fact in sec_facts:
-            fmp_fact = db.scalar(
+        # Batch: every FMP fact for the company once, matched in Python
+        # instead of one query per SEC fact.
+        fmp_by_key = {
+            (fact.metric, fact.period): fact
+            for fact in db.scalars(
                 select(FinancialFact).where(
                     FinancialFact.company_id == company.id,
                     FinancialFact.source_type == "FMP",
-                    FinancialFact.metric == sec_fact.metric,
-                    FinancialFact.period == sec_fact.period,
                 )
-            )
+            ).all()
+        }
+        for sec_fact in sec_facts:
+            fmp_fact = fmp_by_key.get((sec_fact.metric, sec_fact.period))
             if fmp_fact is not None:
                 sec_val = float(sec_fact.value)
                 fmp_val = float(fmp_fact.value)
