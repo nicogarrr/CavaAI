@@ -59,7 +59,7 @@ test.describe("company research workspace", () => {
     await expect(page).toHaveURL(/\/research\/MSFT$/);
     await expect(page.getByRole("heading", { name: "MSFT", level: 1 })).toBeVisible();
     await expect(page.getByText("snapshot de solo lectura")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Long-Term Fundamental Model" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Modelo fundamental a largo plazo" })).toBeVisible();
 
     await page.getByRole("link", { name: "Modelo a largo plazo", exact: true }).click();
     await expect(page).toHaveURL(/view=model/);

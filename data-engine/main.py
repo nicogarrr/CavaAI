@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.auth import get_research_principal
 from app.core.database import SessionLocal, init_db
 from app.core.rate_limit import enforce_rate_limit
+from app.core.raw_body import RawBodyMiddleware
 from app.llm.factory import validate_llm_configuration
 from app.llm.model_aliases import configure_model_aliases
 from app.seed import ensure_company_master
@@ -46,6 +47,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="CavaAI Research Engine", version="1.0.0", lifespan=lifespan)
 
+app.add_middleware(RawBodyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,

@@ -22,6 +22,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 import pytest
@@ -175,6 +176,43 @@ def test_replayed_signed_request_is_rejected(auth_env):
     db.execute(delete(Company).where(Company.ticker == "MSFT"))
     db.commit()
     db.close()
+
+
+def test_signed_multipart_upload_survives_body_hash_verification(auth_env):
+    """Regresión: upload multipart firmado no debe morir con 'Stream consumed'.
+
+    FastAPI parsea el form (UploadFile) antes de que la dependencia de auth
+    verifique el body-hash; sin RawBodyMiddleware el stream queda consumido.
+    """
+    init_db()
+    suffix = uuid4().hex[:8]
+    tenant = f"multipart-{suffix}"
+    user = f"user-{suffix}"
+
+    request = httpx.Request(
+        "POST",
+        "http://testserver/api/knowledge/documents/upload",
+        data={"title": "E2E multipart note", "document_type": "book"},
+        files={"file": ("note.txt", b"margen de seguridad y paciencia", "text/plain")},
+    )
+    body = request.read()
+    headers = _bound_headers(
+        tenant,
+        user,
+        method="POST",
+        path="/api/knowledge/documents/upload",
+        body=body,
+    )
+    headers["Content-Type"] = request.headers["content-type"]
+
+    replay_module.reset_local_nonces()
+    client = TestClient(main.app)
+    response = client.post(
+        "/api/knowledge/documents/upload", content=body, headers=headers
+    )
+    assert response.status_code != 500
+    assert "Stream consumed" not in response.text
+    assert response.status_code == 200, response.text[:300]
 
 
 def test_future_timestamp_is_rejected_even_with_a_valid_signature(auth_env):
