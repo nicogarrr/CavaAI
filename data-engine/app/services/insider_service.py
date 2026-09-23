@@ -44,6 +44,16 @@ def _parse_date(value: Any) -> date | None:
     return None
 
 
+def _to_float(value: Any) -> float | None:
+    """Parse a numeric field that may arrive as str/None/garbage from Form 4 XML."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _is_c_suite(tx: dict) -> bool:
     title = str(tx.get("officer_title") or "").lower()
     role = str(tx.get("role") or "").lower()
@@ -72,11 +82,7 @@ def detect_signals(transactions: list[dict]) -> list[dict]:
     signals: list[dict] = []
 
     for tx in buys:
-        value = tx.get("value")
-        try:
-            amount = float(value) if value is not None else None
-        except (TypeError, ValueError):
-            amount = None
+        amount = _to_float(tx.get("value"))
         if amount is not None and amount > BIG_BUY_THRESHOLD_USD:
             signals.append(
                 {
@@ -136,7 +142,11 @@ def detect_signals(transactions: list[dict]) -> list[dict]:
             ]
             insiders = {tx.get("insider_cik") or tx.get("insider") for tx in window}
             if len(insiders) >= CLUSTER_MIN_INSIDERS:
-                total = sum(float(tx.get("value") or 0) for tx in window)
+                total = sum(
+                    value
+                    for value in (_to_float(tx.get("value")) for tx in window)
+                    if value is not None
+                )
                 signals.append(
                     {
                         "signal": "cluster_buy",
