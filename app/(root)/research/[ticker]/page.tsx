@@ -11,7 +11,9 @@ import {
   Target,
 } from 'lucide-react';
 
+import { MoatTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
+import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
 import CollapsiblePanel from '@/components/research/CollapsiblePanel';
 import {
@@ -46,28 +48,32 @@ import {
   type ResearchValuation,
 } from '@/lib/actions/research.actions';
 import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
+import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
 import ThesisMemo from '@/components/research/ThesisMemo';
+import ThesisExportButtons from '@/components/research/ThesisExportButtons';
 import FollowButton from '@/components/screener/FollowButton';
 import ThesisGenerateButton from '@/components/research/ThesisGenerateButton';
+import { formatCompact, formatDate, formatDateTime, formatMoney, formatPercent } from '@/lib/format';
+import { glossary, moatGlossaryKey } from '@/lib/glossary';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const views = [
-  ['overview', 'Overview'],
-  ['thesis', 'Thesis'],
-  ['changes', 'What Changed'],
-  ['financials', 'Financials'],
-  ['model', 'Long-Term Model'],
-  ['market-opportunity', 'Market Opportunity'],
-  ['moat', 'Moat'],
-  ['peers', 'Peers'],
-  ['valuation', 'Valuation'],
-  ['documents', 'Documents'],
-  ['sources', 'Sources'],
+  ['overview', 'Resumen'],
+  ['thesis', 'Tesis'],
+  ['changes', 'Qué ha cambiado'],
+  ['financials', 'Financieros'],
+  ['model', 'Modelo a largo plazo'],
+  ['market-opportunity', 'Oportunidad de mercado'],
+  ['moat', 'Foso'],
+  ['peers', 'Comparables'],
+  ['valuation', 'Valoración'],
+  ['documents', 'Documentos'],
+  ['sources', 'Fuentes'],
   ['chat', 'Chat'],
 ] as const;
 
@@ -88,21 +94,65 @@ function number(value: number | string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function money(value: number | string | null | undefined, currency = 'USD') {
-  const parsed = number(value);
-  if (parsed === null) return 'N/A';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 2,
-  }).format(parsed);
+/** Etiquetas en español para enums persistidos por el backend */
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'borrador',
+  review: 'en revisión',
+  approved: 'aprobada',
+  published: 'publicada',
+  rejected: 'rechazada',
+  stale: 'desactualizada',
+  proposed: 'propuesta',
+  supported: 'respaldada',
+  refuted: 'refutada',
+  open: 'abierta',
+  available: 'disponible',
+  partial: 'parcial',
+  missing: 'faltante',
+  blocked: 'bloqueada',
+  insufficient_data: 'datos insuficientes',
+  positive: 'positivo',
+  negative: 'negativo',
+  neutral: 'neutral',
+  up: 'al alza',
+  down: 'a la baja',
+  operating_company: 'empresa operativa',
+  fund: 'fondo',
+  etf: 'ETF',
+  trust: 'trust',
+  rising: 'al alza',
+  falling: 'a la baja',
+  stable: 'estable',
+};
+
+const RATING_LABELS: Record<string, string> = {
+  buy: 'compra',
+  accumulate: 'acumular',
+  overweight: 'sobreponderar',
+  hold: 'mantener',
+  underweight: 'infraponderar',
+  trim: 'recortar',
+  sell: 'venta',
+  avoid: 'evitar',
+  watch: 'seguimiento',
+};
+
+function label(value: string | null | undefined): string {
+  if (!value) return '—';
+  return STATUS_LABELS[value] ?? RATING_LABELS[value] ?? value.replaceAll('_', ' ');
+}
+
+/** Definición metodológica del foso (glosario compartido) para pintarla en la card */
+function moatDefinition(type: string): string | null {
+  const key = moatGlossaryKey[type];
+  return key ? glossary[key].short : null;
 }
 
 function metricValue(value: number | string | null | undefined, unit: string) {
   const parsed = number(value);
-  if (parsed === null) return 'unknown';
-  if (unit === 'decimal') return `${(parsed * 100).toFixed(1)}%`;
-  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(parsed);
+  if (parsed === null) return 'desconocido';
+  if (unit === 'decimal') return formatPercent(parsed);
+  return formatCompact(parsed);
 }
 
 function Panel({ title, children, collapsibleOnMobile = false }: { title: string; children: React.ReactNode; collapsibleOnMobile?: boolean }) {
@@ -117,21 +167,48 @@ function Panel({ title, children, collapsibleOnMobile = false }: { title: string
   );
 }
 
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">{children}</p>;
+/**
+ * Estado vacío honesto con CTA: el usuario siempre tiene un primer paso
+ * concreto (importar fuentes, generar el modelo, crear la tesis).
+ */
+function Empty({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
+      <p>{children}</p>
+      {action ? <div className="mt-4">{action}</div> : null}
+    </div>
+  );
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+/** Enlace-CTA estándar de los estados vacíos ("primer paso") */
+function EmptyLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      className="inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 transition hover:border-teal-600 hover:text-teal-200"
+      href={href}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function Stat({ label: statLabel, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-xl border border-gray-800 bg-[#101010] p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{statLabel}</div>
       <div className="mt-2 text-2xl font-semibold text-gray-100">{value}</div>
     </div>
   );
 }
 
-function FactTable({ facts }: { facts: ResearchFact[] }) {
-  if (!facts.length) return <Empty>No persisted financial facts yet.</Empty>;
+function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string }) {
+  if (!facts.length) {
+    return (
+      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa una fuente primaria</EmptyLink>}>
+        Todavía no hay hechos financieros persistidos.
+      </Empty>
+    );
+  }
   return (
     <>
       {/* Móvil: cards sin scroll horizontal */}
@@ -156,10 +233,10 @@ function FactTable({ facts }: { facts: ResearchFact[] }) {
       <table className="w-full text-left text-sm">
         <thead className="text-xs uppercase text-gray-500">
           <tr>
-            <th className="border-b border-gray-800 py-2">Metric</th>
-            <th className="border-b border-gray-800 py-2">Period</th>
-            <th className="border-b border-gray-800 py-2 text-right">Value</th>
-            <th className="border-b border-gray-800 py-2 text-right">Source</th>
+            <th className="border-b border-gray-800 py-2">Métrica</th>
+            <th className="border-b border-gray-800 py-2">Periodo</th>
+            <th className="border-b border-gray-800 py-2 text-right">Valor</th>
+            <th className="border-b border-gray-800 py-2 text-right">Fuente</th>
           </tr>
         </thead>
         <tbody>
@@ -178,15 +255,21 @@ function FactTable({ facts }: { facts: ResearchFact[] }) {
   );
 }
 
-function MetricsGrid({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
-  if (!metrics.length) return <Empty>Calculated metrics have not been refreshed.</Empty>;
+function MetricsGrid({ metrics, ticker }: { metrics: ResearchCalculatedMetric[]; ticker: string }) {
+  if (!metrics.length) {
+    return (
+      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade documentos y recalcula</EmptyLink>}>
+        Las métricas calculadas aún no se han refrescado.
+      </Empty>
+    );
+  }
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {metrics.map((metric) => (
         <div className="rounded-lg border border-gray-800 p-4" key={`${metric.metric}-${metric.period}-${metric.definition_version}`}>
           <div className="flex items-center justify-between gap-3">
             <span className="font-medium text-gray-200">{metric.metric}</span>
-            <Badge variant="outline">{metric.status}</Badge>
+            <Badge variant="outline">{label(metric.status)}</Badge>
           </div>
           <div className="mt-2 text-xl text-teal-300">{metricValue(metric.value, metric.unit)}</div>
           <div className="mt-2 text-xs text-gray-500">{metric.period} · {metric.definition_version}</div>
@@ -197,52 +280,64 @@ function MetricsGrid({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
   );
 }
 
-function ValuationView({ valuation, currency }: { valuation: ResearchValuation | null; currency: string }) {
-  if (!valuation) return <Empty>No persisted valuation is available.</Empty>;
+function ValuationView({ valuation, currency, ticker }: { valuation: ResearchValuation | null; currency: string; ticker: string }) {
+  if (!valuation) {
+    return (
+      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera primero el modelo a largo plazo</EmptyLink>}>
+        No hay ninguna valoración persistida.
+      </Empty>
+    );
+  }
   if (valuation.status === 'insufficient_data') {
     return (
       <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-4 text-sm text-amber-200">
-        Valuation is blocked by missing inputs: {(valuation.missing_inputs ?? []).join(', ') || 'unspecified inputs'}.
+        La valoración está bloqueada por entradas faltantes: {(valuation.missing_inputs ?? []).join(', ') || 'entradas sin especificar'}.
       </div>
     );
   }
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <Stat label="Current price" value={money(valuation.current_price, currency)} />
-      <Stat label="Bear" value={money(valuation.bear_value, currency)} />
-      <Stat label="Base" value={money(valuation.base_value, currency)} />
-      <Stat label="Bull" value={money(valuation.bull_value, currency)} />
+      <Stat label="Precio actual" value={formatMoney(valuation.current_price, currency)} />
+      <Stat label="Bear" value={formatMoney(valuation.bear_value, currency)} />
+      <Stat label="Base" value={formatMoney(valuation.base_value, currency)} />
+      <Stat label="Bull" value={formatMoney(valuation.bull_value, currency)} />
     </div>
   );
 }
 
-function MarketOpportunityView({ model }: { model: ResearchLongTermModel | null }) {
-  if (!model || model.status === 'not_generated') return <Empty>Generate the Long-Term Model before assessing market opportunity.</Empty>;
+function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel | null; ticker: string }) {
+  if (!model || model.status === 'not_generated') {
+    return (
+      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo a largo plazo</EmptyLink>}>
+        Genera el modelo a largo plazo antes de valorar la oportunidad de mercado.
+      </Empty>
+    );
+  }
   const opportunity = model.market_opportunity;
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <Stat label="TAM" value={metricValue(opportunity.top_down.tam.value, opportunity.top_down.tam.unit)} />
-        <Stat label="SAM" value={metricValue(opportunity.top_down.sam.value, opportunity.top_down.sam.unit)} />
-        <Stat label="SOM" value={metricValue(opportunity.top_down.som.value, opportunity.top_down.som.unit)} />
+        <Stat label="TAM (mercado total)" value={metricValue(opportunity.top_down.tam.value, opportunity.top_down.tam.unit)} />
+        <Stat label="SAM (mercado atendible)" value={metricValue(opportunity.top_down.sam.value, opportunity.top_down.sam.unit)} />
+        <Stat label="SOM (mercado obtenible)" value={metricValue(opportunity.top_down.som.value, opportunity.top_down.som.unit)} />
       </div>
-      <Panel title="Constraint-aware verdict">
+      <Panel title="Veredicto con restricciones">
         <div className="flex flex-wrap gap-2">
           <Badge>{opportunity.verdict.label}</Badge>
-          <Badge variant="outline">confidence: {opportunity.verdict.confidence}</Badge>
-          <Badge variant="outline">binding: {opportunity.constraints.binding_constraint ?? 'unknown'}</Badge>
+          <Badge variant="outline">confianza: {opportunity.verdict.confidence}</Badge>
+          <Badge variant="outline">restricción ligante: {opportunity.constraints.binding_constraint ?? 'desconocida'}</Badge>
         </div>
         <p className="mt-3 text-sm text-gray-300">{opportunity.verdict.conclusion}</p>
       </Panel>
-      <Panel title="Bottom-up formulas">
+      <Panel title="Fórmulas bottom-up">
         <div className="space-y-3">
           {opportunity.bottom_up.formulas.map((formula) => (
             <div className="rounded-lg border border-gray-800 p-3" key={formula.label}>
               <div className="flex justify-between gap-4 text-sm">
                 <span className="text-gray-200">{formula.label}</span>
-                <span className="text-teal-300">{formula.value === null ? formula.status : metricValue(formula.value, 'USD')}</span>
+                <span className="text-teal-300">{formula.value === null ? label(formula.status) : metricValue(formula.value, 'USD')}</span>
               </div>
-              {formula.missing_inputs?.length ? <p className="mt-2 text-xs text-amber-300">Missing: {formula.missing_inputs.join(', ')}</p> : null}
+              {formula.missing_inputs?.length ? <p className="mt-2 text-xs text-amber-300">Faltan entradas: {formula.missing_inputs.join(', ')}</p> : null}
             </div>
           ))}
         </div>
@@ -273,6 +368,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   if (!snapshot) notFound();
 
   const company = snapshot.company;
+  // Estado "seguido" real del usuario para el botón seguir/dejar de seguir.
+  const watchlist = await getWatchlist();
+  const isFollowed = watchlist.some((item) => item.symbol.toUpperCase() === ticker);
   let content: React.ReactNode;
 
   if (activeView === 'overview') {
@@ -289,40 +387,51 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat label="Research health" value={`${snapshot.research_health.score}/100`} />
-          <Stat label="Facts" value={snapshot.counts.facts} />
-          <Stat label="Claims" value={snapshot.counts.claims} />
-          <Stat label="Documents" value={snapshot.counts.documents} />
+          <Stat label="Salud del research" value={`${snapshot.research_health.score}/100`} />
+          <Stat label="Hechos" value={snapshot.counts.facts} />
+          <Stat label="Afirmaciones" value={snapshot.counts.claims} />
+          <Stat label="Documentos" value={snapshot.counts.documents} />
         </div>
         <div className="grid gap-6 xl:grid-cols-2">
-          <Panel title="Latest thesis">
+          <Panel title="Última tesis">
             {snapshot.latest_thesis ? (
               <>
                 <div className="flex flex-wrap gap-2">
-                  <Badge>{snapshot.latest_thesis.rating}</Badge>
+                  <Badge>{label(snapshot.latest_thesis.rating)}</Badge>
                   <Badge variant="outline">v{snapshot.latest_thesis.version}</Badge>
-                  <Badge variant="outline">{snapshot.latest_thesis.status}</Badge>
+                  <Badge variant="outline">{label(snapshot.latest_thesis.status)}</Badge>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-gray-300">{snapshot.latest_thesis.executive_summary}</p>
               </>
-            ) : <Empty>No thesis has been generated.</Empty>}
+            ) : (
+              <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera la primera tesis</EmptyLink>}>
+                Aún no se ha generado ninguna tesis.
+              </Empty>
+            )}
           </Panel>
-          <Panel title="Long-Term Fundamental Model">
+          <Panel title="Modelo fundamental a largo plazo">
             {snapshot.model_summary ? (
               <div className="space-y-3 text-sm text-gray-300">
                 <div className="flex flex-wrap gap-2">
                   <Badge>{snapshot.model_summary.framework_key}</Badge>
                   <Badge variant="outline">v{snapshot.model_summary.version}</Badge>
-                  <Badge variant="outline">{snapshot.model_summary.publishable ? 'publishable' : 'blocked'}</Badge>
+                  <Badge variant="outline">{snapshot.model_summary.publishable ? 'publicable' : 'bloqueado'}</Badge>
                 </div>
-                <p>{snapshot.model_summary.engine_version} · {snapshot.model_summary.horizon_years} years</p>
+                <p>{snapshot.model_summary.engine_version} · {snapshot.model_summary.horizon_years} años</p>
               </div>
-            ) : <Empty>No persisted model. Generate it explicitly from the model tab.</Empty>}
+            ) : (
+              <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo</EmptyLink>}>
+                Sin modelo persistido. Genéralo de forma explícita desde la pestaña de modelo.
+              </Empty>
+            )}
           </Panel>
         </div>
         {snapshot.research_health.missing?.length ? (
           <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-sm text-amber-200">
-            Missing research layers: {snapshot.research_health.missing.join(', ')}
+            Capas de research que faltan: {snapshot.research_health.missing.join(', ')}.
+            <Link className="ml-2 underline hover:text-amber-100" href={`/research/${encodeURIComponent(ticker)}?view=documents`}>
+              Importa fuentes para completarlas
+            </Link>
           </div>
         ) : null}
         <CompanyMarketPanel snapshot={market} />
@@ -346,8 +455,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           >
             <FileDown className="h-4 w-4" />Exportar memo
           </a>
-          <Badge variant="outline">{data.history.length} versions</Badge>
-          <Badge variant="outline">{data.claims.length} claims</Badge>
+          <ThesisExportButtons ticker={ticker} />
+          <Badge variant="outline">{data.history.length} versiones</Badge>
+          <Badge variant="outline">{data.claims.length} afirmaciones</Badge>
         </div>
         <Panel title="Historial de versiones y aprobaciones" collapsibleOnMobile>
           {data.historyDetail.history.length === 0 ? (
@@ -358,11 +468,11 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 <div className="rounded-lg border border-gray-800 p-4" key={entry.id}>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">v{entry.version}</Badge>
-                    <Badge variant={entry.status === 'published' ? 'default' : 'outline'}>{entry.status}</Badge>
-                    <Badge variant="outline">{entry.rating}</Badge>
+                    <Badge variant={entry.status === 'published' ? 'default' : 'outline'}>{label(entry.status)}</Badge>
+                    <Badge variant="outline">{label(entry.rating)}</Badge>
                     {entry.diff?.rating_changed ? <Badge>rating cambiado</Badge> : null}
                     <span className="ml-auto text-xs text-gray-500">
-                      {new Date(entry.updated_at).toLocaleString('es-ES')}
+                      {formatDateTime(entry.updated_at)}
                     </span>
                   </div>
                   {entry.diff ? (
@@ -382,37 +492,53 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             El historial muestra estado, fecha y resumen del cambio tal como están persistidos; el sistema no registra quién aprobó cada versión.
           </p>
         </Panel>
-        <Panel title="Current thesis">
-          {data.thesis ? <ThesisMemo thesis={data.thesis} /> : <Empty>No thesis exists.</Empty>}
+        <Panel title="Tesis actual">
+          {data.thesis ? (
+            <ThesisMemo thesis={data.thesis} />
+          ) : (
+            <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa fuentes antes de generar</EmptyLink>}>
+              Aún no existe ninguna tesis.
+            </Empty>
+          )}
         </Panel>
-        <Panel title="Company-specific thesis sections" collapsibleOnMobile>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {data.sections.map((section) => (
-              <div className="rounded-lg border border-gray-800 p-4" key={section.id}>
-                <div className="flex justify-between gap-3"><h3 className="font-medium text-gray-200">{section.title}</h3><Badge variant="outline">{section.status}</Badge></div>
-                <p className="mt-2 text-sm leading-6 text-gray-400">{section.body}</p>
-              </div>
-            ))}
-          </div>
+        <Panel title="Secciones de tesis específicas de la empresa" collapsibleOnMobile>
+          {data.sections.length ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {data.sections.map((section) => (
+                <div className="rounded-lg border border-gray-800 p-4" key={section.id}>
+                  <div className="flex justify-between gap-3"><h3 className="font-medium text-gray-200">{section.title}</h3><Badge variant="outline">{label(section.status)}</Badge></div>
+                  <p className="mt-2 text-sm leading-6 text-gray-400">{section.body}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade la primera fuente</EmptyLink>}>
+              Sin secciones específicas todavía.
+            </Empty>
+          )}
         </Panel>
-        <Panel title="Claims and evidence">
-          <MutationForm action={createResearchClaim.bind(null, ticker)} className="mb-5 grid gap-3 sm:grid-cols-[1fr_150px_auto] sm:items-start" resetOnSuccess successMessage="Claim created">
-            <Textarea name="statement" placeholder="A falsifiable company-specific claim" required className="min-h-[44px] text-base sm:text-sm" />
+        <Panel title="Afirmaciones y evidencia">
+          <MutationForm action={createResearchClaim.bind(null, ticker)} className="mb-5 grid gap-3 sm:grid-cols-[1fr_150px_auto] sm:items-start" resetOnSuccess successMessage="Afirmación creada">
+            <Textarea id="statement" name="statement" placeholder="Una afirmación falsable y específica de la empresa" required className="min-h-[44px] text-base sm:text-sm" />
             <Input name="materiality_score" type="number" min="0" max="10" defaultValue="5" className="h-11 text-base sm:h-9 sm:text-sm" />
-            <Button type="submit" className="min-h-[44px] sm:min-h-0">Add claim</Button>
+            <Button type="submit" className="min-h-[44px] sm:min-h-0">Añadir afirmación</Button>
           </MutationForm>
           <div className="space-y-3">
             {data.claims.length ? data.claims.map((claim) => (
               <div className="rounded-lg border border-gray-800 p-4" key={claim.id}>
-                <div className="flex flex-wrap gap-2"><Badge variant="outline">{claim.status}</Badge><Badge variant="outline">materiality {claim.materiality_score}</Badge><Badge variant="outline">{claim.evidence.length} evidence</Badge></div>
+                <div className="flex flex-wrap gap-2"><Badge variant="outline">{label(claim.status)}</Badge><Badge variant="outline">materialidad {claim.materiality_score}</Badge><Badge variant="outline">{claim.evidence.length} pruebas</Badge></div>
                 <p className="mt-3 text-sm text-gray-300">{claim.statement}</p>
               </div>
-            )) : <Empty>No claims recorded.</Empty>}
+            )) : (
+              <Empty action={<EmptyLink href="#statement">Escribe la primera afirmación</EmptyLink>}>
+                Sin afirmaciones registradas.
+              </Empty>
+            )}
           </div>
         </Panel>
-        <Panel title="Dependency graph and red team" collapsibleOnMobile>
-          <p className="text-sm text-gray-300">{data.graph ? `${data.graph.nodes.length} nodes · ${data.graph.edges.length} dependencies` : 'No persisted graph.'}</p>
-          <p className="mt-2 text-sm text-gray-400">{data.redTeam?.strongest_bear_case ?? 'No red-team run persisted.'}</p>
+        <Panel title="Grafo de dependencias y red team" collapsibleOnMobile>
+          <p className="text-sm text-gray-300">{data.graph ? `${data.graph.nodes.length} nodos · ${data.graph.edges.length} dependencias` : 'Sin grafo persistido.'}</p>
+          <p className="mt-2 text-sm text-gray-400">{data.redTeam?.strongest_bear_case ?? 'Sin ejecución de red team persistida.'}</p>
         </Panel>
       </div>
     );
@@ -420,19 +546,23 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     const data = await getResearchChangesWorkspace(ticker);
     content = (
       <div className="space-y-6">
-        <Panel title="What Changed">
+        <Panel title="Qué ha cambiado">
           <div className="space-y-3">
             {data.changes.length ? data.changes.map((change) => (
               <div className="rounded-lg border border-gray-800 p-4" key={change.id}>
-                <div className="flex flex-wrap gap-2"><Badge>{change.impact_direction}</Badge><Badge variant="outline">{change.change_type}</Badge><Badge variant="outline">materiality {change.materiality_score}</Badge></div>
+                <div className="flex flex-wrap gap-2"><Badge>{label(change.impact_direction)}</Badge><Badge variant="outline">{change.change_type.replaceAll('_', ' ')}</Badge><Badge variant="outline">materialidad {change.materiality_score}</Badge></div>
                 <p className="mt-3 text-sm text-gray-300">{change.summary}</p>
               </div>
-            )) : <Empty>No material changes recorded.</Empty>}
+            )) : (
+              <Empty action={<EmptyLink href="/research/news">Analiza la última noticia</EmptyLink>}>
+                Sin cambios materiales registrados.
+              </Empty>
+            )}
           </div>
         </Panel>
         <div className="grid gap-6 xl:grid-cols-2">
-          <Panel title="Open reviews"><div className="space-y-2">{data.reviews.length ? data.reviews.map((review) => <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-300" key={review.id}>{review.title}</div>) : <Empty>No open reviews.</Empty>}</div></Panel>
-          <Panel title="Alerts"><div className="space-y-2">{data.alerts.length ? data.alerts.map((alert) => <div className="rounded-lg border border-gray-800 p-3 text-sm" key={alert.id}><Badge variant="outline">{alert.severity}</Badge><p className="mt-2 text-gray-300">{alert.message}</p></div>) : <Empty>No alerts.</Empty>}</div></Panel>
+          <Panel title="Revisiones abiertas"><div className="space-y-2">{data.reviews.length ? data.reviews.map((review) => <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-300" key={review.id}>{review.title}</div>) : <Empty>Sin revisiones abiertas.</Empty>}</div></Panel>
+          <Panel title="Alertas"><div className="space-y-2">{data.alerts.length ? data.alerts.map((alert) => <div className="rounded-lg border border-gray-800 p-3 text-sm" key={alert.id}><Badge variant="outline">{label(alert.severity)}</Badge><p className="mt-2 text-gray-300">{alert.message}</p></div>) : <Empty>Sin alertas.</Empty>}</div></Panel>
         </div>
         <DecisionAndRealityPanel ticker={ticker} decisions={data.decisions} reviews={data.expectations} />
       </div>
@@ -442,31 +572,45 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <div className="flex flex-wrap gap-3">
-          <MutationForm action={refreshCompanyFinancials.bind(null, ticker)} successMessage="FMP financials refreshed"><Button type="submit" variant="outline">Refresh FMP</Button></MutationForm>
-          <MutationForm action={refreshCompanyFinancialsSEC.bind(null, ticker)} successMessage="SEC financials refreshed"><Button type="submit" variant="outline">Refresh SEC</Button></MutationForm>
-          <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Metrics and research model refreshed"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Recalculate</Button></MutationForm>
+          <MutationForm action={refreshCompanyFinancials.bind(null, ticker)} successMessage="Financieros actualizados desde fuentes gratuitas (Finnhub/EDGAR/Yahoo)"><Button type="submit" variant="outline">Refrescar financieros</Button></MutationForm>
+          <MutationForm action={refreshCompanyFinancialsSEC.bind(null, ticker)} successMessage="Financieros SEC refrescados"><Button type="submit" variant="outline">Refrescar SEC</Button></MutationForm>
+          <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Métricas y modelo de research refrescados"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Recalcular</Button></MutationForm>
         </div>
-        <Panel title="Traceable calculated metrics"><MetricsGrid metrics={data.calculatedMetrics} /></Panel>
-        <Panel title="Canonical financial facts"><FactTable facts={data.facts} /></Panel>
+        <Panel title="Métricas calculadas trazables"><MetricsGrid metrics={data.calculatedMetrics} ticker={ticker} /></Panel>
+        <Panel title="Hechos financieros canónicos"><FactTable facts={data.facts} ticker={ticker} /></Panel>
       </div>
     );
   } else if (activeView === 'model') {
     const model = await getResearchLongTermModel(ticker);
     content = (
       <div className="space-y-5">
-        <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Long-Term Model generated"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Generate model</Button></MutationForm>
+        <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Modelo a largo plazo generado"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Generar modelo</Button></MutationForm>
         <LongTermModelPanel model={model?.status === 'not_generated' ? null : model} />
       </div>
     );
   } else if (activeView === 'market-opportunity') {
-    content = <MarketOpportunityView model={await getResearchLongTermModel(ticker)} />;
+    content = <MarketOpportunityView model={await getResearchLongTermModel(ticker)} ticker={ticker} />;
   } else if (activeView === 'moat') {
     const moat = await getResearchMoatWorkspace(ticker);
     content = (
       <div className="space-y-5">
-        <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Moat assessment refreshed"><Button type="submit" variant="outline"><ShieldCheck className="mr-2 h-4 w-4" />Refresh evidence assessment</Button></MutationForm>
+        <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Evaluación del foso refrescada"><Button type="submit" variant="outline"><ShieldCheck className="mr-2 h-4 w-4" />Reevaluar evidencia</Button></MutationForm>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {moat?.moats.length ? moat.moats.map((item) => <div className="rounded-xl border border-gray-800 bg-[#101010] p-4" key={item.type}><div className="flex justify-between gap-3"><span className="font-medium text-gray-200">{item.type.replaceAll('_', ' ')}</span><Badge>{item.strength}/100</Badge></div><p className="mt-3 text-sm text-gray-400">{item.status} · {item.trend} · persistence {item.persistence}</p><p className="mt-2 text-xs text-gray-600">{item.supporting_claim_ids.length} supporting · {item.contradicting_claim_ids.length} contradicting claims</p></div>) : <Empty>No persisted moat assessment.</Empty>}
+          {moat?.moats.length ? moat.moats.map((item) => {
+            const definition = moatDefinition(item.type);
+            return (
+              <div className="rounded-xl border border-gray-800 bg-[#101010] p-4" key={item.type}>
+                <div className="flex justify-between gap-3"><MoatTerm type={item.type} /><Badge>{item.strength}/100</Badge></div>
+                <p className="mt-3 text-sm text-gray-400">{label(item.status)} · {label(item.trend)} · persistencia {item.persistence}</p>
+                {definition ? <p className="mt-2 text-xs leading-5 text-gray-500">{definition}</p> : null}
+                <p className="mt-2 text-xs text-gray-600">{item.supporting_claim_ids.length} afirmaciones a favor · {item.contradicting_claim_ids.length} en contra</p>
+              </div>
+            );
+          }) : (
+            <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera el modelo y reevalúa el foso</EmptyLink>}>
+              Sin evaluación de foso persistida.
+            </Empty>
+          )}
         </div>
       </div>
     );
@@ -474,35 +618,60 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     const peers = await getResearchPeersWorkspace(ticker);
     content = (
       <div className="space-y-6">
-        <Panel title="Peer set"><p className="text-sm text-gray-300">{peers.comparison?.basis ?? 'No peer set'} · {peers.comparison?.peer_count ?? 0} peers</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
-        <Panel title="Comparable benchmarks"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Target {value.target_value ?? 'unknown'} · median {value.peer_median ?? 'unknown'} · n={value.peer_sample_size}</div></div>)}</div></Panel>
-        <Panel title="Advantages and disadvantages"><p className="text-sm text-gray-400">{peers.analysis?.methodology ?? 'No persisted peer analysis.'}</p><p className="mt-3 text-xs text-amber-300">{peers.analysis?.insufficient_data.join(', ')}</p></Panel>
+        <Panel title="Conjunto de comparables"><p className="text-sm text-gray-300">{peers.comparison?.basis ?? 'Sin conjunto de comparables'} · {peers.comparison?.peer_count ?? 0} comparables</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
+        <Panel title="Métricas comparables"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Objetivo {value.target_value ?? 'desconocido'} · mediana {value.peer_median ?? 'desconocida'} · n={value.peer_sample_size}</div></div>)}</div></Panel>
+        <Panel title="Ventajas y desventajas"><p className="text-sm text-gray-400">{peers.analysis?.methodology ?? 'Sin análisis de comparables persistido.'}</p><p className="mt-3 text-xs text-amber-300">{peers.analysis?.insufficient_data.join(', ')}</p></Panel>
       </div>
     );
   } else if (activeView === 'valuation') {
-    content = <ValuationView valuation={await getResearchValuationWorkspace(ticker)} currency={company.currency} />;
+    content = <ValuationView valuation={await getResearchValuationWorkspace(ticker)} currency={company.currency} ticker={ticker} />;
   } else if (activeView === 'documents') {
     const documents = await getResearchDocumentsWorkspace(ticker, false);
     content = (
       <div className="space-y-6">
         <div className="grid gap-6 xl:grid-cols-2">
-          <Panel title="Upload a primary source"><MutationForm action={importResearchDocumentFile} className="grid gap-3" successMessage="Document uploaded"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Document title" required /><Input name="file" type="file" required /><Button type="submit">Upload</Button></MutationForm></Panel>
-          <Panel title="Import from URL"><MutationForm action={importResearchDocumentUrl} className="grid gap-3" successMessage="Document imported"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Document title" required /><Input name="url" type="url" placeholder="https://..." required /><Input name="source_type" placeholder="sec_filing / investor_relations" defaultValue="url" /><Button type="submit">Import</Button></MutationForm></Panel>
+          <Panel title="Sube una fuente primaria"><MutationForm action={importResearchDocumentFile} className="grid gap-3" successMessage="Documento subido"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><FileUploadInput name="file" required /><Button type="submit">Subir</Button></MutationForm></Panel>
+          <Panel title="Importar desde una URL"><MutationForm action={importResearchDocumentUrl} className="grid gap-3" successMessage="Documento importado"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><Input name="url" type="url" placeholder="https://..." required /><Input name="source_type" placeholder="sec_filing / investor_relations" defaultValue="url" /><Button type="submit">Importar</Button></MutationForm></Panel>
         </div>
-        <Panel title="Documents"><div className="space-y-3">{documents.length ? documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{document.source_tier}</Badge></div><p className="mt-2 text-xs text-gray-500">{document.source_type} · {document.published_at ?? 'date unknown'}</p></div>) : <Empty>No documents ingested.</Empty>}</div></Panel>
+        <Panel title="Documentos">
+          {documents.length ? (
+            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{document.source_tier}</Badge></div><p className="mt-2 text-xs text-gray-500">{document.source_type} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
+          ) : (
+            <Empty action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}>
+              Sin documentos ingeridos.
+            </Empty>
+          )}
+        </Panel>
       </div>
     );
   } else if (activeView === 'sources') {
     const audits = await getResearchSourceAuditsWorkspace(ticker);
-    content = <Panel title="Source audits"><div className="space-y-3">{audits.length ? audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'passed' : 'failed'}</Badge><Badge variant="outline">coverage {audit.source_coverage_score}/100</Badge><Badge variant="outline">thesis {audit.thesis_version_id ?? 'unknown'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>) : <Empty>No source audits persisted.</Empty>}</div></Panel>;
+    content = (
+      <Panel title="Auditorías de fuentes">
+        {audits.length ? (
+          <div className="space-y-3">{audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'superada' : 'fallida'}</Badge><Badge variant="outline">cobertura {audit.source_coverage_score}/100</Badge><Badge variant="outline">tesis {audit.thesis_version_id ?? 'desconocida'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>)}</div>
+        ) : (
+          <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera una tesis para auditar fuentes</EmptyLink>}>
+            Sin auditorías de fuentes persistidas.
+          </Empty>
+        )}
+      </Panel>
+    );
   } else {
     const response = query.chat ? await askResearchCompanyChat(ticker, query.chat) : null;
     content = (
       <div className="space-y-6">
-        <Panel title="Source-aware company chat">
-          <form className="flex flex-col gap-3 sm:flex-row" method="get"><input type="hidden" name="view" value="chat" /><Input name="chat" defaultValue={query.chat} placeholder={`Ask a source-aware question about ${ticker}`} minLength={3} required className="h-11 text-base sm:h-9 sm:text-sm" /><Button type="submit" className="min-h-[44px] sm:min-h-0"><Search className="mr-2 h-4 w-4" />Ask</Button></form>
+        <Panel title="Chat de la empresa con fuentes">
+          <form className="flex flex-col gap-3 sm:flex-row" method="get"><input type="hidden" name="view" value="chat" /><Input name="chat" defaultValue={query.chat} placeholder={`Pregunta sobre ${ticker} citando fuentes`} minLength={3} required className="h-11 text-base sm:h-9 sm:text-sm" /><Button type="submit" className="min-h-[44px] sm:min-h-0"><Search className="mr-2 h-4 w-4" />Preguntar</Button></form>
         </Panel>
-        {response ? <Panel title="Answer"><div className="whitespace-pre-wrap text-sm leading-7 text-gray-300">{response.answer}</div><div className="mt-4 flex flex-wrap gap-2"><Badge variant="outline">model {response.model ?? 'deterministic'}</Badge><Badge variant="outline">{response.sources.length} sources</Badge><Badge variant="outline">{response.blocked ? 'insufficient data' : 'grounded'}</Badge></div></Panel> : <Empty>Ask a question to retrieve the deterministic evidence contract and source-aware synthesis.</Empty>}
+        {response ? (
+          <Panel title="Respuesta">
+            <div className="whitespace-pre-wrap text-sm leading-7 text-gray-300">{response.answer}</div>
+            <div className="mt-4 flex flex-wrap gap-2"><Badge variant="outline">modelo {response.model ?? 'determinista'}</Badge><Badge variant="outline">{response.sources.length} fuentes</Badge><Badge variant="outline">{response.blocked ? 'datos insuficientes' : 'con evidencia'}</Badge></div>
+          </Panel>
+        ) : (
+          <Empty>Haz una pregunta para recuperar el contrato de evidencia determinista y la síntesis con fuentes.</Empty>
+        )}
       </div>
     );
   }
@@ -517,24 +686,24 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {company.sector} · {company.industry}</p>
           </div>
           <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
-            <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />read-only snapshot</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{company.company_type}</span></div>
+            <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />snapshot de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{label(company.company_type)}</span></div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} /></div>
-              <FollowButton symbol={ticker} company={company.name} />
+              <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} />
             </div>
           </div>
         </header>
-        <nav aria-label="Research modules" className="-mx-4 mb-7 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
-          {views.map(([key, label]) => (
-            <Link className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border px-4 py-2.5 text-sm transition sm:min-h-0 sm:px-3 sm:py-2 ${activeView === key ? 'border-teal-600 bg-teal-950/40 text-teal-200' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'}`} href={`/research/${encodeURIComponent(ticker)}?view=${key}`} key={key}>{label}</Link>
+        <nav aria-label="Módulos de research" className="-mx-4 mb-7 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+          {views.map(([key, viewLabel]) => (
+            <Link className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border px-4 py-2.5 text-sm transition sm:min-h-0 sm:px-3 sm:py-2 ${activeView === key ? 'border-teal-600 bg-teal-950/40 text-teal-200' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'}`} href={`/research/${encodeURIComponent(ticker)}?view=${key}`} key={key}>{viewLabel}</Link>
           ))}
           {[
-            ['financial-terminal', 'Financial Terminal'],
-            ['driver-assumptions', 'Assumptions'],
-            ['decision-lessons', 'Lessons'],
-            ['management-credibility', 'Management'],
-          ].map(([path, label]) => (
-            <Link className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border border-teal-900/60 px-4 py-2.5 text-sm text-teal-300 transition hover:border-teal-700 hover:text-teal-200 sm:min-h-0 sm:px-3 sm:py-2" href={`/research/${encodeURIComponent(ticker)}/${path}`} key={path}>{label}</Link>
+            ['financial-terminal', 'Terminal financiero'],
+            ['driver-assumptions', 'Supuestos'],
+            ['decision-lessons', 'Lecciones'],
+            ['management-credibility', 'Directiva'],
+          ].map(([path, moduleLabel]) => (
+            <Link className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border border-teal-900/60 px-4 py-2.5 text-sm text-teal-300 transition hover:border-teal-700 hover:text-teal-200 sm:min-h-0 sm:px-3 sm:py-2" href={`/research/${encodeURIComponent(ticker)}/${path}`} key={path}>{moduleLabel}</Link>
           ))}
         </nav>
         {content}

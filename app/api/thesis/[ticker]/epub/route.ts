@@ -23,7 +23,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
   let upstream: Response;
   try {
     upstream = await fetch(`${BACKEND_URL}/api/thesis/${encoded}/epub`, {
-      headers: await researchIdentityHeaders(),
+      headers: await researchIdentityHeaders({
+        method: 'GET',
+        path: `/api/thesis/${encoded}/epub`,
+      }),
       cache: 'no-store',
     });
   } catch {

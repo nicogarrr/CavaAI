@@ -17,7 +17,6 @@ async function runWorkflow(formData: FormData) {
 
 export default async function ResearchWorkflowsPage() {
   const { workflows } = await getResearchDashboard();
-
   return (
     <main className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
@@ -28,14 +27,14 @@ export default async function ResearchWorkflowsPage() {
               Research
             </Link>
           </Button>
-          <p className="text-sm font-semibold uppercase text-teal-300">Automation</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-100">Workflows</h1>
+          <p className="text-sm font-semibold uppercase text-teal-300">Automatización</p>
+          <h1 className="mt-1 text-3xl font-bold text-gray-100">Flujos de trabajo</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            Workflows de investigacion orquestados por el backend Python. Ejecuta GenerateThesisWorkflow directamente o invoca el resto via POST.
+            Flujos de investigación orquestados por el backend Python. Ejecuta GenerateThesisWorkflow directamente o invoca al resto vía POST.
           </p>
         </div>
         <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
-          {workflows.length} workflows
+          {workflows.length} flujos
         </div>
       </header>
 
@@ -64,7 +63,7 @@ export default async function ResearchWorkflowsPage() {
                   {statusLabels[status]}
                 </span>
                 <span className="rounded-full border border-gray-700 bg-gray-900 px-2 py-0.5 text-xs text-gray-400">
-                  input: {workflow.input}
+                  entrada: {workflow.input}
                 </span>
               </div>
               {workflow.truth ? (
@@ -83,13 +82,13 @@ export default async function ResearchWorkflowsPage() {
               <div className="flex items-center justify-between gap-3 border-t border-gray-800 pt-3">
                 <div className="flex items-center gap-1.5 text-xs text-gray-500">
                   {status === 'implemented'
-                    ? 'Ejecutable via POST /run'
+                    ? 'Ejecutable vía POST /run'
                     : status === 'partial'
-                      ? 'Ejecucion parcial via POST /run'
-                      : 'Sin ejecucion via API (scheduler/Dramatiq)'}
+                      ? 'Ejecución parcial vía POST /run'
+                      : 'Sin ejecución vía API (scheduler/Dramatiq)'}
                 </div>
                 {isGenerateThesis ? (
-                  <MutationForm action={runWorkflow} className="flex items-center gap-2" successMessage="Workflow ejecutado">
+                  <MutationForm action={runWorkflow} className="flex items-center gap-2" successMessage="Flujo ejecutado">
                     <input name="workflow" type="hidden" value={workflow.name} />
                     {needsTicker && (
                       <Input
@@ -101,7 +100,7 @@ export default async function ResearchWorkflowsPage() {
                     )}
                     <Button size="sm" type="submit" variant="outline">
                       <Play className="h-3.5 w-3.5" />
-                      Run
+                      Ejecutar
                     </Button>
                   </MutationForm>
                 ) : (
@@ -115,7 +114,7 @@ export default async function ResearchWorkflowsPage() {
         })}
         {!workflows.length ? (
           <div className="col-span-2 rounded-lg border border-gray-800 bg-[#111111] p-5 text-sm text-gray-500">
-            Sin workflows registrados. Verifica que el backend Python esta corriendo.
+            Sin flujos registrados. Verifica que el backend Python esté corriendo.
           </div>
         ) : null}
       </section>

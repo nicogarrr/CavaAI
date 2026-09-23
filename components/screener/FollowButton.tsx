@@ -3,26 +3,64 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Check, Loader2, Plus } from 'lucide-react';
-import { addToWatchlist } from '@/lib/actions/watchlist.actions';
+import { addToWatchlist, removeFromWatchlist } from '@/lib/actions/watchlist.actions';
 import { toast } from 'sonner';
+import { showErrorToast } from '@/lib/toast';
 
-export default function FollowButton({ symbol, company }: { symbol: string; company?: string }) {
-  const [done, setDone] = useState(false);
+/**
+ * Botón seguir/dejar de seguir con estado persistente.
+ *
+ * - `isFollowed` siembra el estado inicial desde el servidor (watchlist del
+ *   usuario); sin él, el botón asume "no seguido" hasta la primera interacción.
+ * - El toggle persiste en el backend (POST/DELETE /api/watchlist) y refresca
+ *   la caché de /watchlist.
+ * - Duplicados ("Ya sigues este ticker") y caídas del motor (toast con
+ *   "Reintentar") se resuelven con showErrorToast.
+ */
+export default function FollowButton({
+  symbol,
+  company,
+  isFollowed = false,
+}: {
+  symbol: string;
+  company?: string;
+  isFollowed?: boolean;
+}) {
+  const [followed, setFollowed] = useState(isFollowed);
   const [busy, setBusy] = useState(false);
 
   const onClick = async () => {
-    if (done || busy) return;
+    if (busy) return;
+    const action = followed ? 'remove' : 'add';
     setBusy(true);
     try {
-      const res = await addToWatchlist(symbol, company);
+      const res =
+        action === 'remove'
+          ? await removeFromWatchlist(symbol)
+          : await addToWatchlist(symbol, company);
+
       if (res.success) {
-        setDone(true);
-        toast.success(`${symbol} añadido a la watchlist`);
+        setFollowed(action === 'add');
+        toast.success(
+          action === 'add'
+            ? `${symbol} añadido a la watchlist`
+            : `${symbol} eliminado de la watchlist`,
+        );
       } else {
-        toast.error('No se pudo añadir a la watchlist');
+        // Duplicado: el ticker ya estaba seguido; sincronizamos el estado visible.
+        if (res.code === 'duplicate') setFollowed(true);
+        showErrorToast(
+          res.message ??
+            (action === 'add'
+              ? 'No se pudo añadir a la watchlist'
+              : 'No se pudo eliminar de la watchlist'),
+          {
+          duplicateMessage: 'Ya sigues este ticker.',
+          onRetry: onClick,
+        });
       }
-    } catch {
-      toast.error('No se pudo añadir a la watchlist');
+    } catch (error) {
+      showErrorToast(error, { onRetry: onClick });
     } finally {
       setBusy(false);
     }
@@ -33,11 +71,18 @@ export default function FollowButton({ symbol, company }: { symbol: string; comp
       variant="ghost"
       size="sm"
       onClick={onClick}
-      disabled={done || busy}
+      disabled={busy}
+      aria-pressed={followed}
       className="min-h-[44px] px-3 py-2 text-sm text-gray-300 hover:text-teal-300 sm:h-7 sm:min-h-0 sm:px-2 sm:text-xs"
     >
-      {busy ? <Loader2 className="h-4 w-4 animate-spin sm:h-3.5 sm:w-3.5" /> : done ? <Check className="h-4 w-4 text-teal-400 sm:h-3.5 sm:w-3.5" /> : <Plus className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
-      {done ? 'Siguiendo' : 'Seguir'}
+      {busy ? (
+        <Loader2 className="h-4 w-4 animate-spin sm:h-3.5 sm:w-3.5" />
+      ) : followed ? (
+        <Check className="h-4 w-4 text-teal-400 sm:h-3.5 sm:w-3.5" />
+      ) : (
+        <Plus className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+      )}
+      {busy ? 'Guardando…' : followed ? 'Dejar de seguir' : 'Seguir'}
     </Button>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatMoney } from '@/lib/format';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -9,7 +10,7 @@ import { deleteTransaction } from '@/lib/actions/portfolio.actions';
 import { useRouter } from 'next/navigation';
 import EditTransactionDialog from './EditTransactionDialog';
 import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 
 type Transaction = {
   _id: string;
@@ -40,7 +41,7 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
       toast.success('Transacción eliminada');
       router.refresh();
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      showErrorToast(error, { onRetry: () => handleDelete(transactionId) });
     } finally {
       setDeleting(null);
     }
@@ -93,7 +94,7 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-gray-200">
-                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: tx.currency ?? 'USD' }).format(tx.quantity * tx.price)}
+                        {formatMoney(tx.quantity * tx.price, tx.currency ?? 'USD')}
                       </p>
                       <p className="text-xs text-gray-500">
                         {tx.quantity} acc @ {tx.price.toFixed(2)} {tx.currency ?? 'USD'}

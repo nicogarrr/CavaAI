@@ -1,5 +1,6 @@
 'use client';
 
+import { formatMoney } from '@/lib/format';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -53,7 +54,7 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
                     {data.symbol}
                 </Link>
                 <p className="text-gray-300 text-sm">
-                    Valor: <span className="font-semibold text-white">${data.value.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                    Valor: <span className="font-semibold text-white">{formatMoney(data.value)}</span>
                 </p>
                 <p className="text-gray-300 text-sm">
                     Peso: <span className="font-semibold text-white">{data.percentage.toFixed(1)}%</span>

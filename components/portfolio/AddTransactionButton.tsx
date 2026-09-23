@@ -18,7 +18,7 @@ import { addTransaction } from '@/lib/actions/portfolio.actions';
 import { searchStocks } from '@/lib/actions/finnhub.actions';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 
 type Props = {
   userId: string;
@@ -133,7 +133,7 @@ export default function AddTransactionButton({ userId }: Props) {
       toast.success('Transacción registrada');
       router.refresh();
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      showErrorToast(error);
     } finally {
       setLoading(false);
     }

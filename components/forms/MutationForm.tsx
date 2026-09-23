@@ -2,7 +2,7 @@
 
 import { useRef, type ComponentPropsWithoutRef } from 'react';
 import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 
 type MutationFormProps = Omit<ComponentPropsWithoutRef<'form'>, 'action'> & {
   action: (formData: FormData) => Promise<unknown>;
@@ -18,14 +18,24 @@ export function MutationForm({
   ...props
 }: MutationFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
+  const lastFormData = useRef<FormData | null>(null);
 
   async function submit(formData: FormData) {
+    lastFormData.current = formData;
     try {
       await action(formData);
       if (resetOnSuccess) formRef.current?.reset();
       toast.success(successMessage);
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      // Toast accionable: si el motor está caído ofrece "Reintentar" con
+      // los mismos datos del formulario.
+      showErrorToast(error, {
+        onRetry: async () => {
+          const payload = lastFormData.current;
+          if (payload) await submit(payload);
+        },
+        successMessage,
+      });
     }
   }
 

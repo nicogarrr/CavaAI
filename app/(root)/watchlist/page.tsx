@@ -1,3 +1,4 @@
+import { formatNumber as formatNumberEs } from '@/lib/format';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getStockFinancialData } from '@/lib/actions/finnhub.actions';
 import { Eye, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
@@ -72,7 +73,7 @@ export default async function WatchlistPage() {
 
     const formatNumber = (num: number | null) => {
         if (num === null || num === undefined) return '-';
-        return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return formatNumberEs(num, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
     const formatBillions = (num: number | null) => {
@@ -80,7 +81,7 @@ export default async function WatchlistPage() {
         if (num >= 1e12) return `$${(num / 1e12).toFixed(2)}T`;
         if (num >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
         if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
-        return `$${num.toLocaleString()}`;
+        return `$${formatNumberEs(num, { maximumFractionDigits: 0 })}`;
     };
 
     return (
