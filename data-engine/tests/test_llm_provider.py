@@ -110,12 +110,13 @@ def test_opencode_go_completion_uses_chat_completions_endpoint():
         payload = json.loads(request.content)
         assert request.url == "https://opencode.test/zen/go/v1/chat/completions"
         assert request.headers["authorization"] == "Bearer test-secret"
-        assert payload["model"] == "deepseek-v4-flash"
+        assert request.headers["x-opencode-session"] == "cavaai-prod"
+        assert payload["model"] == "space-bunny-free"
         return httpx.Response(
             200,
             json={
                 "id": "opencode-request",
-                "model": "deepseek-v4-flash",
+                "model": "space-bunny-free",
                 "choices": [
                     {"message": {"content": "ok"}, "finish_reason": "stop"}
                 ],
