@@ -28,7 +28,7 @@ test.describe("research thesis workspace", () => {
       page.getByText("Aún no hay historial de versiones."),
     ).toBeVisible();
     await expect(page.getByText("0 versiones")).toBeVisible();
-    await expect(page.getByText("0 claims")).toBeVisible();
+    await expect(page.getByText("0 afirmaciones")).toBeVisible();
 
     // The history panel states its own provenance limits.
     await expect(
