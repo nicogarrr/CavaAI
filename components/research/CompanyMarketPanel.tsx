@@ -1,5 +1,6 @@
 'use client';
 
+import { formatMoney } from '@/lib/format';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +9,7 @@ import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actio
 function money(value: number | null) {
     return value == null
         ? 'N/A'
-        : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+        : formatMoney(value, 'USD');
 }
 
 export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapshot }) {

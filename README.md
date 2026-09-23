@@ -35,6 +35,15 @@ Si FMP no está configurado o el proveedor falla, esa cobertura se marca como no
 
 ## Arranque rápido (< 30 min)
 
+**Opción rápida (Windows) — `arrancar_cavaai.bat`:**
+
+Doble clic (o `arrancar_cavaai.bat /prod` para validar el build de producción).
+El script levanta **solo la infraestructura** con Docker (PostgreSQL, MongoDB,
+Redis, Qdrant, MinIO), libera los puertos 8000/3000 de procesos huérfanos de
+sesiones anteriores, aplica las migraciones de Alembic (se detiene si fallan)
+y arranca backend (uvicorn :8000) y frontend (next :3000) en local, abriendo
+http://localhost:3000 en el navegador.
+
 **Opción A — stack completo con Docker:**
 
 ```bash
@@ -130,7 +139,7 @@ data-engine/
   app/valuation/     motores + guardia point-in-time
   app/llm/           factory OpenCode Go + cliente Jev
   alembic/versions/  migraciones 0001→0029 (lineales, con downgrade)
-  tests/             793 tests herméticos · evals/  evals financieras
+  tests/             923 tests herméticos · evals/  evals financieras
 e2e/                 specs Playwright del flujo inversor
 docs/                PRODUCT_VISION, runbooks, privacidad
 ```
@@ -140,7 +149,14 @@ Ver [docs/PRODUCT_VISION.md](docs/PRODUCT_VISION.md) y la propia app en
 
 ## Producción
 
-- Frontend en Vercel; backend con autoarranque local o `render.yaml`.
+- Frontend en Vercel; backend con autoarranque local, `docker-compose.prod.yml` (Oracle) o `render.yaml` (Render).
+- **Oracle Cloud (Always Free)**: `docker-compose.prod.yml` levanta el stack 24/7
+  en una VM Ampere ARM (Caddy + PostgreSQL + Redis + Qdrant + MinIO + backend +
+  worker + scheduler), con healthchecks y reinicio automático; ver
+  `docs/oracle-setup.md` para la cuenta y el `.env.production`.
+- **Render (free)**: `render.yaml` (raíz del repo) despliega solo el backend con
+  `data-engine/Dockerfile.prod` y healthcheck `/health/ready`; en el tier free
+  hiberna a los ~15 min, así que los workers no corren 24/7.
 - Migraciones siempre explícitas (`alembic upgrade head`); el seed solo instala taxonomía pública, nunca tu cartera.
 - Puertos de BD cerrados al exterior; secretos solo en el dashboard de deploy.
 - Qdrant se reconstruye desde Postgres (`RAGIndex().rebuild_tenant`).

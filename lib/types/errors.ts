@@ -93,6 +93,16 @@ export class DatabaseError extends AppError {
 }
 
 /**
+ * Error de recurso duplicado (watchlist, alertas, colecciones...)
+ */
+export class DuplicateError extends AppError {
+  constructor(message: string = 'Este elemento ya existe', public readonly resource?: string) {
+    super(message, 'DUPLICATE_ERROR', 409);
+    this.name = 'DuplicateError';
+  }
+}
+
+/**
  * Type guard para verificar si un error es de tipo AppError
  */
 export function isAppError(error: unknown): error is AppError {
@@ -143,7 +153,7 @@ export function getErrorMessage(error: unknown): string {
  * Server Components render…"). Mostrar ese texto crudo en un toast no ayuda:
  * lo traducimos a un mensaje accionable de "motor no disponible, reintenta".
  * Los errores de negocio reales (AppError serializado, validaciones) se
- * devuelven tal cual.
+ * devuelven traducidos pero con su causa intacta.
  */
 const NEXT_PROD_GENERIC_MARKERS = [
   'server components render',
@@ -152,11 +162,108 @@ const NEXT_PROD_GENERIC_MARKERS = [
   'digest',
 ];
 
-export function getFriendlyErrorMessage(error: unknown): string {
-  const message = getErrorMessage(error);
-  const lower = message.toLowerCase();
-  if (NEXT_PROD_GENERIC_MARKERS.some((marker) => lower.includes(marker))) {
+/** Causa accionable de un error, para decidir el toast (reintentar, info...) */
+export type ErrorCause = 'offline' | 'duplicate' | 'validation' | 'auth' | 'not_found' | 'unknown';
+
+const OFFLINE_MARKERS = [
+  'fetch failed',
+  'failed to fetch',
+  'networkerror',
+  'network error',
+  'load failed',
+  'econnrefused',
+  'etimedout',
+  'econnreset',
+  'enotfound',
+  'socket hang up',
+  'no responde',
+  'motor de análisis no',
+  'backend no configurado',
+];
+
+const DUPLICATE_MARKERS = [
+  'already exists',
+  'already following',
+  'duplicate',
+  'already added',
+  'already in',
+  'ya existe',
+  'ya sigues',
+  'ya está',
+  'duplicad',
+];
+
+/**
+ * Clasifica un error en una causa accionable:
+ * - `offline`: motor/backend caído o red → el usuario puede reintentar.
+ * - `duplicate`: el recurso ya estaba (watchlist, alerta...).
+ * - `validation` / `auth` / `not_found`: errores de negocio conocidos.
+ */
+export function classifyError(error: unknown): ErrorCause {
+  if (error instanceof AppError) {
+    if (error.code === 'EXTERNAL_API_ERROR') return 'offline';
+    if (error.code === 'RESEARCH_API_ERROR' && error.statusCode >= 500) return 'offline';
+    if (error.code === 'VALIDATION_ERROR') return 'validation';
+    if (error.code === 'AUTH_ERROR' || error.code === 'AUTHORIZATION_ERROR') return 'auth';
+    if (error.code === 'NOT_FOUND') return 'not_found';
+    if (error.code === 'DUPLICATE_ERROR') return 'duplicate';
+  }
+  const message = getErrorMessage(error).toLowerCase();
+  if (NEXT_PROD_GENERIC_MARKERS.some((marker) => message.includes(marker))) return 'offline';
+  if (OFFLINE_MARKERS.some((marker) => message.includes(marker))) return 'offline';
+  if (DUPLICATE_MARKERS.some((marker) => message.includes(marker))) return 'duplicate';
+  return 'unknown';
+}
+
+/** Traducciones de mensajes backend/cliente habituales al español */
+const MESSAGE_TRANSLATIONS: Array<[RegExp, string]> = [
+  [/^a valid ticker is required$/i, 'Introduce un ticker válido.'],
+  [/^invalid alert id$/i, 'Identificador de alerta no válido.'],
+  [/^authentication failed$/i, 'Necesitas iniciar sesión para continuar.'],
+  [/^access denied$/i, 'No tienes permiso para esta operación.'],
+  [/^rate limit exceeded$/i, 'Demasiadas peticiones. Espera un momento y reintenta.'],
+  [/^an unexpected error occurred$/i, 'Ha ocurrido un error inesperado.'],
+  [/^an unknown error occurred$/i, 'Ha ocurrido un error inesperado.'],
+  [/not found$/i, 'no encontrado'],
+  [/unexpected response/i, 'El motor de análisis no responde ahora mismo.'],
+];
+
+const DEFAULT_UNKNOWN_MESSAGE = 'No se pudo completar la operación. Inténtalo de nuevo.';
+
+/**
+ * Mensaje de error en español y accionable para toasts:
+ * - `offline` → "motor no disponible, reintenta".
+ * - `duplicate` → "ya sigues este ticker" (o `options.duplicateMessage`).
+ * - resto → traducción del mensaje de negocio o fallback genérico
+ *   (el detalle crudo queda en consola para depurar).
+ */
+export function getFriendlyErrorMessage(
+  error: unknown,
+  options: { duplicateMessage?: string } = {},
+): string {
+  const cause = classifyError(error);
+  if (cause === 'offline') {
     return 'El motor de análisis no responde ahora mismo. Reintenta en unos segundos.';
   }
-  return message;
+  if (cause === 'duplicate') {
+    return options.duplicateMessage ?? 'Ya sigues este ticker.';
+  }
+
+  const message = getErrorMessage(error);
+  for (const [pattern, replacement] of MESSAGE_TRANSLATIONS) {
+    if (pattern.test(message)) {
+      return replacement.endsWith('no encontrado')
+        ? `${message.replace(pattern, replacement)}`
+        : replacement;
+    }
+  }
+
+  if (cause === 'unknown') {
+    // Mensajes crudos en inglés del runtime no deben llegar a la UI.
+    if (/[a-z]{4,}/i.test(message) && !/[áéíóúñ¿¡]/i.test(message) && message.split(' ').length > 12) {
+      console.error('[error no mostrado en UI]', error);
+      return DEFAULT_UNKNOWN_MESSAGE;
+    }
+  }
+  return message || DEFAULT_UNKNOWN_MESSAGE;
 }

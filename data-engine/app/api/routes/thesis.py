@@ -1,11 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Company, ThesisDiff, ThesisSection, ThesisVersion
+from app.models import Claim, Company, ThesisDiff, ThesisSection, ThesisVersion
 from app.schemas import ThesisGenerateRequest, ThesisGraphOut, ThesisOut
+from app.services.thesis_epub_service import (
+    EpubSection,
+    ThesisEpubData,
+    build_thesis_epub,
+)
 from app.services.thesis_graph_service import ThesisGraphService
 from app.services.thesis_memo import build_memo_markdown
 from app.services.thesis_service import ThesisService
@@ -20,6 +25,53 @@ def generate_thesis(payload: ThesisGenerateRequest, db: Session = Depends(get_db
         return ThesisService().generate(db, payload.ticker, payload.force_new_version)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{ticker}/epub")
+def thesis_epub(ticker: str, db: Session = Depends(get_db)) -> Response:
+    """Descarga la última tesis como EPUB (e-reader/Kindle).
+
+    404 limpio cuando no hay tesis: nunca se genera un documento vacío.
+    """
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    thesis = (
+        db.scalar(
+            select(ThesisVersion)
+            .where(ThesisVersion.company_id == company.id)
+            .order_by(desc(ThesisVersion.version))
+            .limit(1)
+        )
+        if company
+        else None
+    )
+    if thesis is None:
+        raise HTTPException(status_code=404, detail="No thesis for ticker")
+    sections = db.scalars(
+        select(ThesisSection)
+        .where(ThesisSection.thesis_version_id == thesis.id)
+        .order_by(ThesisSection.order_index)
+    ).all()
+    claims = db.scalars(
+        select(Claim).where(Claim.thesis_version_id == thesis.id)
+    ).all()
+    data = ThesisEpubData(
+        ticker=company.ticker,
+        company_name=company.name or "",
+        version=thesis.version,
+        rating=thesis.rating or "watch",
+        status=thesis.status or "draft",
+        generated_on=thesis.updated_at.date().isoformat() if thesis.updated_at else "",
+        executive_summary=thesis.executive_summary or "",
+        sections=[EpubSection(title=s.title, body=s.body or "") for s in sections],
+        citations=[c.statement for c in claims if c.statement],
+    )
+    content = build_thesis_epub(data)
+    filename = f"cavaai-thesis-{company.ticker}-v{thesis.version}.epub"
+    return Response(
+        content=content,
+        media_type="application/epub+zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{ticker}/latest", response_model=ThesisOut)

@@ -25,7 +25,7 @@ import {
     type WorkProductRecord,
     type WorkProductType,
 } from '@/lib/actions/work-products.actions';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 
 const PRODUCT_TYPES: Array<{ value: WorkProductType; label: string }> = [
@@ -59,7 +59,7 @@ export default function WorkProductButton() {
             setResult(generated);
             toast.success('Work product generado');
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            showErrorToast(error);
         } finally {
             setLoading(false);
         }

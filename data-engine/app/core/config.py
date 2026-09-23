@@ -1,9 +1,76 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Self
+from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Credenciales de desarrollo conocidas: jamas validas en produccion.
+_WEAK_CREDENTIAL_PAIRS = {
+    "postgres:postgres",
+    "postgres:password",
+    "postgres:secret",
+    "postgres:example",
+    "postgres:changeme",
+    "postgres:change-me",
+    "mongo:mongo",
+    "mongo:password",
+    "root:root",
+    "root:password",
+    "root:example",
+    "admin:admin",
+    "user:password",
+    "cavaai:cavaai",
+    "cavaai:example",
+}
+_WEAK_PASSWORDS = {
+    "password",
+    "secret",
+    "example",
+    "pass",
+    "test",
+    "root",
+    "admin",
+    "changeme",
+    "change-me",
+    "123456",
+}
+_WEAK_MINIO_SECRET_KEYS = {
+    "portfoliosecret",
+    "portfolio",
+    "minioadmin",
+    "minio-secret",
+    "minioadmin123",
+    "change-me",
+    "secret",
+}
+_WEAK_MINIO_ACCESS_KEYS = {"minioadmin", "minio", "admin", "change-me"}
+
+
+def _url_credentials(url: str) -> tuple[str | None, str | None]:
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None, None
+    if "@" not in parts.netloc:
+        return None, None
+    userinfo = parts.netloc.rsplit("@", 1)[0]
+    user, sep, password = userinfo.partition(":")
+    return (user or None, password if sep else None)
+
+
+def _assert_strong_credentials(url: str, *, label: str) -> None:
+    user, password = _url_credentials(url)
+    if not user or not password:
+        raise ValueError(
+            f"{label} must include a username and password in production"
+        )
+    pair = f"{user}:{password}".lower()
+    if pair in _WEAK_CREDENTIAL_PAIRS or password.lower() in _WEAK_PASSWORDS:
+        raise ValueError(
+            f"{label} must not use default development credentials in production"
+        )
 
 
 class Settings(BaseSettings):
@@ -42,8 +109,11 @@ class Settings(BaseSettings):
     minio_secret_key: str = "portfoliosecret"
     minio_bucket: str = "research"
     document_storage_backend: str = "minio"
+    # Mongo (auth Better Auth del frontend). Se valida aqui solo para poder
+    # rechazar credenciales por defecto en produccion; el data-engine no
+    # conecta a Mongo.
+    mongodb_uri: str | None = Field(default=None, repr=False)
 
-    fmp_api_key: str | None = None
     finnhub_api_key: str | None = None
     # Vendor de quotes/profile del screener real ("finnhub" | "yahoo").
     # Env: SCREENER_QUOTE_VENDOR. Default Finnhub (comportamiento actual).
@@ -80,6 +150,7 @@ class Settings(BaseSettings):
     langfuse_secret_key: str | None = Field(default=None, repr=False)
     langfuse_host: str = "https://cloud.langfuse.com"
     langfuse_sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
+    fmp_api_key: str | None = None
     fred_api_key: str | None = None
     opencode_go_api_key: str | None = Field(default=None, repr=False)
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
@@ -117,8 +188,15 @@ class Settings(BaseSettings):
             raise ValueError("RESEARCH_AUTH_SECRET is required in production")
         if self.document_storage_backend != "minio":
             raise ValueError("MinIO is required for production document originals")
-        if self.minio_secret_key in {"portfoliosecret", "minioadmin", "change-me"}:
+        if self.minio_secret_key.lower() in _WEAK_MINIO_SECRET_KEYS:
             raise ValueError("MINIO_SECRET_KEY must not use a development default in production")
+        if self.minio_access_key.lower() in _WEAK_MINIO_ACCESS_KEYS:
+            raise ValueError("MINIO_ACCESS_KEY must not use a development default in production")
+        database_scheme = (self.database_url.split(":", 1) or [""])[0].lower()
+        if database_scheme in {"postgres", "postgresql"}:
+            _assert_strong_credentials(self.database_url, label="DATABASE_URL")
+        if self.mongodb_uri:
+            _assert_strong_credentials(self.mongodb_uri, label="MONGODB_URI")
         return self
 
 

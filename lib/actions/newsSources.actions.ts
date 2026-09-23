@@ -23,7 +23,7 @@ const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
  */
 async function getNewsFinnhub(symbols?: string[], maxArticles = 6): Promise<MarketNewsArticle[]> {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = process.env.FINNHUB_API_KEY;
         if (!token) return [];
 
         const range = getDateRange(5);
@@ -310,7 +310,7 @@ async function getNewsYahoo(symbols?: string[], maxArticles = 15): Promise<Marke
         const url = `${backendUrl}/company-news/${symbol}?limit=${maxArticles}`;
 
         const response = await fetch(url, {
-            headers: await researchIdentityHeaders(),
+            headers: await researchIdentityHeaders({ method: 'GET', path: `/company-news/${symbol}` }),
             next: { revalidate: 300 },
         });
         if (!response.ok) return [];

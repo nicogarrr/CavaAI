@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import { updateAllPortfolioPrices } from '@/lib/actions/portfolio.actions';
 import { toast } from 'sonner';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 
 interface RefreshPortfolioButtonProps {
     userId: string;
@@ -28,7 +28,7 @@ export default function RefreshPortfolioButton({ userId }: RefreshPortfolioButto
             toast.success('Cartera actualizada');
 
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            showErrorToast(error, { onRetry: handleFullRefresh });
         } finally {
             // Small delay to allow the page to refresh
             setTimeout(() => setIsRefreshing(false), 1000);

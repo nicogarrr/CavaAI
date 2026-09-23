@@ -21,14 +21,14 @@ test.describe("research thesis workspace", () => {
     ).toHaveAttribute("href", "/api/thesis-memo/MSFT");
 
     // Without a persisted thesis the workspace says so - nothing invented.
-    await expect(page.getByText("No thesis exists.")).toBeVisible();
+    await expect(page.getByText("Aún no existe ninguna tesis.")).toBeVisible();
 
     // Collapsible panels open by default on desktop viewports.
     await expect(
       page.getByText("Aún no hay historial de versiones."),
     ).toBeVisible();
-    await expect(page.getByText("0 versions")).toBeVisible();
-    await expect(page.getByText("0 claims")).toBeVisible();
+    await expect(page.getByText("0 versiones")).toBeVisible();
+    await expect(page.getByText("0 afirmaciones")).toBeVisible();
 
     // The history panel states its own provenance limits.
     await expect(

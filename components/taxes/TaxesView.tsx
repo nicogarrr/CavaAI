@@ -11,7 +11,7 @@ import {
     type DataRecord,
 } from '@/components/data/RecordViews';
 import { getTaxHoldings, getTaxReport, regenerateTaxReport } from '@/lib/actions/taxes.actions';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 
 interface TaxesViewProps {
@@ -67,7 +67,7 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
             await regenerateTaxReport(year);
             toast.success(`Reporte fiscal ${year} regenerado`);
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            showErrorToast(error, { onRetry: handleRegenerate });
         } finally {
             setRegenerating(false);
         }

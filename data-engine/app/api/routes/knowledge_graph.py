@@ -1,3 +1,4 @@
+from app.core.errors import safe_detail
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,7 +16,7 @@ def sync_knowledge_graph(db: Session = Depends(get_db)) -> dict:
     try:
         return KnowledgeGraphService().sync(db)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=safe_detail(exc, 400)) from exc
 
 
 @router.get("")

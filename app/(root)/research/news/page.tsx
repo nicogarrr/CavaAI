@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
+import { formatPercent } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -44,8 +45,7 @@ function Stat({
 }
 
 function pct(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 'N/A';
-  return `${(value * 100).toFixed(1)}%`;
+  return formatPercent(value ?? null, { digits: 1 }, 'N/D');
 }
 
 export default async function ResearchNewsPage() {
@@ -63,8 +63,8 @@ export default async function ResearchNewsPage() {
               Research
             </Link>
           </Button>
-          <p className="text-sm font-semibold uppercase text-teal-300">Market Intelligence</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-100">News Events</h1>
+          <p className="text-sm font-semibold uppercase text-teal-300">Inteligencia de mercado</p>
+          <h1 className="mt-1 text-3xl font-bold text-gray-100">Eventos de noticias</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
             Eventos de noticias clasificados por materialidad e impacto sobre posiciones de cartera.
           </p>
@@ -75,29 +75,29 @@ export default async function ResearchNewsPage() {
       </header>
 
       <section className="grid gap-4 md:grid-cols-3">
-        <Stat label="Total Events" value={String(events.length)} />
-        <Stat label="Require Update" value={String(requireUpdate)} tone={requireUpdate > 0 ? 'bad' : 'good'} />
-        <Stat label="High Materiality" value={String(highMateriality)} tone={highMateriality > 0 ? 'warn' : 'good'} />
+        <Stat label="Eventos totales" value={String(events.length)} />
+        <Stat label="Requieren actualización" value={String(requireUpdate)} tone={requireUpdate > 0 ? 'bad' : 'good'} />
+        <Stat label="Alta materialidad" value={String(highMateriality)} tone={highMateriality > 0 ? 'warn' : 'good'} />
       </section>
 
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Event Feed</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Flujo de eventos</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="text-xs uppercase text-gray-500">
               <tr>
                 <th className="border-b border-gray-800 py-2">Ticker</th>
-                <th className="border-b border-gray-800 py-2">Date</th>
-                <th className="border-b border-gray-800 py-2">Title</th>
-                <th className="border-b border-gray-800 py-2">Source</th>
-                <th className="border-b border-gray-800 py-2">Type</th>
-                <th className="border-b border-gray-800 py-2 text-right">Weight</th>
-                <th className="border-b border-gray-800 py-2 text-center">Materiality</th>
-                <th className="border-b border-gray-800 py-2 text-center">Direction</th>
-                <th className="border-b border-gray-800 py-2 text-center">Update?</th>
+                <th className="border-b border-gray-800 py-2">Fecha</th>
+                <th className="border-b border-gray-800 py-2">Titular</th>
+                <th className="border-b border-gray-800 py-2">Fuente</th>
+                <th className="border-b border-gray-800 py-2">Tipo</th>
+                <th className="border-b border-gray-800 py-2 text-right">Peso</th>
+                <th className="border-b border-gray-800 py-2 text-center">Materialidad</th>
+                <th className="border-b border-gray-800 py-2 text-center">Impacto</th>
+                <th className="border-b border-gray-800 py-2 text-center">¿Actualizar?</th>
               </tr>
             </thead>
             <tbody>
@@ -150,7 +150,7 @@ export default async function ResearchNewsPage() {
                     </td>
                     <td className="py-3 text-gray-400">
                       <div>{event.source}</div>
-                      <div className="mt-1 text-xs text-gray-600">{event.source_tier ?? 'tier_unknown'}</div>
+                      <div className="mt-1 text-xs text-gray-600">{event.source_tier ?? 'tier desconocido'}</div>
                     </td>
                     <td className="py-3 text-gray-400">{event.event_type}</td>
                     <td className="py-3 text-right text-gray-400">{pct(event.portfolio_weight)}</td>
@@ -165,7 +165,7 @@ export default async function ResearchNewsPage() {
                     <td className="py-3 text-center">
                       {event.requires_update ? (
                         <span className="rounded-full bg-red-950/60 px-2 py-0.5 text-xs font-semibold text-red-400">
-                          urgent
+                          urgente
                         </span>
                       ) : (
                         <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs text-gray-500">
@@ -178,8 +178,11 @@ export default async function ResearchNewsPage() {
               })}
               {!events.length ? (
                 <tr>
-                  <td className="py-4 text-gray-500" colSpan={9}>
-                    Sin eventos de noticias todavia.
+                  <td className="py-6 text-center text-gray-500" colSpan={9}>
+                    <p>Sin eventos de noticias todavía.</p>
+                    <Link className="mt-3 inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 hover:border-teal-600 hover:text-teal-200" href="/research/sources">
+                      Importa una fuente o analiza una noticia manual
+                    </Link>
                   </td>
                 </tr>
               ) : null}
@@ -191,35 +194,35 @@ export default async function ResearchNewsPage() {
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Analyze Manual News</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Analizar noticia manual</h2>
         </div>
         <MutationForm action={submitAnalyzeNews} className="grid gap-3" resetOnSuccess successMessage="Noticia analizada">
           <div className="grid gap-2">
             <label className="text-sm font-semibold text-gray-400" htmlFor="text">
-              News text
+              Texto de la noticia
             </label>
             <Textarea
               className="min-h-[160px] border-gray-800 bg-black/30 text-gray-200 focus-visible:ring-teal-500"
               id="text"
               name="text"
-              placeholder="Paste the news article, press release or IR note here..."
+              placeholder="Pega aquí el artículo, la nota de prensa o la nota de relaciones con inversores..."
               required
             />
           </div>
           <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-center">
             <label className="text-sm font-semibold text-gray-400" htmlFor="source">
-              Source
+              Fuente
             </label>
-            <Input id="source" name="source" placeholder="Bloomberg, FT, IR..." />
+            <Input id="source" name="source" placeholder="Bloomberg, FT, RI..." />
           </div>
           <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-center">
             <label className="text-sm font-semibold text-gray-400" htmlFor="url">
-              Source URL
+              URL de la fuente
             </label>
             <Input id="url" name="url" placeholder="https://..." type="url" />
           </div>
           <Button className="w-full sm:w-fit" type="submit">
-            Analyze News
+            Analizar noticia
           </Button>
         </MutationForm>
       </section>
@@ -227,23 +230,23 @@ export default async function ResearchNewsPage() {
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Ingest Feed Batch</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Ingerir lote de feed</h2>
         </div>
         <MutationForm action={submitIngestFeed} className="grid gap-3" resetOnSuccess successMessage="Feed importado">
           <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-center">
             <label className="text-sm font-semibold text-gray-400" htmlFor="feed-source">
-              Source
+              Fuente
             </label>
             <Input defaultValue="manual_feed" id="feed-source" name="source" />
           </div>
           <Textarea
             className="min-h-[180px] border-gray-800 bg-black/30 font-mono text-xs text-gray-200 focus-visible:ring-teal-500"
             name="items"
-            placeholder='[{"ticker":"MSFT","title":"MSFT cuts guidance","text":"earnings miss and guidance cut","url":"https://..."}]'
+            placeholder='[{"ticker":"MSFT","title":"MSFT recorta guía","text":"resultado por debajo y recorte de guía","url":"https://..."}]'
             required
           />
           <Button className="w-full sm:w-fit" type="submit" variant="outline">
-            Ingest Feed
+            Ingerir feed
           </Button>
         </MutationForm>
       </section>

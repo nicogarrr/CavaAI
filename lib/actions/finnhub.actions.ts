@@ -735,7 +735,10 @@ async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; 
     const backendUrl = process.env.FMP_BACKEND_URL;
     if (backendUrl && !process.env.VERCEL) {
         try {
-            const identityHeaders = await researchIdentityHeaders();
+            const identityHeaders = await researchIdentityHeaders({
+                method: 'GET',
+                path: `/quote/${encodeURIComponent(symbol)}`,
+            });
             const response = await fetch(`${backendUrl}/quote/${encodeURIComponent(symbol)}`, {
                 headers: identityHeaders,
                 next: { revalidate: 60 },

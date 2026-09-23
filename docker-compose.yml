@@ -57,6 +57,11 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ==========================================
   # Qdrant - vector store for RAG
@@ -70,6 +75,15 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      # La imagen de Qdrant no incluye curl/wget: GET /healthz con bash (/dev/tcp).
+      test:
+        - CMD-SHELL
+        - >-
+          bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333; printf "GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; read -r status <&3; [[ $$status == *" 200 "* ]]'
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ==========================================
   # MinIO - local S3-compatible raw document store
@@ -130,15 +144,25 @@ services:
       - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-false}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+    healthcheck:
+      # python:3.12-slim no trae curl: sonda equivalente a `curl -f http://localhost:8000/health/ready`.
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request as u; u.urlopen('http://localhost:8000/health/ready', timeout=5)"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     depends_on:
       mongodb:
         condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
       minio:
         condition: service_healthy
 
@@ -170,11 +194,21 @@ services:
       - MINIO_BUCKET=research
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
       - RSS_FEEDS=${RSS_FEEDS:-}
+    healthcheck:
+      # Sin HTTP: dramatiq vivo (PID 1) + Redis de cola accesible.
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import os,sys,redis; sys.exit(0 if 'dramatiq' in open('/proc/1/cmdline','rb').read().decode(errors='ignore') and redis.from_url(os.environ['REDIS_URL'], socket_connect_timeout=3).ping() else 1)"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     command: ["dramatiq", "app.workers.dramatiq_app"]
 
   # ==========================================
@@ -198,9 +232,19 @@ services:
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
       - TZ=UTC
+    healthcheck:
+      # Sin HTTP: scheduler vivo (PID 1) + Redis accesible.
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import os,sys,redis; sys.exit(0 if 'app.workers.scheduler' in open('/proc/1/cmdline','rb').read().decode(errors='ignore') and redis.from_url(os.environ['REDIS_URL'], socket_connect_timeout=3).ping() else 1)"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
     command: ["python", "-m", "app.workers.scheduler"]
 
   # ==========================================
@@ -231,9 +275,21 @@ services:
       - RESEARCH_AUTH_REQUIRED=true
       - RESEARCH_AUTH_SECRET=${RESEARCH_AUTH_SECRET:?Set RESEARCH_AUTH_SECRET in .env}
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    healthcheck:
+      # node:alpine sin curl: fetch nativo de Node 22.
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
-      - mongodb
-      - backend
+      mongodb:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
 
   # ==========================================
   # Langfuse observability profile
@@ -242,6 +298,7 @@ services:
     profiles: ["observability"]
     image: clickhouse/clickhouse-server:24.8
     container_name: cavaai-clickhouse
+    restart: unless-stopped
     user: "101:101"
     ports:
       - "8123:8123"
@@ -262,6 +319,7 @@ services:
     profiles: ["observability"]
     image: langfuse/langfuse-worker:3
     container_name: cavaai-langfuse-worker
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -294,13 +352,14 @@ services:
       LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
       LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-portfolio}
       LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-portfoliosecret}
-      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9002
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
       LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
 
   langfuse-web:
     profiles: ["observability"]
     image: langfuse/langfuse:3
     container_name: cavaai-langfuse-web
+    restart: unless-stopped
     depends_on:
       langfuse-worker:
         condition: service_started
@@ -330,7 +389,7 @@ services:
       LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
       LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-portfolio}
       LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-portfoliosecret}
-      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9002
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
       LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
       LANGFUSE_INIT_ORG_ID: cavaai
       LANGFUSE_INIT_ORG_NAME: CavaAI

@@ -5,7 +5,7 @@ import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchRequest } from '@/lib/research/client';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
-const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY ?? process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 
 export type ScreenerFilters = {
   marketCapMin: number;

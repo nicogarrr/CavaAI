@@ -17,6 +17,13 @@ REM     `next start`: navegacion mas rapida, errores de build reales
 REM     (los que veria el despliegue). Usalo antes de desplegar o para
 REM     probar rendimiento. Si el build falla, el .bat se detiene y NO
 REM     arranca el frontend.
+REM ---------------------------------------------------------------------
+REM Docker SOLO levanta la infraestructura (postgres, mongodb, redis,
+REM qdrant, minio). El backend (uvicorn) y el frontend (next) corren en
+REM LOCAL: si Docker los levantara tambien, chocarian por los puertos
+REM 8000/3000. `docker compose up` con servicios ya construidos no
+REM necesita build: nada de --no-build (rompe en frio cuando la imagen
+REM no existe).
 REM =====================================================================
 cd /d "%~dp0"
 set "FRONT_MODE=DEV"
@@ -25,28 +32,48 @@ if /i "%~1"=="prod" set "FRONT_MODE=PROD"
 if /i "%~1"=="--prod" set "FRONT_MODE=PROD"
 if /i "%~1"=="-prod" set "FRONT_MODE=PROD"
 echo CavaAI - modo %FRONT_MODE%
-echo [1/4] Levantando Docker (postgres, qdrant, minio, redis)...
-docker compose up -d --no-build
-echo [2/4] Esperando a Qdrant...
+
+echo [1/5] Levantando Docker (solo infra: postgres, mongodb, redis, qdrant, minio)...
+docker compose up -d postgres mongodb redis qdrant minio
+if errorlevel 1 (
+  echo ERROR: docker compose fallo. Comprueba que Docker Desktop esta arrancado.
+  pause
+  exit /b 1
+)
+
+echo [2/5] Esperando a Qdrant...
 for /L %%i in (1,1,30) do (
   curl -sf http://localhost:6333/healthz >nul 2>&1 && goto qdrant_ok
   timeout /t 2 /nobreak >nul
 )
 echo AVISO: Qdrant no responde; sigo sin busqueda semantica.
 :qdrant_ok
-echo [3/4] Migraciones de base de datos...
+
+echo [3/5] Liberando puertos 8000 y 3000 (procesos huerfanos de sesiones anteriores)...
+call :free_port 8000
+call :free_port 3000
+
+echo [4/5] Migraciones de base de datos...
 cd data-engine
 .\.venv\Scripts\python.exe -m alembic upgrade head
+if errorlevel 1 (
+  echo ERROR: las migraciones de Alembic fallaron. NO arranco el backend.
+  echo Revisa que Postgres esta sano y que DATABASE_URL del .env apunta a el.
+  cd ..
+  pause
+  exit /b 1
+)
 start "CavaAI backend" .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
 cd ..
+
 if /i "%FRONT_MODE%"=="PROD" goto frontend_prod
 :frontend_dev
-echo [4/4] Frontend DEV (next dev)...
+echo [5/5] Frontend DEV (next dev)...
 start "CavaAI frontend" node_modules\.bin\next dev -p 3000
 echo Esperando al frontend (primera vez compila ~1 min)...
 goto wait_web
 :frontend_prod
-echo [4/4] Frontend PROD: build una vez (~2 min) + next start...
+echo [5/5] Frontend PROD: build una vez (~2 min) + next start...
 call node_modules\.bin\next build
 if errorlevel 1 (
   echo ERROR: `next build` fallo; revisa los errores de arriba. Frontend NO arrancado.
@@ -64,3 +91,15 @@ for /L %%i in (1,1,30) do (
 start http://localhost:3000/
 echo Listo (%FRONT_MODE%): http://localhost:3000/
 pause
+goto :eof
+
+REM ---------------------------------------------------------------------
+REM :free_port <puerto> - mata todo proceso en LISTENING sobre el puerto
+REM ---------------------------------------------------------------------
+:free_port
+set "PORT=%~1"
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":%PORT% .*LISTENING"') do (
+  echo   Liberando puerto %PORT% ^(PID %%p^)...
+  taskkill /F /PID %%p >nul 2>&1
+)
+exit /b 0

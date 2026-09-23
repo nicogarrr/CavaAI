@@ -4,6 +4,64 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { SUPPORT_EMAIL } from '@/lib/config/brand';
 
+const modules = [
+  {
+    href: '/research',
+    title: 'Research',
+    text: 'Ficha por ticker: hechos financieros canónicos, métricas trazables, tesis, moat, pares, valoración y chat con fuentes.',
+  },
+  {
+    href: '/research',
+    title: 'Modelo a largo plazo',
+    text: 'Modelo fundamental con supuestos visibles (crecimiento, margen FCF, WACC), escenarios Bear/Base/Bull con sus spreads, owner earnings, TAM/SAM/SOM y reverse DCF. Pestaña «Model» de la ficha.',
+  },
+  {
+    href: '/portfolio',
+    title: 'Cartera',
+    text: 'Posiciones, transacciones, importación desde IBKR y desglose por sector y divisa.',
+  },
+  {
+    href: '/risk',
+    title: 'Riesgo',
+    text: 'Pesos, concentración (top 1 y top 5) y exposición por sector y factor. No calcula VaR, drawdown ni volatilidad: son métricas de estructura de cartera.',
+  },
+  {
+    href: '/screeners',
+    title: 'Screener',
+    text: 'Universo de grandes capitalizaciones con perfiles y precios reales para partir de candidatos verificables.',
+  },
+  {
+    href: '/propicks',
+    title: 'ProPicks',
+    text: 'Scores 0-100 con motivos auditables (cada motivo muestra su métrica y su valor) y backtest por estrategia comparado contra el S&P 500.',
+  },
+  {
+    href: '/alerts',
+    title: 'Alertas',
+    text: 'Señales con umbral de materialidad explícito, enlazadas a la ficha de la compañía.',
+  },
+  {
+    href: '/insider',
+    title: 'Insider',
+    text: 'Operaciones de personas vinculadas (Form 4 de la SEC) con señales por cluster de compra.',
+  },
+  {
+    href: '/knowledge',
+    title: 'Knowledge y búsqueda',
+    text: 'Biblioteca de principios de inversión e índice semántico que se reconstruye desde Postgres.',
+  },
+  {
+    href: '/watchlist',
+    title: 'Watchlist',
+    text: 'Seguimiento de símbolos con enlace directo a su ficha de research.',
+  },
+  {
+    href: '/metodologia',
+    title: 'Metodología',
+    text: 'Motores de valoración con sus supuestos, fuentes de datos, límites (look-ahead, cobertura parcial) y costes explícitos.',
+  },
+];
+
 const faqs = [
   {
     question: "¿CavaAI es realmente gratuito?",
@@ -37,11 +95,6 @@ export default function HelpTabs() {
         <p className="text-xl text-gray-200 mb-4">
           Documentación, preguntas frecuentes y soporte
         </p>
-        <div className="bg-green-300 border border-green-200 rounded-lg p-4 max-w-2xl mx-auto">
-          <p className="text-black text-sm">
-            🤝 <strong>Nuestra Promesa:</strong> Cada pregunta importa. Cada principiante es bienvenido.
-          </p>
-        </div>
         <p className="mt-4 text-sm text-gray-400">
           ¿Quieres ver cómo analizamos y de dónde salen los datos?{' '}
           <Link href="/metodologia" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">
@@ -126,47 +179,70 @@ export default function HelpTabs() {
         </>
       )}
 
-      {/* API Docs Tab */}
+      {/* Documentation Tab */}
       {activeTab === 'api' && (
         <div className="space-y-8">
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-gray-100 mb-4">Documentación</h2>
             <p className="text-xl text-gray-200 mb-4">
-              Guía completa para usar CavaAI
+              Guía práctica por módulo: lo que la app hace hoy y cómo usarla.
             </p>
           </div>
 
-          {/* Philosophy */}
+          {/* Primeros pasos */}
           <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
-            <h2 className="text-2xl font-semibold text-gray-100 mb-4">🌍 Nuestra Filosofía</h2>
-            <p className="text-gray-200 mb-4">
-              Creemos que los datos de mercado deben ser accesibles para todos - estudiantes, 
-              desarrolladores y cualquiera que quiera aprender sobre finanzas sin barreras.
-            </p>
-            <ul className="text-gray-200 space-y-2">
-              <li>✅ <strong>Accesible:</strong> Funcionalidades principales gratuitas</li>
-              <li>✅ <strong>Sin Barreras:</strong> Documentación clara y simple</li>
-              <li>✅ <strong>Educativo:</strong> Diseñado para aprender y crecer</li>
-            </ul>
+            <h2 className="text-2xl font-semibold text-gray-100 mb-4">Primeros pasos: modelo → tesis → decisión</h2>
+            <ol className="space-y-4 text-gray-200">
+              <li>
+                <strong className="text-teal-400">1. Modelo.</strong>{' '}
+                En <Link href="/research" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">Research</Link> elige
+                la compañía y abre la pestaña «Model» → «Generate model». Revisa los supuestos (crecimiento, margen
+                FCF, WACC) y los escenarios Bear/Base/Bull con sus spreads antes de fiarte del número.
+              </li>
+              <li>
+                <strong className="text-teal-400">2. Tesis.</strong>{' '}
+                Genera la tesis desde la misma ficha: hipótesis, escenarios con probabilidades, catalizadores con
+                fecha y qué la invalidaría. El trabajo se puede exportar desde{' '}
+                <Link href="/export" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">/export</Link>.
+              </li>
+              <li>
+                <strong className="text-teal-400">3. Decisión.</strong>{' '}
+                Registra la decisión en el Decision Journal (compra / mantén / reduce / vende / vigila / evita) con la
+                evidencia que la justifica y las condiciones verificables («what must be true»). Más adelante,
+                «Expectation vs Reality» compara tu previsión con los hechos publicados.
+              </li>
+            </ol>
           </section>
 
-          {/* Features */}
+          {/* Guía por módulo */}
           <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
-            <h2 className="text-2xl font-semibold text-gray-100 mb-4">🛠️ Funcionalidades</h2>
+            <h2 className="text-2xl font-semibold text-gray-100 mb-4">Guía por módulo</h2>
             <div className="grid md:grid-cols-2 gap-4">
-              <div className="bg-green-900/30 p-4 rounded-lg">
-                <h3 className="font-semibold text-green-400 mb-2">📊 Análisis de Acciones</h3>
-                <p className="text-gray-300 text-sm">
-                  Métricas financieras, ratios, y análisis técnico completo.
-                </p>
-              </div>
-              <div className="bg-blue-900/30 p-4 rounded-lg">
-                <h3 className="font-semibold text-blue-400 mb-2">🤖 IA Integrada</h3>
-                <p className="text-gray-300 text-sm">
-                  Análisis automatizado con modelos de lenguaje avanzados.
-                </p>
-              </div>
+              {modules.map((module) => (
+                <div className="bg-gray-900/40 p-4 rounded-lg" key={module.title}>
+                  <h3 className="font-semibold text-teal-400 mb-2">
+                    <Link href={module.href} className="underline underline-offset-4 hover:text-teal-300">
+                      {module.title}
+                    </Link>
+                  </h3>
+                  <p className="text-gray-300 text-sm">{module.text}</p>
+                </div>
+              ))}
             </div>
+          </section>
+
+          {/* Glosario y metodología */}
+          <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
+            <h2 className="text-2xl font-semibold text-gray-100 mb-4">Glosario y metodología</h2>
+            <p className="text-gray-200 mb-4">
+              Los términos técnicos (DCF, WACC, reverse DCF, moat, margen de seguridad, look-ahead, owner earnings,
+              TAM/SAM/SOM, ROIC, VaR, drawdown, Sharpe) llevan un tooltip con su definición dondequiera que aparecen.
+              Los motores de valoración con sus supuestos, las fuentes de datos (Finnhub, Yahoo Finance, SEC EDGAR),
+              los límites y los costes están documentados en{' '}
+              <Link href="/metodologia" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">
+                /metodologia
+              </Link>.
+            </p>
           </section>
         </div>
       )}
@@ -186,9 +262,6 @@ export default function HelpTabs() {
                   Enviar email a {SUPPORT_EMAIL}
               </a>
           </div>
-          <p className="text-xs text-gray-400 mt-4">
-            ✨ Respondemos todas las consultas lo antes posible.
-          </p>
         </section>
       )}
     </div>

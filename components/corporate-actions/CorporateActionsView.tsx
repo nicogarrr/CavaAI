@@ -5,7 +5,7 @@ import { Building2, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RecordList, researchHrefFor, type DataRecord } from '@/components/data/RecordViews';
 import { applyCorporateAction, getCorporateActions } from '@/lib/actions/corporate-actions.actions';
-import { getErrorMessage } from '@/lib/types/errors';
+import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 
 interface CorporateActionsViewProps {
@@ -38,7 +38,7 @@ export default function CorporateActionsView({ initialActions }: CorporateAction
             await applyCorporateAction(actionId);
             toast.success('Acción corporativa aplicada a la cartera');
         } catch (error) {
-            toast.error(getErrorMessage(error));
+            showErrorToast(error);
         } finally {
             setApplyingId(null);
         }
