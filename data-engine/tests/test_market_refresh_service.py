@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine, event, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.entities import Base, Company, MarketPrice, Portfolio, Position
 from app.services.connectors.ecb import ECBRates
@@ -22,7 +22,8 @@ from app.services.market_refresh_service import MarketRefreshService, PriceObser
 def db():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    with Session(engine) as session:
+    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    with factory() as session:
         session.info["tenant_id"] = "tenant-test"
         yield session
 
@@ -85,11 +86,13 @@ def _refresh_and_count(db: Session) -> tuple[dict, int]:
         result = asyncio.run(service.refresh(db, as_of=date(2026, 9, 22)))
     finally:
         event.remove(db.get_bind(), "before_cursor_execute", listener)
-    price_selects = [
-        s for s in statements
-        if s.lstrip().upper().startswith("SELECT") and "market_prices" in s
-    ]
-    return result, len(price_selects)
+    counts = {}
+    for table in ("market_prices", "positions", "fx_rates"):
+        counts[table] = len([
+            s for s in statements
+            if s.lstrip().upper().startswith("SELECT") and table in s
+        ])
+    return result, counts
 
 
 def test_refresh_query_count_is_constant_in_company_count(db):
@@ -98,13 +101,14 @@ def test_refresh_query_count_is_constant_in_company_count(db):
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    with Session(engine) as db2:
+    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    with factory() as db2:
         db2.info["tenant_id"] = "tenant-test"
         _seed(db2, 8)
         _, count_large = _refresh_and_count(db2)
 
-    # Stage-1 upsert lookups + stage-3 latest-price lookups are batched:
-    # the count must not grow with the number of companies/positions.
+    # Stage-1 upsert lookups, stage-3 latest-price/position/FX lookups are
+    # batched: no count may grow with the number of companies/positions.
     assert count_small == count_large
 
 
@@ -129,3 +133,6 @@ def test_refresh_writes_prices_and_reports_stages(db):
     for position in db.scalars(select(Position)).all():
         assert position.market_price == Decimal("100")
         assert position.market_value == Decimal("1000")
+        # FX came from the stage-2 upsert (1.1) through the batched table.
+        assert position.fx_rate == Decimal("1.1")
+        assert position.market_value_base == Decimal("1100")
