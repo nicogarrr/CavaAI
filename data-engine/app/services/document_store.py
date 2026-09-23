@@ -1,5 +1,6 @@
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import os
 import re
 
 from minio import Minio
@@ -30,9 +31,17 @@ class DocumentStore:
         content: bytes,
         tenant_id: int | None = None,
     ) -> str:
+        self._validate_local_component(ticker)
+        self._validate_local_component(category)
+        self._validate_local_component(filename)
+
+        root = self.local_root.resolve()
         directory = self._directory(ticker, category, tenant_id)
         directory.mkdir(parents=True, exist_ok=True)
-        path = directory / self._safe_filename(filename)
+        path = (directory / self._safe_filename(filename)).resolve()
+        if os.path.commonpath((str(root), str(path))) != str(root):
+            raise ValueError("Unsafe local document storage path")
+
         path.write_bytes(content)
         return str(path)
 
@@ -88,6 +97,17 @@ class DocumentStore:
             / self._safe_path_part(ticker)
             / self._safe_path_part(category)
         )
+
+    @staticmethod
+    def _validate_local_component(value: str) -> None:
+        paths = (PurePosixPath(value), PureWindowsPath(value))
+        if (
+            any(path.is_absolute() for path in paths)
+            or value in {".", ".."}
+            or any(part == ".." for path in paths for part in path.parts)
+            or any(separator in value for separator in ("/", "\\"))
+        ):
+            raise ValueError("Unsafe local document storage path")
 
     def _safe_path_part(self, value: str) -> str:
         cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", value.strip())

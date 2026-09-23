@@ -1,9 +1,10 @@
 """Bounded HTTP fetching for user-supplied public URLs.
 
-This module deliberately does not follow redirects automatically. Every hop is
-validated to prevent SSRF through private, loopback, link-local, or metadata
-addresses. Responses are streamed with a hard byte limit so a remote server
-cannot force an unbounded allocation.
+Redirects are followed manually and every hop is resolved and validated. The
+validated IP is then pinned into the HTTP connection: Host remains the original
+hostname for virtual hosting and TLS SNI, while the socket backend can connect
+only to the already-approved address. Responses are streamed with a hard byte
+limit so a remote server cannot force an unbounded allocation.
 """
 
 from __future__ import annotations
@@ -11,8 +12,14 @@ from __future__ import annotations
 import ipaddress
 import socket
 from collections.abc import Iterable
-from urllib.parse import urljoin, urlparse
+from dataclasses import dataclass
+from httpcore._backends.anyio import AnyIOBackend
+from httpcore._backends.base import AsyncNetworkStream
+from httpcore._backends.sync import SyncBackend
+from typing import Any
+from urllib.parse import urljoin, urlparse, urlunparse
 
+import anyio
 import httpx
 
 MAX_REDIRECTS = 3
@@ -21,7 +28,75 @@ DEFAULT_TIMEOUT_SECONDS = 30.0
 USER_AGENT = "CavaAI Public Document Fetcher/1.0"
 
 
-def validate_public_url(url: str) -> str:
+@dataclass(frozen=True)
+class _PublicTarget:
+    url: str
+    request_url: str
+    address: str
+    host_header: str
+    sni_hostname: str | None
+
+
+class _PinnedConnectionMixin:
+    _target: _PublicTarget | None = None
+
+    def _pinned_target(self, host: str, port: int) -> _PublicTarget:
+        if self._target is None:
+            raise RuntimeError("Public fetch transport is missing its validated target")
+        expected_port = 443 if self._target.url.lower().startswith("https:") else 80
+        if port != expected_port:
+            raise RuntimeError("Public fetch transport attempted an unexpected port")
+        if host != self._target.address:
+            raise RuntimeError("Public fetch transport attempted an unvalidated address")
+        return self._target
+
+
+class _SyncPinnedNetworkBackend(_PinnedConnectionMixin, SyncBackend):
+    def __enter__(self):
+        super().__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        super().__exit__(exc_type, exc_value, traceback)
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[Any] | None = None,
+    ):
+        target = self._pinned_target(host, port)
+        return super().connect_tcp(
+            target.address,
+            port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+
+class _AsyncPinnedNetworkBackend(_PinnedConnectionMixin, AnyIOBackend):
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[Any] | None = None,
+    ) -> AsyncNetworkStream:
+        target = self._pinned_target(host, port)
+        return await super().connect_tcp(
+            target.address,
+            port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+
+def _parse_public_url(url: str) -> tuple[Any, str, int]:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError("Only http(s) URLs can be fetched")
@@ -34,7 +109,65 @@ def validate_public_url(url: str) -> str:
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
     except ValueError as exc:
         raise ValueError("URL contains an invalid port") from exc
+    return parsed, hostname, port
 
+
+def _validated_addresses(addresses: Iterable[Any]) -> tuple[str, ...]:
+    unique: set[str] = set()
+    for item in addresses:
+        try:
+            address = str(item[4][0]).split("%", 1)[0]
+            parsed_ip = ipaddress.ip_address(address)
+        except (IndexError, TypeError, ValueError) as exc:
+            raise ValueError("URL resolved to an invalid address") from exc
+        if not parsed_ip.is_global:
+            raise ValueError("Private, loopback, link-local, or reserved URLs are not allowed")
+        unique.add(str(parsed_ip))
+    if not unique:
+        raise ValueError("URL hostname has no usable address")
+    return tuple(sorted(unique, key=lambda value: (ipaddress.ip_address(value).version, value)))
+
+
+def _build_target(
+    parsed: Any,
+    hostname: str,
+    port: int,
+    addresses: Iterable[Any],
+) -> _PublicTarget:
+    validated = _validated_addresses(addresses)
+    request_netloc = validated[0]
+    if ":" in request_netloc:
+        request_netloc = f"[{request_netloc}]"
+    if port != (443 if parsed.scheme == "https" else 80):
+        request_netloc = f"{request_netloc}:{port}"
+    request_url = urlunparse(parsed._replace(netloc=request_netloc))
+
+    url_host = hostname
+    if ":" in url_host:
+        url_host = f"[{url_host}]"
+    if port != (443 if parsed.scheme == "https" else 80):
+        url_host = f"{url_host}:{port}"
+    host_header = url_host
+    sni_hostname = None
+    try:
+        literal = ipaddress.ip_address(hostname)
+    except ValueError:
+        sni_hostname = hostname
+    else:
+        if literal != ipaddress.ip_address(validated[0]):
+            raise ValueError("URL hostname and resolved address do not match")
+
+    return _PublicTarget(
+        url=parsed.geturl(),
+        request_url=request_url,
+        address=validated[0],
+        host_header=host_header,
+        sni_hostname=sni_hostname,
+    )
+
+
+def _resolve_public_url(url: str) -> _PublicTarget:
+    parsed, hostname, port = _parse_public_url(url)
     try:
         addresses = socket.getaddrinfo(
             hostname,
@@ -43,17 +176,44 @@ def validate_public_url(url: str) -> str:
         )
     except socket.gaierror as exc:
         raise ValueError("URL hostname could not be resolved") from exc
-    if not addresses:
-        raise ValueError("URL hostname has no usable address")
+    return _build_target(parsed, hostname, port, addresses)
 
-    for address in {str(item[4][0]) for item in addresses}:
-        try:
-            parsed_ip = ipaddress.ip_address(address.split("%", 1)[0])
-        except ValueError as exc:
-            raise ValueError("URL resolved to an invalid address") from exc
-        if not parsed_ip.is_global:
-            raise ValueError("Private, loopback, link-local, or reserved URLs are not allowed")
-    return url
+
+async def _resolve_public_url_async(url: str) -> _PublicTarget:
+    parsed, hostname, port = _parse_public_url(url)
+    try:
+        addresses = await anyio.getaddrinfo(
+            hostname,
+            port,
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror as exc:
+        raise ValueError("URL hostname could not be resolved") from exc
+    return _build_target(parsed, hostname, port, addresses)
+
+
+def validate_public_url(url: str) -> str:
+    return _resolve_public_url(url).url
+
+
+def _connect_pinned_httpcore(*, client: httpx.Client, target: _PublicTarget) -> None:
+    transport = client._transport  # type: ignore[attr-defined]
+    if not isinstance(transport, httpx.HTTPTransport):
+        raise RuntimeError("Public fetch client is not using the HTTP transport")
+    backend = _SyncPinnedNetworkBackend()
+    backend._target = target
+    transport._pool._network_backend = backend  # type: ignore[attr-defined]
+
+
+async def _connect_pinned_httpcore_async(
+    *, client: httpx.AsyncClient, target: _PublicTarget
+) -> None:
+    transport = client._transport  # type: ignore[attr-defined]
+    if not isinstance(transport, httpx.AsyncHTTPTransport):
+        raise RuntimeError("Public fetch client is not using the async HTTP transport")
+    backend = _AsyncPinnedNetworkBackend()
+    backend._target = target
+    transport._pool._network_backend = backend  # type: ignore[attr-defined]
 
 
 def _read_limited(chunks: Iterable[bytes], max_bytes: int) -> bytes:
@@ -80,15 +240,25 @@ def fetch_public_url(
     max_bytes: int = DEFAULT_MAX_BYTES,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> tuple[bytes, str | None, str]:
-    current_url = validate_public_url(url)
+    target = _resolve_public_url(url)
     headers = {"User-Agent": USER_AGENT, "Accept": "*/*"}
-    with httpx.Client(timeout=timeout, follow_redirects=False, headers=headers) as client:
+    with httpx.Client(
+        timeout=timeout,
+        follow_redirects=False,
+        headers=headers,
+        transport=httpx.HTTPTransport(trust_env=False),
+    ) as client:
         for _ in range(MAX_REDIRECTS + 1):
-            validate_public_url(current_url)
-            with client.stream("GET", current_url) as response:
-                target = _redirect_target(response, current_url)
-                if target is not None:
-                    current_url = target
+            _connect_pinned_httpcore(client=client, target=target)
+            with client.stream(
+                "GET",
+                target.request_url,
+                headers={"Host": target.host_header},
+                extensions={"sni_hostname": target.sni_hostname},
+            ) as response:
+                target_value = _redirect_target(response, target.url)
+                if target_value is not None:
+                    target = _resolve_public_url(target_value)
                     continue
                 response.raise_for_status()
                 content_length = response.headers.get("content-length")
@@ -97,7 +267,7 @@ def fetch_public_url(
                         f"Remote document exceeds {max_bytes // (1024 * 1024)}MB limit"
                     )
                 content = _read_limited(response.iter_bytes(), max_bytes)
-                return content, response.headers.get("content-type"), current_url
+                return content, response.headers.get("content-type"), target.url
     raise ValueError(f"Too many redirects (maximum {MAX_REDIRECTS})")
 
 
@@ -107,19 +277,25 @@ async def fetch_public_url_async(
     max_bytes: int = DEFAULT_MAX_BYTES,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> tuple[bytes, str | None, str]:
-    current_url = validate_public_url(url)
+    target = await _resolve_public_url_async(url)
     headers = {"User-Agent": USER_AGENT, "Accept": "*/*"}
     async with httpx.AsyncClient(
         timeout=timeout,
         follow_redirects=False,
         headers=headers,
+        transport=httpx.AsyncHTTPTransport(trust_env=False),
     ) as client:
         for _ in range(MAX_REDIRECTS + 1):
-            validate_public_url(current_url)
-            async with client.stream("GET", current_url) as response:
-                target = _redirect_target(response, current_url)
-                if target is not None:
-                    current_url = target
+            await _connect_pinned_httpcore_async(client=client, target=target)
+            async with client.stream(
+                "GET",
+                target.request_url,
+                headers={"Host": target.host_header},
+                extensions={"sni_hostname": target.sni_hostname},
+            ) as response:
+                target_value = _redirect_target(response, target.url)
+                if target_value is not None:
+                    target = await _resolve_public_url_async(target_value)
                     continue
                 response.raise_for_status()
                 content_length = response.headers.get("content-length")
@@ -134,5 +310,5 @@ async def fetch_public_url_async(
                         raise ValueError(
                             f"Remote document exceeds {max_bytes // (1024 * 1024)}MB limit"
                         )
-                return bytes(content), response.headers.get("content-type"), current_url
+                return bytes(content), response.headers.get("content-type"), target.url
     raise ValueError(f"Too many redirects (maximum {MAX_REDIRECTS})")

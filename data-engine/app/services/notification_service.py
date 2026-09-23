@@ -88,8 +88,9 @@ class NotificationService:
                 response.raise_for_status()
             return self._result("delivered")
         except Exception as exc:
-            # Do not include the response body or URL: both can contain secrets.
-            return self._result("failed", error=f"{type(exc).__name__}: {exc}")
+            # Never persist upstream exception text: it may contain the bot token,
+            # the fully-qualified endpoint, the request body, or a response body.
+            return self._result("failed", error=type(exc).__name__)
 
     @staticmethod
     def _telegram_text(payload: dict) -> str:
