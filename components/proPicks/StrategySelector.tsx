@@ -20,9 +20,15 @@ interface StrategySelectorProps {
     currentStrategy: string;
     /** Callback opcional para notificar cambios sin depender de la navegación */
     onStrategyChange?: (strategyId: string) => void;
+    /**
+     * Catálogo público completo (p. ej. las 4 estrategias Propicks). Las que no
+     * estén en `strategies` se muestran igual pero marcadas como «sin datos»,
+     * para poder seleccionarlas y ver su ficha honesta.
+     */
+    catalog?: Strategy[];
 }
 
-export default function StrategySelector({ strategies, currentStrategy, onStrategyChange }: StrategySelectorProps) {
+export default function StrategySelector({ strategies, currentStrategy, onStrategyChange, catalog }: StrategySelectorProps) {
     const router = useRouter();
 
     const handleStrategyChange = (strategyId: string) => {
@@ -30,6 +36,23 @@ export default function StrategySelector({ strategies, currentStrategy, onStrate
         router.push(`/propicks?strategy=${strategyId}`);
         router.refresh();
     };
+
+    // Catálogo público primero; las no servidas por el backend van marcadas.
+    const options: Array<Strategy & { available: boolean }> =
+        catalog && catalog.length > 0
+            ? catalog.map((entry) => {
+                  const server = strategies.find((s) => s.id === entry.id);
+                  return server
+                      ? { ...server, available: true }
+                      : { ...entry, available: false };
+              })
+            : strategies.map((s) => ({ ...s, available: true }));
+    // Estrategias del servidor fuera del catálogo (compatibilidad futura).
+    for (const s of strategies) {
+        if (catalog && catalog.length > 0 && !catalog.some((c) => c.id === s.id)) {
+            options.push({ ...s, available: true });
+        }
+    }
 
     return (
         <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
@@ -39,14 +62,21 @@ export default function StrategySelector({ strategies, currentStrategy, onStrate
                     <SelectValue placeholder="Seleccionar estrategia" />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-800 border-gray-700">
-                    {strategies.map((strategy) => (
+                    {options.map((strategy) => (
                         <SelectItem 
                             key={strategy.id} 
                             value={strategy.id}
                             className="text-gray-300 hover:bg-gray-700"
                         >
                             <div className="flex flex-col">
-                                <span className="font-medium">{strategy.name}</span>
+                                <span className="font-medium">
+                                    {strategy.name}
+                                    {!strategy.available && (
+                                        <span className="ml-2 text-[10px] font-normal uppercase tracking-wide text-amber-400">
+                                            Sin datos
+                                        </span>
+                                    )}
+                                </span>
                                 <span className="text-xs text-gray-500">{strategy.description}</span>
                             </div>
                         </SelectItem>

@@ -37,6 +37,8 @@ export default async function ProPicksPage() {
                 <p className="text-sm text-gray-500">
                     Nuestro sistema analiza más de 100 métricas financieras, compara con pares
                     y utiliza IA para identificar las mejores oportunidades.
+                    La selección se rebalancea el día 1 de cada mes en 4 estrategias
+                    (adaptativa, value, momentum y defensiva), con backtest neto de costes.
                 </p>
             </div>
 

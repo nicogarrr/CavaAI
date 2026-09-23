@@ -1,10 +1,10 @@
 /**
  * Estrategias ProPicks - Similar a Investing Pro
- * 
+ *
  * Cada estrategia aplica filtros específicos usando el modelo de scoring avanzado
  */
 
-import { AdvancedScoreData } from './advancedStockScoring';
+import type { AdvancedScoreData } from './advancedStockScoring';
 
 export interface ProPickStrategy {
     id: string;
@@ -53,6 +53,54 @@ export const PROPICKS_STRATEGIES: ProPickStrategy[] = [
         filters: {
             // Sin filtros estrictos - la IA decide basándose en datos reales
             minScore: 60,
+        },
+    },
+    {
+        id: 'value',
+        name: 'Valor (Value)',
+        description: 'Empresas baratas frente a sus fundamentales: prima el valor y la rentabilidad con exigencia de caja y balance',
+        categoryWeights: {
+            value: 0.35,
+            growth: 0.05,
+            profitability: 0.25,
+            cashFlow: 0.15,
+            momentum: 0.05,
+            debtLiquidity: 0.15,
+        },
+        filters: {
+            minScore: 60,
+        },
+    },
+    {
+        id: 'momentum',
+        name: 'Momentum',
+        description: 'Tendencia y crecimiento: prima el impulso y el crecimiento con apoyo de rentabilidad y valor',
+        categoryWeights: {
+            value: 0.10,
+            growth: 0.25,
+            profitability: 0.15,
+            cashFlow: 0.10,
+            momentum: 0.40,
+            debtLiquidity: 0,
+        },
+        filters: {
+            minScore: 65,
+        },
+    },
+    {
+        id: 'defensiva',
+        name: 'Defensiva',
+        description: 'Calidad y balance: prima la rentabilidad, la salud financiera y la caja para aguantar caídas del mercado',
+        categoryWeights: {
+            value: 0.15,
+            growth: 0.05,
+            profitability: 0.30,
+            cashFlow: 0.20,
+            momentum: 0.05,
+            debtLiquidity: 0.25,
+        },
+        filters: {
+            minScore: 65,
         },
     },
 ];
@@ -128,3 +176,53 @@ export function passesStrategyFilters(
     return true;
 }
 
+/**
+ * Candidato mínimo para el rebalanceo (estructural: ProPick lo satisface).
+ * Módulo puro (sin imports de runtime): importable en tests sin red.
+ */
+export interface RankedCandidate {
+    symbol: string;
+    score: number;
+    strategyScore?: number | null;
+    asOf?: string;
+}
+
+/**
+ * Selección con tope de rotación (turnover cap) para el rebalanceo.
+ *
+ * Regla:
+ *  1. Ordena candidatos por `strategyScore` (respaldo `score`), descendente y
+ *     estable; deduplica por símbolo quedándose con el mejor rank.
+ *  2. Objetivo top-20. Los incumbentes (`previousSymbols`) que sigan dentro
+ *     del top-30 se mantienen (orden de rank, máx 20).
+ *  3. Las huecos se rellenan con las mejores entradas nuevas, con tope de
+ *     8 símbolos nuevos por rebalanceo (bootstrap con `previousSymbols`
+ *     vacío: sin tope, devuelve el top-20).
+ *  4. Re-estampa `asOf` (fecha del rebalanceo) en los seleccionados.
+ */
+export function selectRebalancedPicks<T extends RankedCandidate>(
+    candidates: readonly T[],
+    previousSymbols: readonly string[],
+    asOf: string
+): T[] {
+    const previous = new Set(previousSymbols);
+    const seen = new Set<string>();
+    const ranked = [...candidates]
+        .sort((a, b) => (b.strategyScore ?? b.score) - (a.strategyScore ?? a.score))
+        .filter((c) => {
+            if (seen.has(c.symbol)) return false;
+            seen.add(c.symbol);
+            return true;
+        });
+    // Incumbentes dentro del top-30 se mantienen (orden de rank, máx 20).
+    const kept = ranked.slice(0, 30).filter((c) => previous.has(c.symbol)).slice(0, 20);
+    const keptSymbols = new Set(kept.map((c) => c.symbol));
+    // Entradas nuevas con tope de rotación.
+    const freeSlots = 20 - kept.length;
+    const newCap = previousSymbols.length === 0 ? freeSlots : Math.min(8, freeSlots);
+    const added = ranked
+        .filter((c) => !previous.has(c.symbol) && !keptSymbols.has(c.symbol))
+        .slice(0, Math.max(0, newCap));
+    const chosen = new Set([...kept, ...added].map((c) => c.symbol));
+    return ranked.filter((c) => chosen.has(c.symbol)).map((c) => ({ ...c, asOf }));
+}

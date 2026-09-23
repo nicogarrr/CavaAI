@@ -268,6 +268,13 @@ export default function MetodologiaPage() {
             </li>
           ))}
         </ol>
+        <p className="mt-4 rounded-xl border border-teal-900/60 bg-teal-950/20 p-4 text-sm leading-6 text-teal-100">
+          <strong>CavaAI Propicks:</strong> la selección combina factores de valor, crecimiento,
+          rentabilidad, flujo de caja, momentum y salud financiera, se rebalancea el día 1 de cada
+          mes y publica su backtest neto de costes. Las cuatro estrategias (adaptativa, value,
+          momentum y defensiva) están publicadas con sus métricas: si una aún no tiene datos, su
+          ficha lo dice en lugar de mostrar estimaciones.
+        </p>
       </section>
 
       <section className="min-w-0">
