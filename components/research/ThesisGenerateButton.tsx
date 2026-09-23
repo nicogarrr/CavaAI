@@ -68,7 +68,7 @@ export default function ThesisGenerateButton({ ticker }: { ticker: string }) {
                     ) : (
                         <BrainCircuit className="mr-2 h-4 w-4" />
                     )}
-                    {active ? 'Generando en segundo plano…' : 'Generate thesis'}
+                    {active ? 'Generando en segundo plano…' : 'Generar tesis'}
                 </Button>
                 {active ? (
                     <span className="text-sm text-gray-400">

@@ -17,35 +17,25 @@ class ReverseDCFInputs:
     years: int = 5
 
 
-def solve_required_growth(inputs: ReverseDCFInputs, iterations: int = 60) -> dict:
-    low = inputs.low_growth
-    high = inputs.high_growth
+def _validate_inputs(inputs: ReverseDCFInputs) -> None:
+    """Validación previa con mensajes fijos (sin filtrar internos)."""
+    if inputs.market_price <= 0:
+        raise ValueError("Reverse DCF inputs are invalid: market price must be positive")
+    if inputs.revenue <= 0:
+        raise ValueError("Reverse DCF inputs are invalid: revenue must be positive")
+    if inputs.shares_outstanding <= 0:
+        raise ValueError("Reverse DCF inputs are invalid: shares must be positive")
+    if inputs.wacc <= inputs.terminal_growth:
+        raise ValueError("Reverse DCF inputs are invalid: wacc must exceed terminal growth")
+    if inputs.low_growth >= inputs.high_growth:
+        raise ValueError("Reverse DCF inputs are invalid: growth bounds are inverted")
 
-    for _ in range(iterations):
-        mid = (low + high) / 2
-        value = run_dcf(
-            DCFInputs(
-                revenue=inputs.revenue,
-                revenue_growth=mid,
-                fcf_margin=inputs.fcf_margin,
-                wacc=inputs.wacc,
-                terminal_growth=inputs.terminal_growth,
-                net_debt=inputs.net_debt,
-                shares_outstanding=inputs.shares_outstanding,
-                years=inputs.years,
-            )
-        ).value_per_share
 
-        if value < inputs.market_price:
-            low = mid
-        else:
-            high = mid
-
-    required_growth = (low + high) / 2
-    result_value = run_dcf(
+def _value_at(inputs: ReverseDCFInputs, growth: float) -> float:
+    return run_dcf(
         DCFInputs(
             revenue=inputs.revenue,
-            revenue_growth=required_growth,
+            revenue_growth=growth,
             fcf_margin=inputs.fcf_margin,
             wacc=inputs.wacc,
             terminal_growth=inputs.terminal_growth,
@@ -55,14 +45,47 @@ def solve_required_growth(inputs: ReverseDCFInputs, iterations: int = 60) -> dic
         )
     ).value_per_share
 
+
+def solve_required_growth(inputs: ReverseDCFInputs, iterations: int = 60) -> dict:
+    """Crecimiento requerido por bisección, con flag ``out_of_bounds``.
+
+    Si el precio de mercado queda fuera del rango valorable
+    ``[value(low), value(high)]``, el crecimiento requerido caería fuera de
+    los bounds: se devuelve igualmente el resultado pero con
+    ``out_of_bounds=True`` para que ningún consumidor lo lea como un
+    crecimiento alcanzable.
+    """
+    _validate_inputs(inputs)
+    low = inputs.low_growth
+    high = inputs.high_growth
+
+    low_value = _value_at(inputs, low)
+    high_value = _value_at(inputs, high)
+    floor, ceiling = (low_value, high_value) if low_value <= high_value else (high_value, low_value)
+    out_of_bounds = inputs.market_price < floor or inputs.market_price > ceiling
+
+    for _ in range(iterations):
+        mid = (low + high) / 2
+        value = _value_at(inputs, mid)
+
+        if value < inputs.market_price:
+            low = mid
+        else:
+            high = mid
+
+    required_growth = (low + high) / 2
+    result_value = _value_at(inputs, required_growth)
+
     return {
         "required_revenue_growth": required_growth,
         "market_price": inputs.market_price,
         "solved_value_per_share": result_value,
+        "out_of_bounds": out_of_bounds,
         "trace": {
             "method": "binary_search_reverse_dcf",
             "iterations": iterations,
             "growth_bounds": [inputs.low_growth, inputs.high_growth],
+            "bound_values": [low_value, high_value],
+            "out_of_bounds": out_of_bounds,
         },
     }
-

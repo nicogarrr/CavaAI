@@ -209,6 +209,10 @@ class TaxReportService:
             for transaction in events:
                 action = (transaction.action or "").lower()
                 if action in BUY_ACTIONS:
+                    if transaction.quantity is None or transaction.quantity <= 0:
+                        # Ingesta: lotes de compra sin cantidad positiva se
+                        # rechazan (nunca entran a la base de coste).
+                        continue
                     acquisition_cost = transaction.quantity * transaction.price + transaction.fees
                     lot = {
                         "qty": transaction.quantity,
@@ -239,6 +243,9 @@ class TaxReportService:
                 if action not in SELL_ACTIONS:
                     continue
 
+                if transaction.quantity is None or transaction.quantity <= 0:
+                    # Ingesta: ventas sin cantidad positiva se rechazan.
+                    continue
                 remaining = transaction.quantity
                 proceeds_native = transaction.quantity * transaction.price - transaction.fees
                 cost_native = Decimal("0")
@@ -254,9 +261,11 @@ class TaxReportService:
                     if lot["qty"] == 0:
                         lots.popleft()
                     remaining -= take
-                if remaining > Decimal("0"):
-                    # Sold more than bought: treat remaining as no-cost (rare).
-                    pass
+                # Over-sell: se vendió más de lo comprado. El remanente se
+                # valora a coste cero pero se MARCA con warning explícito en
+                # vez de registrar una ganancia silenciosa.
+                over_sell_quantity = remaining if remaining > Decimal("0") else Decimal("0")
+                over_sell = over_sell_quantity > 0
 
                 gain_native = proceeds_native - cost_native
                 if gain_native < 0:
@@ -291,6 +300,8 @@ class TaxReportService:
                             "cost_native": cost_native,
                             "gain_native": gain_native,
                             "sale": sale,
+                            "over_sell": over_sell,
+                            "over_sell_quantity": over_sell_quantity,
                         }
                     )
 
@@ -313,6 +324,8 @@ class TaxReportService:
                     "missing_fx": False,
                     "wash_sale_window_open": False,
                     "sale_count": 0,
+                    "over_sell_count": 0,
+                    "over_sell": False,
                     "sales": [],
                 },
             )
@@ -353,6 +366,9 @@ class TaxReportService:
                     bucket["missing_fx"] = True
                 bucket["wash_sale_window_open"] = bucket["wash_sale_window_open"] or window_open
                 bucket["sale_count"] += 1
+                if entry["over_sell"]:
+                    bucket["over_sell"] = True
+                    bucket["over_sell_count"] += 1
                 bucket["sales"].append(
                     {
                         "date": transaction.trade_date.isoformat(),
@@ -366,6 +382,14 @@ class TaxReportService:
                         "blocked_loss_base": _money(blocked_base) if blocked_base is not None else None,
                         "wash_sale_blocked": blocked_native > 0,
                         "wash_sale_window_open": window_open,
+                        "over_sell": bool(entry["over_sell"]),
+                        "over_sell_quantity": float(entry["over_sell_quantity"]),
+                        "warning": (
+                            "over_sell: sold more shares than the recorded lots; "
+                            "excess valued at zero cost, verify the ledger"
+                            if entry["over_sell"]
+                            else None
+                        ),
                     }
                 )
 
@@ -399,6 +423,8 @@ class TaxReportService:
                     "wash_sale_window_open": bucket["wash_sale_window_open"],
                     "missing_fx": bucket["missing_fx"],
                     "sale_count": bucket["sale_count"],
+                    "over_sell": bucket["over_sell"],
+                    "over_sell_count": bucket["over_sell_count"],
                     "sales": bucket["sales"],
                 }
             )
@@ -436,6 +462,9 @@ class TaxReportService:
             "net_taxable_base": None if incomplete_fx else _money(total_dividends + total_gain),
             "dividend_count": len(dividends),
             "sell_count": sum(b["sale_count"] for b in realized),
+            "over_sell": sorted(
+                b["ticker"] for b in realized if b.get("over_sell")
+            ),
             "method": FIFO_METHOD,
             "incomplete_fx": incomplete_fx,
             "missing_fx": sorted(

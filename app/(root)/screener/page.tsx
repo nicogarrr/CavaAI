@@ -1,23 +1,49 @@
 import { getMarketIndices } from '@/lib/actions/market.actions';
-import { getScreenerStocksReal } from '@/lib/actions/screener.actions';
+import { getSavedScreenerEngines, getScreenerStocksReal } from '@/lib/actions/screener.actions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import FollowButton from '@/components/screener/FollowButton';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const SECTORES = ['Technology', 'Health Care', 'Financial Services', 'Consumer Cyclical', 'Energy', 'Utilities'];
+/** Etiqueta ES visible + valor EN para la query (el backend espera el sector en inglés) */
+const SECTORES = [
+  { es: 'Tecnología', en: 'Technology' },
+  { es: 'Salud', en: 'Health Care' },
+  { es: 'Servicios financieros', en: 'Financial Services' },
+  { es: 'Consumo cíclico', en: 'Consumer Cyclical' },
+  { es: 'Energía', en: 'Energy' },
+  { es: 'Servicios públicos', en: 'Utilities' },
+];
+
+const sectorEn = (value: string) =>
+  SECTORES.some((s) => s.en === value) ? value : 'Technology';
+
+const sectorEs = (value: string) =>
+  SECTORES.find((s) => s.en === value)?.es ?? value;
 
 export default async function ScreenerPage({ searchParams }: { searchParams?: Promise<{ sector?: string }> }) {
-  const sector = (await searchParams)?.sector ?? 'Technology';
+  const sector = sectorEn((await searchParams)?.sector ?? 'Technology');
   // Screener (backend) e índices (backend) son independientes: en paralelo
-  // en vez de en serie.
-  const [rows, indices] = await Promise.all([
-    getScreenerStocksReal({ sector, limit: 25 }).catch(() => []),
+  // en vez de en serie. El flag distingue "backend caído" (reintentar) de
+  // "filtro sin resultados" (cambiar de sector).
+  const [screenerResult, indices, engineScreens] = await Promise.all([
+    getScreenerStocksReal({ sector, limit: 25 }).then(
+      (rows) => ({ rows, backendDown: false }),
+      () => ({ rows: [] as Awaited<ReturnType<typeof getScreenerStocksReal>>, backendDown: true }),
+    ),
     getMarketIndices().catch(() => []),
+    // Motor de análisis (POST /api/screeners/run ad-hoc y filtros guardados):
+    // si cae, la tabla Finnhub de abajo queda como lectura offline.
+    getSavedScreenerEngines().then(
+      (screens) => ({ screens, engineDown: false }),
+      () => ({ screens: [] as Awaited<ReturnType<typeof getSavedScreenerEngines>>, engineDown: true }),
+    ),
   ]);
+  const { rows, backendDown } = screenerResult;
 
   return (
     <div className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
@@ -28,19 +54,62 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por sector">
         {SECTORES.map((s) => (
-          <Button key={s} asChild variant={sector === s ? 'default' : 'outline'} size="sm" className="min-h-[44px] min-w-[44px] rounded-md px-4">
-            <Link href={`/screener?sector=${encodeURIComponent(s)}`}>{s}</Link>
+          <Button key={s.en} asChild variant={sector === s.en ? 'default' : 'outline'} size="sm" className="min-h-[44px] min-w-[44px] rounded-md px-4">
+            <Link href={`/screener?sector=${encodeURIComponent(s.en)}`}>{s.es}</Link>
           </Button>
         ))}
       </div>
 
+      <Card className="min-w-0 border-gray-800">
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="text-base break-words">Motor de análisis</CardTitle>
+            {engineScreens.engineDown ? (
+              <Badge variant="outline">motor no disponible · Finnhub como fallback offline</Badge>
+            ) : (
+              <Badge>{engineScreens.screens.length} filtros guardados</Badge>
+            )}
+            <Button asChild variant="outline" size="sm" className="ml-auto">
+              <Link href="/screeners">Abrir screeners</Link>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {engineScreens.engineDown ? (
+            <p className="text-sm text-gray-500">
+              El motor (POST /api/screeners/run) no responde: la tabla de abajo muestra
+              precios Finnhub como lectura offline, sin análisis de cobertura.
+            </p>
+          ) : engineScreens.screens.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              Motor operativo pero sin filtros guardados.{' '}
+              <Link href="/screeners" className="text-teal-300 hover:text-teal-200 hover:underline">
+                Crea el primero en Screeners
+              </Link>{' '}
+              (filtros ad-hoc y guardados contra métricas trazables).
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {engineScreens.screens.slice(0, 6).map((screen) => (
+                <li key={screen.id}>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/screeners/${screen.id}`}>{screen.name}</Link>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="min-w-0 border-gray-800 lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base break-words">Oportunidades — {sector}</CardTitle>
+            <CardTitle className="text-base break-words">Oportunidades — {sectorEs(sector)}</CardTitle>
           </CardHeader>
           <CardContent className="min-w-0 px-3 sm:px-6">
             {rows.length === 0 ? (
+              backendDown ? (
               <div className="px-4 py-10 text-center">
                 <p className="text-sm text-gray-500 sm:text-base">
                   No hay datos ahora mismo — el backend puede estar arrancando. Reintenta en 30s.
@@ -49,6 +118,13 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                   <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>Reintentar</Link>
                 </Button>
               </div>
+              ) : (
+              <div className="px-4 py-10 text-center">
+                <p className="text-sm text-gray-500 sm:text-base">
+                  Sin resultados para {sectorEs(sector)} con este filtro. Prueba con otro sector.
+                </p>
+              </div>
+              )
             ) : (
               <div className="overflow-x-auto">
                 {/*

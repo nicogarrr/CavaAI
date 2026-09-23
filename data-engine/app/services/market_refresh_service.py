@@ -42,7 +42,15 @@ class FXProvider(Protocol):
 
 
 class PublicPriceProvider:
-    """FMP first, Finnhub fallback, with per-ticker failure isolation."""
+    """FMP first, Finnhub fallback, with per-ticker failure isolation.
+
+    Bounded concurrency (semaphore of 6 in flight) plus a per-ticker
+    timeout: un proveedor lento nunca bloquea el refresh completo ni
+    agota las conexiones.
+    """
+
+    MAX_IN_FLIGHT = 6
+    PER_TICKER_TIMEOUT_SECONDS = 20.0
 
     def __init__(self) -> None:
         self.fmp = FMPClient()
@@ -51,7 +59,10 @@ class PublicPriceProvider:
     async def fetch(
         self, companies: list[Company], *, as_of: date
     ) -> tuple[dict[str, PriceObservation], list[dict]]:
-        rows = await asyncio.gather(*(self._one(company, as_of) for company in companies))
+        semaphore = asyncio.Semaphore(self.MAX_IN_FLIGHT)
+        rows = await asyncio.gather(
+            *(self._bounded(company, as_of, semaphore) for company in companies)
+        )
         observations: dict[str, PriceObservation] = {}
         errors: list[dict] = []
         for company, observation, error in rows:
@@ -60,6 +71,21 @@ class PublicPriceProvider:
             if error:
                 errors.append(error)
         return observations, errors
+
+    async def _bounded(
+        self, company: Company, as_of: date, semaphore: asyncio.Semaphore
+    ) -> tuple[Company, PriceObservation | None, dict | None]:
+        async with semaphore:
+            try:
+                return await asyncio.wait_for(
+                    self._one(company, as_of),
+                    timeout=self.PER_TICKER_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                return company, None, {
+                    "ticker": company.ticker,
+                    "reason": "per_ticker_timeout",
+                }
 
     async def _one(
         self, company: Company, as_of: date

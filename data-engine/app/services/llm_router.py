@@ -9,6 +9,12 @@ class ModelRoute:
     max_materiality: int | None = None
 
 
+# Decisión documentada (auditoría): NO existe tier premium. Solo hay un
+# alias real registrado (deepseek-v4-flash, ver model_aliases.py); la
+# entrada "premium_financial_analysis" apuntaba al mismo modelo barato con
+# una etiqueta premium, lo que falseaba el contrato de /api/settings.
+# Se elimina del contrato en vez de inventar un modelo premium: cualquier
+# tarea "premium_*" que llegue a route_model cae al fallback honesto.
 ROUTES = {
     "cheap_extraction": ModelRoute("cheap_extraction", "deepseek-v4-flash", "low-cost structured extraction"),
     "main_financial_analysis": ModelRoute("main_financial_analysis", "deepseek-v4-flash", "source-grounded financial analysis"),
@@ -25,12 +31,14 @@ ROUTES = {
     "source_audit": ModelRoute("source_audit", "deepseek-v4-flash", "critical source audit"),
     "tool_workflow": ModelRoute("tool_workflow", "deepseek-v4-flash", "complex tool calling"),
     "code": ModelRoute("code", "deepseek-v4-flash", "product coding"),
-    "premium_financial_analysis": ModelRoute("premium_financial_analysis", "deepseek-v4-flash", "eval-gated premium escalation"),
     "fallback": ModelRoute("fallback", "deepseek-v4-flash", "cheap fallback"),
 }
 
 
 def route_model(task: str, materiality_score: int = 0, portfolio_weight: float = 0) -> ModelRoute:
+    # Sin tier premium: "premium_*" cae al fallback (ver nota en ROUTES).
+    if task.startswith("premium_"):
+        return ROUTES["fallback"]
     if task == "deep_thesis" and materiality_score < 7 and portfolio_weight < 0.05:
         return ROUTES["thesis_update"]
     if task == "red_team" and materiality_score < 8 and portfolio_weight < 0.08:

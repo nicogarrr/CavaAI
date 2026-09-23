@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.models.entities import InsiderFiling, InsiderTransaction
 from app.services import insider_service
 
 router = APIRouter()
@@ -26,3 +28,76 @@ def insider_signals(
             result.get("ticker", ticker), result.get("signals", [])
         )
     return result
+
+
+@router.get("/filings")
+def insider_filings(
+    ticker: str = Query(min_length=1, max_length=20),
+    limit: int = Query(default=20, ge=1, le=50),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Filings Form 4/4-A persistidos para un ticker (lectura durable, PR-2).
+
+    Best-effort como el resto del modulo: ante cualquier fallo degrada a
+    status != ok con filings=[] (nunca 500). Las enmiendas (4/A) son filas
+    propias; nunca mutan el filing original.
+    """
+    wanted = ticker.strip().upper()
+    try:
+        filings = list(
+            db.scalars(
+                select(InsiderFiling)
+                .where(InsiderFiling.issuer_ticker == wanted)
+                .order_by(desc(InsiderFiling.filing_date), desc(InsiderFiling.id))
+                .limit(limit)
+            ).all()
+        )
+        items = []
+        for filing in filings:
+            txs = list(
+                db.scalars(
+                    select(InsiderTransaction)
+                    .where(InsiderTransaction.filing_id == filing.id)
+                    .order_by(InsiderTransaction.id)
+                    .limit(50)
+                ).all()
+            )
+            items.append(
+                {
+                    "accession_number": filing.accession_number,
+                    "form": filing.form,
+                    "is_amendment": filing.is_amendment,
+                    "filing_date": filing.filing_date,
+                    "report_date": filing.report_date,
+                    "source_url": filing.source_url,
+                    "transaction_count": len(txs),
+                    "transactions": [
+                        {
+                            "insider": tx.insider,
+                            "role": tx.role,
+                            "officer_title": tx.officer_title,
+                            "code": tx.code,
+                            "shares": tx.shares,
+                            "price": tx.price,
+                            "value": tx.value,
+                            "tx_date": tx.tx_date,
+                            "source_url": tx.source_url,
+                        }
+                        for tx in txs
+                    ],
+                }
+            )
+        return {
+            "ticker": wanted,
+            "status": "ok",
+            "count": len(items),
+            "filings": items,
+        }
+    except Exception as exc:  # noqa: BLE001 — best-effort por contrato del modulo
+        return {
+            "ticker": wanted,
+            "status": "unavailable",
+            "reason": type(exc).__name__,
+            "count": 0,
+            "filings": [],
+        }

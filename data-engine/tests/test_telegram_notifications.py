@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from app.services import notification_service
@@ -111,3 +112,54 @@ def test_telegram_notification_is_silent_when_not_configured(monkeypatch):
 def test_public_fetch_rejects_private_or_credential_urls(url):
     with pytest.raises(ValueError):
         validate_public_url(url)
+
+
+class _RateLimitedClient:
+    """Telegram devuelve 429: sin reintento en el fuente, un solo intento."""
+
+    attempts = 0
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def post(self, url: str, json: dict):
+        type(self).attempts += 1
+        request = httpx.Request("POST", url, json=json)
+        response = httpx.Response(429, request=request)
+        raise httpx.HTTPStatusError(
+            "429 Too Many Requests", request=request, response=response
+        )
+
+
+def test_telegram_429_fails_honestly_without_retry_storm(monkeypatch):
+    """429 → failed honesto: el servicio no reintenta (sin backoff en el
+    fuente) y persiste solo la clase de error, nunca el token ni el body."""
+    _RateLimitedClient.attempts = 0
+    monkeypatch.setattr(notification_service.httpx, "Client", _RateLimitedClient)
+    monkeypatch.setattr(
+        notification_service,
+        "get_settings",
+        lambda: SimpleNamespace(
+            telegram_enabled=True,
+            telegram_bot_token="rotated-test-token",
+            telegram_chat_id="12345",
+            telegram_api_base_url="https://api.telegram.org",
+            telegram_timeout_seconds=10,
+        ),
+    )
+
+    result = notification_service.NotificationService().dispatch(
+        _FakeDB(), _alert(["telegram"])
+    )
+
+    delivery = result["telegram"]
+    assert delivery["status"] == "failed"
+    assert delivery["error"] == "HTTPStatusError"
+    assert _RateLimitedClient.attempts == 1
+    assert "rotated-test-token" not in str(result)

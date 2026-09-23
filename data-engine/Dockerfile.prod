@@ -7,6 +7,10 @@
 # CPU de torch tienen soporte oficial linux/aarch64 desde torch 2.x.
 FROM python:3.12-slim AS base
 
+# Salud: la capa de salud es docker-compose (healthcheck del servicio
+# backend con /health/ready). Este Dockerfile no declara HEALTHCHECK propio
+# para no duplicar la sonda ni enmascarar el estado real del compose.
+
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -23,7 +27,9 @@ COPY requirements.txt .
 
 # 1) torch CPU-only (linux/amd64 y linux/aarch64) antes que el resto.
 # 2) requirements: sentence-transformers vera torch ya satisfecho.
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu \
+# Pin sincronizado con requirements.txt (TORCH_CPU_PIN en
+# data-engine/scripts/sync_requirements.py).
+RUN pip install torch==2.9.1+cpu --index-url https://download.pytorch.org/whl/cpu \
     && pip install -r requirements.txt
 
 # quantstats va vendorizado dentro de data-engine/

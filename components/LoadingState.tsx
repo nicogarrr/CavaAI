@@ -84,18 +84,36 @@ export function TableLoadingSkeleton({ rows = 5 }: { rows?: number }) {
     );
 }
 
-export function GenericLoadingSkeleton({ 
-    width = 'full', 
-    height = '64' 
-}: { 
-    width?: string; 
-    height?: string 
+/**
+ * Clases Tailwind cerradas: Tailwind solo genera las clases que ve literales
+ * en el código, así que width/height se resuelven con mapas fijos
+ * (nunca con interpolación `w-${...}` / `h-${...}`, que no genera CSS).
+ */
+const GENERIC_WIDTH_CLASSES = {
+    sm: 'w-full max-w-sm',
+    md: 'w-full max-w-2xl',
+    lg: 'w-full max-w-4xl',
+    full: 'w-full',
+} as const;
+
+const GENERIC_HEIGHT_CLASSES = {
+    sm: 'h-24',
+    md: 'h-48',
+    lg: 'h-64',
+} as const;
+
+export function GenericLoadingSkeleton({
+    width = 'full',
+    height = 'md'
+}: {
+    width?: keyof typeof GENERIC_WIDTH_CLASSES;
+    height?: keyof typeof GENERIC_HEIGHT_CLASSES;
 }) {
     return (
-        <div className={`w-${width} bg-gray-800 rounded-lg border border-gray-700 p-6`}>
+        <div className={`${GENERIC_WIDTH_CLASSES[width]} bg-gray-800 rounded-lg border border-gray-700 p-6`} role="status" aria-live="polite" aria-label="Cargando contenido">
             <div className="space-y-4">
                 <Skeleton className={`h-6 w-3/4`} />
-                <Skeleton className={`h-${height} w-full`} />
+                <Skeleton className={`${GENERIC_HEIGHT_CLASSES[height]} w-full`} />
             </div>
         </div>
     );

@@ -5,8 +5,22 @@ import { getTaxHoldings, getTaxReport } from '@/lib/actions/taxes.actions';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function TaxesPage() {
-    const fiscalYear = new Date().getFullYear();
+type PageProps = {
+    searchParams: Promise<{ year?: string }>;
+};
+
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2200;
+
+function asFiscalYear(raw: string | undefined): number {
+    const current = new Date().getFullYear();
+    const parsed = raw ? Number.parseInt(raw, 10) : current;
+    if (!Number.isInteger(parsed) || parsed < MIN_YEAR || parsed > MAX_YEAR) return current;
+    return parsed;
+}
+
+export default async function TaxesPage({ searchParams }: PageProps) {
+    const fiscalYear = asFiscalYear((await searchParams)?.year);
     const [holdings, report] = await Promise.all([
         getTaxHoldings().catch(() => []),
         getTaxReport(fiscalYear).catch(() => null),

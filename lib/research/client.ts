@@ -43,6 +43,8 @@ export async function researchRequest<T>(
       body: normalized.body ?? undefined,
       headers,
       cache: init.cache ?? 'no-store',
+      // Sin timeout un backend colgado deja el submit "Guardando..." para siempre.
+      signal: init.signal ?? AbortSignal.timeout(30_000),
     });
   } catch (error) {
     throw new ExternalAPIError(

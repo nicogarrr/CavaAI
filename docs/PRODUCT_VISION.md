@@ -210,12 +210,11 @@ CavaAI is working when the user can add a company, upload filings/results/letter
 - Limpieza profesional: FMP retirado del frontend, API legacy borrada, empresas de test purgadas, dead code eliminado, /api/health, docs/ARCHITECTURE.md.
 
 ### Pendiente prioritario (depende de credenciales/decisiones)
-1. NODEMAILER (App Password de Gmail) para activar emails (welcome + resumen diario).
-2. IBKR: IBKR_FLEX_TOKEN + IBKR_FLEX_QUERY_ID para el import real de cartera (UI y pipeline listos).
-3. Rotar password de la cuenta de usuario (expuesto en logs de dev) y revocar token Vercel temporal.
-4. Hosting cloud del FastAPI: elegida la opcion Oracle Cloud Always Free (guia en docs/oracle-setup.md); despliegue en curso. render.yaml sigue como alternativa (free tier hiberna).
-5. E2E playwright en CI (specs existentes; ampliar cobertura de finanzas).
-6. Legal/privacidad (terminos, privacidad) y backup drills (Postgres + Mongo).
+1. IBKR: IBKR_FLEX_TOKEN + IBKR_FLEX_QUERY_ID para el import real de cartera (UI y pipeline listos).
+2. Rotar password de la cuenta de usuario (expuesto en logs de dev) y revocar token Vercel temporal.
+3. Hosting cloud del FastAPI: elegida la opcion Oracle Cloud Always Free (guia en docs/oracle-setup.md); despliegue en curso. render.yaml sigue como alternativa (free tier hiberna).
+4. E2E playwright en CI (specs existentes; ampliar cobertura de finanzas).
+5. Legal/privacidad (terminos, privacidad) y backup drills (Postgres + Mongo).
 
 ## Cierre del programa de mejora (2026-09-23)
 
@@ -224,4 +223,4 @@ Desde la instantanea de 2026-08-23 se han mergeado 145 PRs de endurecimiento: te
 Pendiente conocido:
 1. Despliegue del backend en Oracle Always Free: en curso, bloqueado por capacidad A1 en la home region (reintento horario). El barrido visual de produccion (desktop + movil 390px) queda pendiente hasta que el despliegue este vivo; es el unico item abierto del programa.
 2. Regla de los dos meses (wash sale, IRPF): decision de producto pendiente del propietario; no implementada a proposito hasta que la confirme.
-3. Credenciales pendientes del propietario (NODEMAILER, IBKR Flex) sin cambios.
+3. Credenciales pendientes del propietario (IBKR Flex) sin cambios.

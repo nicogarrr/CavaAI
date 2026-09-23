@@ -7,6 +7,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.workers.dramatiq_app import (
     consolidate_memory,
+    evaluate_alert_rules,
     refresh_market_pipeline,
     refresh_ir_pages,
     refresh_news,
@@ -173,6 +174,18 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         day_of_week="sun",
         hour=3,
         minute=45,
+    )
+    # Evaluacion de reglas de alerta del usuario: barata (una lectura por
+    # regla + emision solo al disparar) y con cooldown por regla, asi que
+    # cada 5 minutos es seguro. El estado de cada evaluacion queda en
+    # AlertRule.last_result y es visible en /alerts.
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, evaluate_alert_rules),
+        "interval",
+        job_id="alert_rule_evaluation",
+        minutes=5,
+        jitter=60,
     )
     # PR-4 insider alert outbox: re-evaluacion frecuente es barata porque
     # la dedupe es por fingerprint (rule_version + tx), nunca por ticker.

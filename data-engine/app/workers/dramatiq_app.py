@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
+import time
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -139,6 +142,94 @@ def _message_id(message) -> str | None:
     return str(message.message_id) if getattr(message, "message_id", None) else None
 
 
+# ---------------------------------------------------------------------------
+# Idempotencia de emits + lease TTL de jobs
+# ---------------------------------------------------------------------------
+
+_local_leases: dict[str, tuple[str, float]] = {}
+
+
+def _emit_fingerprint(*parts: Any) -> str:
+    """Fingerprint estable de un emit (regla + transacción/documento).
+
+    Re-emitir el mismo fingerprint dentro de una ejecución se omite: los
+    workers nunca encolan duplicados aunque el upstream repita filas.
+    """
+    raw = "|".join(str(part) for part in parts)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def acquire_job_lease(
+    job_name: str,
+    *,
+    ttl_seconds: int = 3600,
+    redis_url: str | None = None,
+) -> str | None:
+    """Lease distribuido con TTL para jobs (una sola ejecución en vuelo).
+
+    Devuelve el token del lease o None si otro worker lo tiene (el actor
+    debe responder ``status=skipped, reason=lease_held``). Redis ``SET NX
+    EX``; sin Redis, fallback local en proceso (documentado: solo frena
+    solapes dentro de este proceso).
+    """
+    token = uuid.uuid4().hex
+    if redis_url:
+        try:
+            import redis as redis_sync
+
+            client = redis_sync.Redis.from_url(redis_url, socket_connect_timeout=0.25)
+            try:
+                acquired = client.set(
+                    f"cavaai:job-lease:{job_name}", token, nx=True, ex=max(int(ttl_seconds), 1)
+                )
+            finally:
+                client.close()
+            return token if acquired else None
+        except Exception:  # noqa: BLE001 — fallback local documentado
+            pass
+    now = time.time()
+    held = _local_leases.get(job_name)
+    if held is not None and held[1] > now:
+        return None
+    _local_leases[job_name] = (token, now + max(int(ttl_seconds), 1))
+    return token
+
+
+def release_job_lease(
+    job_name: str, token: str, *, redis_url: str | None = None
+) -> None:
+    """Libera el lease solo si sigue siendo nuestro (best-effort)."""
+    if redis_url:
+        try:
+            import redis as redis_sync
+
+            client = redis_sync.Redis.from_url(redis_url, socket_connect_timeout=0.25)
+            try:
+                current = client.get(f"cavaai:job-lease:{job_name}")
+                if current is not None and current.decode() == token:
+                    client.delete(f"cavaai:job-lease:{job_name}")
+                    return
+            finally:
+                client.close()
+        except Exception:  # noqa: BLE001 — best-effort
+            pass
+    held = _local_leases.get(job_name)
+    if held is not None and held[0] == token:
+        _local_leases.pop(job_name, None)
+
+
+def _lease_redis_url() -> str | None:
+    try:
+        return get_settings().redis_url
+    except Exception:  # noqa: BLE001 — sin settings hay fallback local
+        return None
+
+
+def reset_local_leases() -> None:
+    """Test helper: clear the in-process job leases."""
+    _local_leases.clear()
+
+
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
 def extract_document_kpis(
     document_id: int,
@@ -257,6 +348,17 @@ def refresh_market_pipeline(
 ) -> dict[str, Any]:
     from app.services.market_refresh_service import MarketRefreshService
 
+    lease = acquire_job_lease(
+        f"refresh_market_pipeline:{tenant_id}",
+        ttl_seconds=3000,
+        redis_url=_lease_redis_url(),
+    )
+    if lease is None:
+        return {
+            "status": "skipped",
+            "actor": "refresh_market_pipeline",
+            "reason": "lease_held",
+        }
     db = _session(tenant_id, user_id)
     try:
         result = _run(MarketRefreshService().refresh(db))
@@ -265,6 +367,9 @@ def refresh_market_pipeline(
         _rollback(db)
         return _handle_actor_error("refresh_market_pipeline", exc, tenant_id=tenant_id)
     finally:
+        release_job_lease(
+            f"refresh_market_pipeline:{tenant_id}", lease, redis_url=_lease_redis_url()
+        )
         db.close()
 
 
@@ -284,6 +389,7 @@ def refresh_sec_filings(
             service = FeedIngestionService()
             processed = ingested = queued_documents = 0
             errors: list[dict] = []
+            emitted: set[str] = set()
             for company in _companies(db, ticker):
                 if not company.cik:
                     continue
@@ -311,6 +417,10 @@ def refresh_sec_filings(
                     for item in result.items:
                         if not item.url:
                             continue
+                        fingerprint = _emit_fingerprint("process_document", company.ticker, item.url)
+                        if fingerprint in emitted:
+                            continue
+                        emitted.add(fingerprint)
                         process_document.send(
                             company.ticker,
                             item.title,
@@ -360,6 +470,7 @@ def refresh_ir_pages(
             service = FeedIngestionService()
             processed = ingested = queued_documents = 0
             errors: list[dict] = []
+            emitted: set[str] = set()
             for company in _companies(db, ticker):
                 if not company.ir_url:
                     continue
@@ -383,6 +494,10 @@ def refresh_ir_pages(
                     for item in result.items:
                         if not item.url:
                             continue
+                        fingerprint = _emit_fingerprint("process_document", company.ticker, item.url)
+                        if fingerprint in emitted:
+                            continue
+                        emitted.add(fingerprint)
                         process_document.send(
                             company.ticker,
                             item.title,
@@ -894,6 +1009,13 @@ def scan_insider_watchlist(
     try:
         from app.services import insider_monitor
 
+        lease = acquire_job_lease(
+            f"scan_insider_watchlist:{tenant_id}",
+            ttl_seconds=600,
+            redis_url=_lease_redis_url(),
+        )
+        if lease is None:
+            return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
         db = _session(tenant_id, user_id)
         try:
             stats = insider_monitor.scan(
@@ -903,6 +1025,9 @@ def scan_insider_watchlist(
                 max_new_fetches=max_new_fetches,
             )
         finally:
+            release_job_lease(
+                f"scan_insider_watchlist:{tenant_id}", lease, redis_url=_lease_redis_url()
+            )
             db.close()
         return {
             "status": stats["status"],
@@ -932,10 +1057,20 @@ def dispatch_insider_alerts(
     try:
         from app.services import insider_alerts
 
+        lease = acquire_job_lease(
+            f"dispatch_insider_alerts:{tenant_id}",
+            ttl_seconds=900,
+            redis_url=_lease_redis_url(),
+        )
+        if lease is None:
+            return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
         db = _session(tenant_id, user_id)
         try:
             stats = insider_alerts.evaluate(db, tenant_id=tenant_id)
         finally:
+            release_job_lease(
+                f"dispatch_insider_alerts:{tenant_id}", lease, redis_url=_lease_redis_url()
+            )
             db.close()
         return {
             "status": stats["status"],

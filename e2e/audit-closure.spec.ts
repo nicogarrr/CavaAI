@@ -1,0 +1,69 @@
+import { expect, test } from "@playwright/test";
+
+const runUiE2E = process.env.E2E_UI_RUN === "1";
+
+/**
+ * Cierre de flujos a medias (auditoría verificada): cada punto con su
+ * superficie visible. Gated como el resto de e2e UI (E2E_UI_RUN=1).
+ */
+test.describe("audit closure flows", () => {
+  test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
+
+  test("screener shows engine panel with offline fallback note", async ({ page }) => {
+    await page.goto("/screener");
+    await expect(page.getByRole("heading", { name: "Screener", level: 1 })).toBeVisible();
+    await expect(page.getByText("Motor de análisis")).toBeVisible();
+    // Motor caído (fallback Finnhub) o motor con filtros: uno de los dos estados honestos.
+    const fallback = page.getByText("Finnhub como fallback offline");
+    const empty = page.getByText("Motor operativo pero sin filtros guardados");
+    const filters = page.locator('a[href^="/screeners/"]');
+    const states = (await fallback.count()) + (await empty.count()) + (await filters.count());
+    expect(states).toBeGreaterThan(0);
+  });
+
+  test("taxes exposes year selector and regenerate", async ({ page }) => {
+    await page.goto("/taxes");
+    await expect(page.getByRole("heading", { name: "Impuestos", level: 1 })).toBeVisible();
+    await expect(page.getByLabel("Ejercicio")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Regenerar/ })).toBeVisible();
+  });
+
+  test("alerts shows engine evaluation state", async ({ page }) => {
+    await page.goto("/alerts");
+    await expect(page.getByRole("heading", { name: "Alertas", level: 1 })).toBeVisible();
+    // Guía Telegram (si falta config) o estado del motor por regla.
+    const guide = page.getByText("Telegram sin configurar");
+    const engineLine = page.getByText(/Motor: /);
+    const empty = page.getByText("No tienes alertas configuradas");
+    const states = (await guide.count()) + (await engineLine.count()) + (await empty.count());
+    expect(states).toBeGreaterThan(0);
+  });
+
+  test("insider shows monitor badge and notify toggle", async ({ page }) => {
+    await page.goto("/insider?ticker=AAPL");
+    await expect(page.getByRole("heading", { name: "Señales Insider", level: 1 })).toBeVisible();
+    await expect(page.getByText(/Monitor cada 15 min/)).toBeVisible();
+    await expect(page.getByText("Avisarme por Telegram")).toBeVisible();
+  });
+
+  test("research thesis exposes debate and approve controls", async ({ page }) => {
+    await page.goto("/research/AAPL?view=thesis");
+    const debate = page.getByText("Debate bull/bear");
+    const approve = page.getByRole("button", { name: "Aprobar tesis" });
+    // Con backend caído la página muestra BackendOffline: solo exigir el shell.
+    const offline = page.getByText(/backend/i);
+    if ((await offline.count()) > 0) return;
+    await expect(debate).toBeVisible();
+    await expect(approve).toBeVisible();
+    await expect(page.getByRole("button", { name: /debate/i }).first()).toBeVisible();
+  });
+
+  test("research chat renders citations when sources exist", async ({ page }) => {
+    await page.goto("/research/AAPL?view=chat&chat=deuda+nivel");
+    const citations = page.getByText("Citas y evidencia");
+    const empty = page.getByText(/Haz una pregunta/);
+    const offline = page.getByText(/backend/i);
+    const states = (await citations.count()) + (await empty.count()) + (await offline.count());
+    expect(states).toBeGreaterThan(0);
+  });
+});

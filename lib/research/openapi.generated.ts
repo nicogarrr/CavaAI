@@ -90,6 +90,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/alerts/telegram-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Telegram Status
+         * @description Presencia de la configuracion Telegram para la guia de /alerts.
+         *
+         *     Solo booleanos: ningun secreto (token, chat_id, URL) sale por la API.
+         */
+        get: operations["telegram_status_api_alerts_telegram_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/alerts/{alert_id}/action": {
         parameters: {
             query?: never;
@@ -982,6 +1004,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/insider/filings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Insider Filings
+         * @description Filings Form 4/4-A persistidos para un ticker (lectura durable, PR-2).
+         *
+         *     Best-effort como el resto del modulo: ante cualquier fallo degrada a
+         *     status != ok con filings=[] (nunca 500). Las enmiendas (4/A) son filas
+         *     propias; nunca mutan el filing original.
+         */
+        get: operations["insider_filings_api_insider_filings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/insider/signals": {
         parameters: {
             query?: never;
@@ -1247,6 +1293,31 @@ export interface paths {
         };
         /** Market Indices */
         get: operations["market_indices_api_market_indices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/market/movers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Market Movers
+         * @description Gainers/losers/más activas calculados desde market_prices local.
+         *
+         *     Diseño frío-seguro: sin filas no hay KeyError ni 500 — se devuelve
+         *     universo vacío y la UI lo muestra como estado honesto. El cambio se
+         *     calcula entre los dos últimos cierres de cada compañía (nunca se asume
+         *     caché caliente ni fechas globales).
+         */
+        get: operations["market_movers_api_market_movers_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2514,6 +2585,33 @@ export interface paths {
         get: operations["thesis_job_status_api_thesis_jobs__run_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thesis/{ticker}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Thesis
+         * @description Aprueba o rechaza la ultima tesis persistida del ticker.
+         *
+         *     Transicion de estado honesta sobre lo persistido (status + updated_at);
+         *     el actor se registra en el log y se devuelve en la respuesta, pero hoy
+         *     no existe columna de actor en thesis_versions: la auditoria por actor
+         *     queda documentada como trabajo futuro. La aprobacion automatica por
+         *     Telegram (TELEGRAM_APPROVAL_ENABLED) tampoco esta cableada a este
+         *     endpoint: solo la pulsacion manual en la UI cambia el estado.
+         */
+        post: operations["approve_thesis_api_thesis__ticker__approve_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4543,6 +4641,19 @@ export interface components {
              */
             key: "facts" | "calculations" | "user_hypotheses" | "unverified_claims" | "inferences" | "contradictions" | "insufficient_data" | "conclusion";
         };
+        /** ThesisApproveRequest */
+        ThesisApproveRequest: {
+            /**
+             * Actor
+             * @default user
+             */
+            actor: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+        };
         /** ThesisChangeCreate */
         ThesisChangeCreate: {
             /** Affected Claim Ids */
@@ -5177,6 +5288,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlertRuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    telegram_status_api_alerts_telegram_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -7473,6 +7624,49 @@ export interface operations {
             };
         };
     };
+    insider_filings_api_insider_filings_get: {
+        parameters: {
+            query: {
+                ticker: string;
+                limit?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     insider_signals_api_insider_signals_get: {
         parameters: {
             query: {
@@ -8167,6 +8361,48 @@ export interface operations {
     market_indices_api_market_indices_get: {
         parameters: {
             query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    market_movers_api_market_movers_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
@@ -11642,6 +11878,52 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_thesis_api_thesis__ticker__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisApproveRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

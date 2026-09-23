@@ -59,11 +59,11 @@ const UserDropdown = ({ user }: { user: User }) => {
                                     className="text-gray-100 text-md font-medium focus:bg-transparent focus:text-teal-500 transition-colors cursor-pointer"
                                 >
                                     <ShieldCheck className="h-4 w-4 mr-2 hidden sm:block" />
-                                    Security
+                                    Seguridad
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={handleSignOut} className="text-gray-100 text-md font-medium focus:bg-transparent focus:text-teal-500 transition-colors cursor-pointer">
                     <LogOut className="h-4 w-4 mr-2 hidden sm:block" />
-                    Logout
+                    Cerrar sesión
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>

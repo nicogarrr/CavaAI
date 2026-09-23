@@ -1,10 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
+from typing import Literal
+
+import logging
+from uuid import uuid4
 
 from app.core.database import get_db
-from app.models import Claim, Company, ThesisDiff, ThesisSection, ThesisVersion
+from app.models import Claim, ClaimEvidence, Company, ThesisDiff, ThesisSection, ThesisVersion
 from app.schemas import ThesisGenerateRequest, ThesisGraphOut, ThesisOut
 from app.services.thesis_epub_service import (
     EpubSection,
@@ -18,13 +23,77 @@ from app.services.provenance import Coverage, SourceKind, provenance
 
 router = APIRouter()
 
+_logger = logging.getLogger(__name__)
+
+
+def _unknown_ticker(exc: Exception) -> bool:
+    return "unknown ticker" in str(exc).lower()
+
+
+def _safe_generate_error(exc: Exception) -> HTTPException:
+    """Códigos fijos sin filtrar internos: ticker desconocido → 404 fijo,
+    resto ValueError → 400 genérico, inesperado → 500 genérico. La causa
+    real queda en el log con una referencia opaca."""
+    if isinstance(exc, ValueError) and _unknown_ticker(exc):
+        return HTTPException(status_code=404, detail="Company not found")
+    ref = uuid4().hex[:8]
+    _logger.exception("thesis generation failed (ref=%s)", ref)
+    if isinstance(exc, ValueError):
+        return HTTPException(
+            status_code=400, detail=f"Thesis generation failed (ref {ref})"
+        )
+    return HTTPException(
+        status_code=500, detail=f"Thesis generation failed (ref {ref})"
+    )
+
 
 @router.post("/generate", response_model=ThesisOut)
 def generate_thesis(payload: ThesisGenerateRequest, db: Session = Depends(get_db)) -> ThesisVersion:
     try:
         return ThesisService().generate(db, payload.ticker, payload.force_new_version)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _safe_generate_error(exc) from exc
+
+
+def _epub_citations(db: Session, claims: list[Claim]) -> list[str]:
+    """Citas del EPUB con provenance real (source_id + locator).
+
+    Cada cita conserva el statement pero siempre lleva su localizador:
+    claim -> evidence -> document/document_chunk (+ tier y URL cuando
+    existen). Sin evidencia vinculada se declara explicitamente en vez
+    de inventar una fuente.
+    """
+    live = [c for c in claims if c.statement]
+    if not live:
+        return []
+    evidence = list(
+        db.scalars(
+            select(ClaimEvidence).where(
+                ClaimEvidence.claim_id.in_([c.id for c in live])
+            )
+        ).all()
+    )
+    by_claim: dict[int, list[ClaimEvidence]] = {}
+    for row in evidence:
+        by_claim.setdefault(row.claim_id, []).append(row)
+    citations: list[str] = []
+    for claim in live:
+        rows = by_claim.get(claim.id, [])
+        if not rows:
+            citations.append(f"{claim.statement} [claim:{claim.id} · sin evidencia vinculada]")
+            continue
+        for row in rows:
+            locator = f"evidence:{row.id}"
+            if row.document_id is not None:
+                locator += f" · doc:{row.document_id}"
+            if row.document_chunk_id is not None:
+                locator += f" · chunk:{row.document_chunk_id}"
+            if row.source_url:
+                locator += f" · {row.source_url}"
+            citations.append(
+                f"{claim.statement} [claim:{claim.id} → {locator} · {row.evidence_type} · {row.source_tier}]"
+            )
+    return citations
 
 
 @router.get("/{ticker}/epub")
@@ -63,7 +132,7 @@ def thesis_epub(ticker: str, db: Session = Depends(get_db)) -> Response:
         generated_on=thesis.updated_at.date().isoformat() if thesis.updated_at else "",
         executive_summary=thesis.executive_summary or "",
         sections=[EpubSection(title=s.title, body=s.body or "") for s in sections],
-        citations=[c.statement for c in claims if c.statement],
+        citations=_epub_citations(db, list(claims)),
     )
     content = build_thesis_epub(data)
     filename = f"cavaai-thesis-{company.ticker}-v{thesis.version}.epub"
@@ -205,7 +274,9 @@ def thesis_graph(ticker: str, db: Session = Depends(get_db)) -> dict:
     try:
         thesis, nodes, edges = ThesisGraphService().read(db, company)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if _unknown_ticker(exc):
+            raise HTTPException(status_code=404, detail="Company not found") from exc
+        raise _safe_generate_error(exc) from exc
     return {
         "ticker": company.ticker,
         "thesis_version_id": thesis.id,
@@ -222,7 +293,9 @@ def refresh_thesis_graph(ticker: str, db: Session = Depends(get_db)) -> dict:
     try:
         thesis, nodes, edges = ThesisGraphService().build(db, company)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if _unknown_ticker(exc):
+            raise HTTPException(status_code=404, detail="Company not found") from exc
+        raise _safe_generate_error(exc) from exc
     return {
         "ticker": company.ticker,
         "thesis_version_id": thesis.id,
@@ -304,6 +377,59 @@ async def debate_thesis_endpoint(ticker: str, db: Session = Depends(get_db)) -> 
         "thesis_version_id": thesis.id,
         "persisted": persisted,
         **result,
+    }
+
+
+class ThesisApproveRequest(BaseModel):
+    decision: Literal["approved", "rejected"]
+    actor: str = Field(default="user", min_length=1, max_length=160)
+
+
+@router.post("/{ticker}/approve")
+def approve_thesis(ticker: str, payload: ThesisApproveRequest, db: Session = Depends(get_db)) -> dict:
+    """Aprueba o rechaza la ultima tesis persistida del ticker.
+
+    Transicion de estado honesta sobre lo persistido (status + updated_at);
+    el actor se registra en el log y se devuelve en la respuesta, pero hoy
+    no existe columna de actor en thesis_versions: la auditoria por actor
+    queda documentada como trabajo futuro. La aprobacion automatica por
+    Telegram (TELEGRAM_APPROVAL_ENABLED) tampoco esta cableada a este
+    endpoint: solo la pulsacion manual en la UI cambia el estado.
+    """
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    thesis = (
+        db.scalar(
+            select(ThesisVersion)
+            .where(ThesisVersion.company_id == company.id)
+            .order_by(desc(ThesisVersion.version))
+            .limit(1)
+        )
+    )
+    if thesis is None:
+        raise HTTPException(status_code=404, detail="No thesis for ticker")
+    thesis.status = payload.decision
+    db.commit()
+    db.refresh(thesis)
+    _logger.info(
+        "thesis %s v%s %s by actor=%s", company.ticker, thesis.version, payload.decision, payload.actor
+    )
+    return {
+        "ticker": company.ticker,
+        "thesis_version_id": thesis.id,
+        "version": thesis.version,
+        "status": thesis.status,
+        "decision": payload.decision,
+        "actor": payload.actor,
+        "approved_at": thesis.updated_at.isoformat(),
+        "telegram_auto_approval": "future",
+        "provenance": provenance(
+            "CavaAI Postgres",
+            SourceKind.INTERNAL,
+            coverage=Coverage.OK,
+            note="Transicion de estado manual; sin aprobacion automatica por Telegram.",
+        ),
     }
 
 

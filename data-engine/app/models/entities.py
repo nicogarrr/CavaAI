@@ -211,7 +211,9 @@ class Transaction(TenantOwnedMixin, Base, TimestampMixin):
     portfolio_id: Mapped[int | None] = mapped_column(
         ForeignKey("portfolios.id"), nullable=True, index=True
     )
-    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
+    )
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     action: Mapped[str] = mapped_column(String(40))
     quantity: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
@@ -267,7 +269,7 @@ class PositionDailySnapshot(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     portfolio_snapshot_id: Mapped[int] = mapped_column(
-        ForeignKey("portfolio_daily_snapshots.id"), index=True
+        ForeignKey("portfolio_daily_snapshots.id", ondelete="CASCADE"), index=True
     )
     portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id"), index=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
@@ -296,7 +298,7 @@ class CashDailySnapshot(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     portfolio_snapshot_id: Mapped[int] = mapped_column(
-        ForeignKey("portfolio_daily_snapshots.id"), index=True
+        ForeignKey("portfolio_daily_snapshots.id", ondelete="CASCADE"), index=True
     )
     portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id"), index=True)
     snapshot_date: Mapped[date] = mapped_column(Date, index=True)
@@ -358,7 +360,7 @@ class InsiderTransaction(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     fingerprint: Mapped[str] = mapped_column(String(64))
-    filing_id: Mapped[int] = mapped_column(ForeignKey("insider_filings.id"))
+    filing_id: Mapped[int] = mapped_column(ForeignKey("insider_filings.id", ondelete="CASCADE"))
     accession_number: Mapped[str] = mapped_column(String(40))
     form: Mapped[str] = mapped_column(String(10))
     issuer_ticker: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -388,7 +390,9 @@ class Document(TenantOwnedMixin, Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
+    )
     title: Mapped[str] = mapped_column(String(500))
     source_type: Mapped[str] = mapped_column(String(80), index=True)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
@@ -407,7 +411,9 @@ class DocumentChunk(TenantOwnedMixin, Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
     chunk_index: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text)
     token_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -431,7 +437,9 @@ class FinancialFact(TenantOwnedMixin, Base, TimestampMixin):
     period: Mapped[str] = mapped_column(String(40))
     fiscal_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     fiscal_quarter: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    source_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
     source_type: Mapped[str] = mapped_column(String(80), default="seed")
     is_reported: Mapped[bool] = mapped_column(Boolean, default=True)
     is_adjusted: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -497,7 +505,7 @@ class KPIExtractionCandidate(TenantOwnedMixin, Base, TimestampMixin):
     approved_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     canonical_fact_id: Mapped[int | None] = mapped_column(
-        ForeignKey("financial_facts.id"), nullable=True, index=True
+        ForeignKey("financial_facts.id", ondelete="SET NULL"), nullable=True, index=True
     )
     trace: Mapped[dict] = mapped_column(JSON, default=dict)
 
@@ -543,7 +551,9 @@ class FinancialStatement(TenantOwnedMixin, Base, TimestampMixin):
     period: Mapped[str] = mapped_column(String(40))
     fiscal_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     fiscal_quarter: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    source_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
     facts: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
@@ -565,9 +575,14 @@ class MarketPrice(Base, TimestampMixin):
 
 class NewsEvent(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "news_events"
+    __table_args__ = (
+        Index("ix_news_events_company_date", "company_id", "date"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     title: Mapped[str] = mapped_column(String(500))
     source: Mapped[str] = mapped_column(String(120), default="manual")
@@ -587,8 +602,12 @@ class ExternalClaim(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "external_claims"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
-    source_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
+    )
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
     claim: Mapped[str] = mapped_column(Text)
     claim_type: Mapped[str] = mapped_column(String(80))
     metric: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -604,7 +623,9 @@ class Transcript(TenantOwnedMixin, Base, TimestampMixin):
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     title: Mapped[str] = mapped_column(String(500))
     period: Mapped[str] = mapped_column(String(40))
-    source_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
     transcript_text: Mapped[str] = mapped_column(Text, default="")
 
 
@@ -612,7 +633,7 @@ class CallClaim(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "call_claims"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    transcript_id: Mapped[int] = mapped_column(ForeignKey("transcripts.id"), index=True)
+    transcript_id: Mapped[int] = mapped_column(ForeignKey("transcripts.id", ondelete="CASCADE"), index=True)
     speaker: Mapped[str] = mapped_column(String(160))
     speaker_role: Mapped[str] = mapped_column(String(120))
     claim: Mapped[str] = mapped_column(Text)
@@ -623,7 +644,9 @@ class CallClaim(TenantOwnedMixin, Base, TimestampMixin):
     follow_up_required: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(40), default="open")
     later_verified: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    linked_result_id: Mapped[int | None] = mapped_column(ForeignKey("financial_facts.id"), nullable=True)
+    linked_result_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_facts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
 
 class Catalyst(TenantOwnedMixin, Base, TimestampMixin):
@@ -636,7 +659,9 @@ class Catalyst(TenantOwnedMixin, Base, TimestampMixin):
     catalyst_type: Mapped[str] = mapped_column(String(80))
     materiality_score: Mapped[int] = mapped_column(Integer, default=5)
     status: Mapped[str] = mapped_column(String(40), default="open")
-    source_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class ValuationModel(TenantOwnedMixin, Base, TimestampMixin):
@@ -657,7 +682,9 @@ class ValuationAssumption(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "valuation_assumptions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    valuation_model_id: Mapped[int] = mapped_column(ForeignKey("valuation_models.id"), index=True)
+    valuation_model_id: Mapped[int] = mapped_column(
+        ForeignKey("valuation_models.id", ondelete="CASCADE"), index=True
+    )
     name: Mapped[str] = mapped_column(String(160))
     value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
     unit: Mapped[str] = mapped_column(String(40), default="decimal")
@@ -674,7 +701,9 @@ class ValuationOutput(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "valuation_outputs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    valuation_model_id: Mapped[int] = mapped_column(ForeignKey("valuation_models.id"), index=True)
+    valuation_model_id: Mapped[int] = mapped_column(
+        ForeignKey("valuation_models.id", ondelete="CASCADE"), index=True
+    )
     scenario: Mapped[str] = mapped_column(String(40), default="base")
     equity_value: Mapped[Decimal] = mapped_column(Numeric(24, 2), default=0)
     value_per_share: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=0)
@@ -724,8 +753,12 @@ class ThesisDiff(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    from_version_id: Mapped[int | None] = mapped_column(ForeignKey("thesis_versions.id"), nullable=True)
-    to_version_id: Mapped[int | None] = mapped_column(ForeignKey("thesis_versions.id"), nullable=True)
+    from_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    to_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     change_summary: Mapped[str] = mapped_column(Text)
     affected_assumptions: Mapped[list[str]] = mapped_column(JSON, default=list)
     rating_changed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -738,7 +771,9 @@ class ThesisSection(TenantOwnedMixin, Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    thesis_version_id: Mapped[int] = mapped_column(ForeignKey("thesis_versions.id"), index=True)
+    thesis_version_id: Mapped[int] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="CASCADE"), index=True
+    )
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     section_key: Mapped[str] = mapped_column(String(80))
     title: Mapped[str] = mapped_column(String(200))
@@ -757,7 +792,9 @@ class Claim(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
-    thesis_version_id: Mapped[int | None] = mapped_column(ForeignKey("thesis_versions.id"), nullable=True)
+    thesis_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     statement: Mapped[str] = mapped_column(Text)
     claim_type: Mapped[str] = mapped_column(String(80), default="thesis")
     status: Mapped[str] = mapped_column(String(40), default="unverified")
@@ -778,9 +815,13 @@ class ClaimEvidence(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "claim_evidence"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"), index=True)
-    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
-    document_chunk_id: Mapped[int | None] = mapped_column(ForeignKey("document_chunks.id"), nullable=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    document_chunk_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document_chunks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     evidence_type: Mapped[str] = mapped_column(String(40), default="supports")
     summary: Mapped[str] = mapped_column(Text)
@@ -800,8 +841,12 @@ class ThesisChange(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
-    from_version_id: Mapped[int | None] = mapped_column(ForeignKey("thesis_versions.id"), nullable=True)
-    to_version_id: Mapped[int | None] = mapped_column(ForeignKey("thesis_versions.id"), nullable=True)
+    from_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    to_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     change_type: Mapped[str] = mapped_column(String(80), default="update")
     impact_direction: Mapped[str] = mapped_column(String(40), default="neutral")
     materiality_score: Mapped[int] = mapped_column(Integer, default=5)
@@ -832,7 +877,7 @@ class MemoryItem(TenantOwnedMixin, Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
     research_session_id: Mapped[int | None] = mapped_column(
-        ForeignKey("research_sessions.id"), nullable=True, index=True
+        ForeignKey("research_sessions.id", ondelete="SET NULL"), nullable=True, index=True
     )
     scope: Mapped[str] = mapped_column(String(80), default="portfolio")
     memory_type: Mapped[str] = mapped_column(String(80), default="note")
@@ -850,7 +895,9 @@ class SourceAudit(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "source_audits"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    thesis_version_id: Mapped[int | None] = mapped_column(ForeignKey("thesis_versions.id"), nullable=True)
+    thesis_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), nullable=True
+    )
     passed: Mapped[bool] = mapped_column(Boolean, default=False)
     source_coverage_score: Mapped[int] = mapped_column(Integer, default=0)
     unsupported_claims: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -861,9 +908,14 @@ class SourceAudit(TenantOwnedMixin, Base, TimestampMixin):
 
 class RiskEvent(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "risk_events"
+    __table_args__ = (
+        Index("ix_risk_events_company_status", "company_id", "status"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     severity: Mapped[str] = mapped_column(String(40), default="info")
     event_type: Mapped[str] = mapped_column(String(80))
     message: Mapped[str] = mapped_column(Text)
@@ -926,11 +978,15 @@ class EvidenceSuggestion(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
-    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
-    document_chunk_id: Mapped[int | None] = mapped_column(
-        ForeignKey("document_chunks.id"), nullable=True, index=True
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    suggested_claim_id: Mapped[int | None] = mapped_column(ForeignKey("claims.id"), nullable=True)
+    document_chunk_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document_chunks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    suggested_claim_id: Mapped[int | None] = mapped_column(
+        ForeignKey("claims.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     suggestion_type: Mapped[str] = mapped_column(String(80), default="create_claim")
     statement: Mapped[str] = mapped_column(Text)
     relation: Mapped[str] = mapped_column(String(40), default="uncertain")
@@ -957,10 +1013,14 @@ class ResearchReview(TenantOwnedMixin, Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(300))
     summary: Mapped[str] = mapped_column(Text, default="")
     thesis_change_id: Mapped[int | None] = mapped_column(
-        ForeignKey("thesis_changes.id"), nullable=True
+        ForeignKey("thesis_changes.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    claim_id: Mapped[int | None] = mapped_column(ForeignKey("claims.id"), nullable=True)
-    news_event_id: Mapped[int | None] = mapped_column(ForeignKey("news_events.id"), nullable=True)
+    claim_id: Mapped[int | None] = mapped_column(
+        ForeignKey("claims.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    news_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("news_events.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     assigned_to: Mapped[str | None] = mapped_column(String(160), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -978,7 +1038,9 @@ class ThesisNode(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    thesis_version_id: Mapped[int] = mapped_column(ForeignKey("thesis_versions.id"), index=True)
+    thesis_version_id: Mapped[int] = mapped_column(
+        ForeignKey("thesis_versions.id", ondelete="CASCADE"), index=True
+    )
     node_key: Mapped[str] = mapped_column(String(160))
     node_type: Mapped[str] = mapped_column(String(80), default="assumption")
     label: Mapped[str] = mapped_column(String(300))
@@ -1000,8 +1062,8 @@ class ThesisEdge(TenantOwnedMixin, Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    from_node_id: Mapped[int] = mapped_column(ForeignKey("thesis_nodes.id"), index=True)
-    to_node_id: Mapped[int] = mapped_column(ForeignKey("thesis_nodes.id"), index=True)
+    from_node_id: Mapped[int] = mapped_column(ForeignKey("thesis_nodes.id", ondelete="CASCADE"), index=True)
+    to_node_id: Mapped[int] = mapped_column(ForeignKey("thesis_nodes.id", ondelete="CASCADE"), index=True)
     edge_type: Mapped[str] = mapped_column(String(80), default="depends_on")
     strength: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("1.0"))
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
@@ -1017,7 +1079,7 @@ class ResearchAlert(TenantOwnedMixin, Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
     review_id: Mapped[int | None] = mapped_column(
-        ForeignKey("research_reviews.id"), nullable=True
+        ForeignKey("research_reviews.id", ondelete="SET NULL"), nullable=True, index=True
     )
     severity: Mapped[str] = mapped_column(String(40), default="medium", index=True)
     status: Mapped[str] = mapped_column(String(40), default="open", index=True)
@@ -1071,7 +1133,9 @@ class ConnectorState(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     connector: Mapped[str] = mapped_column(String(80), index=True)
-    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
+    )
     feed_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     cursor: Mapped[str | None] = mapped_column(String(500), nullable=True)
     etag: Mapped[str | None] = mapped_column(String(300), nullable=True)
@@ -1101,7 +1165,7 @@ class EarningsRun(TenantOwnedMixin, Base, TimestampMixin):
     catalyst_updates: Mapped[list[dict]] = mapped_column(JSON, default=list)
     claim_changes: Mapped[list[dict]] = mapped_column(JSON, default=list)
     thesis_change_id: Mapped[int | None] = mapped_column(
-        ForeignKey("thesis_changes.id"), nullable=True
+        ForeignKey("thesis_changes.id", ondelete="SET NULL"), nullable=True, index=True
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     trace: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -1155,7 +1219,7 @@ class RedTeamRun(TenantOwnedMixin, Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     thesis_version_id: Mapped[int | None] = mapped_column(
-        ForeignKey("thesis_versions.id"), nullable=True, index=True
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(String(40), default="completed")
     score: Mapped[int] = mapped_column(Integer, default=0)
@@ -1211,7 +1275,7 @@ class FundamentalValuationSnapshot(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model_version_id: Mapped[int] = mapped_column(
-        ForeignKey("fundamental_model_versions.id"), index=True
+        ForeignKey("fundamental_model_versions.id", ondelete="CASCADE"), index=True
     )
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     current_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
@@ -1230,7 +1294,7 @@ class FundamentalDriver(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model_version_id: Mapped[int] = mapped_column(
-        ForeignKey("fundamental_model_versions.id"), index=True
+        ForeignKey("fundamental_model_versions.id", ondelete="CASCADE"), index=True
     )
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     driver_key: Mapped[str] = mapped_column(String(160), index=True)
@@ -1264,7 +1328,7 @@ class FundamentalAssumption(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model_version_id: Mapped[int] = mapped_column(
-        ForeignKey("fundamental_model_versions.id"), index=True
+        ForeignKey("fundamental_model_versions.id", ondelete="CASCADE"), index=True
     )
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     assumption_key: Mapped[str] = mapped_column(String(160), index=True)
@@ -1292,7 +1356,7 @@ class FundamentalForecast(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model_version_id: Mapped[int] = mapped_column(
-        ForeignKey("fundamental_model_versions.id"), index=True
+        ForeignKey("fundamental_model_versions.id", ondelete="CASCADE"), index=True
     )
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     scenario: Mapped[str] = mapped_column(String(40), index=True)
@@ -1311,10 +1375,12 @@ class DecisionJournalEntry(TenantOwnedMixin, Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     thesis_version_id: Mapped[int | None] = mapped_column(
-        ForeignKey("thesis_versions.id"), nullable=True, index=True
+        ForeignKey("thesis_versions.id", ondelete="SET NULL"), nullable=True, index=True
     )
     model_version_id: Mapped[int | None] = mapped_column(
-        ForeignKey("fundamental_model_versions.id"), nullable=True, index=True
+        ForeignKey("fundamental_model_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     decision_date: Mapped[date] = mapped_column(Date, default=date.today)
     decision: Mapped[str] = mapped_column(String(40), index=True)
@@ -1336,14 +1402,14 @@ class ExpectationReview(TenantOwnedMixin, Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     model_version_id: Mapped[int] = mapped_column(
-        ForeignKey("fundamental_model_versions.id"), index=True
+        ForeignKey("fundamental_model_versions.id", ondelete="CASCADE"), index=True
     )
     forecast_id: Mapped[int] = mapped_column(ForeignKey("fundamental_forecasts.id"), index=True)
     actual_fact_id: Mapped[int | None] = mapped_column(
-        ForeignKey("financial_facts.id"), nullable=True, index=True
+        ForeignKey("financial_facts.id", ondelete="SET NULL"), nullable=True, index=True
     )
     actual_metric_id: Mapped[int | None] = mapped_column(
-        ForeignKey("calculated_metrics.id"), nullable=True, index=True
+        ForeignKey("calculated_metrics.id", ondelete="SET NULL"), nullable=True, index=True
     )
     actual_source_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     semantics: Mapped[str] = mapped_column(String(40), default="higher_is_better")
@@ -1543,7 +1609,7 @@ class FactRevision(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     financial_fact_id: Mapped[int] = mapped_column(
-        ForeignKey("financial_facts.id"), index=True
+        ForeignKey("financial_facts.id", ondelete="CASCADE"), index=True
     )
     candidate_id: Mapped[int | None] = mapped_column(
         ForeignKey("kpi_extraction_candidates.id"), nullable=True, index=True
@@ -1626,7 +1692,7 @@ class SavedScreenMatch(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     saved_screen_id: Mapped[int] = mapped_column(
-        ForeignKey("saved_screens.id"), index=True
+        ForeignKey("saved_screens.id", ondelete="CASCADE"), index=True
     )
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     first_matched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -1690,10 +1756,10 @@ class ManagementPromise(TenantOwnedMixin, Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     source_document_id: Mapped[int | None] = mapped_column(
-        ForeignKey("documents.id"), nullable=True, index=True
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
     )
     call_claim_id: Mapped[int | None] = mapped_column(
-        ForeignKey("call_claims.id"), nullable=True, unique=True, index=True
+        ForeignKey("call_claims.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
     )
     promise: Mapped[str] = mapped_column(Text)
     promise_date: Mapped[date] = mapped_column(Date, index=True)
@@ -1703,7 +1769,7 @@ class ManagementPromise(TenantOwnedMixin, Base, TimestampMixin):
     target_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
     unit: Mapped[str | None] = mapped_column(String(40), nullable=True)
     actual_fact_id: Mapped[int | None] = mapped_column(
-        ForeignKey("financial_facts.id"), nullable=True, index=True
+        ForeignKey("financial_facts.id", ondelete="SET NULL"), nullable=True, index=True
     )
     actual_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 8), nullable=True)
     status: Mapped[str] = mapped_column(String(40), default="open", index=True)
@@ -1760,7 +1826,7 @@ class PlanContribution(TenantOwnedMixin, Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    plan_id: Mapped[int] = mapped_column(ForeignKey("investment_plans.id"), index=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("investment_plans.id", ondelete="CASCADE"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     currency: Mapped[str] = mapped_column(String(10), default="EUR")
@@ -1911,7 +1977,9 @@ class WorkflowRun(TenantOwnedMixin, Base, TimestampMixin):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     steps: Mapped[list["WorkflowStepRun"]] = relationship(
-        back_populates="run", cascade="all, delete-orphan", order_by="WorkflowStepRun.position"
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="WorkflowStepRun.position",
     )
 
 

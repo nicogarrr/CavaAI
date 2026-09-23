@@ -21,9 +21,9 @@ export const revalidate = 0;
 interface WatchlistStock {
     symbol: string;
     name: string;
-    price: number;
-    change: number;
-    changePercent: number;
+    price: number | null;
+    change: number | null;
+    changePercent: number | null;
     marketCap: number | null;
     peRatio: number | null;
     addedAt: Date;
@@ -42,27 +42,33 @@ export default async function WatchlistPage() {
                 // Extract metrics (Finnhub stock/metric)
                 const metrics = financialData?.metrics?.metric ?? {};
                 const marketCapM = typeof metrics.marketCapitalization === 'number' ? metrics.marketCapitalization : null;
-                const peRatio = typeof metrics.peTTM === 'number' ? metrics.peTTM : null;
+                // peRatio puede venir ausente/null: se guarda null y se pinta '—' (nunca se interpola sin guarda).
+                const peRatio = typeof metrics.peTTM === 'number' && Number.isFinite(metrics.peTTM) ? metrics.peTTM : null;
 
-                const currentPrice = financialData?.quote?.c || 0;
+                // Sin cotización válida no hay precio: null (no 0, que se confundiría con un precio real).
+                const rawPrice = financialData?.quote?.c;
+                const currentPrice = typeof rawPrice === 'number' && Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : null;
+                const rawChange = financialData?.quote?.d;
+                const rawChangePercent = financialData?.quote?.dp;
 
                 return {
                     symbol: item.symbol,
                     name: financialData?.profile?.name || item.symbol,
                     price: currentPrice,
-                    change: financialData?.quote?.d || 0,
-                    changePercent: financialData?.quote?.dp || 0,
+                    change: currentPrice === null ? null : (typeof rawChange === 'number' && Number.isFinite(rawChange) ? rawChange : null),
+                    changePercent: currentPrice === null ? null : (typeof rawChangePercent === 'number' && Number.isFinite(rawChangePercent) ? rawChangePercent : null),
                     marketCap: marketCapM !== null ? marketCapM * 1e6 : null, // Finnhub devuelve M USD
                     peRatio,
                     addedAt: item.addedAt
                 };
             } catch {
+                // Fallo de red/proveedor: todo a null para pintar 's/d' + badge «sin datos».
                 return {
                     symbol: item.symbol,
                     name: item.symbol,
-                    price: 0,
-                    change: 0,
-                    changePercent: 0,
+                    price: null,
+                    change: null,
+                    changePercent: null,
                     marketCap: null,
                     peRatio: null,
                     addedAt: item.addedAt
@@ -71,17 +77,31 @@ export default async function WatchlistPage() {
         })
     );
 
+    // Sin datos al final: las filas sin precio quedan excluidas de cualquier ordenación por métricas.
+    const sortedStocks = [...watchlistStocks].sort((a, b) => Number(a.price === null) - Number(b.price === null));
+
     const formatNumber = (num: number | null) => {
-        if (num === null || num === undefined) return '-';
+        if (num === null || num === undefined) return '—';
         return formatNumberEs(num, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
     const formatBillions = (num: number | null) => {
-        if (!num) return '-';
+        if (num === null || num === undefined || !Number.isFinite(num)) return '—';
         if (num >= 1e12) return `$${(num / 1e12).toFixed(2)}T`;
         if (num >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
         if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
         return `$${formatNumberEs(num, { maximumFractionDigits: 0 })}`;
+    };
+
+    // Mismo formateador para móvil y desktop: null → '—', nunca toFixed sin guarda.
+    const formatPeRatio = (peRatio: number | null) => {
+        if (peRatio === null || peRatio === undefined || !Number.isFinite(peRatio)) return '—';
+        return `${peRatio.toFixed(1)}x`;
+    };
+
+    const formatChangePercent = (changePercent: number | null) => {
+        if (changePercent === null || changePercent === undefined || !Number.isFinite(changePercent)) return 's/d';
+        return `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
     };
 
     return (
@@ -118,7 +138,7 @@ export default async function WatchlistPage() {
                 <>
                     {/* Móvil (<md): cards apiladas con acciones táctiles ≥44px */}
                     <div className="space-y-3 md:hidden">
-                        {watchlistStocks.map((stock) => (
+                        {sortedStocks.map((stock) => (
                             <article key={stock.symbol} className="min-w-0 rounded-xl border border-gray-700/60 bg-gray-900/60 p-4">
                                 <div className="flex min-w-0 items-center gap-3">
                                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gray-800 text-sm font-bold text-gray-300" aria-hidden="true">
@@ -135,18 +155,23 @@ export default async function WatchlistPage() {
                                         <p className="truncate text-xs text-gray-500" title={stock.name}>
                                             {stock.name}
                                         </p>
+                                        {stock.price === null ? (
+                                            <Badge variant="outline" className="mt-1 border-gray-700 text-gray-400">
+                                                sin datos
+                                            </Badge>
+                                        ) : null}
                                     </div>
-                                    <div className={`flex shrink-0 items-center gap-1 text-sm font-mono ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {stock.changePercent >= 0 ? <TrendingUp className="h-4 w-4" aria-hidden="true" /> : <TrendingDown className="h-4 w-4" aria-hidden="true" />}
+                                    <div className={`flex shrink-0 items-center gap-1 font-mono text-sm ${stock.changePercent === null ? 'text-gray-500' : stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        {stock.changePercent === null ? null : stock.changePercent >= 0 ? <TrendingUp className="h-4 w-4" aria-hidden="true" /> : <TrendingDown className="h-4 w-4" aria-hidden="true" />}
                                         <span>
-                                            {stock.changePercent >= 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
+                                            {formatChangePercent(stock.changePercent)}
                                         </span>
                                     </div>
                                 </div>
                                 <dl className="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-gray-800/50 px-2 py-3 text-center">
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">Precio</dt>
-                                        <dd className="truncate font-mono text-sm font-medium text-gray-200">${formatNumber(stock.price)}</dd>
+                                        <dd className="truncate font-mono text-sm font-medium text-gray-200">{stock.price === null ? 's/d' : `$${formatNumber(stock.price)}`}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">Market Cap</dt>
@@ -154,7 +179,7 @@ export default async function WatchlistPage() {
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">PER (TTM)</dt>
-                                        <dd className="truncate font-mono text-sm text-gray-300">{stock.peRatio ? `${stock.peRatio.toFixed(1)}x` : '-'}</dd>
+                                        <dd className="truncate font-mono text-sm text-gray-300">{formatPeRatio(stock.peRatio)}</dd>
                                     </div>
                                 </dl>
                                 <div className="mt-3 flex items-center gap-2">
@@ -187,7 +212,7 @@ export default async function WatchlistPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {watchlistStocks.map((stock) => (
+                                {sortedStocks.map((stock) => (
                                     <TableRow key={stock.symbol} className="border-gray-800 transition-colors hover:bg-gray-800/30">
                                         <TableCell>
                                             <Link href={`/research/${stock.symbol}`} prefetch className="group flex items-center gap-3">
@@ -195,8 +220,13 @@ export default async function WatchlistPage() {
                                                     {stock.symbol.slice(0, 2)}
                                                 </div>
                                                 <div>
-                                                    <div className="font-bold text-gray-200 transition-colors group-hover:text-blue-400">
+                                                    <div className="flex items-center gap-2 font-bold text-gray-200 transition-colors group-hover:text-blue-400">
                                                         {stock.symbol}
+                                                        {stock.price === null ? (
+                                                            <Badge variant="outline" className="border-gray-700 font-normal text-gray-400">
+                                                                sin datos
+                                                            </Badge>
+                                                        ) : null}
                                                     </div>
                                                     <div className="max-w-[150px] truncate text-xs text-gray-500" title={stock.name}>
                                                         {stock.name}
@@ -205,28 +235,32 @@ export default async function WatchlistPage() {
                                             </Link>
                                         </TableCell>
                                         <TableCell className="text-right font-mono font-medium text-gray-200">
-                                            ${formatNumber(stock.price)}
+                                            {stock.price === null ? 's/d' : `$${formatNumber(stock.price)}`}
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <div className={`flex items-center justify-end gap-1 ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                {stock.changePercent >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                                <span className="font-mono">
-                                                    {stock.changePercent >= 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
-                                                </span>
-                                            </div>
+                                            {stock.changePercent === null ? (
+                                                <span className="font-mono text-gray-500">s/d</span>
+                                            ) : (
+                                                <div className={`flex items-center justify-end gap-1 ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                    {stock.changePercent >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                                    <span className="font-mono">
+                                                        {formatChangePercent(stock.changePercent)}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-right font-mono text-gray-400">
                                             {formatBillions(stock.marketCap)}
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            {stock.peRatio ? (
+                                            {stock.peRatio !== null && stock.peRatio !== undefined && Number.isFinite(stock.peRatio) ? (
                                                 <Badge variant="outline" className={`border-gray-700 font-mono ${stock.peRatio < 15 ? 'text-green-400' :
                                                     stock.peRatio < 25 ? 'text-yellow-400' : 'text-red-400'
                                                     }`}>
-                                                    {stock.peRatio.toFixed(1)}x
+                                                    {formatPeRatio(stock.peRatio)}
                                                 </Badge>
                                             ) : (
-                                                <span className="text-gray-600">-</span>
+                                                <span className="text-gray-600">—</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right">

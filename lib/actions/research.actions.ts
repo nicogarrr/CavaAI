@@ -191,12 +191,12 @@ export type ResearchThesis = {
   thesis_markdown: string;
   executive_summary: string;
   rating: string;
-  current_price: string;
-  bear_value: string;
-  base_value: string;
-  bull_value: string;
-  expected_value: string;
-  margin_of_safety: string;
+  current_price: string | null;
+  bear_value: string | null;
+  base_value: string | null;
+  bull_value: string | null;
+  expected_value: string | null;
+  margin_of_safety: string | null;
   data_confidence_score: number;
   source_coverage_score: number;
   red_team_score: number;

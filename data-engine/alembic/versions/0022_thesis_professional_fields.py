@@ -24,6 +24,9 @@ def upgrade() -> None:
         batch.add_column(sa.Column("scenario_probabilities", sa.JSON(), nullable=True))
 
 
+# ADVERTENCIA DOWNGRADE DESTRUCTIVO: elimina las 4 columnas profesionales
+# (hypothesis, catalysts, invalidation_criteria, scenario_probabilities)
+# con sus datos. Solo bajar si se acepta perder ese contenido.
 def downgrade() -> None:
     with op.batch_alter_table("thesis_versions") as batch:
         batch.drop_column("scenario_probabilities")

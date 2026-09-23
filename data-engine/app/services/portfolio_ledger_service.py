@@ -13,6 +13,18 @@ from app.services.portfolio_fx_service import PortfolioFXService
 
 _UNSET = object()
 
+#: Acciones válidas del ledger (enum cerrado: buy/sell mueven posición,
+#: el resto son movimientos de caja/ajuste que no tocan cantidad).
+LEDGER_ACTIONS = frozenset({"buy", "sell", "dividend", "interest", "fee", "cash_misc"})
+
+
+class PortfolioOversellError(ValueError):
+    """Venta sin acciones suficientes. La ruta la mapea a 409."""
+
+
+class PortfolioMixedCurrencyError(ValueError):
+    """Posición mult/divisa. La ruta la mapea a 422."""
+
 
 class PortfolioLedgerService:
     """Canonical transaction ledger and derived positions for one tenant."""
@@ -57,13 +69,32 @@ class PortfolioLedgerService:
         currency: str = "USD",
         notes: str | None = None,
     ) -> Transaction:
+        normalized_action = (action or "").lower()
+        if normalized_action not in LEDGER_ACTIONS:
+            raise ValueError(f"Unsupported ledger action: {normalized_action or 'empty'}")
+        if quantity is None:
+            raise ValueError("Transaction quantity is required")
+        if normalized_action in {"buy", "sell"}:
+            # buy/sell mueven posición: cantidad estrictamente positiva.
+            if Decimal(quantity) <= 0:
+                raise ValueError("Transaction quantity must be positive")
+        elif Decimal(quantity) < 0:
+            # dividend/interest/fee/cash_misc son movimientos de caja: el
+            # cero es legítimo (p. ej. dividendo con importe en precio).
+            raise ValueError("Transaction quantity cannot be negative")
+        if price is None or Decimal(price) < 0:
+            raise ValueError("Transaction price cannot be negative")
+        if fees is None or Decimal(fees) < 0:
+            raise ValueError("Transaction fees cannot be negative")
+        if trade_date is None or trade_date > date.today():
+            raise ValueError("Transaction trade_date cannot be in the future")
         company = self.ensure_company(db, ticker)
         portfolio = self.fx.ensure_portfolio(db)
         row = Transaction(
             portfolio_id=portfolio.id,
             company_id=company.id,
             trade_date=trade_date,
-            action=action,
+            action=normalized_action,
             quantity=quantity,
             price=price,
             fees=fees,
@@ -91,7 +122,7 @@ class PortfolioLedgerService:
         )
         currencies = {transaction.currency.upper() for transaction in transactions}
         if len(currencies) > 1:
-            raise ValueError(
+            raise PortfolioMixedCurrencyError(
                 "A position cannot mix transaction currencies; split the instrument or normalize the ledger"
             )
         portfolio = self.fx.ensure_portfolio(db)
@@ -130,7 +161,7 @@ class PortfolioLedgerService:
                     cost_base += native_purchase * historical_rate
                 continue
             if transaction.quantity > quantity:
-                raise ValueError(
+                raise PortfolioOversellError(
                     f"Cannot sell {transaction.quantity}; only {quantity} shares are available"
                 )
             average_cost = cost / quantity if quantity else Decimal("0")

@@ -2,7 +2,7 @@
 
 import { cache } from 'react';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
-import { researchRequest } from '@/lib/research/client';
+import { jsonBody, researchRequest } from '@/lib/research/client';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
@@ -292,3 +292,77 @@ export const getFairValue = cache(
     }
   },
 );
+
+// ============================================================================
+// MOTOR DE SCREENER (POST /api/screeners/run ad-hoc y /screens/{id}/run)
+// ----------------------------------------------------------------------------
+// El motor del backend (ScreenerService: metricas calculadas trazables,
+// cobertura y confianza por empresa) es la fuente primaria. La lectura
+// Finnhub/GET /api/screeners/real de arriba queda como fallback offline:
+// precios del dia cuando el motor no responde, nunca como sustituto del
+// analisis de cobertura.
+// ============================================================================
+
+export type EngineCriterion = {
+  left: string;
+  operator: '>' | '>=' | '<' | '<=' | '==' | '!=';
+  right: string;
+};
+
+export type EngineScreenRow = {
+  company_id: number;
+  ticker: string;
+  name: string;
+  matched: boolean;
+  rank_value: string | null;
+  coverage_percent: number;
+  confidence: string;
+  latest_data_at: string | null;
+  missing_fields: string[];
+};
+
+export type EngineScreenResult = {
+  criteria: EngineCriterion[];
+  ranking_formula: string | null;
+  ranking_direction: string;
+  company_count: number;
+  match_count: number;
+  new_match_company_ids?: number[];
+  results: EngineScreenRow[];
+};
+
+/** POST /api/screeners/run — filtro ad-hoc contra el motor (trazable). */
+export async function runScreenerEngine(
+  criteria: EngineCriterion[],
+  options?: { rankingFormula?: string; rankingDirection?: 'asc' | 'desc' },
+): Promise<EngineScreenResult> {
+  await requireAuthenticatedUser();
+  if (!criteria.length) throw new Error('Define al menos un criterio para ejecutar el motor');
+  return researchRequest<EngineScreenResult>('/api/screeners/run', {
+    method: 'POST',
+    body: jsonBody({
+      criteria,
+      ranking_formula: options?.rankingFormula ?? null,
+      ranking_direction: options?.rankingDirection ?? 'desc',
+    }),
+  });
+}
+
+/** POST /api/screeners/screens/{id}/run — ejecuta un filtro guardado. */
+export async function runSavedScreenerEngine(screenId: number): Promise<EngineScreenResult> {
+  await requireAuthenticatedUser();
+  if (!Number.isInteger(screenId) || screenId <= 0) throw new Error('Filtro no válido');
+  return researchRequest<EngineScreenResult>(`/api/screeners/screens/${screenId}/run`, {
+    method: 'POST',
+  });
+}
+
+/** GET /api/screeners/screens — filtros guardados del motor (para la UI). */
+export async function getSavedScreenerEngines(): Promise<
+  Array<{ id: number; name: string; description: string; alerts_enabled: boolean; last_run_at: string | null }>
+> {
+  await requireAuthenticatedUser();
+  return researchRequest<
+    Array<{ id: number; name: string; description: string; alerts_enabled: boolean; last_run_at: string | null }>
+  >('/api/screeners/screens', { cache: 'no-store' });
+}
