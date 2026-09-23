@@ -47,6 +47,15 @@ export default function RootLayout({
       <body className="antialiased" suppressHydrationWarning>
         {children}
         <Toaster />
+        {/* Service worker (app shell + fallback offline). Solo en build de
+            producción: en dev las cachés del SW estorban al hot-reload. */}
+        {process.env.NODE_ENV === 'production' ? (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: "if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js'); }); }",
+            }}
+          />
+        ) : null}
       </body>
     </html>
   );
