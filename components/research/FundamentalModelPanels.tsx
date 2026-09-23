@@ -1,5 +1,8 @@
+import { formatCompact, formatPercent } from '@/lib/format';
 import { BarChart3, BrainCircuit, CheckCircle2, GitBranch } from 'lucide-react';
+import { GlossaryTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
+import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,14 +16,11 @@ import {
 
 function compactNumber(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return 'N/A';
-  return new Intl.NumberFormat('en-US', {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(value);
+  return formatCompact(value, { maximumFractionDigits: 1 });
 }
 
 function percentage(value: number | null | undefined) {
-  return value == null || !Number.isFinite(value) ? 'N/A' : `${(value * 100).toFixed(1)}%`;
+  return value == null || !Number.isFinite(value) ? 'N/A' : formatPercent(value);
 }
 
 function ModelStat({ label, value, positive = false }: { label: string; value: string; positive?: boolean }) {
@@ -129,6 +129,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
               </tbody>
             </table>
           </div>
+          <ScenarioAssumptions />
         </div>
 
         <div className="space-y-3">
@@ -137,16 +138,27 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             <div className="mt-2 grid gap-2 text-sm">
               <div className="flex justify-between gap-3"><span className="text-gray-400">Revenue CAGR</span><span className="text-gray-200">{percentage(growthAssumption?.value)}</span></div>
               <div className="flex justify-between gap-3"><span className="text-gray-400">Normalized FCF margin</span><span className="text-gray-200">{percentage(marginAssumption?.value)}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-400">ROIC / WACC</span><span className="text-gray-200">{percentage(terminal?.roic)} / {percentage(model.assumptions.wacc?.value)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-400"><GlossaryTerm k="roic" icon={false}>ROIC</GlossaryTerm> / <GlossaryTerm k="wacc" icon={false}>WACC</GlossaryTerm></span><span className="text-gray-200">{percentage(terminal?.roic)} / {percentage(model.assumptions.wacc?.value)}</span></div>
             </div>
+            <p className="mt-3 text-xs leading-5 text-gray-500">
+              El WACC es la tasa con la que se descuentan los flujos futuros: lo que piden conjuntamente accionistas y prestamistas. El ROIC es lo que la empresa gana con su capital invertido; solo crea valor cuando supera el WACC.
+            </p>
             <p className="mt-3 text-xs leading-5 text-gray-500">Sources revenue: {growthAssumption?.source_fact_ids.join(', ') || 'missing'} · FCF: {marginAssumption?.source_fact_ids.join(', ') || 'missing'}</p>
           </div>
           <div className="rounded-md border border-gray-800 p-3 text-sm">
-            <div className="text-xs font-semibold uppercase text-gray-500">Reverse DCF</div>
+            <div className="text-xs font-semibold uppercase text-gray-500">
+              <GlossaryTerm k="reverse_dcf" icon={false}>
+                Reverse DCF
+              </GlossaryTerm>
+            </div>
             <p className="mt-2 text-gray-300">
               {model.reverse_dcf.status === 'ok'
                 ? `El precio actual exige ${percentage(model.reverse_dcf.required_revenue_growth)} de crecimiento; la base asume ${percentage(model.reverse_dcf.base_revenue_growth)}.`
                 : `No disponible: ${(model.reverse_dcf.missing_inputs ?? []).join(', ') || 'faltan inputs de mercado o financieros'}.`}
+            </p>
+            <p className="mt-2 text-xs leading-5 text-gray-500">
+              El reverse DCF invierte el modelo: parte del precio de mercado y calcula qué crecimiento está descontando ya.
+              Compáralo con tu escenario base para juzgar si el precio exige demasiado (o poco).
             </p>
           </div>
         </div>
