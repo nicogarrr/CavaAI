@@ -11,6 +11,9 @@ from app.models import Company, Position, Transaction
 from app.services.portfolio_fx_service import PortfolioFXService
 
 
+_UNSET = object()
+
+
 class PortfolioLedgerService:
     """Canonical transaction ledger and derived positions for one tenant."""
 
@@ -206,9 +209,17 @@ class PortfolioLedgerService:
         return int(deleted or 0)
 
     def update_market_price(
-        self, db: Session, *, company_id: int, price: Decimal, as_of: date | None = None
+        self,
+        db: Session,
+        *,
+        company_id: int,
+        price: Decimal,
+        as_of: date | None = None,
+        position: Position | None = None,
+        fx_rate: Decimal | None | object = _UNSET,
     ) -> Position:
-        position = db.scalar(select(Position).where(Position.company_id == company_id))
+        if position is None:
+            position = db.scalar(select(Position).where(Position.company_id == company_id))
         if position is None:
             raise ValueError("Holding not found")
         position.market_price = price
@@ -220,12 +231,15 @@ class PortfolioLedgerService:
         position.market_value_native = position.market_value
         position.cost_basis_native = position.quantity * position.average_cost
         base_currency = position.base_currency or self.fx.base_currency(db)
-        current_rate = self.fx.rate(
-            db,
-            quote_currency=position.currency,
-            base_currency=base_currency,
-            as_of=position.as_of,
-        )
+        if fx_rate is _UNSET:
+            current_rate = self.fx.rate(
+                db,
+                quote_currency=position.currency,
+                base_currency=base_currency,
+                as_of=position.as_of,
+            )
+        else:
+            current_rate = fx_rate
         position.fx_rate = current_rate
         position.market_value_base = (
             position.market_value * current_rate if current_rate is not None else None
