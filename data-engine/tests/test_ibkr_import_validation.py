@@ -113,11 +113,59 @@ def test_validate_ibkr_csv_reports_row_and_cause_in_spanish():
     assert any("Fila 4" in error and "fecha" in error for error in errors)
 
 
+def test_validate_ibkr_csv_rejects_missing_action():
+    csv_text = "symbol,action,quantity,price,date\nAAPL,,10,150,2026-06-01\n"
+    errors = validate_ibkr_csv(csv_text)
+    assert len(errors) == 1
+    assert "Fila 2" in errors[0]
+    assert "falta la acción" in errors[0]
+
+
+def test_validate_ibkr_csv_rejects_actionless_header_as_fatal():
+    csv_text = "symbol,quantity,price,date\nAAPL,10,150,2026-06-01\n"
+    errors = validate_ibkr_csv(csv_text)
+    assert len(errors) == 1
+    assert "cabecera" in errors[0]
+    assert "action" in errors[0]
+
+def test_validate_ibkr_csv_rejects_unknown_action():
+    csv_text = "symbol,action,quantity,price,date\nAAPL,TRANSFER,10,150,2026-06-01\n"
+    errors = validate_ibkr_csv(csv_text)
+    assert len(errors) == 1
+    assert "Fila 2" in errors[0]
+    assert "acción 'TRANSFER' no es buy ni sell" in errors[0]
+
+
 def test_validate_ibkr_csv_rejects_missing_header():
     errors = validate_ibkr_csv("foo,bar\n1,2\n")
     assert len(errors) == 1
     assert "cabecera" in errors[0]
     assert "symbol" in errors[0]
+
+
+def test_import_ibkr_csv_skips_missing_and_unknown_actions():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    csv_text = """symbol,action,quantity,price,date,fees,currency
+AAPL,,10,150,2026-06-01,1,USD
+MSFT,TRANSFER,5,400,2026-06-02,1,USD
+NVDA,buy,2,100,2026-06-03,1,USD
+"""
+    with _tenant_session(engine) as db:
+        result = IBKRImportService().import_ibkr_csv(db, csv_text)
+        assert result["trades_imported"] == 1
+        assert result["rows_skipped"] == 2
+        assert len(result["row_errors"]) == 2
+        assert any(
+            "Fila 2" in error and "falta la acción" in error
+            for error in result["row_errors"]
+        )
+        assert any(
+            "Fila 3" in error and "TRANSFER" in error
+            for error in result["row_errors"]
+        )
+        assert db.query(Transaction).count() == 1
+        assert db.query(Transaction).one().action == "buy"
 
 
 def test_import_ibkr_csv_imports_valid_rows_and_reports_bad_ones():
