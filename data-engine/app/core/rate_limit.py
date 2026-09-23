@@ -1,16 +1,31 @@
+"""Post-signature rate limiting by real client IP + verified principal.
+
+This is intentionally a dependency (not global middleware): it runs after
+``get_research_principal`` has verified the HMAC identity, so the limiting key
+is built from the *verified* tenant/user plus the socket client IP — never
+from spoofable request headers.
+
+The window is a true sliding window (Redis ZSET of hit timestamps; a local
+timestamp deque as fallback) so a burst cannot straddle a minute boundary and
+double the effective rate. In production the counter never degrades to the
+process-local store: if Redis is down, requests fail closed with 503.
+"""
+
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import math
 import time
-from collections import defaultdict
+import uuid
+from collections import deque
 
-from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from fastapi import Depends, HTTPException, Request, Response
 
+from app.core.auth import ResearchPrincipal, get_research_principal
 from app.core.config import get_settings
 
+WINDOW_SECONDS = 60
 
 EXPENSIVE_PATH_MARKERS = (
     "/chat",
@@ -20,81 +35,135 @@ EXPENSIVE_PATH_MARKERS = (
     "/snapshot/refresh",
 )
 
+EXEMPT_PATHS = {"/", "/health", "/health/live", "/health/ready"}
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Tenant/user/IP rate limit with Redis and a local-development fallback."""
+_local_hits: dict[str, deque[float]] = {}
+_local_lock = asyncio.Lock()
 
-    _local_counts: dict[tuple[str, int], int] = defaultdict(int)
-    _lock = asyncio.Lock()
 
-    async def dispatch(self, request: Request, call_next):
-        settings = get_settings()
-        if (
-            not settings.rate_limit_enabled
-            or request.url.path in {"/", "/health", "/health/live", "/health/ready"}
-            or request.method == "OPTIONS"
-        ):
-            return await call_next(request)
-        expensive = any(marker in request.url.path for marker in EXPENSIVE_PATH_MARKERS)
-        limit = (
-            settings.rate_limit_expensive_requests_per_minute
-            if expensive
-            else settings.rate_limit_requests_per_minute
-        )
-        if settings.app_env.lower() in {"local", "test"}:
-            limit = max(limit, 10000)
-        bucket = int(time.time() // 60)
-        identity = ":".join(
-            [
-                request.headers.get("x-cavaai-tenant", "anonymous"),
-                request.headers.get("x-cavaai-user", "anonymous"),
-                request.client.host if request.client else "unknown",
-                "expensive" if expensive else "standard",
-            ]
-        )
-        digest = hashlib.sha256(identity.encode()).hexdigest()
-        key = f"cavaai:rate:{bucket}:{digest}"
-        count = await self._increment(
-            key,
-            bucket,
-            settings.redis_url,
-            use_redis=settings.app_env.lower() not in {"local", "test"},
-        )
-        if count > limit:
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Rate limit exceeded"},
-                headers={"Retry-After": str(60 - int(time.time() % 60))},
-            )
-        response = await call_next(request)
-        response.headers["X-RateLimit-Limit"] = str(limit)
-        response.headers["X-RateLimit-Remaining"] = str(max(0, limit - count))
-        return response
+class RateLimitBackendUnavailable(RuntimeError):
+    """Redis is down and production must not degrade to a local counter."""
 
-    async def _increment(
-        self, key: str, bucket: int, redis_url: str, *, use_redis: bool
-    ) -> int:
+
+def _now() -> float:
+    return time.time()
+
+
+def _limit_for(settings, path: str) -> int:
+    expensive = any(marker in path for marker in EXPENSIVE_PATH_MARKERS)
+    limit = (
+        settings.rate_limit_expensive_requests_per_minute
+        if expensive
+        else settings.rate_limit_requests_per_minute
+    )
+    if settings.app_env.lower() in {"local", "test"}:
+        limit = max(limit, 10000)
+    return limit
+
+
+def _rate_limit_identity(
+    principal: ResearchPrincipal | None, request: Request
+) -> str:
+    """Identity = verified principal + real client IP (socket peer)."""
+    client_ip = request.client.host if request.client else "unknown"
+    if principal is not None:
+        who = f"{principal.tenant_external_id}:{principal.user_id}"
+    else:
+        who = "anonymous"
+    return f"{who}@{client_ip}"
+
+
+async def _record_hit(
+    key: str,
+    *,
+    window_seconds: int,
+    use_redis: bool,
+    redis_url: str,
+    degrade_to_local: bool,
+) -> tuple[int, int]:
+    """Record one hit and return ``(hits_in_window, retry_after_seconds)``."""
+    now = _now()
+    if use_redis:
         try:
-            if not use_redis:
-                raise ConnectionError("local rate-limit store selected")
             import redis.asyncio as redis
 
             client = redis.from_url(redis_url, socket_connect_timeout=0.25)
+            member = f"{now:.6f}:{uuid.uuid4().hex}"
             try:
                 async with client.pipeline(transaction=True) as pipe:
-                    pipe.incr(key)
-                    pipe.expire(key, 75)
-                    count, _ = await pipe.execute()
-                return int(count)
+                    pipe.zremrangebyscore(key, "-inf", now - window_seconds)
+                    pipe.zadd(key, {member: now})
+                    pipe.zcard(key)
+                    pipe.expire(key, window_seconds + 5)
+                    pipe.zrange(key, 0, 0, withscores=True)
+                    _, _, count, _, oldest = await pipe.execute()
             finally:
                 await client.aclose()
-        except Exception:
-            # The fallback is process-local and intentionally only a resilience
-            # path; production readiness already requires Redis health.
-            async with self._lock:
-                local_key = (key, bucket)
-                self._local_counts[local_key] += 1
-                for old_key in list(self._local_counts):
-                    if old_key[1] < bucket - 1:
-                        self._local_counts.pop(old_key, None)
-                return self._local_counts[local_key]
+            retry_after = _retry_after(
+                oldest[0][1] if oldest else now, now, window_seconds
+            )
+            return int(count), retry_after
+        except Exception as exc:  # noqa: BLE001
+            if not degrade_to_local:
+                # Production keeps counting or it is not a limit at all.
+                raise RateLimitBackendUnavailable(
+                    "rate-limit store unreachable"
+                ) from exc
+
+    async with _local_lock:
+        hits = _local_hits.setdefault(key, deque())
+        cutoff = now - window_seconds
+        while hits and hits[0] <= cutoff:
+            hits.popleft()
+        hits.append(now)
+        return len(hits), _retry_after(hits[0], now, window_seconds)
+
+
+def _retry_after(oldest: float, now: float, window_seconds: int) -> int:
+    return max(1, math.ceil(oldest + window_seconds - now))
+
+
+async def enforce_rate_limit(
+    request: Request,
+    response: Response,
+    principal: ResearchPrincipal | None = Depends(get_research_principal),
+) -> None:
+    settings = get_settings()
+    if (
+        not settings.rate_limit_enabled
+        or request.url.path in EXEMPT_PATHS
+        or request.method == "OPTIONS"
+    ):
+        return
+
+    limit = _limit_for(settings, request.url.path)
+    expensive = any(
+        marker in request.url.path for marker in EXPENSIVE_PATH_MARKERS
+    )
+    identity = _rate_limit_identity(principal, request)
+    digest = hashlib.sha256(
+        f"{identity}:{'expensive' if expensive else 'standard'}".encode()
+    ).hexdigest()
+    key = f"cavaai:rate:{digest}"
+    use_redis = settings.app_env.lower() not in {"local", "test"}
+    try:
+        count, retry_after = await _record_hit(
+            key,
+            window_seconds=WINDOW_SECONDS,
+            use_redis=use_redis,
+            redis_url=settings.redis_url,
+            degrade_to_local=not settings.is_production,
+        )
+    except RateLimitBackendUnavailable as exc:
+        raise HTTPException(
+            status_code=503, detail="Rate limit backend unavailable"
+        ) from exc
+
+    if count > limit:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
+    response.headers["X-RateLimit-Limit"] = str(limit)
+    response.headers["X-RateLimit-Remaining"] = str(max(0, limit - count))
