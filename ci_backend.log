@@ -1,0 +1,1719 @@
+﻿2026-09-23T17:19:37.7421524Z Current runner version: '2.337.0'
+2026-09-23T17:19:37.7459014Z ##[group]Runner Image Provisioner
+2026-09-23T17:19:37.7460588Z Hosted Compute Agent
+2026-09-23T17:19:37.7461793Z Version: 20260828.587
+2026-09-23T17:19:37.7462931Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+2026-09-23T17:19:37.7464193Z Build Date: 2026-08-28T16:44:25Z
+2026-09-23T17:19:37.7465674Z Worker ID: {7bcde4f3-cb39-4805-9fa5-49ec059f961f}
+2026-09-23T17:19:37.7467014Z Azure Region: eastus2
+2026-09-23T17:19:37.7468662Z ##[endgroup]
+2026-09-23T17:19:37.7471573Z ##[group]Operating System
+2026-09-23T17:19:37.7472623Z Ubuntu
+2026-09-23T17:19:37.7473630Z 24.04.5
+2026-09-23T17:19:37.7474522Z LTS
+2026-09-23T17:19:37.7475573Z ##[endgroup]
+2026-09-23T17:19:37.7476618Z ##[group]Runner Image
+2026-09-23T17:19:37.7477734Z Image: ubuntu-24.04
+2026-09-23T17:19:37.7478831Z Version: 20260920.314.1
+2026-09-23T17:19:37.7481261Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260920.314/images/ubuntu/Ubuntu2404-Readme.md
+2026-09-23T17:19:37.7484120Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260920.314
+2026-09-23T17:19:37.7485834Z ##[endgroup]
+2026-09-23T17:19:37.7487669Z ##[group]GITHUB_TOKEN Permissions
+2026-09-23T17:19:37.7491020Z Contents: read
+2026-09-23T17:19:37.7492093Z Metadata: read
+2026-09-23T17:19:37.7493023Z ##[endgroup]
+2026-09-23T17:19:37.7496257Z Secret source: Actions
+2026-09-23T17:19:37.7498036Z Cache mode: write
+2026-09-23T17:19:37.7499528Z Prepare workflow directory
+2026-09-23T17:19:37.8134659Z Prepare all required actions
+2026-09-23T17:19:37.8182288Z Getting action download info
+2026-09-23T17:19:38.0124402Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-09-23T17:19:38.1163248Z Download action repository 'actions/setup-python@v5' (SHA:a26af69be951a213d495a4c3e4e4022e16d87065)
+2026-09-23T17:19:38.3075768Z Complete job name: Backend quality
+2026-09-23T17:19:38.3650352Z ##[group]Checking docker version
+2026-09-23T17:19:38.3663636Z ##[command]/usr/bin/docker version --format '{{.Server.APIVersion}}'
+2026-09-23T17:19:38.4823495Z '1.48'
+2026-09-23T17:19:38.4837103Z Docker daemon API version: '1.48'
+2026-09-23T17:19:38.4837876Z ##[command]/usr/bin/docker version --format '{{.Client.APIVersion}}'
+2026-09-23T17:19:38.5008263Z '1.48'
+2026-09-23T17:19:38.5022250Z Docker client API version: '1.48'
+2026-09-23T17:19:38.5028222Z ##[endgroup]
+2026-09-23T17:19:38.5032202Z ##[group]Clean up resources from previous jobs
+2026-09-23T17:19:38.5037534Z ##[command]/usr/bin/docker ps --all --quiet --no-trunc --filter "label=f4d773"
+2026-09-23T17:19:38.5193391Z ##[command]/usr/bin/docker network prune --force --filter "label=f4d773"
+2026-09-23T17:19:38.5328351Z ##[endgroup]
+2026-09-23T17:19:38.5328887Z ##[group]Create local container network
+2026-09-23T17:19:38.5339726Z ##[command]/usr/bin/docker network create --label f4d773 github_network_346712c4ea604bfabdca7f1fca58b755
+2026-09-23T17:19:38.5869604Z f0ffb923f65cf5a0427c3cc60764fff5e0f43569e20c05538f6a2dccea1ac920
+2026-09-23T17:19:38.5889858Z ##[endgroup]
+2026-09-23T17:19:38.5913866Z ##[group]Starting qdrant service container
+2026-09-23T17:19:38.5935371Z ##[command]/usr/bin/docker pull qdrant/qdrant:v1.12.5
+2026-09-23T17:19:38.9532922Z v1.12.5: Pulling from qdrant/qdrant
+2026-09-23T17:19:39.0445230Z bc0965b23a04: Pulling fs layer
+2026-09-23T17:19:39.0447172Z 5503647467e0: Pulling fs layer
+2026-09-23T17:19:39.0448635Z 4f4fb700ef54: Pulling fs layer
+2026-09-23T17:19:39.0449640Z ce061dab321a: Pulling fs layer
+2026-09-23T17:19:39.0450866Z dffd659d89e3: Pulling fs layer
+2026-09-23T17:19:39.0451768Z 965ea96b6d15: Pulling fs layer
+2026-09-23T17:19:39.0452674Z 08aad43cd273: Pulling fs layer
+2026-09-23T17:19:39.0453514Z 2beb47223dbe: Pulling fs layer
+2026-09-23T17:19:39.0454018Z 2beb47223dbe: Waiting
+2026-09-23T17:19:39.0454471Z dffd659d89e3: Waiting
+2026-09-23T17:19:39.0454909Z 965ea96b6d15: Waiting
+2026-09-23T17:19:39.0455386Z 08aad43cd273: Waiting
+2026-09-23T17:19:39.0455829Z ce061dab321a: Waiting
+2026-09-23T17:19:39.0935394Z 4f4fb700ef54: Verifying Checksum
+2026-09-23T17:19:39.0936517Z 4f4fb700ef54: Download complete
+2026-09-23T17:19:39.1831318Z 5503647467e0: Verifying Checksum
+2026-09-23T17:19:39.1832749Z 5503647467e0: Download complete
+2026-09-23T17:19:39.2090953Z ce061dab321a: Verifying Checksum
+2026-09-23T17:19:39.2092023Z ce061dab321a: Download complete
+2026-09-23T17:19:39.2163849Z bc0965b23a04: Verifying Checksum
+2026-09-23T17:19:39.2166095Z bc0965b23a04: Download complete
+2026-09-23T17:19:39.2621746Z 965ea96b6d15: Verifying Checksum
+2026-09-23T17:19:39.2622457Z 965ea96b6d15: Download complete
+2026-09-23T17:19:39.2643660Z 08aad43cd273: Verifying Checksum
+2026-09-23T17:19:39.2644367Z 08aad43cd273: Download complete
+2026-09-23T17:19:39.3573410Z 2beb47223dbe: Verifying Checksum
+2026-09-23T17:19:39.3575289Z 2beb47223dbe: Download complete
+2026-09-23T17:19:39.3775113Z dffd659d89e3: Verifying Checksum
+2026-09-23T17:19:39.3776683Z dffd659d89e3: Download complete
+2026-09-23T17:19:40.3969570Z bc0965b23a04: Pull complete
+2026-09-23T17:19:43.1918670Z 5503647467e0: Pull complete
+2026-09-23T17:19:43.2030890Z 4f4fb700ef54: Pull complete
+2026-09-23T17:19:43.3577066Z ce061dab321a: Pull complete
+2026-09-23T17:19:43.7821543Z dffd659d89e3: Pull complete
+2026-09-23T17:19:43.7913303Z 965ea96b6d15: Pull complete
+2026-09-23T17:19:43.8021618Z 08aad43cd273: Pull complete
+2026-09-23T17:19:43.8704573Z 2beb47223dbe: Pull complete
+2026-09-23T17:19:43.8905587Z Digest: sha256:05fecce7dce45d1254e0468bc037e8210e187fd56fa847688b012293d5f08aae
+2026-09-23T17:19:43.8917599Z Status: Downloaded newer image for qdrant/qdrant:v1.12.5
+2026-09-23T17:19:43.8929015Z docker.io/qdrant/qdrant:v1.12.5
+2026-09-23T17:19:43.8962727Z ##[command]/usr/bin/docker create --name bd29848225f4466484d4bdf349ef537f_qdrantqdrantv1125_a133de --label f4d773 --network github_network_346712c4ea604bfabdca7f1fca58b755 --network-alias qdrant -p 6333:6333  -e GITHUB_ACTIONS=true -e CI=true qdrant/qdrant:v1.12.5
+2026-09-23T17:19:43.9229152Z 513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f
+2026-09-23T17:19:43.9253170Z ##[command]/usr/bin/docker start 513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f
+2026-09-23T17:19:44.1623985Z 513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f
+2026-09-23T17:19:44.1645156Z ##[command]/usr/bin/docker ps --all --filter id=513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f --filter status=running --no-trunc --format "{{.ID}} {{.Status}}"
+2026-09-23T17:19:44.1812209Z 513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f Up Less than a second
+2026-09-23T17:19:44.1834505Z ##[command]/usr/bin/docker port 513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f
+2026-09-23T17:19:44.2012388Z 6333/tcp -> 0.0.0.0:6333
+2026-09-23T17:19:44.2021623Z 6333/tcp -> [::]:6333
+2026-09-23T17:19:44.2057895Z ##[endgroup]
+2026-09-23T17:19:44.2066738Z ##[group]Waiting for all services to be ready
+2026-09-23T17:19:44.2080037Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" 513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f
+2026-09-23T17:19:44.2219299Z qdrant service is healthy.
+2026-09-23T17:19:44.2220446Z ##[endgroup]
+2026-09-23T17:19:44.2520653Z ##[group]Run actions/checkout@v4
+2026-09-23T17:19:44.2521419Z with:
+2026-09-23T17:19:44.2521697Z   repository: nicogarrr/CavaAI
+2026-09-23T17:19:44.2524576Z   token: ***
+2026-09-23T17:19:44.2524849Z   ssh-strict: true
+2026-09-23T17:19:44.2525102Z   ssh-user: git
+2026-09-23T17:19:44.2525361Z   persist-credentials: true
+2026-09-23T17:19:44.2525648Z   clean: true
+2026-09-23T17:19:44.2525909Z   sparse-checkout-cone-mode: true
+2026-09-23T17:19:44.2526216Z   fetch-depth: 1
+2026-09-23T17:19:44.2526462Z   fetch-tags: false
+2026-09-23T17:19:44.2526712Z   show-progress: true
+2026-09-23T17:19:44.2526968Z   lfs: false
+2026-09-23T17:19:44.2527200Z   submodules: false
+2026-09-23T17:19:44.2527461Z   set-safe-directory: true
+2026-09-23T17:19:44.2527762Z   allow-unsafe-pr-checkout: false
+2026-09-23T17:19:44.2528547Z env:
+2026-09-23T17:19:44.2528789Z   APP_ENV: test
+2026-09-23T17:19:44.2529059Z   DATABASE_URL: sqlite:///./cavaai_ci.db
+2026-09-23T17:19:44.2529392Z   CAVAAI_ENABLE_VECTOR_INGEST: 0
+2026-09-23T17:19:44.2529719Z   CAVAAI_ENABLE_VECTOR_CHAT: 0
+2026-09-23T17:19:44.2529999Z ##[endgroup]
+2026-09-23T17:19:44.3686338Z Syncing repository: nicogarrr/CavaAI
+2026-09-23T17:19:44.3687862Z ##[group]Getting Git version info
+2026-09-23T17:19:44.3688542Z Working directory is '/home/runner/work/CavaAI/CavaAI'
+2026-09-23T17:19:44.3689295Z [command]/usr/bin/git version
+2026-09-23T17:19:44.3812475Z git version 2.55.0
+2026-09-23T17:19:44.3842253Z ##[endgroup]
+2026-09-23T17:19:44.3851524Z Temporarily overriding HOME='/home/runner/work/_temp/14d8b2fe-c525-4706-9faa-dcff2c671dd0' before making global git config changes
+2026-09-23T17:19:44.3853130Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-23T17:19:44.3854403Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CavaAI/CavaAI
+2026-09-23T17:19:44.3896355Z Deleting the contents of '/home/runner/work/CavaAI/CavaAI'
+2026-09-23T17:19:44.3900685Z ##[group]Initializing the repository
+2026-09-23T17:19:44.3904881Z [command]/usr/bin/git init /home/runner/work/CavaAI/CavaAI
+2026-09-23T17:19:44.4037952Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-09-23T17:19:44.4039263Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-09-23T17:19:44.4040815Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-09-23T17:19:44.4041818Z hint: call:
+2026-09-23T17:19:44.4042362Z hint:
+2026-09-23T17:19:44.4043104Z hint: 	git config --global init.defaultBranch <name>
+2026-09-23T17:19:44.4043871Z hint:
+2026-09-23T17:19:44.4044817Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-09-23T17:19:44.4046161Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-09-23T17:19:44.4047071Z hint:
+2026-09-23T17:19:44.4047686Z hint: 	git branch -m <name>
+2026-09-23T17:19:44.4048307Z hint:
+2026-09-23T17:19:44.4049093Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-09-23T17:19:44.4050692Z Initialized empty Git repository in /home/runner/work/CavaAI/CavaAI/.git/
+2026-09-23T17:19:44.4053185Z [command]/usr/bin/git remote add origin https://github.com/nicogarrr/CavaAI
+2026-09-23T17:19:44.4142877Z ##[endgroup]
+2026-09-23T17:19:44.4143711Z ##[group]Disabling automatic garbage collection
+2026-09-23T17:19:44.4147863Z [command]/usr/bin/git config --local gc.auto 0
+2026-09-23T17:19:44.4184385Z ##[endgroup]
+2026-09-23T17:19:44.4185237Z ##[group]Setting up auth
+2026-09-23T17:19:44.4192877Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-23T17:19:44.4231354Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-23T17:19:44.4646519Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-23T17:19:44.4685362Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-23T17:19:44.4915730Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-23T17:19:44.4955551Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-23T17:19:44.5184837Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-09-23T17:19:44.5226604Z ##[endgroup]
+2026-09-23T17:19:44.5227573Z ##[group]Fetching the repository
+2026-09-23T17:19:44.5238373Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +61396727cad456590954ab61ac77237000177064:refs/remotes/origin/main
+2026-09-23T17:19:44.9856298Z From https://github.com/nicogarrr/CavaAI
+2026-09-23T17:19:44.9857262Z  * [new ref]         61396727cad456590954ab61ac77237000177064 -> origin/main
+2026-09-23T17:19:44.9862481Z ##[endgroup]
+2026-09-23T17:19:44.9863120Z ##[group]Determining the checkout info
+2026-09-23T17:19:44.9864894Z ##[endgroup]
+2026-09-23T17:19:44.9871343Z [command]/usr/bin/git sparse-checkout disable
+2026-09-23T17:19:44.9928412Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-09-23T17:19:44.9962711Z ##[group]Checking out the ref
+2026-09-23T17:19:44.9969577Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-09-23T17:19:45.0562693Z Switched to a new branch 'main'
+2026-09-23T17:19:45.0571326Z branch 'main' set up to track 'origin/main'.
+2026-09-23T17:19:45.0578694Z ##[endgroup]
+2026-09-23T17:19:45.0626935Z [command]/usr/bin/git log -1 --format=%H
+2026-09-23T17:19:45.0654825Z 61396727cad456590954ab61ac77237000177064
+2026-09-23T17:19:45.0906903Z ##[group]Run actions/setup-python@v5
+2026-09-23T17:19:45.0907211Z with:
+2026-09-23T17:19:45.0907406Z   python-version: 3.12
+2026-09-23T17:19:45.0907621Z   cache: pip
+2026-09-23T17:19:45.0907873Z   cache-dependency-path: data-engine/requirements.txt
+2026-09-23T17:19:45.0908207Z   check-latest: false
+2026-09-23T17:19:45.0911253Z   token: ***
+2026-09-23T17:19:45.0911488Z   update-environment: true
+2026-09-23T17:19:45.0911738Z   allow-prereleases: false
+2026-09-23T17:19:45.0911969Z   freethreaded: false
+2026-09-23T17:19:45.0912176Z env:
+2026-09-23T17:19:45.0912512Z   APP_ENV: test
+2026-09-23T17:19:45.0912795Z   DATABASE_URL: sqlite:///./cavaai_ci.db
+2026-09-23T17:19:45.0913091Z   CAVAAI_ENABLE_VECTOR_INGEST: 0
+2026-09-23T17:19:45.0913341Z   CAVAAI_ENABLE_VECTOR_CHAT: 0
+2026-09-23T17:19:45.0913710Z ##[endgroup]
+2026-09-23T17:19:45.2254306Z ##[group]Installed versions
+2026-09-23T17:19:45.2408832Z (node:2576) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-09-23T17:19:45.2409574Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-09-23T17:19:45.2411583Z Successfully set up CPython (3.12.14)
+2026-09-23T17:19:45.2412461Z ##[endgroup]
+2026-09-23T17:19:45.2815806Z [command]/opt/hostedtoolcache/Python/3.12.14/x64/bin/pip cache dir
+2026-09-23T17:19:45.6313244Z /home/runner/.cache/pip
+2026-09-23T17:19:45.7449122Z Cache hit for: setup-python-Linux-x64-24.04-Ubuntu-python-3.12.14-pip-bb201239da12d97575fa7ce1a118994e94eb03578feef3aa178d107b51f114d8
+2026-09-23T17:19:45.7550761Z (node:2576) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-09-23T17:19:46.7965409Z Received 226492416 of 3164271791 (7.2%), 215.8 MBs/sec
+2026-09-23T17:19:47.8141886Z Received 536870912 of 3164271791 (17.0%), 253.6 MBs/sec
+2026-09-23T17:19:48.8155800Z Received 805306368 of 3164271791 (25.4%), 254.3 MBs/sec
+2026-09-23T17:19:49.8162757Z Received 1073741824 of 3164271791 (33.9%), 254.7 MBs/sec
+2026-09-23T17:19:50.8171541Z Received 1342177280 of 3164271791 (42.4%), 254.9 MBs/sec
+2026-09-23T17:19:51.8177903Z Received 1606418432 of 3164271791 (50.8%), 254.4 MBs/sec
+2026-09-23T17:19:52.8179695Z Received 1879048192 of 3164271791 (59.4%), 255.2 MBs/sec
+2026-09-23T17:19:53.8213693Z Received 2147483648 of 3164271791 (67.9%), 255.2 MBs/sec
+2026-09-23T17:19:54.8224938Z Received 2415919104 of 3164271791 (76.3%), 255.2 MBs/sec
+2026-09-23T17:19:55.8250967Z Received 2709520384 of 3164271791 (85.6%), 257.7 MBs/sec
+2026-09-23T17:19:56.8253551Z Received 2977955840 of 3164271791 (94.1%), 257.5 MBs/sec
+2026-09-23T17:19:57.4706439Z Received 3164271791 of 3164271791 (100.0%), 258.5 MBs/sec
+2026-09-23T17:19:57.4753729Z Cache Size: ~3018 MB (3164271791 B)
+2026-09-23T17:19:57.4870111Z [command]/usr/bin/tar -xf /home/runner/work/_temp/b900aea7-3348-4d6d-83dc-d72d48d76c17/cache.tzst -P -C /home/runner/work/CavaAI/CavaAI --use-compress-program unzstd
+2026-09-23T17:20:03.2775960Z Cache restored successfully
+2026-09-23T17:20:03.4111256Z Cache restored from key: setup-python-Linux-x64-24.04-Ubuntu-python-3.12.14-pip-bb201239da12d97575fa7ce1a118994e94eb03578feef3aa178d107b51f114d8
+2026-09-23T17:20:03.4378191Z ##[group]Run python -m pip install --upgrade pip
+2026-09-23T17:20:03.4378653Z [36;1mpython -m pip install --upgrade pip[0m
+2026-09-23T17:20:04.1898827Z shell: /usr/bin/bash -e {0}
+2026-09-23T17:20:04.1899116Z env:
+2026-09-23T17:20:04.1899327Z   APP_ENV: test
+2026-09-23T17:20:04.1899565Z   DATABASE_URL: sqlite:///./cavaai_ci.db
+2026-09-23T17:20:04.1899860Z   CAVAAI_ENABLE_VECTOR_INGEST: 0
+2026-09-23T17:20:04.1900320Z   CAVAAI_ENABLE_VECTOR_CHAT: 0
+2026-09-23T17:20:04.1900656Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:20:04.1901110Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib/pkgconfig
+2026-09-23T17:20:04.1901554Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:20:04.1901981Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:20:04.1902378Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:20:04.1902832Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib
+2026-09-23T17:20:04.1903160Z ##[endgroup]
+2026-09-23T17:20:04.7643667Z Requirement already satisfied: pip in /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages (26.2.1)
+2026-09-23T17:20:04.9540721Z ##[group]Run python -m pip install -r requirements.txt pytest ruff pyright
+2026-09-23T17:20:04.9541313Z [36;1mpython -m pip install -r requirements.txt pytest ruff pyright[0m
+2026-09-23T17:20:04.9604361Z shell: /usr/bin/bash -e {0}
+2026-09-23T17:20:04.9604620Z env:
+2026-09-23T17:20:04.9604816Z   APP_ENV: test
+2026-09-23T17:20:04.9605043Z   DATABASE_URL: sqlite:///./cavaai_ci.db
+2026-09-23T17:20:04.9605324Z   CAVAAI_ENABLE_VECTOR_INGEST: 0
+2026-09-23T17:20:04.9605579Z   CAVAAI_ENABLE_VECTOR_CHAT: 0
+2026-09-23T17:20:04.9605925Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:20:04.9606368Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib/pkgconfig
+2026-09-23T17:20:04.9606816Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:20:04.9607202Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:20:04.9607586Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:20:04.9608006Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib
+2026-09-23T17:20:04.9608330Z ##[endgroup]
+2026-09-23T17:20:05.4085817Z Collecting pytest
+2026-09-23T17:20:05.4783411Z   Downloading pytest-9.1.1-py3-none-any.whl.metadata (7.6 kB)
+2026-09-23T17:20:05.8742194Z Collecting ruff
+2026-09-23T17:20:05.8823783Z   Downloading ruff-0.16.8-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (20 kB)
+2026-09-23T17:20:05.9268310Z Collecting pyright
+2026-09-23T17:20:05.9364188Z   Downloading pyright-1.1.414-py3-none-any.whl.metadata (6.9 kB)
+2026-09-23T17:20:05.9785815Z Collecting fastapi<0.140,>=0.139.0 (from -r requirements.txt (line 2))
+2026-09-23T17:20:05.9798792Z   Using cached fastapi-0.139.2-py3-none-any.whl.metadata (26 kB)
+2026-09-23T17:20:06.0099609Z Collecting starlette<1.4,>=1.3.1 (from -r requirements.txt (line 3))
+2026-09-23T17:20:06.0112024Z   Using cached starlette-1.3.1-py3-none-any.whl.metadata (6.4 kB)
+2026-09-23T17:20:06.0367030Z Collecting uvicorn<0.35,>=0.29.0 (from uvicorn[standard]<0.35,>=0.29.0->-r requirements.txt (line 4))
+2026-09-23T17:20:06.0379864Z   Using cached uvicorn-0.34.3-py3-none-any.whl.metadata (6.5 kB)
+2026-09-23T17:20:06.0555921Z Collecting python-dotenv<2,>=1.0.0 (from -r requirements.txt (line 5))
+2026-09-23T17:20:06.0568000Z   Using cached python_dotenv-1.2.3-py3-none-any.whl.metadata (29 kB)
+2026-09-23T17:20:06.0746795Z Collecting python-multipart<0.1,>=0.0.9 (from -r requirements.txt (line 6))
+2026-09-23T17:20:06.0759324Z   Using cached python_multipart-0.0.32-py3-none-any.whl.metadata (2.1 kB)
+2026-09-23T17:20:06.1789750Z Collecting pydantic<3,>=2.7.0 (from -r requirements.txt (line 7))
+2026-09-23T17:20:06.1803268Z   Using cached pydantic-2.13.5-py3-none-any.whl.metadata (110 kB)
+2026-09-23T17:20:06.2016843Z Collecting pydantic-settings<3,>=2.4.0 (from -r requirements.txt (line 8))
+2026-09-23T17:20:06.2029638Z   Using cached pydantic_settings-2.15.0-py3-none-any.whl.metadata (3.9 kB)
+2026-09-23T17:20:06.2271750Z Collecting requests<3,>=2.31.0 (from -r requirements.txt (line 11))
+2026-09-23T17:20:06.2285195Z   Using cached requests-2.34.2-py3-none-any.whl.metadata (4.8 kB)
+2026-09-23T17:20:06.2492951Z Collecting httpx<0.29,>=0.27.0 (from -r requirements.txt (line 12))
+2026-09-23T17:20:06.2505933Z   Using cached httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+2026-09-23T17:20:06.2774395Z Collecting yfinance<0.3,>=0.2.40 (from -r requirements.txt (line 15))
+2026-09-23T17:20:06.2789472Z   Using cached yfinance-0.2.66-py2.py3-none-any.whl.metadata (6.0 kB)
+2026-09-23T17:20:06.3903871Z Collecting pandas<3,>=2.0.0 (from -r requirements.txt (line 16))
+2026-09-23T17:20:06.3918139Z   Using cached pandas-2.3.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (91 kB)
+2026-09-23T17:20:06.6615752Z Collecting lxml<7,>=6.1.1 (from -r requirements.txt (line 17))
+2026-09-23T17:20:06.6629578Z   Using cached lxml-6.1.3-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl.metadata (3.3 kB)
+2026-09-23T17:20:06.7879057Z Collecting scipy<2,>=1.11.0 (from -r requirements.txt (line 18))
+2026-09-23T17:20:06.7893163Z   Using cached scipy-1.18.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
+2026-09-23T17:20:06.9879499Z Collecting numpy<3,>=1.24.0 (from -r requirements.txt (line 21))
+2026-09-23T17:20:06.9893985Z   Using cached numpy-2.5.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (6.6 kB)
+2026-09-23T17:20:07.1193941Z Collecting matplotlib<4,>=3.7.0 (from -r requirements.txt (line 22))
+2026-09-23T17:20:07.1207738Z   Using cached matplotlib-3.11.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (80 kB)
+2026-09-23T17:20:07.1697121Z Collecting seaborn<0.14,>=0.13.0 (from -r requirements.txt (line 23))
+2026-09-23T17:20:07.1709740Z   Using cached seaborn-0.13.2-py3-none-any.whl.metadata (5.4 kB)
+2026-09-23T17:20:07.1857495Z Collecting tabulate<0.10,>=0.9.0 (from -r requirements.txt (line 24))
+2026-09-23T17:20:07.1869791Z   Using cached tabulate-0.9.0-py3-none-any.whl.metadata (34 kB)
+2026-09-23T17:20:07.2041281Z Collecting python-dateutil<3,>=2.8.0 (from -r requirements.txt (line 25))
+2026-09-23T17:20:07.2053725Z   Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+2026-09-23T17:20:07.2532437Z Collecting arch<8,>=6.0 (from -r requirements.txt (line 26))
+2026-09-23T17:20:07.2545644Z   Using cached arch-7.2.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (13 kB)
+2026-09-23T17:20:07.2810918Z Collecting qdrant-client<1.15,>=1.9.0 (from -r requirements.txt (line 29))
+2026-09-23T17:20:07.2824087Z   Using cached qdrant_client-1.14.3-py3-none-any.whl.metadata (10 kB)
+2026-09-23T17:20:07.3092307Z Collecting redis<6,>=5.0.0 (from -r requirements.txt (line 30))
+2026-09-23T17:20:07.3106948Z   Using cached redis-5.3.1-py3-none-any.whl.metadata (9.2 kB)
+2026-09-23T17:20:07.3296965Z Collecting sentence-transformers<6,>=5.6.0 (from -r requirements.txt (line 31))
+2026-09-23T17:20:07.3311326Z   Using cached sentence_transformers-5.7.0-py3-none-any.whl.metadata (18 kB)
+2026-09-23T17:20:07.3672054Z Collecting transformers<6,>=5.13.1 (from -r requirements.txt (line 32))
+2026-09-23T17:20:07.3685440Z   Using cached transformers-5.17.0-py3-none-any.whl.metadata (32 kB)
+2026-09-23T17:20:07.4342747Z Collecting pypdf<7,>=6.14.2 (from -r requirements.txt (line 35))
+2026-09-23T17:20:07.4355286Z   Using cached pypdf-6.19.0-py3-none-any.whl.metadata (7.5 kB)
+2026-09-23T17:20:07.4546240Z Collecting openpyxl<4,>=3.1.0 (from -r requirements.txt (line 36))
+2026-09-23T17:20:07.4558780Z   Using cached openpyxl-3.1.5-py2.py3-none-any.whl.metadata (2.5 kB)
+2026-09-23T17:20:07.4696737Z Collecting python-docx<2,>=1.1.0 (from -r requirements.txt (line 37))
+2026-09-23T17:20:07.4708658Z   Using cached python_docx-1.2.0-py3-none-any.whl.metadata (2.0 kB)
+2026-09-23T17:20:07.4887953Z Collecting agent-framework-core==1.10.0 (from -r requirements.txt (line 40))
+2026-09-23T17:20:07.4890400Z   Using cached agent_framework_core-1.10.0-py3-none-any.whl
+2026-09-23T17:20:07.5099748Z Collecting agent-framework-openai==1.10.0 (from -r requirements.txt (line 41))
+2026-09-23T17:20:07.5120006Z   Using cached agent_framework_openai-1.10.0-py3-none-any.whl.metadata (5.1 kB)
+2026-09-23T17:20:07.5264111Z Collecting agent-framework-orchestrations==1.0.0 (from -r requirements.txt (line 42))
+2026-09-23T17:20:07.5276750Z   Using cached agent_framework_orchestrations-1.0.0-py3-none-any.whl.metadata (6.1 kB)
+2026-09-23T17:20:07.7878501Z Collecting sqlalchemy<2.1,>=2.0.32 (from -r requirements.txt (line 43))
+2026-09-23T17:20:07.7893283Z   Using cached sqlalchemy-2.0.54-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (9.7 kB)
+2026-09-23T17:20:07.8148432Z Collecting alembic<1.16,>=1.13.2 (from -r requirements.txt (line 44))
+2026-09-23T17:20:07.8160842Z   Using cached alembic-1.15.2-py3-none-any.whl.metadata (7.3 kB)
+2026-09-23T17:20:07.8345123Z Collecting psycopg<4,>=3.2.1 (from psycopg[binary]<4,>=3.2.1->-r requirements.txt (line 45))
+2026-09-23T17:20:07.8358285Z   Using cached psycopg-3.3.6-py3-none-any.whl.metadata (4.4 kB)
+2026-09-23T17:20:08.1083129Z Collecting duckdb<1.3,>=1.0.0 (from -r requirements.txt (line 46))
+2026-09-23T17:20:08.1098093Z   Using cached duckdb-1.2.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (966 bytes)
+2026-09-23T17:20:08.1376400Z Collecting minio<8,>=7.2.7 (from -r requirements.txt (line 47))
+2026-09-23T17:20:08.1388486Z   Using cached minio-7.2.20-py3-none-any.whl.metadata (6.5 kB)
+2026-09-23T17:20:08.1615382Z Collecting dramatiq<2,>=1.17.0 (from dramatiq[redis]<2,>=1.17.0->-r requirements.txt (line 48))
+2026-09-23T17:20:08.1629444Z   Using cached dramatiq-1.18.0-py3-none-any.whl.metadata (5.1 kB)
+2026-09-23T17:20:08.1837812Z Collecting apscheduler<4,>=3.10.4 (from -r requirements.txt (line 49))
+2026-09-23T17:20:08.1850899Z   Using cached apscheduler-3.11.3-py3-none-any.whl.metadata (6.5 kB)
+2026-09-23T17:20:08.2487010Z Collecting langfuse<4,>=3.0.0 (from -r requirements.txt (line 50))
+2026-09-23T17:20:08.2500681Z   Using cached langfuse-3.15.0-py3-none-any.whl.metadata (2.4 kB)
+2026-09-23T17:20:08.2884839Z Collecting langgraph<2,>=1.2 (from -r requirements.txt (line 53))
+2026-09-23T17:20:08.2897784Z   Using cached langgraph-1.2.12-py3-none-any.whl.metadata (4.9 kB)
+2026-09-23T17:20:08.3047131Z Collecting langgraph-checkpoint-sqlite<4,>=3.1 (from -r requirements.txt (line 54))
+2026-09-23T17:20:08.3059467Z   Using cached langgraph_checkpoint_sqlite-3.1.1-py3-none-any.whl.metadata (5.1 kB)
+2026-09-23T17:20:08.3250424Z Collecting langgraph-checkpoint-postgres<4,>=3.1 (from -r requirements.txt (line 55))
+2026-09-23T17:20:08.3262212Z   Using cached langgraph_checkpoint_postgres-3.1.2-py3-none-any.whl.metadata (6.8 kB)
+2026-09-23T17:20:08.3447109Z Collecting typing-extensions<5,>=4.15.0 (from agent-framework-core==1.10.0->-r requirements.txt (line 40))
+2026-09-23T17:20:08.3458569Z   Using cached typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+2026-09-23T17:20:08.3688097Z Collecting opentelemetry-api<2,>=1.39.0 (from agent-framework-core==1.10.0->-r requirements.txt (line 40))
+2026-09-23T17:20:08.3699551Z   Using cached opentelemetry_api-1.44.0-py3-none-any.whl.metadata (1.4 kB)
+2026-09-23T17:20:08.4228888Z Collecting openai<3,>=1.99.0 (from agent-framework-openai==1.10.0->-r requirements.txt (line 41))
+2026-09-23T17:20:08.4241925Z   Using cached openai-2.54.0-py3-none-any.whl.metadata (40 kB)
+2026-09-23T17:20:08.4491150Z Collecting typing-inspection>=0.4.2 (from fastapi<0.140,>=0.139.0->-r requirements.txt (line 2))
+2026-09-23T17:20:08.4504142Z   Using cached typing_inspection-0.4.4-py3-none-any.whl.metadata (2.6 kB)
+2026-09-23T17:20:08.4652936Z Collecting annotated-doc>=0.0.2 (from fastapi<0.140,>=0.139.0->-r requirements.txt (line 2))
+2026-09-23T17:20:08.4665465Z   Using cached annotated_doc-0.0.5-py3-none-any.whl.metadata (6.5 kB)
+2026-09-23T17:20:08.4890285Z Collecting anyio<5,>=3.6.2 (from starlette<1.4,>=1.3.1->-r requirements.txt (line 3))
+2026-09-23T17:20:08.4902845Z   Using cached anyio-4.15.1-py3-none-any.whl.metadata (4.7 kB)
+2026-09-23T17:20:08.5121344Z Collecting click>=7.0 (from uvicorn<0.35,>=0.29.0->uvicorn[standard]<0.35,>=0.29.0->-r requirements.txt (line 4))
+2026-09-23T17:20:08.5133620Z   Using cached click-8.5.0-py3-none-any.whl.metadata (2.6 kB)
+2026-09-23T17:20:08.5273164Z Collecting h11>=0.8 (from uvicorn<0.35,>=0.29.0->uvicorn[standard]<0.35,>=0.29.0->-r requirements.txt (line 4))
+2026-09-23T17:20:08.5285258Z   Using cached h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+2026-09-23T17:20:08.5432320Z Collecting annotated-types>=0.6.0 (from pydantic<3,>=2.7.0->-r requirements.txt (line 7))
+2026-09-23T17:20:08.5444681Z   Using cached annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+2026-09-23T17:20:09.2041456Z Collecting pydantic-core==2.46.5 (from pydantic<3,>=2.7.0->-r requirements.txt (line 7))
+2026-09-23T17:20:09.2056661Z   Using cached pydantic_core-2.46.5-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.6 kB)
+2026-09-23T17:20:09.3304660Z Collecting charset_normalizer<4,>=2 (from requests<3,>=2.31.0->-r requirements.txt (line 11))
+2026-09-23T17:20:09.3323965Z   Using cached charset_normalizer-3.5.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (45 kB)
+2026-09-23T17:20:09.4987676Z Collecting idna<4,>=2.5 (from requests<3,>=2.31.0->-r requirements.txt (line 11))
+2026-09-23T17:20:09.5001776Z   Using cached idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+2026-09-23T17:20:09.6005431Z Collecting urllib3<3,>=1.26 (from requests<3,>=2.31.0->-r requirements.txt (line 11))
+2026-09-23T17:20:09.6018627Z   Using cached urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)
+2026-09-23T17:20:09.6426991Z Collecting certifi>=2023.5.7 (from requests<3,>=2.31.0->-r requirements.txt (line 11))
+2026-09-23T17:20:09.6439544Z   Using cached certifi-2026.7.22-py3-none-any.whl.metadata (2.5 kB)
+2026-09-23T17:20:09.6637141Z Collecting httpcore==1.* (from httpx<0.29,>=0.27.0->-r requirements.txt (line 12))
+2026-09-23T17:20:09.6649488Z   Using cached httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+2026-09-23T17:20:09.6866801Z Collecting multitasking>=0.0.7 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:09.6878804Z   Using cached multitasking-0.0.13-py3-none-any.whl.metadata (16 kB)
+2026-09-23T17:20:09.7098420Z Collecting platformdirs>=2.0.0 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:09.7111465Z   Using cached platformdirs-4.11.12-py3-none-any.whl.metadata (5.5 kB)
+2026-09-23T17:20:09.7461966Z Collecting pytz>=2022.5 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:09.7475466Z   Using cached pytz-2026.3.post1-py2.py3-none-any.whl.metadata (22 kB)
+2026-09-23T17:20:09.7891288Z Collecting frozendict>=2.3.4 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:09.7904618Z   Using cached frozendict-2.4.7-py3-none-any.whl.metadata (23 kB)
+2026-09-23T17:20:09.8120040Z Collecting peewee>=3.16.2 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:09.8132116Z   Using cached peewee-4.5.1-py3-none-any.whl.metadata (10 kB)
+2026-09-23T17:20:09.8325026Z Collecting beautifulsoup4>=4.11.1 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:09.8337753Z   Using cached beautifulsoup4-4.15.0-py3-none-any.whl.metadata (3.8 kB)
+2026-09-23T17:20:09.8966018Z Collecting curl_cffi>=0.7 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:09.8980261Z   Using cached curl_cffi-0.16.3-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (17 kB)
+2026-09-23T17:20:10.1054667Z Collecting protobuf>=3.19.0 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:10.1067879Z   Using cached protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl.metadata (595 bytes)
+2026-09-23T17:20:10.2102104Z Collecting websockets>=13.0 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:10.2116413Z   Using cached websockets-17.1-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.3 kB)
+2026-09-23T17:20:10.2357993Z Collecting tzdata>=2022.7 (from pandas<3,>=2.0.0->-r requirements.txt (line 16))
+2026-09-23T17:20:10.2369971Z   Using cached tzdata-2026.4-py2.py3-none-any.whl.metadata (1.4 kB)
+2026-09-23T17:20:10.3053329Z Collecting contourpy>=1.0.1 (from matplotlib<4,>=3.7.0->-r requirements.txt (line 22))
+2026-09-23T17:20:10.3066919Z   Using cached contourpy-1.4.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (3.8 kB)
+2026-09-23T17:20:10.3208795Z Collecting cycler>=0.10 (from matplotlib<4,>=3.7.0->-r requirements.txt (line 22))
+2026-09-23T17:20:10.3220722Z   Using cached cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
+2026-09-23T17:20:10.4571683Z Collecting fonttools>=4.28.2 (from matplotlib<4,>=3.7.0->-r requirements.txt (line 22))
+2026-09-23T17:20:10.4586111Z   Using cached fonttools-4.65.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (125 kB)
+2026-09-23T17:20:10.5392765Z Collecting kiwisolver>=1.3.1 (from matplotlib<4,>=3.7.0->-r requirements.txt (line 22))
+2026-09-23T17:20:10.5407004Z   Using cached kiwisolver-1.5.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (5.2 kB)
+2026-09-23T17:20:10.5629592Z Collecting packaging>=20.0 (from matplotlib<4,>=3.7.0->-r requirements.txt (line 22))
+2026-09-23T17:20:10.5642462Z   Using cached packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+2026-09-23T17:20:10.7895460Z Collecting pillow>=9 (from matplotlib<4,>=3.7.0->-r requirements.txt (line 22))
+2026-09-23T17:20:10.7909927Z   Using cached pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.1 kB)
+2026-09-23T17:20:10.8170704Z Collecting pyparsing>=3 (from matplotlib<4,>=3.7.0->-r requirements.txt (line 22))
+2026-09-23T17:20:10.8182976Z   Using cached pyparsing-3.3.3-py3-none-any.whl.metadata (5.9 kB)
+2026-09-23T17:20:10.8427547Z Collecting six>=1.5 (from python-dateutil<3,>=2.8.0->-r requirements.txt (line 25))
+2026-09-23T17:20:10.8439389Z   Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+2026-09-23T17:20:10.8954047Z Collecting statsmodels>=0.12 (from arch<8,>=6.0->-r requirements.txt (line 26))
+2026-09-23T17:20:10.8967218Z   Using cached statsmodels-0.15.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.6 kB)
+2026-09-23T17:20:11.3607261Z Collecting grpcio>=1.41.0 (from qdrant-client<1.15,>=1.9.0->-r requirements.txt (line 29))
+2026-09-23T17:20:11.3622534Z   Using cached grpcio-1.84.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (3.8 kB)
+2026-09-23T17:20:11.3823947Z Collecting portalocker<3.0.0,>=2.7.0 (from qdrant-client<1.15,>=1.9.0->-r requirements.txt (line 29))
+2026-09-23T17:20:11.3835424Z   Using cached portalocker-2.10.1-py3-none-any.whl.metadata (8.5 kB)
+2026-09-23T17:20:11.4186312Z Collecting PyJWT>=2.9.0 (from redis<6,>=5.0.0->-r requirements.txt (line 30))
+2026-09-23T17:20:11.4264113Z   Downloading pyjwt-2.15.0-py3-none-any.whl.metadata (3.5 kB)
+2026-09-23T17:20:11.6375015Z Collecting tokenizers>=0.19 (from sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:11.6389391Z   Using cached tokenizers-0.23.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (9.8 kB)
+2026-09-23T17:20:11.6847479Z Collecting huggingface-hub>=0.23.0 (from sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:11.6860882Z   Using cached huggingface_hub-1.32.0-py3-none-any.whl.metadata (16 kB)
+2026-09-23T17:20:11.7473200Z Collecting torch>=1.11.0 (from sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:11.7486785Z   Using cached torch-2.14.0-cp312-cp312-manylinux_2_28_x86_64.whl.metadata (37 kB)
+2026-09-23T17:20:11.8354238Z Collecting scikit-learn>=0.22.0 (from sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:11.8367517Z   Using cached scikit_learn-1.9.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.3 kB)
+2026-09-23T17:20:11.8718879Z Collecting tqdm>=4.0.0 (from sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:11.8732066Z   Using cached tqdm-4.70.1-py3-none-any.whl.metadata (57 kB)
+2026-09-23T17:20:11.9239306Z Collecting pyyaml>=5.1 (from transformers<6,>=5.13.1->-r requirements.txt (line 32))
+2026-09-23T17:20:11.9254542Z   Using cached pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+2026-09-23T17:20:12.3724887Z Collecting regex>=2025.10.22 (from transformers<6,>=5.13.1->-r requirements.txt (line 32))
+2026-09-23T17:20:12.3739241Z   Using cached regex-2026.9.10-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (40 kB)
+2026-09-23T17:20:12.4004601Z Collecting typer (from transformers<6,>=5.13.1->-r requirements.txt (line 32))
+2026-09-23T17:20:12.4017177Z   Using cached typer-0.27.2-py3-none-any.whl.metadata (16 kB)
+2026-09-23T17:20:12.5172328Z Collecting safetensors>=0.8.0 (from transformers<6,>=5.13.1->-r requirements.txt (line 32))
+2026-09-23T17:20:12.5186813Z   Using cached safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.2 kB)
+2026-09-23T17:20:12.5411611Z Collecting et-xmlfile (from openpyxl<4,>=3.1.0->-r requirements.txt (line 36))
+2026-09-23T17:20:12.5424462Z   Using cached et_xmlfile-2.0.0-py3-none-any.whl.metadata (2.7 kB)
+2026-09-23T17:20:12.6898077Z Collecting greenlet>=1 (from sqlalchemy<2.1,>=2.0.32->-r requirements.txt (line 43))
+2026-09-23T17:20:12.6911492Z   Using cached greenlet-3.5.6-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (3.8 kB)
+2026-09-23T17:20:12.7150863Z Collecting Mako (from alembic<1.16,>=1.13.2->-r requirements.txt (line 44))
+2026-09-23T17:20:12.7222390Z   Downloading mako-1.4.3-py3-none-any.whl.metadata (2.9 kB)
+2026-09-23T17:20:12.7493047Z Collecting argon2-cffi (from minio<8,>=7.2.7->-r requirements.txt (line 47))
+2026-09-23T17:20:12.7504781Z   Using cached argon2_cffi-25.1.0-py3-none-any.whl.metadata (4.1 kB)
+2026-09-23T17:20:12.8229106Z Collecting pycryptodome (from minio<8,>=7.2.7->-r requirements.txt (line 47))
+2026-09-23T17:20:12.8243159Z   Using cached pycryptodome-3.23.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.4 kB)
+2026-09-23T17:20:12.8425846Z Collecting prometheus-client>=0.2 (from dramatiq<2,>=1.17.0->dramatiq[redis]<2,>=1.17.0->-r requirements.txt (line 48))
+2026-09-23T17:20:12.8437420Z   Using cached prometheus_client-0.26.0-py3-none-any.whl.metadata (2.1 kB)
+2026-09-23T17:20:12.8610478Z Collecting tzlocal>=3.0 (from apscheduler<4,>=3.10.4->-r requirements.txt (line 49))
+2026-09-23T17:20:12.8622557Z   Using cached tzlocal-5.4.4-py3-none-any.whl.metadata (7.7 kB)
+2026-09-23T17:20:12.8784749Z Collecting backoff>=1.10.0 (from langfuse<4,>=3.0.0->-r requirements.txt (line 50))
+2026-09-23T17:20:12.8796294Z   Using cached backoff-2.2.1-py3-none-any.whl.metadata (14 kB)
+2026-09-23T17:20:12.9077678Z Collecting opentelemetry-exporter-otlp-proto-http<2.0.0,>=1.33.1 (from langfuse<4,>=3.0.0->-r requirements.txt (line 50))
+2026-09-23T17:20:12.9089069Z   Using cached opentelemetry_exporter_otlp_proto_http-1.44.0-py3-none-any.whl.metadata (2.4 kB)
+2026-09-23T17:20:12.9295267Z Collecting opentelemetry-sdk<2.0.0,>=1.33.1 (from langfuse<4,>=3.0.0->-r requirements.txt (line 50))
+2026-09-23T17:20:12.9306976Z   Using cached opentelemetry_sdk-1.44.0-py3-none-any.whl.metadata (1.6 kB)
+2026-09-23T17:20:12.9334420Z Collecting packaging>=20.0 (from matplotlib<4,>=3.7.0->-r requirements.txt (line 22))
+2026-09-23T17:20:12.9346182Z   Using cached packaging-25.0-py3-none-any.whl.metadata (3.3 kB)
+2026-09-23T17:20:13.2378693Z Collecting wrapt<2.0,>=1.14 (from langfuse<4,>=3.0.0->-r requirements.txt (line 50))
+2026-09-23T17:20:13.2393034Z   Using cached wrapt-1.17.3-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.4 kB)
+2026-09-23T17:20:13.2798892Z Collecting langchain-core<2,>=1.4.7 (from langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:13.2812867Z   Using cached langchain_core-1.6.4-py3-none-any.whl.metadata (4.8 kB)
+2026-09-23T17:20:13.3016097Z Collecting langgraph-checkpoint<5.0.0,>=4.1.0 (from langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:13.3029146Z   Using cached langgraph_checkpoint-4.2.0-py3-none-any.whl.metadata (6.7 kB)
+2026-09-23T17:20:13.3206544Z Collecting langgraph-prebuilt<1.2.0,>=1.1.0 (from langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:13.3218665Z   Using cached langgraph_prebuilt-1.1.0-py3-none-any.whl.metadata (5.2 kB)
+2026-09-23T17:20:13.3438834Z Collecting langgraph-sdk<0.5.0,>=0.4.2 (from langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:13.3451050Z   Using cached langgraph_sdk-0.4.5-py3-none-any.whl.metadata (5.1 kB)
+2026-09-23T17:20:13.5685934Z Collecting xxhash>=3.5.0 (from langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:13.5701119Z   Using cached xxhash-4.0.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (17 kB)
+2026-09-23T17:20:13.5867573Z Collecting aiosqlite>=0.20 (from langgraph-checkpoint-sqlite<4,>=3.1->-r requirements.txt (line 54))
+2026-09-23T17:20:13.5880233Z   Using cached aiosqlite-0.22.1-py3-none-any.whl.metadata (4.3 kB)
+2026-09-23T17:20:13.6161326Z Collecting sqlite-vec>=0.1.6 (from langgraph-checkpoint-sqlite<4,>=3.1->-r requirements.txt (line 54))
+2026-09-23T17:20:13.6174680Z   Using cached sqlite_vec-0.1.9-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux1_x86_64.whl.metadata (198 bytes)
+2026-09-23T17:20:13.8486611Z Collecting orjson>=3.11.5 (from langgraph-checkpoint-postgres<4,>=3.1->-r requirements.txt (line 55))
+2026-09-23T17:20:13.8500708Z   Using cached orjson-3.12.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (41 kB)
+2026-09-23T17:20:13.8678544Z Collecting psycopg-pool>=3.2.0 (from langgraph-checkpoint-postgres<4,>=3.1->-r requirements.txt (line 55))
+2026-09-23T17:20:13.8693171Z   Using cached psycopg_pool-3.3.3-py3-none-any.whl.metadata (2.8 kB)
+2026-09-23T17:20:13.9062858Z Collecting filelock>=3.10.0 (from huggingface-hub>=0.23.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:13.9075344Z   Using cached filelock-4.0.1-py3-none-any.whl.metadata (2.0 kB)
+2026-09-23T17:20:13.9279913Z Collecting fsspec>=2023.5.0 (from huggingface-hub>=0.23.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:13.9292597Z   Using cached fsspec-2026.9.0-py3-none-any.whl.metadata (10 kB)
+2026-09-23T17:20:13.9845078Z Collecting hf-xet<2.0.0,>=1.5.2 (from huggingface-hub>=0.23.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:13.9857092Z   Using cached hf_xet-1.6.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (4.9 kB)
+2026-09-23T17:20:14.0126810Z Collecting jsonpatch<2.0.0,>=1.33.0 (from langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.0138875Z   Using cached jsonpatch-1.33-py2.py3-none-any.whl.metadata (3.0 kB)
+2026-09-23T17:20:14.0263983Z Collecting langchain-protocol>=0.0.17 (from langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.0276085Z   Using cached langchain_protocol-0.0.19-py3-none-any.whl.metadata (2.4 kB)
+2026-09-23T17:20:14.0891365Z Collecting langsmith<1.0.0,>=0.3.45 (from langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.0904563Z   Using cached langsmith-0.14.0-py3-none-any.whl.metadata (22 kB)
+2026-09-23T17:20:14.1128619Z Collecting tenacity!=8.4.0,<10.0.0,>=8.1.0 (from langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.1140697Z   Using cached tenacity-9.1.4-py3-none-any.whl.metadata (1.2 kB)
+2026-09-23T17:20:14.2227077Z Collecting uuid-utils<1.0,>=0.12.0 (from langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.2241366Z   Using cached uuid_utils-0.17.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.4 kB)
+2026-09-23T17:20:14.2403407Z Collecting jsonpointer>=1.9 (from jsonpatch<2.0.0,>=1.33.0->langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.2416731Z   Using cached jsonpointer-3.1.1-py3-none-any.whl.metadata (2.4 kB)
+2026-09-23T17:20:14.2916627Z Collecting ormsgpack>=1.12.0 (from langgraph-checkpoint<5.0.0,>=4.1.0->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.2929723Z   Using cached ormsgpack-1.12.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.2 kB)
+2026-09-23T17:20:14.3067096Z Collecting websockets>=13.0 (from yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:14.3080334Z   Using cached websockets-16.1.1-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.8 kB)
+2026-09-23T17:20:14.3242284Z Collecting distro>=1.7.0 (from langsmith<1.0.0,>=0.3.45->langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.3254477Z   Using cached distro-1.9.0-py3-none-any.whl.metadata (6.8 kB)
+2026-09-23T17:20:14.3402377Z Collecting httpx2<3,>=2 (from langsmith<1.0.0,>=0.3.45->langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.3475333Z   Downloading httpx2-2.13.1-py3-none-any.whl.metadata (9.8 kB)
+2026-09-23T17:20:14.3658693Z Collecting requests-toolbelt>=1.0.0 (from langsmith<1.0.0,>=0.3.45->langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.3670843Z   Using cached requests_toolbelt-1.0.0-py2.py3-none-any.whl.metadata (14 kB)
+2026-09-23T17:20:14.3818821Z Collecting sniffio>=1.1 (from langsmith<1.0.0,>=0.3.45->langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.3830923Z   Using cached sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+2026-09-23T17:20:14.4503841Z Collecting zstandard>=0.23.0 (from langsmith<1.0.0,>=0.3.45->langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.4518357Z   Using cached zstandard-0.25.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (3.3 kB)
+2026-09-23T17:20:14.4697718Z Collecting httpcore2==2.13.1 (from httpx2<3,>=2->langsmith<1.0.0,>=0.3.45->langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.4769493Z   Downloading httpcore2-2.13.1-py3-none-any.whl.metadata (26 kB)
+2026-09-23T17:20:14.4943774Z Collecting truststore>=0.10 (from httpx2<3,>=2->langsmith<1.0.0,>=0.3.45->langchain-core<2,>=1.4.7->langgraph<2,>=1.2->-r requirements.txt (line 53))
+2026-09-23T17:20:14.4955917Z   Using cached truststore-0.10.4-py3-none-any.whl.metadata (4.4 kB)
+2026-09-23T17:20:14.6860736Z Collecting jiter<1,>=0.10.0 (from openai<3,>=1.99.0->agent-framework-openai==1.10.0->-r requirements.txt (line 41))
+2026-09-23T17:20:14.6876241Z   Using cached jiter-0.17.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (5.2 kB)
+2026-09-23T17:20:14.7228797Z Collecting googleapis-common-protos~=1.52 (from opentelemetry-exporter-otlp-proto-http<2.0.0,>=1.33.1->langfuse<4,>=3.0.0->-r requirements.txt (line 50))
+2026-09-23T17:20:14.7241466Z   Using cached googleapis_common_protos-1.75.3-py3-none-any.whl.metadata (8.5 kB)
+2026-09-23T17:20:14.7409882Z Collecting opentelemetry-exporter-otlp-proto-common==1.44.0 (from opentelemetry-exporter-otlp-proto-http<2.0.0,>=1.33.1->langfuse<4,>=3.0.0->-r requirements.txt (line 50))
+2026-09-23T17:20:14.7421249Z   Using cached opentelemetry_exporter_otlp_proto_common-1.44.0-py3-none-any.whl.metadata (1.8 kB)
+2026-09-23T17:20:14.7609698Z Collecting opentelemetry-proto==1.44.0 (from opentelemetry-exporter-otlp-proto-http<2.0.0,>=1.33.1->langfuse<4,>=3.0.0->-r requirements.txt (line 50))
+2026-09-23T17:20:14.7623475Z   Using cached opentelemetry_proto-1.44.0-py3-none-any.whl.metadata (2.3 kB)
+2026-09-23T17:20:14.8000649Z Collecting opentelemetry-semantic-conventions==0.65b0 (from opentelemetry-sdk<2.0.0,>=1.33.1->langfuse<4,>=3.0.0->-r requirements.txt (line 50))
+2026-09-23T17:20:14.8013331Z   Using cached opentelemetry_semantic_conventions-0.65b0-py3-none-any.whl.metadata (2.4 kB)
+2026-09-23T17:20:14.9584750Z Collecting psycopg-binary==3.3.6 (from psycopg[binary]<4,>=3.2.1->-r requirements.txt (line 45))
+2026-09-23T17:20:14.9599239Z   Using cached psycopg_binary-3.3.6-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.7 kB)
+2026-09-23T17:20:15.0078670Z Collecting httptools>=0.6.3 (from uvicorn[standard]<0.35,>=0.29.0->-r requirements.txt (line 4))
+2026-09-23T17:20:15.0093431Z   Using cached httptools-0.8.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (3.5 kB)
+2026-09-23T17:20:15.0485335Z Collecting uvloop>=0.15.1 (from uvicorn[standard]<0.35,>=0.29.0->-r requirements.txt (line 4))
+2026-09-23T17:20:15.0499630Z   Using cached uvloop-0.22.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (4.9 kB)
+2026-09-23T17:20:15.1260477Z Collecting watchfiles>=0.13 (from uvicorn[standard]<0.35,>=0.29.0->-r requirements.txt (line 4))
+2026-09-23T17:20:15.1274413Z   Using cached watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+2026-09-23T17:20:15.1459932Z Collecting iniconfig>=1.0.1 (from pytest)
+2026-09-23T17:20:15.1540622Z   Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)
+2026-09-23T17:20:15.1715347Z Collecting pluggy<2,>=1.5 (from pytest)
+2026-09-23T17:20:15.1790316Z   Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+2026-09-23T17:20:15.2015668Z Collecting pygments>=2.7.2 (from pytest)
+2026-09-23T17:20:15.2028823Z   Using cached pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
+2026-09-23T17:20:15.2245679Z Collecting nodeenv>=1.6.0 (from pyright)
+2026-09-23T17:20:15.2322337Z   Downloading nodeenv-1.10.0-py2.py3-none-any.whl.metadata (24 kB)
+2026-09-23T17:20:15.2608174Z Collecting soupsieve>=1.6.1 (from beautifulsoup4>=4.11.1->yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:15.2620973Z   Using cached soupsieve-2.9.2-py3-none-any.whl.metadata (4.6 kB)
+2026-09-23T17:20:15.3665467Z Collecting cffi>=2.0.0 (from curl_cffi>=0.7->yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:15.3679886Z   Using cached cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.5 kB)
+2026-09-23T17:20:15.3847516Z Collecting pycparser (from cffi>=2.0.0->curl_cffi>=0.7->yfinance<0.3,>=0.2.40->-r requirements.txt (line 15))
+2026-09-23T17:20:15.3859769Z   Using cached pycparser-3.0-py3-none-any.whl.metadata (8.2 kB)
+2026-09-23T17:20:15.4185180Z Collecting h2<5,>=3 (from httpx[http2]>=0.20.0->qdrant-client<1.15,>=1.9.0->-r requirements.txt (line 29))
+2026-09-23T17:20:15.4197468Z   Using cached h2-4.4.1-py3-none-any.whl.metadata (3.8 kB)
+2026-09-23T17:20:15.4348662Z Collecting hyperframe<7,>=6.1 (from h2<5,>=3->httpx[http2]>=0.20.0->qdrant-client<1.15,>=1.9.0->-r requirements.txt (line 29))
+2026-09-23T17:20:15.4362476Z   Using cached hyperframe-6.1.0-py3-none-any.whl.metadata (4.3 kB)
+2026-09-23T17:20:15.4494609Z Collecting hpack<5,>=4.2 (from h2<5,>=3->httpx[http2]>=0.20.0->qdrant-client<1.15,>=1.9.0->-r requirements.txt (line 29))
+2026-09-23T17:20:15.4506929Z   Using cached hpack-4.2.0-py3-none-any.whl.metadata (3.3 kB)
+2026-09-23T17:20:15.5094529Z Collecting joblib>=1.4.0 (from scikit-learn>=0.22.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.5106972Z   Using cached joblib-1.6.0-py3-none-any.whl.metadata (6.5 kB)
+2026-09-23T17:20:15.5457201Z Collecting narwhals>=2.0.1 (from scikit-learn>=0.22.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.5469658Z   Using cached narwhals-2.26.0-py3-none-any.whl.metadata (15 kB)
+2026-09-23T17:20:15.5623212Z Collecting threadpoolctl>=3.5.0 (from scikit-learn>=0.22.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.5635204Z   Using cached threadpoolctl-3.7.0-py3-none-any.whl.metadata (24 kB)
+2026-09-23T17:20:15.5845322Z Collecting cloudpickle>=3.0 (from joblib>=1.4.0->scikit-learn>=0.22.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.5857395Z   Using cached cloudpickle-3.1.2-py3-none-any.whl.metadata (7.1 kB)
+2026-09-23T17:20:15.6168402Z Collecting patsy>=0.5.6 (from statsmodels>=0.12->arch<8,>=6.0->-r requirements.txt (line 26))
+2026-09-23T17:20:15.6180789Z   Using cached patsy-1.0.3-py2.py3-none-any.whl.metadata (3.7 kB)
+2026-09-23T17:20:15.6347286Z Collecting formulaic>=1.1.0 (from statsmodels>=0.12->arch<8,>=6.0->-r requirements.txt (line 26))
+2026-09-23T17:20:15.6359312Z   Using cached formulaic-1.2.2-py3-none-any.whl.metadata (7.0 kB)
+2026-09-23T17:20:15.6516873Z Collecting interface-meta>=1.2.0 (from formulaic>=1.1.0->statsmodels>=0.12->arch<8,>=6.0->-r requirements.txt (line 26))
+2026-09-23T17:20:15.6529055Z   Using cached interface_meta-2.0.1-py3-none-any.whl.metadata (6.4 kB)
+2026-09-23T17:20:15.7405419Z Collecting setuptools>=77.0.3 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.7419033Z   Using cached setuptools-84.0.0-py3-none-any.whl.metadata (6.6 kB)
+2026-09-23T17:20:15.7642371Z Collecting sympy>=1.13.3 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.7654674Z   Using cached sympy-1.14.0-py3-none-any.whl.metadata (12 kB)
+2026-09-23T17:20:15.7886530Z Collecting networkx>=2.5.1 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.7898983Z   Using cached networkx-3.7-py3-none-any.whl.metadata (6.7 kB)
+2026-09-23T17:20:15.8101133Z Collecting jinja2 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.8113364Z   Using cached jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+2026-09-23T17:20:15.8272004Z Collecting cuda-toolkit==13.0.3 (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.8283653Z   Using cached cuda_toolkit-13.0.3.0-py2.py3-none-any.whl.metadata (17 kB)
+2026-09-23T17:20:15.8826658Z Collecting cuda-bindings<14,>=13.0.3 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.8900337Z   Downloading cuda_bindings-13.4.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+2026-09-23T17:20:15.9098254Z Collecting nvidia-cudnn-cu13==9.24.0.43 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.9110763Z   Using cached nvidia_cudnn_cu13-9.24.0.43-py3-none-manylinux_2_27_x86_64.whl.metadata (1.9 kB)
+2026-09-23T17:20:15.9243144Z Collecting nvidia-cusparselt-cu13==0.8.1 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.9255572Z   Using cached nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_x86_64.whl.metadata (12 kB)
+2026-09-23T17:20:15.9391087Z Collecting nvidia-nccl-cu13==2.30.7 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.9403394Z   Using cached nvidia_nccl_cu13-2.30.7-py3-none-manylinux_2_18_x86_64.whl.metadata (2.1 kB)
+2026-09-23T17:20:15.9544986Z Collecting nvidia-nvshmem-cu13==3.4.5 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.9557647Z   Using cached nvidia_nvshmem_cu13-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.1 kB)
+2026-09-23T17:20:15.9753257Z Collecting triton~=3.8.0 (from torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.9766162Z   Using cached triton-3.8.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (978 bytes)
+2026-09-23T17:20:15.9982801Z Collecting nvidia-cublas==13.1.1.3.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:15.9994638Z   Using cached nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_x86_64.whl.metadata (1.8 kB)
+2026-09-23T17:20:16.0132558Z Collecting nvidia-cuda-nvrtc==13.0.88.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.0145822Z   Using cached nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl.metadata (1.7 kB)
+2026-09-23T17:20:16.0293616Z Collecting nvidia-cuda-runtime==13.0.96.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.0305811Z   Using cached nvidia_cuda_runtime-13.0.96-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)
+2026-09-23T17:20:16.0454586Z Collecting nvidia-cufft==12.0.0.61.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.0466526Z   Using cached nvidia_cufft-12.0.0.61-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.8 kB)
+2026-09-23T17:20:16.0611018Z Collecting nvidia-nvjitlink<14,>=13.0.88 (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.0623286Z   Using cached nvidia_nvjitlink-13.4.92-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl.metadata (1.8 kB)
+2026-09-23T17:20:16.0761874Z Collecting nvidia-cufile==1.15.1.6.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.0774131Z   Using cached nvidia_cufile-1.15.1.6-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)
+2026-09-23T17:20:16.0929876Z Collecting nvidia-cuda-cupti==13.0.85.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.0941985Z   Using cached nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_x86_64.whl.metadata (1.7 kB)
+2026-09-23T17:20:16.1082167Z Collecting nvidia-curand==10.4.0.35.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.1094109Z   Using cached nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_x86_64.whl.metadata (1.7 kB)
+2026-09-23T17:20:16.1244368Z Collecting nvidia-cusolver==12.0.4.66.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.1256115Z   Using cached nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_x86_64.whl.metadata (1.8 kB)
+2026-09-23T17:20:16.1401201Z Collecting nvidia-cusparse==12.6.3.3.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.1414605Z   Using cached nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.8 kB)
+2026-09-23T17:20:16.1597171Z Collecting nvidia-nvtx==13.0.85.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.1609093Z   Using cached nvidia_nvtx-13.0.85-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl.metadata (1.8 kB)
+2026-09-23T17:20:16.1822925Z Collecting cuda-pathfinder>=1.4.2 (from cuda-bindings<14,>=13.0.3->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.1835305Z   Using cached cuda_pathfinder-1.8.2-py3-none-any.whl.metadata (1.9 kB)
+2026-09-23T17:20:16.2228700Z Collecting mpmath<1.4,>=1.1.0 (from sympy>=1.13.3->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.2240792Z   Using cached mpmath-1.3.0-py3-none-any.whl.metadata (8.6 kB)
+2026-09-23T17:20:16.2585424Z Collecting argon2-cffi-bindings (from argon2-cffi->minio<8,>=7.2.7->-r requirements.txt (line 47))
+2026-09-23T17:20:16.2598446Z   Using cached argon2_cffi_bindings-26.1.0-cp310-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl.metadata (7.5 kB)
+2026-09-23T17:20:16.3144897Z Collecting MarkupSafe>=2.0 (from jinja2->torch>=1.11.0->sentence-transformers<6,>=5.6.0->-r requirements.txt (line 31))
+2026-09-23T17:20:16.3157661Z   Using cached markupsafe-3.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.7 kB)
+2026-09-23T17:20:16.3364051Z Collecting shellingham>=1.3.0 (from typer->transformers<6,>=5.13.1->-r requirements.txt (line 32))
+2026-09-23T17:20:16.3376032Z   Using cached shellingham-1.5.4-py2.py3-none-any.whl.metadata (3.5 kB)
+2026-09-23T17:20:16.3658998Z Collecting rich>=13.8.0 (from typer->transformers<6,>=5.13.1->-r requirements.txt (line 32))
+2026-09-23T17:20:16.3671297Z   Using cached rich-15.0.0-py3-none-any.whl.metadata (18 kB)
+2026-09-23T17:20:16.3866406Z Collecting markdown-it-py>=2.2.0 (from rich>=13.8.0->typer->transformers<6,>=5.13.1->-r requirements.txt (line 32))
+2026-09-23T17:20:16.3878451Z   Using cached markdown_it_py-4.2.0-py3-none-any.whl.metadata (7.4 kB)
+2026-09-23T17:20:16.4053183Z Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=13.8.0->typer->transformers<6,>=5.13.1->-r requirements.txt (line 32))
+2026-09-23T17:20:16.4064973Z   Using cached mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+2026-09-23T17:20:16.4155886Z Using cached agent_framework_openai-1.10.0-py3-none-any.whl (57 kB)
+2026-09-23T17:20:16.4168047Z Using cached agent_framework_orchestrations-1.0.0-py3-none-any.whl (66 kB)
+2026-09-23T17:20:16.4179903Z Using cached fastapi-0.139.2-py3-none-any.whl (130 kB)
+2026-09-23T17:20:16.4192507Z Using cached starlette-1.3.1-py3-none-any.whl (73 kB)
+2026-09-23T17:20:16.4204532Z Using cached uvicorn-0.34.3-py3-none-any.whl (62 kB)
+2026-09-23T17:20:16.4216523Z Using cached python_dotenv-1.2.3-py3-none-any.whl (22 kB)
+2026-09-23T17:20:16.4228569Z Using cached python_multipart-0.0.32-py3-none-any.whl (30 kB)
+2026-09-23T17:20:16.4240193Z Using cached pydantic-2.13.5-py3-none-any.whl (472 kB)
+2026-09-23T17:20:16.4254207Z Using cached pydantic_core-2.46.5-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
+2026-09-23T17:20:16.4272889Z Using cached pydantic_settings-2.15.0-py3-none-any.whl (69 kB)
+2026-09-23T17:20:16.4284833Z Using cached requests-2.34.2-py3-none-any.whl (73 kB)
+2026-09-23T17:20:16.4296609Z Using cached httpx-0.28.1-py3-none-any.whl (73 kB)
+2026-09-23T17:20:16.4308666Z Using cached yfinance-0.2.66-py2.py3-none-any.whl (123 kB)
+2026-09-23T17:20:16.4321787Z Using cached pandas-2.3.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (12.4 MB)
+2026-09-23T17:20:16.4378596Z Using cached lxml-6.1.3-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl (5.2 MB)
+2026-09-23T17:20:16.4409284Z Using cached scipy-1.18.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (35.3 MB)
+2026-09-23T17:20:16.4546257Z Using cached numpy-2.5.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.7 MB)
+2026-09-23T17:20:16.4617323Z Using cached matplotlib-3.11.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (9.9 MB)
+2026-09-23T17:20:16.4665166Z Using cached seaborn-0.13.2-py3-none-any.whl (294 kB)
+2026-09-23T17:20:16.4677784Z Using cached tabulate-0.9.0-py3-none-any.whl (35 kB)
+2026-09-23T17:20:16.4689370Z Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+2026-09-23T17:20:16.4701924Z Using cached arch-7.2.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (978 kB)
+2026-09-23T17:20:16.4716624Z Using cached qdrant_client-1.14.3-py3-none-any.whl (328 kB)
+2026-09-23T17:20:16.4729023Z Using cached redis-5.3.1-py3-none-any.whl (272 kB)
+2026-09-23T17:20:16.4741605Z Using cached sentence_transformers-5.7.0-py3-none-any.whl (611 kB)
+2026-09-23T17:20:16.4755209Z Using cached transformers-5.17.0-py3-none-any.whl (12.3 MB)
+2026-09-23T17:20:16.4813627Z Using cached pypdf-6.19.0-py3-none-any.whl (395 kB)
+2026-09-23T17:20:16.4826884Z Using cached openpyxl-3.1.5-py2.py3-none-any.whl (250 kB)
+2026-09-23T17:20:16.4839481Z Using cached python_docx-1.2.0-py3-none-any.whl (252 kB)
+2026-09-23T17:20:16.4853391Z Using cached sqlalchemy-2.0.54-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (3.5 MB)
+2026-09-23T17:20:16.4877402Z Using cached alembic-1.15.2-py3-none-any.whl (231 kB)
+2026-09-23T17:20:16.4890149Z Using cached psycopg-3.3.6-py3-none-any.whl (215 kB)
+2026-09-23T17:20:16.4902978Z Using cached duckdb-1.2.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (20.2 MB)
+2026-09-23T17:20:16.4991258Z Using cached minio-7.2.20-py3-none-any.whl (93 kB)
+2026-09-23T17:20:16.5003451Z Using cached dramatiq-1.18.0-py3-none-any.whl (121 kB)
+2026-09-23T17:20:16.5015706Z Using cached apscheduler-3.11.3-py3-none-any.whl (66 kB)
+2026-09-23T17:20:16.5027700Z Using cached langfuse-3.15.0-py3-none-any.whl (424 kB)
+2026-09-23T17:20:16.5102218Z Downloading langgraph-1.2.12-py3-none-any.whl (250 kB)
+2026-09-23T17:20:16.5313352Z Downloading langgraph_checkpoint_sqlite-3.1.1-py3-none-any.whl (40 kB)
+2026-09-23T17:20:16.5407879Z Downloading langgraph_checkpoint_postgres-3.1.2-py3-none-any.whl (52 kB)
+2026-09-23T17:20:16.5437733Z Using cached anyio-4.15.1-py3-none-any.whl (132 kB)
+2026-09-23T17:20:16.5450491Z Using cached charset_normalizer-3.5.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (248 kB)
+2026-09-23T17:20:16.5462910Z Using cached httpcore-1.0.9-py3-none-any.whl (78 kB)
+2026-09-23T17:20:16.5475057Z Using cached huggingface_hub-1.32.0-py3-none-any.whl (842 kB)
+2026-09-23T17:20:16.5489237Z Using cached click-8.5.0-py3-none-any.whl (125 kB)
+2026-09-23T17:20:16.5501658Z Using cached hf_xet-1.6.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.5 MB)
+2026-09-23T17:20:16.5528486Z Using cached idna-3.20-py3-none-any.whl (69 kB)
+2026-09-23T17:20:16.5602865Z Downloading langchain_core-1.6.4-py3-none-any.whl (571 kB)
+2026-09-23T17:20:16.5751781Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 572.0/572.0 kB 42.8 MB/s  0:00:00
+2026-09-23T17:20:16.5830757Z Downloading jsonpatch-1.33-py2.py3-none-any.whl (12 kB)
+2026-09-23T17:20:16.5938485Z Downloading langgraph_checkpoint-4.2.0-py3-none-any.whl (56 kB)
+2026-09-23T17:20:16.6026594Z Downloading langgraph_prebuilt-1.1.0-py3-none-any.whl (41 kB)
+2026-09-23T17:20:16.6127578Z Downloading langgraph_sdk-0.4.5-py3-none-any.whl (162 kB)
+2026-09-23T17:20:16.6227887Z Downloading langsmith-0.14.0-py3-none-any.whl (805 kB)
+2026-09-23T17:20:16.6362514Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 805.0/805.0 kB 63.9 MB/s  0:00:00
+2026-09-23T17:20:16.6431506Z Downloading httpx2-2.13.1-py3-none-any.whl (95 kB)
+2026-09-23T17:20:16.6519537Z Downloading httpcore2-2.13.1-py3-none-any.whl (83 kB)
+2026-09-23T17:20:16.6549922Z Using cached openai-2.54.0-py3-none-any.whl (1.7 MB)
+2026-09-23T17:20:16.6567772Z Using cached distro-1.9.0-py3-none-any.whl (20 kB)
+2026-09-23T17:20:16.6579673Z Using cached jiter-0.17.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (345 kB)
+2026-09-23T17:20:16.6592497Z Using cached opentelemetry_api-1.44.0-py3-none-any.whl (60 kB)
+2026-09-23T17:20:16.6604205Z Using cached opentelemetry_exporter_otlp_proto_http-1.44.0-py3-none-any.whl (21 kB)
+2026-09-23T17:20:16.6615606Z Using cached opentelemetry_exporter_otlp_proto_common-1.44.0-py3-none-any.whl (17 kB)
+2026-09-23T17:20:16.6626686Z Using cached opentelemetry_proto-1.44.0-py3-none-any.whl (72 kB)
+2026-09-23T17:20:16.6638426Z Using cached googleapis_common_protos-1.75.3-py3-none-any.whl (306 kB)
+2026-09-23T17:20:16.6650764Z Using cached opentelemetry_sdk-1.44.0-py3-none-any.whl (137 kB)
+2026-09-23T17:20:16.6662706Z Using cached opentelemetry_semantic_conventions-0.65b0-py3-none-any.whl (204 kB)
+2026-09-23T17:20:16.6674483Z Using cached packaging-25.0-py3-none-any.whl (66 kB)
+2026-09-23T17:20:16.6685843Z Using cached portalocker-2.10.1-py3-none-any.whl (18 kB)
+2026-09-23T17:20:16.6697385Z Using cached protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl (343 kB)
+2026-09-23T17:20:16.6710517Z Using cached psycopg_binary-3.3.6-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (5.2 MB)
+2026-09-23T17:20:16.6742897Z Using cached pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (807 kB)
+2026-09-23T17:20:16.6819481Z Downloading tenacity-9.1.4-py3-none-any.whl (28 kB)
+2026-09-23T17:20:16.6852183Z Using cached tokenizers-0.23.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.4 MB)
+2026-09-23T17:20:16.6875914Z Using cached typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+2026-09-23T17:20:16.6887633Z Using cached urllib3-2.8.0-py3-none-any.whl (135 kB)
+2026-09-23T17:20:16.6974652Z Downloading uuid_utils-0.17.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (323 kB)
+2026-09-23T17:20:16.7123390Z Downloading websockets-16.1.1-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (187 kB)
+2026-09-23T17:20:16.7156741Z Using cached wrapt-1.17.3-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (88 kB)
+2026-09-23T17:20:16.7225787Z Downloading pytest-9.1.1-py3-none-any.whl (386 kB)
+2026-09-23T17:20:16.7324450Z Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+2026-09-23T17:20:16.7415567Z Downloading ruff-0.16.8-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (10.3 MB)
+2026-09-23T17:20:16.7887304Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.3/10.3 MB 227.1 MB/s  0:00:00
+2026-09-23T17:20:16.7965228Z Downloading pyright-1.1.414-py3-none-any.whl (6.2 MB)
+2026-09-23T17:20:16.8695990Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.2/6.2 MB 86.4 MB/s  0:00:00
+2026-09-23T17:20:16.8769749Z Downloading aiosqlite-0.22.1-py3-none-any.whl (17 kB)
+2026-09-23T17:20:16.8798886Z Using cached annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)
+2026-09-23T17:20:16.8810573Z Using cached annotated_types-0.8.0-py3-none-any.whl (13 kB)
+2026-09-23T17:20:16.8822500Z Using cached backoff-2.2.1-py3-none-any.whl (15 kB)
+2026-09-23T17:20:16.8834216Z Using cached beautifulsoup4-4.15.0-py3-none-any.whl (109 kB)
+2026-09-23T17:20:16.8846086Z Using cached certifi-2026.7.22-py3-none-any.whl (136 kB)
+2026-09-23T17:20:16.8858158Z Using cached contourpy-1.4.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (383 kB)
+2026-09-23T17:20:16.8871421Z Using cached curl_cffi-0.16.3-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (13.5 MB)
+2026-09-23T17:20:16.8931660Z Using cached cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (221 kB)
+2026-09-23T17:20:16.8943594Z Using cached cycler-0.12.1-py3-none-any.whl (8.3 kB)
+2026-09-23T17:20:16.8955320Z Using cached filelock-4.0.1-py3-none-any.whl (106 kB)
+2026-09-23T17:20:16.8967587Z Using cached fonttools-4.65.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (5.4 MB)
+2026-09-23T17:20:16.8998007Z Using cached frozendict-2.4.7-py3-none-any.whl (16 kB)
+2026-09-23T17:20:16.9009315Z Using cached fsspec-2026.9.0-py3-none-any.whl (221 kB)
+2026-09-23T17:20:16.9021839Z Using cached greenlet-3.5.6-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (621 kB)
+2026-09-23T17:20:16.9035328Z Using cached grpcio-1.84.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (7.2 MB)
+2026-09-23T17:20:16.9071806Z Using cached h11-0.16.0-py3-none-any.whl (37 kB)
+2026-09-23T17:20:16.9083763Z Using cached httptools-0.8.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (523 kB)
+2026-09-23T17:20:16.9096806Z Using cached h2-4.4.1-py3-none-any.whl (62 kB)
+2026-09-23T17:20:16.9108831Z Using cached hpack-4.2.0-py3-none-any.whl (34 kB)
+2026-09-23T17:20:16.9120623Z Using cached hyperframe-6.1.0-py3-none-any.whl (13 kB)
+2026-09-23T17:20:16.9203599Z Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
+2026-09-23T17:20:16.9300506Z Downloading jsonpointer-3.1.1-py3-none-any.whl (7.7 kB)
+2026-09-23T17:20:16.9329401Z Using cached kiwisolver-1.5.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.5 MB)
+2026-09-23T17:20:16.9410227Z Downloading langchain_protocol-0.0.19-py3-none-any.whl (7.3 kB)
+2026-09-23T17:20:16.9438499Z Using cached multitasking-0.0.13-py3-none-any.whl (16 kB)
+2026-09-23T17:20:16.9521807Z Downloading nodeenv-1.10.0-py2.py3-none-any.whl (23 kB)
+2026-09-23T17:20:16.9610612Z Downloading orjson-3.12.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (131 kB)
+2026-09-23T17:20:16.9704193Z Downloading ormsgpack-1.12.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (212 kB)
+2026-09-23T17:20:16.9741609Z Using cached peewee-4.5.1-py3-none-any.whl (193 kB)
+2026-09-23T17:20:16.9759681Z Using cached pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (6.9 MB)
+2026-09-23T17:20:16.9802190Z Using cached platformdirs-4.11.12-py3-none-any.whl (24 kB)
+2026-09-23T17:20:16.9814485Z Using cached prometheus_client-0.26.0-py3-none-any.whl (64 kB)
+2026-09-23T17:20:16.9892289Z Downloading psycopg_pool-3.3.3-py3-none-any.whl (40 kB)
+2026-09-23T17:20:16.9922536Z Using cached pygments-2.21.0-py3-none-any.whl (1.3 MB)
+2026-09-23T17:20:16.9996992Z Downloading pyjwt-2.15.0-py3-none-any.whl (33 kB)
+2026-09-23T17:20:17.0027388Z Using cached pyparsing-3.3.3-py3-none-any.whl (126 kB)
+2026-09-23T17:20:17.0039791Z Using cached pytz-2026.3.post1-py2.py3-none-any.whl (508 kB)
+2026-09-23T17:20:17.0054165Z Using cached regex-2026.9.10-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (804 kB)
+2026-09-23T17:20:17.0158479Z Downloading requests_toolbelt-1.0.0-py2.py3-none-any.whl (54 kB)
+2026-09-23T17:20:17.0189495Z Using cached safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (516 kB)
+2026-09-23T17:20:17.0203729Z Using cached scikit_learn-1.9.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (9.2 MB)
+2026-09-23T17:20:17.0249694Z Using cached joblib-1.6.0-py3-none-any.whl (306 kB)
+2026-09-23T17:20:17.0263119Z Using cached cloudpickle-3.1.2-py3-none-any.whl (22 kB)
+2026-09-23T17:20:17.0275616Z Using cached narwhals-2.26.0-py3-none-any.whl (474 kB)
+2026-09-23T17:20:17.0289325Z Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+2026-09-23T17:20:17.0301447Z Using cached sniffio-1.3.1-py3-none-any.whl (10 kB)
+2026-09-23T17:20:17.0313395Z Using cached soupsieve-2.9.2-py3-none-any.whl (37 kB)
+2026-09-23T17:20:17.0399052Z Downloading sqlite_vec-0.1.9-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux1_x86_64.whl (163 kB)
+2026-09-23T17:20:17.0435720Z Using cached statsmodels-0.15.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (12.0 MB)
+2026-09-23T17:20:17.0490210Z Using cached formulaic-1.2.2-py3-none-any.whl (118 kB)
+2026-09-23T17:20:17.0502466Z Using cached interface_meta-2.0.1-py3-none-any.whl (15 kB)
+2026-09-23T17:20:17.0514150Z Using cached patsy-1.0.3-py2.py3-none-any.whl (233 kB)
+2026-09-23T17:20:17.0526600Z Using cached threadpoolctl-3.7.0-py3-none-any.whl (26 kB)
+2026-09-23T17:20:17.0538824Z Using cached torch-2.14.0-cp312-cp312-manylinux_2_28_x86_64.whl (554.6 MB)
+2026-09-23T17:20:17.2582178Z Using cached cuda_toolkit-13.0.3.0-py2.py3-none-any.whl (2.5 kB)
+2026-09-23T17:20:17.2593722Z Using cached nvidia_cudnn_cu13-9.24.0.43-py3-none-manylinux_2_27_x86_64.whl (553.1 MB)
+2026-09-23T17:20:17.4514661Z Using cached nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_x86_64.whl (170.1 MB)
+2026-09-23T17:20:17.5380838Z Using cached nvidia_nccl_cu13-2.30.7-py3-none-manylinux_2_18_x86_64.whl (216.0 MB)
+2026-09-23T17:20:17.7997706Z Using cached nvidia_nvshmem_cu13-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (60.4 MB)
+2026-09-23T17:20:17.9007157Z Downloading cuda_bindings-13.4.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (7.2 MB)
+2026-09-23T17:20:19.9001497Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.2/7.2 MB 3.5 MB/s  0:00:01
+2026-09-23T17:20:19.9002536Z Using cached nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_x86_64.whl (423.1 MB)
+2026-09-23T17:20:20.1813431Z Using cached nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_x86_64.whl (10.7 MB)
+2026-09-23T17:20:20.1864844Z Using cached nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl (90.2 MB)
+2026-09-23T17:20:20.2194729Z Using cached nvidia_cuda_runtime-13.0.96-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (2.2 MB)
+2026-09-23T17:20:20.2214287Z Using cached nvidia_cufft-12.0.0.61-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (214.1 MB)
+2026-09-23T17:20:20.2967784Z Using cached nvidia_cufile-1.15.1.6-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.2 MB)
+2026-09-23T17:20:20.2983951Z Using cached nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_x86_64.whl (59.5 MB)
+2026-09-23T17:20:20.3203121Z Using cached nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_x86_64.whl (200.9 MB)
+2026-09-23T17:20:20.6092682Z Using cached nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (145.9 MB)
+2026-09-23T17:20:20.8739505Z Using cached nvidia_nvjitlink-13.4.92-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl (42.5 MB)
+2026-09-23T17:20:20.9541087Z Using cached nvidia_nvtx-13.0.85-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl (148 kB)
+2026-09-23T17:20:20.9554170Z Using cached triton-3.8.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (248.0 MB)
+2026-09-23T17:20:21.4837955Z Using cached cuda_pathfinder-1.8.2-py3-none-any.whl (62 kB)
+2026-09-23T17:20:21.4920683Z Downloading networkx-3.7-py3-none-any.whl (2.1 MB)
+2026-09-23T17:20:22.3833695Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 2.1 MB/s  0:00:00
+2026-09-23T17:20:22.3848126Z Using cached setuptools-84.0.0-py3-none-any.whl (818 kB)
+2026-09-23T17:20:22.3863341Z Using cached sympy-1.14.0-py3-none-any.whl (6.3 MB)
+2026-09-23T17:20:22.3898384Z Using cached mpmath-1.3.0-py3-none-any.whl (536 kB)
+2026-09-23T17:20:22.3912382Z Using cached tqdm-4.70.1-py3-none-any.whl (80 kB)
+2026-09-23T17:20:22.3987718Z Downloading truststore-0.10.4-py3-none-any.whl (18 kB)
+2026-09-23T17:20:22.9370768Z Using cached typing_inspection-0.4.4-py3-none-any.whl (14 kB)
+2026-09-23T17:20:22.9382549Z Using cached tzdata-2026.4-py2.py3-none-any.whl (347 kB)
+2026-09-23T17:20:22.9395695Z Using cached tzlocal-5.4.4-py3-none-any.whl (18 kB)
+2026-09-23T17:20:22.9408393Z Using cached uvloop-0.22.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.4 MB)
+2026-09-23T17:20:22.9500031Z Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (458 kB)
+2026-09-23T17:20:23.6870902Z Downloading xxhash-4.0.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (261 kB)
+2026-09-23T17:20:23.9866112Z Downloading zstandard-0.25.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (5.5 MB)
+2026-09-23T17:20:24.7390952Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.5/5.5 MB 7.1 MB/s  0:00:00
+2026-09-23T17:20:24.7403644Z Using cached argon2_cffi-25.1.0-py3-none-any.whl (14 kB)
+2026-09-23T17:20:24.7416053Z Using cached argon2_cffi_bindings-26.1.0-cp310-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl (26 kB)
+2026-09-23T17:20:24.7427444Z Using cached et_xmlfile-2.0.0-py3-none-any.whl (18 kB)
+2026-09-23T17:20:24.7439110Z Using cached jinja2-3.1.6-py3-none-any.whl (134 kB)
+2026-09-23T17:20:24.7451972Z Using cached markupsafe-3.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (22 kB)
+2026-09-23T17:20:24.7523603Z Downloading mako-1.4.3-py3-none-any.whl (80 kB)
+2026-09-23T17:20:25.0836704Z Using cached pycparser-3.0-py3-none-any.whl (48 kB)
+2026-09-23T17:20:25.0849002Z Using cached pycryptodome-3.23.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.3 MB)
+2026-09-23T17:20:25.0869096Z Using cached typer-0.27.2-py3-none-any.whl (123 kB)
+2026-09-23T17:20:25.0881379Z Using cached rich-15.0.0-py3-none-any.whl (310 kB)
+2026-09-23T17:20:25.0894553Z Using cached markdown_it_py-4.2.0-py3-none-any.whl (91 kB)
+2026-09-23T17:20:25.0906618Z Using cached mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+2026-09-23T17:20:25.0918472Z Using cached shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+2026-09-23T17:20:28.6130257Z Installing collected packages: sqlite-vec, pytz, nvidia-cusparselt-cu13, multitasking, mpmath, cuda-toolkit, zstandard, xxhash, wrapt, websockets, uvloop, uuid-utils, urllib3, tzlocal, tzdata, typing-extensions, truststore, triton, tqdm, threadpoolctl, tenacity, tabulate, sympy, soupsieve, sniffio, six, shellingham, setuptools, safetensors, ruff, regex, pyyaml, python-multipart, python-dotenv, pypdf, pyparsing, PyJWT, pygments, pycryptodome, pycparser, psycopg-binary, protobuf, prometheus-client, portalocker, pluggy, platformdirs, pillow, peewee, packaging, ormsgpack, orjson, nvidia-nvtx, nvidia-nvshmem-cu13, nvidia-nvjitlink, nvidia-nccl-cu13, nvidia-curand, nvidia-cufile, nvidia-cuda-runtime, nvidia-cuda-nvrtc, nvidia-cuda-cupti, numpy, nodeenv, networkx, narwhals, mdurl, MarkupSafe, lxml, kiwisolver, jsonpointer, jiter, interface-meta, iniconfig, idna, hyperframe, httptools, hpack, hf-xet, h11, greenlet, fsspec, frozendict, fonttools, filelock, et-xmlfile, duckdb, distro, cycler, cuda-pathfinder, cloudpickle, click, charset_normalizer, certifi, backoff, annotated-types, annotated-doc, aiosqlite, uvicorn, typing-inspection, sqlalchemy, scipy, requests, redis, python-docx, python-dateutil, pytest, pyright, pydantic-core, psycopg-pool, psycopg, patsy, opentelemetry-proto, opentelemetry-api, openpyxl, nvidia-cusparse, nvidia-cufft, nvidia-cublas, markdown-it-py, Mako, langchain-protocol, jsonpatch, joblib, jinja2, httpcore2, httpcore, h2, grpcio, googleapis-common-protos, dramatiq, cuda-bindings, contourpy, cffi, beautifulsoup4, apscheduler, anyio, watchfiles, starlette, scikit-learn, rich, requests-toolbelt, pydantic, pandas, opentelemetry-semantic-conventions, opentelemetry-exporter-otlp-proto-common, nvidia-cusolver, nvidia-cudnn-cu13, matplotlib, httpx2, httpx, curl_cffi, argon2-cffi-bindings, alembic, yfinance, typer, seaborn, pydantic-settings, opentelemetry-sdk, openai, langsmith, huggingface-hub, formulaic, fastapi, argon2-cffi, agent-framework-core, torch, tokenizers, statsmodels, qdrant-client, opentelemetry-exporter-otlp-proto-http, minio, langchain-core, agent-framework-orchestrations, agent-framework-openai, transformers, langgraph-sdk, langgraph-checkpoint, langfuse, arch, sentence-transformers, langgraph-prebuilt, langgraph-checkpoint-sqlite, langgraph-checkpoint-postgres, langgraph
+2026-09-23T17:21:47.8705795Z 
+2026-09-23T17:21:47.8848746Z Successfully installed Mako-1.4.3 MarkupSafe-3.0.3 PyJWT-2.15.0 agent-framework-core-1.10.0 agent-framework-openai-1.10.0 agent-framework-orchestrations-1.0.0 aiosqlite-0.22.1 alembic-1.15.2 annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.15.1 apscheduler-3.11.3 arch-7.2.0 argon2-cffi-25.1.0 argon2-cffi-bindings-26.1.0 backoff-2.2.1 beautifulsoup4-4.15.0 certifi-2026.7.22 cffi-2.1.1 charset_normalizer-3.5.1 click-8.5.0 cloudpickle-3.1.2 contourpy-1.4.0 cuda-bindings-13.4.3 cuda-pathfinder-1.8.2 cuda-toolkit-13.0.3.0 curl_cffi-0.16.3 cycler-0.12.1 distro-1.9.0 dramatiq-1.18.0 duckdb-1.2.2 et-xmlfile-2.0.0 fastapi-0.139.2 filelock-4.0.1 fonttools-4.65.0 formulaic-1.2.2 frozendict-2.4.7 fsspec-2026.9.0 googleapis-common-protos-1.75.3 greenlet-3.5.6 grpcio-1.84.0 h11-0.16.0 h2-4.4.1 hf-xet-1.6.0 hpack-4.2.0 httpcore-1.0.9 httpcore2-2.13.1 httptools-0.8.0 httpx-0.28.1 httpx2-2.13.1 huggingface-hub-1.32.0 hyperframe-6.1.0 idna-3.20 iniconfig-2.3.0 interface-meta-2.0.1 jinja2-3.1.6 jiter-0.17.0 joblib-1.6.0 jsonpatch-1.33 jsonpointer-3.1.1 kiwisolver-1.5.1 langchain-core-1.6.4 langchain-protocol-0.0.19 langfuse-3.15.0 langgraph-1.2.12 langgraph-checkpoint-4.2.0 langgraph-checkpoint-postgres-3.1.2 langgraph-checkpoint-sqlite-3.1.1 langgraph-prebuilt-1.1.0 langgraph-sdk-0.4.5 langsmith-0.14.0 lxml-6.1.3 markdown-it-py-4.2.0 matplotlib-3.11.2 mdurl-0.1.2 minio-7.2.20 mpmath-1.3.0 multitasking-0.0.13 narwhals-2.26.0 networkx-3.7 nodeenv-1.10.0 numpy-2.5.3 nvidia-cublas-13.1.1.3 nvidia-cuda-cupti-13.0.85 nvidia-cuda-nvrtc-13.0.88 nvidia-cuda-runtime-13.0.96 nvidia-cudnn-cu13-9.24.0.43 nvidia-cufft-12.0.0.61 nvidia-cufile-1.15.1.6 nvidia-curand-10.4.0.35 nvidia-cusolver-12.0.4.66 nvidia-cusparse-12.6.3.3 nvidia-cusparselt-cu13-0.8.1 nvidia-nccl-cu13-2.30.7 nvidia-nvjitlink-13.4.92 nvidia-nvshmem-cu13-3.4.5 nvidia-nvtx-13.0.85 openai-2.54.0 openpyxl-3.1.5 opentelemetry-api-1.44.0 opentelemetry-exporter-otlp-proto-common-1.44.0 opentelemetry-exporter-otlp-proto-http-1.44.0 opentelemetry-proto-1.44.0 opentelemetry-sdk-1.44.0 opentelemetry-semantic-conventions-0.65b0 orjson-3.12.0 ormsgpack-1.12.2 packaging-25.0 pandas-2.3.3 patsy-1.0.3 peewee-4.5.1 pillow-12.3.0 platformdirs-4.11.12 pluggy-1.6.0 portalocker-2.10.1 prometheus-client-0.26.0 protobuf-7.36.2 psycopg-3.3.6 psycopg-binary-3.3.6 psycopg-pool-3.3.3 pycparser-3.0 pycryptodome-3.23.0 pydantic-2.13.5 pydantic-core-2.46.5 pydantic-settings-2.15.0 pygments-2.21.0 pyparsing-3.3.3 pypdf-6.19.0 pyright-1.1.414 pytest-9.1.1 python-dateutil-2.9.0.post0 python-docx-1.2.0 python-dotenv-1.2.3 python-multipart-0.0.32 pytz-2026.3.post1 pyyaml-6.0.3 qdrant-client-1.14.3 redis-5.3.1 regex-2026.9.10 requests-2.34.2 requests-toolbelt-1.0.0 rich-15.0.0 ruff-0.16.8 safetensors-0.8.0 scikit-learn-1.9.1 scipy-1.18.1 seaborn-0.13.2 sentence-transformers-5.7.0 setuptools-84.0.0 shellingham-1.5.4 six-1.17.0 sniffio-1.3.1 soupsieve-2.9.2 sqlalchemy-2.0.54 sqlite-vec-0.1.9 starlette-1.3.1 statsmodels-0.15.0 sympy-1.14.0 tabulate-0.9.0 tenacity-9.1.4 threadpoolctl-3.7.0 tokenizers-0.23.2 torch-2.14.0 tqdm-4.70.1 transformers-5.17.0 triton-3.8.0 truststore-0.10.4 typer-0.27.2 typing-extensions-4.16.0 typing-inspection-0.4.4 tzdata-2026.4 tzlocal-5.4.4 urllib3-2.8.0 uuid-utils-0.17.1 uvicorn-0.34.3 uvloop-0.22.1 watchfiles-1.3.0 websockets-16.1.1 wrapt-1.17.3 xxhash-4.0.1 yfinance-0.2.66 zstandard-0.25.0
+2026-09-23T17:21:48.7224192Z ##[group]Run python -m ruff check .
+2026-09-23T17:21:48.7224573Z [36;1mpython -m ruff check .[0m
+2026-09-23T17:21:48.7316449Z shell: /usr/bin/bash -e {0}
+2026-09-23T17:21:48.7316719Z env:
+2026-09-23T17:21:48.7316910Z   APP_ENV: test
+2026-09-23T17:21:48.7317145Z   DATABASE_URL: sqlite:///./cavaai_ci.db
+2026-09-23T17:21:48.7317432Z   CAVAAI_ENABLE_VECTOR_INGEST: 0
+2026-09-23T17:21:48.7317691Z   CAVAAI_ENABLE_VECTOR_CHAT: 0
+2026-09-23T17:21:48.7318000Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:21:48.7318439Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib/pkgconfig
+2026-09-23T17:21:48.7318897Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:21:48.7319287Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:21:48.7319678Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:21:48.7320315Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib
+2026-09-23T17:21:48.7320710Z ##[endgroup]
+2026-09-23T17:21:48.8444301Z All checks passed!
+2026-09-23T17:21:48.8483115Z ##[group]Run pyright
+2026-09-23T17:21:48.8483385Z [36;1mpyright[0m
+2026-09-23T17:21:48.8553566Z shell: /usr/bin/bash -e {0}
+2026-09-23T17:21:48.8553825Z env:
+2026-09-23T17:21:48.8554013Z   APP_ENV: test
+2026-09-23T17:21:48.8554242Z   DATABASE_URL: sqlite:///./cavaai_ci.db
+2026-09-23T17:21:48.8554529Z   CAVAAI_ENABLE_VECTOR_INGEST: 0
+2026-09-23T17:21:48.8554791Z   CAVAAI_ENABLE_VECTOR_CHAT: 0
+2026-09-23T17:21:48.8555101Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:21:48.8555543Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib/pkgconfig
+2026-09-23T17:21:48.8555975Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:21:48.8556374Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:21:48.8556794Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:21:48.8557189Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib
+2026-09-23T17:21:48.8557523Z ##[endgroup]
+2026-09-23T17:21:49.3795016Z venv .venv subdirectory not found in venv path /home/runner/work/CavaAI/CavaAI/data-engine.
+2026-09-23T17:21:49.4522089Z File or directory "/home/runner/work/CavaAI/CavaAI/data-engine/routers" does not exist.
+2026-09-23T17:22:20.0903065Z /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/corporate_actions.py
+2026-09-23T17:22:20.0908011Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/corporate_actions.py:65:9 - warning: No overloads for "__init__" match the provided arguments (reportCallIssue)
+2026-09-23T17:22:20.0910564Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/corporate_actions.py:66:13 - warning: Argument of type "Sequence[Row[Tuple[int, str]]]" cannot be assigned to parameter "iterable" of type "Iterable[list[bytes]]" in function "__init__"
+2026-09-23T17:22:20.0912535Z     "Sequence[Row[Tuple[int, str]]]" is not assignable to "Iterable[list[bytes]]"
+2026-09-23T17:22:20.0913304Z       Type parameter "_T_co@Iterable" is covariant, but "Row[Tuple[int, str]]" is not a subtype of "list[bytes]"
+2026-09-23T17:22:20.0914359Z         "Row[Tuple[int, str]]" is not assignable to "list[bytes]" (reportArgumentType)
+2026-09-23T17:22:20.0916083Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/corporate_actions.py:73:30 - warning: Argument of type "bytes | None" cannot be assigned to parameter "ticker" of type "str | None" in function "_payload"
+2026-09-23T17:22:20.0917610Z     Type "bytes | None" is not assignable to type "str | None"
+2026-09-23T17:22:20.0918344Z       Type "bytes" is not assignable to type "str | None"
+2026-09-23T17:22:20.0918966Z         "bytes" is not assignable to "str"
+2026-09-23T17:22:20.0919608Z         "bytes" is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.0921434Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/corporate_actions.py:73:42 - warning: Argument of type "int" cannot be assigned to parameter "key" of type "bytes" in function "get"
+2026-09-23T17:22:20.0922915Z     "int" is not assignable to "bytes" (reportArgumentType)
+2026-09-23T17:22:20.0923592Z /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/export.py
+2026-09-23T17:22:20.0924867Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/export.py:140:44 - warning: "base_currency" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.0926258Z /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/portfolio.py
+2026-09-23T17:22:20.0927754Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/portfolio.py:70:18 - warning: No overloads for "__init__" match the provided arguments (reportCallIssue)
+2026-09-23T17:22:20.0930529Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/portfolio.py:71:9 - warning: Argument of type "Sequence[Row[Tuple[int | None, date]]]" cannot be assigned to parameter "iterable" of type "Iterable[list[bytes]]" in function "__init__"
+2026-09-23T17:22:20.0933497Z     "Sequence[Row[Tuple[int | None, date]]]" is not assignable to "Iterable[list[bytes]]"
+2026-09-23T17:22:20.0935033Z       Type parameter "_T_co@Iterable" is covariant, but "Row[Tuple[int | None, date]]" is not a subtype of "list[bytes]"
+2026-09-23T17:22:20.0936842Z         "Row[Tuple[int | None, date]]" is not assignable to "list[bytes]" (reportArgumentType)
+2026-09-23T17:22:20.0938716Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/portfolio.py:82:36 - warning: Argument of type "int" cannot be assigned to parameter "key" of type "bytes" in function "get"
+2026-09-23T17:22:20.0940678Z     "int" is not assignable to "bytes" (reportArgumentType)
+2026-09-23T17:22:20.0942142Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/portfolio.py:90:24 - warning: Operator "-" not supported for types "date" and "bytes" (reportOperatorIssue)
+2026-09-23T17:22:20.0943205Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/portfolio.py:92:41 - warning: Cannot access attribute "isoformat" for class "bytes"
+2026-09-23T17:22:20.0944006Z     Attribute "isoformat" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.0944485Z /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/taxes.py
+2026-09-23T17:22:20.0945242Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/taxes.py:31:12 - warning: Argument missing for parameter "fiscal_year" (reportCallIssue)
+2026-09-23T17:22:20.0946003Z /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/thesis.py
+2026-09-23T17:22:20.0946771Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/thesis.py:58:24 - warning: "ticker" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.0947801Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/thesis.py:59:30 - warning: "name" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.0948822Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/thesis.py:69:41 - warning: "ticker" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.0950254Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/thesis.py:190:40 - warning: Argument of type "Company | None" cannot be assigned to parameter "company" of type "Company" in function "build_memo_markdown"
+2026-09-23T17:22:20.0951312Z     Type "Company | None" is not assignable to type "Company"
+2026-09-23T17:22:20.0951775Z       "None" is not assignable to "Company" (reportArgumentType)
+2026-09-23T17:22:20.0952517Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/api/routes/thesis.py:195:75 - warning: "ticker" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.0953266Z /home/runner/work/CavaAI/CavaAI/data-engine/app/core/database.py
+2026-09-23T17:22:20.0954054Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/core/database.py:72:40 - warning: "attrs" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.0954822Z /home/runner/work/CavaAI/CavaAI/data-engine/app/llm/adapters.py
+2026-09-23T17:22:20.0955537Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/llm/adapters.py:127:39 - warning: Cannot access attribute "value" for class "str"
+2026-09-23T17:22:20.0956300Z     Attribute "value" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.0957224Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/llm/adapters.py:181:19 - warning: Argument of type "Any | str | None" cannot be assigned to parameter "model" of type "str" in function "__init__"
+2026-09-23T17:22:20.0958192Z     Type "Any | str | None" is not assignable to type "str"
+2026-09-23T17:22:20.0958664Z       "None" is not assignable to "str" (reportArgumentType)
+2026-09-23T17:22:20.0959107Z /home/runner/work/CavaAI/CavaAI/data-engine/app/llm/factory.py
+2026-09-23T17:22:20.0959995Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/llm/factory.py:38:17 - warning: Argument of type "str | None" cannot be assigned to parameter "api_key" of type "str" in function "__init__"
+2026-09-23T17:22:20.0961167Z     Type "str | None" is not assignable to type "str"
+2026-09-23T17:22:20.0961880Z       "None" is not assignable to "str" (reportArgumentType)
+2026-09-23T17:22:20.0962429Z /home/runner/work/CavaAI/CavaAI/data-engine/app/models/entities.py
+2026-09-23T17:22:20.0963497Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/models/entities.py:556:18 - warning: Type of "date" could not be determined because it refers to itself (reportGeneralTypeIssues)
+2026-09-23T17:22:20.0964679Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/models/entities.py:556:18 - warning: Variable not allowed in type expression (reportInvalidTypeForm)
+2026-09-23T17:22:20.0965855Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/models/entities.py:1764:18 - warning: Type of "date" could not be determined because it refers to itself (reportGeneralTypeIssues)
+2026-09-23T17:22:20.0967026Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/models/entities.py:1764:18 - warning: Variable not allowed in type expression (reportInvalidTypeForm)
+2026-09-23T17:22:20.0967874Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/alert_rule_service.py
+2026-09-23T17:22:20.0968756Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/alert_rule_service.py:95:13 - warning: Operator "+" not supported for "None" (reportOptionalOperand)
+2026-09-23T17:22:20.0969927Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/alert_rule_service.py:294:26 - warning: Operator ">" not supported for types "Decimal | str" and "Decimal | str"
+2026-09-23T17:22:20.0972380Z     Operator ">" not supported for types "Decimal" and "str"
+2026-09-23T17:22:20.0973661Z     Operator ">" not supported for types "str" and "Decimal" (reportOperatorIssue)
+2026-09-23T17:22:20.0974722Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/alert_rule_service.py:295:26 - warning: Operator "<" not supported for types "Decimal | str" and "Decimal | str"
+2026-09-23T17:22:20.0977723Z     Operator "<" not supported for types "Decimal" and "str"
+2026-09-23T17:22:20.0979419Z     Operator "<" not supported for types "str" and "Decimal" (reportOperatorIssue)
+2026-09-23T17:22:20.0981690Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/alert_rule_service.py:296:27 - warning: Operator ">=" not supported for types "Decimal | str" and "Decimal | str"
+2026-09-23T17:22:20.0982599Z     Operator ">=" not supported for types "Decimal" and "str"
+2026-09-23T17:22:20.0983163Z     Operator ">=" not supported for types "str" and "Decimal" (reportOperatorIssue)
+2026-09-23T17:22:20.0984090Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/alert_rule_service.py:297:27 - warning: Operator "<=" not supported for types "Decimal | str" and "Decimal | str"
+2026-09-23T17:22:20.0985086Z     Operator "<=" not supported for types "Decimal" and "str"
+2026-09-23T17:22:20.0985682Z     Operator "<=" not supported for types "str" and "Decimal" (reportOperatorIssue)
+2026-09-23T17:22:20.0986250Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/chat_service.py
+2026-09-23T17:22:20.0987383Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/chat_service.py:593:26 - warning: Argument of type "list[dict[str, Unknown]]" cannot be assigned to parameter "sections" of type "list[SynthesisSection]" in function "__init__"
+2026-09-23T17:22:20.0988538Z     "list[dict[str, Unknown]]" is not assignable to "list[SynthesisSection]"
+2026-09-23T17:22:20.0989261Z       Type parameter "_T@list" is invariant, but "dict[str, Unknown]" is not the same as "SynthesisSection"
+2026-09-23T17:22:20.0990230Z       Consider switching from "list" to "Sequence" which is covariant (reportArgumentType)
+2026-09-23T17:22:20.0992893Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/chat_service.py:647:22 - warning: Argument of type "list[dict[str, str | list[str]] | dict[str, str | list[Any]]]" cannot be assigned to parameter "sections" of type "list[SynthesisSection]" in function "__init__" (reportArgumentType)
+2026-09-23T17:22:20.0994229Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/claim_intelligence_service.py
+2026-09-23T17:22:20.0995357Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/claim_intelligence_service.py:467:37 - warning: "claim" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.0996433Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/dividend_ingestion_service.py
+2026-09-23T17:22:20.0997727Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/dividend_ingestion_service.py:187:29 - warning: Argument of type "Generator[datetime | None, None, None]" cannot be assigned to parameter "iterable" of type "Iterable[SupportsRichComparisonT@max]" in function "max"
+2026-09-23T17:22:20.0999165Z     "Generator[datetime | None, None, None]" is not assignable to "Iterable[SupportsRichComparisonT@max]"
+2026-09-23T17:22:20.1000275Z       Type parameter "_T_co@Iterable" is covariant, but "datetime | None" is not a subtype of "SupportsRichComparisonT@max"
+2026-09-23T17:22:20.1001085Z         Type "datetime | None" is not assignable to type "SupportsRichComparison"
+2026-09-23T17:22:20.1001740Z           Type "datetime | None" is not assignable to type "SupportsRichComparison"
+2026-09-23T17:22:20.1002438Z             Type "None" is not assignable to type "SupportsRichComparison" (reportArgumentType)
+2026-09-23T17:22:20.1003117Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/document_ingestion_service.py
+2026-09-23T17:22:20.1004148Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/document_ingestion_service.py:312:18 - warning: Import "docling.document_converter" could not be resolved (reportMissingImports)
+2026-09-23T17:22:20.1005165Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/financial_terminal_service.py
+2026-09-23T17:22:20.1006223Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/financial_terminal_service.py:117:38 - warning: Argument of type "int | None" cannot be assigned to parameter "key" of type "int" in function "get"
+2026-09-23T17:22:20.1007190Z     Type "int | None" is not assignable to type "int"
+2026-09-23T17:22:20.1007637Z       "None" is not assignable to "int" (reportArgumentType)
+2026-09-23T17:22:20.1008180Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/fundamental_review_service.py
+2026-09-23T17:22:20.1009321Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/fundamental_review_service.py:128:41 - warning: Argument of type "tuple[int | None, str]" cannot be assigned to parameter "key" of type "tuple[int, str]" in function "setdefault"
+2026-09-23T17:22:20.1010672Z     "tuple[int | None, str]" is not assignable to "tuple[int, str]"
+2026-09-23T17:22:20.1011132Z       Tuple entry 1 is incorrect type
+2026-09-23T17:22:20.1011535Z         Type "int | None" is not assignable to type "int"
+2026-09-23T17:22:20.1011999Z           "None" is not assignable to "int" (reportArgumentType)
+2026-09-23T17:22:20.1013048Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/fundamental_review_service.py:143:43 - warning: Argument of type "tuple[int | None, str]" cannot be assigned to parameter "key" of type "tuple[int, str]" in function "setdefault"
+2026-09-23T17:22:20.1014175Z     "tuple[int | None, str]" is not assignable to "tuple[int, str]"
+2026-09-23T17:22:20.1014610Z       Tuple entry 1 is incorrect type
+2026-09-23T17:22:20.1014995Z         Type "int | None" is not assignable to type "int"
+2026-09-23T17:22:20.1015459Z           "None" is not assignable to "int" (reportArgumentType)
+2026-09-23T17:22:20.1016266Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/fundamental_review_service.py:199:47 - warning: Cannot access attribute "value" for class "object"
+2026-09-23T17:22:20.1017115Z     Attribute "value" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1017913Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/fundamental_review_service.py:205:75 - warning: Cannot access attribute "id" for class "object"
+2026-09-23T17:22:20.1018742Z     Attribute "id" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1019512Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/fundamental_review_service.py:206:50 - warning: Cannot access attribute "id" for class "object"
+2026-09-23T17:22:20.1020797Z     Attribute "id" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1021639Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/fundamental_review_service.py:222:37 - warning: Cannot access attribute "source_type" for class "object"
+2026-09-23T17:22:20.1022691Z     Attribute "source_type" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1023514Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/fundamental_review_service.py:224:45 - warning: Cannot access attribute "period" for class "object"
+2026-09-23T17:22:20.1024399Z     Attribute "period" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1025243Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/fundamental_review_service.py:227:49 - warning: Cannot access attribute "created_at" for class "object"
+2026-09-23T17:22:20.1026127Z     Attribute "created_at" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1026697Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/ibkr_import_service.py
+2026-09-23T17:22:20.1027582Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/ibkr_import_service.py:362:21 - warning: Operator "*" not supported for "None" (reportOptionalOperand)
+2026-09-23T17:22:20.1028790Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/ibkr_import_service.py:365:21 - warning: Operator "-" not supported for types "Decimal | None" and "Decimal | None"
+2026-09-23T17:22:20.1029986Z     Operator "-" not supported for types "Decimal" and "None" when expected type is "SQLCoreOperations[Decimal | None] | Decimal | None"
+2026-09-23T17:22:20.1031283Z     Operator "-" not supported for types "None" and "Decimal" when expected type is "SQLCoreOperations[Decimal | None] | Decimal | None"
+2026-09-23T17:22:20.1032399Z     Operator "-" not supported for types "None" and "None" when expected type is "SQLCoreOperations[Decimal | None] | Decimal | None" (reportOperatorIssue)
+2026-09-23T17:22:20.1033245Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/insider_service.py
+2026-09-23T17:22:20.1034438Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/insider_service.py:154:44 - warning: Argument of type "set[Unknown | None]" cannot be assigned to parameter "iterable" of type "Iterable[SupportsRichComparisonT@sorted]" in function "sorted"
+2026-09-23T17:22:20.1035708Z     "set[Unknown | None]" is not assignable to "Iterable[SupportsRichComparisonT@sorted]"
+2026-09-23T17:22:20.1036561Z       Type parameter "_T_co@Iterable" is covariant, but "Unknown | None" is not a subtype of "SupportsRichComparisonT@sorted"
+2026-09-23T17:22:20.1037344Z         Type "Unknown | None" is not assignable to type "SupportsRichComparison"
+2026-09-23T17:22:20.1037961Z           Type "Unknown | None" is not assignable to type "SupportsRichComparison"
+2026-09-23T17:22:20.1038653Z             Type "None" is not assignable to type "SupportsRichComparison" (reportArgumentType)
+2026-09-23T17:22:20.1039874Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/insider_service.py:208:58 - warning: Argument of type "list[dict[Unknown, Unknown]] | str" cannot be assigned to parameter "source" of type "str | bytes" in function "parse_form4_xml"
+2026-09-23T17:22:20.1041319Z     Type "list[dict[Unknown, Unknown]] | str" is not assignable to type "str | bytes"
+2026-09-23T17:22:20.1041961Z       Type "list[dict[Unknown, Unknown]]" is not assignable to type "str | bytes"
+2026-09-23T17:22:20.1042510Z         "list[dict[Unknown, Unknown]]" is not assignable to "str"
+2026-09-23T17:22:20.1043110Z         "list[dict[Unknown, Unknown]]" is not assignable to "bytes" (reportArgumentType)
+2026-09-23T17:22:20.1044261Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/insider_service.py:215:58 - warning: Argument of type "list[dict[Unknown, Unknown]] | str" cannot be assigned to parameter "xml_text" of type "str | None" in function "persist_filing"
+2026-09-23T17:22:20.1045435Z     Type "list[dict[Unknown, Unknown]] | str" is not assignable to type "str | None"
+2026-09-23T17:22:20.1046227Z       Type "list[dict[Unknown, Unknown]]" is not assignable to type "str | None"
+2026-09-23T17:22:20.1046784Z         "list[dict[Unknown, Unknown]]" is not assignable to "str"
+2026-09-23T17:22:20.1047483Z         "list[dict[Unknown, Unknown]]" is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.1048082Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/kpi_extraction_service.py
+2026-09-23T17:22:20.1049133Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/kpi_extraction_service.py:285:35 - warning: Argument of type "int | None" cannot be assigned to parameter "key" of type "int" in function "get"
+2026-09-23T17:22:20.1050293Z     Type "int | None" is not assignable to type "int"
+2026-09-23T17:22:20.1050784Z       "None" is not assignable to "int" (reportArgumentType)
+2026-09-23T17:22:20.1051282Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/langfuse_client.py
+2026-09-23T17:22:20.1052119Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/langfuse_client.py:45:39 - warning: Cannot access attribute "trace" for class "Langfuse"
+2026-09-23T17:22:20.1052948Z     Attribute "trace" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1053780Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/langfuse_client.py:62:28 - warning: "flush" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1054695Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/long_term_model_service.py
+2026-09-23T17:22:20.1055642Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/long_term_model_service.py:144:62 - warning: "value" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1056860Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/long_term_model_service.py:742:51 - warning: Operator ">" not supported for "None" (reportOptionalOperand)
+2026-09-23T17:22:20.1058388Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/long_term_model_service.py:918:20 - warning: Argument of type "list[float | None]" cannot be assigned to parameter "iterable" of type "Iterable[SupportsRichComparisonT@min]" in function "min"
+2026-09-23T17:22:20.1059641Z     "list[float | None]" is not assignable to "Iterable[SupportsRichComparisonT@min]"
+2026-09-23T17:22:20.1060744Z       Type parameter "_T_co@Iterable" is covariant, but "float | None" is not a subtype of "SupportsRichComparisonT@min"
+2026-09-23T17:22:20.1061522Z         Type "float | None" is not assignable to type "SupportsRichComparison"
+2026-09-23T17:22:20.1062133Z           Type "float | None" is not assignable to type "SupportsRichComparison"
+2026-09-23T17:22:20.1062814Z             Type "None" is not assignable to type "SupportsRichComparison" (reportArgumentType)
+2026-09-23T17:22:20.1063762Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/long_term_model_service.py:1469:62 - warning: "id" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1065053Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/long_term_model_service.py:1528:31 - warning: "value" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1066368Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/long_term_model_service.py:1529:271 - warning: "period" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1067359Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/market_opportunity_service.py
+2026-09-23T17:22:20.1068472Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/market_opportunity_service.py:278:64 - warning: Argument of type "int | None" cannot be assigned to parameter "key" of type "int" in function "__getitem__"
+2026-09-23T17:22:20.1069474Z     Type "int | None" is not assignable to type "int"
+2026-09-23T17:22:20.1069938Z       "None" is not assignable to "int" (reportArgumentType)
+2026-09-23T17:22:20.1070686Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/peer_comparison_service.py
+2026-09-23T17:22:20.1072054Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/peer_comparison_service.py:284:49 - warning: Argument of type "Decimal | float" cannot be assigned to parameter "value" of type "Decimal | None" in function "_decimal_string"
+2026-09-23T17:22:20.1073326Z     Type "Decimal | float" is not assignable to type "Decimal | None"
+2026-09-23T17:22:20.1073844Z       Type "float" is not assignable to type "Decimal | None"
+2026-09-23T17:22:20.1074277Z         "float" is not assignable to "Decimal"
+2026-09-23T17:22:20.1074729Z         "float" is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.1075284Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_intelligence_service.py
+2026-09-23T17:22:20.1076620Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_intelligence_service.py:150:43 - warning: Argument of type "list[Row[Tuple[Position, Company]]]" cannot be assigned to parameter "positions" of type "list[tuple[Position, Company]]" in function "_xirr"
+2026-09-23T17:22:20.1077999Z     "list[Row[Tuple[Position, Company]]]" is not assignable to "list[tuple[Position, Company]]"
+2026-09-23T17:22:20.1078849Z       Type parameter "_T@list" is invariant, but "Row[Tuple[Position, Company]]" is not the same as "tuple[Position, Company]"
+2026-09-23T17:22:20.1079680Z       Consider switching from "list" to "Sequence" which is covariant (reportArgumentType)
+2026-09-23T17:22:20.1081197Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_intelligence_service.py:151:52 - warning: Argument of type "list[Row[Tuple[Position, Company]]]" cannot be assigned to parameter "rows" of type "list[tuple[Position, Company]]" in function "_correlations"
+2026-09-23T17:22:20.1082562Z     "list[Row[Tuple[Position, Company]]]" is not assignable to "list[tuple[Position, Company]]"
+2026-09-23T17:22:20.1083419Z       Type parameter "_T@list" is invariant, but "Row[Tuple[Position, Company]]" is not the same as "tuple[Position, Company]"
+2026-09-23T17:22:20.1084237Z       Consider switching from "list" to "Sequence" which is covariant (reportArgumentType)
+2026-09-23T17:22:20.1085507Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_intelligence_service.py:154:37 - warning: Argument of type "list[Row[Tuple[Position, Company]]]" cannot be assigned to parameter "rows" of type "list[tuple[Position, Company]]" in function "_exposures"
+2026-09-23T17:22:20.1086860Z     "list[Row[Tuple[Position, Company]]]" is not assignable to "list[tuple[Position, Company]]"
+2026-09-23T17:22:20.1087714Z       Type parameter "_T@list" is invariant, but "Row[Tuple[Position, Company]]" is not the same as "tuple[Position, Company]"
+2026-09-23T17:22:20.1088524Z       Consider switching from "list" to "Sequence" which is covariant (reportArgumentType)
+2026-09-23T17:22:20.1089795Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_intelligence_service.py:155:45 - warning: Argument of type "list[Row[Tuple[Position, Company]]]" cannot be assigned to parameter "rows" of type "list[tuple[Position, Company]]" in function "_attribution"
+2026-09-23T17:22:20.1091404Z     "list[Row[Tuple[Position, Company]]]" is not assignable to "list[tuple[Position, Company]]"
+2026-09-23T17:22:20.1092255Z       Type parameter "_T@list" is invariant, but "Row[Tuple[Position, Company]]" is not the same as "tuple[Position, Company]"
+2026-09-23T17:22:20.1093067Z       Consider switching from "list" to "Sequence" which is covariant (reportArgumentType)
+2026-09-23T17:22:20.1094386Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_intelligence_service.py:156:61 - warning: Argument of type "list[Row[Tuple[Position, Company]]]" cannot be assigned to parameter "rows" of type "list[tuple[Position, Company]]" in function "_ledger_contribution"
+2026-09-23T17:22:20.1095754Z     "list[Row[Tuple[Position, Company]]]" is not assignable to "list[tuple[Position, Company]]"
+2026-09-23T17:22:20.1096589Z       Type parameter "_T@list" is invariant, but "Row[Tuple[Position, Company]]" is not the same as "tuple[Position, Company]"
+2026-09-23T17:22:20.1097555Z       Consider switching from "list" to "Sequence" which is covariant (reportArgumentType)
+2026-09-23T17:22:20.1098311Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_ledger_service.py
+2026-09-23T17:22:20.1099231Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_ledger_service.py:184:13 - warning: Operator "-" not supported for "None" (reportOptionalOperand)
+2026-09-23T17:22:20.1100721Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_ledger_service.py:204:11 - warning: Cannot access attribute "rowcount" for class "Result[Any]"
+2026-09-23T17:22:20.1101648Z     Attribute "rowcount" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1102465Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_ledger_service.py:243:28 - warning: Cannot assign to attribute "fx_rate" for class "Position"
+2026-09-23T17:22:20.1103531Z     Type "Decimal | object | None" is not assignable to type "SQLCoreOperations[Decimal | None] | Decimal | None"
+2026-09-23T17:22:20.1104328Z       Type "object" is not assignable to type "SQLCoreOperations[Decimal | None] | Decimal | None"
+2026-09-23T17:22:20.1104977Z         "object" is not assignable to "SQLCoreOperations[Decimal | None]"
+2026-09-23T17:22:20.1105479Z         "object" is not assignable to "Decimal"
+2026-09-23T17:22:20.1105958Z         "object" is not assignable to "None" (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1106825Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_ledger_service.py:245:13 - warning: Operator "*" not supported for types "Decimal" and "Decimal | object"
+2026-09-23T17:22:20.1108127Z     Operator "*" not supported for types "Decimal" and "object" when expected type is "SQLCoreOperations[Decimal | None] | Decimal | None" (reportOperatorIssue)
+2026-09-23T17:22:20.1109296Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/portfolio_ledger_service.py:248:13 - warning: Operator "-" not supported for "None" (reportOptionalOperand)
+2026-09-23T17:22:20.1110363Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py
+2026-09-23T17:22:20.1111157Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:257:39 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1112232Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:258:41 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1113286Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:259:46 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1114345Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:260:56 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1115376Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:261:48 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1116444Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:262:46 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1117510Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:263:46 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1118559Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:264:40 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1119606Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:267:46 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1120866Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:268:44 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1122082Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:269:46 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1122888Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/red_team_service.py
+2026-09-23T17:22:20.1123935Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/red_team_service.py:170:57 - warning: Operator "<" not supported for "None" (reportOptionalOperand)
+2026-09-23T17:22:20.1124777Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/screener_service.py
+2026-09-23T17:22:20.1125970Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/screener_service.py:376:43 - warning: Argument of type "list[date | datetime | None]" cannot be assigned to parameter "iterable" of type "Iterable[SupportsRichComparisonT@max]" in function "max"
+2026-09-23T17:22:20.1127288Z     "list[date | datetime | None]" is not assignable to "Iterable[SupportsRichComparisonT@max]"
+2026-09-23T17:22:20.1128158Z       Type parameter "_T_co@Iterable" is covariant, but "date | datetime | None" is not a subtype of "SupportsRichComparisonT@max"
+2026-09-23T17:22:20.1128982Z         Type "date | datetime | None" is not assignable to type "SupportsRichComparison"
+2026-09-23T17:22:20.1129666Z           Type "date | datetime | None" is not assignable to type "SupportsRichComparison"
+2026-09-23T17:22:20.1130612Z             Type "None" is not assignable to type "SupportsRichComparison" (reportArgumentType)
+2026-09-23T17:22:20.1131882Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/screener_service.py:447:45 - warning: Argument of type "Sequence[CalculatedMetric]" cannot be assigned to parameter "calculated" of type "list[CalculatedMetric]" in function "_observations_from_rows"
+2026-09-23T17:22:20.1133241Z     "Sequence[CalculatedMetric]" is not assignable to "list[CalculatedMetric]" (reportArgumentType)
+2026-09-23T17:22:20.1133902Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py
+2026-09-23T17:22:20.1134737Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py:69:58 - warning: Cannot access attribute "dropna" for class "float"
+2026-09-23T17:22:20.1135564Z     Attribute "dropna" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1136353Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py:69:58 - warning: Cannot access attribute "dropna" for class "Number"
+2026-09-23T17:22:20.1137168Z     Attribute "dropna" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1137962Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py:69:58 - warning: Cannot access attribute "dropna" for class "number[Any, Any]"
+2026-09-23T17:22:20.1138804Z     Attribute "dropna" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1139567Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py:69:58 - warning: Cannot access attribute "dropna" for class "NAType"
+2026-09-23T17:22:20.1140652Z     Attribute "dropna" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1141441Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py:69:58 - warning: Cannot access attribute "dropna" for class "NaTType"
+2026-09-23T17:22:20.1142287Z     Attribute "dropna" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1143059Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py:69:58 - warning: Cannot access attribute "dropna" for class "Timestamp"
+2026-09-23T17:22:20.1143872Z     Attribute "dropna" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1144622Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py:69:58 - warning: Cannot access attribute "dropna" for class "Timedelta"
+2026-09-23T17:22:20.1145438Z     Attribute "dropna" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1146300Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py:69:58 - warning: Cannot access attribute "dropna" for class "ndarray[_AnyShape, dtype[Any]]"
+2026-09-23T17:22:20.1147372Z     Attribute "dropna" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1148235Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tearsheet_service.py:69:58 - warning: Cannot access attribute "dropna" for class "ndarray[_AnyShape, _dtype]"
+2026-09-23T17:22:20.1149258Z     Attribute "dropna" is unknown (reportAttributeAccessIssue)
+2026-09-23T17:22:20.1149807Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_approval_service.py
+2026-09-23T17:22:20.1150965Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_approval_service.py:399:35 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1152183Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_approval_service.py:408:35 - warning: "get" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1153102Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_debate_service.py
+2026-09-23T17:22:20.1154017Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_debate_service.py:230:31 - warning: "model" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1155257Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_debate_service.py:248:31 - warning: "model" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1156483Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_debate_service.py:287:35 - warning: "model" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1157412Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_graph_approval_service.py
+2026-09-23T17:22:20.1158656Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_graph_approval_service.py:106:40 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig" in function "get_state"
+2026-09-23T17:22:20.1159908Z     "dict[str, dict[str, str]]" is not assignable to "RunnableConfig" (reportArgumentType)
+2026-09-23T17:22:20.1161342Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_graph_approval_service.py:117:28 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig | None" in function "invoke"
+2026-09-23T17:22:20.1162605Z     Type "dict[str, dict[str, str]]" is not assignable to type "RunnableConfig | None"
+2026-09-23T17:22:20.1163196Z       "dict[str, dict[str, str]]" is not assignable to "RunnableConfig"
+2026-09-23T17:22:20.1163772Z       "dict[str, dict[str, str]]" is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.1164928Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_graph_approval_service.py:119:44 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig" in function "get_state"
+2026-09-23T17:22:20.1166144Z     "dict[str, dict[str, str]]" is not assignable to "RunnableConfig" (reportArgumentType)
+2026-09-23T17:22:20.1167323Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_graph_approval_service.py:167:40 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig" in function "get_state"
+2026-09-23T17:22:20.1168535Z     "dict[str, dict[str, str]]" is not assignable to "RunnableConfig" (reportArgumentType)
+2026-09-23T17:22:20.1169709Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_graph_approval_service.py:188:24 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig | None" in function "invoke"
+2026-09-23T17:22:20.1171220Z     Type "dict[str, dict[str, str]]" is not assignable to type "RunnableConfig | None"
+2026-09-23T17:22:20.1171807Z       "dict[str, dict[str, str]]" is not assignable to "RunnableConfig"
+2026-09-23T17:22:20.1172370Z       "dict[str, dict[str, str]]" is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.1173667Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_graph_approval_service.py:190:40 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig" in function "get_state"
+2026-09-23T17:22:20.1175024Z     "dict[str, dict[str, str]]" is not assignable to "RunnableConfig" (reportArgumentType)
+2026-09-23T17:22:20.1175619Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_job_service.py
+2026-09-23T17:22:20.1176530Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_job_service.py:132:28 - warning: "id" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1177438Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_shadow_service.py
+2026-09-23T17:22:20.1178594Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_shadow_service.py:208:24 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig | None" in function "invoke"
+2026-09-23T17:22:20.1179797Z     Type "dict[str, dict[str, str]]" is not assignable to type "RunnableConfig | None"
+2026-09-23T17:22:20.1180706Z       "dict[str, dict[str, str]]" is not assignable to "RunnableConfig"
+2026-09-23T17:22:20.1181281Z       "dict[str, dict[str, str]]" is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.1182385Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_shadow_service.py:214:40 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig" in function "get_state"
+2026-09-23T17:22:20.1183566Z     "dict[str, dict[str, str]]" is not assignable to "RunnableConfig" (reportArgumentType)
+2026-09-23T17:22:20.1184713Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_shadow_service.py:219:28 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig | None" in function "invoke"
+2026-09-23T17:22:20.1185890Z     Type "dict[str, dict[str, str]]" is not assignable to type "RunnableConfig | None"
+2026-09-23T17:22:20.1186475Z       "dict[str, dict[str, str]]" is not assignable to "RunnableConfig"
+2026-09-23T17:22:20.1187045Z       "dict[str, dict[str, str]]" is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.1188151Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/thesis_shadow_service.py:232:24 - warning: Argument of type "dict[str, dict[str, str]]" cannot be assigned to parameter "config" of type "RunnableConfig | None" in function "invoke"
+2026-09-23T17:22:20.1189331Z     Type "dict[str, dict[str, str]]" is not assignable to type "RunnableConfig | None"
+2026-09-23T17:22:20.1189900Z       "dict[str, dict[str, str]]" is not assignable to "RunnableConfig"
+2026-09-23T17:22:20.1190814Z       "dict[str, dict[str, str]]" is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.1191339Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tracing.py
+2026-09-23T17:22:20.1192194Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tracing.py:199:39 - warning: "start_span" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1193568Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tracing.py:226:37 - warning: "start_generation" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1194769Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tracing.py:249:39 - warning: "start_span" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1195914Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tracing.py:258:24 - warning: "update" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1197044Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/tracing.py:266:24 - warning: "end" is not a known attribute of "None" (reportOptionalMemberAccess)
+2026-09-23T17:22:20.1198019Z /home/runner/work/CavaAI/CavaAI/data-engine/app/services/work_product_service.py
+2026-09-23T17:22:20.1199075Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/work_product_service.py:249:13 - warning: Argument of type "Any | None" cannot be assigned to parameter "value" of type "str" in function "__setitem__"
+2026-09-23T17:22:20.1200272Z     Type "Any | None" is not assignable to type "str"
+2026-09-23T17:22:20.1201096Z       "None" is not assignable to "str" (reportArgumentType)
+2026-09-23T17:22:20.1201665Z /home/runner/work/CavaAI/CavaAI/data-engine/app/valuation/engines/pre_revenue.py
+2026-09-23T17:22:20.1202766Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/valuation/engines/pre_revenue.py:302:29 - warning: Argument of type "Unknown | None" cannot be assigned to parameter "x" of type "ConvertibleToFloat" in function "__new__"
+2026-09-23T17:22:20.1203879Z     Type "Unknown | None" is not assignable to type "ConvertibleToFloat"
+2026-09-23T17:22:20.1204414Z       Type "None" is not assignable to type "ConvertibleToFloat"
+2026-09-23T17:22:20.1204859Z         "None" is not assignable to "str"
+2026-09-23T17:22:20.1205260Z         "None" is incompatible with protocol "Buffer"
+2026-09-23T17:22:20.1205648Z           "__buffer__" is not present
+2026-09-23T17:22:20.1206043Z         "None" is incompatible with protocol "SupportsFloat"
+2026-09-23T17:22:20.1206442Z           "__float__" is not present
+2026-09-23T17:22:20.1206821Z         "None" is incompatible with protocol "SupportsIndex"
+2026-09-23T17:22:20.1207202Z     ... (reportArgumentType)
+2026-09-23T17:22:20.1208097Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/valuation/engines/pre_revenue.py:302:29 - warning: Argument of type "Unknown | None" cannot be assigned to parameter "x" of type "ConvertibleToFloat" in function "__new__"
+2026-09-23T17:22:20.1209183Z     Type "Unknown | None" is not assignable to type "ConvertibleToFloat"
+2026-09-23T17:22:20.1209718Z       Type "None" is not assignable to type "ConvertibleToFloat"
+2026-09-23T17:22:20.1210427Z         "None" is not assignable to "str"
+2026-09-23T17:22:20.1210865Z         "None" is incompatible with protocol "Buffer"
+2026-09-23T17:22:20.1211236Z           "__buffer__" is not present
+2026-09-23T17:22:20.1211647Z         "None" is incompatible with protocol "SupportsFloat"
+2026-09-23T17:22:20.1212026Z           "__float__" is not present
+2026-09-23T17:22:20.1212505Z         "None" is incompatible with protocol "SupportsIndex" (reportArgumentType)
+2026-09-23T17:22:20.1213110Z /home/runner/work/CavaAI/CavaAI/data-engine/app/valuation/engines/sector_specific.py
+2026-09-23T17:22:20.1214328Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/valuation/engines/sector_specific.py:337:40 - warning: Argument of type "list[SourcedValue | None]" cannot be assigned to parameter "values" of type "list[SourcedValue]" in function "_probabilities"
+2026-09-23T17:22:20.1215547Z     "list[SourcedValue | None]" is not assignable to "list[SourcedValue]"
+2026-09-23T17:22:20.1216240Z       Type parameter "_T@list" is invariant, but "SourcedValue | None" is not the same as "SourcedValue"
+2026-09-23T17:22:20.1216995Z       Consider switching from "list" to "Sequence" which is covariant (reportArgumentType)
+2026-09-23T17:22:20.1218394Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/valuation/engines/sector_specific.py:421:40 - warning: Argument of type "list[SourcedValue | None]" cannot be assigned to parameter "values" of type "list[SourcedValue]" in function "_probabilities"
+2026-09-23T17:22:20.1219600Z     "list[SourcedValue | None]" is not assignable to "list[SourcedValue]"
+2026-09-23T17:22:20.1220537Z       Type parameter "_T@list" is invariant, but "SourcedValue | None" is not the same as "SourcedValue"
+2026-09-23T17:22:20.1221303Z       Consider switching from "list" to "Sequence" which is covariant (reportArgumentType)
+2026-09-23T17:22:20.1221892Z /home/runner/work/CavaAI/CavaAI/data-engine/app/workflows/maf_runtime.py
+2026-09-23T17:22:20.1223088Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/workflows/maf_runtime.py:89:77 - warning: Argument of type "() -> (dict[str, Any] | Awaitable[dict[str, Any]])" cannot be assigned to parameter of type "() -> dict[str, Any]"
+2026-09-23T17:22:20.1224311Z     Type "() -> (dict[str, Any] | Awaitable[dict[str, Any]])" is not assignable to type "() -> dict[str, Any]"
+2026-09-23T17:22:20.1225134Z       Function return type "dict[str, Any] | Awaitable[dict[str, Any]]" is incompatible with type "dict[str, Any]"
+2026-09-23T17:22:20.1225930Z         Type "dict[str, Any] | Awaitable[dict[str, Any]]" is not assignable to type "dict[str, Any]"
+2026-09-23T17:22:20.1226673Z           "Awaitable[dict[str, Any]]" is not assignable to "dict[str, Any]" (reportArgumentType)
+2026-09-23T17:22:20.1227896Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/workflows/maf_runtime.py:118:28 - warning: Argument of type "type[dict[_KT@dict, _VT@dict]] | type[Never]" cannot be assigned to parameter "output" of type "type | UnionType | str | None" in function "__init__"
+2026-09-23T17:22:20.1229245Z     Type "type[dict[_KT@dict, _VT@dict]] | type[Never]" is not assignable to type "type | UnionType | str | None"
+2026-09-23T17:22:20.1229955Z       Type "type[Never]" is not assignable to type "type | UnionType | str | None"
+2026-09-23T17:22:20.1230779Z         Type "type[Never]" is not assignable to type "UnionType"
+2026-09-23T17:22:20.1231237Z         Type "type[Never]" is not assignable to type "str"
+2026-09-23T17:22:20.1231708Z         Type is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.1232853Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/workflows/maf_runtime.py:119:37 - warning: Argument of type "type[dict[_KT@dict, _VT@dict]] | type[Never]" cannot be assigned to parameter "workflow_output" of type "type | UnionType | str | None" in function "__init__"
+2026-09-23T17:22:20.1234222Z     Type "type[dict[_KT@dict, _VT@dict]] | type[Never]" is not assignable to type "type | UnionType | str | None"
+2026-09-23T17:22:20.1234933Z       Type "type[Never]" is not assignable to type "type | UnionType | str | None"
+2026-09-23T17:22:20.1235489Z         Type "type[Never]" is not assignable to type "UnionType"
+2026-09-23T17:22:20.1235953Z         Type "type[Never]" is not assignable to type "str"
+2026-09-23T17:22:20.1236411Z         Type is not assignable to "None" (reportArgumentType)
+2026-09-23T17:22:20.1236781Z 0 errors, 121 warnings, 0 informations
+2026-09-23T17:22:20.3990321Z ##[group]Run python -m pytest
+2026-09-23T17:22:20.3990654Z [36;1mpython -m pytest[0m
+2026-09-23T17:22:20.4054916Z shell: /usr/bin/bash -e {0}
+2026-09-23T17:22:20.4055175Z env:
+2026-09-23T17:22:20.4055364Z   APP_ENV: test
+2026-09-23T17:22:20.4055593Z   DATABASE_URL: sqlite:///./cavaai_ci.db
+2026-09-23T17:22:20.4055877Z   CAVAAI_ENABLE_VECTOR_INGEST: 0
+2026-09-23T17:22:20.4056138Z   CAVAAI_ENABLE_VECTOR_CHAT: 0
+2026-09-23T17:22:20.4056455Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:22:20.4056895Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib/pkgconfig
+2026-09-23T17:22:20.4057321Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:22:20.4057710Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:22:20.4058303Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+2026-09-23T17:22:20.4058696Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib
+2026-09-23T17:22:20.4059059Z ##[endgroup]
+2026-09-23T17:22:40.7671453Z ........................................................................ [  7%]
+2026-09-23T17:22:42.8351631Z ........................................................................ [ 14%]
+2026-09-23T17:22:48.3311152Z ........................................................................ [ 22%]
+2026-09-23T17:22:51.9629393Z ........................................................................ [ 29%]
+2026-09-23T17:22:55.2924168Z ........................................................................ [ 36%]
+2026-09-23T17:23:01.1656433Z ........................................................................ [ 44%]
+2026-09-23T17:23:07.0911699Z ........................................................................ [ 51%]
+2026-09-23T17:23:10.7818895Z ........................................................................ [ 58%]
+2026-09-23T17:23:27.0409503Z .........................F.............................................. [ 66%]
+2026-09-23T17:23:28.5096907Z ..........................................F..F.......................... [ 73%]
+2026-09-23T17:23:30.5302846Z ........................................................................ [ 80%]
+2026-09-23T17:23:32.8246276Z ........................................................................ [ 88%]
+2026-09-23T17:23:37.9334953Z ........................................................................ [ 95%]
+2026-09-23T17:23:41.1838205Z ..........................................                               [100%]
+2026-09-23T17:23:41.1839014Z =================================== FAILURES ===================================
+2026-09-23T17:23:41.1839682Z _____________ test_production_store_unavailable_returns_honest_503 _____________
+2026-09-23T17:23:41.1840357Z 
+2026-09-23T17:23:41.1840679Z monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fd299314cb0>
+2026-09-23T17:23:41.1841164Z 
+2026-09-23T17:23:41.1841451Z     def test_production_store_unavailable_returns_honest_503(monkeypatch):
+2026-09-23T17:23:41.1855867Z         monkeypatch.setattr(
+2026-09-23T17:23:41.1856343Z             rate_limit_module,
+2026-09-23T17:23:41.1856784Z             "get_settings",
+2026-09-23T17:23:41.1857207Z             lambda: _settings(
+2026-09-23T17:23:41.1857643Z                 app_env="production",
+2026-09-23T17:23:41.1858118Z                 research_auth_secret=SECRET,
+2026-09-23T17:23:41.1858792Z                 minio_secret_key="production-minio-secret-not-a-default",
+2026-09-23T17:23:41.1859424Z             ),
+2026-09-23T17:23:41.1859754Z         )
+2026-09-23T17:23:41.1860789Z         client = TestClient(_app(_principal("user-a")))
+2026-09-23T17:23:41.1861400Z >       response = client.post("/api/chat")
+2026-09-23T17:23:41.1861853Z                    ^^^^^^^^^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1862138Z 
+2026-09-23T17:23:41.1862301Z tests/test_rate_limit.py:123: 
+2026-09-23T17:23:41.1862808Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+2026-09-23T17:23:41.1864151Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/testclient.py:555: in post
+2026-09-23T17:23:41.1864982Z     return super().post(
+2026-09-23T17:23:41.1865691Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/httpx2/_client.py:1204: in post
+2026-09-23T17:23:41.1866459Z     return self.request(
+2026-09-23T17:23:41.1867197Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/testclient.py:454: in request
+2026-09-23T17:23:41.1868087Z     return super().request(
+2026-09-23T17:23:41.1868899Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/httpx2/_client.py:797: in request
+2026-09-23T17:23:41.1869993Z     return self.send(request, auth=auth, follow_redirects=follow_redirects)
+2026-09-23T17:23:41.1871009Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1872217Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/httpx2/_client.py:980: in send
+2026-09-23T17:23:41.1873114Z     response = self._send_handling_auth(
+2026-09-23T17:23:41.1874074Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/httpx2/_client.py:1008: in _send_handling_auth
+2026-09-23T17:23:41.1875072Z     response = self._send_handling_redirects(
+2026-09-23T17:23:41.1876026Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/httpx2/_client.py:1043: in _send_handling_redirects
+2026-09-23T17:23:41.1876988Z     response = self._send_single_request(request)
+2026-09-23T17:23:41.1877494Z                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1878347Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/httpx2/_client.py:1076: in _send_single_request
+2026-09-23T17:23:41.1879267Z     response = transport.handle_request(request)
+2026-09-23T17:23:41.1879760Z                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1880901Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/testclient.py:356: in handle_request
+2026-09-23T17:23:41.1881829Z     raise exc
+2026-09-23T17:23:41.1882657Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/testclient.py:353: in handle_request
+2026-09-23T17:23:41.1883689Z     portal.call(self.app, scope, receive, send)
+2026-09-23T17:23:41.1884623Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/anyio/from_thread.py:340: in call
+2026-09-23T17:23:41.1885688Z     return cast(T_Retval, self.start_task_soon(func, *args).result())
+2026-09-23T17:23:41.1886388Z                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1887286Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/concurrent/futures/_base.py:456: in result
+2026-09-23T17:23:41.1888150Z     return self.__get_result()
+2026-09-23T17:23:41.1888598Z            ^^^^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1889413Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+2026-09-23T17:23:41.1891080Z     raise self._exception
+2026-09-23T17:23:41.1891965Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/anyio/from_thread.py:265: in _call_func
+2026-09-23T17:23:41.1892938Z     retval = await retval_or_awaitable
+2026-09-23T17:23:41.1893405Z              ^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1894273Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/applications.py:1163: in __call__
+2026-09-23T17:23:41.1895282Z     await super().__call__(scope, receive, send)
+2026-09-23T17:23:41.1896263Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/applications.py:90: in __call__
+2026-09-23T17:23:41.1897208Z     await self.middleware_stack(scope, receive, send)
+2026-09-23T17:23:41.1898147Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/middleware/errors.py:186: in __call__
+2026-09-23T17:23:41.1899029Z     raise exc
+2026-09-23T17:23:41.1900052Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/middleware/errors.py:164: in __call__
+2026-09-23T17:23:41.1901341Z     await self.app(scope, receive, _send)
+2026-09-23T17:23:41.1902275Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/middleware/exceptions.py:63: in __call__
+2026-09-23T17:23:41.1903352Z     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+2026-09-23T17:23:41.1904370Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+2026-09-23T17:23:41.1905188Z     raise exc
+2026-09-23T17:23:41.1905896Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+2026-09-23T17:23:41.1906773Z     await app(scope, receive, sender)
+2026-09-23T17:23:41.1907596Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py:18: in __call__
+2026-09-23T17:23:41.1908679Z     await self.app(scope, receive, send)
+2026-09-23T17:23:41.1909469Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/routing.py:660: in __call__
+2026-09-23T17:23:41.1910499Z     await self.middleware_stack(scope, receive, send)
+2026-09-23T17:23:41.1911261Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/routing.py:2685: in app
+2026-09-23T17:23:41.1912040Z     await route.handle(scope, receive, send)
+2026-09-23T17:23:41.1912799Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/routing.py:1267: in handle
+2026-09-23T17:23:41.1913569Z     await super().handle(scope, receive, send)
+2026-09-23T17:23:41.1914333Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/routing.py:276: in handle
+2026-09-23T17:23:41.1915093Z     await self.app(scope, receive, send)
+2026-09-23T17:23:41.1915823Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/routing.py:151: in app
+2026-09-23T17:23:41.1916730Z     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+2026-09-23T17:23:41.1917721Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+2026-09-23T17:23:41.1918528Z     raise exc
+2026-09-23T17:23:41.1919238Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+2026-09-23T17:23:41.1920446Z     await app(scope, receive, sender)
+2026-09-23T17:23:41.1921151Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/routing.py:137: in app
+2026-09-23T17:23:41.1921871Z     response = await f(request)
+2026-09-23T17:23:41.1922229Z                ^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1922849Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/routing.py:474: in app
+2026-09-23T17:23:41.1923575Z     solved_result = await solve_dependencies(
+2026-09-23T17:23:41.1924463Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/fastapi/dependencies/utils.py:678: in solve_dependencies
+2026-09-23T17:23:41.1925363Z     solved = await call(**solved_result.values)
+2026-09-23T17:23:41.1925788Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1926233Z app/core/rate_limit.py:131: in enforce_rate_limit
+2026-09-23T17:23:41.1926682Z     settings = get_settings()
+2026-09-23T17:23:41.1927023Z                ^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1927381Z tests/test_rate_limit.py:116: in <lambda>
+2026-09-23T17:23:41.1927785Z     lambda: _settings(
+2026-09-23T17:23:41.1928119Z tests/test_rate_limit.py:35: in _settings
+2026-09-23T17:23:41.1928528Z     return Settings(**base)
+2026-09-23T17:23:41.1928865Z            ^^^^^^^^^^^^^^^^
+2026-09-23T17:23:41.1929276Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+2026-09-23T17:23:41.1929636Z 
+2026-09-23T17:23:41.1931226Z __pydantic_self__ = Settings(app_env='production', app_name='CavaAI Research Engine', api_prefix='/api', cors_origins=['http://localhost:3..., llm_timeout_seconds=30.0, llm_max_retries=2, llm_model_overrides={}, llm_daily_cap_eur=1.5, llm_monthly_cap_eur=40.0)
+2026-09-23T17:23:41.1932962Z _case_sensitive = None, _nested_model_default_partial_update = None
+2026-09-23T17:23:41.1933613Z _env_prefix = None, _env_prefix_target = None, _env_file = None
+2026-09-23T17:23:41.1934168Z _env_file_encoding = None, _env_ignore_empty = None
+2026-09-23T17:23:41.1934698Z _env_nested_delimiter = None, _env_nested_max_split = None
+2026-09-23T17:23:41.1935321Z _env_parse_none_str = None, _env_parse_enums = None, _cli_prog_name = None
+2026-09-23T17:23:41.1936031Z _cli_parse_args = None, _cli_settings_source = None, _cli_parse_none_str = None
+2026-09-23T17:23:41.1936767Z _cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+2026-09-23T17:23:41.1937454Z _cli_use_class_docs_for_groups = None, _cli_show_env_vars = None
+2026-09-23T17:23:41.1938311Z _cli_exit_on_error = None, _cli_prefix = None, _cli_flag_prefix_char = None
+2026-09-23T17:23:41.1938974Z _cli_implicit_flags = None, _cli_ignore_unknown_args = None
+2026-09-23T17:23:41.1939579Z _cli_kebab_case = None, _cli_shortcuts = None, _secrets_dir = None
+2026-09-23T17:23:41.1940341Z _build_sources = None
+2026-09-23T17:23:41.1941197Z values = {'app_env': 'production', 'rate_limit_enabled': True, 'rate_limit_requests_per_minute': 10, 'rate_limit_expensive_requests_per_minute': 2, ...}
+2026-09-23T17:23:41.1941994Z 
+2026-09-23T17:23:41.1942113Z     def __init__(
+2026-09-23T17:23:41.1942409Z         __pydantic_self__,
+2026-09-23T17:23:41.1942755Z         _case_sensitive: bool | None = None,
+2026-09-23T17:23:41.1943255Z         _nested_model_default_partial_update: bool | None = None,
+2026-09-23T17:23:41.1943765Z         _env_prefix: str | None = None,
+2026-09-23T17:23:41.1944220Z         _env_prefix_target: EnvPrefixTarget | None = None,
+2026-09-23T17:23:41.1944732Z         _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+2026-09-23T17:23:41.1945220Z         _env_file_encoding: str | None = None,
+2026-09-23T17:23:41.1945658Z         _env_ignore_empty: bool | None = None,
+2026-09-23T17:23:41.1946102Z         _env_nested_delimiter: str | None = None,
+2026-09-23T17:23:41.1946555Z         _env_nested_max_split: int | None = None,
+2026-09-23T17:23:41.1947078Z         _env_parse_none_str: str | None = None,
+2026-09-23T17:23:41.1947516Z         _env_parse_enums: bool | None = None,
+2026-09-23T17:23:41.1947936Z         _cli_prog_name: str | None = None,
+2026-09-23T17:23:41.1948443Z         _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+2026-09-23T17:23:41.1949087Z         _cli_settings_source: CliSettingsSource[Any] | None = None,
+2026-09-23T17:23:41.1949609Z         _cli_parse_none_str: str | None = None,
+2026-09-23T17:23:41.1950345Z         _cli_hide_none_type: bool | None = None,
+2026-09-23T17:23:41.1950793Z         _cli_avoid_json: bool | None = None,
+2026-09-23T17:23:41.1951236Z         _cli_enforce_required: bool | None = None,
+2026-09-23T17:23:41.1951756Z         _cli_use_class_docs_for_groups: bool | None = None,
+2026-09-23T17:23:41.1952253Z         _cli_show_env_vars: bool | None = None,
+2026-09-23T17:23:41.1952693Z         _cli_exit_on_error: bool | None = None,
+2026-09-23T17:23:41.1953117Z         _cli_prefix: str | None = None,
+2026-09-23T17:23:41.1953543Z         _cli_flag_prefix_char: str | None = None,
+2026-09-23T17:23:41.1954091Z         _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+2026-09-23T17:23:41.1954693Z         _cli_ignore_unknown_args: bool | None = None,
+2026-09-23T17:23:41.1955250Z         _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+2026-09-23T17:23:41.1955883Z         _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+2026-09-23T17:23:41.1956416Z         _secrets_dir: PathType | None = None,
+2026-09-23T17:23:41.1957120Z         _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+2026-09-23T17:23:41.1957835Z         **values: Any,
+2026-09-23T17:23:41.1958138Z     ) -> None:
+2026-09-23T17:23:41.1958425Z         sources, init_kwargs = (
+2026-09-23T17:23:41.1958970Z             _build_sources
+2026-09-23T17:23:41.1959328Z             if _build_sources is not None
+2026-09-23T17:23:41.1959807Z             else __pydantic_self__.__class__._settings_init_sources(
+2026-09-23T17:23:41.1960511Z                 _case_sensitive=_case_sensitive,
+2026-09-23T17:23:41.1961125Z                 _nested_model_default_partial_update=_nested_model_default_partial_update,
+2026-09-23T17:23:41.1961748Z                 _env_prefix=_env_prefix,
+2026-09-23T17:23:41.1962182Z                 _env_prefix_target=_env_prefix_target,
+2026-09-23T17:23:41.1962605Z                 _env_file=_env_file,
+2026-09-23T17:23:41.1963014Z                 _env_file_encoding=_env_file_encoding,
+2026-09-23T17:23:41.1963470Z                 _env_ignore_empty=_env_ignore_empty,
+2026-09-23T17:23:41.1963945Z                 _env_nested_delimiter=_env_nested_delimiter,
+2026-09-23T17:23:41.1964637Z                 _env_nested_max_split=_env_nested_max_split,
+2026-09-23T17:23:41.1965123Z                 _env_parse_none_str=_env_parse_none_str,
+2026-09-23T17:23:41.1965584Z                 _env_parse_enums=_env_parse_enums,
+2026-09-23T17:23:41.1966021Z                 _cli_prog_name=_cli_prog_name,
+2026-09-23T17:23:41.1966470Z                 _cli_parse_args=_cli_parse_args,
+2026-09-23T17:23:41.1966932Z                 _cli_settings_source=_cli_settings_source,
+2026-09-23T17:23:41.1967426Z                 _cli_parse_none_str=_cli_parse_none_str,
+2026-09-23T17:23:41.1967900Z                 _cli_hide_none_type=_cli_hide_none_type,
+2026-09-23T17:23:41.1968334Z                 _cli_avoid_json=_cli_avoid_json,
+2026-09-23T17:23:41.1968784Z                 _cli_enforce_required=_cli_enforce_required,
+2026-09-23T17:23:41.1969366Z                 _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+2026-09-23T17:23:41.1969938Z                 _cli_show_env_vars=_cli_show_env_vars,
+2026-09-23T17:23:41.1970553Z                 _cli_exit_on_error=_cli_exit_on_error,
+2026-09-23T17:23:41.1970988Z                 _cli_prefix=_cli_prefix,
+2026-09-23T17:23:41.1971424Z                 _cli_flag_prefix_char=_cli_flag_prefix_char,
+2026-09-23T17:23:41.1971897Z                 _cli_implicit_flags=_cli_implicit_flags,
+2026-09-23T17:23:41.1972420Z                 _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+2026-09-23T17:23:41.1972917Z                 _cli_kebab_case=_cli_kebab_case,
+2026-09-23T17:23:41.1973363Z                 _cli_shortcuts=_cli_shortcuts,
+2026-09-23T17:23:41.1973782Z                 _secrets_dir=_secrets_dir,
+2026-09-23T17:23:41.1974178Z                 _init_kwargs=values,
+2026-09-23T17:23:41.1974527Z             )
+2026-09-23T17:23:41.1974792Z         )
+2026-09-23T17:23:41.1975034Z     
+2026-09-23T17:23:41.1975556Z >       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+2026-09-23T17:23:41.1976433Z E       pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+2026-09-23T17:23:41.1977811Z E         Value error, MINIO_ACCESS_KEY must not use a development default in production [type=value_error, input_value={'research_auth_required'...o-secret-not-a-default'}, input_type=dict]
+2026-09-23T17:23:41.1979154Z E           For further information visit https://errors.pydantic.dev/2.13/v/value_error
+2026-09-23T17:23:41.1979649Z 
+2026-09-23T17:23:41.1980341Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/pydantic_settings/main.py:262: ValidationError
+2026-09-23T17:23:41.1981401Z ____ test_production_settings_fail_fast_on_insecure_storage_or_missing_auth ____
+2026-09-23T17:23:41.1981874Z 
+2026-09-23T17:23:41.1982208Z     def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
+2026-09-23T17:23:41.1982980Z         with pytest.raises(ValidationError, match="RESEARCH_AUTH_SECRET"):
+2026-09-23T17:23:41.1983596Z             Settings(_env_file=None, app_env="production")
+2026-09-23T17:23:41.1984033Z     
+2026-09-23T17:23:41.1984435Z         with pytest.raises(ValidationError, match="MINIO_SECRET_KEY"):
+2026-09-23T17:23:41.1985115Z             Settings(
+2026-09-23T17:23:41.1985434Z                 _env_file=None,
+2026-09-23T17:23:41.1985791Z                 app_env="production",
+2026-09-23T17:23:41.1986193Z                 research_auth_secret=SECRET,
+2026-09-23T17:23:41.1986574Z             )
+2026-09-23T17:23:41.1986827Z     
+2026-09-23T17:23:41.1987099Z >       configured = Settings(
+2026-09-23T17:23:41.1987453Z             _env_file=None,
+2026-09-23T17:23:41.1987797Z             app_env="production",
+2026-09-23T17:23:41.1988169Z             research_auth_secret=SECRET,
+2026-09-23T17:23:41.1988702Z             minio_secret_key="production-minio-secret-not-a-default",
+2026-09-23T17:23:41.1989223Z         )
+2026-09-23T17:23:41.1989373Z 
+2026-09-23T17:23:41.1989531Z tests/test_security_boundaries.py:95: 
+2026-09-23T17:23:41.1990009Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+2026-09-23T17:23:41.1990758Z 
+2026-09-23T17:23:41.1991996Z __pydantic_self__ = Settings(app_env='production', app_name='CavaAI Research Engine', api_prefix='/api', cors_origins=['http://localhost:3..., llm_timeout_seconds=30.0, llm_max_retries=2, llm_model_overrides={}, llm_daily_cap_eur=1.5, llm_monthly_cap_eur=40.0)
+2026-09-23T17:23:41.1993665Z _case_sensitive = None, _nested_model_default_partial_update = None
+2026-09-23T17:23:41.1994369Z _env_prefix = None, _env_prefix_target = None, _env_file = None
+2026-09-23T17:23:41.1994934Z _env_file_encoding = None, _env_ignore_empty = None
+2026-09-23T17:23:41.1995466Z _env_nested_delimiter = None, _env_nested_max_split = None
+2026-09-23T17:23:41.1996082Z _env_parse_none_str = None, _env_parse_enums = None, _cli_prog_name = None
+2026-09-23T17:23:41.1996793Z _cli_parse_args = None, _cli_settings_source = None, _cli_parse_none_str = None
+2026-09-23T17:23:41.1997580Z _cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+2026-09-23T17:23:41.1998272Z _cli_use_class_docs_for_groups = None, _cli_show_env_vars = None
+2026-09-23T17:23:41.1998915Z _cli_exit_on_error = None, _cli_prefix = None, _cli_flag_prefix_char = None
+2026-09-23T17:23:41.1999549Z _cli_implicit_flags = None, _cli_ignore_unknown_args = None
+2026-09-23T17:23:41.2000337Z _cli_kebab_case = None, _cli_shortcuts = None, _secrets_dir = None
+2026-09-23T17:23:41.2000844Z _build_sources = None
+2026-09-23T17:23:41.2001871Z values = {'app_env': 'production', 'research_auth_secret': 'research-security-test-secret-at-least-32-chars', 'minio_secret_key': 'production-minio-secret-not-a-default'}
+2026-09-23T17:23:41.2002842Z 
+2026-09-23T17:23:41.2002958Z     def __init__(
+2026-09-23T17:23:41.2003255Z         __pydantic_self__,
+2026-09-23T17:23:41.2003603Z         _case_sensitive: bool | None = None,
+2026-09-23T17:23:41.2004103Z         _nested_model_default_partial_update: bool | None = None,
+2026-09-23T17:23:41.2004608Z         _env_prefix: str | None = None,
+2026-09-23T17:23:41.2005061Z         _env_prefix_target: EnvPrefixTarget | None = None,
+2026-09-23T17:23:41.2005571Z         _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+2026-09-23T17:23:41.2006043Z         _env_file_encoding: str | None = None,
+2026-09-23T17:23:41.2006483Z         _env_ignore_empty: bool | None = None,
+2026-09-23T17:23:41.2006918Z         _env_nested_delimiter: str | None = None,
+2026-09-23T17:23:41.2007373Z         _env_nested_max_split: int | None = None,
+2026-09-23T17:23:41.2007824Z         _env_parse_none_str: str | None = None,
+2026-09-23T17:23:41.2008258Z         _env_parse_enums: bool | None = None,
+2026-09-23T17:23:41.2008670Z         _cli_prog_name: str | None = None,
+2026-09-23T17:23:41.2009190Z         _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+2026-09-23T17:23:41.2009806Z         _cli_settings_source: CliSettingsSource[Any] | None = None,
+2026-09-23T17:23:41.2010590Z         _cli_parse_none_str: str | None = None,
+2026-09-23T17:23:41.2011059Z         _cli_hide_none_type: bool | None = None,
+2026-09-23T17:23:41.2011499Z         _cli_avoid_json: bool | None = None,
+2026-09-23T17:23:41.2012105Z         _cli_enforce_required: bool | None = None,
+2026-09-23T17:23:41.2012603Z         _cli_use_class_docs_for_groups: bool | None = None,
+2026-09-23T17:23:41.2013090Z         _cli_show_env_vars: bool | None = None,
+2026-09-23T17:23:41.2013524Z         _cli_exit_on_error: bool | None = None,
+2026-09-23T17:23:41.2013934Z         _cli_prefix: str | None = None,
+2026-09-23T17:23:41.2014339Z         _cli_flag_prefix_char: str | None = None,
+2026-09-23T17:23:41.2014894Z         _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+2026-09-23T17:23:41.2015473Z         _cli_ignore_unknown_args: bool | None = None,
+2026-09-23T17:23:41.2016013Z         _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+2026-09-23T17:23:41.2016628Z         _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+2026-09-23T17:23:41.2017297Z         _secrets_dir: PathType | None = None,
+2026-09-23T17:23:41.2017984Z         _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+2026-09-23T17:23:41.2018659Z         **values: Any,
+2026-09-23T17:23:41.2018946Z     ) -> None:
+2026-09-23T17:23:41.2019232Z         sources, init_kwargs = (
+2026-09-23T17:23:41.2019591Z             _build_sources
+2026-09-23T17:23:41.2019991Z             if _build_sources is not None
+2026-09-23T17:23:41.2020743Z             else __pydantic_self__.__class__._settings_init_sources(
+2026-09-23T17:23:41.2021253Z                 _case_sensitive=_case_sensitive,
+2026-09-23T17:23:41.2021868Z                 _nested_model_default_partial_update=_nested_model_default_partial_update,
+2026-09-23T17:23:41.2022516Z                 _env_prefix=_env_prefix,
+2026-09-23T17:23:41.2022946Z                 _env_prefix_target=_env_prefix_target,
+2026-09-23T17:23:41.2023385Z                 _env_file=_env_file,
+2026-09-23T17:23:41.2023799Z                 _env_file_encoding=_env_file_encoding,
+2026-09-23T17:23:41.2024278Z                 _env_ignore_empty=_env_ignore_empty,
+2026-09-23T17:23:41.2024774Z                 _env_nested_delimiter=_env_nested_delimiter,
+2026-09-23T17:23:41.2025286Z                 _env_nested_max_split=_env_nested_max_split,
+2026-09-23T17:23:41.2025802Z                 _env_parse_none_str=_env_parse_none_str,
+2026-09-23T17:23:41.2026299Z                 _env_parse_enums=_env_parse_enums,
+2026-09-23T17:23:41.2026746Z                 _cli_prog_name=_cli_prog_name,
+2026-09-23T17:23:41.2027193Z                 _cli_parse_args=_cli_parse_args,
+2026-09-23T17:23:41.2027698Z                 _cli_settings_source=_cli_settings_source,
+2026-09-23T17:23:41.2028191Z                 _cli_parse_none_str=_cli_parse_none_str,
+2026-09-23T17:23:41.2028678Z                 _cli_hide_none_type=_cli_hide_none_type,
+2026-09-23T17:23:41.2029142Z                 _cli_avoid_json=_cli_avoid_json,
+2026-09-23T17:23:41.2029620Z                 _cli_enforce_required=_cli_enforce_required,
+2026-09-23T17:23:41.2030416Z                 _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+2026-09-23T17:23:41.2031011Z                 _cli_show_env_vars=_cli_show_env_vars,
+2026-09-23T17:23:41.2031483Z                 _cli_exit_on_error=_cli_exit_on_error,
+2026-09-23T17:23:41.2031931Z                 _cli_prefix=_cli_prefix,
+2026-09-23T17:23:41.2032387Z                 _cli_flag_prefix_char=_cli_flag_prefix_char,
+2026-09-23T17:23:41.2032885Z                 _cli_implicit_flags=_cli_implicit_flags,
+2026-09-23T17:23:41.2033414Z                 _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+2026-09-23T17:23:41.2033935Z                 _cli_kebab_case=_cli_kebab_case,
+2026-09-23T17:23:41.2034373Z                 _cli_shortcuts=_cli_shortcuts,
+2026-09-23T17:23:41.2034809Z                 _secrets_dir=_secrets_dir,
+2026-09-23T17:23:41.2035209Z                 _init_kwargs=values,
+2026-09-23T17:23:41.2035585Z             )
+2026-09-23T17:23:41.2035859Z         )
+2026-09-23T17:23:41.2036123Z     
+2026-09-23T17:23:41.2036641Z >       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+2026-09-23T17:23:41.2037779Z E       pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+2026-09-23T17:23:41.2039143Z E         Value error, MINIO_ACCESS_KEY must not use a development default in production [type=value_error, input_value={'research_auth_required'...o-secret-not-a-default'}, input_type=dict]
+2026-09-23T17:23:41.2040673Z E           For further information visit https://errors.pydantic.dev/2.13/v/value_error
+2026-09-23T17:23:41.2041176Z 
+2026-09-23T17:23:41.2041698Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/pydantic_settings/main.py:262: ValidationError
+2026-09-23T17:23:41.2042639Z ___________________ test_is_production_accepts_both_aliases ____________________
+2026-09-23T17:23:41.2043063Z 
+2026-09-23T17:23:41.2043231Z     def test_is_production_accepts_both_aliases():
+2026-09-23T17:23:41.2043890Z >       prod = Settings(
+2026-09-23T17:23:41.2044208Z             _env_file=None,
+2026-09-23T17:23:41.2044555Z             app_env="prod",
+2026-09-23T17:23:41.2044970Z             research_auth_secret=SECRET,
+2026-09-23T17:23:41.2045527Z             minio_secret_key="production-minio-secret-not-a-default",
+2026-09-23T17:23:41.2046050Z         )
+2026-09-23T17:23:41.2046209Z 
+2026-09-23T17:23:41.2046366Z tests/test_security_boundaries.py:125: 
+2026-09-23T17:23:41.2046847Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+2026-09-23T17:23:41.2047197Z 
+2026-09-23T17:23:41.2048391Z __pydantic_self__ = Settings(app_env='prod', app_name='CavaAI Research Engine', api_prefix='/api', cors_origins=['http://localhost:3000', ..., llm_timeout_seconds=30.0, llm_max_retries=2, llm_model_overrides={}, llm_daily_cap_eur=1.5, llm_monthly_cap_eur=40.0)
+2026-09-23T17:23:41.2049943Z _case_sensitive = None, _nested_model_default_partial_update = None
+2026-09-23T17:23:41.2050750Z _env_prefix = None, _env_prefix_target = None, _env_file = None
+2026-09-23T17:23:41.2051313Z _env_file_encoding = None, _env_ignore_empty = None
+2026-09-23T17:23:41.2051849Z _env_nested_delimiter = None, _env_nested_max_split = None
+2026-09-23T17:23:41.2052526Z _env_parse_none_str = None, _env_parse_enums = None, _cli_prog_name = None
+2026-09-23T17:23:41.2053306Z _cli_parse_args = None, _cli_settings_source = None, _cli_parse_none_str = None
+2026-09-23T17:23:41.2054048Z _cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+2026-09-23T17:23:41.2054743Z _cli_use_class_docs_for_groups = None, _cli_show_env_vars = None
+2026-09-23T17:23:41.2055401Z _cli_exit_on_error = None, _cli_prefix = None, _cli_flag_prefix_char = None
+2026-09-23T17:23:41.2056062Z _cli_implicit_flags = None, _cli_ignore_unknown_args = None
+2026-09-23T17:23:41.2056657Z _cli_kebab_case = None, _cli_shortcuts = None, _secrets_dir = None
+2026-09-23T17:23:41.2057171Z _build_sources = None
+2026-09-23T17:23:41.2058162Z values = {'app_env': 'prod', 'research_auth_secret': 'research-security-test-secret-at-least-32-chars', 'minio_secret_key': 'production-minio-secret-not-a-default'}
+2026-09-23T17:23:41.2059129Z 
+2026-09-23T17:23:41.2059248Z     def __init__(
+2026-09-23T17:23:41.2059543Z         __pydantic_self__,
+2026-09-23T17:23:41.2059895Z         _case_sensitive: bool | None = None,
+2026-09-23T17:23:41.2060571Z         _nested_model_default_partial_update: bool | None = None,
+2026-09-23T17:23:41.2061071Z         _env_prefix: str | None = None,
+2026-09-23T17:23:41.2061528Z         _env_prefix_target: EnvPrefixTarget | None = None,
+2026-09-23T17:23:41.2062041Z         _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+2026-09-23T17:23:41.2062523Z         _env_file_encoding: str | None = None,
+2026-09-23T17:23:41.2062957Z         _env_ignore_empty: bool | None = None,
+2026-09-23T17:23:41.2063394Z         _env_nested_delimiter: str | None = None,
+2026-09-23T17:23:41.2063859Z         _env_nested_max_split: int | None = None,
+2026-09-23T17:23:41.2064320Z         _env_parse_none_str: str | None = None,
+2026-09-23T17:23:41.2064755Z         _env_parse_enums: bool | None = None,
+2026-09-23T17:23:41.2065351Z         _cli_prog_name: str | None = None,
+2026-09-23T17:23:41.2065885Z         _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+2026-09-23T17:23:41.2066526Z         _cli_settings_source: CliSettingsSource[Any] | None = None,
+2026-09-23T17:23:41.2067056Z         _cli_parse_none_str: str | None = None,
+2026-09-23T17:23:41.2067503Z         _cli_hide_none_type: bool | None = None,
+2026-09-23T17:23:41.2067949Z         _cli_avoid_json: bool | None = None,
+2026-09-23T17:23:41.2068402Z         _cli_enforce_required: bool | None = None,
+2026-09-23T17:23:41.2068914Z         _cli_use_class_docs_for_groups: bool | None = None,
+2026-09-23T17:23:41.2069403Z         _cli_show_env_vars: bool | None = None,
+2026-09-23T17:23:41.2069858Z         _cli_exit_on_error: bool | None = None,
+2026-09-23T17:23:41.2070478Z         _cli_prefix: str | None = None,
+2026-09-23T17:23:41.2071073Z         _cli_flag_prefix_char: str | None = None,
+2026-09-23T17:23:41.2071640Z         _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+2026-09-23T17:23:41.2072235Z         _cli_ignore_unknown_args: bool | None = None,
+2026-09-23T17:23:41.2072789Z         _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+2026-09-23T17:23:41.2073422Z         _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+2026-09-23T17:23:41.2073965Z         _secrets_dir: PathType | None = None,
+2026-09-23T17:23:41.2074674Z         _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+2026-09-23T17:23:41.2075354Z         **values: Any,
+2026-09-23T17:23:41.2075664Z     ) -> None:
+2026-09-23T17:23:41.2075959Z         sources, init_kwargs = (
+2026-09-23T17:23:41.2076333Z             _build_sources
+2026-09-23T17:23:41.2076677Z             if _build_sources is not None
+2026-09-23T17:23:41.2077161Z             else __pydantic_self__.__class__._settings_init_sources(
+2026-09-23T17:23:41.2077683Z                 _case_sensitive=_case_sensitive,
+2026-09-23T17:23:41.2078312Z                 _nested_model_default_partial_update=_nested_model_default_partial_update,
+2026-09-23T17:23:41.2078920Z                 _env_prefix=_env_prefix,
+2026-09-23T17:23:41.2079340Z                 _env_prefix_target=_env_prefix_target,
+2026-09-23T17:23:41.2079762Z                 _env_file=_env_file,
+2026-09-23T17:23:41.2080329Z                 _env_file_encoding=_env_file_encoding,
+2026-09-23T17:23:41.2080850Z                 _env_ignore_empty=_env_ignore_empty,
+2026-09-23T17:23:41.2081327Z                 _env_nested_delimiter=_env_nested_delimiter,
+2026-09-23T17:23:41.2081826Z                 _env_nested_max_split=_env_nested_max_split,
+2026-09-23T17:23:41.2082306Z                 _env_parse_none_str=_env_parse_none_str,
+2026-09-23T17:23:41.2082767Z                 _env_parse_enums=_env_parse_enums,
+2026-09-23T17:23:41.2083190Z                 _cli_prog_name=_cli_prog_name,
+2026-09-23T17:23:41.2083638Z                 _cli_parse_args=_cli_parse_args,
+2026-09-23T17:23:41.2084109Z                 _cli_settings_source=_cli_settings_source,
+2026-09-23T17:23:41.2084605Z                 _cli_parse_none_str=_cli_parse_none_str,
+2026-09-23T17:23:41.2085075Z                 _cli_hide_none_type=_cli_hide_none_type,
+2026-09-23T17:23:41.2085528Z                 _cli_avoid_json=_cli_avoid_json,
+2026-09-23T17:23:41.2085997Z                 _cli_enforce_required=_cli_enforce_required,
+2026-09-23T17:23:41.2086584Z                 _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+2026-09-23T17:23:41.2087164Z                 _cli_show_env_vars=_cli_show_env_vars,
+2026-09-23T17:23:41.2087625Z                 _cli_exit_on_error=_cli_exit_on_error,
+2026-09-23T17:23:41.2088084Z                 _cli_prefix=_cli_prefix,
+2026-09-23T17:23:41.2088544Z                 _cli_flag_prefix_char=_cli_flag_prefix_char,
+2026-09-23T17:23:41.2089043Z                 _cli_implicit_flags=_cli_implicit_flags,
+2026-09-23T17:23:41.2089565Z                 _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+2026-09-23T17:23:41.2090382Z                 _cli_kebab_case=_cli_kebab_case,
+2026-09-23T17:23:41.2090835Z                 _cli_shortcuts=_cli_shortcuts,
+2026-09-23T17:23:41.2091256Z                 _secrets_dir=_secrets_dir,
+2026-09-23T17:23:41.2091655Z                 _init_kwargs=values,
+2026-09-23T17:23:41.2092016Z             )
+2026-09-23T17:23:41.2092279Z         )
+2026-09-23T17:23:41.2092530Z     
+2026-09-23T17:23:41.2093044Z >       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+2026-09-23T17:23:41.2093937Z E       pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+2026-09-23T17:23:41.2095325Z E         Value error, MINIO_ACCESS_KEY must not use a development default in production [type=value_error, input_value={'research_auth_required'...o-secret-not-a-default'}, input_type=dict]
+2026-09-23T17:23:41.2096852Z E           For further information visit https://errors.pydantic.dev/2.13/v/value_error
+2026-09-23T17:23:41.2097347Z 
+2026-09-23T17:23:41.2097871Z /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/pydantic_settings/main.py:262: ValidationError
+2026-09-23T17:23:41.2098734Z =============================== warnings summary ===============================
+2026-09-23T17:23:41.2099551Z ../../../../../../opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/testclient.py:53
+2026-09-23T17:23:41.2101408Z   /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+2026-09-23T17:23:41.2102989Z     _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+2026-09-23T17:23:41.2103533Z 
+2026-09-23T17:23:41.2104002Z ../../../../../../opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/agent_framework/_skills.py:122
+2026-09-23T17:23:41.2105742Z   /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/agent_framework/_skills.py:122: ExperimentalWarning: [SKILLS] SkillResource is experimental and may change or be removed in future versions without notice.
+2026-09-23T17:23:41.2107000Z 
+2026-09-23T17:23:41.2107546Z ../../../../../../opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/agent_framework/_harness/_file_access.py:602
+2026-09-23T17:23:42.3888032Z   /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/agent_framework/_harness/_file_access.py:602: ExperimentalWarning: [HARNESS] AgentFileStore is experimental and may change or be removed in future versions without notice.
+2026-09-23T17:23:42.3889368Z 
+2026-09-23T17:23:42.3889516Z app/services/rag.py:14
+2026-09-23T17:23:42.3890008Z tests/test_rag_activation.py::test_ingest_indexes_vectors_in_qdrant
+2026-09-23T17:23:42.3891250Z tests/test_rag_activation.py::test_vector_and_unified_search_recover_ingested_chunk
+2026-09-23T17:23:42.3892071Z tests/test_rag_activation.py::test_vector_and_unified_search_recover_ingested_chunk
+2026-09-23T17:23:42.3892854Z tests/test_rag_activation.py::test_vector_and_unified_search_recover_ingested_chunk
+2026-09-23T17:23:42.3894611Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:14: UserWarning: Qdrant client version 1.14.3 is incompatible with server version 1.12.5. Major versions should match and minor version difference must not exceed 1. Set check_compatibility=False to skip version check.
+2026-09-23T17:23:42.3896363Z     return QdrantClient(url=self.settings.qdrant_url)
+2026-09-23T17:23:42.3896624Z 
+2026-09-23T17:23:42.3896887Z tests/test_rag_activation.py::test_vector_and_unified_search_recover_ingested_chunk
+2026-09-23T17:23:42.3897505Z tests/test_rag_activation.py::test_vector_and_unified_search_recover_ingested_chunk
+2026-09-23T17:23:42.3898519Z   /home/runner/work/CavaAI/CavaAI/data-engine/app/services/rag.py:248: DeprecationWarning: `search` method is deprecated and will be removed in the future. Use `query_points` instead.
+2026-09-23T17:23:42.3899392Z     results = client.search(
+2026-09-23T17:23:42.3899565Z 
+2026-09-23T17:23:42.3900305Z -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2026-09-23T17:23:42.3900864Z =========================== short test summary info ============================
+2026-09-23T17:23:42.3901740Z FAILED tests/test_rate_limit.py::test_production_store_unavailable_returns_honest_503 - pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+2026-09-23T17:23:42.3903077Z   Value error, MINIO_ACCESS_KEY must not use a development default in production [type=value_error, input_value={'research_auth_required'...o-secret-not-a-default'}, input_type=dict]
+2026-09-23T17:23:42.3904062Z     For further information visit https://errors.pydantic.dev/2.13/v/value_error
+2026-09-23T17:23:42.3905136Z FAILED tests/test_security_boundaries.py::test_production_settings_fail_fast_on_insecure_storage_or_missing_auth - pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+2026-09-23T17:23:42.3906719Z   Value error, MINIO_ACCESS_KEY must not use a development default in production [type=value_error, input_value={'research_auth_required'...o-secret-not-a-default'}, input_type=dict]
+2026-09-23T17:23:42.3907596Z     For further information visit https://errors.pydantic.dev/2.13/v/value_error
+2026-09-23T17:23:42.3908422Z FAILED tests/test_security_boundaries.py::test_is_production_accepts_both_aliases - pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+2026-09-23T17:23:42.3909579Z   Value error, MINIO_ACCESS_KEY must not use a development default in production [type=value_error, input_value={'research_auth_required'...o-secret-not-a-default'}, input_type=dict]
+2026-09-23T17:23:42.3910713Z     For further information visit https://errors.pydantic.dev/2.13/v/value_error
+2026-09-23T17:23:42.3911166Z 3 failed, 975 passed, 10 warnings in 78.39s (0:01:18)
+2026-09-23T17:23:45.3279994Z ##[error]Process completed with exit code 1.
+2026-09-23T17:23:45.3417749Z Post job cleanup.
+2026-09-23T17:23:45.4363209Z [command]/usr/bin/git version
+2026-09-23T17:23:45.4409661Z git version 2.55.0
+2026-09-23T17:23:45.4455274Z Temporarily overriding HOME='/home/runner/work/_temp/5ec2665d-9fe0-4252-ae6c-c6b9974a1263' before making global git config changes
+2026-09-23T17:23:45.4456632Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-23T17:23:45.4462277Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/CavaAI/CavaAI
+2026-09-23T17:23:45.4507319Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-23T17:23:45.4545542Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-23T17:23:45.4831461Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-23T17:23:45.4861427Z http.https://github.com/.extraheader
+2026-09-23T17:23:45.4873771Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-09-23T17:23:45.4910981Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-23T17:23:45.5210614Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-23T17:23:45.5255879Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-23T17:23:45.5642015Z Print service container logs: bd29848225f4466484d4bdf349ef537f_qdrantqdrantv1125_a133de
+2026-09-23T17:23:45.5646898Z ##[command]/usr/bin/docker logs --details 513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f
+2026-09-23T17:23:45.5782005Z             _                 _    
+2026-09-23T17:23:45.5782568Z    __ _  __| |_ __ __ _ _ __ | |_  
+2026-09-23T17:23:45.5783034Z   / _` |/ _` | '__/ _` | '_ \| __| 
+2026-09-23T17:23:45.5783536Z  | (_| | (_| | | | (_| | | | | |_  
+2026-09-23T17:23:45.5784339Z   \__, |\__,_|_|  \__,_|_| |_|\__| 
+2026-09-23T17:23:45.5795101Z      |_|                           
+2026-09-23T17:23:45.5795602Z  
+2026-09-23T17:23:45.5795922Z  Version: 1.12.5, build: 27260abd
+2026-09-23T17:23:45.5796425Z  Access web UI at http://localhost:6333/dashboard
+2026-09-23T17:23:45.5796934Z  
+2026-09-23T17:23:45.5797559Z  2026-09-23T17:19:44.169380Z  INFO storage::content_manager::consensus::persistent: Initializing new raft state at ./storage/raft_state.json    
+2026-09-23T17:23:45.5798324Z  2026-09-23T17:19:44.173335Z  INFO qdrant: Distributed mode disabled    
+2026-09-23T17:23:45.5798912Z  2026-09-23T17:19:44.173418Z  INFO qdrant: Telemetry reporting enabled, id: 8b343a82-5e08-4ffb-8055-686215518540    
+2026-09-23T17:23:45.5799768Z  2026-09-23T17:19:44.173460Z  INFO qdrant: Inference service is not configured.    
+2026-09-23T17:23:45.5800562Z  2026-09-23T17:19:44.175862Z  INFO qdrant::actix: TLS disabled for REST API    
+2026-09-23T17:23:45.5801083Z  2026-09-23T17:19:44.175978Z  INFO qdrant::actix: Qdrant HTTP listening on 6333    
+2026-09-23T17:23:45.5801716Z  2026-09-23T17:19:44.176092Z  INFO actix_server::builder: Starting 3 workers
+2026-09-23T17:23:45.5802284Z  2026-09-23T17:19:44.176134Z  INFO actix_server::server: Actix runtime found; starting in Actix runtime
+2026-09-23T17:23:45.5802981Z  2026-09-23T17:19:44.177868Z  INFO qdrant::tonic: Qdrant gRPC listening on 6334    
+2026-09-23T17:23:45.5803486Z  2026-09-23T17:19:44.177883Z  INFO qdrant::tonic: TLS disabled for gRPC API    
+2026-09-23T17:23:45.5804238Z  2026-09-23T17:22:30.473635Z  INFO actix_web::middleware::logger: 172.18.0.1 "GET /collections HTTP/1.1" 200 68 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000340    
+2026-09-23T17:23:45.5805194Z  2026-09-23T17:23:19.076433Z  INFO actix_web::middleware::logger: 172.18.0.1 "GET /collections HTTP/1.1" 200 68 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000319    
+2026-09-23T17:23:45.5806113Z  2026-09-23T17:23:19.077992Z  INFO storage::content_manager::toc::collection_meta_ops: Creating collection portfolio_research_documents    
+2026-09-23T17:23:45.5807160Z  2026-09-23T17:23:19.115196Z  INFO actix_web::middleware::logger: 172.18.0.1 "PUT /collections/portfolio_research_documents HTTP/1.1" 200 57 "-" "qdrant-client/1.14.3 python/3.12.14" 0.037374    
+2026-09-23T17:23:45.5808472Z  2026-09-23T17:23:19.119060Z  INFO actix_web::middleware::logger: 172.18.0.1 "PUT /collections/portfolio_research_documents/points?wait=true HTTP/1.1" 200 81 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000910    
+2026-09-23T17:23:45.5809766Z  2026-09-23T17:23:19.178316Z  INFO actix_web::middleware::logger: 172.18.0.1 "POST /collections/portfolio_research_documents/points/count HTTP/1.1" 200 64 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000746    
+2026-09-23T17:23:45.5811306Z  2026-09-23T17:23:19.234091Z  INFO actix_web::middleware::logger: 172.18.0.1 "POST /collections/portfolio_research_documents/points/delete?wait=true HTTP/1.1" 200 83 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000718    
+2026-09-23T17:23:45.5812461Z  2026-09-23T17:23:20.092651Z  INFO actix_web::middleware::logger: 172.18.0.1 "GET /collections HTTP/1.1" 200 95 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000106    
+2026-09-23T17:23:45.5813573Z  2026-09-23T17:23:20.095618Z  INFO actix_web::middleware::logger: 172.18.0.1 "PUT /collections/portfolio_research_documents/points?wait=true HTTP/1.1" 200 84 "-" "qdrant-client/1.14.3 python/3.12.14" 0.001197    
+2026-09-23T17:23:45.5814920Z  2026-09-23T17:23:20.792907Z  INFO actix_web::middleware::logger: 172.18.0.1 "GET /collections HTTP/1.1" 200 95 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000111    
+2026-09-23T17:23:45.5816078Z  2026-09-23T17:23:20.795531Z  INFO actix_web::middleware::logger: 172.18.0.1 "POST /collections/portfolio_research_documents/points/search HTTP/1.1" 200 467 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000853    
+2026-09-23T17:23:45.5817196Z  2026-09-23T17:23:21.513380Z  INFO actix_web::middleware::logger: 172.18.0.1 "GET /collections HTTP/1.1" 200 95 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000095    
+2026-09-23T17:23:45.5818318Z  2026-09-23T17:23:21.515309Z  INFO actix_web::middleware::logger: 172.18.0.1 "POST /collections/portfolio_research_documents/points/search HTTP/1.1" 200 467 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000415    
+2026-09-23T17:23:45.5819675Z  2026-09-23T17:23:21.575821Z  INFO actix_web::middleware::logger: 172.18.0.1 "POST /collections/portfolio_research_documents/points/delete?wait=true HTTP/1.1" 200 83 "-" "qdrant-client/1.14.3 python/3.12.14" 0.000625    
+2026-09-23T17:23:45.5827230Z Stop and remove container: bd29848225f4466484d4bdf349ef537f_qdrantqdrantv1125_a133de
+2026-09-23T17:23:45.5832886Z ##[command]/usr/bin/docker rm --force 513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f
+2026-09-23T17:23:45.7280675Z 513b181295b0558f73a697e50cffe1f86b18ae4c657effa38c33bbd392044a2f
+2026-09-23T17:23:45.7333036Z Remove container network: github_network_346712c4ea604bfabdca7f1fca58b755
+2026-09-23T17:23:45.7337178Z ##[command]/usr/bin/docker network rm github_network_346712c4ea604bfabdca7f1fca58b755
+2026-09-23T17:23:45.8271643Z github_network_346712c4ea604bfabdca7f1fca58b755
+2026-09-23T17:23:45.8348382Z Cleaning up orphan processes
+2026-09-23T17:23:45.8683481Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-python@v5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

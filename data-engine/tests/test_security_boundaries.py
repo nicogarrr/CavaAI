@@ -90,6 +90,7 @@ def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
             _env_file=None,
             app_env="production",
             research_auth_secret=SECRET,
+            minio_access_key="production-minio-access-not-a-default",
         )
 
     configured = Settings(
@@ -97,6 +98,7 @@ def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
         app_env="production",
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
+        minio_access_key="production-minio-access-not-a-default",
     )
     assert configured.document_storage_backend == "minio"
 
@@ -127,12 +129,14 @@ def test_is_production_accepts_both_aliases():
         app_env="prod",
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
+        minio_access_key="production-minio-access-not-a-default",
     )
     production = Settings(
         _env_file=None,
         app_env="production",
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
+        minio_access_key="production-minio-access-not-a-default",
     )
     local = Settings(_env_file=None, app_env="local")
     assert prod.is_production is True
