@@ -45,7 +45,7 @@ def _fake_generate(thesis_id=7):
 
 def _enqueue_without_dispatch(
     monkeypatch, ticker="AAPL", force=False, *, tenant_id=None, user_id=None,
-    send=None,
+    send=None, request_id=None,
 ):
     import app.workers.dramatiq_app as workers
 
@@ -56,7 +56,7 @@ def _enqueue_without_dispatch(
     if user_id is not None:
         db.info["user_id"] = user_id
     try:
-        return jobs.enqueue_generation(db, ticker, force)
+        return jobs.enqueue_generation(db, ticker, force, request_id)
     finally:
         db.close()
 
@@ -364,3 +364,29 @@ def test_same_ticker_key_is_scoped_by_tenant(monkeypatch):
         db.query(Tenant).filter(Tenant.id.in_(ids)).delete(synchronize_session=False)
         db.commit()
         db.close()
+
+
+def test_request_id_permite_nueva_generacion_real_tras_exito(monkeypatch):
+    """El boton de la UI manda un request_id nuevo por click: cada click debe
+    crear un run real, no replayar el exitoso anterior. Sin request_id se
+    conserva el replay (compat)."""
+    run1, created1 = _enqueue_without_dispatch(
+        monkeypatch, ticker="FRESH", request_id="click-0001"
+    )
+    db = SessionLocal()
+    stored = db.get(WorkflowRun, run1.id)
+    stored.status = "succeeded"
+    db.commit()
+    db.close()
+
+    run2, created2 = _enqueue_without_dispatch(
+        monkeypatch, ticker="FRESH", request_id="click-0002"
+    )
+    assert created2 is True
+    assert run2.id != run1.id
+
+    replay, created3 = _enqueue_without_dispatch(
+        monkeypatch, ticker="FRESH", request_id="click-0001"
+    )
+    assert created3 is False
+    assert replay.id == run1.id
