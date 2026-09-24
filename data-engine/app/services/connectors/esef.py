@@ -181,10 +181,13 @@ class EsefClient:
             timeout=30.0,
         )
 
-    async def _get_json(self, url: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _get_json(
+        self, url: str, params: dict[str, Any] | None = None, accept: str | None = None
+    ) -> dict[str, Any]:
         _throttle()
         try:
-            resp = await self._client.get(url, params=params)
+            headers = {"Accept": accept} if accept else None
+            resp = await self._client.get(url, params=params, headers=headers)
             resp.raise_for_status()
             return resp.json()
         except (httpx.HTTPError, ValueError) as exc:
@@ -218,4 +221,5 @@ class EsefClient:
         older filings only carry the zip package and we do not parse iXBRL."""
         if not filing.json_url:
             raise EsefError(f"filing {filing.fxo_id} has no xBRL-JSON render (json_url null)")
-        return await self._get_json(filing.json_url)
+        # The document endpoint 406s the JSON:API media type; ask for plain JSON.
+        return await self._get_json(filing.json_url, accept="application/json")
