@@ -11,6 +11,7 @@ from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.materiality_service import MaterialityService
 from app.services.review_alert_service import ReviewAlertService
 from app.services.thesis_graph_service import ThesisGraphService
+from app.services.company_resolver import resolve_company
 
 
 class NewsService:
@@ -30,7 +31,7 @@ class NewsService:
 
     def _company_for_item(self, db: Session, text: str, ticker: str | None = None) -> Company | None:
         if ticker:
-            company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+            company = resolve_company(db, ticker)
             if company:
                 return company
         return self.detect_ticker(db, text)

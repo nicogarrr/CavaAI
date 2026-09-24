@@ -28,6 +28,7 @@ from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import MODEL_VERSION
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
 from app.valuation.moat_framework import empty_moat_framework
+from app.services.company_resolver import resolve_company
 
 PROMPT_VERSION = "thesis-render-v2"
 
@@ -56,7 +57,7 @@ class ThesisService:
         return latest_seen
 
     def latest(self, db: Session, ticker: str) -> ThesisVersion | None:
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if not company:
             return None
         return db.scalar(
@@ -158,7 +159,7 @@ class ThesisService:
             if phase_callback is not None:
                 phase_callback(name)
 
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if not company:
             raise ValueError(f"Unknown ticker: {ticker}")
 

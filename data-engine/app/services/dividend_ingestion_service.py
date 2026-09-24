@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.models import Company, DividendRecord, Position
 from app.services.connectors.fmp import FMPClient
 from app.services.provenance import Coverage, SourceKind, provenance
+from app.services.company_resolver import resolve_company
 
 
 class DividendIngestionService:
@@ -48,7 +49,7 @@ class DividendIngestionService:
 
     async def sync_company(self, db: Session, *, ticker: str) -> dict[str, Any]:
         """Ingest declared dividends for one company. Returns counts + provenance."""
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if company is None:
             return {
                 "ticker": ticker.upper(),

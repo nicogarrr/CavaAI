@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Company, Document, DocumentChunk, Transcript
+from app.services.company_resolver import resolve_company
 
 
 class ManualTranscriptImportService:
@@ -18,7 +19,7 @@ class ManualTranscriptImportService:
         source_url: str | None = None,
         period: str = "unknown",
     ) -> dict:
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if not company:
             raise ValueError(f"Unknown ticker: {ticker}")
 

@@ -24,6 +24,7 @@ from app.schemas import ChatResponse
 from app.services.memory_service import MemoryService
 from app.services.chat_synthesis_service import ChatSynthesisService
 from app.services.source_hierarchy_service import source_tier_key
+from app.services.company_resolver import resolve_company
 
 
 KEY_FACT_METRICS = [
@@ -61,7 +62,7 @@ class ChatService:
 
     def _resolve_company(self, db: Session, question: str, scope: str, ticker: str | None) -> Company | None:
         if ticker:
-            return db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+            return resolve_company(db, ticker)
         if scope == "portfolio":
             return None
         # Índice por ticker + regex de palabra completa: evita falsos

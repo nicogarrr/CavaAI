@@ -16,6 +16,7 @@ from app.schemas import (
 )
 from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.review_alert_service import ReviewAlertService
+from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 
@@ -29,9 +30,7 @@ def list_reviews(
 ) -> list[ResearchReview]:
     statement = select(ResearchReview)
     if ticker:
-        company = db.scalar(
-            select(Company).where(Company.ticker == ticker.upper())
-        )
+        company = resolve_company(db, ticker)
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
         statement = statement.where(ResearchReview.company_id == company.id)

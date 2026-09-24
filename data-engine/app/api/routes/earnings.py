@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.models import Company, EarningsRun
 from app.schemas import EarningsRunOut, EarningsWorkflowRequest
 from app.services.earnings_service import EarningsWorkflowService
+from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 
@@ -16,9 +17,7 @@ def run_earnings_workflow(
     payload: EarningsWorkflowRequest,
     db: Session = Depends(get_db),
 ) -> EarningsRun:
-    company = db.scalar(
-        select(Company).where(Company.ticker == ticker.upper())
-    )
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     run = EarningsWorkflowService().run(
@@ -43,9 +42,7 @@ def list_earnings_runs(
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> list[EarningsRun]:
-    company = db.scalar(
-        select(Company).where(Company.ticker == ticker.upper())
-    )
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return list(
