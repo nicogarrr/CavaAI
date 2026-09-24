@@ -7,6 +7,8 @@
  * o precio válidos no hay petición al backend.
  */
 
+import { parseLocalizedNumber } from '@/lib/format';
+
 export interface TransactionFormValues {
   symbol: string;
   type: 'buy' | 'sell';
@@ -31,13 +33,13 @@ export function validateTransactionForm(values: TransactionFormValues, now: Date
     errors.symbol = 'Busca y selecciona una acción de la lista.';
   }
 
-  const quantity = Number(values.quantity);
-  if (!values.quantity.trim() || !Number.isFinite(quantity) || quantity <= 0) {
+  const quantity = parseLocalizedNumber(values.quantity);
+  if (quantity === null || quantity <= 0) {
     errors.quantity = 'Introduce una cantidad mayor que 0.';
   }
 
-  const price = Number(values.price);
-  if (!values.price.trim() || !Number.isFinite(price) || price < 0) {
+  const price = parseLocalizedNumber(values.price);
+  if (price === null || price < 0) {
     errors.price = 'Introduce un precio válido (0 o mayor).';
   }
 

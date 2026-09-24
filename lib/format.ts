@@ -20,6 +20,23 @@ function toFinite(value: NumericInput): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * Parsea números escritos por el usuario tolerando el formato es-ES.
+ * "12,53" -> 12.53, "1.234,56" -> 1234.56, "1234.56" -> 1234.56.
+ * Regla: si hay coma se asume decimal español (los puntos son miles);
+ * sin coma, se parsea tal cual. Entrada inválida -> null (nunca trunca
+ * en silencio como parseFloat("12,53") -> 12).
+ */
+export function parseLocalizedNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.includes(',')
+    ? trimmed.replace(/\./g, '').replace(',', '.')
+    : trimmed;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function toDate(value: string | number | Date | null | undefined): Date | null {
   if (value === null || value === undefined || value === '') return null;
   const date = value instanceof Date ? value : new Date(value);
