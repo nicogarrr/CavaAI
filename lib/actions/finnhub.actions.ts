@@ -769,17 +769,20 @@ async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; 
         console.log(`Finnhub quote failed for ${symbol}, trying Yahoo Finance...`);
     }
     
-    // Fallback to Python backend with Yahoo Finance
+    // Fallback al backend (Yahoo chart API) para mercados que Finnhub free
+    // no cubre (IBEX .MC, .PA, .DE...). El backend cachea 60s por símbolo.
     const backendUrl = process.env.FMP_BACKEND_URL;
-    if (backendUrl && !process.env.VERCEL) {
+    if (backendUrl) {
         try {
+            const path = `/api/market/quote/${encodeURIComponent(symbol)}`;
             const identityHeaders = await researchIdentityHeaders({
                 method: 'GET',
-                path: `/quote/${encodeURIComponent(symbol)}`,
+                path,
             });
-            const response = await fetch(`${backendUrl}/quote/${encodeURIComponent(symbol)}`, {
+            const response = await fetch(`${backendUrl}${path}`, {
                 headers: identityHeaders,
-                next: { revalidate: 60 },
+                // Timeout acotado: un backend caído no debe congelar la página.
+                signal: AbortSignal.timeout(5000),
             });
             if (response.ok) {
                 const data = await response.json();

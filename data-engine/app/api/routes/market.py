@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 import httpx
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
@@ -73,6 +73,89 @@ def _fetch_index(client: httpx.Client, symbol: str) -> dict | None:
         }
     except (httpx.HTTPError, KeyError, IndexError, ValueError):
         return None
+
+
+_QUOTE_CACHE_TTL = 60.0
+_QUOTE_CACHE_MAX = 512
+_quote_cache: dict[str, dict] = {}
+_quote_cache_lock = threading.RLock()
+
+_YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
+
+
+def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
+    """Cotización puntual via Yahoo chart API con shape Finnhub {c,d,dp,h,l,o,pc}.
+
+    Yahoo es la única fuente gratuita sin key que cubre mercados no-US
+    (IBEX .MC, .PA, .DE...); Finnhub free no los sirve. Devuelve None ante
+    cualquier dato incompleto en lugar de inventar valores.
+    """
+    try:
+        resp = client.get(
+            f"{_YAHOO_CHART_URL}/{symbol}",
+            params={"range": "5d", "interval": "1d"},
+            timeout=15,
+        )
+    except httpx.HTTPError:
+        return None
+    if resp.status_code != 200:
+        return None
+    try:
+        result = resp.json()["chart"]["result"][0]
+        quote = result["indicators"]["quote"][0]
+        closes = [value for value in quote["close"] if value is not None]
+        if not closes or closes[-1] <= 0:
+            return None
+        meta = result.get("meta") or {}
+        last = float(closes[-1])
+        previous = (
+            float(closes[-2])
+            if len(closes) >= 2
+            else float(meta.get("chartPreviousClose") or last)
+        )
+        opens = [value for value in (quote.get("open") or []) if value is not None]
+        highs = [value for value in (quote.get("high") or []) if value is not None]
+        lows = [value for value in (quote.get("low") or []) if value is not None]
+        change = last - previous
+        return {
+            "c": last,
+            "d": change,
+            "dp": (change / previous * 100) if previous else 0.0,
+            "h": float(highs[-1]) if highs else last,
+            "l": float(lows[-1]) if lows else last,
+            "o": float(opens[-1]) if opens else last,
+            "pc": previous,
+        }
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
+@router.get("/quote/{symbol}")
+def market_quote(symbol: str) -> dict:
+    """Cotización puntual con shape Finnhub, fuente Yahoo Finance chart API.
+
+    Revive el fallback del frontend (getStockQuote) para tickers que Finnhub
+    free no cubre (IBEX .MC y otros mercados). Caché en memoria de 60s por
+    símbolo para no golpear Yahoo en bucles (watchlist, overview).
+    """
+    normalized = symbol.strip().upper()
+    if not normalized:
+        raise HTTPException(status_code=404, detail="Sin cotización disponible")
+    now = time.monotonic()
+    with _quote_cache_lock:
+        cached = _quote_cache.get(normalized)
+        if cached and now - cached["at"] < _QUOTE_CACHE_TTL:
+            return cached["data"]
+    headers = dict(_HEADERS)
+    with httpx.Client(headers=headers) as client:
+        data = _fetch_yahoo_quote(client, normalized)
+    if not data:
+        raise HTTPException(status_code=404, detail="Sin cotización disponible")
+    with _quote_cache_lock:
+        if len(_quote_cache) >= _QUOTE_CACHE_MAX:
+            _quote_cache.clear()
+        _quote_cache[normalized] = {"at": now, "data": data}
+    return data
 
 
 @router.get("/indices")
