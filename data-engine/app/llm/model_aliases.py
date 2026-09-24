@@ -75,7 +75,7 @@ class ModelAlias:
 DEFAULT_MODEL_ENV_VAR = "OPENCODE_GO_MODEL"
 #: Fallback when the env var is unset/blank. Kept in sync with
 #: Settings.opencode_go_model in app/core/config.py.
-DEFAULT_MODEL_FALLBACK = "deepseek-v4-flash"
+DEFAULT_MODEL_FALLBACK = "space-bunny-free"
 
 
 def default_model_from_env(
@@ -107,6 +107,24 @@ OPENCODE_GO_MODEL_ALIASES = (
         context_window=1_048_576,
         # OpenCode Go bills via subscription, no public per-token tariffs:
         # 0 = UNKNOWN placeholder (cost_basis="unknown"), not "free".
+        input_cost=Decimal("0"),
+        output_cost=Decimal("0"),
+        cost_basis="unknown",
+        supported_capabilities=frozenset(
+            {"text", "reasoning", "tool_calling", "structured_output"}
+        ),
+    ),
+    ModelAlias(
+        # Stealth model de OpenCode (anuncio 2026-09-23): 1M contexto,
+        # multimodal, zero data retention. Gratis en promocion de lanzamiento
+        # (una semana); revisar precio/disponibilidad tras la promo.
+        internal_alias="space-bunny-free",
+        provider="opencode-go",
+        provider_model_id="space-bunny-free",
+        enabled=True,
+        context_window=1_048_576,
+        # Promo gratuita: sin tarifa publica por token; 0 = UNKNOWN
+        # placeholder (cost_basis="unknown"), no "gratis para siempre".
         input_cost=Decimal("0"),
         output_cost=Decimal("0"),
         cost_basis="unknown",

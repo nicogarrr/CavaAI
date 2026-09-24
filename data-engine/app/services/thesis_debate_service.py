@@ -223,7 +223,7 @@ async def debate_thesis(
             system=get_prompt("thesis_debate_bull").text,
             user=f"Ticker: {ticker}\nTesis: {thesis or '(sin tesis aportada)'}",
             task="red_team",
-            max_tokens=400,
+            max_tokens=4000,
             temperature=0.3,
         )
         llm_calls += 1
@@ -241,7 +241,7 @@ async def debate_thesis(
                 f"Caso alcista previo: {bull_case[:800]}"
             ),
             task="red_team",
-            max_tokens=400,
+            max_tokens=4000,
             temperature=0.3,
         )
         llm_calls += 1
@@ -280,7 +280,7 @@ async def debate_thesis(
                     f"ALCISTA: {bull_case[:1000]}\nBAJISTA: {bear_case[:1000]}"
                 ),
                 task="red_team",
-                max_tokens=300,
+                max_tokens=2000,
                 temperature=0.1,
             )
             llm_calls += 1
@@ -353,7 +353,7 @@ async def risk_lenses(
             ],
             task="red_team",
             temperature=0.2,
-            max_tokens=600,
+            max_tokens=4000,
         )
         response = await llm.complete(request)
         text = (response.text or "").strip()

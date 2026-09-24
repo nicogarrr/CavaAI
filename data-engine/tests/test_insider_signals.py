@@ -418,3 +418,17 @@ def test_big_buy_ignores_malformed_value():
     # The c-suite signal still fires, with an honest null value.
     c_suite = [s for s in signals if s["signal"] == "c_suite_buy"]
     assert len(c_suite) == 1 and c_suite[0]["value"] is None
+
+
+def test_sec_user_agent_wraps_product_style(monkeypatch):
+    """Regresion F11: UA de producto con contacto -> 403 en SEC. Se envuelve
+    en UA tipo navegador extrayendo el email, aunque venga mal concatenado."""
+    monkeypatch.setenv("SEC_USER_AGENT", "CavaAI/0.1nicogarrr@users.noreply.github.com")
+    ua = form4_connector.resolve_user_agent()
+    assert ua.startswith("Mozilla/5.0")
+    assert "+mailto:nicogarrr@users.noreply.github.com" in ua
+
+
+def test_sec_user_agent_respects_custom_browser_ua(monkeypatch):
+    monkeypatch.setenv("SEC_USER_AGENT", "Mozilla/5.0 (X11; Linux) custom/1.0 mailto:a@b.c")
+    assert form4_connector.resolve_user_agent().startswith("Mozilla/5.0 (X11; Linux)")
