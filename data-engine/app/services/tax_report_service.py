@@ -493,8 +493,13 @@ class TaxReportService:
 
 
 
-def build_tax_summary_rows(db: Session, fiscal_year: int) -> list[dict]:
-    """Position-derived holdings summary used by the tax page."""
+def build_tax_summary_rows(db: Session, fiscal_year: int | None = None) -> list[dict]:
+    """Position-derived holdings summary used by the tax page.
+
+    ``fiscal_year`` queda reservado para scoping por ano (ventas del ejercicio);
+    las posiciones actuales no dependen del ano, asi que es opcional - la ruta
+    ``GET /api/taxes/holdings`` lo llama sin ano.
+    """
     rows = db.execute(
         select(Position, Company).join(Company, Position.company_id == Company.id)
     ).all()
