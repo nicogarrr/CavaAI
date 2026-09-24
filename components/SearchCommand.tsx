@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { CommandDialog, CommandEmpty, CommandInput, CommandList } from "@/components/ui/command"
-import { Button } from "@/components/ui/button";
 import { Loader2, TrendingUp, Search } from "lucide-react";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { showErrorToast } from "@/lib/toast";
@@ -143,12 +142,23 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         router.prefetch(`/research/${symbol.toUpperCase()}`);
     }, [router]);
 
-    // Evitar hydration mismatch
+    // Evitar hydration mismatch: el fallback pre-hidrato debe ser
+    // visualmente IDENTICO al boton hidratado (input sutil), no una pildora
+    // primaria con el label crudo. Sin onClick hasta montar.
     if (!mounted) {
         return (
-            <Button className="search-btn" aria-label="Abrir buscador">
-                {label}
-            </Button>
+            <button
+                type="button"
+                tabIndex={-1}
+                aria-hidden="true"
+                className="flex min-h-[44px] items-center gap-2 w-full px-4 py-2.5 text-sm text-gray-400 bg-gray-800/60 border border-gray-700 rounded-lg backdrop-blur-sm"
+            >
+                <Search className="w-4 h-4 text-gray-500" />
+                <span className="flex-1 text-left">Buscar acciones...</span>
+                <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 bg-gray-900/50 border border-gray-600 rounded">
+                    Ctrl+K
+                </kbd>
+            </button>
         );
     }
 
