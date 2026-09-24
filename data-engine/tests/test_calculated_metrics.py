@@ -400,3 +400,114 @@ def test_peer_comparison_uses_traceable_metrics_and_multifactor_peers():
     assert Decimal(payload["benchmarks"]["fcf_margin"]["target_vs_peer_median"]) == Decimal("0.05000000")
 
     cleanup_metric_test_artifacts()
+
+
+def add_quality_year_facts(db, company: Company, years: list[int]) -> None:
+    for year in years:
+        period = f"FY{year}"
+        add_fact(db, company, "revenue", "1000", period, year)
+        add_fact(db, company, "free_cash_flow", "100", period, year)
+        add_fact(db, company, "net_income", "200", period, year)
+        add_fact(db, company, "total_equity", "1000", period, year)
+        add_fact(db, company, "total_assets", "2000", period, year)
+
+
+def test_windowed_ratio_requires_minimum_history():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2024, 2025])
+        db.commit()
+
+        result = MetricCalculationService().calculate(
+            db, company, "fcf_margin_5y", persist=True
+        )
+        assert result.status == "unavailable"
+        assert result.calculation_trace["reason"] == "insufficient_history"
+        assert result.calculation_trace["coverage"] == "2/5"
+        assert result.value is None
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_windowed_ratio_averages_five_years_with_coverage():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        db.commit()
+
+        result = MetricCalculationService().calculate(
+            db, company, "fcf_margin_5y", persist=True
+        )
+        assert result.status == "ok"
+        assert result.definition_version == "FCF_MARGIN_5Y_V1"
+        assert result.value == Decimal("0.10000000")
+        assert result.period == "FY2021-FY2025"
+        assert result.calculation_trace["coverage"] == "5/5"
+        assert result.calculation_trace["years"] == [2021, 2022, 2023, 2024, 2025]
+        assert result.calculation_trace["aggregation"] == "mean_of_annual_ratios"
+
+        stored = db.scalar(
+            select(CalculatedMetric).where(
+                CalculatedMetric.company_id == company.id,
+                CalculatedMetric.metric == "fcf_margin_5y",
+            )
+        )
+        assert stored is not None
+        assert stored.value == Decimal("0.10000000")
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_quality_moat_score_full_pass_and_partial_coverage():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        add_fact(db, company, "operating_income", "300", "FY2025", 2025)
+        add_fact(db, company, "total_debt", "500", "FY2025", 2025)
+        add_fact(db, company, "cash_and_equivalents", "100", "FY2025", 2025)
+        add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
+        add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
+        db.commit()
+
+        service = MetricCalculationService()
+
+        partial = service.calculate(db, company, "quality_moat_score", persist=True)
+        db.commit()
+        assert partial.status == "partial"
+        assert partial.value == Decimal("4")
+        checks = {c["check"]: c for c in partial.calculation_trace["checks"]}
+        assert checks["fcf_margin_5y_gt_5pct"]["passed"] is True
+        assert checks["net_margin_5y_gt_15pct"]["passed"] is True
+        assert checks["roe_5y_gt_15pct"]["passed"] is True
+        assert checks["roa_5y_gt_7pct"]["passed"] is True
+        assert checks["roic_gt_wacc"]["passed"] is None
+        assert partial.calculation_trace["checks_evaluable"] == 4
+
+        add_fact(db, company, "risk_free_rate", "0.04", "2025-12-31", 2025, None)
+        add_fact(db, company, "beta", "1.2", "2025-12-31", 2025, None)
+        add_fact(db, company, "equity_risk_premium", "0.05", "2025-12-31", 2025, None)
+        add_fact(db, company, "country_risk_premium", "0.01", "2025-12-31", 2025, None)
+        add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None)
+        add_fact(db, company, "interest_expense", "30", "FY2025", 2025)
+        add_fact(db, company, "effective_tax_rate", "0.25", "FY2025", 2025)
+        db.commit()
+
+        full = service.calculate(db, company, "quality_moat_score", persist=True)
+        db.commit()
+        assert full.status == "ok"
+        assert full.value == Decimal("5")
+        full_checks = {c["check"]: c for c in full.calculation_trace["checks"]}
+        assert full_checks["roic_gt_wacc"]["passed"] is True
+        assert full.calculation_trace["checks_evaluable"] == 5
+        assert full.definition_version == "MARCO_NICO_V1"
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
