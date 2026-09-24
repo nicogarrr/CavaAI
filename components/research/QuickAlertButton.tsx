@@ -15,22 +15,42 @@ import { BellPlus, Loader2 } from 'lucide-react';
 import { createAlert, type AlertType } from '@/lib/actions/alerts.actions';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
-import { parseLocalizedNumber } from '@/lib/format';
+import { formatMoney, parseLocalizedNumber } from '@/lib/format';
 
 const ALERT_TYPES: Array<{ value: AlertType; label: string; needsValue: boolean; valuePlaceholder: string }> = [
-  { value: 'price_above', label: 'Precio por encima de', needsValue: true, valuePlaceholder: 'Precio objetivo $' },
-  { value: 'price_below', label: 'Precio por debajo de', needsValue: true, valuePlaceholder: 'Precio objetivo $' },
+  { value: 'price_above', label: 'Precio por encima de', needsValue: true, valuePlaceholder: 'Precio objetivo' },
+  { value: 'price_below', label: 'Precio por debajo de', needsValue: true, valuePlaceholder: 'Precio objetivo' },
   { value: 'price_change', label: 'Cambio de precio %', needsValue: true, valuePlaceholder: 'Variación objetivo %' },
   { value: 'news', label: 'Nueva noticia', needsValue: false, valuePlaceholder: '' },
   { value: 'earnings', label: 'Reporte de ganancias', needsValue: false, valuePlaceholder: '' },
 ];
+
+// Símbolo visible junto al precio objetivo: la alerta es sobre el precio
+// del mercado del valor, así que la divisa es la de su bolsa, no siempre $.
+const CURRENCY_SYMBOL: Record<string, string> = {
+  EUR: '€',
+  USD: 'US$',
+  GBP: '£',
+  GBX: 'p',
+  JPY: '¥',
+  CHF: 'CHF ',
+  SEK: 'kr ',
+  DKK: 'kr ',
+  NOK: 'kr ',
+  HKD: 'HK$',
+  MXN: 'MX$',
+  BRL: 'R$',
+  CAD: 'CA$',
+  AUD: 'A$',
+};
 
 /**
  * Alerta rápida desde la ficha de research: selector de tipo de alerta y,
  * opcionalmente, deep-link a /alerts con el diálogo de creación
  * pre-rellenado para tipos más complejos.
  */
-export default function QuickAlertButton({ ticker }: { ticker: string }) {
+export default function QuickAlertButton({ ticker, currency = 'USD' }: { ticker: string; currency?: string }) {
+  const symbol = CURRENCY_SYMBOL[currency] ?? `${currency} `;
   const [type, setType] = useState<AlertType>('price_above');
   const [price, setPrice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -63,7 +83,7 @@ export default function QuickAlertButton({ ticker }: { ticker: string }) {
       });
       toast.success(
         meta.needsValue
-          ? `Alerta creada: ${ticker} ${meta.label.toLowerCase()} ${type === 'price_change' ? `${value}%` : `$${value}`}`
+          ? `Alerta creada: ${ticker} ${meta.label.toLowerCase()} ${type === 'price_change' ? `${value}%` : formatMoney(value, currency)}`
           : `Alerta creada: ${ticker} · ${meta.label}`,
       );
       setPrice('');
@@ -100,13 +120,13 @@ export default function QuickAlertButton({ ticker }: { ticker: string }) {
         <Input
           value={price}
           onChange={(e) => setPrice(e.target.value)}
-          type="number"
-          min="0"
-          step="0.01"
+          // type="text" (no "number"): Chrome rechaza la coma decimal en
+          // inputs numéricos y parseLocalizedNumber ya tolera "8,5" es-ES.
+          type="text"
           inputMode="decimal"
-          placeholder={meta.valuePlaceholder}
-          aria-label={type === 'price_change' ? 'Variación objetivo en porcentaje' : 'Precio objetivo en dólares'}
-          className="h-11 w-full bg-[#101010] text-base sm:h-8 sm:w-36 sm:text-xs"
+          placeholder={meta.needsValue && type !== 'price_change' ? `${meta.valuePlaceholder} ${symbol}` : meta.valuePlaceholder}
+          aria-label={type === 'price_change' ? 'Variación objetivo en porcentaje' : `Precio objetivo en ${currency}`}
+          className="h-11 w-full bg-[#101010] text-base sm:h-8 sm:w-44 sm:text-xs"
         />
       ) : null}
       <div className="flex w-full gap-2 sm:w-auto">

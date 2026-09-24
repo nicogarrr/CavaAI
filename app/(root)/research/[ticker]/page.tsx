@@ -813,7 +813,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
             <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />snapshot de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{label(company.company_type)}</span></div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} /></div>
+              <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} currency={company.currency} /></div>
               <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} />
             </div>
           </div>
