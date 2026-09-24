@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import Company
 from app.services.knowledge_graph_service import KnowledgeGraphService
+from app.services.company_resolver import resolve_company
 
 
 router = APIRouter()
@@ -28,7 +29,7 @@ def knowledge_graph(
 ) -> dict:
     company_id = None
     if ticker:
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if company is None:
             raise HTTPException(status_code=404, detail="Company not found")
         company_id = company.id

@@ -29,6 +29,7 @@ from app.services.manual_transcript_import_service import ManualTranscriptImport
 from app.services.source_hierarchy_service import SOURCE_TIERS, classify_source
 from app.services.rag import RAGIndex
 from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
+from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 
@@ -203,7 +204,7 @@ def kpi_candidates(
 ) -> list[KPIExtractionCandidate]:
     statement = select(KPIExtractionCandidate)
     if ticker:
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
         statement = statement.where(KPIExtractionCandidate.company_id == company.id)

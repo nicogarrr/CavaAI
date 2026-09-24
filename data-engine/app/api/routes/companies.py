@@ -55,6 +55,7 @@ from app.services.decision_learning_service import (
 )
 from app.services.financial_terminal_service import FinancialTerminalService
 from app.services.management_credibility_service import ManagementCredibilityService
+from app.services.company_resolver import resolve_company
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ router = APIRouter()
 def company_kpi_registry(
     ticker: str, db: Session = Depends(get_db)
 ) -> list[CompanyKPI]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return list(
@@ -81,7 +82,7 @@ def company_kpi_registry(
 def sync_company_kpi_registry(
     ticker: str, db: Session = Depends(get_db)
 ) -> list[CompanyKPI]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return CompanyKPIRegistryService().sync(db, company)
@@ -210,7 +211,7 @@ def list_companies(
 
 @router.get("/{ticker}", response_model=CompanyOut)
 def get_company(ticker: str, db: Session = Depends(get_db)) -> Company:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
@@ -223,7 +224,7 @@ def list_financial_facts(
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[FinancialFact]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
@@ -245,7 +246,7 @@ def financial_terminal(
     periodicity: Literal["all", "annual", "quarterly"] = "all",
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     requested = (
@@ -268,7 +269,7 @@ def list_calculated_metrics(
     limit: Annotated[int, Query(ge=1, le=1000)] = 200,
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
@@ -315,7 +316,7 @@ def refresh_calculated_metrics(
     ticker: str,
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     metrics = MetricCalculationService().calculate_all(db, company, persist=True)
@@ -352,7 +353,7 @@ def long_term_model(
     db: Session = Depends(get_db),
 ) -> dict:
     """Return the source-aware 5–10 year fundamental model for a company."""
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     payload = FundamentalModelRepository().latest_payload(db, company)
@@ -369,7 +370,7 @@ def generate_long_term_model(
     horizon: int = Query(default=5, ge=5, le=10),
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return LongTermModelService().build(db, company, horizon=horizon)
@@ -382,7 +383,7 @@ def list_driver_assumptions(
     scenario: Literal["bear", "base", "bull"] | None = None,
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     versions = DriverAssumptionService().list(
@@ -411,7 +412,7 @@ def create_driver_assumption(
     horizon: int = Query(default=5, ge=5, le=10),
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     try:
@@ -441,7 +442,7 @@ def company_snapshot(
     ticker: str,
     db: Session = Depends(get_db),
 ) -> CompanySnapshotOut:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return CompanySnapshotService().build(db, company)
@@ -453,7 +454,7 @@ def refresh_company_snapshot(
     horizon: int = Query(default=5, ge=5, le=10),
     db: Session = Depends(get_db),
 ) -> CompanySnapshotOut:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     MetricCalculationService().calculate_all(db, company, persist=True)
@@ -464,7 +465,7 @@ def refresh_company_snapshot(
 
 @router.get("/{ticker}/decision-journal")
 def decision_journal(ticker: str, db: Session = Depends(get_db)) -> list[dict]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return [_decision_payload(entry) for entry in DecisionJournalService().list(db, company)]
@@ -476,7 +477,7 @@ def create_decision_journal_entry(
     payload: DecisionJournalCreate,
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     entry = DecisionJournalService().create(
@@ -491,7 +492,7 @@ def create_decision_journal_entry(
 
 @router.get("/{ticker}/decision-lessons/taxonomy")
 def decision_lesson_taxonomy(ticker: str, db: Session = Depends(get_db)) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return {"taxonomy": sorted(DECISION_ERROR_TAXONOMY)}
@@ -499,7 +500,7 @@ def decision_lesson_taxonomy(ticker: str, db: Session = Depends(get_db)) -> dict
 
 @router.get("/{ticker}/decision-lessons")
 def decision_lessons(ticker: str, db: Session = Depends(get_db)) -> list[dict]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return [
@@ -512,7 +513,7 @@ def decision_lessons(ticker: str, db: Session = Depends(get_db)) -> list[dict]:
 def propose_decision_lessons(
     ticker: str, db: Session = Depends(get_db)
 ) -> list[dict]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return [
@@ -528,7 +529,7 @@ def update_decision_lesson(
     payload: DecisionLessonUpdate,
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     lesson = db.get(DecisionLesson, lesson_id)
     if not company or not lesson or lesson.company_id != company.id:
         raise HTTPException(status_code=404, detail="Decision lesson not found")
@@ -554,7 +555,7 @@ def decide_decision_lesson(
     payload: DecisionLessonAction,
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     lesson = db.get(DecisionLesson, lesson_id)
     if not company or not lesson or lesson.company_id != company.id:
         raise HTTPException(status_code=404, detail="Decision lesson not found")
@@ -572,7 +573,7 @@ def decide_decision_lesson(
 
 @router.get("/{ticker}/management-credibility")
 def management_credibility(ticker: str, db: Session = Depends(get_db)) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return ManagementCredibilityService().dashboard(db, company)
@@ -584,7 +585,7 @@ def register_management_promise(
     payload: ManagementPromiseCreate,
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     try:
@@ -600,7 +601,7 @@ def register_management_promise(
 def import_management_call_claims(
     ticker: str, db: Session = Depends(get_db)
 ) -> list[dict]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return [
@@ -613,7 +614,7 @@ def import_management_call_claims(
 def reconcile_management_promises(
     ticker: str, db: Session = Depends(get_db)
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     ManagementCredibilityService().reconcile(db, company)
@@ -627,7 +628,7 @@ def update_management_explanation(
     payload: ManagementExplanationUpdate,
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     promise = db.get(ManagementPromise, promise_id)
     if not company or not promise or promise.company_id != company.id:
         raise HTTPException(status_code=404, detail="Management promise not found")
@@ -639,7 +640,7 @@ def update_management_explanation(
 
 @router.get("/{ticker}/expectation-reality")
 def expectation_reality(ticker: str, db: Session = Depends(get_db)) -> list[dict]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return [_expectation_payload(item) for item in ExpectationRealityService().list(db, company)]
@@ -650,7 +651,7 @@ def review_expectation_reality(
     ticker: str,
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return [_expectation_payload(item) for item in ExpectationRealityService().review(db, company)]
@@ -700,7 +701,7 @@ def peer_comparison(
     metrics: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
@@ -720,7 +721,7 @@ def peer_analysis(
     limit: int = Query(default=8, ge=1, le=20),
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return PeerAnalysisService().analyze(db, company, limit=limit)
@@ -731,7 +732,7 @@ def moat_assessment(
     ticker: str,
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return MoatService().read(db, company)
@@ -742,7 +743,7 @@ def refresh_moat_assessment(
     ticker: str,
     db: Session = Depends(get_db),
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return MoatService().assess(db, company, persist=True)
@@ -750,7 +751,7 @@ def refresh_moat_assessment(
 
 @router.post("/{ticker}/red-team")
 def run_red_team(ticker: str, db: Session = Depends(get_db)) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     run = RedTeamService().run(db, company)
@@ -759,7 +760,7 @@ def run_red_team(ticker: str, db: Session = Depends(get_db)) -> dict:
 
 @router.get("/{ticker}/red-team/latest")
 def latest_red_team(ticker: str, db: Session = Depends(get_db)) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     run = RedTeamService().latest(db, company)
@@ -789,7 +790,7 @@ def _red_team_payload(run) -> dict:
 
 @router.post("/{ticker}/refresh/fmp", response_model=FinancialRefreshResponse)
 async def refresh_fmp_financials(ticker: str, db: Session = Depends(get_db)) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
@@ -813,7 +814,7 @@ async def refresh_fmp_financials(ticker: str, db: Session = Depends(get_db)) -> 
 
 @router.post("/{ticker}/refresh/sec", response_model=FinancialRefreshResponse)
 async def refresh_sec_financials(ticker: str, db: Session = Depends(get_db)) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     try:
@@ -833,7 +834,7 @@ async def refresh_sec_financials(ticker: str, db: Session = Depends(get_db)) -> 
 @router.post("/{ticker}/refresh/esef", response_model=FinancialRefreshResponse)
 async def refresh_esef_financials(ticker: str, db: Session = Depends(get_db)) -> dict:
     """Fundamentales IFRS anuales desde el snapshot ESEF local (IBEX reviewed)."""
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     try:
@@ -849,7 +850,7 @@ async def refresh_esef_financials(ticker: str, db: Session = Depends(get_db)) ->
 async def refresh_wacc_inputs(
     ticker: str, db: Session = Depends(get_db)
 ) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     try:

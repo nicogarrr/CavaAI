@@ -18,6 +18,7 @@ from app.schemas import (
 from app.services.review_alert_service import ReviewAlertService
 from app.services.alert_rule_service import AlertRuleService
 from app.services.notification_service import NotificationService
+from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 
@@ -57,7 +58,7 @@ def list_alert_rules(
 ) -> list[AlertRule]:
     statement = select(AlertRule)
     if ticker:
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
         statement = statement.where(AlertRule.company_id == company.id)

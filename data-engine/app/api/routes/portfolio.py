@@ -23,6 +23,7 @@ from app.services.portfolio_intelligence_service import PortfolioIntelligenceSer
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 from app.services.dividend_ingestion_service import DividendIngestionService
 from app.services.tearsheet_service import TearsheetService
+from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 
@@ -534,7 +535,7 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)) -> No
 
 @router.delete("/holdings/{ticker}", status_code=204)
 def delete_holding(ticker: str, db: Session = Depends(get_db)) -> None:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Holding not found")
     deleted = PortfolioLedgerService().delete_holding(db, company.id)

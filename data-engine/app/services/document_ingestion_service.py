@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.models import Company, Document, DocumentChunk
 from app.services.document_store import DocumentStore
 from app.services.public_fetch import fetch_public_url
+from app.services.company_resolver import resolve_company
 
 
 MAX_DOCUMENT_BYTES = 15 * 1024 * 1024
@@ -88,7 +89,7 @@ class DocumentIngestionService:
         if len(content) > MAX_DOCUMENT_BYTES:
             raise ValueError("Document exceeds 15MB local ingestion limit")
 
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if not company:
             raise ValueError(f"Company {ticker.upper()} not found")
 
