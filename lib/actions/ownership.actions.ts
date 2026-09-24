@@ -108,7 +108,12 @@ export async function getManagerChanges(cik: string): Promise<ManagerChanges> {
   return requestJson(`/api/ownership/managers/${encodeURIComponent(cik)}/changes`);
 }
 
-export async function syncOwnershipManagers(): Promise<void> {
-  await requestJson('/api/ownership/managers/sync', { method: 'POST' });
-  revalidatePath('/ownership');
+export interface OwnershipSyncResult {
+    results: Array<{ cik: string; manager: string; status: string; reason?: string | null }>;
+}
+
+export async function syncOwnershipManagers(): Promise<OwnershipSyncResult> {
+    const result = await requestJson<OwnershipSyncResult>('/api/ownership/managers/sync', { method: 'POST' });
+    revalidatePath('/ownership');
+    return result;
 }
