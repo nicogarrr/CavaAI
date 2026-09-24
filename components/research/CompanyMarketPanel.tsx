@@ -14,10 +14,16 @@ const CompanyMarketChart = dynamic(() => import('./CompanyMarketChart'), {
     ),
 });
 
-function money(value: number | null) {
+// Intl solo acepta códigos ISO 4217; un valor raro del backend no debe
+// romper el panel (fallback USD, la moneda mayoritaria del universo).
+function safeCurrency(currency: string | null): string {
+    return currency && /^[A-Z]{3}$/.test(currency) ? currency : 'USD';
+}
+
+function money(value: number | null, currency: string | null) {
     return value == null
         ? 'N/A'
-        : formatMoney(value, 'USD');
+        : formatMoney(value, safeCurrency(currency));
 }
 
 export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapshot }) {
@@ -36,7 +42,7 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                           </p>
                       </div>
                       <div className="sm:ml-auto sm:text-right">
-                          <div className="text-2xl font-bold text-gray-100 sm:text-3xl">{money(snapshot.quote.price)}</div>
+                          <div className="text-2xl font-bold text-gray-100 sm:text-3xl">{money(snapshot.quote.price, snapshot.currency)}</div>
                         <div className={positive ? 'text-teal-300' : 'text-red-300'}>
                             {snapshot.quote.change == null ? 'N/A' : `${positive ? '+' : ''}${snapshot.quote.change.toFixed(2)}`}
                             {' · '}
@@ -53,7 +59,7 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                     ].map(([label, value]) => (
                         <div key={String(label)} className="rounded-lg border border-gray-800 p-3">
                             <div className="text-xs uppercase text-gray-500">{label}</div>
-                            <div className="mt-1 font-semibold text-gray-200">{money(value as number | null)}</div>
+                            <div className="mt-1 font-semibold text-gray-200">{money(value as number | null, snapshot.currency)}</div>
                         </div>
                     ))}
                 </div>
