@@ -466,10 +466,12 @@ def test_chat_resolve_company_avoids_substring_false_positive(db):
 def test_no_premium_route_in_contract():
     from app.services.llm_router import ROUTES, route_model, route_table
 
-    assert "premium_financial_analysis" not in ROUTES
-    assert route_model("premium_financial_analysis").task == "fallback"
-    tasks = {row["task"] for row in route_table()}
-    assert not any(task.startswith("premium_") for task in tasks)
+    # Tras #213 la ruta premium existe como alias eval-gated, pero apunta al
+    # modelo real gratuito: ningun modelo premium ficticio ni de pago.
+    assert ROUTES["premium_financial_analysis"].model == "space-bunny-free"
+    assert route_model("premium_financial_analysis").model == "space-bunny-free"
+    premium_rows = [row for row in route_table() if row["task"].startswith("premium_")]
+    assert premium_rows and all(row["model"] == "space-bunny-free" for row in premium_rows)
 
 
 # ---------------------------------------------------------------------------
