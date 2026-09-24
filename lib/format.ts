@@ -85,7 +85,7 @@ export function formatCompact(
  */
 export function formatPercent(
   value: NumericInput,
-  { fromRatio = true, digits = 1 }: { fromRatio?: boolean; digits?: number } = {},
+  { fromRatio = true, digits = 1, signDisplay }: { fromRatio?: boolean; digits?: number; signDisplay?: 'auto' | 'always' | 'never' } = {},
   fallback: string = NA,
 ): string {
   const parsed = toFinite(value);
@@ -95,6 +95,7 @@ export function formatPercent(
     style: 'percent',
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
+    ...(signDisplay ? { signDisplay } : {}),
   }).format(ratio);
 }
 

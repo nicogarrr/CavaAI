@@ -15,6 +15,8 @@ export type MarketMover = {
   ticker: string;
   name: string;
   sector: string;
+  /** ISO 4217 de la compañía; null si el backend aún no la sirve */
+  currency?: string | null;
   price: number;
   /** null = sin cierre anterior registrado (cambio no medible, nunca 0 inventado) */
   change_pct: number | null;
