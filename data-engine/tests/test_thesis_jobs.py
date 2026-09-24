@@ -198,13 +198,11 @@ def test_status_endpoint_payload(monkeypatch):
     assert client.get("/api/thesis/jobs/999999").status_code == 404
 
 
-def test_enqueue_returns_terminal_run_without_unique_key_error(monkeypatch):
+def test_enqueue_returns_succeeded_run_without_unique_key_error(monkeypatch):
     run, _ = _enqueue_without_dispatch(monkeypatch, ticker="TERMINAL")
     db = SessionLocal()
     stored = db.get(WorkflowRun, run.id)
-    stored.status = "failed"
-    stored.error_class = "RuntimeError"
-    stored.error_message = "failed"
+    stored.status = "succeeded"
     db.commit()
     db.close()
 
@@ -212,7 +210,63 @@ def test_enqueue_returns_terminal_run_without_unique_key_error(monkeypatch):
 
     assert created is False
     assert replay.id == run.id
-    assert replay.status == "failed"
+    assert replay.status == "succeeded"
+
+
+def test_failed_run_is_redispatched_on_retry(monkeypatch):
+    """El front dice "puedes reintentar": un run fallido no es un resultado
+    reutilizable - re-postear el mismo ticker debe re-despachar el run."""
+    sent: list[int] = []
+    run, _ = _enqueue_without_dispatch(monkeypatch, ticker="RETRY")
+    db = SessionLocal()
+    stored = db.get(WorkflowRun, run.id)
+    stored.status = "failed"
+    stored.error_class = "ValueError"
+    stored.error_message = "Thesis generation failed"
+    db.commit()
+    db.close()
+
+    replay, created = _enqueue_without_dispatch(
+        monkeypatch, ticker="RETRY", send=lambda run_id: sent.append(run_id)
+    )
+
+    assert created is False
+    assert replay.id == run.id
+    assert replay.status == "queued"
+    assert replay.error_class is None
+    assert replay.error_message is None
+    assert sent == [run.id]
+    assert (replay.input_payload or {}).get("attempt") == 2
+
+
+def test_generate_async_ensures_company_stub(monkeypatch):
+    """El buscador resuelve tickers via Finnhub sin ficha en BD; generate-async
+    debe crear la ficha para que la generacion no muera con Unknown ticker."""
+    import app.workers.dramatiq_app as workers
+
+    monkeypatch.setattr(workers.generate_thesis_job, "send", lambda run_id: None)
+
+    def fail_enrich(self, db, company):
+        raise ConnectionError("sin red en el test")
+
+    monkeypatch.setattr(
+        "app.services.company_enrichment_service.CompanyEnrichmentService.enrich",
+        fail_enrich,
+    )
+    client = TestClient(main.app)
+    response = client.post(
+        "/api/thesis/generate-async",
+        json={"ticker": "ZZTEST", "force_new_version": False},
+    )
+    assert response.status_code == 202
+    db = SessionLocal()
+    from app.models import Company
+
+    company = db.scalar(select(Company).where(Company.ticker == "ZZTEST"))
+    assert company is not None
+    db.delete(company)
+    db.commit()
+    db.close()
 
 
 def test_failed_dispatch_is_recoverable(monkeypatch):

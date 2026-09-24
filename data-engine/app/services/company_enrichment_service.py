@@ -139,3 +139,38 @@ class CompanyEnrichmentService:
             "already_ok": skipped,
             "api_sin_datos": not_found,
         }
+
+
+def ensure_company_stub(db: Session, ticker: str) -> Company:
+    """Devuelve la Company para ticker, creando la ficha minima si no existe.
+
+    El buscador resuelve tickers via Finnhub que aun no tienen fila en la BD;
+    sin ficha, la generacion de tesis falla con "Unknown ticker" aunque la
+    empresa exista. Mismo contrato que POST /companies/ensure: stub + enrich
+    Finnhub best-effort (si falla, queda el stub; nunca rompe al caller).
+    """
+    ticker = ticker.strip().upper()
+    company = db.scalar(select(Company).where(Company.ticker == ticker))
+    if company is not None:
+        return company
+    company = Company(
+        ticker=ticker,
+        name=ticker,
+        exchange="UNKNOWN",
+        currency="USD",
+        sector="Unknown",
+        industry="Unknown",
+        company_type="research_candidate",
+        valuation_model="unassigned",
+        special_sources=[],
+        special_risks=[],
+        factor_tags=[],
+    )
+    db.add(company)
+    try:
+        CompanyEnrichmentService().enrich(db, company)
+    except Exception:  # noqa: BLE001 - el ensure nunca debe fallar por esto
+        logger.warning("enrich fallo para %s", ticker, exc_info=True)
+    db.commit()
+    db.refresh(company)
+    return company

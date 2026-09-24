@@ -88,10 +88,14 @@ def enqueue_generation(
         payload["user_id"] = user_id
 
     existing = _find_by_key(db, key, tenant_id)
-    if existing is not None and existing.status in TERMINAL_STATUSES:
+    # Idempotencia: un run que ya termino bien se devuelve tal cual (replay),
+    # pero uno FALLIDO no es un resultado reutilizable - el front dice
+    # "puedes reintentar", asi que reintentar debe re-despachar de verdad.
+    if existing is not None and existing.status == "succeeded":
         return existing, False
     if existing is not None:
-        needs_dispatch = existing.status == "dispatch_failed" or (
+        retrying_failed = existing.status == "failed"
+        needs_dispatch = retrying_failed or existing.status == "dispatch_failed" or (
             existing.status == "queued"
             and not (existing.input_payload or {}).get("dispatch_sent_at")
         )
@@ -105,6 +109,8 @@ def enqueue_generation(
                 db.commit()
                 return existing, False
             payload = dict(existing.input_payload or {})
+            if retrying_failed:
+                payload["attempt"] = int(payload.get("attempt") or 1) + 1
             payload["dispatch_sent_at"] = datetime.now(UTC).isoformat()
             existing.input_payload = payload
             existing.status = "queued"
