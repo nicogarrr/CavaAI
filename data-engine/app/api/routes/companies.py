@@ -3,6 +3,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
@@ -800,6 +801,14 @@ async def refresh_fmp_financials(ticker: str, db: Session = Depends(get_db)) -> 
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=424, detail=str(exc)) from exc
+    except httpx.HTTPStatusError as exc:
+        # Sanitize: httpx exception text embeds the full request URL,
+        # which carries the FMP api key - never log or return it.
+        status = exc.response.status_code
+        raise HTTPException(
+            status_code=424,
+            detail=f"FMP request failed with HTTP {status}",
+        ) from None
 
 
 @router.post("/{ticker}/refresh/sec", response_model=FinancialRefreshResponse)
