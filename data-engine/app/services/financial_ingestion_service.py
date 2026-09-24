@@ -69,7 +69,13 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("net_income",        ["NetIncomeLoss", "ProfitLoss"],                                                          "USD"),
     ("eps_diluted",       ["EarningsPerShareDiluted"],                                                              "USD/share"),
     ("shares_diluted",    ["WeightedAverageNumberOfDilutedSharesOutstanding", "CommonStockSharesOutstanding"],      "shares"),
-    ("cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsAndShortTermInvestments"], "USD"),
+    # Fallback aprobado por Nico (25/9, WWW): el tag combinado incluye caja
+    # restringida -> deuda neta fresca pero algo optimista. Va el ULTIMO: por
+    # periodo gana el `filed` mas reciente, y los periodos donde se uso quedan
+    # anotados en document.metadata_["cash_includes_restricted_periods"].
+    ("cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue",
+                              "CashCashEquivalentsAndShortTermInvestments",
+                              "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"], "USD"),
     ("total_debt",        ["LongTermDebt", "LongTermDebtNoncurrent", "DebtLongtermAndShorttermCombinedAmount"],     "USD"),
     ("total_assets",      ["Assets"],                                                                               "USD"),
     ("total_liabilities", ["Liabilities"],                                                                          "USD"),
@@ -276,6 +282,7 @@ class FinancialIngestionService:
         self._replace_sec_data(db, company)
 
         facts_imported = 0
+        cash_restricted_years: set[int] = set()
 
         for metric, concepts, unit in SEC_METRIC_MAP:
             xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
@@ -305,7 +312,7 @@ class FinancialIngestionService:
                     if current is None or str(entry.get("filed", "")) > str(
                         current.get("filed", "")
                     ):
-                        by_end[end] = entry
+                        by_end[end] = {**entry, "_concept": concept}
             if by_end:
                 annual_sorted = sorted(
                     by_end.values(), key=lambda e: str(e["end"]), reverse=True
@@ -316,6 +323,12 @@ class FinancialIngestionService:
                         continue
                     if metric == "capital_expenditure":
                         val = -val
+                    if (
+                        metric == "cash_and_equivalents"
+                        and entry.get("_concept")
+                        == "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"
+                    ):
+                        cash_restricted_years.add(int(str(entry["end"])[:4]))
                     db.add(
                         FinancialFact(
                             company_id=company.id,
@@ -335,6 +348,14 @@ class FinancialIngestionService:
 
         db.flush()
 
+        if cash_restricted_years:
+            document.metadata_ = {
+                **(document.metadata_ or {}),
+                # Nota de cobertura: estos ejercicios usan caja + caja
+                # restringida (el emisor dejo de reportar caja estricta).
+                # La deuda neta derivada es ligeramente optimista en ellos.
+                "cash_includes_restricted_periods": sorted(cash_restricted_years),
+            }
         facts_imported += self._derive_sec_metrics(db, company, document)
 
         conflicts: list[str] = []
