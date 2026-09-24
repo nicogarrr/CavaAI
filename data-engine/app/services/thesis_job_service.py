@@ -43,8 +43,11 @@ THESIS_PHASES: tuple[str, ...] = (
 )
 
 
-def idempotency_key_for(ticker: str, force: bool) -> str:
-    return f"thesis-gen:{ticker.upper()}:{bool(force)}"
+def idempotency_key_for(ticker: str, force: bool, request_id: str | None = None) -> str:
+    key = f"thesis-gen:{ticker.upper()}:{bool(force)}"
+    if request_id:
+        key += f":{request_id}"
+    return key
 
 
 def _find_by_key(db: Session, key: str, tenant_id: int | None = None) -> WorkflowRun | None:
@@ -68,7 +71,7 @@ def _dispatch_run(run: WorkflowRun) -> None:
 
 
 def enqueue_generation(
-    db: Session, ticker: str, force: bool = False
+    db: Session, ticker: str, force: bool = False, request_id: str | None = None
 ) -> tuple[WorkflowRun, bool]:
     """Return a durable run, re-dispatching an unclaimed run when necessary.
 
@@ -78,7 +81,7 @@ def enqueue_generation(
     reach the broker remain recoverable and are re-dispatched on the next
     request; a full outbox/reconciler remains a separate infrastructure task.
     """
-    key = idempotency_key_for(ticker, force)
+    key = idempotency_key_for(ticker, force, request_id)
     tenant_id = db.info.get("tenant_id")
     user_id = str(db.info.get("user_id") or "").strip() or None
     payload: dict = {"ticker": ticker.upper(), "force": bool(force), "attempt": 1}

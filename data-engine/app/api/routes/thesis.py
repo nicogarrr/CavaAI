@@ -452,7 +452,9 @@ def generate_thesis_async(payload: ThesisGenerateRequest, db: Session = Depends(
     # sin ficha, ThesisService.generate falla con "Unknown ticker" y el job
     # queda fallido para siempre. Aseguramos la ficha antes de encolar.
     ensure_company_stub(db, payload.ticker)
-    run, _created = enqueue_generation(db, payload.ticker, payload.force_new_version)
+    run, _created = enqueue_generation(
+        db, payload.ticker, payload.force_new_version, payload.request_id
+    )
     return job_payload(run)
 
 

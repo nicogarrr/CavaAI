@@ -4963,6 +4963,19 @@
             "title": "Force New Version",
             "type": "boolean"
           },
+          "request_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
           "ticker": {
             "maxLength": 20,
             "minLength": 1,
