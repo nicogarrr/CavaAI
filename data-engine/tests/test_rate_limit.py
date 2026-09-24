@@ -47,6 +47,10 @@ def _app(principal) -> FastAPI:
     def vendors():
         return {"ok": True}
 
+    @app.get("/api/market/quote/AAPL", dependencies=[Depends(enforce_rate_limit)])
+    def market_quote():
+        return {"ok": True}
+
     @app.get("/health")
     def health():
         return {"ok": True}
@@ -95,6 +99,21 @@ def test_standard_requests_use_standard_limit(monkeypatch):
     for _ in range(10):
         assert client.get("/api/vendors").status_code == 200
     assert client.get("/api/vendors").status_code == 429
+
+
+def test_market_reads_use_market_tier(monkeypatch):
+    # Rafagas de mercado (una llamada por ticker y pagina) tienen tier propio
+    # mas alto: no deben estrangular la navegacion normal ni al reves.
+    client = _client(
+        monkeypatch,
+        _principal("user-a"),
+        rate_limit_market_requests_per_minute=10,
+    )
+    for _ in range(10):
+        assert client.get("/api/market/quote/AAPL").status_code == 200
+    assert client.get("/api/market/quote/AAPL").status_code == 429
+    # El bucket es por tier: el estandar de la misma identidad sigue libre.
+    assert client.get("/api/vendors").status_code == 200
 
 
 def test_exempt_paths_bypass(monkeypatch):
