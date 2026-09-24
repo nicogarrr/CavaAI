@@ -171,3 +171,39 @@ def test_executive_summary_partial_is_indicative_not_final():
     assert "PARTIAL-INDICATIVE" in text
     assert "Not a final fair value" in text
     assert "beta" in text
+
+
+# -- card summary (tarjeta "Ultima tesis") ---------------------------------------
+
+def test_card_summary_is_readable_spanish_hypothesis():
+    service = ThesisService()
+    valuation = {
+        "status": "ok",
+        "current_price": 336.56,
+        "base_value": 106.85,
+        "margin_of_safety": -0.68,
+        "reverse_dcf": {"required_revenue_growth": 0.35},
+    }
+    hypothesis = service._hypothesis(_company(), valuation)
+    summary = service._card_summary(_company(), valuation, hypothesis)
+    assert summary == hypothesis
+    assert "por encima del escenario base" in summary
+    assert "bucket" not in summary  # la jerga de motor no va a la tarjeta
+
+
+def test_card_summary_insufficient_data_honest_spanish():
+    service = ThesisService()
+    valuation = {"status": "insufficient_data", "missing_inputs": ["revenue", "fcf"]}
+    summary = service._card_summary(_company(), valuation, "hipotesis")
+    assert "no publicable" in summary
+    assert "revenue, fcf" in summary
+    assert "NOT PUBLISHABLE" not in summary
+
+
+def test_card_summary_partial_keeps_hypothesis_plus_caveat():
+    service = ThesisService()
+    valuation = {"status": "partial", "missing_inputs": ["shares_diluted"]}
+    summary = service._card_summary(_company(), valuation, "Hipotesis X.")
+    assert summary.startswith("Hipotesis X.")
+    assert "parcial-indicativa" in summary
+    assert "shares_diluted" in summary

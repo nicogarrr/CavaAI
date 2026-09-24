@@ -166,7 +166,7 @@ def test_thesis_version_appears_in_markdown_title():
     assert second.json()["status"] == "insufficient_data"
     assert second.json()["bear_value"] is None
     assert second.json()["expected_value"] is None
-    assert "NOT PUBLISHABLE" in second.json()["executive_summary"]
+    assert "no publicable" in second.json()["executive_summary"]
 
 
 def test_thesis_generation_rolls_back_everything_when_graph_build_fails(monkeypatch):

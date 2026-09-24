@@ -246,7 +246,7 @@ class ThesisService:
         invalidation = self._invalidation_criteria(company, valuation)
         scenario_probabilities = self._scenario_probabilities(long_term_model)
 
-        summary = self._executive_summary(company, valuation)
+        summary = self._card_summary(company, valuation, hypothesis)
         thesis_markdown = self._render_markdown(
             company,
             valuation,
@@ -489,6 +489,28 @@ class ThesisService:
         if margin_of_safety < -0.20:
             return "expensive"
         return "watch"
+
+    def _card_summary(self, company: Company, valuation: dict, hypothesis: str) -> str:
+        """Resumen de la tarjeta "Ultima tesis": legible y en el idioma de la UI.
+
+        La hipotesis ya se deriva solo de datos del modelo (nunca inventada);
+        los estados incompletos anaden su salvedad honesta en castellano.
+        El detalle de motor (bucket/engine) vive en el memo completo, no en
+        la tarjeta.
+        """
+        if valuation.get("status") == "insufficient_data":
+            missing = ", ".join(valuation.get("missing_inputs") or []) or "datos financieros basicos"
+            return (
+                f"Tesis de {company.ticker} no publicable todavia: faltan {missing}. "
+                "Ningun valor justo debe considerarse fiable hasta completar las fuentes."
+            )
+        if valuation.get("status") == "partial":
+            missing = ", ".join(valuation.get("missing_inputs") or []) or "algunos inputs"
+            return (
+                f"{hypothesis} Valoracion parcial-indicativa: "
+                f"faltan {missing} (ver seccion 13 del memo)."
+            )
+        return hypothesis
 
     def _executive_summary(self, company: Company, valuation: dict) -> str:
         source = (valuation.get("trace") or {}).get("input_source", "unknown")

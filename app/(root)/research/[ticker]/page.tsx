@@ -457,8 +457,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                   <Badge variant="outline">{label(snapshot.latest_thesis.status)}</Badge>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-gray-300">{snapshot.latest_thesis.executive_summary}</p>
-                <div className="mt-4">
+                <div className="mt-4 flex flex-wrap items-center gap-3">
                   <ThesisGenerateButton ticker={ticker} label="Regenerar tesis" />
+                  <Link
+                    className="inline-flex items-center text-sm text-teal-300 hover:text-teal-200"
+                    href={`/research/${encodeURIComponent(ticker)}?view=thesis`}
+                  >
+                    Leer tesis completa
+                  </Link>
                 </div>
               </>
             ) : (
