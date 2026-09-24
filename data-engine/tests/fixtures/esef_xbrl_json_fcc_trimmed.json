@@ -1,0 +1,47 @@
+{
+ "documentInfo": {
+  "documentType": "ESEF trimmed fixture"
+ },
+ "facts": {
+  "fact-3": {
+   "value": "9874542000",
+   "decimals": -3,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentAssets",
+    "entity": "scheme:95980020140005178328",
+    "period": "2023-01-01T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-43": {
+   "value": "1575538000",
+   "decimals": -3,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:95980020140005178328",
+    "period": "2023-01-01T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-105": {
+   "value": "7705687000",
+   "decimals": -3,
+   "dimensions": {
+    "concept": "ifrs-full:Revenue",
+    "entity": "scheme:95980020140005178328",
+    "period": "2022-01-01T00:00:00/2023-01-01T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-143": {
+   "value": "477930000",
+   "decimals": -3,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:95980020140005178328",
+    "period": "2022-01-01T00:00:00/2023-01-01T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  }
+ }
+}
