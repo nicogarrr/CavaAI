@@ -29642,7 +29642,7 @@
     },
     "/api/screeners/real": {
       "get": {
-        "description": "Screener real: precios del d\u00eda + market cap reales (Finnhub free).\n\nmarketCapMoreThan: m\u00ednimo de market cap en USD (real de Finnhub).\nsector: filtro case-insensitive sobre el sector (BD/Finnhub).\nVendor de quotes/profile (Finnhub \u2194 Yahoo) configurable v\u00eda\nSCREENER_QUOTE_VENDOR; default Finnhub.",
+        "description": "Screener real con cache por par\u00e1metros y stale-while-revalidate.\n\nNunca espera un refresh de red cuando existe LKG: devuelve la respuesta al\ninstante y actualiza en segundo plano. En cold start espera como m\u00e1ximo\n50 ms para un primer resultado \u00fatil; despu\u00e9s devuelve LKG al instante y\ndeja el trabajo largo en background.",
         "operationId": "real_time_screener_api_screeners_real_get",
         "parameters": [
           {
@@ -37936,7 +37936,7 @@
     },
     "/health/ready": {
       "get": {
-        "description": "Readiness \u2014 verifies critical dependencies when configured.",
+        "description": "Readiness concurrente: la BD es la \u00fanica dependencia hard-required local.\n\nRedis, Qdrant y MinIO se sondean simult\u00e1neamente, con un timeout de un\nsegundo. Una dependencia ca\u00edda se informa en la respuesta, pero no mantiene\nbloqueada la ruta ni convierte un backend SQLite sano en 503.",
         "operationId": "health_ready_health_ready_get",
         "responses": {
           "200": {

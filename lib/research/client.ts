@@ -6,6 +6,63 @@ import { AppError, ExternalAPIError } from '@/lib/types/errors';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
+/**
+ * Tiempos máximos para que una lectura lenta no deje una página esperando en
+ * silencio. 15s cubre operaciones normales; las lecturas de home/portfolio
+ * tienen un presupuesto más corto porque son datos de navegación.
+ */
+export const RESEARCH_TIMEOUTS = {
+  GLOBAL_MS: 15_000,
+  GET_FAST_MS: 8_000,
+} as const;
+
+export type ResearchRequestInit = RequestInit & {
+  /** Timeout explícito en milisegundos para esta llamada. */
+  timeoutMs?: number;
+  /** Fuerza el presupuesto corto de lectura (8s). */
+  fast?: boolean;
+};
+
+export function researchTimeoutFor(
+  path: string,
+  method = 'GET',
+  init: Pick<ResearchRequestInit, 'timeoutMs' | 'fast'> = {},
+): number {
+  if (Number.isFinite(init.timeoutMs) && (init.timeoutMs as number) > 0) {
+    return Math.floor(init.timeoutMs as number);
+  }
+  const fastHomeOrPortfolioPath =
+    path.startsWith('/api/portfolio/') ||
+    path === '/api/portfolio/summary' ||
+    path === '/api/portfolio/positions' ||
+    path === '/api/watchlist' ||
+    path === '/api/market/indices' ||
+    path === '/api/market/movers';
+  return method.toUpperCase() === 'GET' && (init.fast === true || fastHomeOrPortfolioPath)
+    ? RESEARCH_TIMEOUTS.GET_FAST_MS
+    : RESEARCH_TIMEOUTS.GLOBAL_MS;
+}
+
+function requestSignal(external: AbortSignal | null | undefined, timeoutMs: number): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  if (!external) return timeoutSignal;
+  // Hay que respetar ambos límites: el del caller y el presupuesto de la app.
+  if (typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([external, timeoutSignal]);
+  }
+  const controller = new AbortController();
+  const abort = (source: AbortSignal) => () => controller.abort(source.reason);
+  const onExternalAbort = abort(external);
+  const onTimeoutAbort = abort(timeoutSignal);
+  if (external.aborted) controller.abort(external.reason);
+  else if (timeoutSignal.aborted) controller.abort(timeoutSignal.reason);
+  else {
+    external.addEventListener('abort', onExternalAbort, { once: true });
+    timeoutSignal.addEventListener('abort', onTimeoutAbort, { once: true });
+  }
+  return controller.signal;
+}
+
 async function responseError(response: Response, path: string): Promise<never> {
   let detail = `${response.status} ${response.statusText}`.trim();
   try {
@@ -19,36 +76,45 @@ async function responseError(response: Response, path: string): Promise<never> {
 
 export async function researchRequest<T>(
   path: string,
-  init: RequestInit = {},
+  init: ResearchRequestInit = {},
 ): Promise<T> {
-  const method = (init.method ?? 'GET').toUpperCase();
-  const normalized = await normalizeResearchBody(init.body ?? null);
+  const { timeoutMs: _timeoutMs, fast: _fast, ...requestInit } = init;
+  const method = (requestInit.method ?? 'GET').toUpperCase();
+  const timeoutMs = researchTimeoutFor(path, method, init);
+  const normalized = await normalizeResearchBody(requestInit.body ?? null);
   const identityHeaders = await researchIdentityHeaders({
     method,
     path,
     body: normalized.body ?? null,
   });
-  const headers = new Headers(init.headers);
+  const headers = new Headers(requestInit.headers);
   for (const [key, value] of Object.entries(identityHeaders)) headers.set(key, value);
   if (normalized.contentType && !headers.has('Content-Type')) {
     headers.set('Content-Type', normalized.contentType);
-  } else if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+  } else if (requestInit.body && !(requestInit.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
   let response: Response;
   try {
     response = await fetch(`${BACKEND_URL}${path}`, {
-      ...init,
+      ...requestInit,
       body: normalized.body ?? undefined,
       headers,
-      cache: init.cache ?? 'no-store',
-      // Sin timeout un backend colgado deja el submit "Guardando..." para siempre.
-      signal: init.signal ?? AbortSignal.timeout(30_000),
+      cache: requestInit.cache ?? 'no-store',
+      // Sin timeout un backend colgado deja la página entera esperando.
+      signal: requestSignal(requestInit.signal, timeoutMs),
     });
   } catch (error) {
+    const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
+    const abortedByCaller = error instanceof DOMException && error.name === 'AbortError';
+    const detail = timedOut
+      ? `timeout de ${timeoutMs} ms`
+      : abortedByCaller
+        ? 'cancelado por el llamador'
+        : 'fetch fallido';
     throw new ExternalAPIError(
-      `Research engine unavailable for ${path}`,
+      `Research engine unavailable for ${path} (${detail}); reintenta en unos segundos.`,
       'research-engine',
       error,
     );

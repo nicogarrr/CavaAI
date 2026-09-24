@@ -50,7 +50,7 @@ export default async function ResearchWorkflowsPage() {
           };
           const statusLabels: Record<string, string> = {
             implemented: 'ejecutable',
-            partial: 'parcial',
+            partial: 'Parcial',
             descriptive: 'descriptivo',
           };
 

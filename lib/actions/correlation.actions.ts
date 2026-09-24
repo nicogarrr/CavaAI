@@ -3,6 +3,7 @@
 import { cache } from 'react';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
+import { formatPercent } from '@/lib/format';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -129,8 +130,8 @@ export const analyzeDiversification = cache(async (
     const regionMap = new Map<string, { percentage: number; count: number }>();
 
     for (const pos of positions) {
-        const sector = pos.sector ?? 'Unknown';
-        const region = pos.region ?? 'Unknown';
+        const sector = pos.sector ?? 'Desconocido';
+        const region = pos.region ?? 'Desconocido';
 
         const s = sectorMap.get(sector) ?? { percentage: 0, count: 0 };
         s.percentage += pos.percentage; s.count += 1;
@@ -222,25 +223,25 @@ export const getRebalancingRecommendations = cache(async (
             symbol: smaller.symbol,
             currentWeight: smaller.percentage,
             recommendedWeight: smaller.percentage * 0.5,
-            reason: `Alta correlación (${((pair.abs_correlation ?? 0) * 100).toFixed(1)}%) con ${larger.symbol}`,
+            reason: `Alta correlación (${formatPercent(pair.abs_correlation ?? 0, { digits: 1 })}) con ${larger.symbol}`,
         });
     }
 
     // Overweight sectors (> 40%)
     const sectorWeights = new Map<string, number>();
     for (const pos of positions) {
-        const sector = pos.sector ?? 'Unknown';
+        const sector = pos.sector ?? 'Desconocido';
         sectorWeights.set(sector, (sectorWeights.get(sector) ?? 0) + pos.percentage);
     }
     for (const [sector, weight] of sectorWeights.entries()) {
         if (weight > 0.4) {
-            for (const pos of positions.filter(p => (p.sector ?? 'Unknown') === sector)) {
+            for (const pos of positions.filter(p => (p.sector ?? 'Desconocido') === sector)) {
                 recommendations.push({
                     type: 'reduce',
                     symbol: pos.symbol,
                     currentWeight: pos.percentage,
                     recommendedWeight: pos.percentage * 0.8,
-                    reason: `Sobreponderación en sector ${sector} (${(weight * 100).toFixed(1)}%)`,
+                    reason: `Sobreponderación en sector ${sector} (${formatPercent(weight, { digits: 1 })})`,
                 });
             }
         }

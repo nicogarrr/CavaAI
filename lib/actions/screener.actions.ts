@@ -3,6 +3,7 @@
 import { cache } from 'react';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { jsonBody, researchRequest } from '@/lib/research/client';
+import { formatNumber } from '@/lib/format';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
@@ -124,7 +125,7 @@ export const screenStocks = cache(async (filters: ScreenerFilters): Promise<Scre
           roe: (metrics.metric as any)?.roeTTM || 0,
           volume: quote.v || 0,
           beta: (metrics.metric as any)?.beta || 1.0,
-          sector: profile.finnhubIndustry || 'Unknown',
+          sector: profile.finnhubIndustry || 'Desconocido',
           exchange: profile.exchange || 'US',
           type: symbol.match(/^[A-Z]{3,4}$/) && ['SPY', 'QQQ', 'IWM', 'VOO', 'VTI', 'URTH', 'VWO', 'GLD', 'BITO'].includes(symbol) ? 'ETF' : 'Stock',
         };
@@ -187,15 +188,15 @@ export async function exportScreenerResults(results: ScreenerResult[]): Promise<
   const rows = results.map(r => [
     r.symbol,
     r.name,
-    r.price.toFixed(2),
-    r.change.toFixed(2),
-    r.changePercent.toFixed(2),
-    r.marketCap.toFixed(0),
-    r.pe.toFixed(2),
-    r.pb.toFixed(2),
-    r.roe.toFixed(2),
-    r.volume.toFixed(0),
-    r.beta.toFixed(2),
+    formatNumber(r.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    formatNumber(r.change, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    formatNumber(r.changePercent, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    formatNumber(r.marketCap, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+    formatNumber(r.pe, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    formatNumber(r.pb, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    formatNumber(r.roe, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    formatNumber(r.volume, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+    formatNumber(r.beta, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     r.sector,
     r.exchange,
     r.type,

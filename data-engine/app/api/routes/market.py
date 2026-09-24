@@ -5,7 +5,9 @@ Cache en memoria de 60s para no golpear Yahoo en cada carga de la home.
 """
 from __future__ import annotations
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 import httpx
@@ -38,6 +40,8 @@ _HEADERS = {
 
 _cache: dict = {"at": 0.0, "items": [], "fetched_at": None}
 _CACHE_TTL = 60.0
+_FETCH_MAX_WORKERS = 5
+_cache_lock = threading.RLock()
 
 
 def _fetch_index(client: httpx.Client, symbol: str) -> dict | None:
@@ -75,22 +79,31 @@ def _fetch_index(client: httpx.Client, symbol: str) -> dict | None:
 def market_indices() -> dict:
     settings = get_settings()
     now = time.monotonic()
-    if now - _cache["at"] < _CACHE_TTL and _cache["items"]:
-        items = _cache["items"]
-        fetched_at = _cache["fetched_at"]
-    else:
+    with _cache_lock:
+        cache_hit = now - _cache["at"] < _CACHE_TTL and bool(_cache["items"])
+        items = list(_cache["items"]) if cache_hit else []
+        fetched_at = _cache["fetched_at"] if cache_hit else None
+    if not cache_hit:
         items = []
         headers = dict(_HEADERS)
         # Yahoo respeta mejor el UA completo; el proxy/rate limit es suave a 5 tickers.
         with httpx.Client(headers=headers) as client:
-            for index in _INDEXES:
-                quote = _fetch_index(client, index["symbol"])
-                if quote:
-                    items.append({**index, **quote})
-        _cache["at"] = now
-        _cache["items"] = items
+            with ThreadPoolExecutor(
+                max_workers=min(_FETCH_MAX_WORKERS, len(_INDEXES))
+            ) as pool:
+                futures = {
+                    pool.submit(_fetch_index, client, index["symbol"]): index
+                    for index in _INDEXES
+                }
+                for future, index in futures.items():
+                    quote = future.result()
+                    if quote:
+                        items.append({**index, **quote})
         fetched_at = datetime.now(UTC)
-        _cache["fetched_at"] = fetched_at
+        with _cache_lock:
+            _cache["at"] = time.monotonic()
+            _cache["items"] = list(items)
+            _cache["fetched_at"] = fetched_at
     return {
         "source": "yahoo_finance",
         "as_of": time.time(),

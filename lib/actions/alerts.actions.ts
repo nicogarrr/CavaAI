@@ -1,6 +1,9 @@
 'use server';
 
 import { jsonBody, researchRequest } from '@/lib/research/client';
+import { cachedFetch } from '@/lib/cache/memoryTTL';
+import { requestCache } from '@/lib/cache/requestCache';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { ValidationError } from '@/lib/types/errors';
 
 export type AlertType = 'price_above' | 'price_below' | 'price_change' | 'news' | 'earnings';
@@ -85,11 +88,32 @@ export async function createAlert(input: CreateAlertInput): Promise<Alert> {
             value: input.condition.value,
         }),
     });
+    const keys = await alertCacheKeys();
+    requestCache.invalidate(keys.active);
+    requestCache.invalidate(keys.recent(10));
+    requestCache.invalidate(keys.recent(20));
     return toAlert(alert);
 }
 
+/**
+ * Claves de caché con alcance de usuario: la caché vive en memoria del
+ * servidor Next, así que una clave global ("alerts:user:active") podría
+ * devolver las alertas de OTRO usuario en el mismo proceso.
+ */
+async function alertCacheKeys(): Promise<{ user: string; active: string; recent: (limit: number) => string; telegram: string }> {
+    const { id } = await requireAuthenticatedUser();
+    return {
+        user: id,
+        active: `alerts:user:${id}:active`,
+        recent: (limit: number) => `alerts:user:${id}:recent:${limit}`,
+        telegram: `alerts:user:${id}:telegram-status`,
+    };
+}
+
+// User alerts are a short-lived read: mutations explicitly invalidate the keys.
 export async function getUserAlerts(): Promise<Alert[]> {
-    const alerts = await researchRequest<ResearchAlertRule[]>('/api/alerts/rules?active=true');
+    const keys = await alertCacheKeys();
+    const alerts = await cachedFetch(keys.active, () => researchRequest<ResearchAlertRule[]>('/api/alerts/rules?active=true'), 15);
     return alerts.map(toAlert);
 }
 
@@ -98,6 +122,10 @@ export async function deleteAlert(alertId: string): Promise<void> {
     await researchRequest(`/api/alerts/rules/${alertId}`, {
         method: 'DELETE',
     });
+    const keys = await alertCacheKeys();
+    requestCache.invalidate(keys.active);
+    requestCache.invalidate(keys.recent(10));
+    requestCache.invalidate(keys.recent(20));
 }
 
 export interface TelegramStatus {
@@ -108,8 +136,10 @@ export interface TelegramStatus {
 }
 
 /** GET /api/alerts/telegram-status — presencia de config Telegram (sin secretos). */
+// Telegram configuration changes rarely; cache 30s to avoid a request on every render.
 export async function getTelegramStatus(): Promise<TelegramStatus> {
-    return researchRequest<TelegramStatus>('/api/alerts/telegram-status');
+    const keys = await alertCacheKeys();
+    return cachedFetch(keys.telegram, () => researchRequest<TelegramStatus>('/api/alerts/telegram-status'), 30);
 }
 
 export interface TriggeredAlertDelivery {
@@ -138,7 +168,8 @@ type ResearchAlertRow = {
 
 /** GET /api/alerts — ultimas alertas disparadas con su estado de entrega por canal. */
 export async function getRecentTriggeredAlerts(limit = 20): Promise<TriggeredAlertDelivery[]> {
-    const rows = await researchRequest<ResearchAlertRow[]>(`/api/alerts?limit=${limit}`);
+    const keys = await alertCacheKeys();
+    const rows = await cachedFetch(keys.recent(limit), () => researchRequest<ResearchAlertRow[]>(`/api/alerts?limit=${limit}`), 15);
     return (rows ?? []).map((row) => ({
         id: row.id,
         title: row.title,
