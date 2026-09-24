@@ -445,8 +445,13 @@ def generate_thesis_async(payload: ThesisGenerateRequest, db: Session = Depends(
     phase progress. Re-posting the same ticker+force while active returns the
     existing job (idempotent).
     """
+    from app.services.company_enrichment_service import ensure_company_stub
     from app.services.thesis_job_service import enqueue_generation, job_payload
 
+    # El buscador resuelve tickers (Finnhub) que aun no tienen ficha en BD;
+    # sin ficha, ThesisService.generate falla con "Unknown ticker" y el job
+    # queda fallido para siempre. Aseguramos la ficha antes de encolar.
+    ensure_company_stub(db, payload.ticker)
     run, _created = enqueue_generation(db, payload.ticker, payload.force_new_version)
     return job_payload(run)
 
