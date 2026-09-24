@@ -206,7 +206,7 @@ class KPIExtractionService:
                 ],
                 task="kpi_extraction",
                 temperature=0,
-                max_tokens=2500,
+                max_tokens=4000,
                 response_format=ResponseFormat.json_schema(
                     schema, name="company_kpi_observations", strict=True
                 ),
