@@ -23,7 +23,7 @@ class FMPClient:
 
     async def _get(self, path: str, params: dict | None = None) -> list | dict:
         if not self.configured():
-            raise RuntimeError("FMP_API_KEY is not configured")
+            raise RuntimeError("FMP no está configurado en este despliegue (FMP_API_KEY vacía)")
         merged = {**(params or {}), "apikey": self.settings.fmp_api_key}
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(f"{self.base_url}{path}", params=merged)

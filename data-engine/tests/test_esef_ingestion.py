@@ -123,7 +123,7 @@ def test_refresh_replaces_prior_esef_facts(db, monkeypatch):
 def test_missing_snapshot_raises_honestly(db, monkeypatch):
     monkeypatch.setattr(ingestion.esef_connector, "read_esef_snapshot", lambda ticker: None)
     company = _company(db)
-    with pytest.raises(RuntimeError, match="ESEF snapshot not found"):
+    with pytest.raises(RuntimeError, match="Sin snapshot ESEF local"):
         asyncio.run(FinancialIngestionService().refresh_from_esef(db=db, company=company))
 
 

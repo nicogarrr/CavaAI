@@ -269,7 +269,7 @@ class FinancialIngestionService:
             raise RuntimeError(f"SEC fetch failed: {e}") from e
 
         if not cik:
-            raise RuntimeError(f"CIK not found for {ticker}")
+            raise RuntimeError(f"Sin CIK para {ticker}: este emisor no reporta a la SEC; usa la fuente de su mercado local (ESEF para emisores de la UE)")
 
         try:
             facts_data = await sec.company_facts(cik)
@@ -428,7 +428,7 @@ class FinancialIngestionService:
         ticker = company.ticker.upper()
         snapshot = esef_connector.read_esef_snapshot(ticker)
         if snapshot is None:
-            raise RuntimeError(f"ESEF snapshot not found for {ticker}")
+            raise RuntimeError(f"Sin snapshot ESEF local para {ticker}: por ahora solo hay cobertura de emisores IBEX revisados")
 
         facts_data = snapshot.get("facts", {})
         document = self._source_document_esef(db, company, ticker, snapshot)

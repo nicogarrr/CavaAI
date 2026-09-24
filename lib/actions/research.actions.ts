@@ -1079,6 +1079,16 @@ export async function refreshCompanyFinancialsSEC(ticker: string) {
   revalidatePath(`/research/${normalizedTicker}`);
 }
 
+export async function refreshCompanyFinancialsESEF(ticker: string) {
+  const normalizedTicker = ticker.toUpperCase();
+  await postJson(`/api/companies/${encodeURIComponent(normalizedTicker)}/refresh/esef`, {
+    status: 'not_configured',
+    ticker: normalizedTicker,
+  });
+  revalidatePath('/research');
+  revalidatePath(`/research/${normalizedTicker}`);
+}
+
 export async function runResearchWorkflow(name: string, ticker?: string): Promise<ResearchWorkflowRun> {
   const result = await postJson<ResearchWorkflowRun>(
     `/api/workflows/${encodeURIComponent(name)}/run`,
