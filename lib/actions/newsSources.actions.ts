@@ -5,9 +5,8 @@
 
 'use server';
 
-import { validateArticle, formatArticle, getDateRange, stableNumericId } from '@/lib/utils';
+import { validateArticle, formatArticle, getDateRange } from '@/lib/utils';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
-import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 
 export enum NewsSource {
     FINNHUB = 'finnhub',
@@ -292,52 +291,6 @@ async function getNewsMarketaux(symbols?: string[], maxArticles = 6): Promise<Ma
 }
 
 /**
- * Fetch news from Yahoo Finance (via local backend)
- */
-async function getNewsYahoo(symbols?: string[], maxArticles = 15): Promise<MarketNewsArticle[]> {
-    try {
-        const symbol = symbols && symbols.length > 0 ? symbols[0] : '';
-        if (!symbol) return [];
-
-        // Solo usar backend si está configurado (no disponible en Vercel)
-        const backendUrl = process.env.FMP_BACKEND_URL;
-        
-        // En Vercel/serverless, no hay backend Python
-        if (!backendUrl || process.env.VERCEL) {
-            return [];
-        }
-        
-        const url = `${backendUrl}/company-news/${symbol}?limit=${maxArticles}`;
-
-        const response = await fetch(url, {
-            headers: await researchIdentityHeaders({ method: 'GET', path: `/company-news/${symbol}` }),
-            next: { revalidate: 300 },
-        });
-        if (!response.ok) return [];
-
-        const articles: any[] = await response.json();
-
-        if (!Array.isArray(articles)) return [];
-
-        return articles.map((item, index) => ({
-            id: item.id || stableNumericId(`${symbol}:${item.url || ''}:${item.headline || item.title || ''}:${index}`),
-            headline: item.headline || item.title || '',
-            summary: item.summary || '',
-            source: item.source || 'Yahoo Finance',
-            url: item.url || '',
-            image: item.image || '',
-            datetime: item.datetime || Date.now() / 1000,
-            related: symbol,
-            category: item.category || 'general'
-        }));
-
-    } catch (err) {
-        console.error('Yahoo news error:', err);
-        return [];
-    }
-}
-
-/**
  * Get news with automatic fallback across multiple sources
  * Aggregates news from all available sources and returns the most recent
  */
@@ -347,7 +300,6 @@ export async function getNewsWithFallback(symbols?: string[], maxArticles = 6): 
 
     // Try to fetch from all available sources in parallel for speed
     const sources = [
-        getNewsYahoo(symbols, maxArticles),
         getNewsFinnhub(symbols, maxArticles),
         getNewsAlphaVantage(symbols, maxArticles),
         getNewsFromNewsAPI(symbols, maxArticles),
