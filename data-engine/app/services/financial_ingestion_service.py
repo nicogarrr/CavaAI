@@ -256,7 +256,23 @@ class FinancialIngestionService:
                 ]
                 if not annual:
                     continue
-                annual_sorted = sorted(annual, key=lambda e: e.get("fy", 0), reverse=True)[:10]
+                # OJO: `fy` es el ANIO DEL FILING, no el del periodo. Un 10-K
+                # de FY2025 trae revenue de 2025, 2024 y 2023; el ano fiscal
+                # correcto es el del `end`. Ante re-presentaciones del mismo
+                # periodo manda el `filed` mas reciente.
+                by_end: dict[str, dict[str, Any]] = {}
+                for entry in annual:
+                    end = str(entry.get("end") or "")
+                    if not end:
+                        continue
+                    current = by_end.get(end)
+                    if current is None or str(entry.get("filed", "")) > str(
+                        current.get("filed", "")
+                    ):
+                        by_end[end] = entry
+                annual_sorted = sorted(
+                    by_end.values(), key=lambda e: str(e["end"]), reverse=True
+                )[:10]
                 for entry in annual_sorted:
                     val = _decimal(entry.get("val"))
                     if val is None:
@@ -270,7 +286,7 @@ class FinancialIngestionService:
                             value=val,
                             unit=unit,
                             period=f"{entry['end']}:FY",
-                            fiscal_year=entry.get("fy"),
+                            fiscal_year=int(str(entry["end"])[:4]),
                             fiscal_quarter=None,
                             source_id=document.id,
                             source_type="SEC",
