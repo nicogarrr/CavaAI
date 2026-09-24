@@ -29,7 +29,8 @@ const ALERT_TYPES: Array<{ value: AlertType; label: string; needsValue: boolean;
 // del mercado del valor, así que la divisa es la de su bolsa, no siempre $.
 const CURRENCY_SYMBOL: Record<string, string> = {
   EUR: '€',
-  USD: 'US$',
+  // '$' para USD: es lo habitual en es-ES y coincide con los tests E2E existentes.
+  USD: '$',
   GBP: '£',
   GBX: 'p',
   JPY: '¥',
