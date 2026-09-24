@@ -720,7 +720,18 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </Panel>
     );
   } else {
-    const response = query.chat ? await askResearchCompanyChat(ticker, query.chat) : null;
+    let response: Awaited<ReturnType<typeof askResearchCompanyChat>> | null = null;
+    let chatFailed = false;
+    if (query.chat) {
+      try {
+        response = await askResearchCompanyChat(ticker, query.chat);
+      } catch (error) {
+        if (isBackendUnavailableError(error)) {
+          return <BackendOffline feature={`Chat de ${ticker}`} retryHref={`/research/${ticker}?view=chat`} />;
+        }
+        chatFailed = true;
+      }
+    }
     content = (
       <div className="space-y-6">
         <Panel title="Chat de la empresa con fuentes">
@@ -732,6 +743,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <div className="mt-4 flex flex-wrap gap-2"><Badge variant="outline">modelo {response.model ?? 'determinista'}</Badge><Badge variant="outline">{response.sources.length} fuentes</Badge><Badge variant="outline">{response.blocked ? 'datos insuficientes' : 'con evidencia'}</Badge></div>
             <CitationsList citations={[]} sources={response.sources} />
           </Panel>
+        ) : chatFailed ? (
+          <Empty>Sin datos para responder ahora mismo. Reintenta en unos segundos o haz otra pregunta.</Empty>
         ) : (
           <Empty>Haz una pregunta para recuperar el contrato de evidencia determinista y la síntesis con fuentes.</Empty>
         )}

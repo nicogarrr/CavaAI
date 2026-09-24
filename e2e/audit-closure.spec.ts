@@ -12,7 +12,7 @@ test.describe("audit closure flows", () => {
   test("screener shows engine panel with offline fallback note", async ({ page }) => {
     await page.goto("/screener");
     await expect(page.getByRole("heading", { name: "Screener", level: 1 })).toBeVisible();
-    await expect(page.getByText("Motor de análisis")).toBeVisible();
+    await expect(page.getByText("Motor de análisis", { exact: true })).toBeVisible();
     // Motor caído (fallback Finnhub) o motor con filtros: uno de los dos estados honestos.
     const fallback = page.getByText("Finnhub como fallback offline");
     const empty = page.getByText("Motor operativo pero sin filtros guardados");
@@ -31,6 +31,8 @@ test.describe("audit closure flows", () => {
   test("alerts shows engine evaluation state", async ({ page }) => {
     await page.goto("/alerts");
     await expect(page.getByRole("heading", { name: "Alertas", level: 1 })).toBeVisible();
+    // Espera a que el manager cliente termine de cargar antes de contar estados.
+    await expect(page.getByText("Cargando alertas...")).toBeHidden({ timeout: 30000 });
     // Guía Telegram (si falta config) o estado del motor por regla.
     const guide = page.getByText("Telegram sin configurar");
     const engineLine = page.getByText(/Motor: /);
@@ -50,9 +52,11 @@ test.describe("audit closure flows", () => {
     await page.goto("/research/AAPL?view=thesis");
     const debate = page.getByText("Debate bull/bear");
     const approve = page.getByRole("button", { name: "Aprobar tesis" });
-    // Con backend caído la página muestra BackendOffline: solo exigir el shell.
+    // Con backend caído la página muestra BackendOffline; sin tesis muestra
+    // el vacío honesto: en ambos casos no se exige el debate.
     const offline = page.getByText(/backend/i);
-    if ((await offline.count()) > 0) return;
+    const noThesis = page.getByText("Aún no existe ninguna tesis");
+    if ((await offline.count()) > 0 || (await noThesis.count()) > 0) return;
     await expect(debate).toBeVisible();
     await expect(approve).toBeVisible();
     await expect(page.getByRole("button", { name: /debate/i }).first()).toBeVisible();
@@ -62,8 +66,9 @@ test.describe("audit closure flows", () => {
     await page.goto("/research/AAPL?view=chat&chat=deuda+nivel");
     const citations = page.getByText("Citas y evidencia");
     const empty = page.getByText(/Haz una pregunta/);
+    const failed = page.getByText(/Sin datos para responder/);
     const offline = page.getByText(/backend/i);
-    const states = (await citations.count()) + (await empty.count()) + (await offline.count());
+    const states = (await citations.count()) + (await empty.count()) + (await failed.count()) + (await offline.count());
     expect(states).toBeGreaterThan(0);
   });
 });
