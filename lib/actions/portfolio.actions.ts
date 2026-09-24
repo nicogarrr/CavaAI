@@ -2,6 +2,8 @@
 
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { jsonBody, researchRequest } from '@/lib/research/client';
+import { cachedFetch } from '@/lib/cache/memoryTTL';
+import { requestCache } from '@/lib/cache/requestCache';
 import { AuthorizationError, ValidationError } from '@/lib/types/errors';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
@@ -13,6 +15,12 @@ async function resolveUserId(requestedUserId?: string): Promise<string> {
         throw new AuthorizationError('Cannot access another user portfolio');
     }
     return user.id;
+}
+
+function invalidatePortfolioReads(userId: string): void {
+    for (const suffix of ['positions', 'summary', 'transactions', 'scores', 'tearsheet', 'dividends']) {
+        requestCache.invalidate(`portfolio:${userId}:${suffix}`);
+    }
 }
 
 async function getQuote(symbol: string): Promise<{ c: number } | null> {
@@ -115,7 +123,7 @@ export async function addTransaction(
     notes?: string,
     currency = 'USD',
 ): Promise<{ success: boolean; error?: string }> {
-    await resolveUserId(userId);
+    const canonicalUserId = await resolveUserId(userId);
     if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
         throw new ValidationError('Quantity must be positive and price cannot be negative');
     }
@@ -132,12 +140,17 @@ export async function addTransaction(
             fees: 0,
         }),
     });
+    invalidatePortfolioReads(canonicalUserId);
     return { success: true };
 }
 
 export async function getPortfolioTransactions(userId: string) {
-    await resolveUserId(userId);
-    const transactions = await researchRequest<ResearchPortfolioTransaction[]>('/api/portfolio/transactions');
+    const canonicalUserId = await resolveUserId(userId);
+    const transactions = await cachedFetch(
+        `portfolio:${canonicalUserId}:transactions`,
+        () => researchRequest<ResearchPortfolioTransaction[]>('/api/portfolio/transactions', { fast: true }),
+        15,
+    );
     return transactions.map((transaction) => ({
         _id: String(transaction.id),
         symbol: transaction.ticker,
@@ -153,10 +166,18 @@ export async function getPortfolioTransactions(userId: string) {
 }
 
 export async function getPortfolioSummary(userId: string): Promise<PortfolioSummary> {
-    await resolveUserId(userId);
+    const canonicalUserId = await resolveUserId(userId);
     const [positions, backendSummary] = await Promise.all([
-        researchRequest<ResearchPortfolioPosition[]>('/api/portfolio/positions'),
-        researchRequest<ResearchPortfolioSummaryResponse>('/api/portfolio/summary'),
+        cachedFetch(
+            `portfolio:${canonicalUserId}:positions`,
+            () => researchRequest<ResearchPortfolioPosition[]>('/api/portfolio/positions', { fast: true }),
+            15,
+        ),
+        cachedFetch(
+            `portfolio:${canonicalUserId}:summary`,
+            () => researchRequest<ResearchPortfolioSummaryResponse>('/api/portfolio/summary', { fast: true }),
+            15,
+        ),
     ]);
     const holdings = positions.map((position): PortfolioHolding => {
         const currentPrice = position.market_price;
@@ -207,7 +228,7 @@ export async function updateTransaction(
     notes?: string,
     currency = 'USD',
 ): Promise<{ success: boolean; error?: string }> {
-    await resolveUserId(userId);
+    const canonicalUserId = await resolveUserId(userId);
     if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
         throw new ValidationError('Quantity must be positive and price cannot be negative');
     }
@@ -227,23 +248,26 @@ export async function updateTransaction(
             }),
         },
     );
+    invalidatePortfolioReads(canonicalUserId);
     return { success: true };
 }
 
 export async function deleteTransaction(userId: string, transactionId: string): Promise<{ success: boolean; error?: string }> {
-    await resolveUserId(userId);
+    const canonicalUserId = await resolveUserId(userId);
     await researchRequest<void>(`/api/portfolio/transactions/${encodeURIComponent(transactionId)}`, {
         method: 'DELETE',
     });
+    invalidatePortfolioReads(canonicalUserId);
     return { success: true };
 }
 
 // Eliminar todas las transacciones de un símbolo (eliminar posición)
 export async function deleteHolding(userId: string, symbol: string): Promise<{ success: boolean; error?: string }> {
-    await resolveUserId(userId);
+    const canonicalUserId = await resolveUserId(userId);
     await researchRequest<void>(`/api/portfolio/holdings/${encodeURIComponent(symbol.toUpperCase())}`, {
         method: 'DELETE',
     });
+    invalidatePortfolioReads(canonicalUserId);
     return { success: true };
 }
 
@@ -292,11 +316,11 @@ export async function getPortfolioScores(userId: string): Promise<{
     analytics?: PortfolioAnalyticsResult;
     history?: PortfolioPerformanceHistory;
 }> {
-    await resolveUserId(userId);
+    const canonicalUserId = await resolveUserId(userId);
     const empty = { quality: 0, growth: 0, value: 0, dividend: 0, cagr3y: 0 };
 
     try {
-        const summary = await getPortfolioSummary(userId);
+        const summary = await getPortfolioSummary(canonicalUserId);
         if (summary.holdings.length === 0) return empty;
 
         // Scores 0-100 derivados de métricas reales del tearsheet
@@ -305,7 +329,7 @@ export async function getPortfolioScores(userId: string): Promise<{
         // value = resiliencia (drawdown). Dividend queda en 0 hasta tener
         // motor de yield real.
         const clamp100 = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
-        const sheet = await getPortfolioTearsheet(userId);
+        const sheet = await getPortfolioTearsheet(canonicalUserId);
         // Real dividend score: trailing-12M declared-dividend yield from
         // GET /api/portfolio/dividends (FMP-ingested records, provenance
         // attached). Linear band documented here: 0% yield -> 0, 6% -> 100.
@@ -313,10 +337,17 @@ export async function getPortfolioScores(userId: string): Promise<{
         // (same honest empty state as before, no fabricated yield).
         let dividendScore = 0;
         try {
-            const dividends = await researchRequest<{
+            const dividends = await cachedFetch<{
                 portfolio_yield: number | null;
                 coverage: { positions_with_dividend_data: number };
-            }>('/api/portfolio/dividends');
+            }>(
+                `portfolio:${canonicalUserId}:dividends`,
+                () => researchRequest<{
+                    portfolio_yield: number | null;
+                    coverage: { positions_with_dividend_data: number };
+                }>('/api/portfolio/dividends', { fast: true }),
+                30,
+            );
             if (
                 dividends.coverage.positions_with_dividend_data > 0 &&
                 dividends.portfolio_yield != null
@@ -404,6 +435,7 @@ export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Pr
                 body: jsonBody({ ticker: h.symbol, price: quote.c }),
             });
         }));
+        invalidatePortfolioReads(user.id);
         return (await getPortfolioSummary(user.id)).holdings;
     } catch (error) {
         console.error('Error refreshing portfolio holdings:', error);
@@ -444,32 +476,38 @@ export type IBKRImportResult = {
  * IBKR_FLEX_QUERY_ID) y la importación en el research backend.
  */
 export async function importFromIBKR(userId: string): Promise<IBKRImportResult> {
-    await resolveUserId(userId);
-    return researchRequest<IBKRImportResult>('/api/portfolio/import/ibkr', {
+    const canonicalUserId = await resolveUserId(userId);
+    const result = await researchRequest<IBKRImportResult>('/api/portfolio/import/ibkr', {
         method: 'POST',
     });
+    invalidatePortfolioReads(canonicalUserId);
+    return result;
 }
 
 /**
  * Importa un Flex XML crudo (por si el usuario lo descarga a mano).
  */
 export async function importIBKRXml(userId: string, xml: string): Promise<IBKRImportResult> {
-    await resolveUserId(userId);
-    return researchRequest<IBKRImportResult>('/api/portfolio/import/ibkr/xml', {
+    const canonicalUserId = await resolveUserId(userId);
+    const result = await researchRequest<IBKRImportResult>('/api/portfolio/import/ibkr/xml', {
         method: 'POST',
         body: jsonBody({ xml }),
     });
+    invalidatePortfolioReads(canonicalUserId);
+    return result;
 }
 
 /**
  * Importa un CSV de actividad de IBKR (symbol, quantity, price, date + action/fees/currency opcionales).
  */
 export async function importIBKRCsv(userId: string, csv: string): Promise<IBKRImportResult> {
-    await resolveUserId(userId);
-    return researchRequest<IBKRImportResult>('/api/portfolio/import/ibkr/csv', {
+    const canonicalUserId = await resolveUserId(userId);
+    const result = await researchRequest<IBKRImportResult>('/api/portfolio/import/ibkr/csv', {
         method: 'POST',
         body: jsonBody({ csv }),
     });
+    invalidatePortfolioReads(canonicalUserId);
+    return result;
 }
 
 export type PortfolioTearsheetMetrics = {
@@ -505,9 +543,13 @@ export type PortfolioTearsheet = {
  * Degrada a null sin historial; nunca lanza por falta de datos.
  */
 export async function getPortfolioTearsheet(userId: string): Promise<PortfolioTearsheet | null> {
-    await resolveUserId(userId);
+    const canonicalUserId = await resolveUserId(userId);
     try {
-        return await researchRequest<PortfolioTearsheet>('/api/portfolio/tearsheet');
+        return await cachedFetch(
+            `portfolio:${canonicalUserId}:tearsheet`,
+            () => researchRequest<PortfolioTearsheet>('/api/portfolio/tearsheet', { fast: true }),
+            15,
+        );
     } catch (error) {
         console.error('Error getting portfolio tearsheet:', error);
         return null;

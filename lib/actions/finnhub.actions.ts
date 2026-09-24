@@ -966,7 +966,7 @@ export async function getInstitutionalHoldings(symbol: string): Promise<Institut
         const holders: InstitutionalHolder[] = data.ownership
             .slice(0, 20) // Top 20 holders
             .map((h: any) => ({
-                name: h.name || 'Unknown',
+                name: h.name || 'Desconocido',
                 share: h.share || 0,
                 change: h.change || 0,
                 filingDate: h.filingDate || '',

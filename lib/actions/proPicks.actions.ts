@@ -360,7 +360,7 @@ async function evaluateSymbol(symbol: string, strategyId: string): Promise<ProPi
     const profile = typedFinancialData.profile as Record<string, unknown>;
     const quote = typedFinancialData.quote as Record<string, unknown> | undefined;
     const currentPrice = Number(quote?.c ?? quote?.price ?? 0);
-    const sector = String(profile.finnhubIndustry ?? profile.industry ?? 'Unknown');
+    const sector = String(profile.finnhubIndustry ?? profile.industry ?? 'Desconocido');
     const strategy = getStrategyById(strategyId) ?? PROPICKS_STRATEGIES[0];
 
     let historicalData: { prices: number[]; dates: number[] } | undefined;

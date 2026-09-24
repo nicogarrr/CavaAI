@@ -1,8 +1,10 @@
 from typing import Any, Literal, Protocol
 
-import httpx
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+
+import httpx
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -210,14 +212,40 @@ _ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "VOO", "VTI", "GLD"}
 _FINNHUB_BASE = "https://finnhub.io/api/v1"
 _PROFILE_TTL = 6 * 3600.0  # 6h: nombre/market cap/sector cambian lento
 _QUOTE_TTL = 60.0  # precio real del día, refrescado cada minuto (como market.py)
+# El universo tiene 35 símbolos: un burst de seis workers está por debajo del
+# límite global de 60 llamadas/min y evita el antiguo sleep O(n) de 0,3 s.
+# El presupuesto efectivo de 55 deja margen para otros consumidores del mismo
+# proceso; el limiter global sólo espera cuando se supera ese presupuesto.
+PROFILE_MAX_WORKERS = 6
+QUOTE_MAX_WORKERS = 8
+_FINNHUB_RATE_LOCK = threading.Lock()
+_FINNHUB_WINDOW_SECONDS = 60.0
+_FINNHUB_MAX_CALLS_PER_WINDOW = 55
+_finnhub_call_times: list[float] = []
+_REAL_REQUEST_TIMEOUT_SECONDS = 1.0
+_RETRY_DELAY_SECONDS = 0.05
+_COLD_START_WAIT_SECONDS = 0.05
 
 # symbol -> {"at": monotonic, "data": {...}}
 _real_profile_cache: dict[str, dict] = {}
 _real_quote_cache: dict[str, dict] = {}
+_profile_singleflight: dict[str, threading.Event] = {}
 # Items crudos (todo el universo, sin filtrar) — los filtros se aplican por
 # request sobre los datos cacheados, así cada combinación de filtros funciona
-# sin golpear Finnhub de nuevo.
-_real_items_cache: dict = {"at": 0.0, "items": []}
+# sin golpear Finnhub de nuevo. Se conserva el shape histórico para los tests y
+# para reversión/operaciones; "vendor" impide mezclar fuentes.
+_real_items_cache: dict = {"at": 0.0, "items": [], "vendor": None}
+# Respuesta completa por parámetros: evita incluso el filtrado O(n) en cada
+# petición repetida y hace que el last-known-good sea realmente instantáneo.
+_real_response_cache: dict[tuple, dict] = {}
+_REAL_RESPONSE_CACHE_MAX = 256
+_real_cache_lock = threading.RLock()
+_real_refresh_state_lock = threading.RLock()
+_real_refresh_future = None
+_real_refresh_generation = 0
+_real_refresh_executor = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="cavaai-screener-refresh"
+)
 
 
 def _cs(_str: str | None) -> str:
@@ -259,6 +287,9 @@ class ScreenQuoteVendor(Protocol):
 def _finnhub_get(
     client: httpx.Client, path: str, symbol: str, timeout: float
 ) -> dict | None:
+    # Cada intento real (incluido el retry de 429) consume una llamada Finnhub.
+    # Centralizar aquí evita que quote/profile caminos distintos sorteen el límite.
+    _reserve_finnhub_call()
     try:
         resp = client.get(
             f"{_FINNHUB_BASE}{path}",
@@ -275,6 +306,23 @@ def _finnhub_get(
         return None
 
 
+def _reserve_finnhub_call() -> float:
+    """Reserva una llamada sin mantener lock mientras espera el rate limit."""
+    now = time.monotonic()
+    while True:
+        with _FINNHUB_RATE_LOCK:
+            cutoff = now - _FINNHUB_WINDOW_SECONDS
+            while _finnhub_call_times and _finnhub_call_times[0] <= cutoff:
+                _finnhub_call_times.pop(0)
+            if len(_finnhub_call_times) < _FINNHUB_MAX_CALLS_PER_WINDOW:
+                _finnhub_call_times.append(now)
+                return now
+            wait = _FINNHUB_WINDOW_SECONDS - (now - _finnhub_call_times[0])
+        if wait > 0:
+            time.sleep(wait)
+        now = time.monotonic()
+
+
 class FinnhubScreenVendor:
     """Vendor por defecto: Finnhub free tier (comportamiento actual)."""
 
@@ -287,10 +335,12 @@ class FinnhubScreenVendor:
         Retry único en 429 (límite 60 llamadas/minuto): un fallo puntual no debe
         dejar el ticker fuera del screener.
         """
-        raw = _finnhub_get(client, "/quote", symbol, timeout=8)
-        if raw is None:  # posible 429: reintentar una vez tras 1s
-            time.sleep(1.0)
-            raw = _finnhub_get(client, "/quote", symbol, timeout=8)
+        raw = _finnhub_get(client, "/quote", symbol, timeout=_REAL_REQUEST_TIMEOUT_SECONDS)
+        if raw is None:  # posible 429: reintentar una vez tras un delay agrupado
+            time.sleep(_RETRY_DELAY_SECONDS)
+            raw = _finnhub_get(
+                client, "/quote", symbol, timeout=_REAL_REQUEST_TIMEOUT_SECONDS
+            )
         if raw and raw.get("c") and raw["c"] > 0:
             return {
                 "price": float(raw["c"]),
@@ -304,7 +354,12 @@ class FinnhubScreenVendor:
 
     def fetch_profile(self, client: httpx.Client, symbol: str) -> dict | None:
         """Perfil real (nombre, market cap en USD, sector, exchange) vía profile2."""
-        raw = _finnhub_get(client, "/stock/profile2", symbol, timeout=8)
+        raw = _finnhub_get(
+            client,
+            "/stock/profile2",
+            symbol,
+            timeout=_REAL_REQUEST_TIMEOUT_SECONDS,
+        )
         if raw and raw.get("ticker"):
             return {
                 "name": raw.get("name") or symbol,
@@ -425,10 +480,130 @@ def _fetch_profile(
     cached = _real_profile_cache.get(cache_key)
     if cached and now - cached["at"] < _PROFILE_TTL:
         return cached["data"]
-    data = active.fetch_profile(client, symbol)
-    if data:
-        _real_profile_cache[cache_key] = {"at": now, "data": data}
-    return data
+    with _real_cache_lock:
+        waiter = _profile_singleflight.get(cache_key)
+        leader = waiter is None
+        if leader:
+            waiter = threading.Event()
+            _profile_singleflight[cache_key] = waiter
+    if not leader:
+        waiter.wait(timeout=_REAL_REQUEST_TIMEOUT_SECONDS)
+        cached = _real_profile_cache.get(cache_key)
+        return cached.get("data") if cached else None
+    try:
+        data = active.fetch_profile(client, symbol)
+        if data:
+            with _real_cache_lock:
+                _real_profile_cache[cache_key] = {"at": time.monotonic(), "data": data}
+        return data
+    finally:
+        with _real_cache_lock:
+            _profile_singleflight.pop(cache_key, None)
+        waiter.set()
+
+
+def _real_response_key(
+    vendor: str, market_cap: float | None, sector: str | None, limit: int
+) -> tuple[str, float | None, str | None, int]:
+    return (vendor, market_cap, _cs(sector), max(1, min(limit, 200)))
+
+
+def _real_response_payload(
+    items: list[dict],
+    vendor: str,
+    market_cap: float | None,
+    sector: str | None,
+    limit: int,
+) -> dict:
+    filtered = [
+        item
+        for item in items
+        if (
+            market_cap is None
+            or (item.get("marketCap") or 0.0) >= market_cap
+        )
+        and (not sector or _cs(item.get("sector")) == _cs(sector))
+    ]
+    filtered.sort(key=lambda item: (item.get("marketCap") or 0.0), reverse=True)
+    limited = [dict(item) for item in filtered[: max(1, min(limit, 200))]]
+    return {
+        "source": SCREEN_VENDORS[vendor].source_label,
+        "as_of": time.time(),
+        "count": len(limited),
+        "screener": limited,
+    }
+
+
+def _real_items_are_fresh(vendor: str, now: float) -> bool:
+    with _real_cache_lock:
+        cache_vendor = _real_items_cache.get("vendor")
+        return bool(
+            _real_items_cache.get("items")
+            and (cache_vendor is None or cache_vendor == vendor)
+            and now - float(_real_items_cache.get("at", 0.0)) < _QUOTE_TTL
+        )
+
+
+def _store_real_items(items: list[dict], vendor: str) -> None:
+    """Publica un refresco sin perder LKG cuando el proveedor devuelve parcial."""
+    with _real_cache_lock:
+        previous = {
+            item.get("symbol"): item
+            for item in _real_items_cache.get("items", [])
+            if item.get("symbol")
+        }
+        previous_vendor = _real_items_cache.get("vendor")
+        fresh = {item.get("symbol"): item for item in items if item.get("symbol")}
+        if previous_vendor in (None, vendor):
+            merged = [
+                fresh.get(symbol, previous.get(symbol))
+                for symbol, _, _ in _REAL_UNIVERSE
+                if fresh.get(symbol) is not None or previous.get(symbol) is not None
+            ]
+        else:
+            merged = list(items)
+        _real_items_cache.update(
+            {"at": time.monotonic(), "items": merged, "vendor": vendor}
+        )
+        # Las respuestas cacheadas se invalidan para recomputar con el nuevo
+        # universo; durante el intervalo entre refresh y request se conserva LKG.
+        for key in tuple(_real_response_cache):
+            if key[0] == vendor:
+                _real_response_cache.pop(key, None)
+
+
+def _refresh_real_items_background(vendor: str, generation: int) -> None:
+    try:
+        items = _refetch_real_items(vendor=vendor)
+        with _real_refresh_state_lock:
+            stale_generation = generation != _real_refresh_generation
+        if items and not stale_generation:
+            _store_real_items(items, vendor)
+    except Exception:  # noqa: BLE001 — SWR nunca convierte un fallo upstream en 500
+        # El próximo request conserva el last-known-good y vuelve a programar.
+        return
+
+
+def _schedule_real_refresh(vendor: str):
+    """Programa un único refresh y devuelve el Future para el cold start."""
+    global _real_refresh_future, _real_refresh_generation
+    with _real_refresh_state_lock:
+        current = _real_refresh_future
+        if current is not None and not current.done():
+            return current
+        _real_refresh_generation += 1
+        generation = _real_refresh_generation
+        _real_refresh_future = _real_refresh_executor.submit(
+            _refresh_real_items_background, vendor, generation
+        )
+        return _real_refresh_future
+
+
+def active_vendor_allows_cold_wait(vendor: str, settings) -> bool:
+    """Sólo espera cold-start cuando no hay una llamada Finnhub real que hacer."""
+    if vendor != "finnhub":
+        return True
+    return not bool(settings.finnhub_api_key)
 
 
 @router.get("/real")
@@ -437,54 +612,88 @@ def real_time_screener(
     sector: str | None = None,
     limit: int = 25,
 ) -> dict:
-    """Screener real: precios del día + market cap reales (Finnhub free).
+    """Screener real con cache por parámetros y stale-while-revalidate.
 
-    marketCapMoreThan: mínimo de market cap en USD (real de Finnhub).
-    sector: filtro case-insensitive sobre el sector (BD/Finnhub).
-    Vendor de quotes/profile (Finnhub ↔ Yahoo) configurable vía
-    SCREENER_QUOTE_VENDOR; default Finnhub.
+    Nunca espera un refresh de red cuando existe LKG: devuelve la respuesta al
+    instante y actualiza en segundo plano. En cold start espera como máximo
+    50 ms para un primer resultado útil; después devuelve LKG al instante y
+    deja el trabajo largo en background.
     """
     settings = get_settings()
     vendor = resolve_screener_vendor(settings.screener_quote_vendor)
+    key = _real_response_key(vendor.name, marketCapMoreThan, sector, limit)
     now = time.monotonic()
-    # Refresco solo si caduca el cache de 60s; los filtros se aplican abajo
-    # sobre los items crudos, así cada combinación es correcta sin re-consultar.
-    if (
-        now - _real_items_cache["at"] >= _QUOTE_TTL
-        or not _real_items_cache["items"]
-    ):
-        items = _refetch_real_items(vendor=vendor.name)
-        if items:  # last-known-good si el refresco falla del todo
-            _real_items_cache["at"] = now
-            _real_items_cache["items"] = items
-
-    filtered = [
-        item
-        for item in _real_items_cache["items"]
-        if (
-            marketCapMoreThan is None
-            or (item["marketCap"] or 0.0) >= marketCapMoreThan
+    with _real_cache_lock:
+        cached = _real_response_cache.get(key)
+        cached_items = _real_items_cache.get("items", [])
+        cached_vendor = _real_items_cache.get("vendor")
+        has_lkg = bool(cached_items) and (
+            cached_vendor is None or cached_vendor == vendor.name
         )
-        and (not sector or _cs(item["sector"]) == _cs(sector))
-    ]
-    filtered.sort(key=lambda item: (item["marketCap"] or 0.0), reverse=True)
-    limited = filtered[: max(1, min(limit, 200))]
-    return {
-        "source": vendor.source_label,
-        "as_of": time.time(),
-        "count": len(limited),
-        "screener": limited,
-    }
+    if cached and now - float(cached.get("at", 0.0)) < _QUOTE_TTL:
+        payload = {
+            **cached["payload"],
+            "screener": [dict(item) for item in cached["payload"]["screener"]],
+            "as_of": time.time(),
+        }
+        if not _real_items_are_fresh(vendor.name, now):
+            _schedule_real_refresh(vendor.name)
+        return payload
+
+    items = list(cached_items) if has_lkg else []
+    if not _real_items_are_fresh(vendor.name, now):
+        future = _schedule_real_refresh(vendor.name)
+        if not has_lkg and not items and (
+            active_vendor_allows_cold_wait(vendor.name, settings)
+        ):
+            # Sin key/no Finnhub no hay una respuesta real que esperar: el mock
+            # o el fallback local puede resolverse en este pequeño budget. Con
+            # Finnhub configurado, una petición de red nunca bloquea el cold start.
+            try:
+                future.result(timeout=_COLD_START_WAIT_SECONDS)
+            except Exception:  # noqa: BLE001 — el background seguirá intentando
+                pass
+            with _real_cache_lock:
+                items = list(_real_items_cache.get("items", []))
+
+    payload = _real_response_payload(
+        items, vendor.name, marketCapMoreThan, sector, limit
+    )
+    if items:
+        with _real_cache_lock:
+            if len(_real_response_cache) >= _REAL_RESPONSE_CACHE_MAX:
+                oldest_key = min(
+                    _real_response_cache,
+                    key=lambda candidate: _real_response_cache[candidate]["at"],
+                )
+                _real_response_cache.pop(oldest_key, None)
+            _real_response_cache[key] = {
+                "at": time.monotonic(),
+                "payload": payload,
+            }
+    return payload
+
+
+def _safe_fetch_quote(client: httpx.Client, symbol: str, vendor: str) -> dict | None:
+    try:
+        return _fetch_quote(client, symbol, vendor=vendor)
+    except Exception:  # noqa: BLE001 — un ticker fallido no tumba el universo
+        return None
+
+
+def _safe_fetch_profile(client: httpx.Client, symbol: str, vendor: str) -> dict | None:
+    try:
+        return _fetch_profile(client, symbol, vendor=vendor)
+    except Exception:  # noqa: BLE001 — un perfil fallido conserva el fallback
+        return None
 
 
 def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
     """Universo completo con precios/market cap reales (vendor configurable).
 
     Fase 1: /quote en paralelo (35 llamadas, con retry en 429).
-    Fase 2: /stock/profile2 solo si el cache (6h) está vacío/caducado, con
-    pacing de 0.3s entre llamadas para respetar las 60 llamadas/minuto del
-    plan gratuito (a partir del segundo refresco los profiles vienen de cache
-    y solo se hacen ~35 /quote por minuto).
+    Fase 2: /stock/profile2 en un pool acotado (sin sleep O(n)); el burst queda
+    dentro del límite gratuito de 60 llamadas/min para el universo de 35 tickers.
     """
     db_universe = _load_universe_from_db()
     settings = get_settings()
@@ -497,33 +706,46 @@ def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
     with httpx.Client(headers=headers, timeout=15) as client:
         fn_key = settings.finnhub_api_key
         client.params = {"token": fn_key} if fn_key and active.name == "finnhub" else {}
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=QUOTE_MAX_WORKERS) as pool:
             futures = {
-                pool.submit(_fetch_quote, client, symbol, vendor=active.name): symbol
+                pool.submit(_safe_fetch_quote, client, symbol, active.name): symbol
                 for symbol, _, _ in _REAL_UNIVERSE
             }
-            for future in futures:
-                symbol = futures[future]
+            for future, symbol in futures.items():
                 quote = future.result()
                 if quote:
                     quotes[symbol] = quote
 
     profiles: dict[str, dict] = {}
+    profile_symbols = [symbol for symbol, _, _ in _REAL_UNIVERSE if symbol in quotes]
     with httpx.Client(headers=headers, timeout=15) as client:
         fn_key = settings.finnhub_api_key
         client.params = {"token": fn_key} if fn_key and active.name == "finnhub" else {}
-        for symbol, _, _ in _REAL_UNIVERSE:
-            if symbol not in quotes:
-                continue
-            if time.monotonic() - _real_profile_cache.get(
-                f"{active.name}:{symbol}", {}
-            ).get("at", 0.0) < _PROFILE_TTL:
-                profiles[symbol] = _real_profile_cache[f"{active.name}:{symbol}"]["data"]
-                continue
-            profile = _fetch_profile(client, symbol, vendor=active.name)
-            if profile:
-                profiles[symbol] = profile
-            time.sleep(0.3)  # pacing: ~3.3 llamadas/s, muy por debajo de 60/min
+        now = time.monotonic()
+        with _real_cache_lock:
+            cached_profiles = {}
+            for symbol in profile_symbols:
+                cached = _real_profile_cache.get(f"{active.name}:{symbol}")
+                if cached and now - float(cached.get("at", 0.0)) < _PROFILE_TTL:
+                    cached_profiles[symbol] = cached["data"]
+        missing_profiles = [
+            symbol for symbol in profile_symbols if symbol not in cached_profiles
+        ]
+        profiles.update(cached_profiles)
+        if missing_profiles:
+            with ThreadPoolExecutor(
+                max_workers=min(PROFILE_MAX_WORKERS, len(missing_profiles))
+            ) as pool:
+                futures = {
+                    pool.submit(
+                        _safe_fetch_profile, client, symbol, active.name
+                    ): symbol
+                    for symbol in missing_profiles
+                }
+                for future, symbol in futures.items():
+                    profile = future.result()
+                    if profile:
+                        profiles[symbol] = profile
 
     items: list[dict] = []
     for symbol, name_fb, sector_fb in _REAL_UNIVERSE:

@@ -1,12 +1,10 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { normalizeResearchBody, researchIdentityHeaders } from '@/lib/auth/research-identity';
-import { AppError, ExternalAPIError, ValidationError } from '@/lib/types/errors';
-import { createResearchOpenApiClient } from '@/lib/research/openapi-client';
+import { AppError, ExternalAPIError, ValidationError, getErrorMessage } from '@/lib/types/errors';
+import { researchRequest } from '@/lib/research/client';
 import type { components } from '@/lib/research/openapi.generated';
 
-const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
 type ResearchCompany = {
   id: number;
@@ -601,59 +599,33 @@ export type ResearchExpectationReview = {
   reviewed_at: string | null;
 };
 
-async function researchRequestHeaders(target: {
-  method: string;
-  path: string;
-  body?: string | Uint8Array | ArrayBuffer | null;
-}): Promise<Record<string, string>> {
-  return researchIdentityHeaders(target);
-}
-
-async function researchApiError(response: Response, path: string): Promise<never> {
-  let detail = `${response.status} ${response.statusText}`.trim();
-  try {
-    const payload = await response.json() as { detail?: string; message?: string };
-    detail = payload.detail ?? payload.message ?? detail;
-  } catch {
-    // Keep the HTTP status when the backend did not return JSON.
-  }
-  throw new AppError(detail, 'RESEARCH_API_ERROR', response.status, { path });
-}
-
 async function getJson<T>(path: string, fallback: T): Promise<T> {
   try {
-    const response = await fetch(`${BACKEND_URL}${path}`, {
-      cache: 'no-store',
-      headers: await researchRequestHeaders({ method: 'GET', path }),
-    });
-    if (response.status === 404) return fallback;
-    if (!response.ok) return researchApiError(response, path);
-    return (await response.json()) as T;
+    // Todas las lecturas de research pasan por el cliente común: mismo timeout,
+    // mensaje de reintento y caché/ deduplicación para evitar requests colgados.
+    return await researchRequest<T>(path, { cache: 'no-store' });
   } catch (error) {
+    // 404 es un estado vacío válido para un recurso opcional; no debe
+    // convertirse en una caída de la página.
+    if (error instanceof AppError && error.statusCode === 404) return fallback;
     if (error instanceof AppError) throw error;
-    throw new ExternalAPIError(`Research API request failed: ${path}`, 'research-api', error);
+    throw new ExternalAPIError(
+      `Research API request failed: ${path}; reintenta en unos segundos.`,
+      'research-api',
+      error,
+    );
   }
 }
 
 async function postJson<T>(path: string, fallback: T, body?: unknown): Promise<T> {
   try {
     const requestBody = body ? JSON.stringify(body) : undefined;
-    const authHeaders = await researchRequestHeaders({
+    const data = await researchRequest<T>(path, {
       method: 'POST',
-      path,
-      body: requestBody ?? null,
-    });
-    const response = await fetch(`${BACKEND_URL}${path}`, {
-      method: 'POST',
-      headers: body
-        ? { ...authHeaders, 'Content-Type': 'application/json' }
-        : authHeaders,
       body: requestBody,
       cache: 'no-store',
     });
-    if (!response.ok) return researchApiError(response, path);
-    if (response.status === 204) return fallback;
-    return (await response.json()) as T;
+    return data === undefined ? fallback : data;
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new ExternalAPIError(`Research API mutation failed: ${path}`, 'research-api', error);
@@ -662,24 +634,12 @@ async function postJson<T>(path: string, fallback: T, body?: unknown): Promise<T
 
 async function postForm<T>(path: string, fallback: T, body: FormData): Promise<T> {
   try {
-    const normalized = await normalizeResearchBody(body);
-    const authHeaders = await researchRequestHeaders({
+    const data = await researchRequest<T>(path, {
       method: 'POST',
-      path,
-      body: normalized.body ?? null,
-    });
-    const response = await fetch(`${BACKEND_URL}${path}`, {
-      method: 'POST',
-      body: normalized.body ?? undefined,
+      body,
       cache: 'no-store',
-      headers: {
-        ...authHeaders,
-        ...(normalized.contentType ? { 'Content-Type': normalized.contentType } : {}),
-      },
     });
-    if (!response.ok) return researchApiError(response, path);
-    if (response.status === 204) return fallback;
-    return (await response.json()) as T;
+    return data === undefined ? fallback : data;
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new ExternalAPIError(`Research API upload failed: ${path}`, 'research-api', error);
@@ -725,37 +685,55 @@ export async function getResearchCompanySnapshot(
   ticker: string,
 ): Promise<ResearchCompanySnapshot | null> {
   const normalizedTicker = ticker.trim().toUpperCase();
-  const client = createResearchOpenApiClient();
-  const { data, error, response } = await client.GET('/api/companies/{ticker}/snapshot', {
-    params: {
-      path: { ticker: normalizedTicker },
-    },
-  });
-  if (response.status === 404) return null;
-  if (error || !data) {
-    const detail = typeof error === 'object' && error && 'detail' in error
-      ? String(error.detail)
-      : `Research snapshot failed with status ${response.status}`;
-    throw new AppError(detail, 'RESEARCH_SNAPSHOT_ERROR', response.status);
+  try {
+    // El snapshot usa el mismo cliente y timeout que el resto de research.
+    return await researchRequest<ResearchCompanySnapshot>(
+      `/api/companies/${encodeURIComponent(normalizedTicker)}/snapshot`,
+      { fast: true, cache: 'no-store' },
+    );
+  } catch (error) {
+    // 404 es "aún no hay research", no un fallo de infraestructura.
+    if (error instanceof AppError && error.statusCode === 404) return null;
+    throw error;
   }
-  return data;
 }
 
 export async function getResearchThesisWorkspace(ticker: string) {
   const encoded = encodeURIComponent(ticker.toUpperCase());
+  const optional = async <T>(path: string, fallback: T): Promise<{ value: T; error?: string }> => {
+    try {
+      return { value: await getJson<T>(path, fallback) };
+    } catch (error) {
+      // Una capa secundaria no puede convertir el resto del workspace en 500.
+      return { value: fallback, error: getErrorMessage(error) };
+    }
+  };
   const [thesis, history, claims, sections, graph, redTeam, historyDetail] = await Promise.all([
     getJson<ResearchThesis | null>(`/api/thesis/${encoded}/latest`, null),
-    getJson<ResearchThesisVersion[]>(`/api/thesis/${encoded}/versions`, []),
-    getJson<ResearchClaim[]>(`/api/memory/claims?ticker=${encoded}&limit=100`, []),
-    getJson<ResearchThesisSection[]>(`/api/memory/thesis/${encoded}/sections`, []),
-    getJson<ResearchThesisGraph | null>(`/api/thesis/${encoded}/graph`, null),
-    getJson<ResearchRedTeam | null>(`/api/companies/${encoded}/red-team/latest`, null),
-    getJson<{ count: number; history: ResearchThesisHistoryEntry[] }>(
+    optional<ResearchThesisVersion[]>(`/api/thesis/${encoded}/versions`, []),
+    optional<ResearchClaim[]>(`/api/memory/claims?ticker=${encoded}&limit=100`, []),
+    optional<ResearchThesisSection[]>(`/api/memory/thesis/${encoded}/sections`, []),
+    optional<ResearchThesisGraph | null>(`/api/thesis/${encoded}/graph`, null),
+    optional<ResearchRedTeam | null>(`/api/companies/${encoded}/red-team/latest`, null),
+    optional<{ count: number; history: ResearchThesisHistoryEntry[] }>(
       `/api/thesis/${encoded}/history`,
       { count: 0, history: [] },
     ),
   ]);
-  return { thesis, history, claims, sections, graph, redTeam, historyDetail };
+  const errors = [history, claims, sections, graph, redTeam, historyDetail]
+    .map((result) => result.error)
+    .filter((error): error is string => Boolean(error));
+  return {
+    thesis: thesis ?? null,
+    history: history.value,
+    claims: claims.value,
+    sections: sections.value,
+    graph: graph.value,
+    redTeam: redTeam.value,
+    historyDetail: historyDetail.value,
+    partial: errors.length > 0,
+    errors,
+  };
 }
 
 export async function getResearchChangesWorkspace(ticker: string) {

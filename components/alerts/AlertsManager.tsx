@@ -45,6 +45,7 @@ function AlertsManager() {
     const searchParams = useSearchParams();
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [open, setOpen] = useState(false);
     const [reviewing, setReviewing] = useState<string | null>(null);
     /** Estado de entrega del motor (evaluacion cada 5 min + Telegram). */
@@ -81,6 +82,7 @@ function AlertsManager() {
     }, []);
 
     const loadAlerts = async () => {
+        setLoadError(null);
         try {
             const [data, telegramStatus, recent] = await Promise.all([
                 getUserAlerts(),
@@ -92,6 +94,7 @@ function AlertsManager() {
             setTriggered(recent);
         } catch (error) {
             if (isNextRedirectError(error)) throw error;
+            setLoadError('No se pudieron cargar tus alertas. Reintenta en unos segundos.');
             showErrorToast(error, { onRetry: loadAlerts });
         } finally {
             setLoading(false);
@@ -320,7 +323,17 @@ function AlertsManager() {
             ) : null}
 
             {loading ? (
-                <div className="text-center py-8 text-gray-500">Cargando alertas...</div>
+                <div className="space-y-3 py-8" role="status" aria-live="polite">
+                    <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-gray-700 border-t-teal-300" />
+                    <div className="text-center text-sm text-gray-500">Cargando alertas...</div>
+                </div>
+            ) : loadError ? (
+                <div className="rounded-lg border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200" role="alert">
+                    <p>{loadError}</p>
+                    <Button type="button" variant="outline" size="sm" className="mt-3 min-h-[44px]" onClick={() => void loadAlerts()}>
+                        <RefreshCcw className="mr-2 h-4 w-4" />Reintentar
+                    </Button>
+                </div>
             ) : alerts.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                     <Bell className="h-12 w-12 mx-auto mb-3 text-gray-600" />

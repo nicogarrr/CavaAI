@@ -15,7 +15,7 @@ export const revalidate = 0;
 const STATUS_LABELS: Record<string, string> = {
   open: 'abierta',
   met: 'cumplida',
-  partial: 'parcial',
+  partial: 'Parcial',
   missed: 'fallida',
 };
 

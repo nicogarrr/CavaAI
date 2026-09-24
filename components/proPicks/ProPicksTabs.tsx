@@ -65,17 +65,17 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
 
     return (
         <Tabs defaultValue="picks" className="mt-6 w-full min-w-0">
-            <TabsList className="grid w-full grid-cols-4 gap-1 border border-gray-700 bg-gray-800 text-gray-400 sm:inline-flex sm:w-auto">
-                <TabsTrigger value="picks" className="min-h-[44px] data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
+            <TabsList className="flex h-auto w-max min-w-full snap-x gap-1 overflow-x-auto border border-gray-700 bg-gray-800 pb-2 text-gray-400 sm:inline-flex sm:h-9 sm:min-w-0 sm:w-auto sm:overflow-visible sm:pb-[3px]">
+                <TabsTrigger value="picks" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Picks IA
                 </TabsTrigger>
-                <TabsTrigger value="estrategias" className="min-h-[44px] data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
+                <TabsTrigger value="estrategias" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Estrategias
                 </TabsTrigger>
-                <TabsTrigger value="rebalanceo" className="min-h-[44px] data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
+                <TabsTrigger value="rebalanceo" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Rebalanceo
                 </TabsTrigger>
-                <TabsTrigger value="backtest" className="min-h-[44px] data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
+                <TabsTrigger value="backtest" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Backtesting
                 </TabsTrigger>
             </TabsList>
