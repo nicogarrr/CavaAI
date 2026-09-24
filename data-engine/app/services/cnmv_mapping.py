@@ -24,13 +24,15 @@ class CNMVIssuer:
 
 # Reviewed seed table (IBEX heavyweights). Extend only after verifying each
 # entry against the CNMV registry; never auto-generate rows.
+# Aliases ending in "SA"/"SOCIEDAD ANONIMA" are the ESEF legal-name forms,
+# verified 2026-09-24 against filings.xbrl.org (each matched exactly one LEI).
 REVIEWED_ISSUERS: tuple[CNMVIssuer, ...] = (
     CNMVIssuer("SAN", "BANCO SANTANDER, S.A.", "A-39000013", "ES0113900J37", ("SANTANDER", "SAN.MC")),
     CNMVIssuer("ITX", "INDUSTRIA DE DISEÑO TEXTIL, S.A.", "A-15075062", "ES0148396007", ("INDITEX", "ITX.MC")),
-    CNMVIssuer("IBE", "IBERDROLA, S.A.", "A-48010611", "ES0144580Y14", ("IBERDROLA", "IBE.MC")),
-    CNMVIssuer("BBVA", "BANCO BILBAO VIZCAYA ARGENTARIA, S.A.", "A-48265169", "ES0113211835", ("BBVA", "BBVA.MC")),
-    CNMVIssuer("TEF", "TELEFONICA, S.A.", "A-28015865", "ES0178430E18", ("TELEFONICA", "TEF.MC")),
-    CNMVIssuer("REP", "REPSOL, S.A.", "A-78374725", "ES0173516115", ("REPSOL", "REP.MC")),
+    CNMVIssuer("IBE", "IBERDROLA, S.A.", "A-48010611", "ES0144580Y14", ("IBERDROLA", "IBE.MC", "IBERDROLA SA")),
+    CNMVIssuer("BBVA", "BANCO BILBAO VIZCAYA ARGENTARIA, S.A.", "A-48265169", "ES0113211835", ("BBVA", "BBVA.MC", "BANCO BILBAO VIZCAYA ARGENTARIA SOCIEDAD ANONIMA")),
+    CNMVIssuer("TEF", "TELEFONICA, S.A.", "A-28015865", "ES0178430E18", ("TELEFONICA", "TEF.MC", "TELEFONICA SA")),
+    CNMVIssuer("REP", "REPSOL, S.A.", "A-78374725", "ES0173516115", ("REPSOL", "REP.MC", "REPSOL SA")),
 )
 
 
