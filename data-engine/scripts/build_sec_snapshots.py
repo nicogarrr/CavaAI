@@ -89,8 +89,16 @@ def main() -> int:
         n = sum(len(u) for c in us_gaap.values() for u in c["units"].values())
         print(f"{ticker}: {len(us_gaap)} conceptos, {n} entradas -> {path}")
 
+    manifest_path = out / "manifest.json"
+    existing: dict[str, str] = {}
+    if manifest_path.exists():
+        try:
+            existing = json.loads(manifest_path.read_text()).get("tickers", {})
+        except Exception:
+            existing = {}
+    existing.update(targets)
     manifest = {
-        "tickers": {t: c for t, c in targets.items()},
+        "tickers": dict(sorted(existing.items())),
         "fetched_at": args.fetched_at,
         "source": "HuggingFace mirror of SEC EDGAR companyfacts "
                   "(DenyTranDFW/edgar_xbrl_companyfacts), validado contra API directa",
