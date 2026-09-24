@@ -169,3 +169,56 @@ def test_sec_refresh_deriva_fcf_margen_crecimiento_y_deuda_neta(db, monkeypatch)
     assert facts[("net_debt", 2025)].value == Decimal("300")  # 500 - 200
     # valuation_input_ready (revenue + FCF + shares) ya se satisface
     assert service.valuation_input_ready(db, company) is True
+
+
+class _FakeSECClientFilingYear:
+    """Simula el formato real companyfacts: fy = anio del filing, no del dato,
+    con el mismo periodo re-presentado en varios 10-K."""
+
+    async def cik_for_ticker(self, ticker):
+        return "0001234567"
+
+    async def company_facts(self, cik):
+        return {
+            "facts": {
+                "us-gaap": {
+                    "Revenues": {"units": {"USD": [
+                        {"fy": 2023, "fp": "FY", "form": "10-K", "end": "2023-12-31", "val": 1000, "filed": "2024-02-01"},
+                        {"fy": 2024, "fp": "FY", "form": "10-K", "end": "2023-12-31", "val": 999, "filed": "2025-02-01"},
+                        {"fy": 2024, "fp": "FY", "form": "10-K", "end": "2024-12-31", "val": 1200, "filed": "2025-02-01"},
+                    ]}},
+                }
+            }
+        }
+
+
+def test_sec_fiscal_year_sale_del_end_y_manda_el_filed_reciente(db, monkeypatch):
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECClientFilingYear)
+    company = _company(db)
+
+    asyncio.run(FinancialIngestionService().refresh_from_sec(db, company))
+
+    revenues = [
+        f for f in db.scalars(
+            select(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric == "revenue",
+            )
+        )
+    ]
+    by_year = {f.fiscal_year: f for f in revenues}
+    assert set(by_year) == {2023, 2024}  # NO 2023-duplicado-como-2024
+    assert by_year[2023].value == Decimal("999")  # re-presentacion mas reciente
+    assert by_year[2023].period == "2023-12-31:FY"
+    assert by_year[2024].value == Decimal("1200")
+    # crecimiento derivado con los anos correctos
+    growth = [
+        f for f in db.scalars(
+            select(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric == "revenue_growth",
+            )
+        )
+    ]
+    assert len(growth) == 1
+    assert abs(growth[0].value - (Decimal("1200") / Decimal("999") - 1)) < Decimal("0.000001")
