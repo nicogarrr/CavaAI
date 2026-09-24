@@ -377,6 +377,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // ni se crea.
   const snapshotPromise = getResearchCompanySnapshot(ticker);
   const marketPromise = activeView === 'overview' ? getCompanyMarketSnapshot(ticker) : undefined;
+  // La tesis completa también se consume inline en 'overview' (todo en la
+  // misma página); se lanza en paralelo y su fallo degrada a solo tarjeta.
+  const thesisPromise = activeView === 'overview' ? getResearchThesisWorkspace(ticker) : undefined;
   let snapshot: Awaited<typeof snapshotPromise>;
   try {
     snapshot = await snapshotPromise;
@@ -439,6 +442,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       }
       throw error;
     }
+    // El memo inline es un extra: si su fetch falla, la tarjeta-resumen
+    // sigue mostrando el executive_summary y el enlace a la pestaña Tesis.
+    let thesisWorkspace: Awaited<ReturnType<typeof getResearchThesisWorkspace>> | null = null;
+    try {
+      thesisWorkspace = await (thesisPromise ?? getResearchThesisWorkspace(ticker));
+    } catch {
+      thesisWorkspace = null;
+    }
     content = (
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -490,6 +501,17 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             )}
           </Panel>
         </div>
+        {thesisWorkspace?.thesis ? (
+          <Panel title="Tesis completa" collapsibleOnMobile>
+            <ThesisMemo
+              thesis={thesisWorkspace.thesis}
+              ticker={ticker}
+              debateBody={
+                thesisWorkspace.sections.find((section) => section.section_key === 'thesis_debate')?.body ?? null
+              }
+            />
+          </Panel>
+        ) : null}
         {snapshot.research_health.missing?.length ? (
           <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-sm text-amber-200">
             Capas de research que faltan: {snapshot.research_health.missing.join(', ')}.
