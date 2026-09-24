@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchRequest, jsonBody } from '@/lib/research/client';
+import { cachedFetch } from '@/lib/cache/memoryTTL';
+import { requestCache } from '@/lib/cache/requestCache';
 import { classifyError, getFriendlyErrorMessage, type ErrorCause } from '@/lib/types/errors';
 
 // Helper para obtener userId (researchRequest añade la identidad firmada
@@ -37,8 +39,12 @@ interface WatchlistEntry {
 // Obtener watchlist del usuario actual desde el backend research (/api/watchlist)
 export async function getWatchlist(): Promise<{ symbol: string; addedAt: Date }[]> {
     try {
-        await getUserId();
-        const items = await researchRequest<WatchlistEntry[]>('/api/watchlist');
+        const userId = await getUserId();
+        const items = await cachedFetch(
+            `watchlist:${userId}`,
+            () => researchRequest<WatchlistEntry[]>('/api/watchlist'),
+            15,
+        );
         if (!Array.isArray(items)) return [];
         return items.map((item) => ({
             symbol: item.symbol,
@@ -54,7 +60,7 @@ export async function getWatchlist(): Promise<{ symbol: string; addedAt: Date }[
 // Añadir a watchlist
 export async function addToWatchlist(symbol: string, company?: string): Promise<WatchlistMutationResult> {
     try {
-        await getUserId();
+        const userId = await getUserId();
         await researchRequest('/api/watchlist', {
             method: 'POST',
             body: jsonBody({
@@ -62,6 +68,7 @@ export async function addToWatchlist(symbol: string, company?: string): Promise<
                 ...(company ? { company } : {})
             })
         });
+        requestCache.invalidate(`watchlist:${userId}`);
         revalidatePath('/watchlist');
         return { success: true };
     } catch (error) {
@@ -73,10 +80,11 @@ export async function addToWatchlist(symbol: string, company?: string): Promise<
 // Eliminar de watchlist
 export async function removeFromWatchlist(symbol: string): Promise<WatchlistMutationResult> {
     try {
-        await getUserId();
+        const userId = await getUserId();
         await researchRequest(`/api/watchlist/${encodeURIComponent(symbol)}`, {
             method: 'DELETE'
         });
+        requestCache.invalidate(`watchlist:${userId}`);
         revalidatePath('/watchlist');
         return { success: true };
     } catch (error) {

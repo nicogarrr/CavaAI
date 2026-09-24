@@ -41,9 +41,10 @@ type Props = {
     scores: { quality: number; growth: number; value: number; dividend: number; cagr3y: number; history?: PortfolioPerformanceHistory };
     tearsheet: PortfolioTearsheetType | null;
     userId: string;
+    partialMessage?: string | null;
 };
 
-export default function PortfolioTabs({ summary, transactions, scores, tearsheet, userId }: Props) {
+export default function PortfolioTabs({ summary, transactions, scores, tearsheet, userId, partialMessage }: Props) {
     const [activeTab, setActiveTab] = useState('resumen');
     const [chartPeriod, setChartPeriod] = useState('1M');
 
@@ -92,6 +93,12 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                                             <AddTransactionButton userId={userId} />
                     </div>
                 </div>
+
+                {partialMessage ? (
+                    <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/20 p-3 text-sm text-amber-200" role="status">
+                        Cartera parcialmente disponible: {partialMessage}. Reintenta en unos segundos.
+                    </div>
+                ) : null}
 
                 {/* Tabs Navigation */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

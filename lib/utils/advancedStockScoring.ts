@@ -19,6 +19,7 @@
  */
 
 import { getSectorAverages } from '@/lib/actions/sectorData.actions';
+import { formatNumber, formatPercent } from '@/lib/format';
 
 /**
  * Pesos calibrados del scoring general. ÚNICA fuente de verdad:
@@ -101,7 +102,7 @@ export async function calculateAdvancedStockScore(
     const quote = financialData.quote || {};
     const indexComparison = financialData.indexComparison || {};
 
-    const sector = profile.finnhubIndustry || profile.industry || 'Unknown';
+    const sector = profile.finnhubIndustry || profile.industry || 'Desconocido';
 
     // Obtener promedios reales del sector desde la API
     // IMPORTANTE: Si no hay datos disponibles, no inventamos valores
@@ -177,9 +178,9 @@ export async function calculateAdvancedStockScore(
         categoryScores.value += peScore;
 
         if (pe < sectorPE * 0.7) {
-            strengths.push(`PER bajo vs sector (${pe.toFixed(1)} vs ${sectorPE.toFixed(1)})`);
+            strengths.push(`PER bajo vs sector (${formatNumber(pe, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} vs ${formatNumber(sectorPE, { minimumFractionDigits: 1, maximumFractionDigits: 1 })})`);
         } else if (pe > sectorPE * 1.5) {
-            weaknesses.push(`PER alto vs sector (${pe.toFixed(1)} vs ${sectorPE.toFixed(1)})`);
+            weaknesses.push(`PER alto vs sector (${formatNumber(pe, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} vs ${formatNumber(sectorPE, { minimumFractionDigits: 1, maximumFractionDigits: 1 })})`);
         }
     }
 
@@ -191,7 +192,7 @@ export async function calculateAdvancedStockScore(
             categoryScores.value += pbScore;
 
             if (pb < sectorPB * 0.7) {
-                strengths.push(`P/B bajo vs sector (${pb.toFixed(1)} vs ${sectorPB.toFixed(1)})`);
+                strengths.push(`P/B bajo vs sector (${formatNumber(pb, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} vs ${formatNumber(sectorPB, { minimumFractionDigits: 1, maximumFractionDigits: 1 })})`);
             }
         } else {
             const pbScore = pb < 2 ? 25 : pb < 4 ? 20 : pb < 6 ? 15 : 10;
@@ -225,7 +226,7 @@ export async function calculateAdvancedStockScore(
         categoryScores.growth += growthScore;
 
         if (growth > sectorGrowth * 1.3) {
-            strengths.push(`Crecimiento superior al sector (${(growth * 100).toFixed(1)}% vs ${(sectorGrowth * 100).toFixed(1)}%)`);
+            strengths.push(`Crecimiento superior al sector (${formatPercent(growth, { digits: 1 })} vs ${formatPercent(sectorGrowth, { digits: 1 })})`);
         }
     }
     if (epsGrowth !== null) {
@@ -253,7 +254,7 @@ export async function calculateAdvancedStockScore(
         categoryScores.profitability += marginScore;
 
         if (margin > sectorMargin * 1.2) {
-            strengths.push(`Margen neto superior al sector (${(margin * 100).toFixed(1)}% vs ${(sectorMargin * 100).toFixed(1)}%)`);
+            strengths.push(`Margen neto superior al sector (${formatPercent(margin, { digits: 1 })} vs ${formatPercent(sectorMargin, { digits: 1 })})`);
         }
     }
     if (roe !== null) {
@@ -281,7 +282,7 @@ export async function calculateAdvancedStockScore(
 
     if (fcfYield !== null && fcfYield > 0) {
         categoryScores.cashFlow += fcfYield > 0.05 ? 40 : fcfYield > 0.03 ? 35 : fcfYield > 0 ? 25 : 10;
-        if (fcfYield > 0.05) strengths.push(`FCF yield alto (${(fcfYield * 100).toFixed(1)}%)`);
+        if (fcfYield > 0.05) strengths.push(`FCF yield alto (${formatPercent(fcfYield, { digits: 1 })})`);
     } else if (priceToFcf && priceToFcf < 15) {
         // Si yield falla pero P/FCF es bueno
         categoryScores.cashFlow += 30;
@@ -289,7 +290,7 @@ export async function calculateAdvancedStockScore(
 
     if (cashFlowPerShare !== null && cashFlowPerShare > 0) {
         categoryScores.cashFlow += 30;
-        strengths.push(`Flujo de caja por acción positivo (${cashFlowPerShare.toFixed(2)})`);
+        strengths.push(`Flujo de caja por acción positivo (${formatNumber(cashFlowPerShare, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`);
     } else if (cashFlowPerShare !== null && cashFlowPerShare < 0) {
         weaknesses.push('Flujo de caja por acción negativo');
     }
@@ -348,9 +349,9 @@ export async function calculateAdvancedStockScore(
         categoryScores.momentum += vsSP500 > 5 ? 20 : vsSP500 > 0 ? 15 : vsSP500 > -5 ? 10 : 5;
 
         if (vsSP500 > 5) {
-            strengths.push(`Supera al S&P 500 (+${vsSP500.toFixed(1)}%)`);
+            strengths.push(`Supera al S&P 500 (+${formatPercent(vsSP500, { fromRatio: false, digits: 1 })})`);
         } else if (vsSP500 < -10) {
-            weaknesses.push(`Bajo desempeño vs S&P 500 (${vsSP500.toFixed(1)}%)`);
+            weaknesses.push(`Bajo desempeño vs S&P 500 (${formatPercent(vsSP500, { fromRatio: false, digits: 1 })})`);
         }
     }
 
@@ -375,20 +376,20 @@ export async function calculateAdvancedStockScore(
 
         if (dte < sectorNormalDte * 0.7) {
             categoryScores.debtLiquidity += 35;
-            strengths.push(`Baja deuda vs sector (D/E: ${dte.toFixed(2)} vs ${sectorNormalDte.toFixed(1)})`);
+            strengths.push(`Baja deuda vs sector (D/E: ${formatNumber(dte, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} vs ${formatNumber(sectorNormalDte, { minimumFractionDigits: 1, maximumFractionDigits: 1 })})`);
         } else if (dte < sectorNormalDte) {
             categoryScores.debtLiquidity += 30;
         } else if (dte < sectorNormalDte * 1.5) {
             categoryScores.debtLiquidity += 20;
         } else {
             categoryScores.debtLiquidity += 10;
-            weaknesses.push(`Alta deuda vs sector (D/E: ${dte.toFixed(2)} vs ${sectorNormalDte.toFixed(1)})`);
+            weaknesses.push(`Alta deuda vs sector (D/E: ${formatNumber(dte, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} vs ${formatNumber(sectorNormalDte, { minimumFractionDigits: 1, maximumFractionDigits: 1 })})`);
         }
     }
 
     if (currentRatio !== null) {
         categoryScores.debtLiquidity += currentRatio > 2 ? 25 : currentRatio > 1.5 ? 20 : currentRatio > 1 ? 15 : 10;
-        if (currentRatio > 2) strengths.push(`Excelente liquidez (ratio: ${currentRatio.toFixed(2)})`);
+        if (currentRatio > 2) strengths.push(`Excelente liquidez (ratio: ${formatNumber(currentRatio, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`);
         else if (currentRatio < 1) threats.push('Problemas de liquidez');
     }
 

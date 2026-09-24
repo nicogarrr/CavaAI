@@ -5,12 +5,12 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ChartLoadingSkeleton, StockCardSkeleton } from '@/components/LoadingState';
+import { StockCardSkeleton } from '@/components/LoadingState';
 import { TrendingUp, TrendingDown, Wallet, ArrowRight, Eye, Newspaper, Brain, Gem } from 'lucide-react';
 import { getPortfolioSummary, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getMarketIndices } from '@/lib/actions/market.actions';
-import { getCompanyNews, getStockFinancialData, getUpcomingEarnings, getStockQuote, getNews, type EarningsEvent } from '@/lib/actions/finnhub.actions';
+import { getCompanyNews, getStockFinancialData, getStockQuote, getNews } from '@/lib/actions/finnhub.actions';
 import { getScreenerStocksReal, getFairValue } from '@/lib/actions/screener.actions';
 
 
@@ -41,6 +41,14 @@ interface UndervaluedStock {
     upside: number;
 }
 
+type NewsArticle = {
+    headline?: string;
+    url?: string;
+    source?: string;
+    datetime?: number;
+    [key: string]: unknown;
+};
+
 // Tarjeta memorizada: la parrilla de índices re-renderiza con cada
 // actualización del dashboard; memo evita reconciliar tarjetas sin cambios.
 const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: MarketIndex }) {
@@ -65,174 +73,201 @@ const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: Market
 
 
 
+function sectionError(error: unknown): string {
+    if (error instanceof Error && error.message) {
+        const message = error.message.replace(/https?:\/\/\S+/g, 'el servicio');
+        return `${message}. Reintenta en unos segundos.`;
+    }
+    return 'No se pudieron cargar los datos. Reintenta en unos segundos.';
+}
+
+function InlineSectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
+    return (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-900/60 bg-amber-950/20 p-3 text-sm text-amber-200" role="status">
+            <span>{message}</span>
+            <button type="button" onClick={onRetry} className="underline hover:text-amber-100">Reintentar</button>
+        </div>
+    );
+}
+
 export default function PersonalizedOverview({ userId }: PersonalizedOverviewProps) {
-    const [loading, setLoading] = useState(true);
+    const [reloadToken, setReloadToken] = useState(0);
     const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
-    const [news, setNews] = useState<any[]>([]);
+    const [news, setNews] = useState<NewsArticle[]>([]);
     // Noticias company-specific solo si hay simbolos seguidos; sin ellos la
     // tarjeta duplicaba a NewsSection (noticias generales del dashboard).
     const [hasTrackedSymbols, setHasTrackedSymbols] = useState(false);
-    const [, setUpcomingEarnings] = useState<EarningsEvent[]>([]);
     const [aiInsight, setAiInsight] = useState('');
     const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
     const [opportunities, setOpportunities] = useState<UndervaluedStock[]>([]);
+    const [indicesLoading, setIndicesLoading] = useState(true);
+    const [portfolioLoading, setPortfolioLoading] = useState(true);
+    const [watchlistLoading, setWatchlistLoading] = useState(true);
+    const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
+    const [newsLoading, setNewsLoading] = useState(false);
+    const [indicesError, setIndicesError] = useState<string | null>(null);
+    const [portfolioError, setPortfolioError] = useState<string | null>(null);
+    const [watchlistError, setWatchlistError] = useState<string | null>(null);
+    const [opportunitiesError, setOpportunitiesError] = useState<string | null>(null);
+    const [newsError, setNewsError] = useState<string | null>(null);
 
     useEffect(() => {
+        let active = true;
+
         const loadData = async () => {
-            setLoading(true);
+            setIndicesLoading(true);
+            setPortfolioLoading(true);
+            setWatchlistLoading(true);
+            setOpportunitiesLoading(true);
+            setNewsLoading(false);
+            setIndicesError(null);
+            setPortfolioError(null);
+            setWatchlistError(null);
+            setOpportunitiesError(null);
+            setNewsError(null);
+
+            // Las cuatro lecturas base no dependen entre sí. Lanzarlas juntas
+            // elimina el waterfall del screener, cartera, watchlist e índices.
+            let baseResults: [
+                { data: Awaited<ReturnType<typeof getMarketIndices>>; error: string | null },
+                { data: PortfolioSummary | null; error: string | null },
+                { data: Awaited<ReturnType<typeof getWatchlist>>; error: string | null },
+                { data: Awaited<ReturnType<typeof getScreenerStocksReal>>; error: string | null },
+            ];
             try {
-                // 1. Cargar Indices de Mercado (reales, via backend con cache)
-                const indicesProm = getMarketIndices();
-
-                // 2. Cargar Portfolio
-                const summaryProm = getPortfolioSummary(userId);
-
-                // 3. Cargar Watchlist
-                const watchlistProm = getWatchlist();
-
-                // 4. Buscar Oportunidades (Screener + DCF)
-                const screenerRes = await getScreenerStocksReal({
-                    marketCapMoreThan: 10000000000,
-                    sector: 'Technology',
-                    limit: 10
-                });
-                // Sin fallback hardcode: si el screener falla no se muestran oportunidades.
-                const candidates = (screenerRes?.map((s: any) => s.symbol) || []).slice(0, 6);
-
-                const opportunitiesProm = Promise.all(
-                    candidates.map(async (sym: string) => {
-                        try {
-                            // fairValue (backend) y quote (Finnhub) son
-                            // independientes: en paralelo en vez de en serie.
-                            const [fairValue, quote] = await Promise.all([
-                                getFairValue(sym),
-                                getStockQuote(sym),
-                            ]);
-                            const currentPrice = quote?.c || 0;
-
-                            if (fairValue && currentPrice > 0) {
-                                const upside = ((fairValue - currentPrice) / currentPrice) * 100;
-                                if (upside > 5) {
-                                    return {
-                                        symbol: sym,
-                                        name: sym,
-                                        price: currentPrice,
-                                        fairValue: fairValue,
-                                        upside: upside
-                                    };
-                                }
-                            }
-                            return null;
-                        } catch { return null; }
-                    })
-                );
-
-                const [indicesData, summary, watchlistItems, opportunitiesResults] = await Promise.all([
-                    indicesProm,
-                    summaryProm,
-                    watchlistProm,
-                    opportunitiesProm
+                baseResults = await Promise.all([
+                    getMarketIndices().then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as Awaited<ReturnType<typeof getMarketIndices>>, error: sectionError(error) })),
+                    getPortfolioSummary(userId).then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: null as PortfolioSummary | null, error: sectionError(error) })),
+                    getWatchlist().then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as Awaited<ReturnType<typeof getWatchlist>>, error: sectionError(error) })),
+                    getScreenerStocksReal({
+                        marketCapMoreThan: 10000000000,
+                        sector: 'Technology',
+                        limit: 10,
+                    }).then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as Awaited<ReturnType<typeof getScreenerStocksReal>>, error: sectionError(error) })),
                 ]);
-
-                // Procesar Indices (vienen ya con nombre, precio y variacion)
-                const processedIndices = (indicesData || [])
-                    .map((data) => ({
-                        symbol: data.symbol,
-                        name: data.name,
-                        price: data.price || 0,
-                        change: data.change || 0,
-                        changePercent: data.changePercent || 0
-                    }))
-                    .filter((i) => i.price > 0);
-                setMarketIndices(processedIndices);
-
-                setPortfolioSummary(summary);
-
-                // Procesar Oportunidades
-                const validOpportunities = opportunitiesResults
-                    .filter((op): op is UndervaluedStock => op !== null)
-                    .sort((a, b) => b.upside - a.upside)
-                    .slice(0, 4);
-                setOpportunities(validOpportunities);
-
-                // Procesar Watchlist: los 5 símbolos son independientes, en
-                // paralelo en vez de en serie (cada uno trae ~9 endpoints).
-                const watchlistWithPrices: WatchlistItem[] = await Promise.all(
-                    watchlistItems.slice(0, 5).map(async (item) => {
-                        try {
-                            const data = await getStockFinancialData(item.symbol);
-                            return {
-                                symbol: item.symbol,
-                                name: data?.profile?.name || item.symbol,
-                                price: data?.quote?.c || 0,
-                                changePercent: data?.quote?.dp || 0
-                            } as WatchlistItem;
-                        } catch {
-                            return {
-                                symbol: item.symbol,
-                                name: item.symbol,
-                                price: 0,
-                                changePercent: 0
-                            } as WatchlistItem;
-                        }
-                    })
-                );
-                setWatchlist(watchlistWithPrices);
-
-                // Collect all symbols for News and Earnings
-                const portfolioSymbols = summary.holdings.map(h => h.symbol);
-                const watchlistSymbols = watchlistItems.slice(0, 5).map(w => w.symbol);
-                const allUniqueSymbols = Array.from(new Set([...portfolioSymbols, ...watchlistSymbols]));
-
-                setHasTrackedSymbols(allUniqueSymbols.length > 0);
-                if (allUniqueSymbols.length > 0) {
-                    // Cargar noticias y earnings si hay acciones
-                    const newsSymbols = allUniqueSymbols.slice(0, 5);
-                    // Using default fetch for company news: cada símbolo es
-                    // independiente, en paralelo en vez de en serie.
-                    const newsResults = await Promise.all(
-                        newsSymbols.map((symbol) => getCompanyNews(symbol, 2).catch(() => []))
-                    );
-                    const allNews: any[] = newsResults.flat();
-                    if (allNews.length < 5) {
-                        // Fallback: noticias generales con el mecanismo existente (getNews sin símbolos)
-                        try {
-                            const generalNews = await getNews();
-                            allNews.push(...(generalNews || []));
-                        } catch { }
-                    }
-                    setNews(allNews.slice(0, 6));
-
-                    try {
-                        const earnings = await getUpcomingEarnings(allUniqueSymbols);
-                        setUpcomingEarnings(earnings.slice(0, 3));
-                    } catch (e) { console.error("Earnings error", e); }
-                } else {
-                    // Sin acciones seguidas: no duplicar NewsSection (noticias
-                    // generales) — la tarjeta de Noticias no se renderiza.
-                    setNews([]);
-                }
-
-                // Generar insight IA
-                if (summary.holdings.length > 0) {
-                    const topMover = summary.holdings.reduce((a, b) =>
-                        Math.abs(b.gainPercent) > Math.abs(a.gainPercent) ? b : a
-                    );
-                    const direction = summary.totalGainPercent >= 0 ? 'sube' : 'baja';
-                    setAiInsight(
-                        `Hoy tu cartera ${direction} ${Math.abs(summary.totalGainPercent).toFixed(2)}%. ` +
-                        `${topMover.symbol} lidera con ${topMover.gainPercent >= 0 ? '+' : ''}${topMover.gainPercent.toFixed(2)}%.`
-                    );
-                }
             } catch (error) {
-                console.error('Error loading overview:', error);
+                if (!active) return;
+                const message = sectionError(error);
+                setIndicesError(message);
+                setPortfolioError(message);
+                setWatchlistError(message);
+                setOpportunitiesError(message);
+                setIndicesLoading(false);
+                setPortfolioLoading(false);
+                setWatchlistLoading(false);
+                setOpportunitiesLoading(false);
+                return;
             }
-            setLoading(false);
+            const [indicesResult, summaryResult, watchlistResult, screenerResult] = baseResults;
+            if (!active) return;
+
+            setMarketIndices(indicesResult.data.map((data) => ({
+                symbol: data.symbol,
+                name: data.name,
+                price: data.price || 0,
+                change: data.change || 0,
+                changePercent: data.changePercent || 0,
+            })).filter((i) => i.price > 0));
+            setIndicesLoading(false);
+            setIndicesError(indicesResult.error);
+
+            setPortfolioSummary(summaryResult.data);
+            setPortfolioLoading(false);
+            setPortfolioError(summaryResult.error);
+
+            const watchlistItems = watchlistResult.data;
+            setWatchlistError(watchlistResult.error);
+            const portfolioSymbols = summaryResult.data?.holdings.map((h) => h.symbol) ?? [];
+            const watchlistSymbols = watchlistItems.slice(0, 5).map((w) => w.symbol);
+            const allUniqueSymbols = Array.from(new Set([...portfolioSymbols, ...watchlistSymbols]));
+            setHasTrackedSymbols(allUniqueSymbols.length > 0);
+
+            // Los candidatos sólo dependen del screener; sus cálculos de DCF y
+            // quote sí se lanzan en paralelo por símbolo.
+            const candidates = (screenerResult.data?.map((s) => s.symbol) ?? []).slice(0, 6);
+            const opportunitiesPromise = Promise.all(candidates.map(async (sym: string) => {
+                try {
+                    const [fairValue, quote] = await Promise.all([getFairValue(sym), getStockQuote(sym)]);
+                    const currentPrice = quote?.c || 0;
+                    if (fairValue && currentPrice > 0) {
+                        const upside = ((fairValue - currentPrice) / currentPrice) * 100;
+                        return upside > 5
+                            ? { symbol: sym, name: sym, price: currentPrice, fairValue, upside }
+                            : null;
+                    }
+                    return null;
+                } catch {
+                    return null;
+                }
+            })).then((results) => results.filter((op): op is UndervaluedStock => op !== null).sort((a, b) => b.upside - a.upside).slice(0, 4));
+
+            const watchlistPromise = Promise.all(watchlistItems.slice(0, 5).map(async (item): Promise<WatchlistItem> => {
+                try {
+                    const data = await getStockFinancialData(item.symbol);
+                    return {
+                        symbol: item.symbol,
+                        name: data?.profile?.name || item.symbol,
+                        price: data?.quote?.c || 0,
+                        changePercent: data?.quote?.dp || 0,
+                    };
+                } catch {
+                    return { symbol: item.symbol, name: item.symbol, price: 0, changePercent: 0 };
+                }
+            }));
+
+            // Noticias, earnings y las dos Cards de símbolos se resuelven en
+            // paralelo. Sólo el fallback general de noticias conserva su orden.
+            const newsPromise = allUniqueSymbols.length > 0
+                ? Promise.all(allUniqueSymbols.slice(0, 5).map((symbol) => getCompanyNews(symbol, 2).catch(() => []))).then(async (newsResults) => {
+                    const allNews: NewsArticle[] = newsResults.flat();
+                    if (allNews.length < 5) {
+                        try {
+                            allNews.push(...((await getNews()) || []));
+                        } catch {
+                            // La tarjeta muestra un vacío honesto si no hay fallback.
+                        }
+                    }
+                    return allNews.slice(0, 6);
+                }).then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as NewsArticle[], error: sectionError(error) }))
+                : Promise.resolve({ data: [] as NewsArticle[], error: null as string | null });
+            setNewsLoading(allUniqueSymbols.length > 0);
+            const [opportunitiesResult, watchlistWithPrices, newsResult] = await Promise.all([
+                opportunitiesPromise.then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as UndervaluedStock[], error: sectionError(error) })),
+                watchlistPromise.then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as WatchlistItem[], error: sectionError(error) })),
+                newsPromise,
+                ]);
+            if (!active) return;
+
+            setOpportunities(opportunitiesResult.data);
+            setOpportunitiesLoading(false);
+            setOpportunitiesError(opportunitiesResult.error ?? screenerResult.error);
+            setWatchlist(watchlistWithPrices.data);
+            setWatchlistLoading(false);
+            setWatchlistError(watchlistWithPrices.error ?? watchlistResult.error);
+            setNews(newsResult.data);
+            setNewsLoading(false);
+            setNewsError(newsResult.error);
+            // Earnings se resuelve para no bloquear el resto; esta tarjeta no lo renderiza.
+
+            if (summaryResult.data && summaryResult.data.holdings.length > 0) {
+                const summary = summaryResult.data;
+                const topMover = summary.holdings.reduce((a, b) => Math.abs(b.gainPercent) > Math.abs(a.gainPercent) ? b : a);
+                const direction = summary.totalGainPercent >= 0 ? 'sube' : 'baja';
+                setAiInsight(`Hoy tu cartera ${direction} ${Math.abs(summary.totalGainPercent).toFixed(2)}%. ${topMover.symbol} lidera con ${topMover.gainPercent >= 0 ? '+' : ''}${topMover.gainPercent.toFixed(2)}%.`);
+            } else {
+                setAiInsight('');
+            }
         };
 
-        loadData();
-    }, [userId]);
+        void loadData();
+        return () => {
+            active = false;
+        };
+        // reloadToken es un disparador explícito del botón Reintentar.
+    }, [userId, reloadToken]);
+
+    const retry = () => setReloadToken((value) => value + 1);
 
     // Derivados memorizados: evita reordenar el estado en cada render
     // (.sort() mutaba el array del estado) y recalcula solo si cambian los datos.
@@ -244,19 +279,6 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     }, [portfolioSummary]);
 
     const visibleNews = useMemo(() => news.slice(0, 4), [news]);
-
-    if (loading) {
-        return (
-            <div className="space-y-8" role="status" aria-live="polite" aria-label="Cargando dashboard">
-                <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
-                    {[1, 2, 3, 4].map((i) => (
-                        <StockCardSkeleton key={i} />
-                    ))}
-                </div>
-                <ChartLoadingSkeleton />
-            </div>
-        );
-    }
 
     return (
         <div className="space-y-8">
@@ -270,9 +292,15 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
 
             {/* Market Indices Ticker */}
             <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
-                {marketIndices.map((index) => (
+                {indicesLoading ? (
+                    [1, 2, 3, 4].map((i) => <StockCardSkeleton key={i} />)
+                ) : marketIndices.length > 0 ? marketIndices.map((index) => (
                     <MarketIndexCard key={index.symbol} index={index} />
-                ))}
+                )) : indicesError ? (
+                    <div className="md:col-span-3 xl:col-span-5">
+                        <InlineSectionError message={indicesError} onRetry={retry} />
+                    </div>
+                ) : null}
             </div>
 
             {/* Main Content Grid */}
@@ -306,7 +334,14 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                             </Link>
                         </CardHeader>
                         <CardContent className="pt-4">
-                            {portfolioSummary && portfolioSummary.holdings.length > 0 ? (
+                            {portfolioLoading ? (
+                                <div className="animate-pulse space-y-3" role="status" aria-label="Cargando cartera">
+                                    <div className="h-16 rounded-xl bg-gray-800/60" />
+                                    <div className="h-10 rounded-lg bg-gray-800/40" />
+                                </div>
+                            ) : portfolioError ? (
+                                <InlineSectionError message={portfolioError} onRetry={retry} />
+                            ) : portfolioSummary && portfolioSummary.holdings.length > 0 ? (
                                 <div className="space-y-5">
                                     <div className="flex flex-col min-[420px]:flex-row min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
                                         <div className="min-w-0">
@@ -353,7 +388,13 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     </Card>
 
                     {/* Opportunities Section */}
-                    {opportunities.length > 0 && (
+                    {opportunitiesLoading ? (
+                        <Card className="bg-gray-800/50 border-gray-700">
+                            <CardContent className="pt-4"><div className="h-24 animate-pulse rounded-lg bg-gray-800/50" role="status" aria-label="Cargando oportunidades" /></CardContent>
+                        </Card>
+                    ) : opportunitiesError ? (
+                        <InlineSectionError message={opportunitiesError} onRetry={retry} />
+                    ) : opportunities.length > 0 ? (
                         <Card className="bg-gray-800/50 border-gray-700">
                             <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
                                 <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
@@ -389,6 +430,12 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 </div>
                             </CardContent>
                         </Card>
+                    ) : (
+                        <Card className="bg-gray-800/50 border-gray-700">
+                            <CardContent className="pt-4 text-sm text-gray-500">
+                                No hay oportunidades que cumplan el filtro ahora.
+                            </CardContent>
+                        </Card>
                     )}
                 </div>
 
@@ -405,7 +452,13 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                             </Link>
                         </CardHeader>
                         <CardContent className="pt-4">
-                            {watchlist.length > 0 ? (
+                            {watchlistLoading ? (
+                                <div className="space-y-2 animate-pulse" role="status" aria-label="Cargando watchlist">
+                                    {[1, 2, 3].map((i) => <div key={i} className="h-12 rounded-lg bg-gray-800/50" />)}
+                                </div>
+                            ) : watchlistError ? (
+                                <InlineSectionError message={watchlistError} onRetry={retry} />
+                            ) : watchlist.length > 0 ? (
                                 <div className="space-y-1">
                                     {watchlist.map((stock) => (
                                         <Link
@@ -450,7 +503,13 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="pt-4">
-                            {news.length > 0 ? (
+                            {newsLoading ? (
+                                <div className="space-y-3 animate-pulse" role="status" aria-label="Cargando noticias">
+                                    {[1, 2, 3].map((i) => <div key={i} className="h-10 rounded-lg bg-gray-800/50" />)}
+                                </div>
+                            ) : newsError ? (
+                                <InlineSectionError message={newsError} onRetry={retry} />
+                            ) : news.length > 0 ? (
                                 <div className="space-y-4">
                                     {visibleNews.map((article, i) => (
                                         <a
@@ -465,7 +524,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             </h4>
                                             <div className="flex justify-between items-center mt-1">
                                                 <span className="text-xs text-gray-500">{article.source}</span>
-                                                <span className="text-xs text-gray-600">{new Date(article.datetime * 1000).toLocaleDateString()}</span>
+                                                <span className="text-xs text-gray-600">{article.datetime ? new Date(article.datetime * 1000).toLocaleDateString() : 'fecha desconocida'}</span>
                                             </div>
                                         </a>
                                     ))}

@@ -124,6 +124,11 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
             {/* Estado del monitor + filings persistidos (GET /api/insider/filings) */}
             {initialTicker ? (
                 <div className="flex flex-wrap items-center gap-2">
+                    {(!initialResult || !initialFilings) ? (
+                        <span className="text-xs text-amber-300">
+                            Lectura parcial: una de las fuentes no respondió. Reintenta la búsqueda.
+                        </span>
+                    ) : null}
                     <Badge
                         variant={initialFilings && initialFilings.status === 'ok' ? 'default' : 'outline'}
                     >

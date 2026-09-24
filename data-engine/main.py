@@ -1,5 +1,7 @@
 """FastAPI bootstrap for the CavaAI data engine."""
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -15,6 +17,13 @@ from app.core.raw_body import RawBodyMiddleware
 from app.llm.factory import validate_llm_configuration
 from app.llm.model_aliases import configure_model_aliases
 from app.seed import ensure_company_master
+
+
+try:  # preload optional probe modules during process startup, not in a request
+    import redis  # noqa: F401
+    import urllib.request  # noqa: F401
+except Exception:  # noqa: BLE001 — readiness reports the unavailable dependency
+    pass
 
 
 @asynccontextmanager
@@ -81,66 +90,106 @@ async def health_live():
     return {"status": "ok"}
 
 
-@app.get("/health/ready")
-async def health_ready():
-    """Readiness — verifies critical dependencies when configured."""
+HEALTH_READY_TIMEOUT_SECONDS = 1.0
+# Un executor dedicado evita que ``asyncio.run``/el cierre de un test espere a
+# los hilos de sondas que vencieron su timeout. Las sondas conservan su propio
+# timeout de red y los hilos remanentes terminan solos al concluir.
+_HEALTH_PROBE_EXECUTOR = ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="cavaai-health-probe"
+)
+
+
+def _probe_database(_settings) -> str:
+    """Comprueba la BD sin convertir errores de infraestructura en 500."""
     from sqlalchemy import text
 
-    from app.core.config import get_settings
     from app.core.database import SessionLocal
 
+    with SessionLocal() as db:
+        db.execute(text("SELECT 1"))
+    return "ok"
+
+
+def _probe_redis(settings) -> str:
+    """Redis es opcional en SQLite local, pero su estado se reporta siempre."""
+    import redis
+
+    client = redis.from_url(
+        settings.redis_url,
+        socket_connect_timeout=HEALTH_READY_TIMEOUT_SECONDS,
+        socket_timeout=HEALTH_READY_TIMEOUT_SECONDS,
+    )
+    client.ping()
+    return "ok"
+
+
+def _probe_qdrant(settings) -> str:
+    """Qdrant readiness; un 4xx/5xx nunca se considera una respuesta sana."""
+    import urllib.request
+
+    with urllib.request.urlopen(
+        f"{settings.qdrant_url.rstrip('/')}/readyz",
+        timeout=HEALTH_READY_TIMEOUT_SECONDS,
+    ) as resp:
+        return "ok" if resp.status < 500 else f"error:status_{resp.status}"
+
+
+def _probe_minio(settings) -> str:
+    """MinIO: cualquier respuesta HTTP <500 prueba que el endpoint está vivo."""
+    import urllib.error
+    import urllib.request
+
+    endpoint = settings.minio_endpoint
+    if not endpoint.startswith("http"):
+        endpoint = f"http://{endpoint}"
+    try:
+        with urllib.request.urlopen(
+            endpoint, timeout=HEALTH_READY_TIMEOUT_SECONDS
+        ) as resp:
+            return "ok" if resp.status < 500 else f"error:status_{resp.status}"
+    except urllib.error.HTTPError as exc:
+        return "ok" if exc.code < 500 else f"error:status_{exc.code}"
+
+
+async def _run_health_probe(name: str, probe, settings) -> tuple[str, str]:
+    """Ejecuta una sonda en un hilo y la corta al deadline compartido."""
+    try:
+        loop = asyncio.get_running_loop()
+        future = loop.run_in_executor(_HEALTH_PROBE_EXECUTOR, probe, settings)
+        result = await asyncio.wait_for(
+            future,
+            timeout=HEALTH_READY_TIMEOUT_SECONDS,
+        )
+        return name, str(result)
+    except asyncio.TimeoutError:
+        return name, "error:TimeoutError"
+    except Exception as exc:  # noqa: BLE001 — reportar y continuar
+        return name, f"error:{type(exc).__name__}"
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness concurrente: la BD es la única dependencia hard-required local.
+
+    Redis, Qdrant y MinIO se sondean simultáneamente, con un timeout de un
+    segundo. Una dependencia caída se informa en la respuesta, pero no mantiene
+    bloqueada la ruta ni convierte un backend SQLite sano en 503.
+    """
     settings = get_settings()
-    checks: dict[str, str] = {}
+    probes = (
+        ("database", _probe_database),
+        ("redis", _probe_redis),
+        ("qdrant", _probe_qdrant),
+        ("minio", _probe_minio),
+    )
+    results = await asyncio.gather(
+        *(_run_health_probe(name, probe, settings) for name, probe in probes)
+    )
+    checks = dict(results)
 
-    # Postgres / SQLite
-    try:
-        with SessionLocal() as db:
-            db.execute(text("SELECT 1"))
-        checks["database"] = "ok"
-    except Exception as exc:  # noqa: BLE001 — surface dependency status
-        checks["database"] = f"error:{type(exc).__name__}"
-
-    # Redis (optional locally)
-    try:
-        import redis
-
-        client = redis.from_url(settings.redis_url, socket_connect_timeout=1)
-        client.ping()
-        checks["redis"] = "ok"
-    except Exception as exc:  # noqa: BLE001
-        checks["redis"] = f"error:{type(exc).__name__}"
-
-    # Qdrant
-    try:
-        import urllib.request
-
-        with urllib.request.urlopen(f"{settings.qdrant_url.rstrip('/')}/readyz", timeout=1) as resp:
-            checks["qdrant"] = "ok" if resp.status < 500 else f"error:status_{resp.status}"
-    except Exception as exc:  # noqa: BLE001
-        checks["qdrant"] = f"error:{type(exc).__name__}"
-
-    # MinIO — best-effort TCP/HTTP probe via endpoint string. MinIO answers
-    # anonymous GETs on the S3 API with 4xx, which still proves reachability.
-    try:
-        import urllib.error
-        import urllib.request
-
-        endpoint = settings.minio_endpoint
-        if not endpoint.startswith("http"):
-            endpoint = f"http://{endpoint}"
-        try:
-            with urllib.request.urlopen(endpoint, timeout=2) as resp:
-                checks["minio"] = "ok" if resp.status < 500 else f"error:status_{resp.status}"
-        except urllib.error.HTTPError as exc:
-            checks["minio"] = "ok" if exc.code < 500 else f"error:status_{exc.code}"
-    except Exception as exc:  # noqa: BLE001
-        checks["minio"] = f"error:{type(exc).__name__}"
-
-    ready = all(value == "ok" for key, value in checks.items() if key == "database")
-    # Database is hard-required; other deps are reported but do not fail local SQLite-only runs
-    # unless explicitly configured as non-sqlite.
-    if not settings.database_url.startswith("sqlite"):
-        ready = all(value == "ok" for value in checks.values())
+    # La BD es la única dependencia hard-required. Redis, Qdrant y MinIO se
+    # reportan sin convertir una caída opcional en un 503 ni alargar la ruta.
+    ready = checks.get("database") == "ok"
 
     from fastapi.responses import JSONResponse
 

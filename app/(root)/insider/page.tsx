@@ -28,7 +28,7 @@ export default async function InsiderPage({ searchParams }: PageProps) {
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
                         Compras insider codigo P (Form 4, SEC EDGAR; mercado abierto o privado,
                         el XML no siempre lo distingue): clusters de insiders, compras de CEO/CFO
-                        y grandes operaciones. El monitor automatico revisa tu watchlist y cartera
+                        y grandes operaciones. El monitor automático revisa tu watchlist y cartera
                         cada 15 minutos; esta vista es una lectura bajo demanda por ticker.
                     </p>
                 </div>
