@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.core.config import get_settings
+from app.services.connectors import sec_edgar
 from app.services.connectors.base import ConnectorItem, ConnectorResult
 
 
@@ -63,6 +64,9 @@ class SECClient:
         return response
 
     async def _get_json(self, url: str) -> dict:
+        snapshot = sec_edgar.read_snapshot_for(url)
+        if snapshot is not None:
+            return snapshot
         return (await self._get(url)).json()
 
     async def ticker_map(self) -> dict:
@@ -70,6 +74,9 @@ class SECClient:
 
     async def cik_for_ticker(self, ticker: str) -> str | None:
         ticker = ticker.upper()
+        manifest_cik = sec_edgar.manifest_cik(ticker)
+        if manifest_cik:
+            return manifest_cik
         mapping = await self.ticker_map()
         for item in mapping.values():
             if item.get("ticker", "").upper() == ticker:
