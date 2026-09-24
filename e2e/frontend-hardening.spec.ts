@@ -66,6 +66,7 @@ test.describe("hardening frontend en navegador", () => {
   });
 
   test("el menú móvil abre, enfoca y restaura el foco", async ({ page }) => {
+    await page.goto("/alerts");
     const trigger = page.getByRole("button", { name: "Abrir menú de navegación" });
     await trigger.click();
     const dialog = page.getByRole("dialog", { name: "Menú de navegación" });
