@@ -21,6 +21,18 @@ interface TaxesViewProps {
     year: number;
 }
 
+/** El endpoint envuelve las métricas en {summary, dividends, realized, misc}:
+ *  para mostrarlas se aplana `summary` (métricas fiscales legibles) y se
+ *  conserva generated_at; las listas crudas no se pintan como JSON. */
+function toDisplayReport(raw: DataRecord | null): DataRecord | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const summary = raw.summary;
+    if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return raw;
+    const display: DataRecord = { ...(summary as DataRecord) };
+    if (raw.generated_at) display.generated_at = raw.generated_at;
+    return display;
+}
+
 function csvCell(value: string): string {
     return `"${value.replaceAll('"', '""')}"`;
 }
@@ -119,8 +131,8 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
                 title={`Reporte Fiscal ${year}`}
                 description="Resumen de impuestos del ejercicio anual"
                 icon={<FileText className="h-5 w-5 text-teal-400" />}
-                record={report}
-                fetchRecord={() => getTaxReport(year)}
+                record={toDisplayReport(report)}
+                fetchRecord={async () => toDisplayReport((await getTaxReport(year)) as DataRecord | null)}
                 emptyMessage="Sin reporte fiscal disponible para este año. Pulsa «Regenerar» para generarlo."
                 actions={
                     <Button
