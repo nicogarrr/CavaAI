@@ -8,7 +8,7 @@ import asyncio
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.entities import Base, Company, FinancialFact
@@ -83,7 +83,7 @@ def test_conflicts_flagged_with_one_fmp_query(db, monkeypatch):
         event.remove(db.get_bind(), "before_cursor_execute", listener)
 
     assert result["status"] == "ingested"
-    assert result["facts_imported"] == 4
+    assert result["facts_imported"] == 5  # 4 brutos + revenue_growth derivado
     assert len(result["conflicts"]) == 1
     assert result["conflicts"][0].startswith("revenue:2024-12-31:FY FMP=1200 SEC=1000")
     # One SEC-facts read + one batched FMP lookup, not one query per SEC fact
@@ -92,7 +92,7 @@ def test_conflicts_flagged_with_one_fmp_query(db, monkeypatch):
         s for s in statements
         if s.lstrip().upper().startswith("SELECT") and "financial_facts" in s
     ]
-    assert len(fact_selects) == 2
+    assert len(fact_selects) == 3  # batch conflictos + lectura de derivadas
 
 
 def test_refresh_sec_endpoint_encaja_con_response_model(db, monkeypatch):
@@ -111,3 +111,61 @@ def test_refresh_sec_endpoint_encaja_con_response_model(db, monkeypatch):
     assert parsed.facts_imported > 0
     assert parsed.statements_imported == 0
     assert "revenue" in parsed.latest_periods
+
+
+class _FakeSECClientMultiyear:
+    async def cik_for_ticker(self, ticker):
+        return "0001234567"
+
+    async def company_facts(self, cik):
+        def entries(values_by_year):
+            return [
+                {"fy": year, "fp": "FY", "form": "10-K", "end": f"{year}-12-31", "val": value}
+                for year, value in values_by_year.items()
+            ]
+        return {
+            "facts": {
+                "us-gaap": {
+                    "Revenues": {"units": {"USD": entries({2023: 1000, 2024: 1200, 2025: 1500})}},
+                    "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": entries({2024: 300, 2025: 400})}},
+                    "PaymentsToAcquirePropertyPlantAndEquipment": {"units": {"USD": entries({2024: 100, 2025: 120})}},
+                    "LongTermDebt": {"units": {"USD": entries({2025: 500})}},
+                    "CashAndCashEquivalentsAtCarryingValue": {"units": {"USD": entries({2025: 200})}},
+                    "WeightedAverageNumberOfDilutedSharesOutstanding": {"units": {"shares": entries({2025: 100})}},
+                }
+            }
+        }
+
+
+def test_sec_refresh_deriva_fcf_margen_crecimiento_y_deuda_neta(db, monkeypatch):
+    """Sin metricas derivadas el snapshot de valoracion queda
+    insufficient_data: FCF = OCF + capex(neg), margen, crecimiento, net debt."""
+    from app.services.financial_ingestion_service import FinancialIngestionService as FIS
+
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECClientMultiyear)
+    company = _company(db)
+
+    service = FIS()
+    result = asyncio.run(service.refresh_from_sec(db, company))
+    assert result["status"] == "ingested"
+
+    facts = {
+        (f.metric, f.fiscal_year): f
+        for f in db.scalars(
+            select(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.source_type == "SEC",
+            )
+        )
+    }
+    fcf25 = facts[("free_cash_flow", 2025)]
+    assert fcf25.value == Decimal("280")  # 400 - 120
+    assert fcf25.is_reported is False
+    assert fcf25.unit == "USD"
+    assert facts[("free_cash_flow", 2024)].value == Decimal("200")
+    assert abs(facts[("fcf_margin", 2025)].value - Decimal("280") / Decimal("1500")) < Decimal("0.000001")
+    assert abs(facts[("revenue_growth", 2025)].value - (Decimal("1500") / Decimal("1200") - 1)) < Decimal("0.000001")
+    assert ("revenue_growth", 2023) not in facts  # sin ano previo no hay crecimiento
+    assert facts[("net_debt", 2025)].value == Decimal("300")  # 500 - 200
+    # valuation_input_ready (revenue + FCF + shares) ya se satisface
+    assert service.valuation_input_ready(db, company) is True
