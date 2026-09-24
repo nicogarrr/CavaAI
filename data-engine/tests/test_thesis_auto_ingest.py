@@ -288,7 +288,7 @@ def test_generate_with_mocked_sources_persists_facts_and_goes_partial(monkeypatc
     assert thesis["bull_value"] is not None
     assert thesis["expected_value"] is not None
     assert thesis["current_price"] is not None and float(thesis["current_price"]) == 25.50
-    assert "PARTIAL-INDICATIVE" in thesis["executive_summary"]
+    assert "parcial-indicativa" in thesis["executive_summary"]
 
     markdown = thesis["thesis_markdown"]
     assert "PARTIAL-INDICATIVE RANGE" in markdown
@@ -328,7 +328,7 @@ def test_generate_with_mocked_sources_persists_facts_and_goes_partial(monkeypatc
         assert price is not None and float(price.close) == 25.50 and price.source == "Finnhub"
         # Sin missing criticos financieros (revenue/shares resueltos).
         missing = " ".join(thesis["executive_summary"].split())
-        assert "PARTIAL-INDICATIVE" in missing
+        assert "parcial-indicativa" in missing
     finally:
         db.close()
 
@@ -346,7 +346,7 @@ def test_generate_without_network_degrades_to_honest_skeleton(monkeypatch):
     assert thesis["status"] == "insufficient_data"
     assert thesis["bear_value"] is None
     assert thesis["expected_value"] is None
-    assert "NOT PUBLISHABLE" in thesis["executive_summary"]
+    assert "no publicable" in thesis["executive_summary"]
     markdown = thesis["thesis_markdown"]
     assert "NO VALUATION — insufficient data" in markdown
     assert "Pendiente:" in markdown
