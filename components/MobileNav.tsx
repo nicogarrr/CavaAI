@@ -103,7 +103,6 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                 type="button"
                 ref={triggerRef}
                 onClick={() => setOpen(true)}
-                ref={triggerRef}
                 aria-label="Abrir menú de navegación"
                 aria-expanded={open}
                 aria-controls="mobile-nav-drawer"
