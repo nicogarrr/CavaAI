@@ -1,4 +1,6 @@
+import logging
 from typing import Literal
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -11,6 +13,8 @@ from app.services.work_product_service import WorkProductService
 
 
 router = APIRouter()
+
+_logger = logging.getLogger(__name__)
 
 
 class WorkProductRequest(BaseModel):
@@ -47,4 +51,18 @@ def generate_work_product(
             years=payload.years,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # Sin filtrar internos: ticker desconocido → 404 fijo, resto → 400
+        # genérico con referencia logueada.
+        if "unknown ticker" in str(exc).lower():
+            raise HTTPException(status_code=404, detail="Company not found") from exc
+        ref = uuid4().hex[:8]
+        _logger.exception("work product generation failed (ref=%s)", ref)
+        raise HTTPException(
+            status_code=400, detail=f"Work product generation failed (ref {ref})"
+        ) from exc
+    except Exception as exc:
+        ref = uuid4().hex[:8]
+        _logger.exception("work product generation failed (ref=%s)", ref)
+        raise HTTPException(
+            status_code=500, detail=f"Work product generation failed (ref {ref})"
+        ) from exc

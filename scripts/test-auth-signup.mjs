@@ -36,15 +36,45 @@ try {
             autoSignIn: true,
         },
         plugins: [twoFactor({ issuer: 'CavaAI' })],
+        // Mantener sincronizado con lib/better-auth/auth.ts (perfil inversor).
+        user: {
+            additionalFields: {
+                country: { type: 'string', required: false },
+                investmentGoals: { type: 'string', required: false },
+                riskTolerance: { type: 'string', required: false },
+                preferredIndustry: { type: 'string', required: false },
+            },
+        },
     });
 
     const signUp = await auth.api.signUpEmail({
-        body: { email: EMAIL, password: PASSWORD, name: 'CI Smoke' },
+        body: {
+            email: EMAIL,
+            password: PASSWORD,
+            name: 'CI Smoke',
+            country: 'ES',
+            investmentGoals: 'Growth',
+            riskTolerance: 'Medium',
+            preferredIndustry: 'Technology',
+        },
     });
     if (!signUp?.user?.id || !signUp?.token) {
         throw new Error('signUpEmail returned no user id or session token');
     }
     console.log(`OK sign-up: user ${signUp.user.id}, session issued`);
+    // El perfil inversor debe persistir via additionalFields (sin migraciones SQL).
+    const stored = await mongoose.connection.collection('user').findOne({ email: EMAIL });
+    for (const [field, expected] of Object.entries({
+        country: 'ES',
+        investmentGoals: 'Growth',
+        riskTolerance: 'Medium',
+        preferredIndustry: 'Technology',
+    })) {
+        if (stored?.[field] !== expected) {
+            throw new Error(`profile field ${field} not persisted (got ${stored?.[field] ?? 'missing'})`);
+        }
+    }
+    console.log('OK sign-up: investor profile persisted (country/investmentGoals/riskTolerance/preferredIndustry)');
 
     const signIn = await auth.api.signInEmail({
         body: { email: EMAIL, password: PASSWORD },

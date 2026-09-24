@@ -148,3 +148,19 @@ export function formatTimeAgo(timestamp: number | string | Date | null | undefin
   if (diffInHours >= 1) return `hace ${diffInHours} ${diffInHours === 1 ? 'hora' : 'horas'}`;
   return `hace ${diffInMinutes} ${diffInMinutes === 1 ? 'minuto' : 'minutos'}`;
 }
+
+
+/**
+ * El backend serializa los Numeric monetarios como string|null (nunca
+ * asumir string): convierte a number con fallback cuando falta el dato
+ * o llega malformado. Vive aquí (módulo puro) porque las server actions
+ * no pueden exportar funciones síncronas.
+ */
+export function researchMoneyToNumber(
+  value: string | null | undefined,
+  fallback = 0,
+): number {
+  if (value === null || value === undefined || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}

@@ -17,6 +17,7 @@ import {
   Sparkles,
   Star,
   Target,
+  TrendingUp,
   Landmark,
     Users,
 } from 'lucide-react';
@@ -104,6 +105,7 @@ export const NAV_SECTIONS = [
     title: 'Seguimiento',
     items: [
       { href: '/watchlist', label: 'Watchlist', icon: Star },
+      { href: '/movers', label: 'Movers', icon: TrendingUp },
       { href: '/alerts', label: 'Alertas', icon: Bell },
       { href: '/screeners', label: 'Screeners', icon: Filter },
     ],

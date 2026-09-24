@@ -131,12 +131,20 @@ class ThesisService:
 
         phase_callback(name) fires when generation ACTUALLY enters each real
         phase (async job progress; never synthetic progress).
+
+        Todo el trabajo ocurre en un SAVEPOINT: un fallo revierte solo lo
+        escrito por esta generación (nunca ``db.rollback()`` global, que
+        descartaría trabajo ajeno pendiente en la sesión).
         """
+        savepoint = db.begin_nested()
         try:
-            return self._generate_atomic(db, ticker, force_new_version, phase_callback)
+            thesis = self._generate_atomic(
+                db, ticker, force_new_version, phase_callback, savepoint=savepoint
+            )
         except Exception:
-            db.rollback()
+            savepoint.rollback()
             raise
+        return thesis
 
     def _generate_atomic(
         self,
@@ -144,6 +152,7 @@ class ThesisService:
         ticker: str,
         force_new_version: bool = False,
         phase_callback=None,
+        savepoint=None,
     ) -> ThesisVersion:
         def _phase(name: str) -> None:
             if phase_callback is not None:
@@ -193,7 +202,11 @@ class ThesisService:
         existing = self.latest(db, ticker)
         if existing and not force_new_version:
             if getattr(existing, "input_fingerprint", None) == fingerprint:
-                db.rollback()
+                # Sin mutación previa: el fingerprint se calculó solo con
+                # lecturas, así que se devuelve sin tocar la transacción
+                # (el savepoint de generate() se libera solo).
+                if savepoint is not None:
+                    savepoint.rollback()
                 return existing
             # Material evidence changed — fall through and create a new version.
 

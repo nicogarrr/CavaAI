@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
@@ -36,6 +37,38 @@ from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_change_types import claim_change_type
 
 router = APIRouter()
+
+# Enums cerrados de memory-items (los schemas transportan str libre; la ruta
+# es la que cierra el contrato con 400 fijo en vez de persistir basura).
+MemoryScope = Literal["portfolio", "company"]
+MemoryType = Literal["note", "chat_memory", "watch_item", "embedding"]
+MemoryStatus = Literal["active", "archived", "consolidated"]
+MemorySourceType = Literal["user", "chat"]
+ResearchSessionStatus = Literal["open", "active", "closed", "archived"]
+
+_MEMORY_SCOPES = {"portfolio", "company"}
+_MEMORY_TYPES = {"note", "chat_memory", "watch_item", "embedding"}
+_MEMORY_STATUSES = {"active", "archived", "consolidated"}
+_MEMORY_SOURCE_TYPES = {"user", "chat"}
+_RESEARCH_SESSION_STATUSES = {"open", "active", "closed", "archived"}
+
+
+def _require_enum(value: str, allowed: set[str], field: str) -> str:
+    if value not in allowed:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid memory {field}"
+        )
+    return value
+
+
+def validate_memory_item_enums(
+    *, scope: str, memory_type: str, status: str, source_type: str
+) -> None:
+    """Valida los enums cerrados; lanza 400 fijo con mensaje fijo."""
+    _require_enum(scope, _MEMORY_SCOPES, "scope")
+    _require_enum(memory_type, _MEMORY_TYPES, "memory_type")
+    _require_enum(status, _MEMORY_STATUSES, "status")
+    _require_enum(source_type, _MEMORY_SOURCE_TYPES, "source_type")
 
 
 def _company_by_ticker(db: Session, ticker: str) -> Company:
@@ -323,6 +356,7 @@ def list_research_sessions(
 def create_research_session(
     payload: ResearchSessionCreate, db: Session = Depends(get_db)
 ) -> ResearchSession:
+    _require_enum(payload.status, _RESEARCH_SESSION_STATUSES, "session status")
     company_id = _resolve_company_id(db, payload.ticker, payload.company_id)
     session = ResearchSession(
         company_id=company_id,
@@ -346,6 +380,8 @@ def list_memory_items(
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
 ) -> list[MemoryItem]:
+    if scope is not None:
+        _require_enum(scope, _MEMORY_SCOPES, "scope")
     statement = select(MemoryItem)
     if ticker:
         company = _company_by_ticker(db, ticker)
@@ -357,6 +393,12 @@ def list_memory_items(
 
 @router.post("/memory-items", response_model=MemoryItemOut)
 def create_memory_item(payload: MemoryItemCreate, db: Session = Depends(get_db)) -> MemoryItem:
+    validate_memory_item_enums(
+        scope=payload.scope,
+        memory_type=payload.memory_type,
+        status=payload.status,
+        source_type=payload.source_type,
+    )
     company_id = _resolve_company_id(db, payload.ticker, payload.company_id)
     session = db.get(ResearchSession, payload.research_session_id) if payload.research_session_id else None
     if payload.research_session_id and not session:

@@ -53,7 +53,17 @@ docker compose up --build
 
 Abre http://localhost:3000. Servicios: PostgreSQL, MongoDB (auth), Qdrant (vectores), MinIO (documentos), Redis.
 
-**Opción C — GitHub Codespaces (sin cargar tu portátil):**
+| Servicio | Puerto host |
+|---|---|
+| Frontend Next.js | 3000 |
+| Backend FastAPI | 8000 |
+| MongoDB (auth) | 27017 |
+| PostgreSQL | 5432 |
+| Redis | 6379 |
+| Qdrant | 6333 (+6334 gRPC) |
+| MinIO API / consola | 9002 / 9003 |
+
+**Opción B — GitHub Codespaces (sin cargar tu portátil):**
 
 El repo incluye `.devcontainer/`: al crear un codespace se levanta la pila completa
 (PostgreSQL, MongoDB, Redis, Qdrant, MinIO, backend FastAPI y frontend Next.js) y
@@ -67,7 +77,7 @@ quedas editando dentro del contenedor con Node 22 y Python 3.
 4. En una máquina de 2 cores puedes ahorrar RAM parando lo que no uses:
    `docker compose stop worker scheduler`.
 
-**Opción B — desarrollo por piezas:**
+**Opción C — desarrollo por piezas:**
 
 ```bash
 # Backend
@@ -137,8 +147,8 @@ data-engine/
   app/services/      ingesta, tesis, debate, insider, RAG, alertas…
   app/valuation/     motores + guardia point-in-time
   app/llm/           factory OpenCode Go + cliente Jev
-  alembic/versions/  migraciones 0001→0029 (lineales, con downgrade)
-  tests/             978 tests herméticos · evals/  evals financieras
+  alembic/versions/  migraciones 0001→0030 (lineales, con downgrade)
+  tests/             1000+ tests herméticos (1018 funciones test a 2026-09-23) · evals/  evals financieras
 e2e/                 specs Playwright del flujo inversor
 docs/                PRODUCT_VISION, runbooks, privacidad
 ```

@@ -18,5 +18,8 @@ def upgrade() -> None:
     op.add_column("manager_holdings", sa.Column("filing_date", sa.Date(), nullable=True))
 
 
+# ADVERTENCIA DOWNGRADE DESTRUCTIVO: drop_column pierde filing_date.
+# La columna es nulable y se re-deriva en la proxima comparacion
+# quarter-over-quarter, pero el historico preciso se pierde.
 def downgrade() -> None:
     op.drop_column("manager_holdings", "filing_date")

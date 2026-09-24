@@ -5,6 +5,9 @@
  * 2. Key content routes that are intentionally outside the nav
  *    (currently /metodologia) must be discoverable: at least one
  *    inbound link from another page or component.
+ * 3. Every href='/api/...' in app/components must map to a real
+ *    app/api proxy (route.ts, honouring [dynamic] segments):
+ *    dead buttons against a backend that does not exist fail CI.
  *
  * Runs in CI (npm run test:routes) — no browser needed.
  */
@@ -61,4 +64,60 @@ if (failures.length) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log(`Route/link check OK: ${navHrefs.length} nav routes resolve, off-nav routes are discoverable.`);
+
+// --- 3. href='/api/...' -> real app/api proxy --------------------------------
+const apiRouteFiles = [...walk(join(root, 'app/api'))].filter((file) =>
+  file.endsWith('route.ts'),
+);
+const apiPatterns = apiRouteFiles.map((file) =>
+  ['api',
+    ...file
+      .slice(join(root, 'app/api').length)
+    .replace(/\\/g, '/')
+    .replace(/\/route\.ts$/, '')
+      .split('/')
+      .filter(Boolean)],
+);
+
+const apiHrefPattern = /href=[{]?[`'"]([/]api[^`'"]+)[`'"][}]?/g;
+let apiHrefCount = 0;
+for (const [file, content] of sources) {
+  for (const match of content.matchAll(apiHrefPattern)) {
+    // '/api/thesis/${encoded}/epub' -> '/api/thesis/*/epub': dynamic parts
+    // match any [param] segment of the proxy route.
+    const normalized = match[1].split('${').join('*').split('}').join('');
+    apiHrefCount += 1;
+    const segments = normalized.split('/').filter(Boolean);
+    const matches = apiPatterns.some((pattern) => {
+      const catchAll = pattern.findIndex((seg) => seg.startsWith('[...'));
+      if (catchAll !== -1) {
+        if (segments.length < catchAll) return false;
+        return pattern
+          .slice(0, catchAll)
+          .every(
+            (seg, i) =>
+              seg.startsWith('[') || seg === '*' || seg === segments[i],
+          );
+      }
+      if (pattern.length !== segments.length) return false;
+      return pattern.every(
+        (seg, i) =>
+          seg.startsWith('[') || segments[i] === '*' || seg === segments[i],
+      );
+    });
+    if (!matches) {
+      failures.push(
+        `${file} links to ${match[1]} but no app/api proxy route.ts serves that path`,
+      );
+    }
+  }
+}
+
+if (failures.length) {
+  console.error('Route/link check failed:');
+  for (const failure of failures) console.error(`  - ${failure}`);
+  process.exit(1);
+}
+console.log(
+  `Route/link check OK: ${navHrefs.length} nav routes resolve, off-nav routes are discoverable, ${apiHrefCount} /api hrefs resolve to app/api proxies.`,
+);

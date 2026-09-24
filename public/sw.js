@@ -1,15 +1,19 @@
 /*
- * CavaAI — service worker mínimo.
- * Alcance deliberadamente pequeño:
- *   1) App shell: precache de '/' + caché runtime de estáticos inmutables
- *      (/_next/static/, /assets/).
- *   2) Fallback offline: toda navegación que falle por red sirve el shell
- *      cacheado y, si no existe, una página offline sintética.
- * NADA de lo autenticado se cachea: server actions, /api/* y respuestas con
- * cabecera Set-Cookie pasan directamente a la red.
+ * CavaAI — service worker mínimo y honesto.
+ *
+ * SIN LECTURA OFFLINE: no existe ninguna página pública offline en la app
+ * (todo exige sesión y datos vivos de mercado), así que NADA autenticado se
+ * cachea: ni '/' (redirige a sign-in o sirve datos por usuario), ni server
+ * actions, ni /api/*, ni respuestas con cabecera Set-Cookie. Cachear '/'
+ * serviría la sesión de otro usuario o un shell roto: queda prohibido aquí.
+ *
+ * Alcance deliberado:
+ *   1) Caché runtime de estáticos inmutables (/_next/static/, /assets/).
+ *   2) Fallback offline: toda navegación que falle por red recibe una página
+ *      sintética «sin conexión» que pide reconectar. No pretende ser lectura
+ *      offline: lo documenta en el propio mensaje.
  */
-const CACHE = 'cavaai-shell-v1';
-const APP_SHELL = ['/'];
+const CACHE = 'cavaai-static-v2';
 const OFFLINE_HTML =
   '<!doctype html><html lang="es"><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width, initial-scale=1">' +
@@ -17,23 +21,19 @@ const OFFLINE_HTML =
   '<body style="background:#101010;color:#d1d5db;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0">' +
   '<div style="text-align:center;padding:24px">' +
   '<h1 style="font-size:20px;color:#f3f4f6">Sin conexión</h1>' +
-  '<p style="font-size:14px;color:#9ca3af">CavaAI necesita red para leer tus tesis y datos de mercado.<br>Reconecta y vuelve a intentarlo.</p>' +
+  '<p style="font-size:14px;color:#9ca3af">CavaAI necesita red para leer tus tesis y datos de mercado.<br>Sin lectura offline: reconecta y vuelve a intentarlo.</p>' +
   '</div></body></html>';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .catch(() => undefined) // el shell es best-effort: nunca bloquea la instalación
-      .then(() => self.skipWaiting())
-  );
+  // Sin precache: nada que preinstalar. Activación inmediata.
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
+      // Limpieza total, incluida la caché 'cavaai-shell-v1' que guardaba '/'.
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
@@ -60,7 +60,8 @@ self.addEventListener('fetch', (event) => {
         (cached) =>
           cached ||
           fetch(request).then((response) => {
-            if (response.ok) {
+            // Solo se cachean respuestas limpias, sin Set-Cookie.
+            if (response.ok && !response.headers.has('set-cookie')) {
               const copy = response.clone();
               caches.open(CACHE).then((cache) => cache.put(request, copy));
             }
@@ -72,21 +73,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
-    // Navegaciones: red primero, shell cacheado como fallback.
+    // Navegaciones: solo red. Sin cache de '/' ni de ninguna ruta autenticada;
+    // si la red falla, página sintética honesta (sin lectura offline).
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put('/', copy));
-          }
-          return response;
-        })
-        .catch(
-          () =>
-            caches.match('/') ||
-            new Response(OFFLINE_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
-        )
+      fetch(request).catch(
+        () => new Response(OFFLINE_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+      )
     );
   }
 });

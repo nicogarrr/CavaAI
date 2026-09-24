@@ -26,7 +26,7 @@ import time
 from fastapi import Header, HTTPException, Request, status
 
 from app.core.config import get_settings
-from app.core.replay import consume_nonce
+from app.core.replay import NonceBackendUnavailable, consume_nonce
 
 EMPTY_BODY_HASH = hashlib.sha256(b"").hexdigest()
 
@@ -193,13 +193,23 @@ async def get_research_principal(
         nonce_key = "cavaai:nonce:" + hashlib.sha256(
             f"{x_cavaai_tenant}:{x_cavaai_user}:{x_cavaai_nonce}".encode("utf-8")
         ).hexdigest()
-        fresh = await consume_nonce(
-            nonce_key,
-            ttl_seconds=max_age + 60,
-            redis_url=getattr(settings, "redis_url", "redis://localhost:6379/0"),
-            use_redis=getattr(settings, "app_env", "local").lower()
-            not in {"local", "test"},
-        )
+        app_env = getattr(settings, "app_env", "local").lower()
+        local_only = app_env in {"local", "test"}
+        try:
+            fresh = await consume_nonce(
+                nonce_key,
+                ttl_seconds=max_age + 60,
+                redis_url=getattr(settings, "redis_url", "redis://localhost:6379/0"),
+                use_redis=not local_only,
+                # Production fails closed without Redis (503, like the rate
+                # limiter); local/test keeps the in-process fallback.
+                allow_local_fallback=not getattr(settings, "is_production", False),
+            )
+        except NonceBackendUnavailable as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication backend unavailable",
+            ) from exc
         if not fresh:
             raise _unauthorized("Replayed Research OS identity")
 

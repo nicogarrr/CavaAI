@@ -19,6 +19,17 @@ const createAuthInstance = (database?: ReturnType<typeof mongodbAdapter>) => bet
         maxPasswordLength: 128,
         autoSignIn: true,
     },
+    // Perfil inversor persistido en el documento `user` de MongoDB.
+    // Mongo es schemaless: additionalFields no requiere migraciones SQL,
+    // better-auth los persiste y los devuelve en sesion cuando se piden.
+    user: {
+        additionalFields: {
+            country: { type: 'string', required: false },
+            investmentGoals: { type: 'string', required: false },
+            riskTolerance: { type: 'string', required: false },
+            preferredIndustry: { type: 'string', required: false },
+        },
+    },
     plugins: [
         nextCookies(),
         twoFactor({

@@ -7,6 +7,7 @@ from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.config import get_settings
 from app.models import AlertRule, Company, ResearchAlert
 from app.schemas import (
     AlertRuleOut,
@@ -65,6 +66,24 @@ def list_alert_rules(
     return list(
         db.scalars(statement.order_by(desc(AlertRule.created_at)).limit(limit).offset(offset)).all()
     )
+
+
+@router.get("/telegram-status")
+def telegram_status() -> dict:
+    """Presencia de la configuracion Telegram para la guia de /alerts.
+
+    Solo booleanos: ningun secreto (token, chat_id, URL) sale por la API.
+    """
+    settings = get_settings()
+    enabled = bool(settings.telegram_enabled)
+    has_token = bool(settings.telegram_bot_token)
+    has_chat = bool(settings.telegram_chat_id)
+    return {
+        "enabled": enabled,
+        "has_bot_token": has_token,
+        "has_chat_id": has_chat,
+        "configured": enabled and has_token and has_chat,
+    }
 
 
 @router.post("/rules/evaluate")

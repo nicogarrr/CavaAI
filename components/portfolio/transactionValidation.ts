@@ -1,0 +1,65 @@
+/**
+ * Validación pura del formulario "Nueva Inversión" (cartera).
+ *
+ * Regla de oro: ningún submit puede fallar en silencio. Esta función se
+ * ejecuta en cliente ANTES de llamar a la server action y devuelve un
+ * mensaje por campo; la UI los pinta bajo cada input. Sin símbolo, cantidad
+ * o precio válidos no hay petición al backend.
+ */
+
+export interface TransactionFormValues {
+  symbol: string;
+  type: 'buy' | 'sell';
+  quantity: string;
+  price: string;
+  date: string;
+}
+
+export interface TransactionFormErrors {
+  symbol?: string;
+  quantity?: string;
+  price?: string;
+  date?: string;
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function validateTransactionForm(values: TransactionFormValues, now: Date = new Date()): TransactionFormErrors {
+  const errors: TransactionFormErrors = {};
+
+  if (!values.symbol || !values.symbol.trim()) {
+    errors.symbol = 'Busca y selecciona una acción de la lista.';
+  }
+
+  const quantity = Number(values.quantity);
+  if (!values.quantity.trim() || !Number.isFinite(quantity) || quantity <= 0) {
+    errors.quantity = 'Introduce una cantidad mayor que 0.';
+  }
+
+  const price = Number(values.price);
+  if (!values.price.trim() || !Number.isFinite(price) || price < 0) {
+    errors.price = 'Introduce un precio válido (0 o mayor).';
+  }
+
+  if (!DATE_RE.test(values.date)) {
+    errors.date = 'Fecha no válida (usa el selector de fecha).';
+  } else {
+    const day = new Date(`${values.date}T00:00:00`);
+    if (Number.isNaN(day.getTime())) {
+      errors.date = 'Fecha no válida (usa el selector de fecha).';
+    } else {
+      // Comparación por día de calendario (no por hora): mañana ya es futuro.
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      if (values.date > today) {
+        errors.date = 'La fecha no puede ser futura.';
+      }
+    }
+  }
+
+  return errors;
+}
+
+export function hasTransactionErrors(errors: TransactionFormErrors): boolean {
+  return Object.keys(errors).length > 0;
+}

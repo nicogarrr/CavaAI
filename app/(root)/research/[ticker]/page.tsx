@@ -53,6 +53,8 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
 import ThesisMemo from '@/components/research/ThesisMemo';
 import ThesisExportButtons from '@/components/research/ThesisExportButtons';
+import ThesisApproveButton from '@/components/research/ThesisApproveButton';
+import CitationsList from '@/components/chat/CitationsList';
 import FollowButton from '@/components/screener/FollowButton';
 import ThesisGenerateButton from '@/components/research/ThesisGenerateButton';
 import { formatCompact, formatDate, formatDateTime, formatMoney, formatPercent } from '@/lib/format';
@@ -200,6 +202,25 @@ function Stat({ label: statLabel, value }: { label: string; value: string | numb
   );
 }
 
+function FactCard({ fact }: { fact: ResearchFact }) {
+  return (
+    <div className="rounded-lg border border-gray-800 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-gray-200">{fact.metric}</span>
+        <span className="text-sm font-semibold text-teal-300">{metricValue(fact.value, fact.unit)}</span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-2 text-xs text-gray-500">
+        <span>{fact.period}</span>
+        <span>·</span>
+        <span>{label(fact.source_type)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Hechos visibles en móvil antes del «ver más» */
+const FACTS_MOBILE_PAGE = 10;
+
 function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string }) {
   if (!facts.length) {
     return (
@@ -210,22 +231,23 @@ function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string })
   }
   return (
     <>
-      {/* Móvil: cards sin scroll horizontal */}
+      {/* Móvil: cards paginadas con «ver más» en vez de corte silencioso */}
       <div className="space-y-3 md:hidden">
-        {facts.slice(0, 50).map((fact) => (
-          <div key={fact.id} className="rounded-lg border border-gray-800 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-gray-200">{fact.metric}</span>
-              <span className="text-sm font-semibold text-teal-300">{metricValue(fact.value, fact.unit)}</span>
-            </div>
-            <div className="mt-1.5 flex flex-wrap gap-2 text-xs text-gray-500">
-              <span>{fact.period}</span>
-              <span>·</span>
-              <span>{fact.source_type}</span>
-            </div>
-          </div>
+        {facts.slice(0, FACTS_MOBILE_PAGE).map((fact) => (
+          <FactCard key={fact.id} fact={fact} />
         ))}
-        {facts.length > 50 ? <p className="text-xs text-gray-500">{facts.length - 50} hechos más visibles en escritorio.</p> : null}
+        {facts.length > FACTS_MOBILE_PAGE ? (
+          <details className="rounded-lg border border-gray-800 p-3">
+            <summary className="cursor-pointer text-sm font-medium text-teal-300">
+              Ver más ({facts.length - FACTS_MOBILE_PAGE} restantes)
+            </summary>
+            <div className="mt-3 space-y-3">
+              {facts.slice(FACTS_MOBILE_PAGE).map((fact) => (
+                <FactCard key={fact.id} fact={fact} />
+              ))}
+            </div>
+          </details>
+        ) : null}
       </div>
       {/* Escritorio: tabla completa */}
       <div className="hidden overflow-x-auto md:block">
@@ -244,7 +266,7 @@ function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string })
               <td className="border-b border-gray-900 py-2 font-medium">{fact.metric}</td>
               <td className="border-b border-gray-900 py-2">{fact.period}</td>
               <td className="border-b border-gray-900 py-2 text-right">{metricValue(fact.value, fact.unit)}</td>
-              <td className="border-b border-gray-900 py-2 text-right text-xs text-gray-500">{fact.source_type}</td>
+              <td className="border-b border-gray-900 py-2 text-right text-xs text-gray-500">{label(fact.source_type)}</td>
             </tr>
           ))}
         </tbody>
@@ -322,9 +344,9 @@ function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel
       </div>
       <Panel title="Veredicto con restricciones">
         <div className="flex flex-wrap gap-2">
-          <Badge>{opportunity.verdict.label}</Badge>
-          <Badge variant="outline">confianza: {opportunity.verdict.confidence}</Badge>
-          <Badge variant="outline">restricción ligante: {opportunity.constraints.binding_constraint ?? 'desconocida'}</Badge>
+          <Badge>{label(opportunity.verdict.label)}</Badge>
+          <Badge variant="outline">confianza: {label(opportunity.verdict.confidence)}</Badge>
+          <Badge variant="outline">restricción ligante: {opportunity.constraints.binding_constraint ? label(opportunity.constraints.binding_constraint) : 'desconocida'}</Badge>
         </div>
         <p className="mt-3 text-sm text-gray-300">{opportunity.verdict.conclusion}</p>
       </Panel>
@@ -476,6 +498,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           <ThesisGenerateButton ticker={ticker} />
+          <ThesisApproveButton ticker={ticker} />
           <Link
             className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
             href="/export"
@@ -527,7 +550,13 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         </Panel>
         <Panel title="Tesis actual">
           {data.thesis ? (
-            <ThesisMemo thesis={data.thesis} />
+            <ThesisMemo
+              thesis={data.thesis}
+              ticker={ticker}
+              debateBody={
+                data.sections.find((section) => section.section_key === 'thesis_debate')?.body ?? null
+              }
+            />
           ) : (
             <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa fuentes antes de generar</EmptyLink>}>
               Aún no existe ninguna tesis.
@@ -583,7 +612,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <div className="space-y-3">
             {data.changes.length ? data.changes.map((change) => (
               <div className="rounded-lg border border-gray-800 p-4" key={change.id}>
-                <div className="flex flex-wrap gap-2"><Badge>{label(change.impact_direction)}</Badge><Badge variant="outline">{change.change_type.replaceAll('_', ' ')}</Badge><Badge variant="outline">materialidad {change.materiality_score}</Badge></div>
+                <div className="flex flex-wrap gap-2"><Badge>{label(change.impact_direction)}</Badge><Badge variant="outline">{label(change.change_type)}</Badge><Badge variant="outline">materialidad {change.materiality_score}</Badge></div>
                 <p className="mt-3 text-sm text-gray-300">{change.summary}</p>
               </div>
             )) : (
@@ -668,7 +697,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         </div>
         <Panel title="Documentos">
           {documents.length ? (
-            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{document.source_tier}</Badge></div><p className="mt-2 text-xs text-gray-500">{document.source_type} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
+            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
           ) : (
             <Empty action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}>
               Sin documentos ingeridos.
@@ -691,7 +720,18 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </Panel>
     );
   } else {
-    const response = query.chat ? await askResearchCompanyChat(ticker, query.chat) : null;
+    let response: Awaited<ReturnType<typeof askResearchCompanyChat>> | null = null;
+    let chatFailed = false;
+    if (query.chat) {
+      try {
+        response = await askResearchCompanyChat(ticker, query.chat);
+      } catch (error) {
+        if (isBackendUnavailableError(error)) {
+          return <BackendOffline feature={`Chat de ${ticker}`} retryHref={`/research/${ticker}?view=chat`} />;
+        }
+        chatFailed = true;
+      }
+    }
     content = (
       <div className="space-y-6">
         <Panel title="Chat de la empresa con fuentes">
@@ -701,7 +741,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <Panel title="Respuesta">
             <div className="whitespace-pre-wrap text-sm leading-7 text-gray-300">{response.answer}</div>
             <div className="mt-4 flex flex-wrap gap-2"><Badge variant="outline">modelo {response.model ?? 'determinista'}</Badge><Badge variant="outline">{response.sources.length} fuentes</Badge><Badge variant="outline">{response.blocked ? 'datos insuficientes' : 'con evidencia'}</Badge></div>
+            <CitationsList citations={[]} sources={response.sources} />
           </Panel>
+        ) : chatFailed ? (
+          <Empty>Sin datos para responder ahora mismo. Reintenta en unos segundos o haz otra pregunta.</Empty>
         ) : (
           <Empty>Haz una pregunta para recuperar el contrato de evidencia determinista y la síntesis con fuentes.</Empty>
         )}

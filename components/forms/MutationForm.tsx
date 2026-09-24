@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef, type ComponentPropsWithoutRef } from 'react';
+import { useRef, useState, type ComponentPropsWithoutRef } from 'react';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
+import { getFriendlyErrorMessage, isNextRedirectError } from '@/lib/types/errors';
 
 type MutationFormProps = Omit<ComponentPropsWithoutRef<'form'>, 'action'> & {
   action: (formData: FormData) => Promise<unknown>;
@@ -19,17 +20,23 @@ export function MutationForm({
 }: MutationFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const lastFormData = useRef<FormData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit(formData: FormData) {
     lastFormData.current = formData;
+    setError(null);
     try {
       await action(formData);
       if (resetOnSuccess) formRef.current?.reset();
       toast.success(successMessage);
-    } catch (error) {
+    } catch (err) {
+      // Los redirects de Next forman parte de la navegación: re-lanzarlos.
+      if (isNextRedirectError(err)) throw err;
+      // Error inline visible + toast accionable: ningún submit falla en silencio.
+      setError(getFriendlyErrorMessage(err));
       // Toast accionable: si el motor está caído ofrece "Reintentar" con
       // los mismos datos del formulario.
-      showErrorToast(error, {
+      showErrorToast(err, {
         onRetry: async () => {
           const payload = lastFormData.current;
           if (payload) await submit(payload);
@@ -42,6 +49,11 @@ export function MutationForm({
   return (
     <form {...props} action={submit} ref={formRef}>
       {children}
+      {error ? (
+        <p className="mt-3 text-sm text-red-300" role="alert">
+          {error}
+        </p>
+      ) : null}
     </form>
   );
 }

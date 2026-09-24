@@ -6,6 +6,8 @@ import { CommandDialog, CommandEmpty, CommandInput, CommandList } from "@/compon
 import { Button } from "@/components/ui/button";
 import { Loader2, TrendingUp, Search } from "lucide-react";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
+import { showErrorToast } from "@/lib/toast";
+import { isNextRedirectError } from "@/lib/types/errors";
 
 export default function SearchCommand({ renderAs = 'button', label = 'Añadir acción', initialStocks }: SearchCommandProps) {
     const router = useRouter();
@@ -14,7 +16,6 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
     const [loading, setLoading] = useState(false)
     const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks);
     const [mounted, setMounted] = useState(false);
-    const [navigating, setNavigating] = useState(false);
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -64,9 +65,12 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 setStocks(results || []);
             }
         } catch (error: any) {
-            // Ignorar errores de cancelación
+            // Ignorar errores de cancelación; el resto (incluido redirect,
+            // que se re-lanza) nunca falla en silencio.
             if (error?.name !== 'AbortError' && !controller.signal.aborted) {
+                if (isNextRedirectError(error)) throw error;
                 setStocks([]);
+                showErrorToast(error, { onRetry: () => handleSearch(query.trim()) });
             }
         } finally {
             if (!controller.signal.aborted) {
@@ -128,7 +132,6 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
     const handleSelectStock = useCallback((symbol: string) => {
         // Close dialog and navigate immediately
         setOpen(false);
-        setNavigating(true);
         setSearchTerm("");
         setStocks(initialStocks);
         // Use router.push for faster navigation
@@ -139,8 +142,6 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
     const handlePrefetchStock = useCallback((symbol: string) => {
         router.prefetch(`/research/${symbol.toUpperCase()}`);
     }, [router]);
-
-    void navigating;
 
     // Evitar hydration mismatch
     if (!mounted) {

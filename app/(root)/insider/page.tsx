@@ -1,6 +1,6 @@
 import { Users } from 'lucide-react';
 import InsiderSignalsView from '@/components/insider/InsiderSignalsView';
-import { getInsiderSignals } from '@/lib/actions/insider.actions';
+import { getInsiderFilings, getInsiderSignals } from '@/lib/actions/insider.actions';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -12,7 +12,12 @@ type PageProps = {
 export default async function InsiderPage({ searchParams }: PageProps) {
     const { ticker: rawTicker } = await searchParams;
     const ticker = rawTicker?.trim().toUpperCase() || null;
-    const result = ticker ? await getInsiderSignals(ticker).catch(() => null) : null;
+    const [signals, filings] = ticker
+        ? await Promise.all([
+              getInsiderSignals(ticker).catch(() => null),
+              getInsiderFilings(ticker).catch(() => null),
+          ])
+        : [null, null];
 
     return (
         <main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 overflow-x-clip">
@@ -33,7 +38,11 @@ export default async function InsiderPage({ searchParams }: PageProps) {
                 </div>
             </header>
 
-            <InsiderSignalsView initialTicker={ticker ?? ''} initialResult={result} />
+            <InsiderSignalsView
+                initialTicker={ticker ?? ''}
+                initialResult={signals}
+                initialFilings={filings}
+            />
         </main>
     );
 }

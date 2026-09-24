@@ -15,6 +15,13 @@ down_revision = "0016_principle_jobs_snapshots"
 branch_labels = None
 depends_on = None
 
+# HISTORICO DESTRUCTIVO — no reescribir: el upgrade() borra TODAS las filas
+# de model_aliases (table.delete() sin WHERE) y deja solo la fila
+# provider='opencode-go'; cualquier alias custom previo se pierde.
+# El downgrade() tampoco restaura: solo elimina las filas 'opencode-go'.
+# Comportamiento documentado y cubierto en
+# tests/test_0017_destructive_migration_documented.py.
+
 
 def upgrade() -> None:
     table = sa.table(

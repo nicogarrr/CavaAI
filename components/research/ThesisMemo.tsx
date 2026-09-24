@@ -1,6 +1,7 @@
 import { formatMoney, formatPercent } from '@/lib/format';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
+import ThesisDebatePanel from '@/components/research/ThesisDebatePanel';
 import { Badge } from '@/components/ui/badge';
 import type { ResearchThesis } from '@/lib/actions/research.actions';
 import type { GlossaryKey } from '@/lib/glossary';
@@ -79,7 +80,17 @@ function ScenarioCell({
  * Las versiones anteriores a los campos profesionales (hypothesis=null)
  * muestran estados honestos "pendiente", nunca datos inventados.
  */
-export default function ThesisMemo({ thesis }: { thesis: ResearchThesis }) {
+export default function ThesisMemo({
+  thesis,
+  ticker,
+  debateBody,
+}: {
+  thesis: ResearchThesis;
+  /** Ticker para el debate bull/bear (bloque interactivo de abajo). */
+  ticker?: string;
+  /** Cuerpo persistido de la seccion thesis_debate (veredicto previo). */
+  debateBody?: string | null;
+}) {
   const probabilities = thesis.scenario_probabilities ?? {};
   const generatedAt = new Date(thesis.created_at);
   const generatedLabel = Number.isNaN(generatedAt.getTime())
@@ -194,6 +205,19 @@ export default function ThesisMemo({ thesis }: { thesis: ResearchThesis }) {
           )}
         </section>
       </div>
+
+      <section>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          Debate bull/bear
+        </h3>
+        {ticker ? (
+          <ThesisDebatePanel ticker={ticker} initialVerdict={debateBody ?? null} />
+        ) : (
+          <p className="text-sm text-gray-500">
+            Debate no disponible sin ticker: recarga la ficha para contrastar la tesis.
+          </p>
+        )}
+      </section>
 
       <section>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">

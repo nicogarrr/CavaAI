@@ -235,6 +235,9 @@ class UniversalSearchService:
                 "date_to": date_to,
             },
             "retrieval": {
+                # Modo real: hybrid solo si el vector aportó candidatos al
+                # RRF; en cualquier otro caso lexical_only honesto.
+                "mode": "hybrid" if vector_scores else "lexical_only",
                 "lexical_backend": (
                     "postgresql_full_text"
                     if db.bind and db.bind.dialect.name == "postgresql"
@@ -255,7 +258,7 @@ class UniversalSearchService:
         return {
             "query": query,
             "status": "not_found",
-            "retrieval": {"vector_requested": include_vector},
+            "retrieval": {"mode": "lexical_only", "vector_requested": include_vector},
             "total": 0,
             "results": [],
         }

@@ -27,3 +27,11 @@ En la VM de produccion los equivalentes en bash son `scripts/backup.sh` y
 Qdrant, tar de MinIO y DuckDB, manifest por backup; restore exige
 `--confirm-restore`). `backup.sh` sube a Cloudflare R2 si se define
 `RCLONE_REMOTE`. Guia completa en `docs/oracle-setup.md`.
+
+## Retencion
+
+- Local (`backups/`): `backup.sh` conserva los ultimos
+  `${BACKUP_RETENTION_COUNT:-8}` backups y borra los mas antiguos solo tras
+  una ejecucion correcta (con `set -e`, un fallo no purga nada).
+- R2: la retencion la impone el lifecycle del bucket (regla de expiracion en
+  el dashboard de Cloudflare, p. ej. 30 dias); `rclone copy` nunca borra.
