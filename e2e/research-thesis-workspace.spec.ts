@@ -12,7 +12,7 @@ test.describe("research thesis workspace", () => {
 
     // Async generation entry point is present and idle.
     await expect(
-      page.getByRole("button", { name: /Generar tesis|Generate thesis/ }),
+      page.getByRole("button", { name: "Generar tesis" }),
     ).toBeVisible();
 
     // Memo export link targets the per-ticker markdown endpoint.
