@@ -117,8 +117,10 @@ def test_thesis_history_carries_computed_provenance():
     """Contract: thesis history exposes internal-computation provenance + data_as_of."""
     import main
     from fastapi.testclient import TestClient
+    from app.seed import seed
     from tests.test_thesis_history_memo import TICKER, _clean, _seed_two_versions
 
+    seed()  # igual que los tests hermanos de thesis history: crea la Company (ASTS)
     _clean()
     v1_id, v2_id = _seed_two_versions()
     response = TestClient(main.app).get(f"/api/thesis/{TICKER}/history")
