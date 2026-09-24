@@ -56,13 +56,9 @@ test.describe("audit closure flows", () => {
     // el vacío honesto: en ambos casos no se exige el debate.
     const offline = page.getByText(/backend/i);
     const noThesis = page.getByText("Aún no existe ninguna tesis");
-<<<<<<< HEAD
-    const noResearch = page.getByText(/Research aún no generado|todavía no tiene research/);
-    if ((await offline.count()) > 0 || (await noThesis.count()) > 0 || (await noResearch.count()) > 0) return;
-=======
     const noThesis2 = page.getByText("Aún no se ha generado ninguna tesis");
-    if ((await offline.count()) > 0 || (await noThesis.count()) > 0 || (await noThesis2.count()) > 0) return;
->>>>>>> origin/audit/cierre-integral
+    const noResearch = page.getByText(/Research aún no generado|todavía no tiene research/);
+    if ((await offline.count()) > 0 || (await noThesis.count()) > 0 || (await noThesis2.count()) > 0 || (await noResearch.count()) > 0) return;
     await expect(debate).toBeVisible();
     await expect(approve).toBeVisible();
     await expect(page.getByRole("button", { name: /debate/i }).first()).toBeVisible();
