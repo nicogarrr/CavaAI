@@ -730,6 +730,33 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
             const url = `${FINNHUB_BASE_URL}/search?q=${encodeURIComponent(trimmed)}&token=${token}`;
             const data = await fetchJSON<FinnhubSearchResponse>(url, 1800);
             results = Array.isArray(data?.result) ? data.result : [];
+
+            // Un ticker exacto con sufijo de bolsa ("SAN.MC") no matchea en el
+            // search de Finnhub (el punto rompe el prefix matching), asi que
+            // escribir el simbolo tal cual no devolvia nada y no se podian
+            // anadir posiciones EU por ticker. Fallback: busca la parte base
+            // ("SAN") y quedate con el resultado cuyo simbolo coincida
+            // exactamente con lo pedido, anteponiendolo al resto.
+            const upperQuery = trimmed.toUpperCase();
+            const matchesExact = (r: FinnhubSearchResult): boolean =>
+                (r.symbol || '').toUpperCase() === upperQuery ||
+                (r.displaySymbol || '').toUpperCase() === upperQuery;
+            if (upperQuery.includes('.') && !results.some(matchesExact)) {
+                const base = upperQuery.slice(0, upperQuery.indexOf('.'));
+                if (base) {
+                    try {
+                        const fbUrl = `${FINNHUB_BASE_URL}/search?q=${encodeURIComponent(base)}&token=${token}`;
+                        const fbData = await fetchJSON<FinnhubSearchResponse>(fbUrl, 1800);
+                        const fbResults = Array.isArray(fbData?.result) ? fbData.result : [];
+                        const exact = fbResults.filter(matchesExact);
+                        if (exact.length > 0) {
+                            results = [...exact, ...results];
+                        }
+                    } catch {
+                        // Fallback opcional: si falla, devolvemos lo que hubiera.
+                    }
+                }
+            }
         }
 
         const mapped: StockWithWatchlistStatus[] = results
