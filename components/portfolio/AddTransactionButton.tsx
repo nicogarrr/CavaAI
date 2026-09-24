@@ -19,6 +19,7 @@ import { searchStocks } from '@/lib/actions/finnhub.actions';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
+import { hasTransactionErrors, validateTransactionForm, type TransactionFormErrors } from './transactionValidation';
 
 type Props = {
   userId: string;
@@ -94,17 +95,28 @@ export default function AddTransactionButton({ userId }: Props) {
   }, [searchQuery, handleSearch]);
 
   const selectStock = (stock: StockResult) => {
-    setFormData({
-      ...formData,
+    setFormData((prev) => ({
+      ...prev,
       symbol: stock.symbol,
       companyName: stock.name
-    });
+    }));
     setSearchQuery(stock.symbol);
     setShowResults(false);
   };
 
+  const [fieldErrors, setFieldErrors] = useState<TransactionFormErrors>({});
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const errors = validateTransactionForm({
+      symbol: formData.symbol,
+      type: formData.type,
+      quantity: formData.quantity,
+      price: formData.price,
+      date: formData.date,
+    });
+    setFieldErrors(errors);
+    if (hasTransactionErrors(errors)) return;
     setLoading(true);
 
     try {
@@ -133,6 +145,9 @@ export default function AddTransactionButton({ userId }: Props) {
       toast.success('Transacción registrada');
       router.refresh();
     } catch (error) {
+      // Nunca tragar un redirect de Next (p. ej. sesión caducada): debe navegar.
+      const digest = (error as { digest?: unknown })?.digest;
+      if (typeof digest === 'string' && digest.startsWith('NEXT_REDIRECT')) throw error;
       showErrorToast(error);
     } finally {
       setLoading(false);
@@ -197,6 +212,10 @@ export default function AddTransactionButton({ userId }: Props) {
               </div>
             )}
 
+            {fieldErrors.symbol && (
+              <p role="alert" className="text-sm text-red-400">{fieldErrors.symbol}</p>
+            )}
+
             {/* Acción seleccionada */}
             {formData.symbol && (
               <div className="flex items-center gap-2 p-2 bg-teal-900/30 rounded border border-teal-700">
@@ -247,6 +266,9 @@ export default function AddTransactionButton({ userId }: Props) {
                 required
                 className="bg-gray-800 border-gray-700 text-gray-100"
               />
+              {fieldErrors.quantity && (
+                <p role="alert" className="text-sm text-red-400">{fieldErrors.quantity}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -262,6 +284,9 @@ export default function AddTransactionButton({ userId }: Props) {
                 required
                 className="bg-gray-800 border-gray-700 text-gray-100"
               />
+              {fieldErrors.price && (
+                <p role="alert" className="text-sm text-red-400">{fieldErrors.price}</p>
+              )}
             </div>
           </div>
 
@@ -275,6 +300,9 @@ export default function AddTransactionButton({ userId }: Props) {
               required
               className="bg-gray-800 border-gray-700 text-gray-100"
             />
+            {fieldErrors.date && (
+              <p role="alert" className="text-sm text-red-400">{fieldErrors.date}</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -294,7 +322,7 @@ export default function AddTransactionButton({ userId }: Props) {
             </Button>
             <Button
               type="submit"
-              disabled={loading || !formData.symbol}
+              disabled={loading}
               className="bg-teal-600 hover:bg-teal-700"
             >
               {loading ? 'Guardando...' : 'Guardar Inversión'}

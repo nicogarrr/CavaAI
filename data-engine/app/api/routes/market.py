@@ -9,9 +9,13 @@ import time
 from datetime import UTC, datetime
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import desc, func, select
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.database import get_db
+from app.models import Company, MarketPrice
 from app.services.provenance import SourceKind, coverage_for_age, provenance
 
 router = APIRouter()
@@ -101,4 +105,84 @@ def market_indices() -> dict:
             ),
             note="Fuente no oficial (agregador); no usar como precio autoritativo.",
         ),
+    }
+
+
+@router.get("/movers")
+def market_movers(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=10, ge=1, le=25),
+) -> dict:
+    """Gainers/losers/más activas calculados desde market_prices local.
+
+    Diseño frío-seguro: sin filas no hay KeyError ni 500 — se devuelve
+    universo vacío y la UI lo muestra como estado honesto. El cambio se
+    calcula entre los dos últimos cierres de cada compañía (nunca se asume
+    caché caliente ni fechas globales).
+    """
+    ranked = (
+        select(
+            MarketPrice.company_id,
+            MarketPrice.date,
+            MarketPrice.close,
+            MarketPrice.volume,
+            func.row_number()
+            .over(
+                partition_by=MarketPrice.company_id,
+                order_by=desc(MarketPrice.date),
+            )
+            .label("rn"),
+        )
+        .order_by(MarketPrice.company_id, desc(MarketPrice.date))
+        .cte("ranked")
+    )
+    rows = list(
+        db.execute(
+            select(
+                ranked.c.company_id,
+                ranked.c.date,
+                ranked.c.close,
+                ranked.c.volume,
+                Company.ticker,
+                Company.name,
+                Company.sector,
+            )
+            .join(Company, Company.id == ranked.c.company_id)
+            .where(ranked.c.rn <= 2)
+        ).all()
+    )
+    latest: dict[int, dict] = {}
+    previous: dict[int, dict] = {}
+    for company_id, day, close, volume, ticker, name, sector in rows:
+        entry = {
+            "ticker": ticker,
+            "name": name,
+            "sector": sector,
+            "price": float(close or 0),
+            "volume": int(volume or 0),
+            "date": day.isoformat() if day else None,
+        }
+        if company_id not in latest:
+            latest[company_id] = entry
+        elif company_id not in previous:
+            previous[company_id] = entry
+    movers = []
+    for company_id, last in latest.items():
+        prev = previous.get(company_id)
+        base = float(prev["price"]) if prev else 0.0
+        change_pct = ((last["price"] - base) / base * 100) if base else 0.0
+        movers.append({**last, "change_pct": round(change_pct, 2)})
+    as_of = max(
+        (entry["date"] for entry in latest.values() if entry["date"]),
+        default=None,
+    )
+    gainers = sorted(movers, key=lambda m: m["change_pct"], reverse=True)[:limit]
+    losers = sorted(movers, key=lambda m: m["change_pct"])[:limit]
+    most_active = sorted(movers, key=lambda m: m["volume"], reverse=True)[:limit]
+    return {
+        "as_of": as_of,
+        "universe": len(movers),
+        "gainers": gainers,
+        "losers": losers,
+        "most_active": most_active,
     }

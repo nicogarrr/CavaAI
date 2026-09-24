@@ -34,3 +34,45 @@ export async function getInsiderSignals(
     if (options?.notify) params.set('notify', 'true');
     return researchRequest<InsiderSignalsResult>(`/api/insider/signals?${params.toString()}`);
 }
+
+export interface InsiderFilingTransaction {
+    insider?: string | null;
+    role?: string | null;
+    officer_title?: string | null;
+    code?: string | null;
+    shares?: number | null;
+    price?: number | null;
+    value?: number | null;
+    tx_date?: string | null;
+    source_url?: string | null;
+}
+
+export interface InsiderFilingEntry {
+    accession_number: string;
+    form: string;
+    is_amendment: boolean;
+    filing_date?: string | null;
+    report_date?: string | null;
+    source_url?: string | null;
+    transaction_count: number;
+    transactions: InsiderFilingTransaction[];
+}
+
+export interface InsiderFilingsResult {
+    ticker: string;
+    status: string;
+    reason?: string;
+    count: number;
+    filings: InsiderFilingEntry[];
+}
+
+/** GET /api/insider/filings — filings Form 4/4-A persistidos (lectura durable). */
+export async function getInsiderFilings(
+    ticker: string,
+    limit = 20,
+): Promise<InsiderFilingsResult> {
+    await requireAuthenticatedUser();
+    const clean = ticker.trim().toUpperCase();
+    const params = new URLSearchParams({ ticker: clean, limit: String(limit) });
+    return researchRequest<InsiderFilingsResult>(`/api/insider/filings?${params.toString()}`);
+}

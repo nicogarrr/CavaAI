@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  applicationName: 'CavaAI',
   title: {
     default: "CavaAI - Research OS de inversión fundamental",
     template: "%s | CavaAI"
@@ -17,6 +18,12 @@ export const metadata: Metadata = {
       { url: '/assets/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: [{ url: '/assets/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+  // Instalable en iPhone: pantalla completa sin chrome de Safari.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'CavaAI',
   },
   robots: {
     index: true,
@@ -34,6 +41,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
+  // La app dibuja bajo el notch/isla dinámica del iPhone (100dvh + safe-area).
+  viewportFit: 'cover',
   themeColor: '#101010',
 };
 

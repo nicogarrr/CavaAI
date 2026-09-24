@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Menu, X } from 'lucide-react';
 import { CavaAIWordmark } from '@/components/CavaAIWordmark';
@@ -13,7 +13,8 @@ import NavItems from '@/components/NavItems';
  */
 export default function MobileNav({ initialStocks }: { initialStocks: StockWithWatchlistStatus[] }) {
     const [open, setOpen] = useState(false);
-    void initialStocks;
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const drawerRef = useRef<HTMLDivElement>(null);
 
     // Cerrar con Escape y bloquear el scroll del body mientras está abierto
     useEffect(() => {
@@ -30,10 +31,44 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
         };
     }, [open ]);
 
+    // Al abrir: foco al botón de cerrar. Al cerrar: retorno al trigger.
+    // (wasOpen evita robar el foco en el montaje inicial)
+    const wasOpen = useRef(false);
+    useEffect(() => {
+        if (open) {
+            wasOpen.current = true;
+            drawerRef.current
+                ?.querySelector<HTMLButtonElement>('button[aria-label="Cerrar menú de navegación"]')
+                ?.focus();
+        } else if (wasOpen.current) {
+            wasOpen.current = false;
+            triggerRef.current?.focus();
+        }
+    }, [open ]);
+
+    // Trampa de foco dentro del drawer mientras está abierto
+    const onDrawerKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key !== 'Tab' || !drawerRef.current) return;
+        const focusables = drawerRef.current.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    };
+
     return (
         <>
             <button
                 type="button"
+                ref={triggerRef}
                 onClick={() => setOpen(true)}
                 aria-label="Abrir menú de navegación"
                 aria-expanded={open}
@@ -52,10 +87,13 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                         type="button"
                         aria-label="Cerrar menú de navegación"
                         onClick={() => setOpen(false)}
+                        tabIndex={-1}
                         className="absolute inset-0 cursor-default bg-black/60 backdrop-blur-sm"
                     />
                     <aside
                         id="mobile-nav-drawer"
+                        ref={drawerRef}
+                        onKeyDown={onDrawerKeyDown}
                         className="absolute left-0 top-0 flex h-full max-h-dvh w-[85vw] max-w-xs flex-col border-r border-gray-700/50 bg-gray-900 shadow-2xl"
                     >
                         <div className="flex min-h-[64px] items-center justify-between gap-2 border-b border-gray-700/50 px-4 py-3">

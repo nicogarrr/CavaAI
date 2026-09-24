@@ -33,9 +33,15 @@ type CountrySelectProps = {
 const CountrySelect = ({
                            value,
                            onChange,
+                           invalid = false,
+                           describedBy,
+                           label,
                        }: {
     value: string;
     onChange: (value: string) => void;
+    invalid?: boolean;
+    describedBy?: string;
+    label: string;
 }) => {
     const [open, setOpen] = useState(false);
 
@@ -58,6 +64,9 @@ const CountrySelect = ({
                     variant='outline'
                     role='combobox'
                     aria-expanded={open}
+                    aria-label={label}
+                    aria-invalid={invalid}
+                    aria-describedby={describedBy}
                     className='country-select-trigger'
                 >
                     {value ? (
@@ -66,7 +75,7 @@ const CountrySelect = ({
               <span>{countries.find((c) => c.value === value)?.label}</span>
             </span>
                     ) : (
-                        'Select your country...'
+                        'Selecciona tu país…'
                     )}
                     <ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
                 </Button>
@@ -77,11 +86,11 @@ const CountrySelect = ({
             >
                 <Command className='bg-gray-800 border-gray-600'>
                     <CommandInput
-                        placeholder='Search countries...'
+                        placeholder='Buscar países…'
                         className='country-select-input'
                     />
                     <CommandEmpty className='country-select-empty'>
-                        No country found.
+                        No se ha encontrado ningún país.
                     </CommandEmpty>
                     <CommandList className='max-h-60 bg-gray-800 scrollbar-hide-default'>
                         <CommandGroup className='bg-gray-800'>
@@ -122,6 +131,8 @@ export const CountrySelectField = ({
                                        error,
                                        required = false,
                                    }: CountrySelectProps) => {
+    const errorId = `${name}-error`;
+    const hintId = `${name}-hint`;
     return (
         <div className='space-y-2'>
             <Label htmlFor={name} className='form-label'>
@@ -131,15 +142,21 @@ export const CountrySelectField = ({
                 name={name}
                 control={control}
                 rules={{
-                    required: required ? `Please select ${label.toLowerCase()}` : false,
+                    required: required ? `Por favor, selecciona ${label.toLowerCase()}` : false,
                 }}
                 render={({ field }) => (
-                    <CountrySelect value={field.value} onChange={field.onChange} />
+                    <CountrySelect
+                        value={field.value}
+                        onChange={field.onChange}
+                        label={label}
+                        invalid={!!error}
+                        describedBy={error ? errorId : hintId}
+                    />
                 )}
             />
-            {error && <p className='text-sm text-red-500'>{error.message}</p>}
-            <p className='text-xs text-gray-500'>
-                Helps us show market data and news relevant to you.
+            {error ? <p id={errorId} role='alert' className='text-sm text-red-500'>{error.message}</p> : null}
+            <p id={hintId} className='text-xs text-gray-500'>
+                Te mostramos datos de mercado y noticias relevantes según tu país.
             </p>
         </div>
     );

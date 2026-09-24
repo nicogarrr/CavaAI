@@ -38,6 +38,18 @@ DEFAULT_TIMEOUT_SECONDS = 30.0
 USER_AGENT = "CavaAI Public Document Fetcher/1.0"
 
 
+def _parse_content_length(value: object) -> int | None:
+    """Content-Length con try/default: un header ausente o basura devuelve
+    None (el límite duro del stream sigue protegiendo) en vez de romper."""
+    if value is None:
+        return None
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
 @dataclass(frozen=True)
 class _PublicTarget:
     url: str
@@ -271,8 +283,8 @@ def fetch_public_url(
                     target = _resolve_public_url(target_value)
                     continue
                 response.raise_for_status()
-                content_length = response.headers.get("content-length")
-                if content_length and int(content_length) > max_bytes:
+                content_length = _parse_content_length(response.headers.get("content-length"))
+                if content_length is not None and content_length > max_bytes:
                     raise ValueError(
                         f"Remote document exceeds {max_bytes // (1024 * 1024)}MB limit"
                     )
@@ -308,8 +320,8 @@ async def fetch_public_url_async(
                     target = await _resolve_public_url_async(target_value)
                     continue
                 response.raise_for_status()
-                content_length = response.headers.get("content-length")
-                if content_length and int(content_length) > max_bytes:
+                content_length = _parse_content_length(response.headers.get("content-length"))
+                if content_length is not None and content_length > max_bytes:
                     raise ValueError(
                         f"Remote document exceeds {max_bytes // (1024 * 1024)}MB limit"
                     )

@@ -1,10 +1,13 @@
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, ValidationError
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
+
+import logging
+from uuid import uuid4
 
 from app.core.database import get_db
 from app.models import (
@@ -14,11 +17,49 @@ from app.models import (
     KnowledgeDocument,
     ProcessingJob,
 )
-from app.services.knowledge_library_service import KnowledgeLibraryService
+from app.services.knowledge_library_service import (
+    KNOWLEDGE_DOCUMENT_TYPES,
+    KnowledgeLibraryService,
+)
 from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
 
 
 router = APIRouter()
+
+_logger = logging.getLogger(__name__)
+
+KnowledgeLanguage = Literal["en", "es"]
+
+_source_url_adapter: TypeAdapter[HttpUrl] = TypeAdapter(HttpUrl)
+
+
+def _ref_error(status_code: int, message: str, exc: Exception) -> HTTPException:
+    """Error genérico con referencia logueada (sin filtrar internos)."""
+    ref = uuid4().hex[:8]
+    _logger.exception("%s (ref=%s)", message, ref)
+    return HTTPException(status_code=status_code, detail=f"{message} (ref {ref})")
+
+
+def validate_upload_metadata(
+    *, document_type: str, language: str, source_url: str | None
+) -> tuple[str, str, str | None]:
+    """Whitelist de ingesta: tipo cerrado, idioma cerrado, URL válida.
+
+    Lanza ``ValueError`` con mensaje fijo (apto para 400) en cualquier
+    rechazo; nunca incluye el valor ofensivo completo.
+    """
+    if document_type not in KNOWLEDGE_DOCUMENT_TYPES:
+        raise ValueError("Unsupported knowledge document type")
+    normalized_language = (language or "").strip().lower()
+    if normalized_language not in ("en", "es"):
+        raise ValueError("Unsupported knowledge language")
+    validated_url: str | None = None
+    if source_url:
+        try:
+            validated_url = str(_source_url_adapter.validate_python(source_url.strip()))
+        except ValidationError as exc:
+            raise ValueError("Invalid knowledge source_url") from exc
+    return document_type, normalized_language, validated_url
 
 
 class CollectionCreate(BaseModel):
@@ -132,7 +173,10 @@ def create_collection(payload: CollectionCreate, db: Session = Depends(get_db)) 
             )
         )
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # 409 fijo: el nombre ya existe. Sin filtrar internos.
+        raise HTTPException(
+            status_code=409, detail="Knowledge collection already exists"
+        ) from exc
 
 
 async def _read_upload_limited(file: UploadFile) -> bytes:
@@ -166,21 +210,27 @@ async def upload_document(
     db: Session = Depends(get_db),
 ) -> dict:
     try:
+        validated_type, validated_language, validated_url = validate_upload_metadata(
+            document_type=document_type, language=language, source_url=source_url
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
         return KnowledgeLibraryService().ingest_bytes(
             db,
             title=title,
-            document_type=document_type,
+            document_type=validated_type,
             collection_id=collection_id,
             author=author,
-            source_url=source_url,
+            source_url=validated_url,
             publication_date=publication_date,
-            language=language,
+            language=validated_language,
             content=await _read_upload_limited(file),
             filename=file.filename or "knowledge-document.bin",
             content_type=file.content_type,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _ref_error(400, "Knowledge upload rejected", exc) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Knowledge ingestion failed") from exc
 
@@ -344,7 +394,7 @@ def action_principle(
             )
         )
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise _ref_error(409, "Principle action conflict", exc) from exc
 
 
 @router.put("/principles/{principle_id}")
@@ -369,4 +419,4 @@ def revise_principle(
             )
         )
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise _ref_error(409, "Principle revision conflict", exc) from exc

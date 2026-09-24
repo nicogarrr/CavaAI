@@ -128,6 +128,29 @@ services:
       - RESEARCH_AUTH_REQUIRED=true
       - RESEARCH_AUTH_SECRET=${RESEARCH_AUTH_SECRET:?Set RESEARCH_AUTH_SECRET in .env}
       - FMP_API_KEY=${FMP_API_KEY}
+      # --- Proveedores market data (degradacion documentada por clave) ---
+      # Sin FINNHUB_API_KEY: screener y quotes sin Finnhub (fallback Yahoo).
+      # Sin FMP_API_KEY: sin contraste SEC/FMP (cobertura marcada no disponible).
+      # Sin FRED_API_KEY: sin macro FRED.
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY:-}
+      - FRED_API_KEY=${FRED_API_KEY:-}
+      - SCREENER_QUOTE_VENDOR=${SCREENER_QUOTE_VENDOR:-finnhub}
+      # Jev (micro-decisiones): sin TYPESAFE_API_KEY el cliente no se
+      # construye y el triaje sigue sin esa capa.
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
+      # --- Telegram (alertas + aprobacion de tesis) ---
+      # Sin estas claves no se envia nada (canal primario degradado a UI).
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - TELEGRAM_APPROVAL_ENABLED=${TELEGRAM_APPROVAL_ENABLED:-false}
+      - INSIDER_ALERTS_ENABLED=${INSIDER_ALERTS_ENABLED:-false}
+      # --- RAG vectorial: solo mapeo, los flags viven documentados aqui ---
+      # Sin =1 no hay ingesta/busqueda/chat vectorial (degradacion a SQL).
+      - CAVAAI_ENABLE_VECTOR_INGEST=${CAVAAI_ENABLE_VECTOR_INGEST:-0}
+      - CAVAAI_ENABLE_VECTOR_SEARCH=${CAVAAI_ENABLE_VECTOR_SEARCH:-0}
+      - CAVAAI_ENABLE_VECTOR_CHAT=${CAVAAI_ENABLE_VECTOR_CHAT:-0}
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
@@ -182,6 +205,24 @@ services:
       - /app/.venv
     environment:
       - PYTHONUNBUFFERED=1
+      # El worker ejecuta actores Dramatiq que llaman a los mismos conectores
+      # que el backend: necesita las mismas claves de proveedores.
+      # Sin FMP_API_KEY: refresh de mercado sin contraste FMP.
+      - FMP_API_KEY=${FMP_API_KEY:-}
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY:-}
+      - FRED_API_KEY=${FRED_API_KEY:-}
+      - SCREENER_QUOTE_VENDOR=${SCREENER_QUOTE_VENDOR:-finnhub}
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
+      # Alertas Telegram enviadas desde actores: sin esto, degradado a UI.
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - TELEGRAM_APPROVAL_ENABLED=${TELEGRAM_APPROVAL_ENABLED:-false}
+      - INSIDER_ALERTS_ENABLED=${INSIDER_ALERTS_ENABLED:-false}
+      # Ingesta vectorial (document_ingestion_service): sin =1 no indexa Qdrant.
+      - CAVAAI_ENABLE_VECTOR_INGEST=${CAVAAI_ENABLE_VECTOR_INGEST:-0}
+      - CAVAAI_ENABLE_VECTOR_SEARCH=${CAVAAI_ENABLE_VECTOR_SEARCH:-0}
+      - CAVAAI_ENABLE_VECTOR_CHAT=${CAVAAI_ENABLE_VECTOR_CHAT:-0}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}

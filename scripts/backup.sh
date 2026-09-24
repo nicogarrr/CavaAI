@@ -5,8 +5,12 @@
 #   - postgres.dump      (pg_dump -Fc, canonico: research/evidence/thesis)
 #   - qdrant.snapshot    (snapshot via API de Qdrant)
 #   - minio.tar.gz       (documentos crudos; volumen parado si --stop-storage)
-#   - duckdb.gz          (analytics local)
+#   - duckdb.tar.gz      (analytics local)
 #   - manifest.txt       (fecha, versiones, conteos basicos)
+#
+# Retencion: conserva los ultimos ${BACKUP_RETENTION_COUNT:-8} backups locales
+# y borra los mas antiguos al final de cada ejecucion correcta. En R2, la
+# retencion la impone el lifecycle del bucket (ver docs/BACKUP_RESTORE.md).
 #
 # Subida opcional a Cloudflare R2 (free tier 10 GB) con rclone:
 #   RCLONE_REMOTE=r2:cavaai-backups ./scripts/backup.sh
@@ -70,4 +74,16 @@ if [ -n "${RCLONE_REMOTE:-}" ]; then
   echo "[backup] subiendo a ${RCLONE_REMOTE}…"
   rclone copy "${DEST}" "${RCLONE_REMOTE}/${STAMP}" --transfers 4
   echo "[backup] subida completada"
+fi
+
+# 7) Retencion local: conserva los N mas recientes, borra el resto.
+# Solo tras ejecucion correcta (set -e: si algo fallo, no se llega aqui).
+RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-8}"
+if [ "${RETENTION_COUNT}" -ge 1 ] 2>/dev/null; then
+  mapfile -t OLD_DIRS < <(ls -1d backups/*/ 2>/dev/null | sort | head -n "-${RETENTION_COUNT}") || true
+  if [ "${#OLD_DIRS[@]}" -gt 0 ]; then
+    echo "[backup] retencion: borrando ${#OLD_DIRS[@]} backup(s) antiguos (conservo ${RETENTION_COUNT})…"
+    printf '%s\n' "${OLD_DIRS[@]}"
+    rm -rf "${OLD_DIRS[@]}"
+  fi
 fi

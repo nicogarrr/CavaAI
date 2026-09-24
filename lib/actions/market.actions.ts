@@ -11,6 +11,40 @@ export type MarketIndex = {
   changePercent: number;
 };
 
+export type MarketMover = {
+  ticker: string;
+  name: string;
+  sector: string;
+  price: number;
+  change_pct: number;
+  volume: number;
+  date: string | null;
+};
+
+export type MarketMovers = {
+  as_of: string | null;
+  universe: number;
+  gainers: MarketMover[];
+  losers: MarketMover[];
+  most_active: MarketMover[];
+};
+
+/** Gainers/losers/más activas desde precios locales. Vacío honesto si no hay datos. */
+export async function getMarketMovers(limit = 10): Promise<MarketMovers> {
+  const empty: MarketMovers = { as_of: null, universe: 0, gainers: [], losers: [], most_active: [] };
+  try {
+    const payload = await cachedFetch<MarketMovers>(
+      `market:movers:${limit}`,
+      () => researchRequest<MarketMovers>(`/api/market/movers?limit=${limit}`),
+      45,
+    );
+    if (!payload || !Array.isArray(payload.gainers)) return empty;
+    return payload;
+  } catch (error) {
+    console.error('getMarketMovers error:', error);
+    return empty;
+  }
+}
 /** Índices reales (S&P 500, Nasdaq, Bitcoin, Oro, Plata) desde el backend. */
 export async function getMarketIndices(): Promise<MarketIndex[]> {
   try {

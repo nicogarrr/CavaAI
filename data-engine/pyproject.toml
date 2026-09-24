@@ -10,41 +10,60 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.139.0,<0.142",
     "starlette>=1.3.1,<1.4",
-    "uvicorn[standard]>=0.29.0",
-    "python-dotenv>=1.0.0",
-    "python-multipart>=0.0.9",
-    "pydantic>=2.7.0",
-    "pydantic-settings>=2.4.0",
-    "requests>=2.31.0",
-    "httpx>=0.27.0",
-    "yfinance>=0.2.40",
-    "pandas>=2.0.0",
+    "uvicorn[standard]>=0.29.0,<0.35",
+    "python-dotenv>=1.0.0,<2",
+    "python-multipart>=0.0.9,<0.1",
+    "pydantic>=2.7.0,<3",
+    "pydantic-settings>=2.4.0,<3",
+    "requests>=2.31.0,<3",
+    "httpx>=0.27.0,<0.29",
+    "yfinance>=0.2.40,<0.3",
+    "pandas>=2.0.0,<3",
     "lxml>=6.1.1,<7",
-    "scipy>=1.11.0",
-    "numpy>=1.24.0",
-    "matplotlib>=3.7.0",
-    "seaborn>=0.13.0",
-    "tabulate>=0.9.0",
-    "python-dateutil>=2.8.0",
-    "arch>=6.0",
-    "qdrant-client>=1.9.0",
-    "redis>=5.0.0",
+    "scipy>=1.11.0,<2",
+    "numpy>=1.24.0,<3",
+    "matplotlib>=3.7.0,<4",
+    "seaborn>=0.13.0,<0.14",
+    "tabulate>=0.9.0,<0.10",
+    "python-dateutil>=2.8.0,<3",
+    "arch>=6.0,<9",
+    "qdrant-client>=1.9.0,<1.15",
+    "redis>=5.0.0,<6",
+    # Embeddings RAG locales (all-MiniLM-L6-v2, ver app/services/rag.py).
+    # torch es dependencia de sentence-transformers: se instala SIEMPRE la
+    # variante CPU desde el indice de PyTorch (ver requirements.txt y los
+    # Dockerfiles); la wheel CUDA por defecto de PyPI son GB inservibles
+    # en una VM CPU-only.
+    "torch>=2.5",
     "sentence-transformers>=5.6.0,<6",
+    # Transitiva via sentence-transformers (tokenizers del embedder); sin
+    # import directo en app/. Pin explicito para que no flote con ST.
     "transformers>=5.13.1,<6",
     "pypdf>=6.14.2,<7",
-    "openpyxl>=3.1.0",
-    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0,<4",
+    "python-docx>=1.1.0,<2",
     "agent-framework-core==1.10.0",
     "agent-framework-openai==1.10.0",
     "agent-framework-orchestrations==1.0.0",
-    "sqlalchemy>=2.0.32",
-    "alembic>=1.13.2",
-    "psycopg[binary]>=3.2.1",
-    "duckdb>=1.0.0",
-    "minio>=7.2.7",
-    "dramatiq[redis]>=1.17.0",
-    "apscheduler>=3.10.4",
-    "langfuse>=3.0.0",
+    "sqlalchemy>=2.0.32,<2.1",
+    "alembic>=1.13.2,<1.16",
+    "psycopg[binary]>=3.2.1,<4",
+    # duckdb se evaluo y se retiro: ningun modulo de app/ lo importa (solo
+    # queda el default duckdb_path en config como ruta historica). El
+    # analytics local vive en Postgres + ficheros; no reintroducir sin uso.
+    "minio>=7.2.7,<8",
+    "dramatiq[redis]>=1.17.0,<2",
+    "apscheduler>=3.10.4,<4",
+    "langfuse>=3.0.0,<4",
+    # Thesis lifecycle shadow pilot (stage 6): usados en app/workflows/ y
+    # app/services/thesis_*_service.py. Solo estado de control en esquema
+    # separado; la verdad de negocio sigue en Postgres.
+    "langgraph>=1.2.11,<2",
+    "langgraph-checkpoint-sqlite>=3.1,<4",
+    "langgraph-checkpoint-postgres>=3.1.2,<4",
+    # httpcore: public_fetch usa backends privados (IP pinning anti-SSRF);
+    # fijar la major para que un upgrade falle controlado, no en silencio.
+    "httpcore>=1.0.0,<2.0",
 ]
 
 [project.optional-dependencies]

@@ -19,7 +19,7 @@ const Header = ({ user, initialStocks }: { user: User, initialStocks: StockWithW
                 <div className="order-3 w-full min-w-0 sm:order-2 sm:mx-4 sm:w-auto sm:max-w-md sm:flex-1">
                     <SearchCommand
                         renderAs="button"
-                        label="🔍 Buscar acciones... (Ctrl+K)"
+                        label="Buscar acciones... (Ctrl+K)"
                         initialStocks={initialStocks}
                     />
                 </div>

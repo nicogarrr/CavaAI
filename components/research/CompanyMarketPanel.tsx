@@ -1,10 +1,18 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+
 import { formatMoney } from '@/lib/format';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { Badge } from '@/components/ui/badge';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
+
+const CompanyMarketChart = dynamic(() => import('./CompanyMarketChart'), {
+    ssr: false,
+    loading: () => (
+        <div className="h-[280px] w-full animate-pulse rounded-lg border border-gray-800 bg-gray-900/40 sm:h-[420px]" aria-label="Cargando gráfico de precio" role="status" />
+    ),
+});
 
 function money(value: number | null) {
     return value == null
@@ -24,7 +32,7 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                               <Badge variant="outline">{snapshot.ticker}</Badge>
                           </div>
                           <p className="mt-1 text-sm text-gray-500">
-                              {[snapshot.exchange, snapshot.currency].filter(Boolean).join(' · ') || 'Market metadata unavailable'}
+                              {[snapshot.exchange, snapshot.currency].filter(Boolean).join(' · ') || 'Metadatos de mercado no disponibles'}
                           </p>
                       </div>
                       <div className="sm:ml-auto sm:text-right">
@@ -38,10 +46,10 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                 </div>
                 <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[
-                        ['Open', snapshot.quote.open],
-                        ['High', snapshot.quote.high],
-                        ['Low', snapshot.quote.low],
-                        ['Previous close', snapshot.quote.previousClose],
+                        ['Apertura', snapshot.quote.open],
+                        ['Máximo', snapshot.quote.high],
+                        ['Mínimo', snapshot.quote.low],
+                        ['Cierre anterior', snapshot.quote.previousClose],
                     ].map(([label, value]) => (
                         <div key={String(label)} className="rounded-lg border border-gray-800 p-3">
                             <div className="text-xs uppercase text-gray-500">{label}</div>
@@ -53,33 +61,14 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
 
             <section className="rounded-xl border border-gray-800 bg-[#111111] p-4 sm:p-5">
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="font-semibold text-gray-100">Price history · 1 year</h3>
+                    <h3 className="font-semibold text-gray-100">Historial de precio · 1 año</h3>
                     <Badge variant="outline" className="w-fit">{snapshot.status}</Badge>
                 </div>
                 {snapshot.history.length ? (
-                    <div className="h-[280px] w-full sm:h-[420px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={snapshot.history}>
-                                <defs>
-                                    <linearGradient id="marketPrice" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#2dd4bf" stopOpacity={0.35} />
-                                        <stop offset="95%" stopColor="#2dd4bf" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid stroke="#1f2937" vertical={false} />
-                                <XAxis dataKey="date" minTickGap={48} stroke="#6b7280" />
-                                <YAxis domain={['auto', 'auto']} stroke="#6b7280" />
-                                <Tooltip
-                                    contentStyle={{ background: '#111827', border: '1px solid #374151' }}
-                                    formatter={(value: number) => [money(value), 'Close']}
-                                />
-                                <Area type="monotone" dataKey="close" stroke="#2dd4bf" fill="url(#marketPrice)" strokeWidth={2} />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
+                    <CompanyMarketChart history={snapshot.history} />
                 ) : (
                     <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
-                        Price history is unavailable. The workspace keeps this state explicit and does not fabricate a chart.
+                        Historial de precio no disponible. El workspace muestra este estado de forma explícita y no inventa ningún gráfico.
                     </div>
                 )}
             </section>

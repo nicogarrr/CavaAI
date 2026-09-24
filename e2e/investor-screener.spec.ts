@@ -9,12 +9,15 @@ test.describe("investor screener flow", () => {
     await page.goto("/screener");
 
     await expect(page.getByRole("heading", { name: "Screener", level: 1 })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Technology" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Tecnología" })).toBeVisible();
 
     const rows = page.locator("table tbody tr");
     if ((await rows.count()) === 0) {
-      // Backend warming up or market data unavailable: the page degrades to an empty state.
-      await expect(page.getByText("No hay datos ahora mismo")).toBeVisible();
+      // Backend caído (reintentar) o filtro sin resultados: ambas variantes honestas.
+      const down = page.getByText("No hay datos ahora mismo");
+      const empty = page.getByText(/Sin resultados para/);
+      const states = (await down.count()) + (await empty.count());
+      expect(states).toBeGreaterThan(0);
       return;
     }
 

@@ -1,73 +1,22 @@
 'use client';
 
-import { formatMoney } from '@/lib/format';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
 import { PieChart as PieChartIcon } from 'lucide-react';
+import { COLORS, type AllocationSlice } from './PortfolioAllocationChart';
+
+const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChart'), {
+    ssr: false,
+    loading: () => (
+        <div className="h-[250px] w-[250px] animate-pulse rounded-full border border-gray-800 bg-gray-900/40" aria-label="Cargando distribución" role="status" />
+    ),
+});
 
 type Props = {
     holdings: PortfolioHolding[];
     totalValue: number;
-};
-
-// Paleta de colores vibrantes para el pie chart
-const COLORS = [
-    '#14b8a6', // teal-500
-    '#8b5cf6', // violet-500
-    '#f59e0b', // amber-500
-    '#ef4444', // red-500
-    '#3b82f6', // blue-500
-    '#ec4899', // pink-500
-    '#22c55e', // green-500
-    '#f97316', // orange-500
-    '#06b6d4', // cyan-500
-    '#a855f7', // purple-500
-    '#eab308', // yellow-500
-    '#6366f1', // indigo-500
-];
-
-interface CustomTooltipProps {
-    active?: boolean;
-    payload?: Array<{
-        name: string;
-        value: number;
-        payload: {
-            symbol: string;
-            value: number;
-            percentage: number;
-            gain: number;
-            gainPercent: number;
-        };
-    }>;
-}
-
-const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
-    if (active && payload && payload.length) {
-        const data = payload[0].payload;
-        const isPositive = data.gain >= 0;
-
-        return (
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 shadow-xl">
-                <Link href={`/research/${data.symbol}`} className="font-bold text-teal-400 hover:text-teal-300 mb-1 block">
-                    {data.symbol}
-                </Link>
-                <p className="text-gray-300 text-sm">
-                    Valor: <span className="font-semibold text-white">{formatMoney(data.value)}</span>
-                </p>
-                <p className="text-gray-300 text-sm">
-                    Peso: <span className="font-semibold text-white">{data.percentage.toFixed(1)}%</span>
-                </p>
-                <p className="text-gray-300 text-sm">
-                    G/P: <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                        {isPositive ? '+' : ''}{data.gainPercent.toFixed(2)}%
-                    </span>
-                </p>
-            </div>
-        );
-    }
-    return null;
 };
 
 export default function PortfolioAllocation({ holdings, totalValue }: Props) {
@@ -90,7 +39,7 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
     }
 
     // Preparar datos para el pie chart
-    const chartData = holdings
+    const chartData: AllocationSlice[] = holdings
         .map((holding) => ({
             symbol: holding.symbol,
             value: holding.value,
@@ -111,32 +60,7 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
             <div className="flex-1 flex items-center justify-between">
                 {/* Pie Chart - Más grande */}
                 <div className="relative w-[250px] h-[250px] flex-shrink-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                            <Pie
-                                data={chartData}
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={70}
-                                outerRadius={105}
-                                paddingAngle={2}
-                                dataKey="value"
-                                nameKey="symbol"
-                                animationBegin={0}
-                                animationDuration={800}
-                            >
-                                {chartData.map((entry, index) => (
-                                    <Cell
-                                        key={`cell-${entry.symbol}`}
-                                        fill={COLORS[index % COLORS.length]}
-                                        stroke="rgba(0,0,0,0)"
-                                        strokeWidth={0}
-                                    />
-                                ))}
-                            </Pie>
-                            <Tooltip content={<CustomTooltip />} />
-                        </PieChart>
-                    </ResponsiveContainer>
+                    <PortfolioAllocationChart chartData={chartData} />
 
                     {/* Centro del Donut */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

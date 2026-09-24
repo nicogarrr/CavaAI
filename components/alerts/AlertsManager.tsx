@@ -5,8 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Bell, History, Plus, RefreshCcw, Trash2 } from 'lucide-react';
-import { createAlert, getUserAlerts, deleteAlert, type Alert, type CreateAlertInput, type AlertType } from '@/lib/actions/alerts.actions';
+import { Bell, History, Plus, RefreshCcw, Send, Trash2 } from 'lucide-react';
+import { createAlert, getRecentTriggeredAlerts, getTelegramStatus, getUserAlerts, deleteAlert, type Alert, type CreateAlertInput, type AlertType, type TelegramStatus, type TriggeredAlertDelivery } from '@/lib/actions/alerts.actions';
 import {
     Dialog,
     DialogContent,
@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
+import { isNextRedirectError } from '@/lib/types/errors';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { reviewResearchExpectations } from '@/lib/actions/research.actions';
 
@@ -46,6 +47,9 @@ function AlertsManager() {
     const [loading, setLoading] = useState(true);
     const [open, setOpen] = useState(false);
     const [reviewing, setReviewing] = useState<string | null>(null);
+    /** Estado de entrega del motor (evaluacion cada 5 min + Telegram). */
+    const [telegram, setTelegram] = useState<TelegramStatus | null>(null);
+    const [triggered, setTriggered] = useState<TriggeredAlertDelivery[]>([]);
     const [formData, setFormData] = useState<CreateAlertInput>({
         symbol: '',
         type: 'price_above',
@@ -78,9 +82,16 @@ function AlertsManager() {
 
     const loadAlerts = async () => {
         try {
-            const data = await getUserAlerts();
+            const [data, telegramStatus, recent] = await Promise.all([
+                getUserAlerts(),
+                getTelegramStatus().catch(() => null),
+                getRecentTriggeredAlerts(10).catch(() => [] as TriggeredAlertDelivery[]),
+            ]);
             setAlerts(data);
+            setTelegram(telegramStatus);
+            setTriggered(recent);
         } catch (error) {
+            if (isNextRedirectError(error)) throw error;
             showErrorToast(error, { onRetry: loadAlerts });
         } finally {
             setLoading(false);
@@ -89,6 +100,10 @@ function AlertsManager() {
 
     const handleCreateAlert = async () => {
         try {
+            if (!formData.symbol.trim()) {
+                toast.error('Introduce un símbolo válido');
+                return;
+            }
             const numericValue = formData.type === 'news' || formData.type === 'earnings'
                 ? formData.condition.value
                 : parseFloat(String(formData.condition.value));
@@ -118,6 +133,7 @@ function AlertsManager() {
             });
             loadAlerts();
         } catch (error) {
+            if (isNextRedirectError(error)) throw error;
             showErrorToast(error, {
                 duplicateMessage: 'Ya tienes esta alerta configurada.',
                 onRetry: handleCreateAlert,
@@ -131,6 +147,7 @@ function AlertsManager() {
             await loadAlerts();
             toast.success('Alerta eliminada');
         } catch (error) {
+            if (isNextRedirectError(error)) throw error;
             showErrorToast(error, {
                 onRetry: () => handleDeleteAlert(alertId),
             });
@@ -149,6 +166,7 @@ function AlertsManager() {
             await reviewResearchExpectations(alert.symbol);
             toast.success(`Revisión de expectativas lanzada para ${alert.symbol}`);
         } catch (error) {
+            if (isNextRedirectError(error)) throw error;
             showErrorToast(error, {
                 onRetry: () => handleReview(alert),
             });
@@ -282,6 +300,25 @@ function AlertsManager() {
                 </Dialog>
             </div>
 
+            {telegram && !telegram.configured ? (
+                <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/20 p-4" role="note">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-amber-200">
+                        <Send className="h-4 w-4" />
+                        Telegram sin configurar: las alertas solo llegan en la app
+                    </p>
+                    <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-5 text-amber-100/80">
+                        <li>Habla con @BotFather en Telegram y crea un bot para obtener el token.</li>
+                        <li>Escribe al bot y averigua tu chat id (p. ej. con @userinfobot).</li>
+                        <li>
+                            Configura en el servidor: TELEGRAM_ENABLED=true, TELEGRAM_BOT_TOKEN y
+                            TELEGRAM_CHAT_ID {!telegram.has_bot_token ? '(falta el token)' : ''}{' '}
+                            {!telegram.has_chat_id ? '(falta el chat id)' : ''}.
+                        </li>
+                        <li>Las reglas nuevas incluirán el canal Telegram automáticamente.</li>
+                    </ol>
+                </div>
+            ) : null}
+
             {loading ? (
                 <div className="text-center py-8 text-gray-500">Cargando alertas...</div>
             ) : alerts.length === 0 ? (
@@ -319,6 +356,13 @@ function AlertsManager() {
                                         {alert.lastTriggered
                                             ? `Disparada por última vez: ${formatDateTime(alert.lastTriggered)}`
                                             : 'Todavía no se ha disparado'}
+                                    </p>
+                                    <p className="inline-flex items-center gap-1 text-xs text-gray-600" title={`Canales: ${alert.channels.join(', ') || 'in_app'} · disparos: ${alert.triggerCount}`}>
+                                        <Send className="h-3.5 w-3.5" />
+                                        {alert.lastEvaluatedAt
+                                            ? `Motor: evaluada ${formatDateTime(alert.lastEvaluatedAt)} · ${alert.triggerCount} disparos · ${alert.channels.join(', ') || 'in_app'}`
+                                            : 'Motor: pendiente de primera evaluación (cada 5 min)'}
+                                        {alert.lastResultStatus === 'skipped_stale_observation' ? ' · dato desactualizado' : null}
                                     </p>
                                     {alert.symbol ? (
                                         <Link
@@ -358,6 +402,50 @@ function AlertsManager() {
                     ))}
                 </div>
             )}
+
+            {!loading && triggered.length > 0 ? (
+                <div className="mt-6">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+                        Últimos disparos y entregas
+                    </h3>
+                    <div className="mt-2 space-y-2">
+                        {triggered.map((item) => (
+                            <div
+                                key={item.id}
+                                className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-3"
+                            >
+                                <p className="text-sm font-medium text-gray-200">{item.title}</p>
+                                <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{item.message}</p>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {item.channels.length === 0 ? (
+                                        <span className="text-xs text-gray-600">sin canales</span>
+                                    ) : (
+                                        item.channels.map((channel) => {
+                                            const delivery = item.deliveries[channel];
+                                            const status = delivery?.status ?? 'pendiente';
+                                            const tone =
+                                                status === 'delivered'
+                                                    ? 'border-teal-800 text-teal-300'
+                                                    : status === 'failed'
+                                                      ? 'border-red-800 text-red-300'
+                                                      : 'border-gray-700 text-gray-400';
+                                            return (
+                                                <span
+                                                    key={channel}
+                                                    title={delivery?.error ?? `canal ${channel}: ${status}`}
+                                                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${tone}`}
+                                                >
+                                                    {channel}: {status}
+                                                </span>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
         </Card>
     );
 }

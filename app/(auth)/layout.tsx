@@ -11,9 +11,9 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const productModules = [
-    { icon: FileSearch, title: 'Evidence', description: 'Facts and claims keep their source lineage.' },
-    { icon: Database, title: 'Long-Term Model', description: 'Drivers and assumptions adapt to the company.' },
-    { icon: GitBranch, title: 'Expectation vs Reality', description: 'Reported outcomes review each forecast.' },
+    { icon: FileSearch, title: 'Evidencia', description: 'Cada hecho y afirmación conserva su fuente.' },
+    { icon: Database, title: 'Modelo a largo plazo', description: 'Motores y supuestos adaptados a cada empresa.' },
+    { icon: GitBranch, title: 'Expectativa frente a realidad', description: 'Cada resultado revisa su previsión.' },
 ];
 
 const Layout = async ({ children }: { children : React.ReactNode }) => {
@@ -50,8 +50,8 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
                 <div className="flex-1 rounded-2xl border border-slate-800 bg-slate-950/70 p-6 shadow-2xl shadow-teal-950/20">
                     <div className="mb-6 flex items-start justify-between gap-4">
                         <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300">Company workspace</p>
-                            <h2 className="mt-2 text-2xl font-semibold text-white">Evidence → Model → Thesis</h2>
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300">Espacio de trabajo de la empresa</p>
+                            <h2 className="mt-2 text-2xl font-semibold text-white">Evidencia → Modelo → Tesis</h2>
                         </div>
                         <LineChart aria-hidden="true" className="h-7 w-7 text-teal-300"/>
                     </div>

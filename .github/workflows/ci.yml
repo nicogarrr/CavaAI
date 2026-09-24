@@ -13,6 +13,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dep-parity:
+    name: Python dep parity (pyproject ↔ requirements)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python data-engine/scripts/sync_requirements.py --check
+
   frontend:
     name: Frontend quality
     runs-on: ubuntu-latest
@@ -36,6 +47,10 @@ jobs:
       - run: npm run test:routes
       - name: ProPicks guard (R1-R5 + turnover cap)
         run: node --experimental-strip-types --test scripts/propicks-guard.test.ts
+      - name: Error cause classification (stale/offline/i18n)
+        run: node --experimental-strip-types --test scripts/error-cause.test.ts
+      - name: Transaction form validation (F1, no silent submits)
+        run: node --experimental-strip-types --test scripts/transaction-validation.test.ts
       - run: npm run build
       - name: Bundle budget
         run: node scripts/check-bundle-budget.mjs

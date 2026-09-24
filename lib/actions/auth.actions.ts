@@ -5,14 +5,16 @@ import { headers } from "next/headers";
 import { AuthenticationError, toAppError, getErrorMessage } from "@/lib/types/errors";
 import { ERROR_MESSAGES } from "@/lib/constants";
 
-export const signUpWithEmail = async ({ email, password, fullName }: SignUpFormData): Promise<{ success: boolean; data?: unknown; error?: string }> => {
+export const signUpWithEmail = async ({ email, password, fullName, country, investmentGoals, riskTolerance, preferredIndustry }: SignUpFormData): Promise<{ success: boolean; data?: unknown; error?: string }> => {
     try {
         const auth = await getAuth();
         if (!auth) {
             throw new AuthenticationError(ERROR_MESSAGES.AUTH_UNAVAILABLE);
         }
 
-        const response = await auth.api.signUpEmail({ body: { email, password, name: fullName } });
+        // El perfil inversor viaja en el propio sign-up (additionalFields de
+        // better-auth, sin migraciones SQL) en vez de perderse en el destructuring.
+        const response = await auth.api.signUpEmail({ body: { email, password, name: fullName, country, investmentGoals, riskTolerance, preferredIndustry } });
 
         return { success: true, data: response };
     } catch (error: unknown) {

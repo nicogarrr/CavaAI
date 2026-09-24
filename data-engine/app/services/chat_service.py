@@ -1,4 +1,5 @@
 import os
+import re
 from decimal import Decimal
 
 from sqlalchemy import desc, select
@@ -63,9 +64,17 @@ class ChatService:
             return db.scalar(select(Company).where(Company.ticker == ticker.upper()))
         if scope == "portfolio":
             return None
-        upper = question.upper()
-        for candidate in db.scalars(select(Company)).all():
-            if candidate.ticker in upper:
+        # Índice por ticker + regex de palabra completa: evita falsos
+        # positivos por substring ("A" dentro de "APPLE", "IT" en "WITH")
+        # y no hace un scan substring por fila.
+        companies = list(db.scalars(select(Company)).all())
+        by_ticker = {company.ticker.upper(): company for company in companies}
+        tokens = re.findall(r"[A-Z0-9][A-Z0-9.\-]*", question.upper())
+        for token in tokens:
+            if token in by_ticker:
+                return by_ticker[token]
+        for candidate in companies:
+            if re.search(rf"\b{re.escape(candidate.ticker)}\b", question, re.IGNORECASE):
                 return candidate
         return None
 

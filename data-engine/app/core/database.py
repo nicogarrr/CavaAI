@@ -91,6 +91,13 @@ def _assign_tenant_to_new_rows(session: Session, _flush_context, _instances) -> 
 def get_db(
     principal: ResearchPrincipal | None = Depends(get_research_principal),
 ) -> Generator[Session, None, None]:
+    # Fail-closed: with research auth required there is never an anonymous
+    # session. Writes without a tenant must be impossible, not just unscoped.
+    if principal is None and settings.research_auth_required:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="A signed Research OS identity is required",
+        )
     db = SessionLocal()
     try:
         if principal:

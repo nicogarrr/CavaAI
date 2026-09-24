@@ -25,6 +25,10 @@ def upgrade() -> None:
     )
 
 
+# ADVERTENCIA DOWNGRADE DESTRUCTIVO: elimina source + fetched_at con sus
+# datos. Re-subir deja source='manual' por defecto pero fetched_at se
+# pierde: las acciones auto-ingeridas quedan indistinguibles de las
+# manuales hasta la proxima ingesta.
 def downgrade() -> None:
     op.drop_column("corporate_actions", "fetched_at")
     op.drop_column("corporate_actions", "source")

@@ -32,6 +32,16 @@ export function showErrorToast(error: unknown, options: ErrorToastOptions = {}):
     return cause;
   }
 
+  if (cause === 'stale') {
+    toast.error(message, {
+      action: {
+        label: 'Recargar',
+        onClick: () => window.location.reload(),
+      },
+    });
+    return cause;
+  }
+
   const retry =
     cause === 'offline' && options.onRetry
       ? {

@@ -1,4 +1,3 @@
-import { FileDown } from 'lucide-react';
 import ExportView from '@/components/export/ExportView';
 
 export const dynamic = 'force-dynamic';
@@ -14,10 +13,6 @@ export default async function ExportPage() {
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
                         Descarga el journal de decisiones de inversión de un año completo en CSV o JSON.
                     </p>
-                </div>
-                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
-                    <FileDown className="h-4 w-4 text-teal-300" />
-                    Export
                 </div>
             </header>
 

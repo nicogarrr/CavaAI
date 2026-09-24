@@ -16,6 +16,8 @@ import { showErrorToast } from '@/lib/toast';
  *   la caché de /watchlist.
  * - Duplicados ("Ya sigues este ticker") y caídas del motor (toast con
  *   "Reintentar") se resuelven con showErrorToast.
+ * - Contrato: `company` es solo etiqueta visual; la identidad del
+ *   seguimiento es `symbol` (el backend lo normaliza a mayúsculas).
  */
 export default function FollowButton({
   symbol,

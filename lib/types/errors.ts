@@ -7,14 +7,15 @@
  * Error base de la aplicación
  */
 export class AppError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-    public readonly statusCode: number = 500,
-    public readonly cause?: unknown
-  ) {
+  public readonly code: string;
+  public readonly statusCode: number;
+  public readonly cause: unknown;
+  constructor(message: string, code: string, statusCode: number = 500, cause?: unknown) {
     super(message);
     this.name = 'AppError';
+    this.code = code;
+    this.statusCode = statusCode;
+    this.cause = cause;
   }
 }
 
@@ -22,9 +23,11 @@ export class AppError extends Error {
  * Error de validación
  */
 export class ValidationError extends AppError {
-  constructor(message: string, public readonly field?: string) {
+  public readonly field: string | undefined;
+  constructor(message: string, field?: string) {
     super(message, 'VALIDATION_ERROR', 400);
     this.name = 'ValidationError';
+    this.field = field;
   }
 }
 
@@ -72,13 +75,13 @@ export class RateLimitError extends AppError {
  * Error de API externa
  */
 export class ExternalAPIError extends AppError {
-  constructor(
-    message: string,
-    public readonly service: string,
-    public readonly originalError?: unknown
-  ) {
+  public readonly service: string;
+  public readonly originalError: unknown;
+  constructor(message: string, service: string, originalError?: unknown) {
     super(message, 'EXTERNAL_API_ERROR', 502, originalError);
     this.name = 'ExternalAPIError';
+    this.service = service;
+    this.originalError = originalError;
   }
 }
 
@@ -96,9 +99,11 @@ export class DatabaseError extends AppError {
  * Error de recurso duplicado (watchlist, alertas, colecciones...)
  */
 export class DuplicateError extends AppError {
-  constructor(message: string = 'Este elemento ya existe', public readonly resource?: string) {
+  public readonly resource: string | undefined;
+  constructor(message: string = 'Este elemento ya existe', resource?: string) {
     super(message, 'DUPLICATE_ERROR', 409);
     this.name = 'DuplicateError';
+    this.resource = resource;
   }
 }
 
@@ -163,7 +168,22 @@ const NEXT_PROD_GENERIC_MARKERS = [
 ];
 
 /** Causa accionable de un error, para decidir el toast (reintentar, info...) */
-export type ErrorCause = 'offline' | 'duplicate' | 'validation' | 'auth' | 'not_found' | 'unknown';
+export type ErrorCause = 'offline' | 'stale' | 'duplicate' | 'validation' | 'auth' | 'not_found' | 'unknown';
+
+/**
+ * Un despliegue nuevo deja el cliente con chunks o Server Actions viejas:
+ * se detecta ANTES que los genéricos `offline` porque los mensajes
+ * ("failed to find server action…", "loading chunk…") también contienen
+ * palabras genéricas como "server action" o "failed".
+ */
+const STALE_MARKERS = [
+  'failed to find server action',
+  'action could not be found',
+  'loading chunk',
+  'chunkloaderror',
+  'revision mismatch',
+  'stale',
+];
 
 const OFFLINE_MARKERS = [
   'fetch failed',
@@ -194,7 +214,20 @@ const DUPLICATE_MARKERS = [
 ];
 
 /**
+ * Detecta los errores de redirect internos de Next.js (digest NEXT_REDIRECT).
+ * Los catch de cliente deben re-lanzarlos (`if (isNextRedirectError(e)) throw e`)
+ * en vez de tragarlos con un toast: forman parte de la navegación.
+ */
+export function isNextRedirectError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const digest = (error as { digest?: unknown }).digest;
+  return typeof digest === 'string' && digest.includes('NEXT_REDIRECT');
+}
+
+/**
  * Clasifica un error en una causa accionable:
+ * - `stale`: cliente desfasado tras un despliegue (se evalúa PRIMERO, antes
+ *   que los genéricos `offline`, porque comparte vocabulario con ellos).
  * - `offline`: motor/backend caído o red → el usuario puede reintentar.
  * - `duplicate`: el recurso ya estaba (watchlist, alerta...).
  * - `validation` / `auth` / `not_found`: errores de negocio conocidos.
@@ -209,6 +242,7 @@ export function classifyError(error: unknown): ErrorCause {
     if (error.code === 'DUPLICATE_ERROR') return 'duplicate';
   }
   const message = getErrorMessage(error).toLowerCase();
+  if (STALE_MARKERS.some((marker) => message.includes(marker))) return 'stale';
   if (NEXT_PROD_GENERIC_MARKERS.some((marker) => message.includes(marker))) return 'offline';
   if (OFFLINE_MARKERS.some((marker) => message.includes(marker))) return 'offline';
   if (DUPLICATE_MARKERS.some((marker) => message.includes(marker))) return 'duplicate';
@@ -232,6 +266,7 @@ const DEFAULT_UNKNOWN_MESSAGE = 'No se pudo completar la operación. Inténtalo 
 
 /**
  * Mensaje de error en español y accionable para toasts:
+ * - `stale` → "nueva versión, recarga".
  * - `offline` → "motor no disponible, reintenta".
  * - `duplicate` → "ya sigues este ticker" (o `options.duplicateMessage`).
  * - resto → traducción del mensaje de negocio o fallback genérico
@@ -242,6 +277,9 @@ export function getFriendlyErrorMessage(
   options: { duplicateMessage?: string } = {},
 ): string {
   const cause = classifyError(error);
+  if (cause === 'stale') {
+    return 'Hay una nueva versión de la app: recarga la página.';
+  }
   if (cause === 'offline') {
     return 'El motor de análisis no responde ahora mismo. Reintenta en unos segundos.';
   }

@@ -3,11 +3,12 @@
 Every bound signature carries a random nonce that must be consumed exactly
 once. Storage is Redis ``SET NX EX`` (atomic check-and-mark with TTL).
 
-Honest availability posture: when Redis is unreachable the store degrades to
-a process-local TTL cache so a Redis outage cannot turn into an auth outage.
-That fallback only blocks replays seen by THIS process, so the single-use
-guarantee is weaker until Redis recovers (acceptable for the single-instance
-personal deployment; a multi-replica deployment must require Redis instead).
+Availability posture: when Redis is unreachable the store may degrade to a
+process-local TTL cache so a Redis outage does not become an auth outage —
+but ONLY outside production (local/test). In production the store fails
+closed with :class:`NonceBackendUnavailable` (HTTP 503 at the caller, like
+the rate limiter), because the local cache only blocks replays seen by THIS
+process and the single-use guarantee would silently weaken.
 """
 
 from __future__ import annotations
@@ -19,16 +20,24 @@ _local_nonces: dict[str, float] = {}
 _local_lock = asyncio.Lock()
 
 
+class NonceBackendUnavailable(RuntimeError):
+    """Redis is down and production must not degrade to a local counter."""
+
+
 async def consume_nonce(
     nonce_key: str,
     *,
     ttl_seconds: int,
     redis_url: str,
     use_redis: bool = True,
+    allow_local_fallback: bool = True,
 ) -> bool:
     """Return True when ``nonce_key`` is fresh (first and only use).
 
     Returns False when the nonce was already consumed inside the TTL window.
+    When Redis is unreachable and ``allow_local_fallback`` is False, raises
+    :class:`NonceBackendUnavailable` instead of degrading to the local TTL
+    cache. Production callers must pass ``allow_local_fallback=False``.
     """
     if use_redis:
         try:
@@ -42,8 +51,11 @@ async def consume_nonce(
             finally:
                 await client.aclose()
             return bool(acquired)
-        except Exception:  # noqa: BLE001 — fall back to the local TTL cache
-            pass
+        except Exception as exc:  # noqa: BLE001 — fail closed or local fallback
+            if not allow_local_fallback:
+                raise NonceBackendUnavailable(
+                    "nonce store unreachable"
+                ) from exc
 
     now = time.time()
     async with _local_lock:

@@ -451,3 +451,74 @@ def test_read_offset_defaults_and_corrupt(tmp_path):
     ok = tmp_path / "ok"
     approval.write_offset(ok, 41)
     assert approval.read_offset(ok) == 41
+
+
+class _RateLimitedClient:
+    """Telegram devuelve 429 al sendMessage: un solo intento, sin backoff."""
+
+    calls: list = []
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def post(self, url: str, json: dict):
+        self.calls.append((url, json))
+        import httpx
+
+        request = httpx.Request("POST", url, json=json)
+        response = httpx.Response(429, request=request)
+        raise httpx.HTTPStatusError(
+            "429 Too Many Requests", request=request, response=response
+        )
+
+
+def test_send_429_fails_honestly_without_retries(monkeypatch, db_thesis):
+    _RateLimitedClient.calls.clear()
+    monkeypatch.setattr(approval.httpx, "Client", _RateLimitedClient)
+    monkeypatch.setattr(approval, "get_settings", lambda: _enabled_settings())
+    db, thesis_id, ticker = db_thesis
+    thesis = db.get(ThesisVersion, thesis_id)
+    result = approval.send_thesis_approval_request(db, thesis, ticker)
+    assert result["status"] == "failed"
+    assert len(_RateLimitedClient.calls) == 1
+    assert approval.maybe_request_thesis_approval(db, thesis, ticker) is None
+
+
+def test_concurrent_double_approve_is_idempotent(db_thesis):
+    """Dos approves concurrentes: una sola sección approval, published."""
+    db, thesis_id, _ = db_thesis
+    first = approval.apply_approval_decision(db, thesis_id, "approve")
+    second = approval.apply_approval_decision(db, thesis_id, "approve")
+    assert first.status == "published" == second.status
+    sections = (
+        db.query(ThesisSection)
+        .filter(ThesisSection.thesis_version_id == thesis_id)
+        .all()
+    )
+    assert len(sections) == 1
+    assert sections[0].section_key == "approval"
+    assert sections[0].status == "approved"
+
+
+def test_stale_pending_approval_has_no_silent_expiry(db_thesis):
+    """Límite honesto: el fuente no caduca aprobaciones; un pending
+    antiguo sigue aplicándose en vez de expirar en silencio."""
+    from datetime import UTC, datetime, timedelta
+
+    db, thesis_id, _ = db_thesis
+    thesis = db.get(ThesisVersion, thesis_id)
+    section = approval.upsert_approval_section(db, thesis, "pending", via="telegram")
+    db.commit()
+    section.created_at = datetime.now(UTC) - timedelta(days=90)
+    db.commit()
+
+    decided = approval.apply_approval_decision(db, thesis_id, "approve")
+    assert decided.status == "published"
+    db.refresh(section)
+    assert section.status == "approved"

@@ -8,7 +8,7 @@
 
 ```
 ┌────────────────────────── Next.js (frontend) ──────────────────────────┐
-│  App Router · Server Actions · mejor-auth con sesiones en MongoDB      │
+│  App Router · Server Actions · better-auth con sesiones en MongoDB      │
 │                                                                         │
 │  lib/research/client.ts  ── researchRequest(path) ──►  FMP_BACKEND_URL  │
 │       │  headers firmados:                                              │
@@ -31,14 +31,14 @@
 
 ## 2. Frontend → investigación (identidad y tenant)
 
-- **Sesión**: `mejor-auth` (`lib/better-auth/auth.ts`) con adaptador MongoDB
+- **Sesión**: `better-auth` (`lib/better-auth/auth.ts`) con adaptador MongoDB
   (`@/database/mongoose`). La sesión vive en MongoDB, no en la BD del engine.
 - **Puente al backend**: `lib/research/client.ts` (`researchRequest`) firma la
   identidad del usuario autenticado con `RESEARCH_AUTH_SECRET`
   (HMAC-SHA256 sobre `{tenant}:{user}:{timestamp}`) y la envía en los headers
   `X-CavaAI-*`. El navegador nunca construye estos headers: solo el servidor
   Next.js los genera (server actions).
-- **Tenant**: el tenant del backend ES el `user.id` de mejor-auth
+- **Tenant**: el tenant del backend ES el `user.id` de better-auth
   (`lib/auth/research-identity.ts`, `tenantId = user.id`). FastAPI lo valida en
   `app/core/auth.py` (`get_research_principal`) y lo usa para aislar datos por
   tenant en `app/core/database.py` (queries e inserts con scope de tenant).

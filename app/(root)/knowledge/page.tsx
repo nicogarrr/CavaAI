@@ -35,6 +35,27 @@ const PRINCIPLE_STATUS_LABELS: Record<string, string> = {
   superseded: 'sustituidos',
 };
 
+/** Etiquetas en español para los estados persistidos por el backend */
+const STATUS_LABELS: Record<string, string> = {
+  queued: 'en cola',
+  running: 'en curso',
+  succeeded: 'completada',
+  failed: 'fallida',
+  pending: 'pendiente',
+  processing: 'procesando',
+  ready: 'lista',
+  proposed: 'propuesto',
+  approved: 'aprobado',
+  rejected: 'rechazado',
+  merged: 'fusionado',
+  superseded: 'sustituido',
+};
+
+function label(value: string | null | undefined): string {
+  if (!value) return '—';
+  return STATUS_LABELS[value] ?? value.replaceAll('_', ' ');
+}
+
 function statusTone(status: string) {
   if (status === 'approved' || status === 'ready') return 'border-teal-800 text-teal-300';
   if (status === 'rejected') return 'border-red-900 text-red-300';
@@ -107,7 +128,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
           <div className="font-semibold">Extracción en segundo plano en curso</div>
           <div className="mt-2 grid gap-1 text-amber-200/80">
             {activeJobs.map((job) => (
-              <div key={job.id}>Tarea #{job.id} · {documentNames.get(job.entity_id ?? -1) ?? `documento ${job.entity_id}`} · {job.status}{job.progress_total ? ` · lote ${job.progress_current}/${job.progress_total}` : ''}</div>
+              <div key={job.id}>Tarea #{job.id} · {documentNames.get(job.entity_id ?? -1) ?? `documento ${job.entity_id}`} · {label(job.status)}{job.progress_total ? ` · lote ${job.progress_current}/${job.progress_total}` : ''}</div>
             ))}
           </div>
         </section>
@@ -148,7 +169,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         {!documents.length ? <div className="py-2 text-sm text-gray-500"><p>Aún no hay documentos de conocimiento.</p><a className="mt-2 inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 hover:border-teal-600 hover:text-teal-200" href="#upload-knowledge">Sube tu primer libro, carta o caso de estudio</a></div> : null}
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="text-xs uppercase text-gray-500"><tr><th className="border-b border-gray-800 py-2">Documento</th><th className="border-b border-gray-800 py-2">Colección</th><th className="border-b border-gray-800 py-2">Tipo</th><th className="border-b border-gray-800 py-2">Parser</th><th className="border-b border-gray-800 py-2">Estado</th><th className="border-b border-gray-800 py-2 text-right">Acciones</th></tr></thead>
+            <thead className="text-xs uppercase text-gray-500"><tr><th className="border-b border-gray-800 py-2">Documento</th><th className="border-b border-gray-800 py-2">Colección</th><th className="border-b border-gray-800 py-2">Tipo</th><th className="border-b border-gray-800 py-2">Extractor</th><th className="border-b border-gray-800 py-2">Estado</th><th className="border-b border-gray-800 py-2 text-right">Acciones</th></tr></thead>
             <tbody>
               {documents.map((document) => {
                 const job = latestJobByDocument.get(document.id);
@@ -159,8 +180,8 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
                   <td className="py-3 text-gray-400">{document.collection_id ? collectionNames.get(document.collection_id) : 'Sin colección'}</td>
                   <td className="py-3 text-gray-400">{document.document_type}</td>
                   <td className="py-3 text-gray-500">{String(document.metadata.parser ?? 'desconocido')}</td>
-                  <td className="py-3"><Badge className={statusTone(document.status)} variant="outline">{document.status}</Badge></td>
-                  <td className="py-3"><div className="flex justify-end gap-2"><Button asChild size="sm" variant="outline"><Link href={`/knowledge?document=${document.id}`}>Fragmentos</Link></Button><MutationForm action={extractKnowledgePrinciples.bind(null, document.id)} successMessage="Extracción encolada"><Button disabled={busy} size="sm" type="submit"><Sparkles className="h-4 w-4" />{busy ? job?.status : 'Extraer'}</Button></MutationForm></div>{job?.status === 'failed' ? <div className="mt-1 max-w-xs text-right text-xs text-red-300">{job.error}</div> : null}</td>
+                  <td className="py-3"><Badge className={statusTone(document.status)} variant="outline">{label(document.status)}</Badge></td>
+                  <td className="py-3"><div className="flex justify-end gap-2"><Button asChild size="sm" variant="outline"><Link href={`/knowledge?document=${document.id}`}>Fragmentos</Link></Button><MutationForm action={extractKnowledgePrinciples.bind(null, document.id)} successMessage="Extracción encolada"><Button disabled={busy} size="sm" type="submit"><Sparkles className="h-4 w-4" />{busy ? label(job?.status) : 'Extraer'}</Button></MutationForm></div>{job?.status === 'failed' ? <div className="mt-1 max-w-xs text-right text-xs text-red-300">{job.error}</div> : null}</td>
                 </tr>
                 );
               })}
@@ -178,14 +199,14 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{document.collection_id ? collectionNames.get(document.collection_id) : 'Sin colección'}</Badge>
                   <Badge variant="outline">{document.document_type}</Badge>
-                  <Badge className={statusTone(document.status)} variant="outline">{document.status}</Badge>
+                  <Badge className={statusTone(document.status)} variant="outline">{label(document.status)}</Badge>
                 </div>
-                <div className="mt-2 text-xs text-gray-500">Parser: {String(document.metadata.parser ?? 'desconocido')}</div>
+                <div className="mt-2 text-xs text-gray-500">Extractor: {String(document.metadata.parser ?? 'desconocido')}</div>
                 {job?.status === 'failed' ? <div className="mt-2 text-xs text-red-300">{job.error}</div> : null}
                 <div className="mt-4 grid grid-cols-1 gap-2">
                   <Button asChild className="h-11 w-full" size="sm" variant="outline"><Link href={`/knowledge?document=${document.id}`}>Fragmentos</Link></Button>
                   <MutationForm action={extractKnowledgePrinciples.bind(null, document.id)} successMessage="Extracción encolada">
-                    <Button className="h-11 w-full" disabled={busy} size="sm" type="submit"><Sparkles className="h-4 w-4" />{busy ? job?.status : 'Extraer'}</Button>
+                    <Button className="h-11 w-full" disabled={busy} size="sm" type="submit"><Sparkles className="h-4 w-4" />{busy ? label(job?.status) : 'Extraer'}</Button>
                   </MutationForm>
                 </div>
               </article>
@@ -209,10 +230,10 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         <div className="grid gap-4 xl:grid-cols-2">
           {visiblePrinciples.map((principle) => (
             <article className="min-w-0 rounded-lg border border-gray-800 bg-black/30 p-4 break-words" key={principle.id}>
-              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={statusTone(principle.status)}>{principle.status}</Badge><Badge variant="outline">{principle.category}</Badge><span className="text-xs text-gray-500">v{principle.version} · confianza {(Number(principle.confidence) * 100).toFixed(0)}%</span></div>
+              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={statusTone(principle.status)}>{label(principle.status)}</Badge><Badge variant="outline">{principle.category}</Badge><span className="text-xs text-gray-500">v{principle.version} · confianza {(Number(principle.confidence) * 100).toFixed(0)}%</span></div>
               <h3 className="mt-3 font-semibold leading-6 text-gray-100">{principle.principle}</h3>
               <blockquote className="mt-3 border-l-2 border-teal-900 pl-3 text-sm italic leading-6 text-gray-400">{principle.exact_fragment}</blockquote>
-              <div className="mt-3 text-xs text-gray-500">{documentNames.get(principle.knowledge_document_id) ?? `Documento #${principle.knowledge_document_id}`} · page {principle.page_number ?? 'n/a'}</div>
+              <div className="mt-3 text-xs text-gray-500">{documentNames.get(principle.knowledge_document_id) ?? `Documento #${principle.knowledge_document_id}`} · página {principle.page_number ?? 's/d'}</div>
               {principle.application_conditions.length ? <p className="mt-3 text-sm text-gray-300"><span className="font-semibold text-gray-400">Aplicar cuando:</span> {principle.application_conditions.join('; ')}</p> : null}
               {principle.exceptions.length ? <p className="mt-2 text-sm text-amber-200"><span className="font-semibold">Excepciones:</span> {principle.exceptions.join('; ')}</p> : null}
               {principle.semantic_duplicate_of_id ? <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-2 text-xs text-amber-200">Posible duplicado del principio #{principle.semantic_duplicate_of_id}. Revísalo antes de aprobar.</div> : null}

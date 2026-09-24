@@ -126,7 +126,22 @@ services:
       - RESEARCH_AUTH_REQUIRED=true
       - RESEARCH_AUTH_SECRET=${RESEARCH_AUTH_SECRET:?Obligatorio}
       - FMP_API_KEY=${FMP_API_KEY:-}
+      # Solo adiciones de mapeo: sin FINNHUB no hay screener Finnhub en prod
+      # (fallback Yahoo); sin FRED no hay macro; sin TYPESAFE no hay Jev;
+      # sin TELEGRAM_* no se envia nada (degradado a UI).
       - FINNHUB_API_KEY=${FINNHUB_API_KEY:-}
+      - FRED_API_KEY=${FRED_API_KEY:-}
+      - SCREENER_QUOTE_VENDOR=${SCREENER_QUOTE_VENDOR:-finnhub}
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - TELEGRAM_APPROVAL_ENABLED=${TELEGRAM_APPROVAL_ENABLED:-false}
+      - INSIDER_ALERTS_ENABLED=${INSIDER_ALERTS_ENABLED:-false}
+      # RAG: sin =1 no hay ingesta/busqueda/chat vectorial (degradado a SQL).
+      - CAVAAI_ENABLE_VECTOR_INGEST=${CAVAAI_ENABLE_VECTOR_INGEST:-0}
+      - CAVAAI_ENABLE_VECTOR_SEARCH=${CAVAAI_ENABLE_VECTOR_SEARCH:-0}
+      - CAVAAI_ENABLE_VECTOR_CHAT=${CAVAAI_ENABLE_VECTOR_CHAT:-0}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
@@ -174,6 +189,22 @@ services:
     command: ["dramatiq", "app.workers.dramatiq_app", "--processes", "1", "--threads", "2"]
     environment:
       - PYTHONUNBUFFERED=1
+      # Solo adiciones de mapeo: el worker ejecuta los actores (refresh de
+      # mercado, feeds, alertas) y necesita las mismas claves que el backend.
+      # Sin FMP_API_KEY no hay contraste FMP en el refresh programado.
+      - FMP_API_KEY=${FMP_API_KEY:-}
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY:-}
+      - FRED_API_KEY=${FRED_API_KEY:-}
+      - SCREENER_QUOTE_VENDOR=${SCREENER_QUOTE_VENDOR:-finnhub}
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - TELEGRAM_APPROVAL_ENABLED=${TELEGRAM_APPROVAL_ENABLED:-false}
+      - INSIDER_ALERTS_ENABLED=${INSIDER_ALERTS_ENABLED:-false}
+      - CAVAAI_ENABLE_VECTOR_INGEST=${CAVAAI_ENABLE_VECTOR_INGEST:-0}
+      - CAVAAI_ENABLE_VECTOR_SEARCH=${CAVAAI_ENABLE_VECTOR_SEARCH:-0}
+      - CAVAAI_ENABLE_VECTOR_CHAT=${CAVAAI_ENABLE_VECTOR_CHAT:-0}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}

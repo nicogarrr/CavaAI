@@ -18,6 +18,7 @@ import { updateTransaction } from '@/lib/actions/portfolio.actions';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
+import { hasTransactionErrors, validateTransactionForm, type TransactionFormErrors } from './transactionValidation';
 
 type Transaction = {
     _id: string;
@@ -39,6 +40,7 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState<TransactionFormErrors>({});
 
     const [formData, setFormData] = useState({
         symbol: transaction.symbol,
@@ -52,6 +54,15 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        const errors = validateTransactionForm({
+            symbol: formData.symbol,
+            type: formData.type,
+            quantity: formData.quantity,
+            price: formData.price,
+            date: formData.date,
+        });
+        setFieldErrors(errors);
+        if (hasTransactionErrors(errors)) return;
         setLoading(true);
 
         try {
@@ -70,6 +81,8 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
             toast.success('Transacción actualizada');
             router.refresh();
         } catch (error) {
+            const digest = (error as { digest?: unknown })?.digest;
+            if (typeof digest === 'string' && digest.startsWith('NEXT_REDIRECT')) throw error;
             showErrorToast(error);
         } finally {
             setLoading(false);
@@ -104,6 +117,9 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                             required
                             className="bg-gray-800 border-gray-700 text-gray-100"
                         />
+                        {fieldErrors.symbol && (
+                            <p role="alert" className="text-sm text-red-400">{fieldErrors.symbol}</p>
+                        )}
                     </div>
 
                     <div className="space-y-2">
@@ -145,6 +161,9 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                                 required
                                 className="bg-gray-800 border-gray-700 text-gray-100"
                             />
+                            {fieldErrors.quantity && (
+                                <p role="alert" className="text-sm text-red-400">{fieldErrors.quantity}</p>
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -159,6 +178,9 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                                 required
                                 className="bg-gray-800 border-gray-700 text-gray-100"
                             />
+                            {fieldErrors.price && (
+                                <p role="alert" className="text-sm text-red-400">{fieldErrors.price}</p>
+                            )}
                         </div>
                     </div>
 
@@ -172,6 +194,9 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                             required
                             className="bg-gray-800 border-gray-700 text-gray-100"
                         />
+                        {fieldErrors.date && (
+                            <p role="alert" className="text-sm text-red-400">{fieldErrors.date}</p>
+                        )}
                     </div>
 
                     <div className="space-y-2">

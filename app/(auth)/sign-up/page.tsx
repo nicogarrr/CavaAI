@@ -40,11 +40,11 @@ const SignUp = () => {
                 return;
             }
             toast.error('No se pudo crear la cuenta', {
-                description: result.error ?? 'We could not create your account.',
+                description: result.error ?? 'No hemos podido crear tu cuenta.',
             });
         } catch (e) {
             toast.error('No se pudo crear la cuenta', {
-                description: e instanceof Error ? e.message : 'An unexpected error occurred. Please try again.'
+                description: e instanceof Error ? e.message : 'Ha ocurrido un error inesperado. Inténtalo de nuevo.'
             })
         }
     }
@@ -60,7 +60,7 @@ const SignUp = () => {
                     placeholder="Introduce tu nombre completo"
                     register={register}
                     error={errors.fullName}
-                    validation={{ required: 'El nombre es obligatorio', minLength: 2 }}
+                    validation={{ required: 'El nombre es obligatorio', minLength: { value: 2, message: 'El nombre debe tener al menos 2 caracteres' } }}
                 />
 
                 <InputField
@@ -86,7 +86,7 @@ const SignUp = () => {
                     autoComplete="new-password"
                     register={register}
                     error={errors.password}
-                    validation={{ required: 'La contraseña es obligatoria', minLength: 8 }}
+                    validation={{ required: 'La contraseña es obligatoria', minLength: { value: 8, message: 'La contraseña debe tener al menos 8 caracteres' } }}
                 />
 
                 <CountrySelectField
@@ -128,7 +128,7 @@ const SignUp = () => {
                 />
 
                 <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
-                    {isSubmitting ? 'Creando cuenta' : 'Empieza tu viaje inversor'}
+                    {isSubmitting ? 'Creando cuenta…' : 'Empieza tu viaje inversor'}
                 </Button>
 
                 <FooterLink text="¿Ya tienes cuenta?" linkText="Iniciar sesión" href="/sign-in" />

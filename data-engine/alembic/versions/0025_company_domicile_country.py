@@ -21,5 +21,8 @@ def upgrade() -> None:
     )
 
 
+# ADVERTENCIA DOWNGRADE DESTRUCTIVO: drop_column pierde los valores de
+# domicile_country. Re-subir recrea la columna vacia (NULL): el
+# backfill nunca se recupera solo.
 def downgrade() -> None:
     op.drop_column("companies", "domicile_country")

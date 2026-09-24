@@ -4,11 +4,17 @@ import { formatMoney } from '@/lib/format';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import dynamic from 'next/dynamic';
 import PortfolioSummary from '@/components/portfolio/PortfolioSummary';
 import PortfolioHoldings from '@/components/portfolio/PortfolioHoldings';
 import PortfolioTransactions from '@/components/portfolio/PortfolioTransactions';
 import PortfolioAllocation from '@/components/portfolio/PortfolioAllocation';
+const PortfolioNavChart = dynamic(() => import('./PortfolioNavChart'), {
+    ssr: false,
+    loading: () => (
+        <div className="h-full w-full animate-pulse rounded-lg border border-gray-800 bg-gray-900/40" aria-label="Cargando gráfico" role="status" />
+    ),
+});
 import PortfolioScores from '@/components/portfolio/PortfolioScores';
 import PortfolioTearsheet from '@/components/portfolio/PortfolioTearsheet';
 import { PortfolioRiskSimulator } from '@/components/portfolio/PortfolioRiskSimulator';
@@ -178,52 +184,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                                         El historial aparecerá cuando existan snapshots reales de la cartera.
                                     </div>
                                 ) : (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-                                        <defs>
-                                            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                                <stop
-                                                    offset="5%"
-                                                    stopColor={summary.totalGain >= 0 ? '#14b8a6' : '#ef4444'}
-                                                    stopOpacity={0.3}
-                                                />
-                                                <stop
-                                                    offset="95%"
-                                                    stopColor={summary.totalGain >= 0 ? '#14b8a6' : '#ef4444'}
-                                                    stopOpacity={0}
-                                                />
-                                            </linearGradient>
-                                        </defs>
-                                        <XAxis
-                                            dataKey="date"
-                                            axisLine={false}
-                                            tickLine={false}
-                                            tick={{ fill: '#6b7280', fontSize: 10 }}
-                                            interval="preserveStartEnd"
-                                        />
-                                        <YAxis
-                                            hide
-                                            domain={['dataMin - 50', 'dataMax + 50']}
-                                        />
-                                        <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: '#1f2937',
-                                                border: '1px solid #374151',
-                                                borderRadius: '8px',
-                                            }}
-                                            labelStyle={{ color: '#9ca3af' }}
-                                            formatter={(value: number) => [`$${value.toFixed(2)}`, 'Valor']}
-                                        />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="value"
-                                            stroke={summary.totalGain >= 0 ? '#14b8a6' : '#ef4444'}
-                                            strokeWidth={2}
-                                            fillOpacity={1}
-                                            fill="url(#colorValue)"
-                                        />
-                                    </AreaChart>
-                                </ResponsiveContainer>
+                                <PortfolioNavChart data={chartData} positive={summary.totalGain >= 0} />
                                 )}
                             </div>
                         </div>

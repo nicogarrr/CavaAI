@@ -46,11 +46,12 @@ export default function Sidebar() {
                 onClick={toggle}
                 title={collapsed ? 'Expandir menú' : 'Plegar menú'}
                 aria-label={collapsed ? 'Expandir menú' : 'Plegar menú'}
-                className="m-2 flex h-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-800 hover:text-teal-300"
+                aria-expanded={!collapsed}
+                className="m-2 flex h-9 items-center justify-center rounded-lg text-gray-300 hover:bg-gray-800 hover:text-teal-300"
             >
                 {collapsed ? <ChevronsRight className="h-5 w-5" /> : <ChevronsLeft className="h-5 w-5" />}
             </button>
-            <nav className="flex-1 overflow-y-auto px-2 pb-4">
+            <nav className="flex-1 overflow-y-auto px-2 pb-4" aria-label="Navegación principal">
                 <ul className="flex flex-col gap-1">
                     {NAV_SECTIONS.map((section, sectionIndex) => (
                         <li key={section.title}>
@@ -58,7 +59,7 @@ export default function Sidebar() {
                                 collapsed ? (
                                     <div className="mx-2 my-2 border-t border-gray-700/50" aria-hidden="true" />
                                 ) : (
-                                    <p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                                    <p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
                                         {section.title}
                                     </p>
                                 )
@@ -70,10 +71,11 @@ export default function Sidebar() {
                                             href={href}
                                             prefetch
                                             title={collapsed ? label : undefined}
+                                            aria-current={isActive(href) ? 'page' : undefined}
                                             className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-800 hover:text-teal-300 ${
                                                 isActive(href)
                                                     ? 'bg-gray-800 text-gray-100 border-l-2 border-teal-400'
-                                                    : 'text-gray-400 border-l-2 border-transparent'
+                                                    : 'text-gray-300 border-l-2 border-transparent'
                                             } ${collapsed ? 'justify-center' : ''}`}
                                         >
                                             {Icon && <Icon className="h-4 w-4 shrink-0" />}

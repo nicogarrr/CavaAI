@@ -8,7 +8,7 @@ export const OnlineBanner = () => {
 
     return (
         <div role="status" aria-live="polite" className="w-full bg-yellow-100 text-yellow-800 text-sm py-2 px-4 text-center">
-            You are offline. Some data may be outdated until the connection is restored.
+            Sin conexión. Algunos datos pueden estar desactualizados hasta que se recupere la conexión.
         </div>
     );
 };

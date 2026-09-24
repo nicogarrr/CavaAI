@@ -41,11 +41,11 @@ const SignIn = () => {
                 return;
             }
             toast.error('No se pudo iniciar sesión', {
-                description: result.error ?? 'Invalid email or password.',
+                description: result.error ?? 'Email o contraseña no válidos.',
             });
         } catch (e) {
             toast.error('No se pudo iniciar sesión', {
-                description: e instanceof Error ? e.message : 'An unexpected error occurred. Please try again.'
+                description: e instanceof Error ? e.message : 'Ha ocurrido un error inesperado. Inténtalo de nuevo.'
             })
         }
     }
@@ -102,7 +102,7 @@ const SignIn = () => {
                                     />
 
                     <Button type="submit" disabled={isVerifying} className="yellow-btn w-full mt-5">
-                        {isVerifying ? 'Verificando' : 'Verificar y entrar'}
+                        {isVerifying ? 'Verificando…' : 'Verificar y entrar'}
                     </Button>
 
                     <button
@@ -147,11 +147,11 @@ const SignIn = () => {
                     type="password"
                     register={register}
                     error={errors.password}
-                    validation={{ required: 'La contraseña es obligatoria', minLength: 8 }}
+                    validation={{ required: 'La contraseña es obligatoria', minLength: { value: 8, message: 'La contraseña debe tener al menos 8 caracteres' } }}
                 />
 
                 <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
-                    {isSubmitting ? 'Entrando' : 'Iniciar sesión'}
+                    {isSubmitting ? 'Iniciando sesión…' : 'Iniciar sesión'}
                 </Button>
 
                 <FooterLink text="¿No tienes cuenta?" linkText="Crear cuenta" href="/sign-up" />

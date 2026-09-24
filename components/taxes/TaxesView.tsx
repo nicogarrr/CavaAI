@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Download, FileText, Receipt, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -59,12 +60,30 @@ function downloadTaxSummary(holdings: DataRecord[], report: DataRecord | null, y
 }
 
 export default function TaxesView({ initialHoldings, initialReport, year }: TaxesViewProps) {
+    const router = useRouter();
     const [regenerating, setRegenerating] = useState(false);
+    const [report, setReport] = useState<DataRecord | null>(initialReport);
+    const [reportKey, setReportKey] = useState(0);
+
+    const handleYearChange = (next: string) => {
+        const parsed = Number.parseInt(next, 10);
+        if (!Number.isInteger(parsed)) return;
+        router.push(`/taxes?year=${parsed}`);
+    };
 
     const handleRegenerate = async () => {
         setRegenerating(true);
         try {
             await regenerateTaxReport(year);
+            // Recarga el reporte recien regenerado (POST regenerate) para que
+            // la vista muestre los datos nuevos sin recarga manual.
+            const fresh = (await getTaxReport(year).catch(() => null)) as DataRecord | null;
+            if (fresh) {
+                setReport(fresh);
+                setReportKey((key) => key + 1);
+            } else {
+                router.refresh();
+            }
             toast.success(`Reporte fiscal ${year} regenerado`);
         } catch (error) {
             showErrorToast(error, { onRetry: handleRegenerate });
@@ -73,13 +92,34 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
         }
     };
 
+    const currentYear = new Date().getFullYear();
+    const yearOptions = Array.from({ length: 6 }, (_, index) => currentYear - index);
+
     return (
         <div className="grid gap-6">
+            <div className="flex flex-wrap items-center gap-3">
+                <label htmlFor="tax-year" className="text-sm text-gray-400">
+                    Ejercicio
+                </label>
+                <select
+                    id="tax-year"
+                    value={year}
+                    onChange={(event) => handleYearChange(event.target.value)}
+                    className="h-9 rounded-md border border-gray-800 bg-black px-3 text-sm text-gray-200"
+                >
+                    {yearOptions.map((option) => (
+                        <option key={option} value={option}>
+                            {option}
+                        </option>
+                    ))}
+                </select>
+            </div>
             <RecordDetail
+                key={reportKey}
                 title={`Reporte Fiscal ${year}`}
                 description="Resumen de impuestos del ejercicio anual"
                 icon={<FileText className="h-5 w-5 text-teal-400" />}
-                record={initialReport}
+                record={report}
                 fetchRecord={() => getTaxReport(year)}
                 emptyMessage="Sin reporte fiscal disponible para este año. Pulsa «Regenerar» para generarlo."
                 actions={

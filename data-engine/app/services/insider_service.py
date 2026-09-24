@@ -13,6 +13,7 @@ envuelto en try/except -> devuelve {"status": "skipped", ...}).
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, date, datetime
 from typing import Any, Callable
 
@@ -23,6 +24,64 @@ from app.services.provenance import Coverage, SourceKind, provenance
 CLUSTER_MIN_INSIDERS = 3
 CLUSTER_WINDOW_DAYS = 30
 BIG_BUY_THRESHOLD_USD = 1_000_000.0
+
+#: Timeout por fetch de filing XML (segundos). El conector usa 30 fijos;
+#: aquí creamos cliente propio acotado cuando el llamante no inyecta uno.
+FILING_FETCH_TIMEOUT_SECONDS = 15.0
+#: TTL del XML por accession (los filings SEC son inmutables; la caché solo
+#: evita re-descargas en re-evaluaciones).
+FILING_XML_CACHE_TTL_SECONDS = 3600
+
+_xml_cache: dict[str, tuple[float, str]] = {}
+_xml_cache_fetched_at: dict[str, str] = {}
+
+
+def _cached_filing_xml(filing: dict, client=None) -> tuple[str, str | None]:
+    """XML del filing con caché TTL por accession + timeout acotado.
+
+    Devuelve ``(xml, cached_fetched_at)``. ``cached_fetched_at`` es None en
+    descarga fresca. Nunca lanza por la caché: ante cualquier duda se
+    descarga de nuevo.
+    """
+    accession = str(filing.get("accession_number") or filing.get("document_url") or "")
+    now = time.time()
+    try:
+        expires, xml_text = _xml_cache.get(accession, (0.0, ""))
+        if xml_text and expires > now:
+            return xml_text, _xml_cache_fetched_at.get(accession)
+    except Exception:  # noqa: BLE001 — la caché nunca rompe el fetch
+        pass
+    owned_client = None
+    try:
+        if client is None:
+            import httpx as _httpx
+
+            owned_client = _httpx.Client(
+                timeout=FILING_FETCH_TIMEOUT_SECONDS,
+                headers=form4_connector.default_headers(),
+            )
+            xml_text = form4_connector.fetch_filing_xml(
+                filing["document_url"], client=owned_client
+            )
+        else:
+            xml_text = form4_connector.fetch_filing_xml(
+                filing["document_url"], client=client
+            )
+    finally:
+        if owned_client is not None:
+            owned_client.close()
+    try:
+        _xml_cache[accession] = (now + FILING_XML_CACHE_TTL_SECONDS, xml_text)
+        _xml_cache_fetched_at[accession] = datetime.now(UTC).isoformat()
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+    return xml_text, None
+
+
+def clear_filing_xml_cache() -> None:
+    """Helper de tests: vacía la caché de filings."""
+    _xml_cache.clear()
+    _xml_cache_fetched_at.clear()
 
 _CEO_TOKENS = ("chief executive", "ceo", "president")
 _CFO_TOKENS = ("chief financial", "cfo")
@@ -202,9 +261,7 @@ def get_signals_for_ticker(
                 if fetcher is not None:
                     xml_text = fetcher(filing)
                 else:
-                    xml_text = form4_connector.fetch_filing_xml(
-                        filing["document_url"], client=client
-                    )
+                    xml_text, _cached_at = _cached_filing_xml(filing, client=client)
                 parsed = form4_connector.parse_form4_xml(xml_text)
                 if db is not None:
                     # Persistencia durable idempotente (PR-2). Nunca rompe la lectura.
@@ -230,6 +287,7 @@ def get_signals_for_ticker(
             except Exception as exc:  # noqa: BLE001 — best-effort por filing
                 errors.append(f"{filing.get('accession_number')}: {type(exc).__name__}")
         signals = detect_signals(transactions)
+        parse_error_count = len(errors)
         result: dict = {
             "ticker": wanted,
             "cik": resolved_cik,
@@ -237,13 +295,18 @@ def get_signals_for_ticker(
             "filings_scanned": len(filings[:limit]),
             "buy_count": len(open_market_buys(transactions)),
             "signals": signals,
+            "parse_error_count": parse_error_count,
             "fetched_at": datetime.now(UTC).isoformat(),
             "provenance": provenance(
                 "SEC EDGAR",
                 SourceKind.OFFICIAL,
                 source_url=f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={resolved_cik}&type=4",
                 coverage=Coverage.PARTIAL if errors else Coverage.OK,
-                note="Form 4 XML; codigo P = mercado abierto o privado.",
+                note=(
+                    "Form 4 XML; codigo P = mercado abierto o privado. "
+                    f"{parse_error_count} filing(s) con error de red/parse de "
+                    f"{len(filings[:limit])} escaneados."
+                ),
             ),
         }
         if errors:

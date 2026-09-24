@@ -37,3 +37,57 @@ export async function getThesisJobStatus(runId: number): Promise<ThesisJobStatus
     await requireAuthenticatedUser();
     return researchRequest<ThesisJobStatus>(`/api/thesis/jobs/${runId}`);
 }
+
+export interface ThesisDebateResult {
+    ticker: string;
+    thesis_version_id?: number;
+    persisted?: boolean;
+    bull_case: string;
+    bear_case: string;
+    verdict: 'bullish' | 'bearish' | 'neutral' | string;
+    verdict_rationale: string;
+    llm_calls: number;
+    degraded: boolean;
+    model: string | null;
+}
+
+/** POST /api/thesis/{ticker}/debate — debate bull/bear (degrada a determinista). */
+export async function runThesisDebate(ticker: string): Promise<ThesisDebateResult> {
+    await requireAuthenticatedUser();
+    const clean = ticker.trim().toUpperCase();
+    if (!/^[A-Z0-9.\-]{1,20}$/.test(clean)) throw new Error('Ticker no válido');
+    return researchRequest<ThesisDebateResult>(`/api/thesis/${encodeURIComponent(clean)}/debate`, {
+        method: 'POST',
+    });
+}
+
+export interface ThesisApproval {
+    ticker: string;
+    thesis_version_id: number;
+    version: number;
+    status: string;
+    decision: 'approved' | 'rejected';
+    actor: string;
+    approved_at: string;
+    telegram_auto_approval: string;
+}
+
+/**
+ * POST /api/thesis/{ticker}/approve — aprobacion manual de la ultima tesis.
+ * La aprobacion automatica por Telegram queda como futura (el endpoint lo
+ * declara en `telegram_auto_approval: "future"`).
+ */
+export async function approveThesis(
+    ticker: string,
+    decision: 'approved' | 'rejected',
+    actor = 'user',
+): Promise<ThesisApproval> {
+    await requireAuthenticatedUser();
+    const clean = ticker.trim().toUpperCase();
+    if (!/^[A-Z0-9.\-]{1,20}$/.test(clean)) throw new Error('Ticker no válido');
+    if (decision !== 'approved' && decision !== 'rejected') throw new Error('Decisión no válida');
+    return researchRequest<ThesisApproval>(`/api/thesis/${encodeURIComponent(clean)}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, actor: actor.slice(0, 160) || 'user' }),
+    });
+}

@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/select"
 
 const SelectField = ({name, label, placeholder, options, control, error, required = false}: SelectFieldProps) => {
+    const errorId = `${name}-error`;
+
     return (
         <div className="space-y-2">
             <Label htmlFor={name}>{label}</Label>
@@ -18,11 +20,16 @@ const SelectField = ({name, label, placeholder, options, control, error, require
                 name={name}
                 control={control}
                 rules={{
-                    required: required ? `Please select ${label.toLowerCase()}`:false,
+                    required: required ? `Por favor, selecciona ${label.toLowerCase()}` : false,
                 }}
                 render={({field}) => (
                     <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger className="select-trigger">
+                        <SelectTrigger
+                            id={name}
+                            aria-invalid={!!error}
+                            aria-describedby={error ? errorId : undefined}
+                            className="select-trigger"
+                        >
                             <SelectValue placeholder={placeholder} />
                         </SelectTrigger>
                         <SelectContent className="bg-gray-800 border-gray-600 text-white">
@@ -32,10 +39,12 @@ const SelectField = ({name, label, placeholder, options, control, error, require
                                 </SelectItem>
                             ))}
                         </SelectContent>
-                        {error && <p className="text-red-600">{error.message}</p>}
                     </Select>
                 )}
             />
+            {error
+                ? <p id={errorId} role="alert" className="text-sm text-red-500">{error.message}</p>
+                : null}
         </div>
     )
 }

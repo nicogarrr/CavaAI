@@ -37,6 +37,20 @@ EXPENSIVE_PATH_MARKERS = (
 
 EXEMPT_PATHS = {"/", "/health", "/health/live", "/health/ready"}
 
+
+def is_exempt_path(path: str) -> bool:
+    """Health/readiness probes are never rate limited.
+
+    Exact matches plus any ``/health*`` prefix, with or without the
+    ``/api`` mount prefix (``/api/health``, ``/api/health/live``, ...).
+    """
+    if path in EXEMPT_PATHS:
+        return True
+    if path == "/api/health" or path.startswith("/api/health/"):
+        return True
+    stripped = path[len("/api") :] if path.startswith("/api/") else path
+    return stripped == "/health" or stripped.startswith("/health/")
+
 _local_hits: dict[str, deque[float]] = {}
 _local_lock = asyncio.Lock()
 
@@ -131,7 +145,7 @@ async def enforce_rate_limit(
     settings = get_settings()
     if (
         not settings.rate_limit_enabled
-        or request.url.path in EXEMPT_PATHS
+        or is_exempt_path(request.url.path)
         or request.method == "OPTIONS"
     ):
         return

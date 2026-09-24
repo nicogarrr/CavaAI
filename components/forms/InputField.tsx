@@ -12,7 +12,9 @@ const InputField = ({name, label, placeholder, type ="text", register, error, va
         if (name.toLowerCase().includes('name')) return 'name';
         return undefined;
     };
-    
+
+    const errorId = `${name}-error`;
+
     return (
         <div className="space-y-2">
             <Label htmlFor={name} className="form-label">
@@ -25,10 +27,12 @@ const InputField = ({name, label, placeholder, type ="text", register, error, va
                 disabled={disabled}
                 value={value}
                 autoComplete={getAutoComplete()}
+                aria-invalid={!!error}
+                aria-describedby={error ? errorId : undefined}
                 className={cn('form-input', {'opacity-50 cursor-not-allowed': disabled})}
                 {...register(name, validation)}
             />
-            {error && <p className="text-red-500">{error.message}</p>}
+            {error && <p id={errorId} role="alert" className="text-sm text-red-500">{error.message}</p>}
         </div>
     )
 }

@@ -32,6 +32,21 @@ from app.services.tax_report_service import TaxReportService
 router = APIRouter()
 
 
+def _num(value) -> float | None:
+    """None se queda None (nunca 0): un nulo es 'sin dato', no cero."""
+    return float(value) if value is not None else None
+
+
+def _csv_cell(value: object) -> object:
+    """Escape anti formula-injection: celdas de texto que empiezan por
+    ``= + - @ | %`` llevan prefijo ``'`` (convención Excel/Sheets)."""
+    if not isinstance(value, str):
+        return value
+    if value[:1] in {"=", "+", "-", "@", "|", "%"}:
+        return "'" + value
+    return value
+
+
 @router.get("/{year}")
 def export_year(
     year: int,
@@ -74,11 +89,12 @@ def export_year(
             "quantity": float(p.quantity),
             "average_cost": float(p.average_cost),
             "market_price": float(p.market_price),
-            "market_value_base": float(p.market_value_base or 0),
-            "cost_basis_base": float(p.cost_basis_base or 0),
-            "unrealized_pnl_base": float(p.unrealized_pnl_base or 0),
+            "market_value_base": _num(p.market_value_base),
+            "cost_basis_base": _num(p.cost_basis_base),
+            "unrealized_pnl_base": _num(p.unrealized_pnl_base),
             "currency": p.currency,
-            "as_of": p.as_of.isoformat(),
+            # as_of opcional: None es 'sin fecha', nunca cadena vacía ni crash.
+            "as_of": p.as_of.isoformat() if p.as_of else None,
         }
         for p, company in positions
     ]
@@ -117,6 +133,7 @@ def export_year(
     ]
 
     tax = None
+    tax_error = None
     tax_report = db.scalar(
         select(TaxReport).where(TaxReport.fiscal_year == year)
     )
@@ -130,8 +147,11 @@ def export_year(
     else:
         try:
             tax = TaxReportService().compute_report(db, year)
-        except Exception:
-            tax = None
+        except Exception as exc:
+            # El error fiscal se propaga en el payload (nunca None
+            # silencioso): el consumidor sabe que el bloque tax falta.
+            tax_error = f"{type(exc).__name__}: tax computation unavailable"
+            tax = {"status": "unavailable", "error": tax_error}
 
     fx = PortfolioFXService()
     payload = {
@@ -160,14 +180,14 @@ def export_year(
     writer.writerow(["type", "date", "ticker", "value1", "value2", "value3", "value4", "value5"])
     for row in tx_rows:
         writer.writerow(
-            ["transaction", row["date"], row["ticker"], row["action"], row["quantity"], row["price"], row["currency"], row["fees"]]
+            [_csv_cell(cell) for cell in ["transaction", row["date"], row["ticker"], row["action"], row["quantity"], row["price"], row["currency"], row["fees"]]]
         )
     for row in position_rows:
         writer.writerow(
-            ["position", row["as_of"], row["ticker"], row["quantity"], row["average_cost"], row["market_value_base"], row["currency"], row["unrealized_pnl_base"]]
+            [_csv_cell(cell) for cell in ["position", row["as_of"], row["ticker"], row["quantity"], row["average_cost"], row["market_value_base"], row["currency"], row["unrealized_pnl_base"]]]
         )
     for row in contributions:
-        writer.writerow(["contribution", row["date"], "", row["amount"], row["currency"], row["note"], "", ""])
+        writer.writerow([_csv_cell(cell) for cell in ["contribution", row["date"], "", row["amount"], row["currency"], row["note"], "", ""]])
     output.seek(0)
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode("utf-8-sig")),

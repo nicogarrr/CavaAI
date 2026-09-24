@@ -11,11 +11,15 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
-import type { InsiderSignalsResult } from '@/lib/actions/insider.actions';
+import type { InsiderFilingsResult, InsiderSignalsResult } from '@/lib/actions/insider.actions';
+import { getInsiderSignals } from '@/lib/actions/insider.actions';
+import { toast } from 'sonner';
 
 interface InsiderSignalsViewProps {
     initialTicker: string;
     initialResult: InsiderSignalsResult | null;
+    /** Filings Form 4/4-A persistidos (GET /api/insider/filings). */
+    initialFilings?: InsiderFilingsResult | null;
 }
 
 function signalTone(signal: unknown): 'default' | 'outline' {
@@ -46,15 +50,38 @@ function formatFetchedAt(value: unknown): string {
     return d.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-export default function InsiderSignalsView({ initialTicker, initialResult }: InsiderSignalsViewProps) {
+export default function InsiderSignalsView({ initialTicker, initialResult, initialFilings }: InsiderSignalsViewProps) {
     const router = useRouter();
     const [ticker, setTicker] = useState(initialTicker);
+    const [notify, setNotify] = useState(false);
+    const [notifying, setNotifying] = useState(false);
 
     const handleSearch = (event: React.FormEvent) => {
         event.preventDefault();
         const clean = ticker.trim().toUpperCase();
         if (!clean) return;
         router.push(`/insider?ticker=${encodeURIComponent(clean)}`);
+    };
+
+    /** Toggle notify: re-evalua con notify=true (enganche Telegram best-effort). */
+    const handleNotifyToggle = async (checked: boolean) => {
+        setNotify(checked);
+        if (!checked || !initialTicker) return;
+        setNotifying(true);
+        try {
+            const result = await getInsiderSignals(initialTicker, { notify: true });
+            const notification = result.notification as { status?: string } | undefined;
+            toast.success(
+                notification?.status === 'delivered'
+                    ? `Aviso insider enviado para ${initialTicker}`
+                    : `Evaluado ${initialTicker}: sin aviso Telegram (${notification?.status ?? 'omitido'})`,
+            );
+        } catch {
+            toast.error(`No se pudo evaluar el aviso para ${initialTicker}`);
+            setNotify(false);
+        } finally {
+            setNotifying(false);
+        }
     };
 
     const signals: DataRecord[] = Array.isArray(initialResult?.signals)
@@ -93,6 +120,32 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                     </form>
                 </CardContent>
             </Card>
+
+            {/* Estado del monitor + filings persistidos (GET /api/insider/filings) */}
+            {initialTicker ? (
+                <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                        variant={initialFilings && initialFilings.status === 'ok' ? 'default' : 'outline'}
+                    >
+                        Monitor cada 15 min · {initialFilings?.count ?? 0} filings persistidos
+                    </Badge>
+                    {initialFilings && initialFilings.status !== 'ok' ? (
+                        <span className="text-xs text-amber-300">
+                            lectura durable no disponible ({formatRecordValue(initialFilings.reason ?? initialFilings.status)})
+                        </span>
+                    ) : null}
+                    <label className="ml-auto inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
+                        <input
+                            type="checkbox"
+                            checked={notify}
+                            disabled={notifying || !initialResult}
+                            onChange={(event) => handleNotifyToggle(event.target.checked)}
+                            className="h-4 w-4 accent-teal-600"
+                        />
+                        {notifying ? 'Evaluando aviso…' : 'Avisarme por Telegram'}
+                    </label>
+                </div>
+            ) : null}
 
             {!initialTicker ? (
                 <p className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
@@ -233,6 +286,47 @@ export default function InsiderSignalsView({ initialTicker, initialResult }: Ins
                     </CardContent>
                 </Card>
             )}
+            {initialTicker && initialFilings && initialFilings.status === 'ok' && initialFilings.filings.length > 0 ? (
+                <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
+                    <CardHeader className="border-b border-gray-700/50 pb-4">
+                        <CardTitle className="text-lg font-semibold text-gray-100">
+                            Filings persistidos · {initialFilings.count}
+                        </CardTitle>
+                        <CardDescription className="mt-0.5 text-sm text-gray-500">
+                            Lectura durable (Form 4/4-A inmutables; las enmiendas son filas propias)
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-4">
+                        <ul className="space-y-2">
+                            {initialFilings.filings.slice(0, 10).map((filing) => (
+                                <li
+                                    key={filing.accession_number}
+                                    className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+                                >
+                                    <Badge variant="outline">{filing.form}</Badge>
+                                    {filing.is_amendment ? <Badge>Enmienda</Badge> : null}
+                                    <span className="font-mono text-gray-300">
+                                        {formatRecordValue(filing.filing_date)}
+                                    </span>
+                                    <span className="text-gray-500">
+                                        {filing.transaction_count} operaciones
+                                    </span>
+                                    {secLink(filing.source_url) ? (
+                                        <a
+                                            href={secLink(filing.source_url)!}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-xs text-teal-300 hover:text-teal-200 hover:underline"
+                                        >
+                                            Ver filing SEC <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                    ) : null}
+                                </li>
+                            ))}
+                        </ul>
+                    </CardContent>
+                </Card>
+            ) : null}
         </div>
     );
 }

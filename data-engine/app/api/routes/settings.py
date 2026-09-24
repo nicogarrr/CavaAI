@@ -1,3 +1,5 @@
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,14 @@ from app.services.budget import BudgetController
 from app.services.llm_router import route_table
 
 router = APIRouter()
+
+
+def maf_version() -> str:
+    """Versión MAF real desde metadata del paquete (nunca hardcodeada)."""
+    try:
+        return f"agent-framework-core=={_pkg_version('agent-framework-core')}"
+    except PackageNotFoundError:
+        return "agent-framework-core==unknown"
 
 
 @router.get("")
@@ -24,7 +34,7 @@ def settings(db: Session = Depends(get_db)) -> dict:
         llm_status["reason"] = getattr(provider, "reason", "disabled")
     return {
         "app_env": app_settings.app_env,
-        "maf_version": "agent-framework-core==1.10.0",
+        "maf_version": maf_version(),
         "budget": BudgetController().current_usage(db),
         "routes": route_table(),
         "llm": llm_status,
@@ -34,6 +44,8 @@ def settings(db: Session = Depends(get_db)) -> dict:
             "fred": bool(app_settings.fred_api_key),
             "manual_transcript_import": "available",
             "langfuse": app_settings.langfuse_enabled,
-            "qdrant_url": app_settings.qdrant_url,
+            # Booleano de presencia: la URL (posible secreto de red) jamás
+            # sale por la API.
+            "qdrant_url": bool(app_settings.qdrant_url),
         },
     }
