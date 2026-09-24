@@ -183,14 +183,17 @@ def market_movers(
     for company_id, last in latest.items():
         prev = previous.get(company_id)
         base = float(prev["price"]) if prev else 0.0
-        change_pct = ((last["price"] - base) / base * 100) if base else 0.0
-        movers.append({**last, "change_pct": round(change_pct, 2)})
+        # Sin cierre anterior no hay cambio medible: None (la UI muestra "—"),
+        # nunca un 0.0% que aparenta un dato que no existe.
+        change_pct = round((last["price"] - base) / base * 100, 2) if base else None
+        movers.append({**last, "change_pct": change_pct})
     as_of = max(
         (entry["date"] for entry in latest.values() if entry["date"]),
         default=None,
     )
-    gainers = sorted(movers, key=lambda m: m["change_pct"], reverse=True)[:limit]
-    losers = sorted(movers, key=lambda m: m["change_pct"])[:limit]
+    with_change = [m for m in movers if m["change_pct"] is not None]
+    gainers = sorted(with_change, key=lambda m: m["change_pct"], reverse=True)[:limit]
+    losers = sorted(with_change, key=lambda m: m["change_pct"])[:limit]
     most_active = sorted(movers, key=lambda m: m["volume"], reverse=True)[:limit]
     return {
         "as_of": as_of,

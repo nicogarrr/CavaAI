@@ -2142,12 +2142,12 @@ export interface paths {
         };
         /**
          * Real Time Screener
-         * @description Screener real: precios del día + market cap reales (Finnhub free).
+         * @description Screener real con cache por parámetros y stale-while-revalidate.
          *
-         *     marketCapMoreThan: mínimo de market cap en USD (real de Finnhub).
-         *     sector: filtro case-insensitive sobre el sector (BD/Finnhub).
-         *     Vendor de quotes/profile (Finnhub ↔ Yahoo) configurable vía
-         *     SCREENER_QUOTE_VENDOR; default Finnhub.
+         *     Nunca espera un refresh de red cuando existe LKG: devuelve la respuesta al
+         *     instante y actualiza en segundo plano. En cold start espera como máximo
+         *     50 ms para un primer resultado útil; después devuelve LKG al instante y
+         *     deja el trabajo largo en background.
          */
         get: operations["real_time_screener_api_screeners_real_get"];
         put?: never;
@@ -2990,7 +2990,11 @@ export interface paths {
         };
         /**
          * Health Ready
-         * @description Readiness — verifies critical dependencies when configured.
+         * @description Readiness concurrente: la BD es la única dependencia hard-required local.
+         *
+         *     Redis, Qdrant y MinIO se sondean simultáneamente, con un timeout de un
+         *     segundo. Una dependencia caída se informa en la respuesta, pero no mantiene
+         *     bloqueada la ruta ni convierte un backend SQLite sano en 503.
          */
         get: operations["health_ready_health_ready_get"];
         put?: never;

@@ -227,7 +227,10 @@ export function RecordDetail({
         if (!fetchRecord) return;
         try {
             const result = await fetchRecord();
-            if (result !== null && typeof result === 'object' && !Array.isArray(result)) {
+            if (result === null) {
+                // null = estado vacío honesto (p.ej. plan sin configurar)
+                setData(null);
+            } else if (typeof result === 'object' && !Array.isArray(result)) {
                 setData(result as DataRecord);
             }
         } catch (error) {

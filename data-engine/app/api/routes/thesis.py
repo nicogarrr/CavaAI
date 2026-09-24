@@ -36,6 +36,10 @@ def _safe_generate_error(exc: Exception) -> HTTPException:
     real queda en el log con una referencia opaca."""
     if isinstance(exc, ValueError) and _unknown_ticker(exc):
         return HTTPException(status_code=404, detail="Company not found")
+    # Sin tesis persistida no es un error de generacion: el contrato del
+    # workspace es 404 para que el front pinte el estado vacio honesto.
+    if isinstance(exc, ValueError) and str(exc).startswith("No thesis exists"):
+        return HTTPException(status_code=404, detail="Thesis not found")
     ref = uuid4().hex[:8]
     _logger.exception("thesis generation failed (ref=%s)", ref)
     if isinstance(exc, ValueError):

@@ -182,3 +182,55 @@ export async function getRecentTriggeredAlerts(limit = 20): Promise<TriggeredAle
         createdAt: row.created_at,
     }));
 }
+
+export interface TelegramStatus {
+    enabled: boolean;
+    has_bot_token: boolean;
+    has_chat_id: boolean;
+    configured: boolean;
+}
+
+/** GET /api/alerts/telegram-status — presencia de config Telegram (sin secretos). */
+export async function getTelegramStatus(): Promise<TelegramStatus> {
+    return researchRequest<TelegramStatus>('/api/alerts/telegram-status');
+}
+
+export interface TriggeredAlertDelivery {
+    id: number;
+    title: string;
+    message: string;
+    severity: string;
+    status: string;
+    alert_type: string;
+    channels: string[];
+    deliveries: Record<string, { status: string; attempted_at?: string; error?: string | null }>;
+    createdAt: string;
+}
+
+type ResearchAlertRow = {
+    id: number;
+    title: string;
+    message: string;
+    severity: string;
+    status: string;
+    alert_type: string;
+    channels: string[];
+    metadata: { deliveries?: TriggeredAlertDelivery['deliveries'] };
+    created_at: string;
+};
+
+/** GET /api/alerts — ultimas alertas disparadas con su estado de entrega por canal. */
+export async function getRecentTriggeredAlerts(limit = 20): Promise<TriggeredAlertDelivery[]> {
+    const rows = await researchRequest<ResearchAlertRow[]>(`/api/alerts?limit=${limit}`);
+    return (rows ?? []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        message: row.message,
+        severity: row.severity,
+        status: row.status,
+        alert_type: row.alert_type,
+        channels: row.channels ?? [],
+        deliveries: row.metadata?.deliveries ?? {},
+        createdAt: row.created_at,
+    }));
+}
