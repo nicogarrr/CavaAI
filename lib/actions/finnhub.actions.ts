@@ -621,6 +621,43 @@ export async function getStockFinancialDataLight(symbol: string): Promise<{
     }
 }
 
+
+// Finnhub /search no devuelve la bolsa; el displaySymbol lleva el sufijo de
+// mercado (SAN.MC, IBE.MC, AIR.PA...). Mapa de sufijos frecuentes; si el
+// sufijo es desconocido se muestra tal cual (mas honesto que asumir 'US').
+const EXCHANGE_LABEL_BY_SUFFIX: Record<string, string> = {
+    MC: 'BME', // Bolsa de Madrid
+    L: 'LSE',
+    PA: 'Euronext Paris',
+    AS: 'Euronext Amsterdam',
+    BR: 'Euronext Brussels',
+    LS: 'Euronext Lisbon',
+    DE: 'XETRA',
+    F: 'Frankfurt',
+    MI: 'Borsa Italiana',
+    SW: 'SIX',
+    VI: 'Wiener Borse',
+    HE: 'Nasdaq Helsinki',
+    ST: 'Nasdaq Stockholm',
+    CO: 'Nasdaq Copenhagen',
+    OL: 'Oslo Bors',
+    HK: 'HKEX',
+    T: 'TSE',
+    AX: 'ASX',
+    TO: 'TSX',
+    V: 'TSXV',
+    MX: 'BMV',
+    SA: 'B3',
+};
+
+function exchangeFromDisplaySymbol(displaySymbol?: string): string | undefined {
+    if (!displaySymbol) return undefined;
+    const idx = displaySymbol.lastIndexOf('.');
+    if (idx < 0) return 'US';
+    const suffix = displaySymbol.slice(idx + 1).toUpperCase();
+    return EXCHANGE_LABEL_BY_SUFFIX[suffix] ?? suffix;
+}
+
 export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
     await requireAuthenticatedUser();
     try {
@@ -680,9 +717,10 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
             .map((r) => {
                 const upper = (r.symbol || '').toUpperCase();
                 const name = r.description || upper;
-                const exchangeFromDisplay = (r.displaySymbol as string | undefined) || undefined;
                 const exchangeFromProfile = (r as any).__exchange as string | undefined;
-                const exchange = exchangeFromDisplay || exchangeFromProfile || 'US';
+                // displaySymbol es el ticker visible (SAN.MC), NO la bolsa:
+                // solo se usa para derivar el mercado por sufijo.
+                const exchange = exchangeFromProfile || exchangeFromDisplaySymbol(r.displaySymbol as string | undefined) || 'US';
                 const type = r.type || 'Stock';
                 const item: StockWithWatchlistStatus = {
                     symbol: upper,
