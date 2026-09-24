@@ -38,7 +38,8 @@ CONCEPTS = [
     "IndefiniteLivedIntangibleAssetsExcludingGoodwill",
     "OperatingLeaseLiability", "OperatingLeaseLiabilityNoncurrent",
     "NetCashProvidedByUsedInOperatingActivities",
-    "PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsOfDividends",
+    "PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets",
+    "PaymentsOfDividends",
     "PaymentsOfDividendsCommonStock",
 ]
 
