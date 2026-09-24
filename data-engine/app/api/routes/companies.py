@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -26,6 +27,7 @@ from app.schemas import (
     FinancialFactOut,
     FinancialRefreshResponse,
 )
+from app.services.company_enrichment_service import CompanyEnrichmentService
 from app.services.connectors.fmp import FMPClient
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.services.fundamental_review_service import (
@@ -52,6 +54,8 @@ from app.services.decision_learning_service import (
 )
 from app.services.financial_terminal_service import FinancialTerminalService
 from app.services.management_credibility_service import ManagementCredibilityService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -169,6 +173,13 @@ def ensure_company(payload: CompanyEnsureRequest, db: Session = Depends(get_db))
             factor_tags=[],
         )
         db.add(company)
+        # Los callers (crear alerta, Propicks) suelen mandar solo el ticker;
+        # sin esto la ficha queda con nombre/sector "Unknown" para siempre.
+        # Enriquecemos desde Finnhub (best-effort: si falla, queda el stub).
+        try:
+            CompanyEnrichmentService().enrich(db, company)
+        except Exception:  # noqa: BLE001 - el ensure nunca debe fallar por esto
+            logger.warning("enrich fallo para %s", ticker, exc_info=True)
     else:
         if payload.name and company.name == company.ticker:
             company.name = payload.name.strip()
