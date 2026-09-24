@@ -457,10 +457,13 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                   <Badge variant="outline">{label(snapshot.latest_thesis.status)}</Badge>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-gray-300">{snapshot.latest_thesis.executive_summary}</p>
+                <div className="mt-4">
+                  <ThesisGenerateButton ticker={ticker} label="Regenerar tesis" />
+                </div>
               </>
             ) : (
-              <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera la primera tesis</EmptyLink>}>
-                Aún no se ha generado ninguna tesis.
+              <Empty action={<ThesisGenerateButton ticker={ticker} label="Genera la primera tesis" />}>
+                Aún no se ha generado ninguna tesis. Se genera en segundo plano y la página se actualiza sola al terminar.
               </Empty>
             )}
           </Panel>

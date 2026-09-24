@@ -4750,6 +4750,8 @@ export interface components {
              * @default false
              */
             force_new_version: boolean;
+            /** Request Id */
+            request_id?: string | null;
             /** Ticker */
             ticker: string;
         };

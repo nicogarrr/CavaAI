@@ -234,6 +234,10 @@ class CompanySnapshotOut(BaseModel):
 class ThesisGenerateRequest(BaseModel):
     ticker: str = Field(min_length=1, max_length=20)
     force_new_version: bool = False
+    # Id de peticion generado por el cliente en cada click: permite varias
+    # generaciones reales para el mismo ticker (sin el, la clave de
+    # idempotencia replaya el run exitoso anterior para siempre).
+    request_id: str | None = Field(default=None, min_length=8, max_length=64)
 
 
 class ThesisOut(BaseModel):

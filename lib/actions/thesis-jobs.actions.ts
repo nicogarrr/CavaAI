@@ -23,12 +23,22 @@ export interface ThesisJobStatus {
     finished_at?: string | null;
 }
 
-/** POST /api/thesis/generate-async — encola generación en segundo plano (202). */
-export async function startThesisJob(ticker: string, force = true): Promise<ThesisJobStatus> {
+/** POST /api/thesis/generate-async — encola generación en segundo plano (202).
+ *  `requestId` identifica el click del usuario: sin él el backend replaya el
+ *  último run exitoso y nunca se regeneraría. */
+export async function startThesisJob(
+    ticker: string,
+    force = true,
+    requestId?: string,
+): Promise<ThesisJobStatus> {
     await requireAuthenticatedUser();
     return researchRequest<ThesisJobStatus>('/api/thesis/generate-async', {
         method: 'POST',
-        body: JSON.stringify({ ticker: ticker.toUpperCase(), force_new_version: force }),
+        body: JSON.stringify({
+            ticker: ticker.toUpperCase(),
+            force_new_version: force,
+            ...(requestId ? { request_id: requestId } : {}),
+        }),
     });
 }
 

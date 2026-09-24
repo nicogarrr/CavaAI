@@ -18,7 +18,7 @@ const PHASE_LABELS: Record<string, string> = {
 
 const POLL_MS = 3000;
 
-export default function ThesisGenerateButton({ ticker }: { ticker: string }) {
+export default function ThesisGenerateButton({ ticker, label = 'Generar tesis' }: { ticker: string; label?: string }) {
     const router = useRouter();
     const [job, setJob] = useState<ThesisJobStatus | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -50,7 +50,7 @@ export default function ThesisGenerateButton({ ticker }: { ticker: string }) {
     const start = async () => {
         setError(null);
         try {
-            setJob(await startThesisJob(ticker));
+            setJob(await startThesisJob(ticker, true, crypto.randomUUID()));
         } catch (exc) {
             setError(exc instanceof Error ? exc.message : 'No se pudo encolar la generación');
         }
@@ -68,7 +68,7 @@ export default function ThesisGenerateButton({ ticker }: { ticker: string }) {
                     ) : (
                         <BrainCircuit className="mr-2 h-4 w-4" />
                     )}
-                    {active ? 'Generando en segundo plano…' : 'Generar tesis'}
+                    {active ? 'Generando en segundo plano…' : label}
                 </Button>
                 {active ? (
                     <span className="text-sm text-gray-400">
