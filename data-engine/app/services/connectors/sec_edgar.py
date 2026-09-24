@@ -302,3 +302,11 @@ async def get_fundamentals(
         "metrics": metrics,
         "recent_filings": await recent_filings(resolved_cik, client=client),
     }
+
+# Alias publicos para el cliente async (connectors/sec.py).
+manifest_cik = _manifest_cik
+
+
+def read_snapshot_for(url: str) -> dict[str, Any] | None:
+    """Snapshot local para una URL EDGAR, o None si no hay fichero."""
+    return _read_snapshot(_snapshot_path_for(url))
