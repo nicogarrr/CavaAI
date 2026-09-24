@@ -39,6 +39,7 @@ import {
   importResearchDocumentFile,
   importResearchDocumentUrl,
   refreshCompanyFinancials,
+  refreshCompanyFinancialsESEF,
   refreshCompanyFinancialsSEC,
   refreshCompanyResearchModel,
   type ResearchCalculatedMetric,
@@ -367,6 +368,19 @@ function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel
   );
 }
 
+
+// Sufijos de mercados regulados UE/EEE cuya fuente primaria de fundamentales
+// es ESEF (informes anuales IFRS). UK (L) queda fuera: post-Brexit no reporta
+// via ESEF. Usado para ofrecer el refresh del proveedor correcto en la ficha
+// (antes una empresa europea solo veia "Refrescar SEC", que siempre fallaba).
+const ESEF_MARKET_SUFFIXES = new Set(['MC', 'PA', 'AS', 'BR', 'LS', 'DE', 'F', 'MI', 'VI', 'HE', 'ST', 'CO', 'OL']);
+
+function isEsefIssuer(ticker: string): boolean {
+  const idx = ticker.lastIndexOf('.');
+  if (idx < 0) return false;
+  return ESEF_MARKET_SUFFIXES.has(ticker.slice(idx + 1).toUpperCase());
+}
+
 export default async function ResearchCompanyPage({ params, searchParams }: PageProps) {
   const [{ ticker: rawTicker }, query] = await Promise.all([params, searchParams]);
   const ticker = rawTicker.trim().toUpperCase();
@@ -665,8 +679,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <div className="flex flex-wrap gap-3">
-          <MutationForm action={refreshCompanyFinancials.bind(null, ticker)} successMessage="Financieros actualizados desde fuentes gratuitas (Finnhub/EDGAR/Yahoo)"><Button type="submit" variant="outline">Refrescar financieros</Button></MutationForm>
-          <MutationForm action={refreshCompanyFinancialsSEC.bind(null, ticker)} successMessage="Financieros SEC refrescados"><Button type="submit" variant="outline">Refrescar SEC</Button></MutationForm>
+          <MutationForm action={refreshCompanyFinancials.bind(null, ticker)} successMessage="Financieros actualizados (FMP)"><Button type="submit" variant="outline">Refrescar financieros (FMP)</Button></MutationForm>
+          {isEsefIssuer(ticker) ? (
+            <MutationForm action={refreshCompanyFinancialsESEF.bind(null, ticker)} successMessage="Financieros ESEF refrescados"><Button type="submit" variant="outline">Refrescar ESEF</Button></MutationForm>
+          ) : (
+            <MutationForm action={refreshCompanyFinancialsSEC.bind(null, ticker)} successMessage="Financieros SEC refrescados"><Button type="submit" variant="outline">Refrescar SEC</Button></MutationForm>
+          )}
           <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Métricas y modelo de research refrescados"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Recalcular</Button></MutationForm>
         </div>
         <Panel title="Métricas calculadas trazables"><MetricsGrid metrics={data.calculatedMetrics} ticker={ticker} /></Panel>
