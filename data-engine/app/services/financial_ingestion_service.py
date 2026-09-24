@@ -85,13 +85,23 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
 
 # IFRS (ESEF) -> metricas internas. Mismo contrato que SEC: los alias se
 # FUSIONAN por periodo (gana el primer alias que informa el periodo, NUNCA
-# se suman tags). Solo conceptos verificados en los snapshots reales 24/9.
-# Huecos honestos: total_debt (IFRS reparte borrowings current/noncurrent/
-# lease y sumarlos esta prohibido) y shares_diluted (los filings ESEF de los
-# 6 reviewed no traen WeightedAverageNumberOfShares en base scope).
+# se suman tags). Solo conceptos verificados en los snapshots reales de los
+# 6 emisores reviewed (24-25/9). Huecos honestos: total_debt (IFRS reparte
+# borrowings current/noncurrent/lease y sumarlos esta prohibido) y
+# shares_diluted (ninguno de los 6 reviewed trae WeightedAverageNumberOfShares
+# en base scope). EBITDA no es tag IFRS estandar: se deriva como
+# operating_income + D&A en _derive_esef_metrics (no aplica a bancos sin
+# beneficio operativo, p.ej. SAN).
 ESEF_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("revenue",           ["ifrs-full:Revenue", "ifrs-full:RevenueFromInterest"],                        "iso4217:EUR"),
     ("net_income",        ["ifrs-full:ProfitLoss"],                                                      "iso4217:EUR"),
+    ("operating_income",  ["ifrs-full:ProfitLossFromOperatingActivities"],                               "iso4217:EUR"),
+    ("gross_profit",      ["ifrs-full:GrossProfit"],                                                     "iso4217:EUR"),
+    ("income_before_tax", ["ifrs-full:ProfitLossBeforeTax"],                                             "iso4217:EUR"),
+    ("income_tax_expense", ["ifrs-full:IncomeTaxExpenseContinuingOperations"],                           "iso4217:EUR"),
+    ("interest_expense",  ["ifrs-full:InterestExpense", "ifrs-full:FinanceCosts"],                       "iso4217:EUR"),
+    ("depreciation_amortization", ["ifrs-full:DepreciationAndAmortisationExpense",
+                                   "ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense"],        "iso4217:EUR"),
     ("eps_diluted",       ["ifrs-full:DilutedEarningsLossPerShare", "ifrs-full:BasicEarningsLossPerShare"], "iso4217:EUR/xbrli:shares"),
     ("total_assets",      ["ifrs-full:Assets"],                                                          "iso4217:EUR"),
     ("total_liabilities", ["ifrs-full:Liabilities"],                                                     "iso4217:EUR"),
@@ -450,6 +460,9 @@ class FinancialIngestionService:
                 )
                 facts_imported += 1
 
+        db.flush()  # la sesion de ingestion usa autoflush=False: flush antes de derivar
+        facts_imported += self._derive_esef_metrics(db, company, document)
+
         document.metadata_ = {
             **(document.metadata_ or {}),
             "provider": "ESEF",
@@ -648,6 +661,135 @@ class FinancialIngestionService:
                         fiscal_quarter=None,
                         source_id=document.id,
                         source_type="SEC",
+                        is_reported=False,
+                        confidence=Decimal("0.85"),
+                    )
+                )
+                derived += 1
+        db.flush()
+        return derived
+
+    def _derive_esef_metrics(self, db: Session, company: Company, document: Document) -> int:
+        """Metricas derivadas de los hechos ESEF, mismo contrato que
+        _derive_sec_metrics: FCF = OCF + capex (capex ya negativo), margenes
+        (bruto, operativo, neto, FCF), crecimiento de revenue, tipo impositivo
+        efectivo y EBITDA = EBIT + D&A. is_reported=False: derivadas, nunca
+        presentadas como reportadas. net_debt se omite a proposito: IFRS
+        reparte borrowings current/noncurrent/lease y sumarlos esta
+        prohibido (hueco honesto documentado en ESEF_METRIC_MAP)."""
+        by_metric: dict[str, dict[int, FinancialFact]] = {}
+        for fact in db.scalars(
+            select(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.source_type == "ESEF",
+                FinancialFact.is_reported.is_(True),
+            )
+        ):
+            if fact.fiscal_year is not None:
+                by_metric.setdefault(fact.metric, {})[fact.fiscal_year] = fact
+
+        def year_fact(metric: str, year: int) -> FinancialFact | None:
+            return by_metric.get(metric, {}).get(year)
+
+        def add_ratio(metric: str, numerator: FinancialFact, denominator: FinancialFact) -> int:
+            if denominator.value is None or denominator.value <= 0:
+                return 0
+            db.add(
+                FinancialFact(
+                    company_id=company.id,
+                    metric=metric,
+                    value=numerator.value / denominator.value,
+                    unit="decimal",
+                    period=numerator.period,
+                    fiscal_year=numerator.fiscal_year,
+                    fiscal_quarter=None,
+                    source_id=document.id,
+                    source_type="ESEF",
+                    is_reported=False,
+                    confidence=Decimal("0.85"),
+                )
+            )
+            return 1
+
+        derived = 0
+        years = sorted({y for metric_facts in by_metric.values() for y in metric_facts})
+        for year in years:
+            ocf = year_fact("operating_cash_flow", year)
+            capex = year_fact("capital_expenditure", year)
+            revenue = year_fact("revenue", year)
+            net_income = year_fact("net_income", year)
+            gross_profit = year_fact("gross_profit", year)
+            operating_income = year_fact("operating_income", year)
+            income_before_tax = year_fact("income_before_tax", year)
+            income_tax_expense = year_fact("income_tax_expense", year)
+            depreciation = year_fact("depreciation_amortization", year)
+
+            fcf: FinancialFact | None = None
+            if ocf is not None and capex is not None:
+                fcf = FinancialFact(
+                    company_id=company.id,
+                    metric="free_cash_flow",
+                    value=ocf.value + capex.value,
+                    unit="EUR",
+                    period=ocf.period,
+                    fiscal_year=year,
+                    fiscal_quarter=None,
+                    source_id=document.id,
+                    source_type="ESEF",
+                    is_reported=False,
+                    confidence=Decimal("0.85"),
+                )
+                db.add(fcf)
+                derived += 1
+            if fcf is not None and revenue is not None and revenue.value > 0:
+                derived += add_ratio("fcf_margin", fcf, revenue)
+            previous_revenue = year_fact("revenue", year - 1)
+            if (
+                revenue is not None
+                and previous_revenue is not None
+                and previous_revenue.value > 0
+            ):
+                db.add(
+                    FinancialFact(
+                        company_id=company.id,
+                        metric="revenue_growth",
+                        value=(revenue.value / previous_revenue.value) - 1,
+                        unit="decimal",
+                        period=revenue.period,
+                        fiscal_year=year,
+                        fiscal_quarter=None,
+                        source_id=document.id,
+                        source_type="ESEF",
+                        is_reported=False,
+                        confidence=Decimal("0.85"),
+                    )
+                )
+                derived += 1
+            if revenue is not None and revenue.value > 0:
+                if gross_profit is not None:
+                    derived += add_ratio("gross_margin", gross_profit, revenue)
+                if operating_income is not None:
+                    derived += add_ratio("operating_margin", operating_income, revenue)
+                if net_income is not None:
+                    derived += add_ratio("net_margin", net_income, revenue)
+            if (
+                income_tax_expense is not None
+                and income_before_tax is not None
+                and income_before_tax.value > 0
+            ):
+                derived += add_ratio("effective_tax_rate", income_tax_expense, income_before_tax)
+            if operating_income is not None and depreciation is not None:
+                db.add(
+                    FinancialFact(
+                        company_id=company.id,
+                        metric="ebitda",
+                        value=operating_income.value + depreciation.value,
+                        unit="EUR",
+                        period=operating_income.period,
+                        fiscal_year=year,
+                        fiscal_quarter=None,
+                        source_id=document.id,
+                        source_type="ESEF",
                         is_reported=False,
                         confidence=Decimal("0.85"),
                     )

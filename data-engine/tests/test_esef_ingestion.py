@@ -65,6 +65,17 @@ SNAPSHOT = {
         "ifrs-full:CashFlowsFromUsedInOperatingActivities": {
             "iso4217:EUR": [_dur(7200000000, "2024-02-01", "2025-01-31")]
         },
+        "ifrs-full:GrossProfit": {"iso4217:EUR": [_dur(22300000000, "2024-02-01", "2025-01-31")]},
+        "ifrs-full:ProfitLossFromOperatingActivities": {
+            "iso4217:EUR": [_dur(6800000000, "2024-02-01", "2025-01-31")]
+        },
+        "ifrs-full:ProfitLossBeforeTax": {"iso4217:EUR": [_dur(7600000000, "2024-02-01", "2025-01-31")]},
+        "ifrs-full:IncomeTaxExpenseContinuingOperations": {
+            "iso4217:EUR": [_dur(1730000000, "2024-02-01", "2025-01-31")]
+        },
+        "ifrs-full:DepreciationAndAmortisationExpense": {
+            "iso4217:EUR": [_dur(2700000000, "2024-02-01", "2025-01-31")]
+        },
     },
 }
 
@@ -94,7 +105,8 @@ def test_refresh_imports_only_consolidated_annual_facts(db, monkeypatch):
     # capex negated like SEC
     assert by_metric_period[("capital_expenditure", "2025-01-31:FY")].value == Decimal("-1100000000")
     assert all(f.source_type == "ESEF" for f in facts)
-    assert all(f.unit == "EUR" for f in facts)
+    assert all(f.unit == "EUR" for f in facts if f.is_reported)
+    assert all(f.unit in ("EUR", "decimal") for f in facts)
 
 
 def test_refresh_replaces_prior_esef_facts(db, monkeypatch):
@@ -127,3 +139,50 @@ def test_alias_first_reporter_wins_never_summed(db, monkeypatch):
     facts = list(db.scalars(select(FinancialFact).where(FinancialFact.company_id == company.id)))
     assert len(facts) == 1
     assert facts[0].value == Decimal("100")  # Revenue informa primero; 50 NO se suma
+
+def test_extended_map_and_derived_metrics(db, monkeypatch):
+    company, _ = _run_refresh(db, monkeypatch, SNAPSHOT)
+    facts = list(db.scalars(select(FinancialFact).where(FinancialFact.company_id == company.id)))
+    by = {(f.metric, f.period): f for f in facts}
+    fy = "2025-01-31:FY"
+    # nuevos mapeados (reportados)
+    assert by[("operating_income", fy)].value == Decimal("6800000000")
+    assert by[("gross_profit", fy)].value == Decimal("22300000000")
+    assert by[("income_before_tax", fy)].value == Decimal("7600000000")
+    assert by[("income_tax_expense", fy)].value == Decimal("1730000000")
+    assert by[("depreciation_amortization", fy)].value == Decimal("2700000000")
+    # derivadas: nunca is_reported, confidence 0.85, EUR o decimal
+    fcf = by[("free_cash_flow", fy)]
+    assert fcf.value == Decimal("6100000000")  # 7.2B OCF - 1.1B capex
+    assert fcf.is_reported is False
+    ebitda = by[("ebitda", fy)]
+    assert ebitda.value == Decimal("9500000000")  # 6.8B EBIT + 2.7B D&A
+    assert ebitda.unit == "EUR"
+    # la columna Numeric cuantiza ratios a 6 decimales: comparar con tolerancia
+    assert abs(float(by[("gross_margin", fy)].value) - 22300000000 / 38600000000) < 1e-6
+    assert abs(float(by[("operating_margin", fy)].value) - 6800000000 / 38600000000) < 1e-6
+    assert abs(float(by[("net_margin", fy)].value) - 5870000000 / 38600000000) < 1e-6
+    assert abs(float(by[("effective_tax_rate", fy)].value) - 1730000000 / 7600000000) < 1e-6
+    assert abs(float(by[("fcf_margin", fy)].value) - 6100000000 / 38600000000) < 1e-6
+    rg = by[("revenue_growth", fy)]
+    assert abs(float(rg.value) - (38600000000 / 35900000000 - 1)) < 1e-6
+    for m in ("free_cash_flow", "ebitda", "gross_margin", "operating_margin",
+              "net_margin", "effective_tax_rate", "fcf_margin", "revenue_growth"):
+        f = by[(m, fy)]
+        assert f.is_reported is False
+        assert f.source_type == "ESEF"
+        assert f.confidence == Decimal("0.85")
+
+
+def test_derived_metrics_skipped_when_inputs_missing(db, monkeypatch):
+    snap = {
+        **SNAPSHOT,
+        "facts": {
+            "ifrs-full:Revenue": {"iso4217:EUR": [_dur(100, "2024-02-01", "2025-01-31")]},
+        },
+    }
+    company, _ = _run_refresh(db, monkeypatch, snap)
+    facts = list(db.scalars(select(FinancialFact).where(FinancialFact.company_id == company.id)))
+    metrics = {f.metric for f in facts}
+    assert metrics == {"revenue"}  # sin OCF/EBIT no hay FCF, margenes ni EBITDA inventados
+
