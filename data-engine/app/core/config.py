@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     ibkr_flex_token: str | None = None
     ibkr_flex_query_id: str | None = None
     sec_user_agent: str = "CavaAI/0.1 contact@example.com"
+    # Directorio con snapshots EDGAR (manifest.json ticker->CIK,
+    # companyfacts/CIK##########.json, submissions/CIK##########.json).
+    # La SEC bloquea las IPs de datacenter; los snapshots se generan fuera
+    # (PC residencial, espejo) y se despliegan con la app.
+    sec_snapshot_dir: str | None = None
     telegram_enabled: bool = False
     telegram_bot_token: str | None = Field(default=None, repr=False)
     telegram_chat_id: str | None = None

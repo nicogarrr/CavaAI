@@ -11,6 +11,8 @@ us-gaap de 10-K (anual) y 10-Q (trimestral).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import asyncio
 import os
 from typing import Any
@@ -71,6 +73,40 @@ def _pad_cik(cik: str | int) -> str:
     return str(cik).strip().zfill(10)
 
 
+def _snapshot_path_for(url: str) -> Path | None:
+    """Ruta del snapshot local para una URL EDGAR, o None si no aplica.
+
+    Layout: $SEC_SNAPSHOT_DIR/company_tickers.json,
+    $SEC_SNAPSHOT_DIR/companyfacts/CIK##########.json y
+    $SEC_SNAPSHOT_DIR/submissions/CIK##########.json (mismo formato JSON
+    que la API oficial, con fetched_at real en manifest.json).
+    """
+    import re
+
+    from app.core.config import get_settings
+
+    base = get_settings().sec_snapshot_dir
+    if not base:
+        return None
+    root = Path(base)
+    if url == TICKER_MAP_URL:
+        return root / "company_tickers.json"
+    match = re.search(r"(?:companyfacts|submissions)/CIK(\d{10})\.json$", url)
+    if match:
+        kind = "companyfacts" if "companyfacts" in url else "submissions"
+        return root / kind / f"CIK{match.group(1)}.json"
+    return None
+
+
+def _read_snapshot(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists():
+        return None
+    import json
+
+    data = json.loads(path.read_text())
+    return data if isinstance(data, dict) else None
+
+
 async def _get_json(
     url: str,
     client: httpx.AsyncClient | None = None,
@@ -79,7 +115,14 @@ async def _get_json(
     base_delay: float = 1.0,
     user_agent: str | None = None,
 ) -> dict[str, Any]:
-    """GET JSON tolerante a 429: backoff exponencial + cabecera ``Retry-After``."""
+    """GET JSON tolerante a 429: backoff exponencial + cabecera ``Retry-After``.
+
+    Si hay snapshot local para la URL (SEC_SNAPSHOT_DIR), se usa en vez de la
+    red: la SEC bloquea las IPs de datacenter y el dato es igual de oficial.
+    """
+    snapshot = _read_snapshot(_snapshot_path_for(url))
+    if snapshot is not None:
+        return snapshot
     headers = default_headers(user_agent)
     delay = base_delay
     last_error: Exception | None = None
@@ -116,10 +159,31 @@ async def _get_json(
     ) from last_error
 
 
+def _manifest_cik(ticker: str) -> str | None:
+    """CIK desde el manifest del snapshot (evita el company_tickers de 2MB)."""
+    import json
+
+    from app.core.config import get_settings
+
+    base = get_settings().sec_snapshot_dir
+    if not base:
+        return None
+    manifest = Path(base) / "manifest.json"
+    if not manifest.exists():
+        return None
+    data = json.loads(manifest.read_text())
+    tickers = data.get("tickers", {}) if isinstance(data, dict) else {}
+    cik = tickers.get(ticker.strip().upper())
+    return _pad_cik(cik) if cik else None
+
+
 async def cik_for_ticker(
     ticker: str, client: httpx.AsyncClient | None = None
 ) -> str | None:
     """CIK a 10 digitos para un ticker US, o None si no es filer EDGAR."""
+    from_manifest = _manifest_cik(ticker)
+    if from_manifest is not None:
+        return from_manifest
     table = await _get_json(TICKER_MAP_URL, client)
     wanted = ticker.strip().upper()
     for entry in table.values():
