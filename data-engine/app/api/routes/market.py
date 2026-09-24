@@ -5,6 +5,8 @@ Cache en memoria de 60s para no golpear Yahoo en cada carga de la home.
 """
 from __future__ import annotations
 
+from typing import Literal
+
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -155,6 +157,102 @@ def market_quote(symbol: str) -> dict:
         if len(_quote_cache) >= _QUOTE_CACHE_MAX:
             _quote_cache.clear()
         _quote_cache[normalized] = {"at": now, "data": data}
+    return data
+
+
+_CANDLES_CACHE_TTL = 900.0
+_CANDLES_CACHE_MAX = 128
+_candles_cache: dict[tuple, dict] = {}
+_candles_cache_lock = threading.RLock()
+
+_YAHOO_INTERVAL_BY_RESOLUTION = {"D": "1d", "W": "1wk", "M": "1mo", "60": "60m"}
+
+
+def _fetch_yahoo_candles(
+    client: httpx.Client, symbol: str, from_ts: int, to_ts: int, interval: str
+) -> dict | None:
+    """Velas históricas vía Yahoo chart API con shape Finnhub {s,c,t,o,h,l,v}.
+
+    Finnhub free no sirve /stock/candle para mercados no-US; Yahoo sí. Las
+    posiciones con close null (huecos) se descartan en TODOS los arrays para
+    mantener la alineación por índice que espera el frontend.
+    """
+    try:
+        resp = client.get(
+            f"{_YAHOO_CHART_URL}/{symbol}",
+            params={"period1": from_ts, "period2": to_ts, "interval": interval},
+            timeout=20,
+        )
+    except httpx.HTTPError:
+        return None
+    if resp.status_code != 200:
+        return None
+    try:
+        result = resp.json()["chart"]["result"][0]
+        timestamps = result.get("timestamp") or []
+        quote = result["indicators"]["quote"][0]
+        closes_raw = quote["close"]
+        opens_raw = quote.get("open") or []
+        highs_raw = quote.get("high") or []
+        lows_raw = quote.get("low") or []
+        volumes_raw = quote.get("volume") or []
+        t: list[int] = []
+        c: list[float] = []
+        o: list[float] = []
+        h: list[float] = []
+        l: list[float] = []
+        v: list[float] = []
+        for index, close in enumerate(closes_raw):
+            if close is None:
+                continue
+            close = float(close)
+            t.append(int(timestamps[index]))
+            c.append(close)
+            o.append(float(opens_raw[index]) if opens_raw[index] is not None else close)
+            h.append(float(highs_raw[index]) if highs_raw[index] is not None else close)
+            l.append(float(lows_raw[index]) if lows_raw[index] is not None else close)
+            v.append(float(volumes_raw[index]) if volumes_raw and volumes_raw[index] is not None else 0.0)
+        if not c:
+            return None
+        return {"s": "ok", "c": c, "t": t, "o": o, "h": h, "l": l, "v": v}
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
+@router.get("/candles/{symbol}")
+def market_candles(
+    symbol: str,
+    from_ts: int = Query(alias="from", ge=0),
+    to_ts: int = Query(alias="to", ge=1),
+    resolution: Literal["D", "W", "M", "60"] = "D",
+) -> dict:
+    """Velas históricas con shape Finnhub, fuente Yahoo Finance chart API.
+
+    Fallback del frontend (getCandles) para mercados que Finnhub free no
+    cubre (IBEX .MC y otros). Caché en memoria de 15 min por
+    (símbolo, resolución, rango horario).
+    """
+    normalized = symbol.strip().upper()
+    if not normalized or to_ts <= from_ts:
+        raise HTTPException(status_code=404, detail="Sin velas disponibles")
+    interval = _YAHOO_INTERVAL_BY_RESOLUTION[resolution]
+    # El rango exacto cambia en cada petición; se agrupa por hora de fin para
+    # que el gráfico de la ficha (ventana de 1 año) comparta caché.
+    cache_key = (normalized, interval, from_ts // 86400, to_ts // 3600)
+    now = time.monotonic()
+    with _candles_cache_lock:
+        cached = _candles_cache.get(cache_key)
+        if cached and now - cached["at"] < _CANDLES_CACHE_TTL:
+            return cached["data"]
+    headers = dict(_HEADERS)
+    with httpx.Client(headers=headers) as client:
+        data = _fetch_yahoo_candles(client, normalized, from_ts, to_ts, interval)
+    if not data:
+        raise HTTPException(status_code=404, detail="Sin velas disponibles")
+    with _candles_cache_lock:
+        if len(_candles_cache) >= _CANDLES_CACHE_MAX:
+            _candles_cache.clear()
+        _candles_cache[cache_key] = {"at": now, "data": data}
     return data
 
 
