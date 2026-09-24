@@ -830,6 +830,21 @@ async def refresh_sec_financials(ticker: str, db: Session = Depends(get_db)) -> 
     return result
 
 
+@router.post("/{ticker}/refresh/esef", response_model=FinancialRefreshResponse)
+async def refresh_esef_financials(ticker: str, db: Session = Depends(get_db)) -> dict:
+    """Fundamentales IFRS anuales desde el snapshot ESEF local (IBEX reviewed)."""
+    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    try:
+        service = FinancialIngestionService()
+        result = await service.refresh_from_esef(db=db, company=company)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=424, detail=str(exc)) from exc
+    result["statements_imported"] = 0
+    return result
+
+
 @router.post("/{ticker}/refresh/wacc")
 async def refresh_wacc_inputs(
     ticker: str, db: Session = Depends(get_db)

@@ -126,6 +126,10 @@ class Settings(BaseSettings):
     # La SEC bloquea las IPs de datacenter; los snapshots se generan fuera
     # (PC residencial, espejo) y se despliegan con la app.
     sec_snapshot_dir: str | None = None
+    # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
+    # snapshots/<LEI>.json normalizados desde filings.xbrl.org). Mismo motivo
+    # que SEC: los datos viajan con la app, nunca se piden en caliente.
+    esef_snapshot_dir: str | None = None
     telegram_enabled: bool = False
     telegram_bot_token: str | None = Field(default=None, repr=False)
     telegram_chat_id: str | None = None

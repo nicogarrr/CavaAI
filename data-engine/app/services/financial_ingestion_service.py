@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models import Company, Document, FinancialFact, FinancialStatement, MarketPrice
 from app.services.connectors import fred as fred_connector
 from app.services.connectors import sec_edgar as sec_edgar_connector
+from app.services.connectors import esef as esef_connector
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.sec import SECClient
 
@@ -79,6 +80,27 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities"],                                         "USD"),
     ("capital_expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],          "USD"),
     ("dividends_paid",    ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock"],                                "USD"),
+]
+
+
+# IFRS (ESEF) -> metricas internas. Mismo contrato que SEC: los alias se
+# FUSIONAN por periodo (gana el primer alias que informa el periodo, NUNCA
+# se suman tags). Solo conceptos verificados en los snapshots reales 24/9.
+# Huecos honestos: total_debt (IFRS reparte borrowings current/noncurrent/
+# lease y sumarlos esta prohibido) y shares_diluted (los filings ESEF de los
+# 6 reviewed no traen WeightedAverageNumberOfShares en base scope).
+ESEF_METRIC_MAP: list[tuple[str, list[str], str]] = [
+    ("revenue",           ["ifrs-full:Revenue", "ifrs-full:RevenueFromInterest"],                        "iso4217:EUR"),
+    ("net_income",        ["ifrs-full:ProfitLoss"],                                                      "iso4217:EUR"),
+    ("eps_diluted",       ["ifrs-full:DilutedEarningsLossPerShare", "ifrs-full:BasicEarningsLossPerShare"], "iso4217:EUR/xbrli:shares"),
+    ("total_assets",      ["ifrs-full:Assets"],                                                          "iso4217:EUR"),
+    ("total_liabilities", ["ifrs-full:Liabilities"],                                                     "iso4217:EUR"),
+    ("total_equity",      ["ifrs-full:EquityAttributableToOwnersOfParent", "ifrs-full:Equity"],          "iso4217:EUR"),
+    ("cash_and_equivalents", ["ifrs-full:CashAndCashEquivalents"],                                       "iso4217:EUR"),
+    ("operating_cash_flow", ["ifrs-full:CashFlowsFromUsedInOperatingActivities"],                        "iso4217:EUR"),
+    ("capital_expenditure", ["ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+                             "ifrs-full:PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities"],     "iso4217:EUR"),
+    ("dividends_paid",    ["ifrs-full:DividendsPaidClassifiedAsFinancingActivities"],                    "iso4217:EUR"),
 ]
 
 
@@ -364,6 +386,94 @@ class FinancialIngestionService:
             "free_data": free_data,
         }
 
+    async def refresh_from_esef(self, db: Session, company: Company) -> dict[str, Any]:
+        """Fundamentales anuales IFRS desde el snapshot ESEF local (build_esef_snapshots).
+
+        Solo hechos consolidados (entry["dims"] == []: los desgloses por miembro
+        NUNCA se leen como total consolidado). Duraciones anuales (300-380 dias)
+        para magnitudes de flujo; instantes para balance. Alias fusionados por
+        periodo: gana el primer alias que informa el periodo, nunca se suman.
+        """
+        ticker = company.ticker.upper()
+        snapshot = esef_connector.read_esef_snapshot(ticker)
+        if snapshot is None:
+            raise RuntimeError(f"ESEF snapshot not found for {ticker}")
+
+        facts_data = snapshot.get("facts", {})
+        document = self._source_document_esef(db, company, ticker, snapshot)
+        self._replace_esef_data(db, company)
+        facts_imported = 0
+
+        for metric, concepts, unit in ESEF_METRIC_MAP:
+            by_period: dict[str, dict[str, Any]] = {}
+            for concept in concepts:
+                entries = facts_data.get(concept, {}).get(unit, [])
+                for entry in entries:
+                    if entry.get("dims"):  # desglose por miembro: no es el consolidado
+                        continue
+                    if "end" in entry and "start" in entry:
+                        try:
+                            from datetime import date as _date
+
+                            span = (_date.fromisoformat(entry["end"]) - _date.fromisoformat(entry["start"])).days
+                        except (TypeError, ValueError):
+                            continue
+                        if not 300 <= span <= 380:
+                            continue  # solo ejercicios anuales
+                        period_date = str(entry["end"])
+                    elif "instant" in entry:
+                        period_date = str(entry["instant"])
+                    else:
+                        continue
+                    if period_date not in by_period:  # primer alias que informa gana
+                        by_period[period_date] = entry
+            for period_date in sorted(by_period, reverse=True)[:10]:
+                val = _decimal(by_period[period_date].get("val"))
+                if val is None:
+                    continue
+                if metric == "capital_expenditure":
+                    val = -val
+                db.add(
+                    FinancialFact(
+                        company_id=company.id,
+                        metric=metric,
+                        value=val,
+                        unit="EUR/share" if unit.endswith("/xbrli:shares") else "EUR",
+                        period=f"{period_date}:FY",
+                        fiscal_year=int(period_date[:4]),
+                        fiscal_quarter=None,
+                        source_id=document.id,
+                        source_type="ESEF",
+                        is_reported=True,
+                        confidence=Decimal("0.95"),
+                    )
+                )
+                facts_imported += 1
+
+        document.metadata_ = {
+            **(document.metadata_ or {}),
+            "provider": "ESEF",
+            "lei": snapshot.get("lei"),
+            "entity_name": snapshot.get("entity_name"),
+            "period_end": snapshot.get("period_end"),
+            "fxo_id": snapshot.get("fxo_id"),
+            "snapshot_fetched_at": snapshot.get("fetched_at"),
+            "last_refreshed_at": datetime.now(UTC).isoformat(),
+        }
+        db.commit()
+
+        return {
+            "status": "ingested",
+            "ticker": ticker,
+            "provider": "ESEF",
+            "source_document_id": document.id,
+            "facts_imported": facts_imported,
+            "lei": snapshot.get("lei"),
+            "period_end": snapshot.get("period_end"),
+            "latest_periods": self.latest_periods(db, company),
+            "valuation_input_ready": self.valuation_input_ready(db, company),
+        }
+
     def latest_periods(self, db: Session, company: Company) -> dict[str, str | None]:
         periods: dict[str, str | None] = {}
         for metric in ["revenue", "free_cash_flow", "net_debt", "shares_diluted"]:
@@ -567,6 +677,45 @@ class FinancialIngestionService:
         db.add(document)
         db.flush()
         return document
+
+    def _source_document_esef(
+        self, db: Session, company: Company, ticker: str, snapshot: dict[str, Any]
+    ) -> Document:
+        title = f"ESEF XBRL facts - {ticker}"
+        document = db.scalar(
+            select(Document).where(
+                Document.company_id == company.id,
+                Document.source_type == "ESEF",
+                Document.title == title,
+            )
+        )
+        if document:
+            return document
+        document = Document(
+            company_id=company.id,
+            title=title,
+            source_type="ESEF",
+            source_url=f"https://filings.xbrl.org/api/filings (fxo_id={snapshot.get('fxo_id')})",
+            metadata_={"provider": "ESEF", "normalized": True},
+        )
+        db.add(document)
+        db.flush()
+        return document
+
+    def _replace_esef_data(self, db: Session, company: Company) -> None:
+        tenant_id = db.info.get("tenant_id")
+        tenant_filter = (
+            FinancialFact.tenant_id == tenant_id
+            if tenant_id is not None
+            else FinancialFact.tenant_id.is_(None)
+        )
+        db.execute(
+            delete(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.source_type == "ESEF",
+                tenant_filter,
+            )
+        )
 
     def _replace_sec_data(self, db: Session, company: Company) -> None:
         tenant_id = db.info.get("tenant_id")

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -37,6 +38,9 @@ USER_AGENT = "CavaAI/1.0 (research; contact: single-user app)"
 DEFAULT_PAGE_SIZE = 100
 _MIN_INTERVAL_S = 1.0  # undocumented rate limits -> conservative polling
 _last_request_at = 0.0
+
+
+BASE_DIMENSIONS = frozenset({"concept", "entity", "period", "unit"})
 
 
 class EsefError(RuntimeError):
@@ -163,6 +167,10 @@ def normalize_xbrl_json(doc: dict[str, Any]) -> dict[str, dict[str, list[dict[st
         entry["decimals"] = fact.get("decimals")
         lei_raw = dims.get("entity", "")
         entry["lei"] = lei_raw.split(":")[-1] if lei_raw else None
+        # Segment/member breakdowns carry extra dimensions (axes); consolidated
+        # base-scope facts have none. Consumers must filter entry["dims"] == []
+        # or they would read a member value as the consolidated total.
+        entry["dims"] = sorted(k for k in dims if k not in BASE_DIMENSIONS)
         out.setdefault(concept, {}).setdefault(unit, []).append(entry)
     for concepts in out.values():
         for entries in concepts.values():
@@ -223,3 +231,39 @@ class EsefClient:
             raise EsefError(f"filing {filing.fxo_id} has no xBRL-JSON render (json_url null)")
         # The document endpoint 406s the JSON:API media type; ask for plain JSON.
         return await self._get_json(filing.json_url, accept="application/json")
+
+
+def _esef_snapshot_base() -> Path | None:
+    from app.core.config import get_settings
+
+    base = get_settings().esef_snapshot_dir
+    return Path(base) if base else None
+
+
+def read_esef_snapshot(ticker: str) -> dict[str, Any] | None:
+    """Snapshot ESEF local para un ticker (normalizado por build_esef_snapshots),
+    o None si no hay fichero. El join ticker->LEI sale del manifest (tabla
+    reviewed; nunca se adivina)."""
+    base = _esef_snapshot_base()
+    if base is None:
+        return None
+    manifest_path = base / "manifest.json"
+    if not manifest_path.exists():
+        return None
+    import json
+
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, ValueError):
+        return None
+    normalized = ticker.upper().removesuffix(".MC")
+    for lei, info in manifest.get("issuers", {}).items():
+        if str(info.get("ticker", "")).upper() == normalized:
+            snap_path = base / "snapshots" / f"{lei}.json"
+            if snap_path.exists():
+                try:
+                    data = json.loads(snap_path.read_text())
+                except (OSError, ValueError):
+                    return None
+                return data if isinstance(data, dict) else None
+    return None
