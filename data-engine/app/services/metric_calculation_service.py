@@ -18,6 +18,18 @@ CFROI_REQUIRED_INPUTS = (
     "terminal_non_depreciating_assets",
 )
 
+# Métricas del marco de calidad de Nico: medias de ratios anuales en una
+# ventana de hasta 5 años fiscales (mínimo 3). metric -> (numerador, denominador)
+WINDOWED_RATIO_METRICS: dict[str, tuple[str, str]] = {
+    "fcf_margin_5y": ("free_cash_flow", "revenue"),
+    "net_margin_5y": ("net_income", "revenue"),
+    "roe_5y": ("net_income", "total_equity"),
+    "roa_5y": ("net_income", "total_assets"),
+}
+
+WINDOW_MIN_YEARS = 3
+WINDOW_MAX_YEARS = 5
+
 METRIC_DEFINITIONS: dict[str, MetricFormula] = {
     "fcf_margin": ("FCF_MARGIN_V1", "free_cash_flow / revenue", ("free_cash_flow", "revenue"), "decimal"),
     "net_margin": ("NET_MARGIN_V1", "net_income / revenue", ("net_income", "revenue"), "decimal"),
@@ -58,6 +70,39 @@ METRIC_DEFINITIONS: dict[str, MetricFormula] = {
         "inflation-adjusted internal rate of return on gross investment; no proxy calculation is permitted",
         CFROI_REQUIRED_INPUTS,
         "decimal",
+    ),
+    "fcf_margin_5y": (
+        "FCF_MARGIN_5Y_V1",
+        "mean of annual free_cash_flow / revenue over up to 5 most recent fiscal years, minimum 3; coverage declared in trace",
+        ("free_cash_flow", "revenue"),
+        "decimal",
+    ),
+    "net_margin_5y": (
+        "NET_MARGIN_5Y_V1",
+        "mean of annual net_income / revenue over up to 5 most recent fiscal years, minimum 3; coverage declared in trace",
+        ("net_income", "revenue"),
+        "decimal",
+    ),
+    "roe_5y": (
+        "ROE_5Y_V1",
+        "mean of annual net_income / total_equity over up to 5 most recent fiscal years, minimum 3; coverage declared in trace",
+        ("net_income", "total_equity"),
+        "decimal",
+    ),
+    "roa_5y": (
+        "ROA_5Y_V1",
+        "mean of annual net_income / total_assets over up to 5 most recent fiscal years, minimum 3; coverage declared in trace",
+        ("net_income", "total_assets"),
+        "decimal",
+    ),
+    # Marco de calidad de Nico (apuntes manuscritos, sept 2026): 5 checks
+    # trazables. Cada check no evaluable queda declarado como null, nunca
+    # cuenta como superado.
+    "quality_moat_score": (
+        "MARCO_NICO_V1",
+        "count of passed checks: fcf_margin_5y > 0.05, net_margin_5y > 0.15, roe_5y > 0.15, roa_5y > 0.07, roic > wacc; each check traceable with its value and threshold",
+        (),
+        "score",
     ),
 }
 
@@ -101,6 +146,10 @@ class MetricCalculationService:
             return self._calculate_wacc(db, company, persist)
         if metric == "cfroi":
             return self._calculate_cfroi(db, company, persist)
+        if metric in WINDOWED_RATIO_METRICS:
+            return self._calculate_windowed_ratio(db, company, metric, persist)
+        if metric == "quality_moat_score":
+            return self._calculate_quality_score(db, company, persist)
 
         facts = self._coherent_facts(
             db,
@@ -884,6 +933,245 @@ class MetricCalculationService:
         for fact in facts.values():
             unique[fact.id] = fact
         return list(unique.values())
+
+    def _annual_facts_by_year(
+        self,
+        db: Session,
+        company: Company,
+        metric: str,
+    ) -> dict[int, FinancialFact]:
+        """Latest annual fact per fiscal year (fiscal_quarter == 'FY')."""
+        by_year: dict[int, FinancialFact] = {}
+        for fact in self._facts_for_metric(db, company, metric):
+            if fact.fiscal_year is None or fact.fiscal_quarter != "FY":
+                continue
+            if fact.fiscal_year not in by_year:
+                by_year[fact.fiscal_year] = fact
+        return by_year
+
+    def _window_unavailable(
+        self,
+        db: Session,
+        company: Company,
+        metric: str,
+        persist: bool,
+        years_with_data: list[int],
+        facts_used: list[FinancialFact],
+    ) -> MetricResult:
+        definition_version, formula, _, unit = METRIC_DEFINITIONS[metric]
+        result = MetricResult(
+            metric=metric,
+            status="unavailable",
+            period="unknown" if not years_with_data else f"FY{min(years_with_data)}-FY{max(years_with_data)}",
+            value=None,
+            unit=unit,
+            definition_version=definition_version,
+            formula=formula,
+            numerator=None,
+            denominator=None,
+            source_fact_ids=[fact.id for fact in facts_used],
+            calculation_trace={
+                "reason": "insufficient_history",
+                "coverage": f"{len(years_with_data)}/{WINDOW_MAX_YEARS}",
+                "years_with_data": sorted(years_with_data),
+                "minimum_years": WINDOW_MIN_YEARS,
+            },
+            confidence=Decimal("0.00"),
+            fiscal_year=max(years_with_data) if years_with_data else None,
+        )
+        return self._persist_if_requested(db, company, result, persist)
+
+    def _calculate_windowed_ratio(
+        self,
+        db: Session,
+        company: Company,
+        metric: str,
+        persist: bool,
+    ) -> MetricResult:
+        definition_version, formula, _, unit = METRIC_DEFINITIONS[metric]
+        numerator_metric, denominator_metric = WINDOWED_RATIO_METRICS[metric]
+        numerators = self._annual_facts_by_year(db, company, numerator_metric)
+        denominators = self._annual_facts_by_year(db, company, denominator_metric)
+        usable_years = sorted(
+            (
+                year
+                for year in set(numerators) & set(denominators)
+                if Decimal(denominators[year].value) != 0
+            ),
+            reverse=True,
+        )[:WINDOW_MAX_YEARS]
+        facts_used = [f for year in usable_years for f in (numerators[year], denominators[year])]
+        if len(usable_years) < WINDOW_MIN_YEARS:
+            return self._window_unavailable(db, company, metric, persist, usable_years, facts_used)
+
+        ratios = {
+            year: Decimal(numerators[year].value) / Decimal(denominators[year].value)
+            for year in usable_years
+        }
+        value = _quantize(sum(ratios.values()) / Decimal(len(ratios)))
+        confidence = min(
+            (Decimal(fact.confidence) for fact in facts_used),
+            default=Decimal("0.70"),
+        )
+        result = MetricResult(
+            metric=metric,
+            status="ok",
+            period=f"FY{min(usable_years)}-FY{max(usable_years)}",
+            value=value,
+            unit=unit,
+            definition_version=definition_version,
+            formula=formula,
+            numerator=None,
+            denominator=None,
+            source_fact_ids=[fact.id for fact in facts_used],
+            calculation_trace={
+                "aggregation": "mean_of_annual_ratios",
+                "coverage": f"{len(usable_years)}/{WINDOW_MAX_YEARS}",
+                "years": sorted(usable_years),
+                "ratios": {str(year): str(_quantize(ratio)) for year, ratio in ratios.items()},
+                "inputs": {
+                    str(year): {
+                        "numerator_fact_id": numerators[year].id,
+                        "numerator": str(numerators[year].value),
+                        "denominator_fact_id": denominators[year].id,
+                        "denominator": str(denominators[year].value),
+                    }
+                    for year in usable_years
+                },
+            },
+            confidence=confidence,
+            fiscal_year=max(usable_years),
+        )
+        return self._persist_if_requested(db, company, result, persist)
+
+    def _latest_stored(self, db: Session, company: Company, metric: str) -> CalculatedMetric | None:
+        return db.scalar(
+            select(CalculatedMetric)
+            .where(
+                CalculatedMetric.company_id == company.id,
+                CalculatedMetric.metric == metric,
+            )
+            .order_by(desc(CalculatedMetric.updated_at))
+            .limit(1)
+        )
+
+    def _ratio_check(
+        self,
+        result: MetricResult,
+        threshold: str,
+        label: str,
+    ) -> dict:
+        threshold_value = Decimal(threshold)
+        if result.status != "ok" or result.value is None:
+            return {
+                "check": label,
+                "metric": result.metric,
+                "threshold": threshold,
+                "value": None,
+                "passed": None,
+                "reason": result.calculation_trace.get("reason", result.status),
+            }
+        return {
+            "check": label,
+            "metric": result.metric,
+            "threshold": threshold,
+            "value": str(result.value),
+            "passed": result.value > threshold_value,
+        }
+
+    def _calculate_quality_score(
+        self,
+        db: Session,
+        company: Company,
+        persist: bool,
+    ) -> MetricResult:
+        definition_version, formula, _, unit = METRIC_DEFINITIONS["quality_moat_score"]
+        fcf_result = self._calculate_windowed_ratio(db, company, "fcf_margin_5y", persist)
+        net_margin_result = self._calculate_windowed_ratio(db, company, "net_margin_5y", persist)
+        roe_result = self._calculate_windowed_ratio(db, company, "roe_5y", persist)
+        roa_result = self._calculate_windowed_ratio(db, company, "roa_5y", persist)
+
+        checks = [
+            self._ratio_check(fcf_result, "0.05", "fcf_margin_5y_gt_5pct"),
+            self._ratio_check(net_margin_result, "0.15", "net_margin_5y_gt_15pct"),
+            self._ratio_check(roe_result, "0.15", "roe_5y_gt_15pct"),
+            self._ratio_check(roa_result, "0.07", "roa_5y_gt_7pct"),
+        ]
+
+        roic_result = self.calculate(db, company, "roic", persist=persist)
+        wacc_result = self.calculate(db, company, "wacc", persist=persist)
+        if roic_result.status == "ok" and wacc_result.status == "ok":
+            checks.append(
+                {
+                    "check": "roic_gt_wacc",
+                    "metric": "roic",
+                    "threshold": str(wacc_result.value),
+                    "value": str(roic_result.value),
+                    "passed": roic_result.value > wacc_result.value,
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "check": "roic_gt_wacc",
+                    "metric": "roic",
+                    "threshold": str(wacc_result.value) if wacc_result.value is not None else None,
+                    "value": str(roic_result.value) if roic_result.value is not None else None,
+                    "passed": None,
+                    "reason": "roic_or_wacc_unavailable",
+                }
+            )
+
+        evaluable = [check for check in checks if check["passed"] is not None]
+        score = sum(1 for check in checks if check["passed"] is True)
+        component_results = [
+            fcf_result,
+            net_margin_result,
+            roe_result,
+            roa_result,
+            roic_result,
+            wacc_result,
+        ]
+        if not evaluable:
+            status = "unavailable"
+            value = None
+        elif len(evaluable) == len(checks):
+            status = "ok"
+            value = Decimal(score)
+        else:
+            status = "partial"
+            value = Decimal(score)
+        periods = [r.period for r in component_results if r.period and r.period != "unknown"]
+        result = MetricResult(
+            metric="quality_moat_score",
+            status=status,
+            period=periods[0] if periods else "unknown",
+            value=value,
+            unit=unit,
+            definition_version=definition_version,
+            formula=formula,
+            numerator=None,
+            denominator=None,
+            source_fact_ids=sorted(
+                {fact_id for r in component_results for fact_id in r.source_fact_ids}
+            ),
+            calculation_trace={
+                "framework": "MARCO_NICO_V1 (apuntes manuscritos de Nico, sept 2026)",
+                "checks": checks,
+                "checks_evaluable": len(evaluable),
+                "checks_total": len(checks),
+                "score": score,
+            },
+            confidence=min(
+                (r.confidence for r in component_results if r.status == "ok"),
+                default=Decimal("0.00"),
+            ),
+            fiscal_year=next(
+                (r.fiscal_year for r in component_results if r.fiscal_year is not None),
+                None,
+            ),
+        )
+        return self._persist_if_requested(db, company, result, persist)
 
     def _persist_if_requested(
         self,
