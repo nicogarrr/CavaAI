@@ -300,3 +300,19 @@ def test_wash_sale_open_window_flagged_when_data_runs_out(db):
     assert sale["wash_sale_window_open"] is True
     assert row["wash_sale_window_open"] is True
     assert "WS8" in report["summary"]["wash_sale_window_open"]
+
+
+def test_build_tax_summary_rows_without_fiscal_year(db: Session):
+    """Regresion: GET /api/taxes/holdings llama sin fiscal_year (500 TypeError)."""
+    from app.models.entities import Position
+    from app.services.tax_report_service import build_tax_summary_rows
+
+    company = _company(db, "AAPL")
+    db.add(Position(company_id=company.id, quantity=Decimal("3")))
+    db.commit()
+
+    rows = build_tax_summary_rows(db)
+
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "AAPL"
+    assert rows[0]["quantity"] == 3.0
