@@ -222,9 +222,32 @@ class ThesisEvidenceService:
                 f"https://data.sec.gov/api/xbrl/companyfacts/CIK{str(cik).zfill(10)}.json"
             ),
         )
-        self._replace_facts(db, company, "SEC")
+        # Aditivo, nunca destructivo: refresh/sec es el duenio del historico
+        # SEC completo; aqui solo rellenamos el ultimo anual si falta. Antes
+        # este paso borraba TODOS los facts SEC y dejaba 1 ano por metrica,
+        # tirando abajo el DCF (insufficient_data) tras cada tesis.
+        tenant_id = db.info.get("tenant_id")
+        tenant_filter = (
+            FinancialFact.tenant_id == tenant_id
+            if tenant_id is not None
+            else FinancialFact.tenant_id.is_(None)
+        )
+        existing = {
+            (fact.metric, fact.period)
+            for fact in db.scalars(
+                select(FinancialFact).where(
+                    FinancialFact.company_id == company.id,
+                    FinancialFact.source_type == "SEC",
+                    tenant_filter,
+                )
+            )
+        }
         imported = 0
+        skipped_existing = 0
         for metric, info in extracted.items():
+            if (metric, info["period"]) in existing:
+                skipped_existing += 1
+                continue
             value = _decimal(info["value"])
             if value is None:
                 continue
@@ -245,12 +268,13 @@ class ThesisEvidenceService:
             )
             imported += 1
         db.flush()
-        if imported == 0:
+        if imported == 0 and skipped_existing == 0:
             return _pending("SEC EDGAR companyfacts", "Hechos sin valor numerico aprovechable.")
         return {
             "status": "ok",
             "source": "SEC EDGAR companyfacts",
             "facts_imported": imported,
+            "already_present": skipped_existing,
             "metrics": sorted(extracted.keys()),
             "document_id": document.id,
         }
