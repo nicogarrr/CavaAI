@@ -817,9 +817,17 @@ async def refresh_sec_financials(ticker: str, db: Session = Depends(get_db)) -> 
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     try:
-        return await FinancialIngestionService().refresh_from_sec(db=db, company=company)
+        service = FinancialIngestionService()
+        result = await service.refresh_from_sec(db=db, company=company)
     except RuntimeError as exc:
         raise HTTPException(status_code=424, detail=str(exc)) from exc
+    # Completa el contrato FinancialRefreshResponse (la via SEC solo importa
+    # hechos, no statements; el resumen se calcula aqui para no meter queries
+    # extra en el servicio).
+    result["statements_imported"] = 0
+    result["latest_periods"] = service.latest_periods(db, company)
+    result["valuation_input_ready"] = service.valuation_input_ready(db, company)
+    return result
 
 
 @router.post("/{ticker}/refresh/wacc")

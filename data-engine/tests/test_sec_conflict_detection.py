@@ -93,3 +93,21 @@ def test_conflicts_flagged_with_one_fmp_query(db, monkeypatch):
         if s.lstrip().upper().startswith("SELECT") and "financial_facts" in s
     ]
     assert len(fact_selects) == 2
+
+
+def test_refresh_sec_endpoint_encaja_con_response_model(db, monkeypatch):
+    """La respuesta del endpoint refresh/sec debe validar contra
+    FinancialRefreshResponse (bug: faltaban statements_imported,
+    latest_periods y valuation_input_ready y devolvia 500 pese a ingerir)."""
+    from app.api.routes.companies import refresh_sec_financials
+    from app.schemas.api import FinancialRefreshResponse
+
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECClient)
+    _company(db)
+
+    result = asyncio.run(refresh_sec_financials("AAA", db))
+    parsed = FinancialRefreshResponse(**result)
+    assert parsed.provider == "SEC"
+    assert parsed.facts_imported > 0
+    assert parsed.statements_imported == 0
+    assert "revenue" in parsed.latest_periods
