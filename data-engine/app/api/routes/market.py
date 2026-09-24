@@ -340,6 +340,7 @@ def market_movers(
                 Company.ticker,
                 Company.name,
                 Company.sector,
+                Company.currency,
             )
             .join(Company, Company.id == ranked.c.company_id)
             .where(ranked.c.rn <= 2)
@@ -347,11 +348,12 @@ def market_movers(
     )
     latest: dict[int, dict] = {}
     previous: dict[int, dict] = {}
-    for company_id, day, close, volume, ticker, name, sector in rows:
+    for company_id, day, close, volume, ticker, name, sector, currency in rows:
         entry = {
             "ticker": ticker,
             "name": name,
             "sector": sector,
+            "currency": currency,
             "price": float(close or 0),
             "volume": int(volume or 0),
             "date": day.isoformat() if day else None,

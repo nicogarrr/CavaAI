@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
 
 import { getMarketMovers, type MarketMover } from '@/lib/actions/market.actions';
+import { formatMoney, formatNumber, formatPercent } from '@/lib/format';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 
@@ -10,8 +11,12 @@ export const revalidate = 0;
 
 function formatPct(value: number | null): string {
   if (value === null) return '—';
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(2)} %`;
+  // signDisplay: 'always' imprime el + en es-ES sin concatenarlo a mano
+  return formatPercent(value, { fromRatio: false, digits: 2, signDisplay: 'always' });
+}
+
+function safeCurrency(currency: string | null | undefined): string {
+  return currency && /^[A-Z]{3}$/.test(currency) ? currency : 'USD';
 }
 
 function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }) {
@@ -39,11 +44,11 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
                 </Link>
                 <div className="text-xs text-gray-500">{row.name}</div>
               </td>
-              <td className="py-3 text-right text-gray-300">{row.price.toFixed(2)}</td>
+              <td className="py-3 text-right text-gray-300">{formatMoney(row.price, safeCurrency(row.currency))}</td>
               <td className={`py-3 text-right font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
               </td>
-              <td className="py-3 text-right text-gray-400">{row.volume.toLocaleString('es-ES')}</td>
+              <td className="py-3 text-right text-gray-400">{formatNumber(row.volume, { maximumFractionDigits: 0 })}</td>
             </tr>
           ))}
         </tbody>
