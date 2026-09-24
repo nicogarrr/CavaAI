@@ -74,13 +74,16 @@ def test_change_math_and_sorting(db: Session):
     assert out["most_active"][0]["ticker"] == "BBB"
 
 
-def test_single_price_row_does_not_crash_and_counts_zero_change(db: Session):
+def test_single_price_row_reports_unknown_change_instead_of_zero(db: Session):
+    """Con un solo cierre no hay cambio medible: None (la UI muestra "—"),
+    nunca un 0.0% que aparenta un dato inexistente. La empresa sigue
+    contando en el universo pero no entra en subidas/bajadas."""
     solo = _company(db, "SOLO")
     _price(db, solo, date(2026, 9, 22), "50", volume=7)
     out = market_movers(db, 10)
     assert out["universe"] == 1
-    assert out["gainers"][0]["ticker"] == "SOLO"
-    assert out["gainers"][0]["change_pct"] == 0.0
+    assert out["gainers"] == [] and out["losers"] == []
+    assert out["most_active"][0]["ticker"] == "SOLO"
 
 
 def test_limit_slices_lists(db: Session):
