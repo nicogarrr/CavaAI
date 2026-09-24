@@ -157,6 +157,7 @@ services:
       - LANGFUSE_ENABLED=false
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
+      - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-}
     volumes:
       - duckdb_data:/data
     healthcheck:
@@ -219,6 +220,7 @@ services:
       - MINIO_BUCKET=research
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
+      - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-}
       - RSS_FEEDS=${RSS_FEEDS:-}
     volumes:
       - duckdb_data:/data
