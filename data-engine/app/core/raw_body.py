@@ -35,9 +35,13 @@ class RawBodyMiddleware:
 
         async def replay_receive() -> dict:
             nonlocal replayed
-            if replayed:
-                return {"type": "http.disconnect"}
-            replayed = True
-            return {"type": "http.request", "body": raw_body, "more_body": False}
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": raw_body, "more_body": False}
+            # Tras el replay hay que delegar en el receive real: devolver un
+            # "http.disconnect" fabricado hace que StreamingResponse crea que
+            # el cliente colgo y aborta el cuerpo (200 con 0 bytes - F12,
+            # rompia /api/export y las descargas de tesis).
+            return await receive()
 
         await self.app(scope, replay_receive, send)
