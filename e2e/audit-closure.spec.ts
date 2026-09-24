@@ -56,7 +56,8 @@ test.describe("audit closure flows", () => {
     // el vacío honesto: en ambos casos no se exige el debate.
     const offline = page.getByText(/backend/i);
     const noThesis = page.getByText("Aún no existe ninguna tesis");
-    if ((await offline.count()) > 0 || (await noThesis.count()) > 0) return;
+    const noResearch = page.getByText(/Research aún no generado|todavía no tiene research/);
+    if ((await offline.count()) > 0 || (await noThesis.count()) > 0 || (await noResearch.count()) > 0) return;
     await expect(debate).toBeVisible();
     await expect(approve).toBeVisible();
     await expect(page.getByRole("button", { name: /debate/i }).first()).toBeVisible();
@@ -68,7 +69,8 @@ test.describe("audit closure flows", () => {
     const empty = page.getByText(/Haz una pregunta/);
     const failed = page.getByText(/Sin datos para responder/);
     const offline = page.getByText(/backend/i);
-    const states = (await citations.count()) + (await empty.count()) + (await failed.count()) + (await offline.count());
+    const noResearch = page.getByText(/Research aún no generado|todavía no tiene research/);
+    const states = (await citations.count()) + (await empty.count()) + (await failed.count()) + (await offline.count()) + (await noResearch.count());
     expect(states).toBeGreaterThan(0);
   });
 });

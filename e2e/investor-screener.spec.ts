@@ -9,7 +9,9 @@ test.describe("investor screener flow", () => {
     await page.goto("/screener");
 
     await expect(page.getByRole("heading", { name: "Screener", level: 1 })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Technology" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Tecnología|Technology/ }).first(),
+    ).toBeVisible();
 
     const rows = page.locator("table tbody tr");
     if ((await rows.count()) === 0) {
