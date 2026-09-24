@@ -154,7 +154,9 @@ class FinancialIngestionService:
         db: Session,
         company: Company,
         client: FMPClient | None = None,
-        limit: int = 10,
+        # FMP free tier rejects limit>=6 on /stable statements with 402;
+        # 5 periods is the deepest history the free key serves.
+        limit: int = 5,
     ) -> dict[str, Any]:
         fmp = client or FMPClient()
         ticker = company.ticker.upper()
