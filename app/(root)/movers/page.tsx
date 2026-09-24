@@ -8,7 +8,8 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-function formatPct(value: number): string {
+function formatPct(value: number | null): string {
+  if (value === null) return '—';
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(2)} %`;
 }
@@ -39,7 +40,7 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
                 <div className="text-xs text-gray-500">{row.name}</div>
               </td>
               <td className="py-3 text-right text-gray-300">{row.price.toFixed(2)}</td>
-              <td className={`py-3 text-right font-medium ${row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
+              <td className={`py-3 text-right font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
               </td>
               <td className="py-3 text-right text-gray-400">{row.volume.toLocaleString('es-ES')}</td>
