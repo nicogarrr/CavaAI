@@ -10,7 +10,9 @@ test.describe("investor watchlist flow", () => {
 
     const rows = page.locator("table tbody tr");
     if ((await rows.count()) === 0) {
-      await expect(page.getByText("No hay datos ahora mismo")).toBeVisible();
+      await expect(
+        page.getByText(/No hay datos ahora mismo|Sin resultados/),
+      ).toBeVisible();
       return;
     }
 

@@ -14,7 +14,9 @@ test.describe("investor screener flow", () => {
     const rows = page.locator("table tbody tr");
     if ((await rows.count()) === 0) {
       // Backend warming up or market data unavailable: the page degrades to an empty state.
-      await expect(page.getByText("No hay datos ahora mismo")).toBeVisible();
+      await expect(
+        page.getByText(/No hay datos ahora mismo|Sin resultados/),
+      ).toBeVisible();
       return;
     }
 

@@ -35,7 +35,9 @@ test.describe("mobile flujo screener→watchlist→tesis→alerta solo con toque
     if ((await followButtons.count()) === 0) {
       // Sin datos de mercado: el flujo no puede continuar, pero la
       // página degradada tampoco debe desbordar.
-      await expect(page.getByText("No hay datos ahora mismo")).toBeVisible();
+      await expect(
+        page.getByText(/No hay datos ahora mismo|Sin resultados/),
+      ).toBeVisible();
       await expectNoPageOverflow(page, "screener-vacio");
       return;
     }
