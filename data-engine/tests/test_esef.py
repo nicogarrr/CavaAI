@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -98,8 +99,11 @@ def test_normalize_skips_dimensional_facts_without_guessing():
     assert len(facts) == 1
 
 
-@pytest.mark.asyncio
-async def test_client_list_filings_page_with_mock_transport():
+def test_client_list_filings_page_with_mock_transport():
+    asyncio.run(_test_client_list_filings_page_with_mock_transport_impl())
+
+
+async def _test_client_list_filings_page_with_mock_transport_impl():
     payload = _fixture("esef_filings_page.json")
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -112,8 +116,11 @@ async def test_client_list_filings_page_with_mock_transport():
     assert len(filings) == 5
 
 
-@pytest.mark.asyncio
-async def test_client_entity_name_with_mock_transport():
+def test_client_entity_name_with_mock_transport():
+    asyncio.run(_test_client_entity_name_with_mock_transport_impl())
+
+
+async def _test_client_entity_name_with_mock_transport_impl():
     payload = _fixture("esef_entity_fcc.json")
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -123,8 +130,11 @@ async def test_client_entity_name_with_mock_transport():
     assert await client.get_entity_name("95980020140005178328") == "FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A."
 
 
-@pytest.mark.asyncio
-async def test_client_http_error_raises_honestly():
+def test_client_http_error_raises_honestly():
+    asyncio.run(_test_client_http_error_raises_honestly_impl())
+
+
+async def _test_client_http_error_raises_honestly_impl():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, text="maintenance")
 
@@ -133,8 +143,11 @@ async def test_client_http_error_raises_honestly():
         await client.list_filings_page("ES")
 
 
-@pytest.mark.asyncio
-async def test_fetch_filing_json_unavailable_raises_honestly():
+def test_fetch_filing_json_unavailable_raises_honestly():
+    asyncio.run(_test_fetch_filing_json_unavailable_raises_honestly_impl())
+
+
+async def _test_fetch_filing_json_unavailable_raises_honestly_impl():
     filings, _ = parse_filings_page(_fixture("esef_filings_page.json"))
     no_json = next(f for f in filings if f.json_url is None)
 
