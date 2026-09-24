@@ -93,7 +93,12 @@ class Settings(BaseSettings):
     # Worker scheduler (APScheduler jobs that enqueue Dramatiq actors). Disabled
     # in tests via WORKERS_ENABLED=false so TestClient lifespans stay quiet.
     workers_enabled: bool = True
-    rate_limit_requests_per_minute: int = Field(default=120, ge=10, le=10000)
+    rate_limit_requests_per_minute: int = Field(default=300, ge=10, le=10000)
+    # Lecturas de mercado (quote/candles/movers/indices): el frontend abanica
+    # una llamada por ticker y pagina (ProPicks ~20, backtest ~60) y Vercel
+    # serverless no comparte la cache entre instancias -> rafagas grandes en
+    # uso normal. Tier propio y alto; son lecturas baratas cacheadas.
+    rate_limit_market_requests_per_minute: int = Field(default=900, ge=10, le=100000)
     rate_limit_expensive_requests_per_minute: int = Field(default=20, ge=1, le=1000)
     financial_document_retention_days: int = Field(default=2555, ge=1)
     market_price_max_age_days: int = Field(default=3, ge=0, le=30)

@@ -63,13 +63,27 @@ def _now() -> float:
     return time.time()
 
 
+def _tier_for(path: str) -> str:
+    """Tier del bucket: expensive y market cuentan aparte del estandar para
+    que las rafagas de lecturas de mercado (una llamada por ticker) no
+    estrangulen el resto de la navegacion, ni al reves."""
+    if any(marker in path for marker in EXPENSIVE_PATH_MARKERS):
+        return "expensive"
+    if path.startswith("/api/market/"):
+        return "market"
+    return "standard"
+
+
 def _limit_for(settings, path: str) -> int:
-    expensive = any(marker in path for marker in EXPENSIVE_PATH_MARKERS)
-    limit = (
-        settings.rate_limit_expensive_requests_per_minute
-        if expensive
-        else settings.rate_limit_requests_per_minute
-    )
+    tier = _tier_for(path)
+    if tier == "expensive":
+        limit = settings.rate_limit_expensive_requests_per_minute
+    elif tier == "market":
+        limit = getattr(
+            settings, "rate_limit_market_requests_per_minute", 900
+        )
+    else:
+        limit = settings.rate_limit_requests_per_minute
     if settings.app_env.lower() in {"local", "test"}:
         limit = max(limit, 10000)
     return limit
@@ -151,12 +165,9 @@ async def enforce_rate_limit(
         return
 
     limit = _limit_for(settings, request.url.path)
-    expensive = any(
-        marker in request.url.path for marker in EXPENSIVE_PATH_MARKERS
-    )
     identity = _rate_limit_identity(principal, request)
     digest = hashlib.sha256(
-        f"{identity}:{'expensive' if expensive else 'standard'}".encode()
+        f"{identity}:{_tier_for(request.url.path)}".encode()
     ).hexdigest()
     key = f"cavaai:rate:{digest}"
     use_redis = settings.app_env.lower() not in {"local", "test"}
