@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Company, CorporateAction, Position, Transaction
+from app.services.company_resolver import resolve_company
 
 
 class CorporateActionService:
@@ -45,7 +46,7 @@ class CorporateActionService:
         description: str = "",
         apply_now: bool = True,
     ) -> CorporateAction:
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if company is None:
             raise ValueError(f"Company {ticker} does not exist; import transactions or create it first")
         if ratio <= 0:

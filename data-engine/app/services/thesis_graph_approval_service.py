@@ -33,6 +33,7 @@ from app.services.workflow_run_service import begin_run
 
 
 from contextlib import contextmanager
+from app.services.company_resolver import resolve_company
 
 
 @contextmanager
@@ -80,7 +81,7 @@ class ThesisGraphApprovalService:
         tenant_external_id: str = "default",
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+        company = resolve_company(db, ticker)
         if company is None:
             return {"ticker": ticker.upper(), "status": "unknown_company"}
 

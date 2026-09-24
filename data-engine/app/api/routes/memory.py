@@ -35,6 +35,7 @@ from app.schemas import (
 from app.services.review_alert_service import ReviewAlertService
 from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_change_types import claim_change_type
+from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 
@@ -72,7 +73,7 @@ def validate_memory_item_enums(
 
 
 def _company_by_ticker(db: Session, ticker: str) -> Company:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company

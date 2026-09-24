@@ -20,6 +20,7 @@ from app.services.thesis_graph_service import ThesisGraphService
 from app.services.thesis_memo import build_memo_markdown
 from app.services.thesis_service import ThesisService
 from app.services.provenance import Coverage, SourceKind, provenance
+from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 
@@ -106,7 +107,7 @@ def thesis_epub(ticker: str, db: Session = Depends(get_db)) -> Response:
 
     404 limpio cuando no hay tesis: nunca se genera un documento vacío.
     """
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     thesis = (
         db.scalar(
             select(ThesisVersion)
@@ -170,7 +171,7 @@ def thesis_versions(
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> list[ThesisVersion]:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return list(
@@ -192,7 +193,7 @@ def thesis_history(ticker: str, db: Session = Depends(get_db)) -> dict:
     registra hoy: el historial muestra estado, fecha y resumen del cambio,
     sin inventar actores.
     """
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     versions = list(
@@ -257,7 +258,7 @@ def thesis_memo(ticker: str, db: Session = Depends(get_db)) -> PlainTextResponse
     thesis = service.latest(db, ticker)
     if not thesis:
         raise HTTPException(status_code=404, detail="No thesis for ticker")
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     latest_data_at = service.data_freshness(db, thesis.company_id)
     stale = latest_data_at is not None and latest_data_at > thesis.updated_at
     markdown = build_memo_markdown(db, company, thesis, stale=stale, latest_data_at=latest_data_at)
@@ -272,7 +273,7 @@ def thesis_memo(ticker: str, db: Session = Depends(get_db)) -> PlainTextResponse
 
 @router.get("/{ticker}/graph", response_model=ThesisGraphOut)
 def thesis_graph(ticker: str, db: Session = Depends(get_db)) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     try:
@@ -291,7 +292,7 @@ def thesis_graph(ticker: str, db: Session = Depends(get_db)) -> dict:
 
 @router.post("/{ticker}/graph/refresh", response_model=ThesisGraphOut)
 def refresh_thesis_graph(ticker: str, db: Session = Depends(get_db)) -> dict:
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     try:
@@ -320,7 +321,7 @@ async def debate_thesis_endpoint(ticker: str, db: Session = Depends(get_db)) -> 
     thesis = ThesisService().latest(db, ticker)
     if not thesis:
         raise HTTPException(status_code=404, detail="No thesis for ticker")
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     try:
@@ -400,7 +401,7 @@ def approve_thesis(ticker: str, payload: ThesisApproveRequest, db: Session = Dep
     Telegram (TELEGRAM_APPROVAL_ENABLED) tampoco esta cableada a este
     endpoint: solo la pulsacion manual en la UI cambia el estado.
     """
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     thesis = (

@@ -37,6 +37,7 @@ from app.services.insider_service import (
     _is_c_suite,
     _parse_date,
 )
+from app.services.company_resolver import resolve_company
 
 RULE_VERSION = "insider-v1"
 ALERT_TYPE_PREFIX = "insider_"
@@ -81,7 +82,7 @@ def _candidate_purchases(db: Session, tenant_id: int | None) -> list[InsiderTran
 def _company_id_for(db: Session, ticker: str | None) -> int | None:
     if not ticker:
         return None
-    company = db.scalar(select(Company).where(Company.ticker == ticker.upper()))
+    company = resolve_company(db, ticker)
     return company.id if company else None
 
 
