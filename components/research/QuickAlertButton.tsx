@@ -15,6 +15,7 @@ import { BellPlus, Loader2 } from 'lucide-react';
 import { createAlert, type AlertType } from '@/lib/actions/alerts.actions';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
+import { parseLocalizedNumber } from '@/lib/format';
 
 const ALERT_TYPES: Array<{ value: AlertType; label: string; needsValue: boolean; valuePlaceholder: string }> = [
   { value: 'price_above', label: 'Precio por encima de', needsValue: true, valuePlaceholder: 'Precio objetivo $' },
@@ -35,7 +36,7 @@ export default function QuickAlertButton({ ticker }: { ticker: string }) {
   const [busy, setBusy] = useState(false);
 
   const meta = ALERT_TYPES.find((item) => item.value === type) ?? ALERT_TYPES[0];
-  const numericValue = price.trim() === '' ? null : parseFloat(price);
+  const numericValue = parseLocalizedNumber(price);
 
   const onCreate = async () => {
     let value: number | string = '';

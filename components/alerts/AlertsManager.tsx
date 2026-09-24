@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Bell, History, Plus, RefreshCcw, Send, Trash2 } from 'lucide-react';
 import { createAlert, getRecentTriggeredAlerts, getTelegramStatus, getUserAlerts, deleteAlert, type Alert, type CreateAlertInput, type AlertType, type TelegramStatus, type TriggeredAlertDelivery } from '@/lib/actions/alerts.actions';
+import { parseLocalizedNumber } from '@/lib/format';
 import {
     Dialog,
     DialogContent,
@@ -107,14 +108,15 @@ function AlertsManager() {
                 toast.error('Introduce un símbolo válido');
                 return;
             }
-            const numericValue = formData.type === 'news' || formData.type === 'earnings'
-                ? formData.condition.value
-                : parseFloat(String(formData.condition.value));
-
-            if (isNaN(numericValue as number) && formData.type !== 'news' && formData.type !== 'earnings') {
+            const isValueless = formData.type === 'news' || formData.type === 'earnings';
+            const parsedValue = parseLocalizedNumber(String(formData.condition.value));
+            if (!isValueless && parsedValue === null) {
                 toast.error('Introduce un valor numérico válido');
                 return;
             }
+            const numericValue: string | number = isValueless
+                ? formData.condition.value
+                : (parsedValue as number);
 
             await createAlert({
                 ...formData,

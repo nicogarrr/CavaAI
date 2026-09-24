@@ -20,6 +20,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
 import { hasTransactionErrors, validateTransactionForm, type TransactionFormErrors } from './transactionValidation';
+import { parseLocalizedNumber } from '@/lib/format';
 
 type Props = {
   userId: string;
@@ -124,8 +125,8 @@ export default function AddTransactionButton({ userId }: Props) {
         userId,
         formData.symbol,
         formData.type,
-        parseFloat(formData.quantity),
-        parseFloat(formData.price),
+        parseLocalizedNumber(formData.quantity) ?? 0,
+        parseLocalizedNumber(formData.price) ?? 0,
         new Date(formData.date),
         formData.notes || undefined,
         formData.currency,
