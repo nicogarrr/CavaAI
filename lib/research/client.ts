@@ -82,29 +82,46 @@ export async function researchRequest<T>(
   const method = (requestInit.method ?? 'GET').toUpperCase();
   const timeoutMs = researchTimeoutFor(path, method, init);
   const normalized = await normalizeResearchBody(requestInit.body ?? null);
-  const identityHeaders = await researchIdentityHeaders({
-    method,
-    path,
-    body: normalized.body ?? null,
-  });
-  const headers = new Headers(requestInit.headers);
-  for (const [key, value] of Object.entries(identityHeaders)) headers.set(key, value);
-  if (normalized.contentType && !headers.has('Content-Type')) {
-    headers.set('Content-Type', normalized.contentType);
-  } else if (requestInit.body && !(requestInit.body instanceof FormData) && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
+  const buildHeaders = async () => {
+    // La identidad firmada lleva nonce de un solo uso: cada intento (incluido
+    // el retry tras un 429) necesita cabeceras nuevas.
+    const identityHeaders = await researchIdentityHeaders({
+      method,
+      path,
+      body: normalized.body ?? null,
+    });
+    const headers = new Headers(requestInit.headers);
+    for (const [key, value] of Object.entries(identityHeaders)) headers.set(key, value);
+    if (normalized.contentType && !headers.has('Content-Type')) {
+      headers.set('Content-Type', normalized.contentType);
+    } else if (requestInit.body && !(requestInit.body instanceof FormData) && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+    return headers;
+  };
 
-  let response: Response;
-  try {
-    response = await fetch(`${BACKEND_URL}${path}`, {
+  const doFetch = async () =>
+    fetch(`${BACKEND_URL}${path}`, {
       ...requestInit,
       body: normalized.body ?? undefined,
-      headers,
+      headers: await buildHeaders(),
       cache: requestInit.cache ?? 'no-store',
       // Sin timeout un backend colgado deja la página entera esperando.
       signal: requestSignal(requestInit.signal, timeoutMs),
     });
+
+  let response: Response;
+  try {
+    response = await doFetch();
+    // 429 = ráfaga legítima contra el rate-limit, no un fallo: un único
+    // retry con backoff (Retry-After, máx 5s) en métodos idempotentes evita
+    // la pantalla de error genérica por navegar rápido.
+    if (response.status === 429 && (method === 'GET' || method === 'HEAD')) {
+      const retryAfter = Number(response.headers.get('Retry-After') ?? '1');
+      const waitMs = Math.min(Number.isFinite(retryAfter) ? retryAfter : 1, 5) * 1000;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      response = await doFetch();
+    }
   } catch (error) {
     const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
     const abortedByCaller = error instanceof DOMException && error.name === 'AbortError';
