@@ -19,6 +19,7 @@ No se anade ninguna dependencia: NO tocar requirements.txt por esto.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from datetime import date, datetime
@@ -39,12 +40,30 @@ _lock = threading.Lock()
 _last_request_at = 0.0
 
 
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (compatible; CavaAI/0.1; +mailto:{contact}) CavaAI Research"
+)
+DEFAULT_CONTACT = "contact@example.com"
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+
+
 def resolve_user_agent() -> str:
-    """User-Agent con contacto: settings.sec_user_agent (la SEC lo exige)."""
+    """User-Agent tipo navegador con contacto.
+
+    La SEC bloquea con 403 los User-Agent de producto aunque lleven contacto
+    (verificado en prod: ``CavaAI/0.1 <email>`` -> 403; UA tipo navegador ->
+    200). Misma politica que ``connectors/sec_edgar.py``: se envuelve el
+    contacto en un UA tipo navegador, salvo que el operador ya configure uno.
+    """
     candidate = (get_settings().sec_user_agent or "").strip()
-    if "@" not in candidate:
-        return "CavaAI/0.1 contact@example.com"
-    return candidate
+    if candidate.startswith("Mozilla/"):
+        return candidate
+    match = _EMAIL_RE.search(candidate)
+    contact = match.group(0) if match else DEFAULT_CONTACT
+    # Env historico sin espacio ("CavaAI/0.1email@..."): la version queda
+    # pegada al local-part del email; se retira un prefijo de version.
+    contact = re.sub(r"^\d+(\.\d+)+(?=\D)", "", contact)
+    return BROWSER_USER_AGENT.format(contact=contact)
 
 
 def default_headers() -> dict[str, str]:
