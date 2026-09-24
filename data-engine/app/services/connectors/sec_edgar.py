@@ -247,31 +247,38 @@ def extract_metric_values(
     forms: set[str] | None = None,
     unit: str = "USD",
 ) -> dict[str, Any] | None:
-    """Ultimo valor fileado para una metrica (primer tag que informe gana)."""
+    """Ultimo valor fileado para una metrica.
+
+    Los alias de tag se fusionan antes de elegir (no "gana el primero que
+    informe"): los filers migran de tag y el antiguo queda congelado en el
+    pasado; el valor actual vive en el tag nuevo.
+    """
     wanted_forms = forms or (ANNUAL_FORMS | QUARTERLY_FORMS)
+    candidates: list[tuple[str, dict]] = []
     for tag in tags:
         entries = ((us_gaap.get(tag) or {}).get("units", {}) or {}).get(unit, [])
-        candidates = [
-            e
+        candidates.extend(
+            (tag, e)
             for e in entries
             if isinstance(e, dict)
             and str(e.get("form", "")).upper() in wanted_forms
             and e.get("val") is not None
-        ]
-        if not candidates:
-            continue
-        candidates.sort(key=lambda e: (str(e.get("filed", "")), str(e.get("end", ""))))
-        latest = candidates[-1]
-        return {
-            "concept": tag,
-            "value": latest["val"],
-            "unit": unit,
-            "end": latest.get("end"),
-            "filed": latest.get("filed"),
-            "form": latest.get("form"),
-            "periods": len({str(e.get("end")) for e in candidates}),
-        }
-    return None
+        )
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda te: (str(te[1].get("filed", "")), str(te[1].get("end", "")))
+    )
+    tag, latest = candidates[-1]
+    return {
+        "concept": tag,
+        "value": latest["val"],
+        "unit": unit,
+        "end": latest.get("end"),
+        "filed": latest.get("filed"),
+        "form": latest.get("form"),
+        "periods": len({str(e.get("end")) for _, e in candidates}),
+    }
 
 
 async def get_fundamentals(

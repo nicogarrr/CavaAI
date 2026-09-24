@@ -247,6 +247,13 @@ class FinancialIngestionService:
 
         for metric, concepts, unit in SEC_METRIC_MAP:
             xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
+            # Los alias se FUSIONAN, no "gana el primero que informe": muchos
+            # filers migraron de tag (Revenues -> SalesRevenueNet ->
+            # RevenueFromContractWithCustomer...) y el tag antiguo queda
+            # congelado en el pasado. Fusion por periodo (`end`) conservando
+            # el `filed` mas reciente: mismo periodo bajo dos tags = una sola
+            # vez, con su presentacion mas reciente (recast incluido).
+            by_end: dict[str, dict[str, Any]] = {}
             for concept in concepts:
                 concept_data = us_gaap.get(concept, {})
                 entries = concept_data.get("units", {}).get(xbrl_unit_key, [])
@@ -254,13 +261,10 @@ class FinancialIngestionService:
                     e for e in entries
                     if e.get("fp") == "FY" and e.get("form") in {"10-K", "20-F"}
                 ]
-                if not annual:
-                    continue
                 # OJO: `fy` es el ANIO DEL FILING, no el del periodo. Un 10-K
                 # de FY2025 trae revenue de 2025, 2024 y 2023; el ano fiscal
                 # correcto es el del `end`. Ante re-presentaciones del mismo
                 # periodo manda el `filed` mas reciente.
-                by_end: dict[str, dict[str, Any]] = {}
                 for entry in annual:
                     end = str(entry.get("end") or "")
                     if not end:
@@ -270,6 +274,7 @@ class FinancialIngestionService:
                         current.get("filed", "")
                     ):
                         by_end[end] = entry
+            if by_end:
                 annual_sorted = sorted(
                     by_end.values(), key=lambda e: str(e["end"]), reverse=True
                 )[:10]
@@ -295,7 +300,6 @@ class FinancialIngestionService:
                         )
                     )
                     facts_imported += 1
-                break
 
         db.flush()
 

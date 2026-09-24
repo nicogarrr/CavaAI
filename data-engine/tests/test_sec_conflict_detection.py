@@ -222,3 +222,68 @@ def test_sec_fiscal_year_sale_del_end_y_manda_el_filed_reciente(db, monkeypatch)
     ]
     assert len(growth) == 1
     assert abs(growth[0].value - (Decimal("1200") / Decimal("999") - 1)) < Decimal("0.000001")
+
+
+class _StaleAliasSECClient:
+    """El tag antiguo (Revenues) quedo congelado en 2010; el revenue actual
+    vive en RevenueFromContractWithCustomerExcludingAssessedTax (caso MSFT
+    real, detectado en prod 24/9)."""
+
+    async def cik_for_ticker(self, ticker):
+        return "0000789019"
+
+    async def company_facts(self, cik):
+        return {
+            "facts": {
+                "us-gaap": {
+                    "Revenues": {
+                        "units": {
+                            "USD": [
+                                {"fy": 2010, "fp": "FY", "form": "10-K",
+                                 "end": "2010-06-30", "val": 62484,
+                                 "filed": "2010-07-30"},
+                            ]
+                        }
+                    },
+                    "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                        "units": {
+                            "USD": [
+                                {"fy": 2025, "fp": "FY", "form": "10-K",
+                                 "end": "2025-06-30", "val": 281724,
+                                 "filed": "2025-07-29"},
+                                {"fy": 2024, "fp": "FY", "form": "10-K",
+                                 "end": "2024-06-30", "val": 245122,
+                                 "filed": "2024-07-30"},
+                                # mismo periodo re-presentado en el 10-K de
+                                # 2025 (recast): gana el filed mas reciente
+                                {"fy": 2025, "fp": "FY", "form": "10-K",
+                                 "end": "2024-06-30", "val": 245200,
+                                 "filed": "2025-07-29"},
+                            ]
+                        }
+                    },
+                }
+            }
+        }
+
+
+def test_alias_antiguo_no_tapa_datos_recientes(db, monkeypatch):
+    """Fusion de alias por periodo: historia antigua conservada, periodos
+    recientes importados, mismo periodo bajo dos tags una sola vez."""
+    monkeypatch.setattr(ingestion, "SECClient", _StaleAliasSECClient)
+    company = _company(db)
+
+    result = asyncio.run(FinancialIngestionService().refresh_from_sec(db, company))
+
+    assert result["status"] == "ingested"
+    revenue = db.scalars(
+        select(FinancialFact).where(
+            FinancialFact.company_id == company.id,
+            FinancialFact.metric == "revenue",
+        )
+    ).all()
+    periods = {f.period: float(f.value) for f in revenue}
+    assert periods["2010-06-30:FY"] == 62484      # historia del tag antiguo
+    assert periods["2025-06-30:FY"] == 281724     # periodo reciente del tag nuevo
+    assert periods["2024-06-30:FY"] == 245200     # recast: filed mas reciente
+    assert len(revenue) == 3                      # sin duplicar el periodo
