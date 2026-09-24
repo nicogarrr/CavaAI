@@ -259,3 +259,44 @@ def test_replace_facts_scoped_to_source_type_and_tenant(db):
         )
     assert survivor is not None
     assert survivor.tenant_id == "other-tenant"
+
+
+def test_ingest_fundamentals_preserva_historico_sec(db, monkeypatch):
+    """El ingest de evidencia NO debe borrar el historico SEC de refresh/sec:
+    solo rellena el ultimo anual cuando falta (bug: borraba todo y dejaba
+    1 ano por metrica, rompiendo el DCF tras cada tesis)."""
+    company = _company(db)
+    for year in (2023, 2024, 2025):
+        db.add(
+            FinancialFact(
+                company_id=company.id, metric="revenue",
+                value=Decimal(str(year)), unit="USD",
+                period=f"{year}-12-31:FY", fiscal_year=year,
+                source_type="SEC", is_reported=True, confidence=Decimal("0.95"),
+            )
+        )
+    db.commit()
+
+    service = ThesisEvidenceService()
+    monkeypatch.setattr(service, "_fetch_company_facts", lambda cik: {
+        "facts": {"us-gaap": _gaap({
+            "Revenues": [
+                {"form": "10-K", "val": 999, "end": "2025-12-31", "fy": "2025", "fp": "FY", "filed": "2026-02-01"},
+            ],
+        })},
+    })
+
+    result = service._ingest_fundamentals(db, company, "0000320193")
+    assert result["status"] == "ok"
+
+    periods = {
+        f.period
+        for f in db.scalars(
+            select(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.source_type == "SEC",
+                FinancialFact.metric == "revenue",
+            )
+        )
+    }
+    assert periods == {"2023-12-31:FY", "2024-12-31:FY", "2025-12-31:FY"}
