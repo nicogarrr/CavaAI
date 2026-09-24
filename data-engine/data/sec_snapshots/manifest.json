@@ -1,0 +1,9 @@
+{
+ "tickers": {
+  "AAPL": "0000320193",
+  "RKLB": "0001819994",
+  "ASTS": "0001780312"
+ },
+ "fetched_at": "2026-09-20",
+ "source": "HuggingFace mirror of SEC EDGAR companyfacts (DenyTranDFW/edgar_xbrl_companyfacts), validado contra API directa"
+}
