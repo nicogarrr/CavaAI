@@ -103,23 +103,42 @@ export type FinnhubCandles = { s: 'ok' | 'no_data'; c: number[]; t: number[]; o:
 
 export async function getCandles(symbol: string, from: number, to: number, resolution: 'D' | 'W' | 'M' | '60' = 'D', revalidateSeconds = 1800): Promise<FinnhubCandles> {
     await requireAuthenticatedUser();
+    const noData: FinnhubCandles = { s: 'no_data', c: [], t: [], o: [], h: [], l: [], v: [] };
     const token = env.FINNHUB_API_KEY;
-    if (!token) {
-        // Sin API key, devolver datos vacíos en lugar de lanzar error
-        return { s: 'no_data', c: [], t: [], o: [], h: [], l: [], v: [] };
-    }
-    const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${from}&to=${to}&token=${token}`;
-    try {
-        const result = await fetchJSON<FinnhubCandles>(url, revalidateSeconds);
-        // fetchJSON puede retornar array vacío en caso de error, verificar si es un objeto válido
-        if (Array.isArray(result) || !result || typeof result !== 'object') {
-            return { s: 'no_data', c: [], t: [], o: [], h: [], l: [], v: [] };
+    if (token) {
+        const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${from}&to=${to}&token=${token}`;
+        try {
+            const result = await fetchJSON<FinnhubCandles>(url, revalidateSeconds);
+            // fetchJSON puede retornar array vacío en caso de error, verificar si es un objeto válido
+            if (!Array.isArray(result) && result && typeof result === 'object' && result.s === 'ok' && result.c?.length) {
+                return result;
+            }
+        } catch {
+            // Si el plan no permite el recurso (403) u otro error, seguimos al fallback
         }
-        return result;
-    } catch {
-        // Si el plan no permite el recurso (403) u otro error, devolvemos sin datos para no romper la UI
-        return { s: 'no_data', c: [], t: [], o: [], h: [], l: [], v: [] };
     }
+    // Fallback al backend (Yahoo chart API): Finnhub free no sirve velas de
+    // mercados no-US (IBEX .MC...). Sin fallback el gráfico de la ficha sale vacío.
+    const backendUrl = process.env.FMP_BACKEND_URL;
+    if (backendUrl) {
+        try {
+            const path = `/api/market/candles/${encodeURIComponent(symbol)}`;
+            const identityHeaders = await researchIdentityHeaders({ method: 'GET', path });
+            const response = await fetch(`${backendUrl}${path}?from=${from}&to=${to}&resolution=${resolution}`, {
+                headers: identityHeaders,
+                signal: AbortSignal.timeout(8000),
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.s === 'ok' && Array.isArray(data.c) && data.c.length) {
+                    return data;
+                }
+            }
+        } catch {
+            // Backend caído o sin datos: estado vacío honesto
+        }
+    }
+    return noData;
 }
 
 export type FinnhubProfile2 = { ticker?: string; name?: string; exchange?: string; currency?: string; country?: string; ipo?: string; logo?: string; weburl?: string };
