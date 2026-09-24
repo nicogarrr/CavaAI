@@ -1346,6 +1346,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/market/quote/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Market Quote
+         * @description Cotización puntual con shape Finnhub, fuente Yahoo Finance chart API.
+         *
+         *     Revive el fallback del frontend (getStockQuote) para tickers que Finnhub
+         *     free no cubre (IBEX .MC y otros mercados). Caché en memoria de 60s por
+         *     símbolo para no golpear Yahoo en bucles (watchlist, overview).
+         */
+        get: operations["market_quote_api_market_quote__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/claims": {
         parameters: {
             query?: never;
@@ -8480,6 +8504,48 @@ export interface operations {
                 "x-cavaai-body-hash"?: string | null;
             };
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    market_quote_api_market_quote__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                symbol: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
