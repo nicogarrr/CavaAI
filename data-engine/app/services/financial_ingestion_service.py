@@ -283,6 +283,8 @@ class FinancialIngestionService:
 
         db.flush()
 
+        facts_imported += self._derive_sec_metrics(db, company, document)
+
         conflicts: list[str] = []
         sec_facts = list(
             db.scalars(
@@ -415,6 +417,114 @@ class FinancialIngestionService:
             )
         )
         db.flush()
+
+    def _derive_sec_metrics(self, db: Session, company: Company, document: Document) -> int:
+        """Metricas derivadas del XBRL bruto (la SEC publica componentes, no
+        derivadas; FMP si las trae): FCF = OCF + capex (capex ya negativo),
+        margen FCF, crecimiento de revenue y deuda neta, por ano fiscal.
+        Sin ellas el snapshot de valoracion queda insufficient_data."""
+        by_metric: dict[str, dict[int, FinancialFact]] = {}
+        for fact in db.scalars(
+            select(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.source_type == "SEC",
+                FinancialFact.is_reported.is_(True),
+            )
+        ):
+            if fact.fiscal_year is not None:
+                by_metric.setdefault(fact.metric, {})[fact.fiscal_year] = fact
+
+        def year_fact(metric: str, year: int) -> FinancialFact | None:
+            return by_metric.get(metric, {}).get(year)
+
+        derived = 0
+        years = sorted({y for metric_facts in by_metric.values() for y in metric_facts})
+        for year in years:
+            ocf = year_fact("operating_cash_flow", year)
+            capex = year_fact("capital_expenditure", year)
+            revenue = year_fact("revenue", year)
+            debt = year_fact("total_debt", year)
+            cash = year_fact("cash_and_equivalents", year)
+
+            fcf: FinancialFact | None = None
+            if ocf is not None and capex is not None:
+                fcf = FinancialFact(
+                    company_id=company.id,
+                    metric="free_cash_flow",
+                    value=ocf.value + capex.value,
+                    unit="USD",
+                    period=ocf.period,
+                    fiscal_year=year,
+                    fiscal_quarter=None,
+                    source_id=document.id,
+                    source_type="SEC",
+                    is_reported=False,
+                    confidence=Decimal("0.85"),
+                )
+                db.add(fcf)
+                derived += 1
+            if (
+                fcf is not None
+                and revenue is not None
+                and revenue.value > 0
+            ):
+                db.add(
+                    FinancialFact(
+                        company_id=company.id,
+                        metric="fcf_margin",
+                        value=fcf.value / revenue.value,
+                        unit="decimal",
+                        period=revenue.period,
+                        fiscal_year=year,
+                        fiscal_quarter=None,
+                        source_id=document.id,
+                        source_type="SEC",
+                        is_reported=False,
+                        confidence=Decimal("0.85"),
+                    )
+                )
+                derived += 1
+            previous_revenue = year_fact("revenue", year - 1)
+            if (
+                revenue is not None
+                and previous_revenue is not None
+                and previous_revenue.value > 0
+            ):
+                db.add(
+                    FinancialFact(
+                        company_id=company.id,
+                        metric="revenue_growth",
+                        value=(revenue.value / previous_revenue.value) - 1,
+                        unit="decimal",
+                        period=revenue.period,
+                        fiscal_year=year,
+                        fiscal_quarter=None,
+                        source_id=document.id,
+                        source_type="SEC",
+                        is_reported=False,
+                        confidence=Decimal("0.85"),
+                    )
+                )
+                derived += 1
+            if debt is not None and cash is not None:
+                db.add(
+                    FinancialFact(
+                        company_id=company.id,
+                        metric="net_debt",
+                        value=debt.value - cash.value,
+                        unit="USD",
+                        period=debt.period,
+                        fiscal_year=year,
+                        fiscal_quarter=None,
+                        source_id=document.id,
+                        source_type="SEC",
+                        is_reported=False,
+                        confidence=Decimal("0.85"),
+                    )
+                )
+                derived += 1
+        db.flush()
+        return derived
 
     def _source_document_sec(self, db: Session, company: Company, ticker: str) -> Document:
         title = f"SEC XBRL facts - {ticker}"
