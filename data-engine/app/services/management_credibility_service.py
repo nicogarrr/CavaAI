@@ -137,18 +137,26 @@ class ManagementCredibilityService:
             )
             year_match = re.search(r"(?:19|20)\d{2}", promise.expected_period)
             if year_match:
-                statement = statement.where(
-                    FinancialFact.fiscal_year == int(year_match.group(0))
-                )
+                year = int(year_match.group(0))
                 normalized_period = re.sub(
                     r"[^A-Z0-9]", "", promise.expected_period.upper()
                 )
                 quarter_match = re.search(r"Q[1-4]", normalized_period)
                 if quarter_match:
+                    # Hechos trimestrales ingeridos desde 10-Q llevan
+                    # fiscal_year NULL y el año solo en period '<end>:Qn';
+                    # exigir fiscal_year == año los dejaria irreconciliables.
                     statement = statement.where(
-                        FinancialFact.fiscal_quarter == quarter_match.group(0)
+                        FinancialFact.fiscal_quarter == quarter_match.group(0),
+                        or_(
+                            FinancialFact.fiscal_year == year,
+                            FinancialFact.period.like(f"{year}-%"),
+                        ),
                     )
                 elif "FY" in normalized_period:
+                    statement = statement.where(
+                        FinancialFact.fiscal_year == year
+                    )
                     # An annual promise must not be reconciled against a later
                     # quarterly observation from the same fiscal year.
                     statement = statement.where(
