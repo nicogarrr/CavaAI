@@ -137,7 +137,9 @@ def test_assess_persists_and_read_returns_only_persisted(db):
 
     MoatService().assess(db, company)
     rows = db.scalars(select(MoatAssessment).where(MoatAssessment.company_id == company.id)).all()
-    assert len(rows) == len(MOAT_KEYWORDS)
+    # F29: solo se persiste el tipo con evidencia; los tipos sin evidencia
+    # no se guardan como ceros (una no-evaluacion no es una puntuacion).
+    assert sorted(row.moat_type for row in rows) == ["ecosystem", "switching_costs"]
 
     after = MoatService().read(db, company)
     assert after["status"] == "evidence_backed"
@@ -163,3 +165,44 @@ def test_reassessment_updates_in_place_no_duplicates(db):
     ).all()
     assert len(rows) == 1
     assert rows[0].strength == 40
+
+
+def test_zero_evidence_run_persists_nothing(db):
+    """F29: sin evidencia no hay filas - el GET dira "sin evaluacion"."""
+    company = _company(db)
+    # Claim financiero sin keywords de foso y sin evidencia: como en prod.
+    _claim(db, company.id, "AAPL revenue is 416161000000.000000 for 2025-09-27:FY.")
+    result = MoatService().assess(db, company)
+    assert result["status"] == "insufficient_evidence"
+    rows = db.scalars(select(MoatAssessment).where(MoatAssessment.company_id == company.id)).all()
+    assert rows == []
+
+
+def test_zero_evidence_run_never_overwrites_real_assessment(db):
+    """F29: una corrida posterior sin evidencia conserva la evaluacion real."""
+    company = _company(db)
+    claim = _claim(db, company.id, "Brand pricing power sustains margins")
+    _evidence(db, claim.id, tier="tier_1_regulatory", confidence=0.9)
+    _evidence(db, claim.id, tier="tier_1_regulatory", confidence=0.9)
+    MoatService().assess(db, company)
+    before = db.scalar(
+        select(MoatAssessment).where(
+            MoatAssessment.company_id == company.id,
+            MoatAssessment.moat_type == "brand",
+        )
+    )
+    assert before.strength == 40
+
+    # Segunda corrida: la evidencia desaparece (p.ej. claims regenerados).
+    for ev in list(claim.evidence):
+        db.delete(ev)
+    db.flush()
+    MoatService().assess(db, company)
+    after = db.scalar(
+        select(MoatAssessment).where(
+            MoatAssessment.company_id == company.id,
+            MoatAssessment.moat_type == "brand",
+        )
+    )
+    assert after.strength == 40
+    assert after.status == "evidence_backed"
