@@ -141,6 +141,17 @@ const RATING_LABELS: Record<string, string> = {
   watch: 'seguimiento',
 };
 
+/** F24 (vista Comparables): etiquetas/prosa del backend en español,
+ *  con fallback al original para no ocultar datos si el backend cambia. */
+const PEERS_BASIS_LABELS: Record<string, string> = {
+  traceable_calculated_metric: 'métrica calculada trazable',
+  evidence_backed_claim: 'afirmación con evidencia enlazada',
+};
+const PEERS_METHODOLOGY_ES: Record<string, string> = {
+  'Quantitative differences use traceable calculated metrics. Qualitative differences are emitted only when linked evidence exists.':
+    'Las diferencias cuantitativas usan métricas calculadas trazables. Las diferencias cualitativas solo se publican cuando existe evidencia enlazada.',
+};
+
 function label(value: string | null | undefined): string {
   if (!value) return '—';
   return STATUS_LABELS[value] ?? RATING_LABELS[value] ?? value.replaceAll('_', ' ');
@@ -297,7 +308,7 @@ function MetricsGrid({ metrics, ticker }: { metrics: ResearchCalculatedMetric[];
           </div>
           <div className="mt-2 text-xl text-teal-300">{metricValue(metric.value, metric.unit)}</div>
           <div className="mt-2 text-xs text-gray-500">{metric.period} · {metric.definition_version}</div>
-          <div className="mt-2 text-xs text-gray-600">{metric.formula}</div>
+          <div className="mt-2 text-xs leading-5 text-gray-400">{metric.formula}</div>
         </div>
       ))}
     </div>
@@ -748,9 +759,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     const peers = await getResearchPeersWorkspace(ticker);
     content = (
       <div className="space-y-6">
-        <Panel title="Conjunto de comparables"><p className="text-sm text-gray-300">{peers.comparison?.basis ?? 'Sin conjunto de comparables'} · {peers.comparison?.peer_count ?? 0} comparables</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
+        <Panel title="Conjunto de comparables"><p className="text-sm text-gray-300">{peers.comparison?.basis ? (PEERS_BASIS_LABELS[peers.comparison.basis] ?? peers.comparison.basis) : 'Sin conjunto de comparables'} · {peers.comparison?.peer_count ?? 0} comparables</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
         <Panel title="Métricas comparables"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Objetivo {value.target_value ?? 'desconocido'} · mediana {value.peer_median ?? 'desconocida'} · n={value.peer_sample_size}</div></div>)}</div></Panel>
-        <Panel title="Ventajas y desventajas"><p className="text-sm text-gray-400">{peers.analysis?.methodology ?? 'Sin análisis de comparables persistido.'}</p><p className="mt-3 text-xs text-amber-300">{peers.analysis?.insufficient_data.join(', ')}</p></Panel>
+        <Panel title="Ventajas y desventajas"><p className="text-sm text-gray-400">{peers.analysis?.methodology ? (PEERS_METHODOLOGY_ES[peers.analysis.methodology] ?? peers.analysis.methodology) : 'Sin análisis de comparables persistido.'}</p><p className="mt-3 text-xs text-amber-300">{peers.analysis?.insufficient_data.join(', ')}</p></Panel>
       </div>
     );
   } else if (activeView === 'valuation') {

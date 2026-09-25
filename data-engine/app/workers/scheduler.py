@@ -64,10 +64,10 @@ def enqueue_insider_scan(*, lookback: int, max_new_fetches: int) -> dict:
     }
 
 
-def enqueue_for_all_tenants(actor) -> dict:
+def enqueue_for_all_tenants(actor, **kwargs) -> dict:
     queued = []
     for tenant_id, user_id in tenant_contexts():
-        message = actor.send(tenant_id, user_id)
+        message = actor.send(tenant_id, user_id, **kwargs)
         queued.append(
             {
                 "tenant_id": tenant_id,
@@ -97,10 +97,19 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
     )
     _register(
         scheduler,
-        partial(enqueue_for_all_tenants, refresh_news),
+        partial(enqueue_for_all_tenants, refresh_news, scope="tracked"),
         "interval",
         job_id="news_refresh",
         minutes=30,
+    )
+    # Universo completo en background, al ritmo que permite GDELT con
+    # pacing (~3 h/tenant): dos velocidades, decisión de Nico 2026-09-25.
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, refresh_news, scope="all"),
+        "interval",
+        job_id="news_refresh_universe",
+        hours=6,
     )
     _register(
         scheduler,
