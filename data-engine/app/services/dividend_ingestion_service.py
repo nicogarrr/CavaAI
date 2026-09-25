@@ -1,8 +1,10 @@
-"""Dividend record ingestion from a labeled data provider (FMP).
+"""Dividend record ingestion from labeled data providers (Yahoo, fallback FMP).
 
-Declared dividends are ingested as deduped DividendRecord rows with source
-and fetched_at provenance. Provider failures mark the symbol unavailable;
-nothing is fabricated. Dividend cash application to the ledger stays manual.
+Yahoo Finance chart API is the primary source (free, no key); FMP is the
+fallback when Yahoo fails (its key may be dead: errors surface as
+unavailable, never fabricated). Declared dividends are ingested as deduped
+DividendRecord rows with per-row source and fetched_at provenance.
+Dividend cash application to the ledger stays manual.
 """
 
 from __future__ import annotations
@@ -16,13 +18,19 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, DividendRecord, Position
 from app.services.connectors.fmp import FMPClient
+from app.services.connectors.yahoo import YahooFinanceClient
 from app.services.provenance import Coverage, SourceKind, provenance
 from app.services.company_resolver import resolve_company
 
 
 class DividendIngestionService:
-    def __init__(self, fmp: FMPClient | None = None) -> None:
+    def __init__(
+        self,
+        fmp: FMPClient | None = None,
+        yahoo: YahooFinanceClient | None = None,
+    ) -> None:
         self.fmp = fmp or FMPClient()
+        self.yahoo = yahoo or YahooFinanceClient()
 
     @staticmethod
     def _parse_date(value: Any) -> date | None:
@@ -35,7 +43,7 @@ class DividendIngestionService:
 
     @staticmethod
     def _parse_amount(payload: dict) -> Decimal | None:
-        for key in ("adjDividend", "dividend"):
+        for key in ("adjDividend", "dividend", "amount"):
             raw = payload.get(key)
             if raw is None:
                 continue
@@ -46,6 +54,48 @@ class DividendIngestionService:
             if amount > 0:
                 return amount
         return None
+
+    @staticmethod
+    def _epoch_to_date(value: Any) -> date | None:
+        try:
+            return datetime.fromtimestamp(int(value), UTC).date()
+        except (TypeError, ValueError, OSError, OverflowError):
+            return None
+
+    async def _fetch_rows(
+        self, company: Company
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Normalized (ex_date, amount, pay_date, currency) rows + source label.
+
+        Yahoo first (free, no key); FMP only when Yahoo raises. A successful
+        empty Yahoo answer means "no dividends declared", not a failure, so
+        it does not trigger the fallback.
+        """
+        try:
+            payload = await self.yahoo.dividends(company.ticker)
+        except Exception:
+            payload = await self.fmp.dividends(company.ticker)
+            rows = payload if isinstance(payload, list) else payload.get("historical", [])
+            return [
+                {
+                    "ex_date": self._parse_date(row.get("date") or row.get("recordDate")),
+                    "pay_date": self._parse_date(row.get("paymentDate") or row.get("payDate")),
+                    "amount": self._parse_amount(row),
+                    "currency": str(row.get("currency") or "USD").upper()[:10],
+                }
+                for row in rows
+                if isinstance(row, dict)
+            ], "fmp"
+        return [
+            {
+                "ex_date": self._epoch_to_date(row.get("date")),
+                "pay_date": None,  # chart API no expone fecha de pago
+                "amount": self._parse_amount(row),
+                "currency": (company.currency or "USD").upper()[:10],
+            }
+            for row in payload
+            if isinstance(row, dict)
+        ], "yahoo_finance"
 
     async def sync_company(self, db: Session, *, ticker: str) -> dict[str, Any]:
         """Ingest declared dividends for one company. Returns counts + provenance."""
@@ -58,7 +108,7 @@ class DividendIngestionService:
                 "existing": 0,
             }
         try:
-            payload = await self.fmp.dividends(company.ticker)
+            rows, source = await self._fetch_rows(company)
         except Exception as exc:  # provider/auth/entitlement/network failure
             return {
                 "ticker": company.ticker,
@@ -67,18 +117,13 @@ class DividendIngestionService:
                 "inserted": 0,
                 "existing": 0,
             }
-        rows = payload if isinstance(payload, list) else payload.get("historical", [])
         fetched_at = datetime.now(UTC)
         inserted = 0
         existing = 0
         for row in rows:
-            if not isinstance(row, dict):
-                continue
-            ex_date = self._parse_date(row.get("date") or row.get("recordDate"))
-            if ex_date is None:
-                continue
-            amount = self._parse_amount(row)
-            if amount is None:
+            ex_date = row["ex_date"]
+            amount = row["amount"]
+            if ex_date is None or amount is None:
                 continue
             duplicate = db.scalar(
                 select(DividendRecord).where(
@@ -94,10 +139,10 @@ class DividendIngestionService:
                 DividendRecord(
                     company_id=company.id,
                     ex_date=ex_date,
-                    pay_date=self._parse_date(row.get("paymentDate") or row.get("payDate")),
+                    pay_date=row["pay_date"],
                     amount=amount,
-                    currency=str(row.get("currency") or "USD").upper()[:10],
-                    source="fmp",
+                    currency=row["currency"],
+                    source=source,
                     fetched_at=fetched_at,
                 )
             )
@@ -106,6 +151,7 @@ class DividendIngestionService:
         return {
             "ticker": company.ticker,
             "status": "ok",
+            "source": source,
             "inserted": inserted,
             "existing": existing,
             "fetched_at": fetched_at.isoformat(),
@@ -126,14 +172,14 @@ class DividendIngestionService:
             "unavailable": unavailable,
             "results": results,
             "provenance": provenance(
-                "FMP stable/dividends",
+                "Yahoo Finance chart/dividends (fallback FMP stable/dividends)",
                 SourceKind.UNOFFICIAL,
                 coverage=(
                     Coverage.OK
                     if unavailable == 0
                     else Coverage.PARTIAL if ok else Coverage.UNAVAILABLE
                 ),
-                note="Declared dividends from a data provider; reconcile against issuer/regulator notices for material decisions.",
+                note="Declared dividends from data providers; reconcile against issuer/regulator notices for material decisions.",
             ),
         }
 
@@ -202,7 +248,7 @@ class DividendIngestionService:
                 "percent": round(100 * coverage_ratio, 1),
             },
             "provenance": provenance(
-                "FMP stable/dividends via CavaAI Postgres",
+                "Yahoo Finance/FMP dividends via CavaAI Postgres",
                 SourceKind.UNOFFICIAL,
                 coverage=(
                     Coverage.OK
