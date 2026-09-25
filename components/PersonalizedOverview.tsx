@@ -252,9 +252,20 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
 
             if (summaryResult.data && summaryResult.data.holdings.length > 0) {
                 const summary = summaryResult.data;
-                const topMover = summary.holdings.reduce((a, b) => Math.abs(b.gainPercent) > Math.abs(a.gainPercent) ? b : a);
-                const direction = summary.totalGainPercent >= 0 ? 'sube' : 'baja';
-                setAiInsight(`Hoy tu cartera ${direction} ${formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'never' })}. ${topMover.symbol} lidera con ${formatPercent(topMover.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}.`);
+                // F17: gainPercent es rentabilidad desde la compra (no la
+                // variacion de hoy) y solo existe con base de coste. Sin
+                // coste no hay frase de movimiento: un "0,00%" seria inventado.
+                const conCoste = summary.holdings.filter((h) => h.cost > 0 && !h.fxMissing);
+                if (conCoste.length === 0) {
+                    setAiInsight('Todavía no tenemos la base de coste de tus posiciones. Cuando esté cargada, aquí verás cómo va tu cartera desde la compra.');
+                } else {
+                    const topMover = conCoste.reduce((a, b) => Math.abs(b.gainPercent) > Math.abs(a.gainPercent) ? b : a);
+                    const costeTotal = conCoste.reduce((sum, h) => sum + h.cost, 0);
+                    const gananciaTotal = conCoste.reduce((sum, h) => sum + h.gain, 0);
+                    const totalPercent = costeTotal > 0 ? (gananciaTotal / costeTotal) * 100 : 0;
+                    const direccion = totalPercent >= 0 ? 'una subida' : 'una caída';
+                    setAiInsight(`Tu cartera acumula ${direccion} del ${formatPercent(totalPercent, { fromRatio: false, digits: 2, signDisplay: 'never' })} desde la compra. ${topMover.symbol} es la posición que más se mueve (${formatPercent(topMover.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}).`);
+                }
             } else {
                 setAiInsight('');
             }
@@ -365,8 +376,8 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                     className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700/30"
                                                 >
                                                     <span className="text-white font-semibold">{h.symbol}</span>
-                                                    <span className={`font-mono ${h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                        {formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                                                    <span className={`font-mono ${h.cost > 0 ? (h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400') : 'text-gray-500'}`}>
+                                                        {h.cost > 0 ? formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }) : 's/d'}
                                                     </span>
                                                 </Link>
                                             ))}
