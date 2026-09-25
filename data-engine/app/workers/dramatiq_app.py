@@ -373,6 +373,39 @@ def refresh_market_pipeline(
         db.close()
 
 
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
+def refresh_propicks_prices(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """F2: precios diarios yfinance + momentum para el top-N del ultimo run."""
+    from app.services.propicks_price_service import refresh_propicks_prices as _refresh
+
+    lease = acquire_job_lease(
+        f"refresh_propicks_prices:{tenant_id}",
+        ttl_seconds=3600,
+        redis_url=_lease_redis_url(),
+    )
+    if lease is None:
+        return {
+            "status": "skipped",
+            "actor": "refresh_propicks_prices",
+            "reason": "lease_held",
+        }
+    db = _session(tenant_id, user_id)
+    try:
+        result = _refresh(db)
+        return {"actor": "refresh_propicks_prices", **result}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error("refresh_propicks_prices", exc, tenant_id=tenant_id)
+    finally:
+        release_job_lease(
+            f"refresh_propicks_prices:{tenant_id}", lease, redis_url=_lease_redis_url()
+        )
+        db.close()
+
+
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
 def refresh_sec_filings(
     tenant_id: int | None = None,

@@ -54,6 +54,20 @@ def _run_out(run: ProPickRun) -> ProPickRunOut:
     return ProPickRunOut.model_validate(run)
 
 
+@router.post("/prices/refresh", status_code=202)
+def refresh_prices(db: Session = Depends(get_db)) -> dict:
+    """Encola el job F2 (precios yfinance + momentum del top-40 del ultimo run).
+
+    Ops/sync manual; el scheduler lo corre a diario tras el cierre US."""
+    from app.workers.dramatiq_app import refresh_propicks_prices
+
+    message = refresh_propicks_prices.send(
+        tenant_id=db.info.get("tenant_id"),
+        user_id=db.info.get("user_id"),
+    )
+    return {"status": "queued", "broker_message_id": str(message.message_id)}
+
+
 @router.post("/runs", response_model=ProPickRunOut, status_code=201)
 def create_run(
     top_n: int = Query(default=20, ge=1, le=100),
