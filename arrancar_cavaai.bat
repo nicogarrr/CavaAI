@@ -27,6 +27,10 @@ REM no existe).
 REM =====================================================================
 cd /d "%~dp0"
 set "FRONT_MODE=DEV"
+REM Valores por defecto de Postgres (el .bat no carga el .env): si el entorno
+REM no define POSTGRES_USER/POSTGRES_DB, usa los del docker-compose.
+if not defined POSTGRES_USER set "POSTGRES_USER=portfolio"
+if not defined POSTGRES_DB set "POSTGRES_DB=cavaai_research"
 if /i "%~1"=="/prod" set "FRONT_MODE=PROD"
 if /i "%~1"=="prod" set "FRONT_MODE=PROD"
 if /i "%~1"=="--prod" set "FRONT_MODE=PROD"
@@ -43,10 +47,13 @@ if errorlevel 1 (
 
 echo [2/5] Esperando a Postgres y Qdrant...
 for /L %%i in (1,1,30) do (
-  docker exec cavaai-postgres pg_isready -U %POSTGRES_USER:-portfolio% -d %POSTGRES_DB:-cavaai_research% >nul 2>&1 && goto postgres_ok
+  docker exec cavaai-postgres pg_isready -U %POSTGRES_USER% -d %POSTGRES_DB% >nul 2>&1 && goto postgres_ok
   timeout /t 2 /nobreak >nul
 )
-echo AVISO: Postgres no responde a pg_isready; las migraciones pueden fallar.
+echo ERROR: Postgres no responde a pg_isready tras 60s; NO sigo: las migraciones y el backend fallarian.
+echo Comprueba "docker compose ps postgres" y que POSTGRES_USER/POSTGRES_DB del entorno (o los valores por defecto) coinciden con el .env.
+pause
+exit /b 1
 :postgres_ok
 for /L %%i in (1,1,30) do (
   curl -sf http://localhost:6333/healthz >nul 2>&1 && goto qdrant_ok
