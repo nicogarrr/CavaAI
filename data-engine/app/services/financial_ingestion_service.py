@@ -86,7 +86,7 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities"],                                         "USD"),
     ("capital_expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],          "USD"),
     ("depreciation_amortization", ["DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet",
-                                   "Depreciation"],                                                                  "USD"),
+                                   "Depreciation", "DepreciationAndAmortization"],                                                                  "USD"),
     ("dividends_paid",    ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock"],                                "USD"),
 ]
 

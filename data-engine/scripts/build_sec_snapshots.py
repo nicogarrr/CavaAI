@@ -39,6 +39,8 @@ CONCEPTS = [
     "OperatingLeaseLiability", "OperatingLeaseLiabilityNoncurrent",
     "NetCashProvidedByUsedInOperatingActivities",
     "PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets",
+    "DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet",
+    "Depreciation", "DepreciationAndAmortization",
     "PaymentsOfDividends",
     "PaymentsOfDividendsCommonStock",
 ]
