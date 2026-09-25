@@ -46,6 +46,18 @@ CONCEPTS = [
 ]
 
 
+def _entry_value(raw):
+    """Preserva decimales: int() truncaba BPA (7,26 -> 7) y ratios (B19).
+
+    Los importes enteros (revenue en dolares) siguen serializandose como int;
+    cualquier valor con fraccion se conserva como float.
+    """
+    if raw is None:
+        return None
+    number = float(raw)
+    return int(number) if number.is_integer() else number
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--parquet", required=True)
@@ -80,7 +92,7 @@ def main() -> int:
             entry = {
                 "end": row["end"], "fy": int(row["fy"]) if row["fy"] else None,
                 "fp": row["fp"], "form": row["form"], "filed": row["filed"],
-                "val": int(row["val_dec"]) if row["val_dec"] is not None else None,
+                "val": _entry_value(row["val_dec"]),
             }
             concept["units"].setdefault(unit, []).append(entry)
         payload = {
