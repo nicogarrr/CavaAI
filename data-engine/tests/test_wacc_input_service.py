@@ -43,15 +43,30 @@ class _StubFred:
     """Stands in for FREDClient: configured flag + canned series payload."""
 
     observations = [{"date": "2026-09-21", "value": "4.25"}]
+    csv_observations: list[dict] = []
 
     def __init__(self, configured: bool = True):
         self._configured = configured
+
+    async def series_csv(self, series_id, limit=10):
+        # Sin clave, el stub simula fredgraph.csv inalcanzable/vacio:
+        # el estado honesto es "sin dato", nunca un valor inventado.
+        return {"observations": list(self.csv_observations)}
 
     def configured(self) -> bool:
         return self._configured
 
     async def series(self, series_id: str, limit: int = 10) -> dict:
         return {"observations": list(self.observations)}
+
+
+def _patch_no_yfinance(monkeypatch):
+    """Sin red: los tests existentes no esperan inputs de mercado."""
+
+    async def _empty(self, ticker):
+        return {}
+
+    monkeypatch.setattr(WaccInputService, "_yfinance_market_inputs", _empty)
 
 
 def _patch_fred(monkeypatch, stub):
@@ -65,6 +80,7 @@ def _run(coro):
 
 
 def test_refresh_stores_sourced_risk_free_and_policy_facts(db, monkeypatch):
+    _patch_no_yfinance(monkeypatch)
     _patch_fred(monkeypatch, _StubFred(configured=True))
     company = _company(db)
     result = _run(WaccInputService().refresh(db, company))
@@ -112,7 +128,8 @@ def test_refresh_stores_sourced_risk_free_and_policy_facts(db, monkeypatch):
     assert sorted(result["source_document_ids"]) == result["source_document_ids"]
 
 
-def test_refresh_without_fred_key_keeps_honest_missing_state(db, monkeypatch):
+def test_refresh_without_fred_key_and_empty_csv_keeps_honest_missing_state(db, monkeypatch):
+    _patch_no_yfinance(monkeypatch)
     _patch_fred(monkeypatch, _StubFred(configured=False))
     company = _company(db)
     result = _run(WaccInputService().refresh(db, company))
@@ -136,6 +153,7 @@ def test_refresh_without_fred_key_keeps_honest_missing_state(db, monkeypatch):
 
 
 def test_refresh_is_idempotent_across_runs(db, monkeypatch):
+    _patch_no_yfinance(monkeypatch)
     _patch_fred(monkeypatch, _StubFred(configured=True))
     company = _company(db)
     first = _run(WaccInputService().refresh(db, company))
@@ -155,6 +173,7 @@ def test_refresh_is_idempotent_across_runs(db, monkeypatch):
 
 
 def test_refresh_skips_unparseable_fred_values(db, monkeypatch):
+    _patch_no_yfinance(monkeypatch)
     stub = _StubFred(configured=True)
     stub.observations = [
         {"date": "2026-09-22", "value": "."},  # FRED's missing-value marker
@@ -189,3 +208,72 @@ def test_decimal_parses_numbers_and_rejects_garbage():
     assert service._decimal(0.0433) == Decimal("0.0433")
     assert service._decimal("not-a-number") is None
     assert service._decimal(None) is None
+
+
+def test_series_csv_parses_public_fredgraph_payload():
+    """fredgraph.csv (sin clave): mismo shape que la API, mas reciente primero."""
+    from app.services.connectors.fred import FREDClient
+
+    class _CsvResp:
+        text = "DATE,DGS10\n2026-09-21,4.20\n2026-09-22,4.25\n2026-09-23,.\n"
+
+        def raise_for_status(self):
+            return None
+
+    class _Client:
+        async def get(self, url, headers=None):
+            assert "fredgraph.csv?id=DGS10" in url
+            return _CsvResp()
+
+    payload = asyncio.run(FREDClient(client=_Client()).series_csv("DGS10", limit=10))
+    observations = payload["observations"]
+    assert observations[0] == {"date": "2026-09-23", "value": "."}
+    assert observations[-1] == {"date": "2026-09-21", "value": "4.20"}
+
+
+def test_refresh_without_key_uses_csv_fallback(db, monkeypatch):
+    """Sin FRED_API_KEY, la via publica CSV alimenta risk_free_rate igualmente."""
+
+    class _CsvFred:
+        def configured(self):
+            return False
+
+        async def series_csv(self, series_id, limit=10):
+            return {"observations": [{"date": "2026-09-23", "value": "4.25"}]}
+
+    _patch_no_yfinance(monkeypatch)
+    monkeypatch.setattr(wacc_input_service, "FREDClient", lambda: _CsvFred())
+    company = _company(db)
+    result = _run(WaccInputService().refresh(db, company))
+    assert "risk_free_rate" not in result["missing"]
+    fact = db.scalar(
+        select(FinancialFact).where(
+            FinancialFact.company_id == company.id,
+            FinancialFact.metric == "risk_free_rate",
+        )
+    )
+    assert fact is not None and fact.value == Decimal("0.0425")
+
+
+def test_refresh_stores_yfinance_beta_and_market_cap(db, monkeypatch):
+    """Beta y market_cap de Yahoo se persisten con fuente declarada."""
+
+    async def _market(self, ticker):
+        assert ticker == "AAPL"
+        return {"beta": Decimal("1.24"), "market_cap": Decimal("3000000000000")}
+
+    _patch_fred(monkeypatch, _StubFred(configured=True))
+    monkeypatch.setattr(WaccInputService, "_yfinance_market_inputs", _market)
+    company = _company(db)
+    result = _run(WaccInputService().refresh(db, company))
+    assert result["missing"] == []
+    for metric, expected in [("beta", "1.24"), ("market_cap", "3000000000000")]:
+        fact = db.scalar(
+            select(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric == metric,
+            )
+        )
+        assert fact is not None
+        assert fact.value == Decimal(expected)
+        assert fact.source_type == "yfinance"

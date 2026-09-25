@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -19,53 +20,61 @@ class WaccInputService:
         sources: list[int] = []
 
         fred = FREDClient()
+        # Sin clave FRED se usa fredgraph.csv (publico, fuente declarada):
+        # el dato es el mismo, la via queda en el documento fuente.
         if fred.configured():
             payload = await fred.series(
                 getattr(settings, "wacc_risk_free_series", "DGS10"),
                 limit=10,
             )
-            observation = next(
-                (
-                    item
-                    for item in payload.get("observations", [])
-                    if item.get("value") not in {None, "."}
-                ),
-                None,
+        else:
+            payload = await fred.series_csv(
+                getattr(settings, "wacc_risk_free_series", "DGS10"),
+                limit=10,
             )
-            if observation:
-                risk_free_date = str(observation.get("date") or as_of)
-                risk_free = self._decimal(observation.get("value"))
-                if risk_free is not None:
-                    risk_free /= Decimal("100")
-                    document = self._source_document(
+        observation = next(
+            (
+                item
+                for item in payload.get("observations", [])
+                if item.get("value") not in {None, "."}
+            ),
+            None,
+        )
+        if observation:
+            risk_free_date = str(observation.get("date") or as_of)
+            risk_free = self._decimal(observation.get("value"))
+            if risk_free is not None:
+                risk_free /= Decimal("100")
+                document = self._source_document(
+                    db,
+                    company,
+                    source_type="FRED",
+                    title=(
+                        f"FRED {getattr(settings, 'wacc_risk_free_series', 'DGS10')} "
+                        f"{risk_free_date}"
+                    ),
+                    metadata={
+                        "series": getattr(
+                            settings, "wacc_risk_free_series", "DGS10"
+                        ),
+                        "date": risk_free_date,
+                        "currency": company.currency,
+                        "via": "api_key" if fred.configured() else "fredgraph_csv",
+                    },
+                )
+                sources.append(document.id)
+                facts.append(
+                    self._upsert_fact(
                         db,
                         company,
+                        metric="risk_free_rate",
+                        value=risk_free,
+                        period=risk_free_date,
+                        source=document,
                         source_type="FRED",
-                        title=(
-                            f"FRED {getattr(settings, 'wacc_risk_free_series', 'DGS10')} "
-                            f"{risk_free_date}"
-                        ),
-                        metadata={
-                            "series": getattr(
-                                settings, "wacc_risk_free_series", "DGS10"
-                            ),
-                            "date": risk_free_date,
-                            "currency": company.currency,
-                        },
+                        confidence=Decimal("0.98"),
                     )
-                    sources.append(document.id)
-                    facts.append(
-                        self._upsert_fact(
-                            db,
-                            company,
-                            metric="risk_free_rate",
-                            value=risk_free,
-                            period=risk_free_date,
-                            source=document,
-                            source_type="FRED",
-                            confidence=Decimal("0.98"),
-                        )
-                    )
+                )
 
         policy_document = self._source_document(
             db,
@@ -120,6 +129,38 @@ class WaccInputService:
                     confidence=Decimal("0.70"),
                 )
             )
+        # Beta y market cap: yfinance (fuente declarada, confianza menor).
+        # Si Yahoo no tiene el ticker, los inputs quedan honestamente
+        # ausentes y se reportan en "missing".
+        market = await self._yfinance_market_inputs(company.ticker)
+        if market:
+            market_document = self._source_document(
+                db,
+                company,
+                source_type="yfinance",
+                title=f"Yahoo Finance market inputs {as_of}",
+                metadata={
+                    "source": "yfinance Ticker.info",
+                    "date": as_of,
+                    "ticker": company.ticker,
+                    "fields": sorted(market.keys()),
+                },
+            )
+            sources.append(market_document.id)
+            for metric, value in market.items():
+                unit = "decimal" if metric == "beta" else (company.currency or "USD")
+                facts.append(
+                    self._upsert_fact(
+                        db,
+                        company,
+                        metric=metric,
+                        value=value,
+                        period=as_of,
+                        source=market_document,
+                        source_type="yfinance",
+                        confidence=Decimal("0.75"),
+                    )
+                )
         db.commit()
         return {
             "status": "refreshed",
@@ -211,6 +252,29 @@ class WaccInputService:
             fact.source_id = source.id
             fact.confidence = confidence
         return fact
+
+    async def _yfinance_market_inputs(self, ticker: str) -> dict[str, Decimal]:
+        """Beta y marketCap desde Yahoo Finance; {} si no hay datos."""
+
+        def _fetch() -> dict[str, Decimal]:
+            try:
+                import yfinance as yf
+            except ImportError:
+                return {}
+            try:
+                info = yf.Ticker(ticker).info or {}
+            except Exception:  # noqa: BLE001 - Yahoo falla de muchas formas
+                return {}
+            result: dict[str, Decimal] = {}
+            beta = self._decimal(info.get("beta"))
+            if beta is not None and beta > 0:
+                result["beta"] = beta
+            market_cap = self._decimal(info.get("marketCap"))
+            if market_cap is not None and market_cap > 0:
+                result["market_cap"] = market_cap
+            return result
+
+        return await asyncio.to_thread(_fetch)
 
     def _decimal(self, value) -> Decimal | None:
         try:
