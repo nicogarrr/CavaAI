@@ -511,3 +511,82 @@ def test_quality_moat_score_full_pass_and_partial_coverage():
     finally:
         db.close()
         cleanup_metric_test_artifacts()
+
+
+def test_owner_earnings_declared_maintenance_capex_rule():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "200")
+        add_fact(db, company, "depreciation_amortization", "80")
+        add_fact(db, company, "capital_expenditure", "-120")
+        db.commit()
+
+        service = MetricCalculationService()
+        result = service.calculate(db, company, "owner_earnings", persist=True)
+        db.commit()
+        assert result.status == "ok"
+        assert result.definition_version == "OWNER_EARNINGS_V1"
+        # maintenance = min(120, 80) = 80 -> 200 + 80 - 80
+        assert result.value == Decimal("200.00000000")
+        assert result.calculation_trace["maintenance_capex"] == "80.00000000"
+        assert result.calculation_trace["estimated_growth_capex"] == "40.00000000"
+
+        # capex por debajo de D&A: maintenance = capex entero
+        db.execute(
+            delete(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric == "capital_expenditure",
+            )
+        )
+        add_fact(db, company, "capital_expenditure", "-50")
+        db.commit()
+        result2 = service.calculate(db, company, "owner_earnings", persist=False)
+        assert result2.value == Decimal("230.00000000")
+        assert result2.calculation_trace["maintenance_capex"] == "50.00000000"
+
+        # sin D&A: unavailable honesto, nunca estimado
+        db.execute(
+            delete(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric == "depreciation_amortization",
+            )
+        )
+        db.commit()
+        unavailable = service.calculate(db, company, "owner_earnings", persist=False)
+        assert unavailable.status == "unavailable"
+        assert "depreciation_amortization" in unavailable.calculation_trace["missing_inputs"]
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_cfroi_approx_is_declared_and_never_confused_with_cfroi_v1():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "200")
+        add_fact(db, company, "depreciation_amortization", "80")
+        add_fact(db, company, "interest_expense", "50")
+        add_fact(db, company, "total_assets", "2000")
+        add_fact(db, company, "income_tax_expense", "75")
+        add_fact(db, company, "income_before_tax", "300")
+        db.commit()
+
+        result = MetricCalculationService().calculate(db, company, "cfroi_approx", persist=True)
+        db.commit()
+        assert result.status == "ok"
+        assert result.definition_version == "CFROI_APPROX_V1"
+        # (200 + 80 + 50*0.75) / 2000 = 317.5 / 2000
+        assert result.value == Decimal("0.15875000")
+        assert "approximation" in result.calculation_trace
+        assert result.calculation_trace["tax_rate_source"] == "reported_income_statement"
+
+        # CFROI_V1 real sigue negandose a estimar (sin inputs de inversion bruta)
+        real = MetricCalculationService().calculate(db, company, "cfroi", persist=False)
+        assert real.status == "unavailable"
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
