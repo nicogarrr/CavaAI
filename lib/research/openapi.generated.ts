@@ -412,6 +412,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{ticker}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Company Events */
+        get: operations["get_company_events_api_companies__ticker__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{ticker}/expectation-reality": {
         parameters: {
             query?: never;
@@ -455,6 +472,23 @@ export interface paths {
         };
         /** List Financial Facts */
         get: operations["list_financial_facts_api_companies__ticker__facts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{ticker}/filings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Company Filings */
+        get: operations["get_company_filings_api_companies__ticker__filings_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3500,6 +3534,45 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /** CompanyEventsOut */
+        CompanyEventsOut: {
+            /** As Of */
+            as_of: string;
+            /** Calendar Status */
+            calendar_status: string;
+            /** Company Name */
+            company_name: string;
+            /** Eps History Status */
+            eps_history_status: string;
+            /** History */
+            history: components["schemas"]["EventHistoryItemOut"][];
+            next_event?: components["schemas"]["NextEventOut"] | null;
+            /** Note */
+            note?: string | null;
+            /** Source */
+            source: string;
+            /** Ticker */
+            ticker: string;
+        };
+        /** CompanyFilingsOut */
+        CompanyFilingsOut: {
+            /** As Of */
+            as_of: string;
+            /** Company Name */
+            company_name: string;
+            /** Documents */
+            documents: components["schemas"]["DocumentItemOut"][];
+            /** Filings */
+            filings: components["schemas"]["FilingItemOut"][];
+            /** Note */
+            note?: string | null;
+            /** Sec Status */
+            sec_status: string;
+            /** Source */
+            source?: string | null;
+            /** Ticker */
+            ticker: string;
+        };
         /** CompanyKPIOut */
         CompanyKPIOut: {
             /** Active */
@@ -3703,6 +3776,19 @@ export interface components {
              */
             taxonomy: "overestimating_TAM" | "underestimating_dilution" | "extrapolating_peak_margin" | "ignoring_balance_sheet" | "management_trust_error" | "valuation_anchoring" | "position_sizing_error" | "selling_too_early" | "ignoring_cyclicality" | "thesis_drift";
         };
+        /** DocumentItemOut */
+        DocumentItemOut: {
+            /** Imported At */
+            imported_at?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /** Source Type */
+            source_type: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url?: string | null;
+        };
         /** DriverAssumptionCreate */
         DriverAssumptionCreate: {
             /**
@@ -3809,6 +3895,27 @@ export interface components {
              */
             force_new_thesis: boolean;
         };
+        /** EventHistoryItemOut */
+        EventHistoryItemOut: {
+            /** Eps Actual */
+            eps_actual?: number | null;
+            /** Eps Estimate */
+            eps_estimate?: number | null;
+            /** Eps Surprise Percent */
+            eps_surprise_percent?: number | null;
+            /** Period */
+            period: string;
+            /** Quarter */
+            quarter?: number | null;
+            /** Revenue Actual */
+            revenue_actual?: number | null;
+            /** Revenue Estimate */
+            revenue_estimate?: number | null;
+            /** Source */
+            source: string;
+            /** Year */
+            year?: number | null;
+        };
         /** EvidenceSuggestionAction */
         EvidenceSuggestionAction: {
             /**
@@ -3877,6 +3984,21 @@ export interface components {
              * @default manual
              */
             source: string;
+        };
+        /** FilingItemOut */
+        FilingItemOut: {
+            /** Accession */
+            accession: string;
+            /** Filed At */
+            filed_at?: string | null;
+            /** Form */
+            form: string;
+            /** Period */
+            period?: string | null;
+            /** Source */
+            source: string;
+            /** Url */
+            url: string;
         };
         /** FinancialFactOut */
         FinancialFactOut: {
@@ -4259,6 +4381,23 @@ export interface components {
             skipped_duplicates: number;
             /** Status */
             status: string;
+        };
+        /** NextEventOut */
+        NextEventOut: {
+            /** Date */
+            date?: string | null;
+            /** Eps Estimate */
+            eps_estimate?: number | null;
+            /** Hour */
+            hour?: string | null;
+            /** Quarter */
+            quarter?: number | null;
+            /** Revenue Estimate */
+            revenue_estimate?: number | null;
+            /** Source */
+            source: string;
+            /** Year */
+            year?: number | null;
         };
         /** PlanTarget */
         PlanTarget: {
@@ -6388,6 +6527,46 @@ export interface operations {
             };
         };
     };
+    get_company_events_api_companies__ticker__events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyEventsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     expectation_reality_api_companies__ticker__expectation_reality_get: {
         parameters: {
             query?: never;
@@ -6502,6 +6681,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FinancialFactOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_company_filings_api_companies__ticker__filings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyFilingsOut"];
                 };
             };
             /** @description Validation Error */
