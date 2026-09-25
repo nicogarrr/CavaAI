@@ -26,7 +26,7 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
                 <CardHeader className="pb-2">
                     <CardTitle className="text-gray-100 flex items-center gap-2">
                         <PieChartIcon className="h-5 w-5 text-teal-400" />
-                        Distribución del Portfolio
+                        Distribución de la cartera
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
