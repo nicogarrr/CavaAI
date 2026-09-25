@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card"
 
 export default function Loading() {
     return (
-        <div className="flex min-h-screen flex-col p-6 space-y-6">
+        <main id="content" aria-busy="true" className="flex flex-col space-y-6 p-6">
             {/* Header Loading State */}
             <div className="mb-8">
                 <div className="flex items-center gap-3 mb-4">
@@ -58,6 +58,6 @@ export default function Loading() {
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
     )
 }

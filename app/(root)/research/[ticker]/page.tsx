@@ -449,7 +449,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       throw error;
     }
     return (
-      <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
+      <main id="content" tabIndex={-1} className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px] space-y-6">
           <Link className="inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Análisis</Link>
           <CompanyMarketPanel snapshot={market} />
@@ -853,7 +853,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   }
 
   return (
-    <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
+    <main id="content" tabIndex={-1} className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px]">
         <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Análisis</Link>
         <header className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-6">

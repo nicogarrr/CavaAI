@@ -101,7 +101,7 @@ const SignIn = () => {
                                         }}
                                     />
 
-                    <Button type="submit" disabled={isVerifying} className="yellow-btn w-full mt-5">
+                    <Button type="submit" disabled={isVerifying} className="brand-btn w-full mt-5">
                         {isVerifying ? 'Verificando…' : 'Verificar y entrar'}
                     </Button>
 
@@ -150,7 +150,7 @@ const SignIn = () => {
                     validation={{ required: 'La contraseña es obligatoria', minLength: { value: 8, message: 'La contraseña debe tener al menos 8 caracteres' } }}
                 />
 
-                <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
+                <Button type="submit" disabled={isSubmitting} className="brand-btn w-full mt-5">
                     {isSubmitting ? 'Iniciando sesión…' : 'Iniciar sesión'}
                 </Button>
 
