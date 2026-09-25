@@ -2,18 +2,66 @@
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import Company
+from app.models import CalculatedMetric, Company
 from app.valuation.financial_snapshot import FinancialSnapshot, FinancialSnapshotBuilder
 from app.valuation.moat_framework import empty_moat_framework
 
 
-MODEL_VERSION = "valuation-engines-v1"
+# v2: net_debt is a required DCF input (no longer coerced to zero debt), the
+# FCF-margin clamp no longer flips the sign of a known-negative margin, the
+# traceable WACC is preferred over the tag default, and the reverse DCF
+# withholds its value when the price is out of bounds. Snapshots persisted
+# under v1 were computed with a fabricated net_debt and are not comparable.
+MODEL_VERSION = "valuation-engines-v2"
+
+
+def traceable_wacc(db: Session, company: Company) -> float | None:
+    """Return the persisted, traceable WACC for this company, if any.
+
+    ``metric_calculation_service`` / ``WaccInputService`` already compute a
+    dated, sourced WACC (risk-free + ERP + beta + capital-structure weights).
+    The valuation engines must prefer it over the tag-based policy default so
+    the same company is not discounted at 10% and 6.2% depending on which
+    module answers.
+    """
+    metric = db.scalar(
+        select(CalculatedMetric)
+        .where(
+            CalculatedMetric.company_id == company.id,
+            CalculatedMetric.metric == "wacc",
+            CalculatedMetric.status == "ok",
+            CalculatedMetric.value.is_not(None),
+        )
+        .order_by(
+            CalculatedMetric.fiscal_year.desc().nullslast(),
+            desc(CalculatedMetric.created_at),
+        )
+        .limit(1)
+    )
+    if metric is None or metric.value is None:
+        return None
+    value = float(metric.value)
+    if not math.isfinite(value) or not 0.0 < value < 1.0:
+        return None
+    return value
+
+
+def clamp_fcf_margin(margin: float, *, ceiling: float) -> tuple[float, bool]:
+    """Clamp a known FCF margin without ever flipping its sign.
+
+    A negative FCF margin is a *known fact* (the company burns cash), not a
+    degenerate input, so it is preserved. Only the ceiling is applied.
+    """
+    clamped = min(margin, ceiling)
+    return clamped, clamped != margin
 
 
 @dataclass
