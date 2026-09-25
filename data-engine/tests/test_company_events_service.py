@@ -81,6 +81,7 @@ def _submissions() -> dict:
 
 
 import asyncio
+from urllib.parse import urlparse
 
 
 def _run(coro):
@@ -154,7 +155,7 @@ def test_filings_maps_forms_and_links(db):
     assert filing["filed_at"] == "2026-08-01"
     assert filing["period"] == "2026-06-27"
     assert filing["url"].endswith("aapl-20260627.htm")
-    assert "sec.gov" in filing["url"]
+    assert urlparse(filing["url"]).hostname == "www.sec.gov"
     assert filing["source"] == "SEC EDGAR"
 
 
