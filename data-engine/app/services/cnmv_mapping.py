@@ -143,9 +143,11 @@ REVIEWED_ISSUERS: tuple[CNMVIssuer, ...] = (
     CNMVIssuer("CMO", "CEMENTOS MOLINS, S.A.", "A-08017535", "ES0117360117", ("CEMENTOS MOLINS", "CMO.MC", "CEMENTOS MOLINS SA")),
     CNMVIssuer("PHM", "PHARMA MAR, S.A.", "A-78267176", "ES0169501022", ("PHARMAMAR", "PHM.MC", "PHARMA MAR SA")),
     # Tanda 7 (2026-09-25): misma verificacion CNMV. Exclusiones de la tanda:
-    # CLEOP y URBAR solo tienen clases ACNV (sin voto) listadas - pendientes de
-    # criterio; MINERSA tiene ISIN (ES0163960018) pero sin nemotecnico corto
-    # activo confirmable. OPDENERGY dejo de cotizar el 19-abr-2024 (opdenergy.com)
+    # CLEOP y URBAR solo tienen clases ACNV (acciones sin voto) listadas en
+    # BME; la clase ordinaria no cotiza. Quedan excluidas por criterio de
+    # producto (2026-09-25): mejor hueco honesto que mapear una clase sin
+    # voto que el usuario no puede comprar. MINERSA tiene ISIN (ES0163960018)
+    # pero sin nemotecnico corto activo confirmable. OPDENERGY dejo de cotizar el 19-abr-2024 (opdenergy.com)
     # y MINOR HOTELS (ex-NH) quedo excluida de negociacion el 25-sep-2025
     # (opa de exclusion, Sociedades Rectoras) - exclusiones honestas aunque
     # sigan presentando ESEF. Tickers cortos no presentes en el FISN confirmados en
