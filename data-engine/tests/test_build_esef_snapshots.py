@@ -193,3 +193,22 @@ def test_build_merges_multiple_filings_into_one_snapshot(tmp_path):
     snapshot = json.loads((tmp_path / "snapshots" / f"{LEI_ITX}.json").read_text())
     entries = snapshot["facts"]["ifrs-full:Revenue"]["iso4217:EUR"]
     assert {e["end"] for e in entries} == {"2025-01-01", "2024-01-01"}
+
+
+def test_merge_facts_preserves_multiple_instant_years():
+    """Balance (instant): cada ejercicio es un instant distinto y debe
+    sobrevivir al merge; el bug colapsaba todos los instantes en uno."""
+    from build_esef_snapshots import merge_facts
+
+    newest = {"ifrs-full:Assets": {"iso4217:EUR": [
+        {"instant": "2024-12-31", "val": "100"},
+        {"instant": "2023-12-31", "val": "95"},
+    ]}}
+    older = {"ifrs-full:Assets": {"iso4217:EUR": [
+        {"instant": "2023-12-31", "val": "94"},  # reexpresion: gana newest (95)
+        {"instant": "2022-12-31", "val": "90"},
+    ]}}
+    merged = merge_facts([newest, older])
+    entries = merged["ifrs-full:Assets"]["iso4217:EUR"]
+    by_instant = {e["instant"]: e["val"] for e in entries}
+    assert by_instant == {"2024-12-31": "100", "2023-12-31": "95", "2022-12-31": "90"}

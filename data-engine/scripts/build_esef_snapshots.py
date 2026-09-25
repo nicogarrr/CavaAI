@@ -63,8 +63,14 @@ def filings_per_lei(filings: list[EsefFiling], max_filings: int = 5) -> dict[str
 
 def merge_facts(normalized_docs: list[dict]) -> dict:
     """Fusiona facts normalizados de varios filings (mas reciente primero).
-    Dedup por (concepto, unidad, start, end): el filing mas reciente gana
-    porque recoge las reexpresiones."""
+    Dedup por (concepto, unidad, start, end|instant): el filing mas reciente
+    gana porque recoge las reexpresiones.
+
+    OJO con los instantes (balance): su periodo es solo "instant", sin
+    start/end. Si la clave no lo incluye, TODOS los instantes de un concepto
+    colapsan en uno solo y el balance queda con un unico ejercicio (bug
+    detectado 2026-09-25: total_assets/total_equity con 1 solo ano en BD
+    pese a tener 6 anos de filings)."""
     merged: dict = {}
     seen: set = set()
     for facts in normalized_docs:
@@ -72,7 +78,12 @@ def merge_facts(normalized_docs: list[dict]) -> dict:
             for unit, entries in units.items():
                 bucket = merged.setdefault(concept, {}).setdefault(unit, [])
                 for entry in entries:
-                    key = (concept, unit, entry.get("start"), entry.get("end"))
+                    key = (
+                        concept,
+                        unit,
+                        entry.get("start"),
+                        entry.get("end") or entry.get("instant"),
+                    )
                     if key in seen:
                         continue
                     seen.add(key)
