@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
 from app.models import CalculatedMetric, Company, FinancialFact
@@ -1236,6 +1236,21 @@ class MetricCalculationService:
         return result
 
     def _upsert(self, db: Session, company: Company, result: MetricResult) -> CalculatedMetric:
+        if result.status in {"ok", "partial"}:
+            # Higiene: una fila con valor real sustituye a las filas
+            # unavailable de ciclos anteriores con otro periodo (incluida la
+            # "unknown" de los recalculos sin historia); sin esto la tabla
+            # crece x2 en cada ciclo (la UI lee la mas reciente por
+            # updated_at, pero la basura se acumula).
+            db.execute(
+                delete(CalculatedMetric).where(
+                    CalculatedMetric.company_id == company.id,
+                    CalculatedMetric.metric == result.metric,
+                    CalculatedMetric.period != result.period,
+                    CalculatedMetric.status == "unavailable",
+                    CalculatedMetric.definition_version == result.definition_version,
+                )
+            )
         metric = db.scalar(
             select(CalculatedMetric).where(
                 CalculatedMetric.company_id == company.id,
