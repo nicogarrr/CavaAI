@@ -158,6 +158,10 @@ def backfill_class_based_eps(
     written = 0
     periods: list[str] = []
     used_tags: set[str] = set()
+    # La instancia repite el mismo hecho en varias secciones (balance, notas,
+    # cover) con contextos distintos: dedup en memoria por (metrica, periodo),
+    # la comprobacion en BD no basta con sesiones sin autoflush.
+    seen_periods: set[tuple[str, str]] = set()
     for metric, tags in METRIC_TAGS.items():
         metric_facts = [f for f in facts if f.tag in tags and member in f.members and f.end]
         # Solo el tag prioritario con hechos: diluido si existe, basic si no.
@@ -167,6 +171,9 @@ def backfill_class_based_eps(
                 continue
             for fact in tag_facts:
                 period = f"{fact.end.isoformat()}:FY"
+                if (metric, period) in seen_periods:
+                    continue
+                seen_periods.add((metric, period))
                 exists = db.scalar(
                     select(FinancialFact.id).where(
                         FinancialFact.company_id == company.id,

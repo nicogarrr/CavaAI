@@ -149,6 +149,23 @@ def test_backfill_writes_class_a_facts_with_sec_shape(db):
     assert all(r.value != Decimal("15.95") for r in rows)
 
 
+def test_backfill_dedupes_facts_repeated_across_sections(db):
+    """La instancia real repite cada hecho en balance/notas con contextos
+    distintos: solo puede escribirse una fila por (metrica, periodo)."""
+    company = _company(db, "V")
+    duplicated = INSTANCE_XML.replace(
+        '<us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding contextRef="c1">1966000000</us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding>',
+        '<us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding contextRef="c1">1966000000</us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding>\n'
+        '  <us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding contextRef="c1">1966000000</us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding>',
+    )
+    fetch_json, fetch_bytes = _fake_fetchers(duplicated)
+    result = backfill_class_based_eps(db, company, cik="1", fetch_json=fetch_json, fetch_bytes=fetch_bytes)
+    assert result.facts_written == 4
+    rows = db.scalars(select(FinancialFact)).all()
+    keys = [(r.metric, r.period) for r in rows]
+    assert len(keys) == len(set(keys))
+
+
 def test_backfill_is_idempotent_and_preserves_existing(db):
     company = _company(db, "V")
     existing = FinancialFact(
