@@ -9,7 +9,8 @@ import NavItems from '@/components/NavItems';
 /**
  * Navegación móvil: botón hamburger (≥44px) que abre un drawer lateral
  * con acceso a TODAS las secciones. En desktop no se renderiza el botón
- * (la navegación completa vive en el header, visible desde `sm`).
+ * (la navegación completa vive en el sidebar, visible desde `md`).
+ * Unificado a md (768px) para no dejar el hueco 640-767px sin nav.
  */
 export default function MobileNav({ initialStocks }: { initialStocks: StockWithWatchlistStatus[] }) {
     const [open, setOpen] = useState(false);
@@ -106,7 +107,7 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                 aria-label="Abrir menú de navegación"
                 aria-expanded={open}
                 aria-controls="mobile-nav-drawer"
-                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white sm:hidden"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white md:hidden"
             >
                 <Menu className="h-6 w-6" aria-hidden="true" />
             </button>
@@ -118,7 +119,7 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                 <div
                     ref={dialogRef}
                     tabIndex={-1}
-                    className="fixed inset-0 z-[60] sm:hidden"
+                    className="fixed inset-0 z-[60] md:hidden"
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="mobile-nav-title"

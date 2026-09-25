@@ -11,7 +11,17 @@ export type AuthenticatedUser = {
 
 /** Resolve identity server-side; caller-supplied user IDs are never trusted. */
 export async function requireAuthenticatedUser(): Promise<AuthenticatedUser> {
-  if (process.env.E2E_AUTH_BYPASS === '1' && process.env.NODE_ENV !== 'production') {
+  // P1: el bypass E2E exigía solo NODE_ENV!=production. Si un contenedor prod
+  // arranca con NODE_ENV=development por error, el bypass se activaba.
+  // Ahora exige además APP_ENV=test (o E2E_AUTH_SECRET coincidente).
+  // El bypass exige APP_ENV=test de forma estricta. Un E2E_AUTH_SECRET
+  // cualquiera NO vale: antes bastaba con que la variable existiera, asi que
+  // cualquier despliegue con un secreto arbitrario dejaba la auth abierta.
+  if (
+    process.env.E2E_AUTH_BYPASS === '1' &&
+    process.env.NODE_ENV !== 'production' &&
+    process.env.APP_ENV === 'test'
+  ) {
     return { id: 'e2e-browser-user', email: 'browser@cavaai.test', name: 'Browser Analyst' };
   }
   const auth = await getAuth();
