@@ -117,7 +117,11 @@ ESEF_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("cash_and_equivalents", ["ifrs-full:CashAndCashEquivalents"],                                       "iso4217:EUR"),
     ("operating_cash_flow", ["ifrs-full:CashFlowsFromUsedInOperatingActivities"],                        "iso4217:EUR"),
     ("capital_expenditure", ["ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
-                             "ifrs-full:PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities"],     "iso4217:EUR"),
+                             "ifrs-full:PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities",
+                             # Concepto combinado estandar IFRS (PP&E + intangibles + otras no
+                             # corrientes): lo usan emisores que no desagregan el capex, p.ej. REP.
+                             "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets"],
+                                                                                                        "iso4217:EUR"),
     ("dividends_paid",    ["ifrs-full:DividendsPaidClassifiedAsFinancingActivities"],                    "iso4217:EUR"),
 ]
 
