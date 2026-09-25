@@ -73,6 +73,12 @@ const PROSE_ES: Record<string, string> = {
   'net income + D&A - maintenance capex - normalized change in working capital':
     'beneficio neto + D&A − capex de mantenimiento − cambio normalizado del capital de trabajo',
 };
+const DECISION_LABELS: Record<string, string> = {
+  buy: 'Comprar', hold: 'Mantener', trim: 'Reducir', sell: 'Vender', watch: 'Vigilar', avoid: 'Evitar',
+};
+const REVIEW_STATUS_LABELS: Record<string, string> = {
+  beat: 'superado', met: 'cumplido', miss: 'no cumplido', unavailable: 's/d', pending: 'pendiente',
+};
 function translate(map: Record<string, string>, value: string | null | undefined, fallback = 's/d'): string {
   if (value == null || value === '') return fallback;
   return map[value] ?? value;
@@ -292,7 +298,7 @@ export function DecisionAndRealityPanel({
       <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
           <GitBranch className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Decision Journal</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Diario de decisiones</h2>
         </div>
         <MutationForm
           action={createResearchDecision.bind(null, ticker)}
@@ -300,16 +306,16 @@ export function DecisionAndRealityPanel({
           resetOnSuccess
           successMessage="Decisión registrada contra la tesis vigente"
         >
-          <select aria-label="Decision" className="h-10 rounded-md border border-gray-700 bg-gray-900 px-3 text-sm text-gray-200" defaultValue="hold" name="decision">
-            <option value="buy">Buy</option>
-            <option value="hold">Hold</option>
-            <option value="trim">Trim</option>
-            <option value="sell">Sell</option>
-            <option value="watch">Watch</option>
-            <option value="avoid">Avoid</option>
+          <select aria-label="Decisión" className="h-10 rounded-md border border-gray-700 bg-gray-900 px-3 text-sm text-gray-200" defaultValue="hold" name="decision">
+            <option value="buy">Comprar</option>
+            <option value="hold">Mantener</option>
+            <option value="trim">Reducir</option>
+            <option value="sell">Vender</option>
+            <option value="watch">Vigilar</option>
+            <option value="avoid">Evitar</option>
           </select>
-          <Textarea aria-label="Decision rationale" className="border-gray-700 bg-transparent text-gray-100" name="rationale" placeholder="Qué evidencia justifica esta decisión" required />
-          <Textarea aria-label="What must be true" className="border-gray-700 bg-transparent text-gray-100" name="what_must_be_true" placeholder="Una condición verificable por línea" />
+          <Textarea aria-label="Motivo de la decisión" className="border-gray-700 bg-transparent text-gray-100" name="rationale" placeholder="Qué evidencia justifica esta decisión" required />
+          <Textarea aria-label="Qué debe cumplirse" className="border-gray-700 bg-transparent text-gray-100" name="what_must_be_true" placeholder="Una condición verificable por línea" />
           <Button type="submit">Registrar decisión</Button>
         </MutationForm>
         <div className="mt-5 space-y-3">
@@ -318,11 +324,11 @@ export function DecisionAndRealityPanel({
           ) : decisions.slice(0, 8).map((entry) => (
             <div className="rounded-md border border-gray-800 p-3" key={entry.id}>
               <div className="flex items-center justify-between gap-3">
-                <Badge variant="outline">{entry.decision}</Badge>
+                <Badge variant="outline">{translate(DECISION_LABELS, entry.decision, entry.decision)}</Badge>
                 <span className="text-xs text-gray-500">{entry.decision_date}</span>
               </div>
               <p className="mt-2 text-sm text-gray-300">{entry.rationale}</p>
-              <p className="mt-2 text-xs text-gray-500">Thesis {entry.thesis_version_id ?? '—'} · Model {entry.model_version_id ?? '—'}</p>
+              <p className="mt-2 text-xs text-gray-500">Tesis {entry.thesis_version_id ?? '—'} · Modelo {entry.model_version_id ?? '—'}</p>
             </div>
           ))}
         </div>
@@ -331,7 +337,7 @@ export function DecisionAndRealityPanel({
       <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Expectation vs Reality</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Expectativa vs realidad</h2>
           <MutationForm action={reviewResearchExpectations.bind(null, ticker)} className="ml-auto" successMessage="Forecasts comparados con los hechos disponibles">
             <Button size="sm" type="submit" variant="outline">Comparar ahora</Button>
           </MutationForm>
@@ -349,7 +355,7 @@ export function DecisionAndRealityPanel({
                     <div className="flex justify-between gap-2"><span>Esperado</span><span className="text-gray-200">{compactNumber(review.expected_value)}</span></div>
                     <div className="flex justify-between gap-2"><span>Real</span><span className="text-gray-200">{compactNumber(review.actual_value)}</span></div>
                   </div>
-                  <div className="mt-2"><Badge variant="outline">{review.status}</Badge></div>
+                  <div className="mt-2"><Badge variant="outline">{translate(REVIEW_STATUS_LABELS, review.status, review.status)}</Badge></div>
                 </div>
               ))}
             </div>
@@ -369,7 +375,7 @@ export function DecisionAndRealityPanel({
                     <td className="py-3 text-gray-300">{review.fiscal_year} · {review.metric}</td>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.expected_value)}</td>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.actual_value)}</td>
-                    <td className="py-3 text-right"><Badge variant="outline">{review.status}</Badge></td>
+                    <td className="py-3 text-right"><Badge variant="outline">{translate(REVIEW_STATUS_LABELS, review.status, review.status)}</Badge></td>
                   </tr>
                 ))}
               </tbody>
