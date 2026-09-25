@@ -2013,6 +2013,6 @@
   "ZWS": "0001439288",
   "ZYXI": "0000846475"
  },
- "fetched_at": "2026-09-20",
+ "fetched_at": "2026-09-25",
  "source": "HuggingFace mirror of SEC EDGAR companyfacts (DenyTranDFW/edgar_xbrl_companyfacts), validado contra API directa"
 }
