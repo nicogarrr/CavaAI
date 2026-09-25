@@ -4384,6 +4384,8 @@ export interface components {
             };
             /** Currency */
             currency: string;
+            /** Current Price */
+            current_price?: number | null;
             /** Failed Gates */
             failed_gates: string[];
             /** Metrics */
@@ -4394,6 +4396,8 @@ export interface components {
             name: string;
             /** Passed */
             passed: boolean;
+            /** Price As Of */
+            price_as_of?: string | null;
             /** Rank */
             rank: number | null;
             /** Score */

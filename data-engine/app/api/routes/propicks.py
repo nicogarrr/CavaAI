@@ -3,7 +3,7 @@ research universe, persisted and diffable. LLM selection lands in F3."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Company, ProPickCandidate, ProPickRun
+from app.models import Company, MarketPrice, ProPickCandidate, ProPickRun
 from app.services.propicks_funnel_service import execute_run
 
 router = APIRouter()
@@ -44,6 +44,8 @@ class ProPickCandidateOut(BaseModel):
     failed_gates: list[str]
     metrics: dict
     coverage: dict
+    current_price: float | None = None
+    price_as_of: date | None = None
 
 
 class ProPickRunDetailOut(ProPickRunOut):
@@ -108,6 +110,15 @@ def get_run(
         ProPickCandidate.rank.asc().nulls_last(), ProPickCandidate.score.desc()
     )
     rows = db.execute(stmt).all()
+    # Ultimo precio persistido por empresa (F2/yfinance); None honesto si aun no hay.
+    latest_prices: dict[int, MarketPrice] = {}
+    price_rows = db.scalars(
+        select(MarketPrice)
+        .where(MarketPrice.company_id.in_([c.company_id for c, _ in rows]))
+        .order_by(MarketPrice.date.desc())
+    ).all()
+    for price in price_rows:
+        latest_prices.setdefault(price.company_id, price)
     out = ProPickRunDetailOut(**ProPickRunOut.model_validate(run).model_dump(), candidates=[])
     out.candidates = [
         ProPickCandidateOut(
@@ -122,6 +133,14 @@ def get_run(
             failed_gates=c.failed_gates,
             metrics=c.metrics,
             coverage=c.coverage,
+            current_price=(
+                float(latest_prices[c.company_id].close)
+                if c.company_id in latest_prices and latest_prices[c.company_id].close is not None
+                else None
+            ),
+            price_as_of=(
+                latest_prices[c.company_id].date if c.company_id in latest_prices else None
+            ),
         )
         for c, co in rows
     ]
