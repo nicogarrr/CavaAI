@@ -121,6 +121,7 @@ const STATUS_LABELS: Record<string, string> = {
   up: 'al alza',
   down: 'a la baja',
   operating_company: 'empresa operativa',
+  research_candidate: 'candidato de análisis',
   fund: 'fondo',
   etf: 'ETF',
   trust: 'trust',
@@ -424,7 +425,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     return (
       <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px] space-y-6">
-          <Link className="inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
+          <Link className="inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Análisis</Link>
           <CompanyMarketPanel snapshot={market} />
           <section className="rounded-xl border border-dashed border-gray-700 bg-[#111111] p-6 text-center">
             <FileText className="mx-auto h-8 w-8 text-gray-600" />
@@ -823,14 +824,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   return (
     <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px]">
-        <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
+        <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Análisis</Link>
         <header className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-6">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3"><h1 className="text-2xl font-bold sm:text-3xl">{ticker}</h1><Badge variant="outline">{company.exchange}</Badge><Badge variant="outline">{company.currency}</Badge></div>
             <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {company.sector} · {company.industry}</p>
           </div>
           <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
-            <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />snapshot de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{label(company.company_type)}</span></div>
+            <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{label(company.company_type)}</span></div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} currency={company.currency} /></div>
               <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} />

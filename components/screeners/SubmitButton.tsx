@@ -15,7 +15,7 @@ export function SubmitButton() {
   return (
     <Button aria-disabled={pending} disabled={pending} type="submit">
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-      {pending ? 'Ejecutando…' : 'Run'}
+      {pending ? 'Ejecutando…' : 'Ejecutar'}
     </Button>
   );
 }
