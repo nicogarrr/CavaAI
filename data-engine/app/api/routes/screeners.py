@@ -268,6 +268,18 @@ def _load_universe_from_db() -> dict[str, tuple[str, str]]:
         return {}
 
 
+def _load_screener_ratios() -> dict[str, dict]:
+    """Best effort: financial ratios must not break the quote endpoint."""
+    try:
+        from app.core.database import SessionLocal
+        from app.services.screener_fundamentals import load_screener_ratios
+
+        with SessionLocal() as db:
+            return load_screener_ratios(db, {symbol for symbol, _, _ in _REAL_UNIVERSE})
+    except Exception:  # noqa: BLE001 — sin base de datos, datos ausentes
+        return {}
+
+
 class ScreenQuoteVendor(Protocol):
     """Fuente intercambiable de quotes/profile para el screener (Finnhub ↔ Yahoo).
 
@@ -696,6 +708,7 @@ def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
     dentro del límite gratuito de 60 llamadas/min para el universo de 35 tickers.
     """
     db_universe = _load_universe_from_db()
+    ratios = _load_screener_ratios()
     settings = get_settings()
     active = resolve_screener_vendor(
         vendor if vendor is not None else settings.screener_quote_vendor
@@ -775,9 +788,7 @@ def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
                 "sector": sector_value,
                 "exchange": profile["exchange"] if profile else "US",
                 "type": "ETF" if symbol.upper() in _ETF_SYMBOLS else "Stock",
-                "pe": None,
-                "pb": None,
-                "roe": None,
+                **ratios.get(symbol, {"pe": None, "pb": None, "roe": None}),
                 "beta": None,
             }
         )

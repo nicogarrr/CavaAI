@@ -1,0 +1,171 @@
+"""Hermetic tests: sourced pe/pb/roe for /api/screeners/real.
+
+No network. Ratios come from SEC/ESEF facts plus the latest stored daily
+close; missing, stale, seed or cross-year inputs must stay null.
+"""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+from decimal import Decimal
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.core.database import Base
+from app.models import Company, FinancialFact, MarketPrice, Tenant
+from app.services.screener_fundamentals import load_screener_ratios
+
+TODAY = date(2026, 9, 25)
+
+
+@pytest.fixture()
+def db():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(
+        engine,
+        tables=[Tenant.__table__, Company.__table__, FinancialFact.__table__, MarketPrice.__table__],
+    )
+    with Session(engine) as session:
+        yield session
+
+
+def _company(db: Session, ticker: str = "AAPL", currency: str = "USD") -> Company:
+    row = Company(
+        ticker=ticker, name=f"{ticker} Inc", exchange="NASDAQ", currency=currency,
+        sector="Technology", industry="Hardware", company_type="operating",
+        valuation_model="standard_dcf",
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _fact(db: Session, company: Company, metric: str, value: str, unit: str, *, year: int = 2024, source: str = "SEC") -> FinancialFact:
+    row = FinancialFact(
+        company_id=company.id, metric=metric, value=Decimal(value), unit=unit,
+        period="FY", fiscal_year=year, source_type=source, is_reported=True,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _price(db: Session, company: Company, close: str, *, day: date | None = None, source: str = "yahoo") -> MarketPrice:
+    row = MarketPrice(
+        company_id=company.id, date=day or TODAY, close=Decimal(close),
+        adj_close=Decimal(close), source=source,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def test_ratios_from_sec_facts(db):
+    company = _company(db)
+    _price(db, company, "180")
+    _fact(db, company, "eps_diluted", "6", "USD/share")
+    _fact(db, company, "total_equity", "50000000000", "USD")
+    _fact(db, company, "shares_diluted", "15000000000", "shares")
+    _fact(db, company, "net_income", "10000000000", "USD")
+    result = load_screener_ratios(db, {"AAPL"}, today=TODAY)["AAPL"]
+    assert result["pe"] == pytest.approx(30.0)
+    assert result["pb"] == pytest.approx(54.0)
+    assert result["roe"] == pytest.approx(20.0)
+    assert result["ratioProvenance"]["price"]["source"] == "yahoo"
+    assert result["ratioProvenance"]["facts"]["pe"]["source"] == "SEC"
+
+
+def test_missing_facts_stay_null(db):
+    company = _company(db)
+    _price(db, company, "180")
+    result = load_screener_ratios(db, {"AAPL"}, today=TODAY)["AAPL"]
+    assert result == {"pe": None, "pb": None, "roe": None}
+
+
+def test_seed_facts_and_seed_prices_ignored(db):
+    company = _company(db)
+    _price(db, company, "180", source="seed")
+    _fact(db, company, "eps_diluted", "6", "USD/share", source="seed")
+    result = load_screener_ratios(db, {"AAPL"}, today=TODAY)["AAPL"]
+    assert result == {"pe": None, "pb": None, "roe": None}
+
+
+def test_cross_fiscal_years_never_combined(db):
+    company = _company(db)
+    _price(db, company, "180")
+    _fact(db, company, "total_equity", "50000000000", "USD", year=2024)
+    _fact(db, company, "shares_diluted", "15000000000", "shares", year=2023)
+    result = load_screener_ratios(db, {"AAPL"}, today=TODAY)["AAPL"]
+    assert result["pb"] is None
+
+
+def test_stale_price_and_old_facts_ignored(db):
+    company = _company(db)
+    _price(db, company, "180", day=TODAY - timedelta(days=10))
+    _fact(db, company, "eps_diluted", "6", "USD/share", year=2022)
+    result = load_screener_ratios(db, {"AAPL"}, today=TODAY)["AAPL"]
+    assert result == {"pe": None, "pb": None, "roe": None}
+
+
+def test_currency_mismatch_and_negative_eps_rejected(db):
+    company = _company(db)
+    _price(db, company, "180")
+    _fact(db, company, "eps_diluted", "6", "iso4217:EUR/xbrli:shares")
+    result = load_screener_ratios(db, {"AAPL"}, today=TODAY)["AAPL"]
+    assert result["pe"] is None
+    db.delete(result and db.get(FinancialFact, result and 1) or FinancialFact(id=1)) if False else None
+    db.rollback()
+
+
+def test_negative_eps_yields_null_pe(db):
+    company = _company(db)
+    _price(db, company, "180")
+    _fact(db, company, "eps_diluted", "-2", "USD/share")
+    assert load_screener_ratios(db, {"AAPL"}, today=TODAY)["AAPL"]["pe"] is None
+
+
+def test_esef_units_normalize_for_european_company(db):
+    company = _company(db, ticker="SAN", currency="EUR")
+    _price(db, company, "5")
+    _fact(db, company, "eps_diluted", "0.5", "iso4217:EUR/xbrli:shares", source="ESEF")
+    _fact(db, company, "total_equity", "100000000000", "iso4217:EUR", source="ESEF")
+    _fact(db, company, "net_income", "9000000000", "iso4217:EUR", source="ESEF")
+    result = load_screener_ratios(db, {"SAN"}, today=TODAY)["SAN"]
+    assert result["pe"] == pytest.approx(10.0)
+    assert result["roe"] == pytest.approx(9.0)
+    assert result["pb"] is None  # hueco honesto ESEF: sin shares_diluted
+
+
+def test_route_items_merge_ratios(monkeypatch):
+    from app.api.routes import screeners
+
+    monkeypatch.setattr(screeners, "_REAL_UNIVERSE", [("AAPL", "Apple", "Technology")])
+    monkeypatch.setattr(screeners, "_load_universe_from_db", lambda: {})
+    monkeypatch.setattr(screeners, "_load_screener_ratios", lambda: {"AAPL": {"pe": 30.0, "pb": 54.0, "roe": 20.0}})
+    monkeypatch.setattr(screeners, "_fetch_quote", lambda client, symbol, vendor: {
+        "price": 180.0, "change": 1.0, "changePercent": 0.56, "volume": 1000.0, "prevClose": 179.0, "asOf": 1,
+    })
+    monkeypatch.setattr(screeners, "_fetch_profile", lambda client, symbol, vendor: {
+        "name": "Apple Inc", "marketCap": 2.8e12, "sector": "Technology", "exchange": "NASDAQ",
+    })
+    items = screeners._refetch_real_items(vendor="finnhub")
+    assert items[0]["pe"] == 30.0 and items[0]["pb"] == 54.0 and items[0]["roe"] == 20.0
+    assert items[0]["beta"] is None
+
+
+def test_route_items_keep_nulls_without_facts(monkeypatch):
+    from app.api.routes import screeners
+
+    monkeypatch.setattr(screeners, "_REAL_UNIVERSE", [("AAPL", "Apple", "Technology")])
+    monkeypatch.setattr(screeners, "_load_universe_from_db", lambda: {})
+    monkeypatch.setattr(screeners, "_load_screener_ratios", lambda: {})
+    monkeypatch.setattr(screeners, "_fetch_quote", lambda client, symbol, vendor: {
+        "price": 180.0, "change": 1.0, "changePercent": 0.56, "volume": 1000.0, "prevClose": 179.0, "asOf": 1,
+    })
+    monkeypatch.setattr(screeners, "_fetch_profile", lambda client, symbol, vendor: {
+        "name": "Apple Inc", "marketCap": 2.8e12, "sector": "Technology", "exchange": "NASDAQ",
+    })
+    items = screeners._refetch_real_items(vendor="finnhub")
+    assert items[0]["pe"] is None and items[0]["pb"] is None and items[0]["roe"] is None
