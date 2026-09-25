@@ -4,10 +4,10 @@
   "buildCommand": "npm run build",
   "functions": {
     "app/**/page.tsx": {
-      "maxDuration": 60
+      "maxDuration": 10
     },
     "app/**/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 10
     }
   }
 }
