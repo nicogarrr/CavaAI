@@ -42,10 +42,10 @@ def _company(db: Session, ticker: str = "AAPL", currency: str = "USD") -> Compan
     return row
 
 
-def _fact(db: Session, company: Company, metric: str, value: str, unit: str, *, year: int = 2024, source: str = "SEC", quarter: str | None = "FY") -> FinancialFact:
+def _fact(db: Session, company: Company, metric: str, value: str, unit: str, *, year: int = 2024, source: str = "SEC", quarter: str | None = "FY", period: str | None = None) -> FinancialFact:
     row = FinancialFact(
         company_id=company.id, metric=metric, value=Decimal(value), unit=unit,
-        period="FY", fiscal_year=year, fiscal_quarter=quarter, source_type=source, is_reported=True,
+        period=period or f"{year}-12-31:FY", fiscal_year=year, fiscal_quarter=quarter, source_type=source, is_reported=True,
     )
     db.add(row)
     db.flush()
@@ -80,7 +80,7 @@ def test_ratios_from_sec_facts(db):
 def test_annual_facts_with_null_quarter_still_load(db):
     company = _company(db)
     _price(db, company, "180")
-    _fact(db, company, "eps_diluted", "6", "USD/share", quarter=None)
+    _fact(db, company, "eps_diluted", "6", "USD/share", quarter=None, period="FY")
     result = load_screener_ratios(db, {"AAPL"}, today=TODAY)["AAPL"]
     assert result["pe"] == pytest.approx(30.0)
 
