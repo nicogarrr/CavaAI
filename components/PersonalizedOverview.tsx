@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatNumber, formatPercent } from '@/lib/format';
 import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,14 +57,14 @@ const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: Market
             <CardContent className="p-4 flex items-center justify-between">
                 <div>
                     <p className="text-sm text-gray-400 font-medium">{index.name}</p>
-                    <p className="text-xl font-bold text-white mt-1">${index.price.toFixed(2)}</p>
+                    <p className="text-xl font-bold text-white mt-1">{formatMoney(index.price)}</p>
                 </div>
                 <div className={`text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     <div className="flex items-center justify-end gap-1">
                         {index.changePercent >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                        <span className="font-bold">{Math.abs(index.changePercent).toFixed(2)}%</span>
+                        <span className="font-bold">{formatPercent(index.changePercent, { fromRatio: false, digits: 2, signDisplay: 'never' })}</span>
                     </div>
-                    <p className="text-xs mt-1">{index.change >= 0 ? '+' : ''}{index.change.toFixed(2)}</p>
+                    <p className="text-xs mt-1">{formatNumber(index.change, { signDisplay: 'always' })}</p>
                 </div>
             </CardContent>
         </Card>
@@ -254,7 +254,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 const summary = summaryResult.data;
                 const topMover = summary.holdings.reduce((a, b) => Math.abs(b.gainPercent) > Math.abs(a.gainPercent) ? b : a);
                 const direction = summary.totalGainPercent >= 0 ? 'sube' : 'baja';
-                setAiInsight(`Hoy tu cartera ${direction} ${Math.abs(summary.totalGainPercent).toFixed(2)}%. ${topMover.symbol} lidera con ${topMover.gainPercent >= 0 ? '+' : ''}${topMover.gainPercent.toFixed(2)}%.`);
+                setAiInsight(`Hoy tu cartera ${direction} ${formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'never' })}. ${topMover.symbol} lidera con ${formatPercent(topMover.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}.`);
             } else {
                 setAiInsight('');
             }
@@ -351,7 +351,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                         <div className="text-right">
                                             <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>
                                             <p className={`text-xl font-bold mt-1 ${portfolioSummary.totalGainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                {portfolioSummary.totalGainPercent >= 0 ? '+' : ''}{portfolioSummary.totalGainPercent.toFixed(2)}%
+                                                {formatPercent(portfolioSummary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                                             </p>
                                         </div>
                                     </div>
@@ -366,7 +366,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                 >
                                                     <span className="text-white font-semibold">{h.symbol}</span>
                                                     <span className={`font-mono ${h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                        {h.gainPercent >= 0 ? '+' : ''}{h.gainPercent.toFixed(2)}%
+                                                        {formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                                                     </span>
                                                 </Link>
                                             ))}
@@ -411,10 +411,10 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div>
                                                         <h4 className="font-bold text-white group-hover:text-purple-400 transition-colors">{op.symbol}</h4>
-                                                        <p className="text-xs text-gray-400">Precio: ${op.price.toFixed(2)}</p>
+                                                        <p className="text-xs text-gray-400">Precio: {formatMoney(op.price)}</p>
                                                     </div>
                                                     <Badge className="bg-green-900/30 text-green-400 border-green-800">
-                                                        +{op.upside.toFixed(1)}% potencial
+                                                        {formatPercent(op.upside, { fromRatio: false, digits: 1, signDisplay: 'always' })} potencial
                                                     </Badge>
                                                 </div>
                                                 <div className="w-full bg-gray-800 h-1.5 rounded-full mt-2 overflow-hidden">
@@ -423,7 +423,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                         style={{ width: `${Math.min(op.upside, 100)}%` }}
                                                     />
                                                 </div>
-                                                <p className="text-xs text-gray-500 mt-2 text-right">Valor justo: ${op.fairValue.toFixed(2)}</p>
+                                                <p className="text-xs text-gray-500 mt-2 text-right">Valor justo: {formatMoney(op.fairValue)}</p>
                                             </div>
                                         </Link>
                                     ))}
@@ -477,9 +477,9 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                 </div>
                                             </div>
                                             <div className="shrink-0 text-right">
-                                                <div className="text-white font-mono">${stock.price.toFixed(2)}</div>
+                                                <div className="text-white font-mono">{formatMoney(stock.price)}</div>
                                                 <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                    {stock.changePercent >= 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
+                                                    {formatPercent(stock.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                                                 </div>
                                             </div>
                                         </Link>

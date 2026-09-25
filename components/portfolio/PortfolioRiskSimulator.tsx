@@ -7,18 +7,18 @@ import { ShieldAlert, AlertTriangle, RefreshCw } from 'lucide-react';
 import { generateRiskAnalysis, type MonteCarloResult } from '@/lib/actions/risk.actions';
 import { toast } from 'sonner';
 
+import { formatPercent } from '@/lib/format';
+
 interface PortfolioRiskSimulatorProps {
     userId: string;
 }
 
 function fmt(n: number | null | undefined, decimals = 1): string {
-    if (n == null) return '—';
-    return `${n >= 0 ? '+' : ''}${(n * 100).toFixed(decimals)}%`;
+    return formatPercent(n, { fromRatio: true, digits: decimals, signDisplay: 'always' });
 }
 
 function fmtProb(n: number | null | undefined): string {
-    if (n == null) return '—';
-    return `${(n * 100).toFixed(1)}%`;
+    return formatPercent(n, { fromRatio: true, digits: 1 });
 }
 
 export function PortfolioRiskSimulator({ userId }: PortfolioRiskSimulatorProps) {
