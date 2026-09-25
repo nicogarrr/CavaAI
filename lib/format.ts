@@ -80,6 +80,31 @@ export function formatMoney(
 }
 
 /**
+ * Precio con decimales dinámicos: los valores muy pequeños (microcaps,
+ * abs < 0,01) necesitan más de 2 decimales para no salir como "0,00 US$"
+ * cuando el precio real es distinto de cero (F35, SANW 0,0011 US$).
+ * Por debajo de 0,01 se usan dígitos significativos en vez de decimales fijos.
+ */
+export function formatPrice(
+  value: NumericInput,
+  currency = 'USD',
+  options: Intl.NumberFormatOptions = {},
+  fallback: string = NA,
+): string {
+  const parsed = toFinite(value);
+  if (parsed === null) return fallback;
+  const small = parsed !== 0 && Math.abs(parsed) < 0.01;
+  return new Intl.NumberFormat(FORMAT_LOCALE, {
+    style: 'currency',
+    currency,
+    ...(small
+      ? { maximumSignificantDigits: 4 }
+      : { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    ...options,
+  }).format(parsed);
+}
+
+/**
  * Cifra compacta en español (1,2 M · 3,4 mil M) para métricas y market caps.
  *
  * Intl es-ES con notation "compact" es inconsistente para miles de millones:
