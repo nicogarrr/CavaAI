@@ -32,7 +32,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     const user = await getLayoutUser();
 
     return (
-        <main className="min-h-screen text-gray-400">
+        <div className="min-h-screen text-gray-400">
             <OnlineBanner />
             {/* La lista inicial del buscador llega por streaming y no bloquea
                 el primer pintado: SearchCommand la sincroniza al recibirla. */}
@@ -48,7 +48,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                     </ErrorBoundary>
                 </div>
             </div>
-        </main>
+        </div>
     );
 };
 

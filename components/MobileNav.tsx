@@ -15,21 +15,54 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
     const [open, setOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const drawerRef = useRef<HTMLDivElement>(null);
+    const closeButtonRef = useRef<HTMLButtonElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    void initialStocks;
 
-    // Cerrar con Escape y bloquear el scroll del body mientras está abierto
+    // Cerrar con Escape y bloquear el scroll del body mientras está abierto.
+    // Accesibilidad: al abrir, el foco va al botón de cerrar; al cerrar,
+    // vuelve al disparador que abrió el drawer.
     useEffect(() => {
         if (!open) return;
+        const trigger = triggerRef.current;
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setOpen(false);
+            if (e.key === 'Escape') {
+                setOpen(false);
+                return;
+            }
+            if (e.key !== 'Tab') return;
+            const dialog = dialogRef.current;
+            if (!dialog) return;
+            const focusable = Array.from(
+                dialog.querySelectorAll<HTMLElement>(
+                    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                ),
+            );
+            if (focusable.length === 0) {
+                e.preventDefault();
+                dialog.focus();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
         };
         document.addEventListener('keydown', onKey);
+        closeButtonRef.current?.focus();
         const prev = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         return () => {
             document.removeEventListener('keydown', onKey);
             document.body.style.overflow = prev;
+            trigger?.focus();
         };
-    }, [open ]);
+    }, [open]);
 
     // Al abrir: foco al botón de cerrar. Al cerrar: retorno al trigger.
     // (wasOpen evita robar el foco en el montaje inicial)
@@ -82,10 +115,18 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                 position:fixed de los descendientes en relativo al header y
                 aplastaba el drawer sobre el contenido (capas solapadas). */}
             {open && createPortal(
-                <div className="fixed inset-0 z-[60] sm:hidden" role="dialog" aria-modal="true" aria-label="Menú de navegación">
+                <div
+                    ref={dialogRef}
+                    tabIndex={-1}
+                    className="fixed inset-0 z-[60] sm:hidden"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="mobile-nav-title"
+                >
+                    <h2 id="mobile-nav-title" className="sr-only">Menú de navegación</h2>
                     <button
                         type="button"
-                        aria-label="Cerrar menú de navegación"
+                        aria-label="Cerrar menú por fondo"
                         onClick={() => setOpen(false)}
                         tabIndex={-1}
                         className="absolute inset-0 cursor-default bg-black/60 backdrop-blur-sm"
@@ -100,6 +141,7 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                             <CavaAIWordmark />
                             <button
                                 type="button"
+                                ref={closeButtonRef}
                                 onClick={() => setOpen(false)}
                                 aria-label="Cerrar menú de navegación"
                                 className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white"

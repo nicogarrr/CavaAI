@@ -60,38 +60,62 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
         return (
             <Button
                 onClick={() => setIsOpen(true)}
+                aria-label="Abrir asistente de cartera"
                 className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 text-white z-50 animate-in zoom-in duration-300"
             >
-                <Brain className="h-8 w-8" />
+                <Brain aria-hidden="true" className="h-8 w-8" />
             </Button>
         );
     }
 
     // Chat Window
     return (
-        <Card className={`fixed z-50 flex flex-col border-indigo-500/30 bg-slate-950/95 backdrop-blur-md shadow-2xl transition-all duration-300 ${isMaximized
+        <Card
+            role="dialog"
+            aria-labelledby="portfolio-chat-title"
+            className={`fixed z-50 flex flex-col border-indigo-500/30 bg-slate-950/95 backdrop-blur-md shadow-2xl transition-all duration-300 ${isMaximized
             ? 'top-4 bottom-4 left-4 right-4 w-auto h-auto'
             : 'bottom-6 right-6 w-[350px] md:w-[450px] h-[600px]'
-            }`}>
+            }`}
+        >
             <CardHeader className="p-4 border-b border-indigo-500/20 flex flex-row items-center justify-between bg-indigo-900/20 cursor-move">
                 <div className="flex items-center gap-2">
                     <div className="p-2 bg-indigo-500/20 rounded-full">
-                        <Brain className="h-4 w-4 text-indigo-400" />
+                        <Brain aria-hidden="true" className="h-4 w-4 text-indigo-400" />
                     </div>
-                    <CardTitle className="text-sm font-medium">CavaAI Assistant</CardTitle>
+                    <CardTitle id="portfolio-chat-title" className="text-sm font-medium">CavaAI Assistant</CardTitle>
                 </div>
                 <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => setIsMaximized(!isMaximized)} className="h-6 w-6 text-slate-400 hover:text-white">
-                        {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsMaximized(!isMaximized)}
+                        aria-label={isMaximized ? 'Restaurar asistente de cartera' : 'Maximizar asistente de cartera'}
+                        className="h-6 w-6 text-slate-400 hover:text-white"
+                    >
+                        {isMaximized ? <Minimize2 aria-hidden="true" className="h-4 w-4" /> : <Maximize2 aria-hidden="true" className="h-4 w-4" />}
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="h-6 w-6 text-slate-400 hover:text-white">
-                        <X className="h-4 w-4" />
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsOpen(false)}
+                        aria-label="Cerrar asistente de cartera"
+                        className="h-6 w-6 text-slate-400 hover:text-white"
+                    >
+                        <X aria-hidden="true" className="h-4 w-4" />
                     </Button>
                 </div>
             </CardHeader>
 
             <CardContent className="flex-1 p-0 overflow-hidden relative">
-                <div ref={scrollRef} className="h-full overflow-y-auto p-4 space-y-4">
+                <div
+                    ref={scrollRef}
+                    role="log"
+                    aria-live="polite"
+                    aria-relevant="additions text"
+                    aria-label="Mensajes del asistente de cartera"
+                    className="h-full overflow-y-auto p-4 space-y-4"
+                >
                     {messages.map((m, i) => (
                         <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className={`flex items-start gap-2 max-w-[90%] ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
@@ -128,8 +152,9 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                                 <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0">
                                     <Bot className="h-3 w-3 text-white" />
                                 </div>
-                                <div className="p-3 rounded-lg bg-slate-800 border border-slate-700 rounded-tl-none">
-                                    <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+                                <div role="status" aria-live="polite" className="p-3 rounded-lg bg-slate-800 border border-slate-700 rounded-tl-none">
+                                    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin text-indigo-400" />
+                                    <span className="sr-only">CavaAI está escribiendo la respuesta.</span>
                                 </div>
                             </div>
                         </div>
@@ -142,14 +167,18 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                     className="flex w-full gap-2"
                     onSubmit={(e) => { e.preventDefault(); handleSend(); }}
                 >
+                    <label htmlFor="portfolio-chat-input" className="sr-only">
+                        Pregunta sobre tu cartera
+                    </label>
                     <Input
+                        id="portfolio-chat-input"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         placeholder="Pregunta sobre tu cartera..."
                         className="bg-slate-950 border-slate-700 focus-visible:ring-indigo-500"
                     />
-                    <Button type="submit" size="icon" disabled={loading || !input.trim()} className="bg-indigo-600 hover:bg-indigo-500">
-                        <Send className="h-4 w-4" />
+                    <Button type="submit" size="icon" aria-label="Enviar pregunta" disabled={loading || !input.trim()} className="bg-indigo-600 hover:bg-indigo-500">
+                        <Send aria-hidden="true" className="h-4 w-4" />
                     </Button>
                 </form>
             </CardFooter>
