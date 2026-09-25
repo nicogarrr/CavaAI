@@ -108,7 +108,7 @@ export function RecordList({
 
     return (
         <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-gray-700/50 pb-4">
+            <CardHeader className="flex flex-col gap-3 border-b border-gray-700/50 pb-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div className="flex items-center gap-3">
                     {icon}
                     <div>
@@ -250,7 +250,7 @@ export function RecordDetail({
 
     return (
         <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-gray-700/50 pb-4">
+            <CardHeader className="flex flex-col gap-3 border-b border-gray-700/50 pb-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div className="flex items-center gap-3">
                     {icon}
                     <div>
