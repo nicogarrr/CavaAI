@@ -7,17 +7,40 @@ import {env} from "@/lib/env";
 import {DatabaseError, toAppError} from "@/lib/types/errors";
 
 
+const signUpDisabled =
+    process.env.NODE_ENV === 'production' && process.env.ALLOW_PUBLIC_SIGNUP !== 'true';
+const requireEmailVerification =
+    !signUpDisabled &&
+    (process.env.NODE_ENV === 'production' || process.env.REQUIRE_EMAIL_VERIFICATION === 'true');
+
+if (!signUpDisabled && requireEmailVerification) {
+    throw new Error(
+        'Registro abierto con verificación de email obligatoria, pero auth.ts no tiene sendVerificationEmail ' +
+        'configurado: el email de verificación nunca se enviaría y el alta quedaría bloqueada. ' +
+        'Implementa el envío de email antes de abrir el registro, o desactiva REQUIRE_EMAIL_VERIFICATION en dev.'
+    );
+}
+
 const createAuthInstance = (database?: ReturnType<typeof mongodbAdapter>) => betterAuth({
     ...(database ? { database } : {}),
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL || env.VERCEL_URL || 'http://localhost:3000',
     emailAndPassword: {
         enabled: true,
-        disableSignUp: false,
-        requireEmailVerification: false,
+        // P0: en producción el signup queda cerrado por defecto para evitar
+        // creación masiva de cuentas por bots. Para abrirlo de forma
+        // controlada usa ALLOW_PUBLIC_SIGNUP=true.
+        // En dev/test se mantiene abierto para no friccionar el desarrollo.
+        disableSignUp: signUpDisabled,
+        // auth.ts no tiene sendVerificationEmail configurado: si el registro
+        // está abierto y la verificación es obligatoria, el alta queda
+        // bloqueada para siempre (el email de verificación nunca sale). Por
+        // eso esa combinación falla al arrancar con un error claro (ver
+        // arriba) en lugar de romper el signup en silencio.
+        requireEmailVerification: requireEmailVerification,
         minPasswordLength: 8,
         maxPasswordLength: 128,
-        autoSignIn: true,
+        autoSignIn: !signUpDisabled && !requireEmailVerification,
     },
     // Perfil inversor persistido en el documento `user` de MongoDB.
     // Mongo es schemaless: additionalFields no requiere migraciones SQL,
