@@ -543,7 +543,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           <ThesisGenerateButton ticker={ticker} />
-          <ThesisApproveButton ticker={ticker} />
+          <ThesisApproveButton ticker={ticker} disabled={data.history.length === 0} />
           <Link
             className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
             href="/export"

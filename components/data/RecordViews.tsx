@@ -207,6 +207,8 @@ export interface RecordDetailProps {
     actions?: ReactNode;
     /** Máximo de claves a mostrar; por defecto todas */
     maxKeys?: number;
+    /** Claves internas/debug que no se muestran (p.ej. trace del backend). */
+    hiddenKeys?: string[];
 }
 
 /** Tarjeta clave/valor para respuestas de objeto único (plan, drift, risk dashboard, reporte fiscal...) */
@@ -220,6 +222,7 @@ export function RecordDetail({
     emptyAction,
     actions,
     maxKeys = 24,
+    hiddenKeys,
 }: RecordDetailProps) {
     const [data, setData] = useState<DataRecord | null>(record);
 
@@ -238,7 +241,12 @@ export function RecordDetail({
         }
     };
 
-    const entries = data ? Object.entries(data).slice(0, maxKeys) : [];
+    const hidden = new Set((hiddenKeys ?? []).map((key) => key.toLowerCase()));
+    const entries = data
+        ? Object.entries(data)
+              .filter(([key]) => !hidden.has(key.toLowerCase()))
+              .slice(0, maxKeys)
+        : [];
 
     return (
         <Card className="rounded-lg border border-gray-700 bg-gray-800/50">

@@ -131,6 +131,7 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
                 title={`Reporte Fiscal ${year}`}
                 description="Resumen de impuestos del ejercicio anual"
                 icon={<FileText className="h-5 w-5 text-teal-400" />}
+                hiddenKeys={['trace']}
                 record={toDisplayReport(report)}
                 fetchRecord={async () => toDisplayReport((await getTaxReport(year)) as DataRecord | null)}
                 emptyMessage="Sin reporte fiscal disponible para este año. Pulsa «Regenerar» para generarlo."

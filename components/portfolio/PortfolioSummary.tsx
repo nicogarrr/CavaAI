@@ -51,7 +51,7 @@ export default function PortfolioSummary({ summary }: Props) {
             <TrendingDown className="h-12 w-12 text-red-500" />
           )}
         </div>
-        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Ganancia/Pérdida</p>
+        <p className="text-gray-400 text-[11px] sm:text-xs uppercase tracking-normal sm:tracking-wider font-semibold mb-1">Ganancia/Pérdida</p>
         <p className={`text-xl sm:text-2xl font-bold tracking-tight ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
           {isPositive ? '+' : ''}{format(summary.totalGain)}
         </p>
