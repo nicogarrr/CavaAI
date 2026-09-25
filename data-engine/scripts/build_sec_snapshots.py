@@ -21,6 +21,8 @@ from pathlib import Path
 
 import polars as pl
 
+from sec_snapshot_values import entry_value
+
 CONCEPTS = [
     "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
     "SalesRevenueNet", "GrossProfit", "OperatingIncomeLoss",
@@ -80,7 +82,7 @@ def main() -> int:
             entry = {
                 "end": row["end"], "fy": int(row["fy"]) if row["fy"] else None,
                 "fp": row["fp"], "form": row["form"], "filed": row["filed"],
-                "val": int(row["val_dec"]) if row["val_dec"] is not None else None,
+                "val": entry_value(row["val_dec"]),
             }
             concept["units"].setdefault(unit, []).append(entry)
         payload = {
