@@ -74,6 +74,10 @@ def _assert_strong_credentials(url: str, *, label: str) -> None:
 
 
 class Settings(BaseSettings):
+    # extra=ignore a propósito: .env comparte claves de frontend
+    # (BETTER_AUTH_*, TWELVE_DATA_*, etc.) que el backend no modela.
+    # Los typos de claves backend se cubren con tests de contrato
+    # (test_settings_hermeticity) en vez de forbid global.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = "local"

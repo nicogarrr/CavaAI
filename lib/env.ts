@@ -49,6 +49,14 @@ const envSchema = z.object({
 
   // Vercel
   VERCEL_URL: z.string().optional(),
+
+  // Auth pública (P0: signup cerrado en prod por defecto)
+  ALLOW_PUBLIC_SIGNUP: z.enum(['true', 'false']).optional(),
+  REQUIRE_EMAIL_VERIFICATION: z.enum(['true', 'false']).optional(),
+  E2E_AUTH_SECRET: z.string().optional(),
+  APP_ENV: z.enum(['local', 'test', 'production']).optional(),
+  NEXT_PUBLIC_SUPPORT_EMAIL: z.string().email().optional(),
+  NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
 });
 
 function isNextBuildTime(): boolean {

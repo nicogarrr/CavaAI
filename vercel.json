@@ -3,11 +3,20 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "functions": {
-    "app/**/page.tsx": {
+    "app/(root)/research/**": {
       "maxDuration": 60
     },
-    "app/**/route.ts": {
+    "app/(root)/export/**": {
       "maxDuration": 60
+    },
+    "app/api/thesis/**": {
+      "maxDuration": 60
+    },
+    "app/**/page.tsx": {
+      "maxDuration": 10
+    },
+    "app/**/route.ts": {
+      "maxDuration": 10
     }
   }
 }

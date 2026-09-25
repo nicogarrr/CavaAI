@@ -14,6 +14,9 @@ from fastapi.testclient import TestClient
 from app.core.raw_body import RawBodyMiddleware
 
 
+DEFAULT_LIMIT = 10 * 1024 * 1024
+
+
 def _app() -> FastAPI:
     app = FastAPI()
     app.add_middleware(RawBodyMiddleware)
@@ -42,3 +45,26 @@ def test_request_body_still_replays():
     response = client.post("/echo", content=b"payload-bytes")
     assert response.status_code == 200
     assert response.json() == {"len": len(b"payload-bytes")}
+
+
+
+def test_single_chunk_body_over_limit_rejected():
+    """Un body de un solo chunk tambien debe respetar el limite."""
+    client = TestClient(_app())
+    response = client.post("/echo", content=b"x" * (DEFAULT_LIMIT + 1))
+    assert response.status_code == 413
+
+
+def test_multi_chunk_body_over_limit_rejected():
+    """Muchos chunks pequeños que en total superan el limite -> 413."""
+    client = TestClient(_app())
+    chunks = [b"y" * (DEFAULT_LIMIT // 2), b"y" * (DEFAULT_LIMIT // 2), b"y"]
+    response = client.post("/echo", content=iter(chunks))
+    assert response.status_code == 413
+
+
+def test_body_exactly_at_limit_accepted():
+    client = TestClient(_app())
+    response = client.post("/echo", content=b"z" * DEFAULT_LIMIT)
+    assert response.status_code == 200
+    assert response.json() == {"len": DEFAULT_LIMIT}
