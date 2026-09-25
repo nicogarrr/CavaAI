@@ -33,6 +33,23 @@ interface StockResult {
   type: string;
 }
 
+// Divisa probable segun el sufijo de mercado del ticker (B5): al elegir
+// SAN.MC la moneda no puede quedarse en USD por defecto. El usuario puede
+// cambiarla despues; esto solo fija un default razonable.
+const SUFFIX_CURRENCY: Record<string, string> = {
+  MC: 'EUR', PA: 'EUR', AS: 'EUR', BR: 'EUR', LS: 'EUR', DE: 'EUR',
+  F: 'EUR', MI: 'EUR', VI: 'EUR', HE: 'EUR', ST: 'EUR', CO: 'EUR',
+  OL: 'EUR', AT: 'EUR', IR: 'EUR', DU: 'EUR', HM: 'EUR', MU: 'EUR',
+  L: 'GBP', IL: 'GBP', SW: 'CHF', VX: 'CHF', TO: 'CAD', V: 'CAD',
+  HK: 'HKD', T: 'JPY', AX: 'AUD', SS: 'CNY', SZ: 'CNY',
+};
+
+function defaultCurrencyFor(symbol: string): string | null {
+  const idx = symbol.lastIndexOf('.');
+  if (idx < 0) return null;
+  return SUFFIX_CURRENCY[symbol.slice(idx + 1).toUpperCase()] ?? null;
+}
+
 export default function AddTransactionButton({ userId }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -99,7 +116,13 @@ export default function AddTransactionButton({ userId }: Props) {
     setFormData((prev) => ({
       ...prev,
       symbol: stock.symbol,
-      companyName: stock.name
+      companyName: stock.name,
+      // Solo se sobrescribe la divisa si el usuario aun tiene el default USD:
+      // una eleccion manual previa se respeta.
+      currency:
+        prev.currency === 'USD'
+          ? (defaultCurrencyFor(stock.symbol) ?? prev.currency)
+          : prev.currency,
     }));
     setSearchQuery(stock.symbol);
     setShowResults(false);
