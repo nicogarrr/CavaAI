@@ -56,7 +56,15 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="CavaAI Research Engine", version="1.0.0", lifespan=lifespan)
 
-app.add_middleware(RawBodyMiddleware)
+app.add_middleware(
+    RawBodyMiddleware,
+    max_body_bytes_by_prefix={
+        # La ruta de subida valida contra MAX_DOCUMENT_BYTES (15MB); el
+        # middleware le deja pasar hasta 16MB para que sea ella quien
+        # responda con su error de validacion, no un 413 generico.
+        "/api/knowledge/documents/upload": 16 * 1024 * 1024,
+    },
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,

@@ -14,15 +14,32 @@ from typing import Any
 
 
 class RawBodyMiddleware:
-    def __init__(self, app, max_body_bytes: int = 10 * 1024 * 1024):
+    def __init__(
+        self,
+        app,
+        max_body_bytes: int = 10 * 1024 * 1024,
+        max_body_bytes_by_prefix: dict[str, int] | None = None,
+    ):
         self.app = app
         self.max_body_bytes = max_body_bytes
+        # Limites por prefijo de ruta: la subida de documentos admite 15MB
+        # (MAX_DOCUMENT_BYTES) y el tope global de 10MB le daba un 413 seco
+        # a documentos legitimos de 10-15MB antes de llegar a la ruta.
+        self.max_body_bytes_by_prefix = max_body_bytes_by_prefix or {}
+
+    def _limit_for(self, path: str) -> int:
+        limit = self.max_body_bytes
+        for prefix, prefix_limit in self.max_body_bytes_by_prefix.items():
+            if path.startswith(prefix):
+                limit = max(limit, prefix_limit)
+        return limit
 
     async def __call__(self, scope: dict, receive, send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
+        limit = self._limit_for(str(scope.get("path") or ""))
         chunks: list[bytes] = []
         total = 0
         message: dict[str, Any] = await receive()
@@ -31,8 +48,8 @@ class RawBodyMiddleware:
             chunks.append(chunk)
             total += len(chunk)
             # El limite se aplica tras CADA chunk: un body de un solo chunk
-            # tambien debe rechazarse si supera max_body_bytes.
-            if total > self.max_body_bytes:
+            # tambien debe rechazarse si supera el limite de su ruta.
+            if total > limit:
                 from starlette.responses import JSONResponse
 
                 response = JSONResponse({"detail": "body too large"}, status_code=413)
