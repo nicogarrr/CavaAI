@@ -333,6 +333,11 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
   }
   const engine = typeof valuation.trace?.engine === 'string' ? valuation.trace.engine : null;
   const method = typeof valuation.trace?.method === 'string' ? valuation.trace.method : null;
+  const inputSource = typeof valuation.trace?.input_source === 'string' ? valuation.trace.input_source : null;
+  const periods = Object.entries(valuation.trace?.periods ?? {})
+    .filter(([, value]) => value)
+    .map(([metric, period]) => `${metric}: ${period}`)
+    .join(' · ');
   return (
     <div className="space-y-3">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -345,6 +350,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
         Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
         No es comparable 1:1 con el «Value/share» del Modelo a largo plazo: ese es un cálculo interno
         del escenario (otra versión/fecha/motor). Antes de fiarte, comprueba versión y fecha en ambas vistas.
+        Fuente de datos: {inputSource ?? 's/d'}{periods ? ` · periodos ${periods}` : ' · periodos s/d'}.
       </p>
     </div>
   );

@@ -124,7 +124,8 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
         </span>
       </div>
       <p className="mb-4 text-xs leading-5 text-gray-500">
-        El «Value/share» de cada escenario es un cálculo interno del modelo (versión/fecha propias).
+        El «Value/share» de cada escenario es un cálculo interno del modelo
+        (versión {model.model_version}{model.as_of_period ? ` · datos a ${model.as_of_period}` : ' · fecha s/d'}).
         Puede no coincidir con la vista Valoración persistida: compara versión y fecha antes de usarlo.
       </p>
 

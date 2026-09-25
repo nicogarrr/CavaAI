@@ -100,7 +100,7 @@ export const NAV_SECTIONS = [
     items: [
       { href: '/', label: 'Inicio', icon: Home },
       { href: '/portfolio', label: 'Cartera', icon: Briefcase },
-      { href: '/portfolio/intelligence', label: 'Cartera · Intelligence', icon: Sparkles },
+      { href: '/portfolio/intelligence', label: 'Cartera · Inteligencia', icon: Sparkles },
       { href: '/risk', label: 'Cartera · Exposiciones', icon: Gauge },
       { href: '/propicks', label: 'ProPicks', icon: Sparkles },
     ],
@@ -121,7 +121,7 @@ export const NAV_SECTIONS = [
     items: [
       { href: '/plan', label: 'Plan', icon: Target },
       { href: '/taxes', label: 'Impuestos', icon: Receipt },
-      { href: '/corporate-actions', label: 'Cartera · Corp. actions', icon: Building2 },
+      { href: '/corporate-actions', label: 'Cartera · Acciones corp.', icon: Building2 },
     ],
   },
   {

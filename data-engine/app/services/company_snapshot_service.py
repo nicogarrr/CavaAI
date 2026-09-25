@@ -84,7 +84,9 @@ class CompanySnapshotService:
             health_status = "empty"
         elif review_required:
             health_status = "review_required"
-        elif missing:
+        elif missing or counts["claims"] == 0:
+            # Sin afirmaciones el score queda topado (<=69): la etiqueta debe
+            # acompañar al numero; "healthy" con nota topada era contradictorio.
             health_status = "incomplete"
         else:
             health_status = "healthy"
