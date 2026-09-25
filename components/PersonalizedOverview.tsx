@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney, formatNumber, formatPercent } from '@/lib/format';
+import { formatMoney, formatNumber, formatPercent, formatDate } from '@/lib/format';
 import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -535,7 +535,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             </h4>
                                             <div className="flex justify-between items-center mt-1">
                                                 <span className="text-xs text-gray-500">{article.source}</span>
-                                                <span className="text-xs text-gray-600">{article.datetime ? new Date(article.datetime * 1000).toLocaleDateString() : 'fecha desconocida'}</span>
+                                                <span className="text-xs text-gray-600">{article.datetime ? formatDate(article.datetime * 1000) : 'fecha desconocida'}</span>
                                             </div>
                                         </a>
                                     ))}
