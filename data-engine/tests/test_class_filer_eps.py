@@ -189,3 +189,21 @@ def test_backfill_skips_unknown_multi_class_ticker(db):
     assert result.facts_written == 0
     assert result.skipped_reason == "varias clases sin preferida"
     assert db.scalars(select(FinancialFact)).all() == []
+
+
+def test_read_response_decompresses_gzip():
+    import gzip as _gzip
+
+    from app.services.class_filer_eps_service import _read_response
+
+    class _Resp:
+        def __init__(self, data: bytes, encoding: str | None):
+            self._data = data
+            self.headers = {"Content-Encoding": encoding} if encoding else {}
+
+        def read(self) -> bytes:
+            return self._data
+
+    payload = '{"ok": true}'.encode()
+    assert _read_response(_Resp(_gzip.compress(payload), "gzip")) == payload
+    assert _read_response(_Resp(payload, None)) == payload
