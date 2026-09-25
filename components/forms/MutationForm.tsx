@@ -3,7 +3,7 @@
 import { useRef, useState, type ComponentPropsWithoutRef } from 'react';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
-import { getFriendlyErrorMessage, isNextRedirectError } from '@/lib/types/errors';
+import { classifyError, getFriendlyErrorMessage, isNextRedirectError } from '@/lib/types/errors';
 
 type MutationFormProps = Omit<ComponentPropsWithoutRef<'form'>, 'action'> & {
   action: (formData: FormData) => Promise<unknown>;
@@ -35,17 +35,22 @@ export function MutationForm({
     } catch (err) {
       // Los redirects de Next forman parte de la navegación: re-lanzarlos.
       if (isNextRedirectError(err)) throw err;
-      // Error inline visible + toast accionable: ningún submit falla en silencio.
+      // Error inline siempre visible: ningún submit falla en silencio.
       setError(getFriendlyErrorMessage(err));
-      // Toast accionable: si el motor está caído ofrece "Reintentar" con
-      // los mismos datos del formulario.
-      showErrorToast(err, {
-        onRetry: async () => {
-          const payload = lastFormData.current;
-          if (payload) await submit(payload);
-        },
-        successMessage,
-      });
+      // Toast SOLO cuando aporta una acción (B7): motor caído -> "Reintentar"
+      // con los mismos datos; versión obsoleta -> "Recargar"; duplicado ->
+      // aviso informativo. Para el resto de causas el toast repetía el
+      // mensaje inline sin añadir nada.
+      const cause = classifyError(err);
+      if (cause === 'offline' || cause === 'stale' || cause === 'duplicate') {
+        showErrorToast(err, {
+          onRetry: async () => {
+            const payload = lastFormData.current;
+            if (payload) await submit(payload);
+          },
+          successMessage,
+        });
+      }
     } finally {
       setIsPending(false);
     }
