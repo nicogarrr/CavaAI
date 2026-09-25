@@ -107,3 +107,50 @@ def test_enrich_ignores_na_industry(db):
     assert service.enrich(db, company) is True
     assert company.name == "Xylem Robotics"
     assert company.industry == "Tech"  # N/A never overwrites
+
+
+def test_enrich_sets_sector_from_declared_mapping(db):
+    company = _company(db, name="XYZ", ticker="XYZ", exchange="UNKNOWN")
+    company.sector = "Unknown"
+    db.commit()
+    profile = {
+        "name": "Xylem Semiconductors",
+        "exchange": "NASDAQ",
+        "finnhubIndustry": "Semiconductors",
+        "currency": "USD",
+    }
+    service = CompanyEnrichmentService(settings=_Settings(), client=_Client(profile))
+    assert service.enrich(db, company) is True
+    assert company.industry == "Semiconductors"
+    assert company.sector == "Information Technology"
+
+
+def test_enrich_keeps_real_sector_and_unknown_industry_stays_honest(db):
+    company = _company(db, name="XYZ", ticker="XYZ", exchange="UNKNOWN")
+    company.sector = "Unknown"
+    db.commit()
+    profile = {
+        "name": "Mystery Corp",
+        "exchange": "NYSE",
+        "finnhubIndustry": "Underwater Basket Weaving",
+        "currency": "USD",
+    }
+    service = CompanyEnrichmentService(settings=_Settings(), client=_Client(profile))
+    assert service.enrich(db, company) is True
+    assert company.industry == "Underwater Basket Weaving"
+    assert company.sector == "Unknown"  # nunca se inventa un sector
+
+
+def test_enrich_does_not_overwrite_existing_sector(db):
+    company = _company(db, name="XYZ", ticker="XYZ", exchange="UNKNOWN")
+    company.sector = "Energy"
+    db.commit()
+    profile = {
+        "name": "Renamed Corp",
+        "exchange": "NYSE",
+        "finnhubIndustry": "Semiconductors",
+        "currency": "USD",
+    }
+    service = CompanyEnrichmentService(settings=_Settings(), client=_Client(profile))
+    service.enrich(db, company)
+    assert company.sector == "Energy"
