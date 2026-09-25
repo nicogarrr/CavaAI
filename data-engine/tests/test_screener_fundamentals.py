@@ -42,10 +42,10 @@ def _company(db: Session, ticker: str = "AAPL", currency: str = "USD") -> Compan
     return row
 
 
-def _fact(db: Session, company: Company, metric: str, value: str, unit: str, *, year: int = 2024, source: str = "SEC") -> FinancialFact:
+def _fact(db: Session, company: Company, metric: str, value: str, unit: str, *, year: int = 2024, source: str = "SEC", quarter: str | None = "FY") -> FinancialFact:
     row = FinancialFact(
         company_id=company.id, metric=metric, value=Decimal(value), unit=unit,
-        period="FY", fiscal_year=year, source_type=source, is_reported=True,
+        period="FY", fiscal_year=year, fiscal_quarter=quarter, source_type=source, is_reported=True,
     )
     db.add(row)
     db.flush()
@@ -75,6 +75,14 @@ def test_ratios_from_sec_facts(db):
     assert result["roe"] == pytest.approx(20.0)
     assert result["ratioProvenance"]["price"]["source"] == "yahoo"
     assert result["ratioProvenance"]["facts"]["pe"]["source"] == "SEC"
+
+
+def test_annual_facts_with_null_quarter_still_load(db):
+    company = _company(db)
+    _price(db, company, "180")
+    _fact(db, company, "eps_diluted", "6", "USD/share", quarter=None)
+    result = load_screener_ratios(db, {"AAPL"}, today=TODAY)["AAPL"]
+    assert result["pe"] == pytest.approx(30.0)
 
 
 def test_missing_facts_stay_null(db):
