@@ -44,7 +44,7 @@ ISSUE_MARKER = "opencode-rotator:"
 # True = rotar solo entre modelos con zero-retention publicado (tus prompts y
 # codigo no se usan para entrenar). False = rotar por puro ranking WebDev entre
 # todos los verificados gratis.
-REQUIRE_ZERO_RETENTION = True
+REQUIRE_ZERO_RETENTION = False
 
 # Identidades exactas y politica de datos por modelo servido en Zen.
 #   arena: nombres EXACTOS en el dataset WebDev (vacio = sin score comparable).
