@@ -34,13 +34,13 @@ export default async function Home() {
     const userId = await getUserId();
 
     return (
-        <div className="flex min-h-screen w-full max-w-full min-w-0 flex-col gap-6 overflow-x-clip p-4 sm:gap-8 sm:p-6">
+        <main id="content" tabIndex={-1} className="flex w-full max-w-full min-w-0 flex-col gap-6 overflow-x-clip p-4 sm:gap-8 sm:p-6">
             <Suspense fallback={<DashboardSkeleton />}>
                 <PersonalizedOverview userId={userId} />
             </Suspense>
             <Suspense fallback={<NewsLoadingSkeleton />}>
                 <NewsSection />
             </Suspense>
-        </div>
+        </main>
     );
 }

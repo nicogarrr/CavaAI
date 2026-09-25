@@ -53,7 +53,7 @@ export default async function ResearchPage() {
   const { portfolio } = dashboard;
 
   return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6">
+    <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-col gap-3 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase text-teal-300">Research OS</p>

@@ -2,8 +2,8 @@ import { Metadata } from 'next';
 import HelpTabs from '@/components/help/HelpTabs';
 
 export const metadata: Metadata = {
-  title: 'Help Center - CavaAI',
-  description: 'Free help, API documentation, and community support - no barriers, just guidance',
+  title: 'Centro de ayuda',
+  description: 'Ayuda gratuita, documentacion de la API y soporte de la comunidad: sin barreras, solo orientacion',
 };
 
 // Forzar renderizado dinámico

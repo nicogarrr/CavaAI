@@ -17,7 +17,7 @@ export default async function SecurityPage() {
     const status = await getTwoFactorStatus();
 
     return (
-        <div className="space-y-8">
+        <main id="content" tabIndex={-1} className="space-y-8">
             <div>
                 <h1 className="text-2xl font-bold text-white">Seguridad</h1>
                 <p className="text-sm text-gray-400 mt-1">
@@ -26,6 +26,6 @@ export default async function SecurityPage() {
             </div>
 
             <TwoFactorSettings initiallyEnabled={status.success ? Boolean(status.enabled) : false} />
-        </div>
+        </main>
     );
 }
