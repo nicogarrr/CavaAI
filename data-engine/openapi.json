@@ -3553,6 +3553,17 @@
             "title": "Currency",
             "type": "string"
           },
+          "current_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Price"
+          },
           "failed_gates": {
             "items": {
               "type": "string"
@@ -3572,6 +3583,18 @@
           "passed": {
             "title": "Passed",
             "type": "boolean"
+          },
+          "price_as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price As Of"
           },
           "rank": {
             "anyOf": [
