@@ -2098,6 +2098,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/propicks/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_propicks_runs_get"];
+        put?: never;
+        /**
+         * Create Run
+         * @description Execute the funnel now and persist the result (idempotent per call:
+         *     every call is a new run row; history is the point).
+         */
+        post: operations["create_run_api_propicks_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/propicks/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_propicks_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reviews": {
         parameters: {
             query?: never;
@@ -4312,6 +4351,89 @@ export interface components {
             page_number?: number | null;
             /** Principle */
             principle?: string | null;
+        };
+        /** ProPickCandidateOut */
+        ProPickCandidateOut: {
+            /** Company Id */
+            company_id: number;
+            /** Coverage */
+            coverage: {
+                [key: string]: unknown;
+            };
+            /** Currency */
+            currency: string;
+            /** Failed Gates */
+            failed_gates: string[];
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Passed */
+            passed: boolean;
+            /** Rank */
+            rank: number | null;
+            /** Score */
+            score: number | null;
+            /** Sector */
+            sector: string;
+            /** Ticker */
+            ticker: string;
+        };
+        /** ProPickRunDetailOut */
+        ProPickRunDetailOut: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Candidates */
+            candidates: components["schemas"]["ProPickCandidateOut"][];
+            /** Duration Ms */
+            duration_ms: number;
+            /** Funnel Version */
+            funnel_version: string;
+            /** Id */
+            id: number;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Passed Count */
+            passed_count: number;
+            /** Status */
+            status: string;
+            /** Top N */
+            top_n: number;
+            /** Universe Size */
+            universe_size: number;
+        };
+        /** ProPickRunOut */
+        ProPickRunOut: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Funnel Version */
+            funnel_version: string;
+            /** Id */
+            id: number;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Passed Count */
+            passed_count: number;
+            /** Status */
+            status: string;
+            /** Top N */
+            top_n: number;
+            /** Universe Size */
+            universe_size: number;
         };
         /** ResearchAlertAction */
         ResearchAlertAction: {
@@ -10638,6 +10760,128 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_propicks_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProPickRunOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_run_api_propicks_runs_post: {
+        parameters: {
+            query?: {
+                top_n?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProPickRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_propicks_runs__run_id__get: {
+        parameters: {
+            query?: {
+                only_passed?: boolean;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProPickRunDetailOut"];
+                };
             };
             /** @description Validation Error */
             422: {

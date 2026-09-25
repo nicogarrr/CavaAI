@@ -1,0 +1,114 @@
+"""ProPicks funnel (big-data stage): deterministic runs over the whole
+research universe, persisted and diffable. LLM selection lands in F3."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models import Company, ProPickCandidate, ProPickRun
+from app.services.propicks_funnel_service import execute_run
+
+router = APIRouter()
+
+
+class ProPickRunOut(BaseModel):
+    id: int
+    as_of: datetime
+    status: str
+    funnel_version: str
+    universe_size: int
+    passed_count: int
+    top_n: int
+    duration_ms: int
+    params: dict
+
+    class Config:
+        from_attributes = True
+
+
+class ProPickCandidateOut(BaseModel):
+    company_id: int
+    ticker: str
+    name: str
+    sector: str
+    currency: str
+    passed: bool
+    rank: int | None
+    score: float | None
+    failed_gates: list[str]
+    metrics: dict
+    coverage: dict
+
+
+class ProPickRunDetailOut(ProPickRunOut):
+    candidates: list[ProPickCandidateOut]
+
+
+def _run_out(run: ProPickRun) -> ProPickRunOut:
+    return ProPickRunOut.model_validate(run)
+
+
+@router.post("/runs", response_model=ProPickRunOut, status_code=201)
+def create_run(
+    top_n: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> ProPickRunOut:
+    """Execute the funnel now and persist the result (idempotent per call:
+    every call is a new run row; history is the point)."""
+    return _run_out(execute_run(db, top_n=top_n))
+
+
+@router.get("/runs", response_model=list[ProPickRunOut])
+def list_runs(
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[ProPickRunOut]:
+    rows = db.scalars(
+        select(ProPickRun).order_by(ProPickRun.as_of.desc()).limit(limit)
+    ).all()
+    return [_run_out(r) for r in rows]
+
+
+@router.get("/runs/{run_id}", response_model=ProPickRunDetailOut)
+def get_run(
+    run_id: int,
+    only_passed: bool = Query(default=True),
+    db: Session = Depends(get_db),
+) -> ProPickRunDetailOut:
+    run = db.scalar(select(ProPickRun).where(ProPickRun.id == run_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="propick run not found")
+    stmt = select(ProPickCandidate, Company).join(
+        Company, Company.id == ProPickCandidate.company_id
+    )
+    stmt = stmt.where(ProPickCandidate.run_id == run_id)
+    if only_passed:
+        stmt = stmt.where(ProPickCandidate.passed.is_(True))
+    stmt = stmt.order_by(
+        ProPickCandidate.rank.asc().nulls_last(), ProPickCandidate.score.desc()
+    )
+    rows = db.execute(stmt).all()
+    out = ProPickRunDetailOut(**ProPickRunOut.model_validate(run).model_dump(), candidates=[])
+    out.candidates = [
+        ProPickCandidateOut(
+            company_id=c.company_id,
+            ticker=co.ticker,
+            name=co.name,
+            sector=co.sector,
+            currency=co.currency,
+            passed=c.passed,
+            rank=c.rank,
+            score=c.score,
+            failed_gates=c.failed_gates,
+            metrics=c.metrics,
+            coverage=c.coverage,
+        )
+        for c, co in rows
+    ]
+    return out

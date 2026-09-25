@@ -2007,3 +2007,53 @@ class WorkflowStepRun(TenantOwnedMixin, Base, TimestampMixin):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     run: Mapped["WorkflowRun"] = relationship(back_populates="steps")
+
+
+class ProPickRun(TenantOwnedMixin, Base, TimestampMixin):
+    """One execution of the ProPicks deterministic funnel (big-data stage).
+
+    Persists the full parameter set so every candidate row is reproducible
+    and runs can be diffed (in/out) for the rebalance digest.
+    """
+
+    __tablename__ = "propick_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="completed", index=True)
+    funnel_version: Mapped[str] = mapped_column(String(80))
+    universe_size: Mapped[int] = mapped_column(Integer, default=0)
+    passed_count: Mapped[int] = mapped_column(Integer, default=0)
+    top_n: Mapped[int] = mapped_column(Integer, default=20)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    candidates: Mapped[list["ProPickCandidate"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class ProPickCandidate(TenantOwnedMixin, Base, TimestampMixin):
+    """Per-company funnel outcome for one run (pass and fail rows both kept:
+    the failed gates are product information, not noise)."""
+
+    __tablename__ = "propick_candidates"
+    __table_args__ = (
+        UniqueConstraint("run_id", "company_id", name="uq_propick_candidates_run_company"),
+        Index("ix_propick_candidates_run_score", "run_id", "score"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("propick_runs.id", ondelete="CASCADE"), index=True
+    )
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    passed: Mapped[bool] = mapped_column(default=False)
+    rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    failed_gates: Mapped[list[str]] = mapped_column(JSON, default=list)
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    coverage: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    run: Mapped["ProPickRun"] = relationship(back_populates="candidates")

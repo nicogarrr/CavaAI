@@ -148,7 +148,7 @@ def test_0030_upgrade_downgrade_preserves_preexisting_data():
         for name, table in INDEXES_0030:
             assert name in _index_names(database_url, table), f"{name} missing after upgrade"
 
-        _alembic(database_url, "downgrade", "-1")
+        _alembic(database_url, "downgrade", REVISION_0029)
         engine = create_engine(database_url)
         try:
             with engine.connect() as conn:
