@@ -78,7 +78,13 @@ def load_screener_ratios(db: Session, symbols: set[str], *, today: date | None =
             latest_price[row.company_id] = row
     by_company: dict[int, dict[tuple[int, str], FinancialFact]] = {}
     for fact in facts:
-        if fact.period.upper() not in {"FY", "ANNUAL"} or fact.fiscal_year is None:
+        # La ingesta SEC/ESEF guarda el periodo como "<end>:FY" (p.ej.
+        # "2025-09-27:FY"); "FY"/"ANNUAL" a pelo es la forma legada.
+        period = (fact.period or "").upper()
+        if (
+            period not in {"FY", "ANNUAL"}
+            and not period.endswith((":FY", ":ANNUAL"))
+        ) or fact.fiscal_year is None:
             continue
         by_company.setdefault(fact.company_id, {}).setdefault((fact.fiscal_year, fact.metric), fact)
 
