@@ -26,18 +26,21 @@ class RawBodyMiddleware:
         chunks: list[bytes] = []
         total = 0
         message: dict[str, Any] = await receive()
-        chunks.append(message.get("body", b""))
-        total += len(chunks[-1])
-        while message.get("more_body"):
-            message = await receive()
-            chunks.append(message.get("body", b""))
-            total += len(chunks[-1])
+        while True:
+            chunk = message.get("body", b"")
+            chunks.append(chunk)
+            total += len(chunk)
+            # El limite se aplica tras CADA chunk: un body de un solo chunk
+            # tambien debe rechazarse si supera max_body_bytes.
             if total > self.max_body_bytes:
                 from starlette.responses import JSONResponse
 
                 response = JSONResponse({"detail": "body too large"}, status_code=413)
                 await response(scope, receive, send)
                 return
+            if not message.get("more_body"):
+                break
+            message = await receive()
         raw_body = b"".join(chunks)
 
         scope.setdefault("state", {})["raw_body"] = raw_body

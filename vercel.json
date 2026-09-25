@@ -3,6 +3,15 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "functions": {
+    "app/(root)/research/**": {
+      "maxDuration": 60
+    },
+    "app/(root)/export/**": {
+      "maxDuration": 60
+    },
+    "app/api/thesis/**": {
+      "maxDuration": 60
+    },
     "app/**/page.tsx": {
       "maxDuration": 10
     },
