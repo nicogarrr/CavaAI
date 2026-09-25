@@ -150,11 +150,11 @@ def test_oversize_payload_rejected_at_service_limit(db):
 
 
 def test_oversize_upload_rejected_honestly_by_route():
-    """El middleware global (10MB) rechaza antes que la ruta (15MB): 413.
+    """La ruta (15MB) valida el fichero decodificado y rechaza con 400.
 
-    Con el limite aplicado tambien al primer chunk, un cuerpo de 15MB+1 nunca
-    llega a la ruta: RawBodyMiddleware responde 413. Es el rechazo honesto
-    real; la ruta conserva su propio limite para bodies de 10-15MB.
+    El middleware deja margen de ~1MB sobre 15MB para el overhead multipart,
+    asi que un cuerpo de 15MB+1 llega a la ruta y es ella quien responde
+    con su error de validacion, no un 413 generico del middleware.
     """
     init_db()
     client = TestClient(main.app)
@@ -167,7 +167,8 @@ def test_oversize_upload_rejected_honestly_by_route():
         },
         files={"file": ("big.txt", b"x" * (MAX_DOCUMENT_BYTES + 1), "text/plain")},
     )
-    assert response.status_code == 413
+    assert response.status_code == 400
+    assert "15MB" in response.json()["detail"]
 
 
 def test_ingest_url_timeout_raises_without_fabricating(db, monkeypatch):
