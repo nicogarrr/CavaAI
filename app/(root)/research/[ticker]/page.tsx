@@ -679,7 +679,11 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <div className="flex flex-wrap gap-3">
-          <MutationForm action={refreshCompanyFinancials.bind(null, ticker)} successMessage="Financieros actualizados (FMP)"><Button type="submit" variant="outline">Refrescar financieros (FMP)</Button></MutationForm>
+          {/* FMP plan free solo cubre mercado US (402 en el resto): el boton
+              solo se ofrece en tickers sin sufijo de mercado (B30). */}
+          {!ticker.includes('.') ? (
+            <MutationForm action={refreshCompanyFinancials.bind(null, ticker)} successMessage="Financieros actualizados (FMP)"><Button type="submit" variant="outline">Refrescar financieros (FMP)</Button></MutationForm>
+          ) : null}
           {isEsefIssuer(ticker) ? (
             <MutationForm action={refreshCompanyFinancialsESEF.bind(null, ticker)} successMessage="Financieros ESEF refrescados"><Button type="submit" variant="outline">Refrescar ESEF</Button></MutationForm>
           ) : (
