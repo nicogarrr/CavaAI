@@ -125,7 +125,9 @@ class Settings(BaseSettings):
     screener_quote_vendor: str = "finnhub"
     ibkr_flex_token: str | None = None
     ibkr_flex_query_id: str | None = None
-    sec_user_agent: str = "CavaAI/0.1 contact@example.com"
+    # SEC fair-access: exige UA declarado con contacto; bloquea placeholders
+    # tipo example.com con 403. Este valor verificado 200 desde prod (25/9).
+    sec_user_agent: str = "CavaAI research contact@cavaai.local"
     # Directorio con snapshots EDGAR (manifest.json ticker->CIK,
     # companyfacts/CIK##########.json, submissions/CIK##########.json).
     # La SEC bloquea las IPs de datacenter; los snapshots se generan fuera
