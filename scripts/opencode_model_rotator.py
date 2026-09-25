@@ -243,11 +243,16 @@ def sync_issue(unmapped, privacy_fallback):
                 "y politica de datos segun https://opencode.ai/v2/docs/console/models/."
             )
         if privacy_fallback:
-            lines.append(
-                "\n**Aviso de privacidad**: no queda ningun modelo gratuito con zero-retention publicado; "
-                "se ha caido al mejor gratuito rankeado aunque pueda usar datos para entrenar. "
-                "Revisa `REQUIRE_ZERO_RETENTION` en `scripts/opencode_model_rotator.py`."
-            )
+            if REQUIRE_ZERO_RETENTION:
+                lines.append(
+                    "\n**Aviso de privacidad**: no queda ningun modelo gratuito con zero-retention publicado; "
+                    "se ha caido al mejor gratuito rankeado aunque pueda usar datos para entrenar. "
+                    "Revisa `REQUIRE_ZERO_RETENTION` en `scripts/opencode_model_rotator.py`."
+                )
+            else:
+                lines.append(
+                    "\n**Aviso**: no hay ningun modelo gratuito verificado ahora mismo; se conserva el modelo actual."
+                )
         body = "\n".join(lines)
         if existing:
             github_api("PATCH", f"/repos/{repo}/issues/{existing['number']}", token, {"body": body})
