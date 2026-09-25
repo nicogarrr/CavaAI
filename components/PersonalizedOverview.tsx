@@ -62,7 +62,7 @@ const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: Market
                 <div className={`text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     <div className="flex items-center justify-end gap-1">
                         {index.changePercent >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                        <span className="font-bold">{formatPercent(index.changePercent, { fromRatio: false, digits: 2, signDisplay: 'never' })}</span>
+                        <span className="font-bold">{formatPercent(index.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}</span>
                     </div>
                     <p className="text-xs mt-1">{formatNumber(index.change, { signDisplay: 'always' })}</p>
                 </div>
