@@ -14,6 +14,7 @@ import { MoatTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
+import { MoatPanel } from '@/components/research/MoatPanel';
 import CollapsiblePanel from '@/components/research/CollapsiblePanel';
 import {
   DecisionAndRealityPanel,
@@ -46,6 +47,7 @@ import {
   type ResearchFact,
   type ResearchLongTermModel,
   type ResearchValuation,
+  getMoatQualityScore,
 } from '@/lib/actions/research.actions';
 import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
@@ -394,6 +396,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // La tesis completa también se consume inline en 'overview' (todo en la
   // misma página); se lanza en paralelo y su fallo degrada a solo tarjeta.
   const thesisPromise = activeView === 'overview' ? getResearchThesisWorkspace(ticker) : undefined;
+  // MOAT V2: solo lectura del score persistido; su fallo degrada a omitir el panel.
+  const moatPromise = activeView === 'overview' ? getMoatQualityScore(ticker) : undefined;
   let snapshot: Awaited<typeof snapshotPromise>;
   try {
     snapshot = await snapshotPromise;
@@ -464,6 +468,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     } catch {
       thesisWorkspace = null;
     }
+    let moatScore: Awaited<ReturnType<typeof getMoatQualityScore>> = null;
+    try {
+      moatScore = await (moatPromise ?? getMoatQualityScore(ticker));
+    } catch {
+      moatScore = null;
+    }
     content = (
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -515,6 +525,11 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             )}
           </Panel>
         </div>
+        {moatScore ? (
+          <Panel title="Marco de calidad (MOAT)">
+            <MoatPanel metric={moatScore} />
+          </Panel>
+        ) : null}
         {thesisWorkspace?.thesis ? (
           <Panel title="Tesis completa" collapsibleOnMobile>
             <ThesisMemo

@@ -698,6 +698,28 @@ export async function getResearchCompanySnapshot(
   }
 }
 
+type CalculatedMetricsResponse = components['schemas']['CalculatedMetricsResponse'];
+export type MoatScoreMetric = components['schemas']['CalculatedMetricOut'];
+
+/**
+ * Score del marco de calidad (MOAT V2) persistido para la empresa.
+ * null cuando la empresa no existe o aun no se ha calculado; el panel
+ * decide como degrada. Solo lectura: nunca dispara recalculos.
+ */
+export async function getMoatQualityScore(ticker: string): Promise<MoatScoreMetric | null> {
+  const normalizedTicker = ticker.trim().toUpperCase();
+  try {
+    const data = await researchRequest<CalculatedMetricsResponse>(
+      `/api/companies/${encodeURIComponent(normalizedTicker)}/metrics/calculated`,
+      { fast: true, cache: 'no-store' },
+    );
+    return data.metrics.find((metric) => metric.metric === 'quality_moat_score_v2') ?? null;
+  } catch (error) {
+    if (error instanceof AppError && error.statusCode === 404) return null;
+    throw error;
+  }
+}
+
 export async function getResearchThesisWorkspace(ticker: string) {
   const encoded = encodeURIComponent(ticker.toUpperCase());
   const optional = async <T>(path: string, fallback: T): Promise<{ value: T; error?: string }> => {
