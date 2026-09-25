@@ -291,7 +291,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             </div>
 
             {/* Market Indices Ticker */}
-            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
                 {indicesLoading ? (
                     [1, 2, 3, 4].map((i) => <StockCardSkeleton key={i} />)
                 ) : marketIndices.length > 0 ? marketIndices.map((index) => (

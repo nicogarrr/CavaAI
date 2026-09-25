@@ -20,7 +20,7 @@ async function getUserId(): Promise<string> {
 function DashboardSkeleton() {
     return (
         <div className="space-y-8" role="status" aria-live="polite" aria-label="Cargando dashboard">
-            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
                 {[1, 2, 3, 4, 5].map((i) => (
                     <StockCardSkeleton key={i} />
                 ))}
