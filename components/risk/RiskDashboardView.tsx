@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RecordDetail, formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
-import { formatPercent } from '@/lib/format';
+import { formatDateTime, formatMoney, formatPercent } from '@/lib/format';
 import { getRiskDashboard } from '@/lib/actions/risk.actions';
 
 interface RiskDashboardViewProps {
@@ -61,6 +61,109 @@ function headlineRecord(dashboard: DataRecord | null): DataRecord | null {
     return rest;
 }
 
+const RISK_LABELS: Record<string, string> = {
+    total_value: 'Valor total',
+    equity_value: 'Valor en renta variable',
+    cash: 'Caja',
+    top_1_weight: 'Peso de la mayor posición',
+    top_5_weight: 'Peso de las 5 mayores',
+    sector_exposure: 'Exposición por sector',
+    factor_exposure: 'Exposición por factor',
+    status: 'Estado',
+    base_currency: 'Divisa base',
+    cash_native: 'Caja en divisa original',
+    missing_fx: 'Sin tipo de cambio para',
+    data_as_of: 'Datos a fecha de',
+    provenance: 'Fuente',
+};
+
+const RISK_STATUS_LABELS: Record<string, string> = {
+    ok: 'Correcto',
+    incomplete_fx: 'Incompleto: faltan tipos de cambio',
+    insufficient_data: 'Datos insuficientes',
+};
+
+function humanizeRiskKey(key: string): string {
+    const known = RISK_LABELS[key];
+    if (known) return known;
+    const words = key.replaceAll('_', ' ').trim();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function isRecord(value: unknown): value is DataRecord {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Mapa divisa -> importe ("EUR: 0") como texto "0 € · 12,50 US$". */
+function currencyRecord(value: unknown): string {
+    if (!isRecord(value)) return 's/d';
+    const entries = Object.entries(value);
+    if (!entries.length) return 'Sin saldos';
+    return entries
+        .map(([currency, amount]) => formatMoney(amount as number | string, currency))
+        .join(' · ');
+}
+
+/** Mapa etiqueta -> peso (ratio) como "Tecnología 45,0 % · Salud 20,0 %". */
+function exposureRecord(value: unknown): string {
+    if (!isRecord(value)) return 's/d';
+    const entries = Object.entries(value);
+    if (!entries.length) return 'Sin datos';
+    return entries
+        .map(([name, weight]) =>
+            `${name} ${typeof weight === 'number' ? formatPercent(weight, { fromRatio: true, digits: 1 }) : 's/d'}`,
+        )
+        .join(' · ');
+}
+
+/** F41: el resumen llega con claves internas y JSON crudo; se presenta con
+ *  etiquetas en español y valores formateados. Nunca se inventa: null -> s/d,
+ *  vacios -> estado honesto, claves desconocidas -> humanizadas tal cual. */
+function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null {
+    if (!dashboard) return null;
+    const baseCurrency = typeof dashboard.base_currency === 'string' && dashboard.base_currency
+        ? dashboard.base_currency
+        : 'EUR';
+    const display: DataRecord = {};
+    for (const [key, value] of Object.entries(dashboard)) {
+        const label = humanizeRiskKey(key);
+        if (key === 'total_value' || key === 'equity_value') {
+            display[label] = value === null || value === undefined
+                ? 's/d (faltan tipos de cambio)'
+                : formatMoney(value as number | string, baseCurrency);
+        } else if (key === 'top_1_weight' || key === 'top_5_weight') {
+            display[label] = typeof value === 'number' ? formatPercent(value, { fromRatio: true, digits: 1 }) : 's/d';
+        } else if (key === 'cash' || key === 'cash_native') {
+            display[label] = currencyRecord(value);
+        } else if (key === 'sector_exposure' || key === 'factor_exposure') {
+            display[label] = exposureRecord(value);
+        } else if (key === 'status') {
+            display[label] = RISK_STATUS_LABELS[String(value)] ?? String(value);
+        } else if (key === 'missing_fx') {
+            display[label] = Array.isArray(value) && value.length > 0
+                ? value.map((item) => (isRecord(item) ? String(item.ticker ?? item.currency ?? '?') : String(item))).join(', ')
+                : 'Ninguno';
+        } else if (key === 'data_as_of') {
+            display[label] = typeof value === 'string' && value ? formatDateTime(value) : 's/d';
+        } else if (key === 'provenance') {
+            if (isRecord(value)) {
+                const source = typeof value.source === 'string' ? value.source : 'Fuente interna';
+                const fetched = typeof value.fetched_at === 'string' && value.fetched_at
+                    ? ` · ${formatDateTime(value.fetched_at)}`
+                    : '';
+                display[label] = `${source}${fetched}`;
+            } else {
+                display[label] = 's/d';
+            }
+        } else if (typeof value === 'boolean') {
+            display[label] = value ? 'Sí' : 'No';
+        } else {
+            display[label] = value;
+        }
+    }
+    return display;
+}
+
 function weightText(position: DataRecord): string {
     const weight = position.weight;
     if (typeof weight === 'number' && Number.isFinite(weight)) {
@@ -79,8 +182,8 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                 title="Dashboard de Riesgo"
                 description="Estructura de la cartera: pesos, concentración (top 1 y top 5) y exposición por sector y factor. No calcula VaR, drawdown ni volatilidad: hace falta historia de precios que el motor aún no usa."
                 icon={<Gauge className="h-5 w-5 text-teal-400" />}
-                record={headlineRecord(initialDashboard)}
-                fetchRecord={async () => headlineRecord(await getRiskDashboard())}
+                record={humanizeRiskDashboard(headlineRecord(initialDashboard))}
+                fetchRecord={async () => humanizeRiskDashboard(headlineRecord(await getRiskDashboard()))}
                 maxKeys={32}
                 hiddenKeys={['trace']}
                 emptyMessage="No hay métricas de riesgo disponibles. Comprueba que tu cartera tiene posiciones."
