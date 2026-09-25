@@ -353,7 +353,11 @@ class MarketOpportunityEngine:
         base_future_share = base_revenue / future_market if base_revenue is not None and future_market not in (None, 0) else None
         current_revenue = _finite(revenue_history[current_year].value) if current_year is not None else None
         required_revenue = None
-        if reverse_dcf.get("status") == "ok" and current_revenue is not None:
+        if (
+            reverse_dcf.get("status") == "ok"
+            and current_revenue is not None
+            and reverse_dcf.get("required_revenue_growth") is not None
+        ):
             required_revenue = current_revenue * (1 + reverse_dcf["required_revenue_growth"]) ** horizon
         valuation_share = required_revenue / future_market if required_revenue is not None and future_market not in (None, 0) else None
         source_fact_ids = _unique_ids(market_fact, growth_fact, ids=top_down["source_fact_ids"])

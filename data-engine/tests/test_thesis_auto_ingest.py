@@ -292,7 +292,16 @@ def test_generate_with_mocked_sources_persists_facts_and_goes_partial(monkeypatc
 
     markdown = thesis["thesis_markdown"]
     assert "PARTIAL-INDICATIVE RANGE" in markdown
-    assert "Required revenue growth:" in markdown
+    # El reverse DCF ya no inventa un "required growth": cuando el precio cae
+    # fuera del rango valorable por los supuestos del modelo, la bisección
+    # saturaba en el límite del buscador y el memo publicaba un crecimiento
+    # imposible como si fuera una expectativa del mercado. Ahora el valor se
+    # retiene (ver test_valuation_honesty_contracts) y el memo declara que no
+    # hay un crecimiento que explique el precio.
+    assert (
+        "Required revenue growth:" in markdown
+        or "Reverse DCF unavailable" in markdown
+    ), "el memo debe o bien declarar el crecimiento exigido o bien su ausencia"
     assert "NO VALUATION" not in markdown
     # Fuentes: conseguido con detalle, sin datos inventados.
     assert "Fundamentals: conseguido" in markdown
