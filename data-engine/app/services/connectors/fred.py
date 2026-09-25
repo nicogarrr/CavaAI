@@ -64,6 +64,29 @@ class FREDClient:
         response.raise_for_status()
         return response.json()
 
+    async def series_csv(self, series_id: str, limit: int = 10) -> dict:
+        """Serie via fredgraph.csv (endpoint publico, SIN clave).
+
+        Devuelve el mismo shape que ``series`` ({"observations": [...]},
+        mas reciente primero) para que el consumidor no distinga la via.
+        Fuente declarada: https://fred.stlouisfed.org/graph/fredgraph.csv
+        """
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+        if self.client is not None:
+            response = await self.client.get(url, headers=self.headers)
+        else:
+            async with httpx.AsyncClient(timeout=30, headers=self.headers) as client:
+                response = await client.get(url)
+        response.raise_for_status()
+        observations = []
+        for line in response.text.splitlines()[1:]:
+            date, _, value = line.partition(",")
+            if not date:
+                continue
+            observations.append({"date": date.strip(), "value": value.strip()})
+        observations.reverse()  # CSV viene ascendente; la API devuelve desc
+        return {"observations": observations[:limit]}
+
 
 # Alias legibles -> IDs de serie FRED. Un ID crudo valido se usa tal cual.
 MACRO_SERIES: dict[str, str] = {
