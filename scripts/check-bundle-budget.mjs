@@ -5,10 +5,11 @@
  * not force optimization): any single chunk > 600 kB uncompressed or total
  * .next/static chunks > 12 MB fails the build. Tighten deliberately later.
  */
+import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
 
-const STATIC_DIR = new URL('../.next/static', import.meta.url).pathname;
+const STATIC_DIR = resolve(fileURLToPath(new URL('../.next/static', import.meta.url)));
 const MAX_SINGLE_BYTES = 600 * 1024;
 const MAX_TOTAL_BYTES = 12 * 1024 * 1024;
 
