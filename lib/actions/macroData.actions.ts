@@ -1,6 +1,8 @@
 'use server';
 
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { researchRequest } from '@/lib/research/client';
+import { cachedFetch } from '@/lib/cache/memoryTTL';
 
 /**
  * Datos macroeconómicos de Fed, BCE y otros bancos centrales
@@ -172,23 +174,26 @@ export async function getInterestRates(): Promise<InterestRateData> {
 }
 
 /**
- * Obtiene datos macroeconómicos del BCE (European Central Bank)
- * Usa API del BCE o alternativas
+ * Obtiene datos macroeconómicos del BCE (European Central Bank).
+ * Consume GET /api/macro/ecb del data engine (SDW del BCE, gratis, sin key):
+ * el backend ya devuelve el shape MacroData (con change/previousValue/
+ * changePercent cuando hay 2 observaciones), cachea 1h y simplemente omite
+ * las series caídas. Aquí solo se mapea y se degrada a [] si el endpoint falla;
+ * nunca se inventan valores.
  */
 export async function getECBMacroData(): Promise<MacroData[]> {
   await requireAuthenticatedUser();
   try {
-    // El BCE tiene una API SDW (Statistical Data Warehouse)
-    // Es compleja, así que usamos una aproximación alternativa
-    const results: MacroData[] = [];
-
-    // Para implementación completa, se necesitaría:
-    // 1. API key de Trading Economics, o
-    // 2. Implementar web scraping del sitio del BCE, o
-    // 3. Usar otra fuente de datos macroeconómicos
-
-    // Por ahora, retornamos estructura vacía que se puede expandir
-    return results;
+    return await cachedFetch(
+      'macro:ecb',
+      async () => {
+        const payload = await researchRequest<{ items?: MacroData[]; cached?: boolean }>(
+          '/api/macro/ecb',
+        );
+        return Array.isArray(payload.items) ? payload.items : [];
+      },
+      3600,
+    );
   } catch (error) {
     console.error('Error fetching ECB macro data:', error);
     return [];
