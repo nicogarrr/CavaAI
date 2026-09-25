@@ -114,7 +114,7 @@ export default function MonthlyRebalanceView({
 
     return (
         <div className="space-y-4">
-            <Card className="flex min-w-0 flex-col gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4 md:flex-row md:items-center md:justify-between">
+            <Card className="flex min-w-0 flex-col gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                         <ArrowRightLeft className="h-5 w-5 text-teal-400" />
