@@ -95,6 +95,18 @@ METRIC_DEFINITIONS: dict[str, MetricFormula] = {
         ("net_income", "total_assets"),
         "decimal",
     ),
+    "owner_earnings": (
+        "OWNER_EARNINGS_V1",
+        "net_income + depreciation_amortization - maintenance_capex, where maintenance_capex = min(abs(capital_expenditure), depreciation_amortization); maintenance capex is not separately reported - declared conservative estimate (Buffet owner earnings)",
+        ("net_income", "depreciation_amortization", "capital_expenditure"),
+        "USD",
+    ),
+    "cfroi_approx": (
+        "CFROI_APPROX_V1",
+        "approximate CFROI: (net_income + depreciation_amortization + interest_expense * (1 - effective_tax_rate)) / total_assets; DECLARED approximation - invested capital proxied by total_assets, no inflation adjustment, not comparable to Credit Suisse CFROI",
+        ("net_income", "depreciation_amortization", "interest_expense", "total_assets"),
+        "decimal",
+    ),
     # Marco de calidad de Nico (apuntes manuscritos, sept 2026): 5 checks
     # trazables. Cada check no evaluable queda declarado como null, nunca
     # cuenta como superado.
@@ -331,6 +343,44 @@ class MetricCalculationService:
         facts: dict[str, FinancialFact],
     ) -> tuple[Decimal | None, Decimal | None, dict, dict[str, FinancialFact]]:
         value = lambda key: Decimal(facts[key].value)
+        if metric == "owner_earnings":
+            net_income = value("net_income")
+            depreciation = value("depreciation_amortization")
+            capex_abs = abs(value("capital_expenditure"))
+            maintenance_capex = min(capex_abs, depreciation)
+            trace = {
+                "method": "owner_earnings",
+                "maintenance_capex": str(_quantize(maintenance_capex)),
+                "maintenance_capex_rule": (
+                    "min(abs(capital_expenditure), depreciation_amortization); "
+                    "maintenance capex is not separately reported - declared "
+                    "conservative estimate"
+                ),
+                "estimated_growth_capex": str(_quantize(capex_abs - maintenance_capex)),
+            }
+            return net_income + depreciation - maintenance_capex, Decimal("1"), trace, {}
+        if metric == "cfroi_approx":
+            tax_rate, tax_trace, tax_facts = self._tax_rate_for_period(
+                db,
+                company,
+                facts["net_income"],
+                allow_fallback=True,
+            )
+            assert tax_rate is not None
+            gross_cash_flow = (
+                value("net_income")
+                + value("depreciation_amortization")
+                + value("interest_expense") * (Decimal("1") - tax_rate)
+            )
+            trace = {
+                "method": "cfroi_approx",
+                "approximation": (
+                    "invested capital proxied by total_assets; no inflation "
+                    "adjustment; not comparable to Credit Suisse CFROI"
+                ),
+                **tax_trace,
+            }
+            return gross_cash_flow, value("total_assets"), trace, tax_facts
         if metric in {"roic", "roic_adjusted"}:
             tax_rate, tax_trace, tax_facts = self._tax_rate_for_period(
                 db,
