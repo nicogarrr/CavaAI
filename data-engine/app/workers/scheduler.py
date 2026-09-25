@@ -9,6 +9,7 @@ from app.workers.dramatiq_app import (
     consolidate_memory,
     evaluate_alert_rules,
     refresh_market_pipeline,
+    refresh_portfolio_prices_intraday,
     refresh_propicks_prices,
     refresh_ir_pages,
     refresh_news,
@@ -197,6 +198,18 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         job_id="insider_alert_outbox",
         minutes=20,
         jitter=180,
+    )
+    # F17: precios intradia de la cartera (Yahoo, retardo ~15 min declarado
+    # en la UI) durante la sesion US. Ventana 13-21 UTC cubre EDT y EST.
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, refresh_portfolio_prices_intraday),
+        "cron",
+        job_id="portfolio_prices_intraday",
+        day_of_week="mon-fri",
+        hour="13-21",
+        minute="*/15",
+        jitter=60,
     )
     # F2 ProPicks: precios diarios + momentum del top-40 del ultimo run.
     # Tras el cierre de mercado US (21:45 UTC ~ cierre + margen).
