@@ -146,7 +146,10 @@ REVIEWED_ISSUERS: tuple[CNMVIssuer, ...] = (
     # Tanda 7 (2026-09-25): misma verificacion CNMV. Exclusiones de la tanda:
     # CLEOP y URBAR solo tienen clases ACNV (sin voto) listadas - pendientes de
     # criterio; MINERSA tiene ISIN (ES0163960018) pero sin nemotecnico corto
-    # activo confirmable. Tickers cortos no presentes en el FISN confirmados en
+    # activo confirmable. OPDENERGY dejo de cotizar el 19-abr-2024 (opdenergy.com)
+    # y MINOR HOTELS (ex-NH) quedo excluida de negociacion el 25-sep-2025
+    # (opa de exclusion, Sociedades Rectoras) - exclusiones honestas aunque
+    # sigan presentando ESEF. Tickers cortos no presentes en el FISN confirmados en
     # BME/Yahoo/Morningstar (documentado en el PR).
     CNMVIssuer("LIB", "LIBERTAS 7, S.A.", "A-46007449", "ES0137998A12", ("LIBERTAS 7", "LIB.MC", "LIBERTAS 7 SA")),
     CNMVIssuer("UNC", "UNION CATALANA DE VALORES, S.A.", "A-08483257", "ES0181222011", ("UNION CATALANA DE VALORES", "UNC.MC", "UNION CATALANA DE VALORES SA")),
@@ -154,7 +157,6 @@ REVIEWED_ISSUERS: tuple[CNMVIssuer, ...] = (
     CNMVIssuer("MON", "MOBILIARIA MONESA, S.A.", "A-08348740", "ES0164228019", ("MOBILIARIA MONESA", "MON.MC", "MOBILIARIA MONESA SA")),
     CNMVIssuer("IMC", "INMOCEMENTO, S.A.", "A-16367328", "ES0105836003", ("INMOCEMENTO", "IMC.MC", "INMOCEMENTO SA")),
     CNMVIssuer("ARM", "ARIMA REAL ESTATE SOCIMI, S.A.", "A-88130471", "ES0105376059", ("ARIMA", "ARM.MC", "ARIMA REAL ESTATE SOCIMI SA")),
-    CNMVIssuer("OPDE", "OPDENERGY HOLDING, S.A.", "A-31840135", "ES0105544003", ("OPDENERGY", "OPDE.MC", "OPDENERGY HOLDING SA")),
     CNMVIssuer("GRE", "GRENERGY RENOVABLES, S.A.", "A-85130821", "ES0105079000", ("GRENERGY", "GRE.MC", "GRENERGY RENOVABLES SA")),
     CNMVIssuer("ADX", "AUDAX RENOVABLES, S.A.", "A-62338827", "ES0136463017", ("AUDAX", "ADX.MC", "AUDAX RENOVABLES SA")),
     CNMVIssuer("SOL", "SOLTEC POWER HOLDINGS, S.A.", "A-05556733", "ES0105513008", ("SOLTEC", "SOL.MC", "SOLTEC POWER HOLDINGS SA")),
@@ -163,7 +165,6 @@ REVIEWED_ISSUERS: tuple[CNMVIssuer, ...] = (
     CNMVIssuer("PRS", "PROMOTORA DE INFORMACIONES, S.A.", "A-28297059", "ES01717430J3", ("PRISA", "PRS.MC", "PROMOTORA DE INFORMACIONES SA")),
     CNMVIssuer("ISUR", "INMOBILIARIA DEL SUR, S.A.", "A-41002205", "ES0154653911", ("INMOBILIARIA DEL SUR", "ISUR.MC", "INMOBILIARIA DEL SUR SA")),
     CNMVIssuer("MVC", "METROVACESA, S.A.", "A-87471264", "ES0105122024", ("METROVACESA", "MVC.MC", "METROVACESA SA")),
-    CNMVIssuer("NHH", "MINOR HOTELS EUROPE & AMERICAS, S.A.", "A-28027944", "ES0161560018", ("MINOR HOTELS", "NHH.MC", "MINOR HOTELS EUROPE & AMERICAS SA")),
     CNMVIssuer("COXG", "COX ABG GROUP, S.A.", "A-87073193", "ES0105848008", ("COX", "COXG.MC", "COX ABG GROUP SA")),
     CNMVIssuer("ISE", "INNOVATIVE SOLUTIONS ECOSYSTEM, S.A.", "A-28354132", "ES0143421073", ("INNOVATIVE SOLUTIONS", "ISE.MC", "INNOVATIVE SOLUTIONS ECOSYSTEM SA")),
     CNMVIssuer("ECO", "ECOLUMBER, S.A.", "A-43777119", "ES0127232017", ("ECOLUMBER", "ECO.MC", "ECOLUMBER SA")),
