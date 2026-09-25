@@ -1,11 +1,4 @@
-import {
-  BriefcaseBusiness,
-  Database,
-  FileText,
-  GitBranch,
-  ShieldCheck,
-} from 'lucide-react';
-import Link from 'next/link';
+import { FileText } from 'lucide-react';
 import { getResearchDashboard } from '@/lib/actions/research.actions';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
@@ -57,9 +50,7 @@ export default async function ResearchPage() {
     }
     throw error;
   }
-  const { companies, portfolio, workflows, settings } = dashboard;
-  const configuredConnectors = Object.entries(settings.connectors).filter(([, value]) => Boolean(value));
-  const topCompanies = companies.slice(0, 8);
+  const { portfolio } = dashboard;
 
   return (
     <main className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -81,98 +72,6 @@ export default async function ResearchPage() {
         <Stat label="Equity" value={money(portfolio.equity_value)} />
         <Stat label="Top 1" value={pct(portfolio.top_1_weight)} tone="warn" />
         <Stat label="Alertas" value={String(portfolio.alerts.length)} tone={portfolio.alerts.length ? 'bad' : 'good'} />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <BriefcaseBusiness className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Company Master</h2>
-            <span className="ml-auto text-sm text-gray-500">{companies.length} empresas</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="text-xs uppercase text-gray-500">
-                <tr>
-                  <th className="border-b border-gray-800 py-2">Ticker</th>
-                  <th className="border-b border-gray-800 py-2">Nombre</th>
-                  <th className="border-b border-gray-800 py-2">Tipo</th>
-                  <th className="border-b border-gray-800 py-2">Modelo</th>
-                  <th className="border-b border-gray-800 py-2">Factores</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topCompanies.map((company) => (
-                  <tr key={company.ticker} className="border-b border-gray-900 last:border-0">
-                    <td className="py-3 font-semibold text-gray-100">
-                      <Link className="text-teal-300 hover:text-teal-200" href={`/research/${company.ticker}`}>
-                        {company.ticker}
-                      </Link>
-                    </td>
-                    <td className="py-3 text-gray-300">{company.name}</td>
-                    <td className="py-3 text-gray-400">{company.company_type}</td>
-                    <td className="py-3 text-gray-400">{company.valuation_model}</td>
-                    <td className="py-3 text-gray-500">{company.factor_tags.slice(0, 4).join(', ')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Source Policy</h2>
-          </div>
-          <div className="grid gap-3 text-sm">
-            <p className="rounded-md border border-gray-800 bg-black/30 p-3 leading-6 text-gray-300">
-              Toda afirmación o valoración exige una fuente trazable con fecha y versionado:
-              sin evidencia contrastable no se incorpora a la tesis.
-            </p>
-          </div>
-          <Link className="mt-4 inline-flex text-sm font-semibold text-teal-300 hover:text-teal-200" href="/research/sources">
-            Open sources
-          </Link>
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <GitBranch className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Workflows</h2>
-          </div>
-          <div className="space-y-3">
-            {workflows.slice(0, 5).map((workflow) => (
-              <div key={workflow.name} className="rounded-md border border-gray-800 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-semibold text-gray-100">{workflow.name}</span>
-                  <span className="text-xs text-gray-500">{workflow.steps.length} steps</span>
-                </div>
-                <p className="mt-1 text-sm text-gray-500">Input: {workflow.input}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <Database className="h-5 w-5 text-teal-300" />
-            <h2 className="text-lg font-semibold text-gray-100">Runtime</h2>
-          </div>
-          <div className="grid gap-3 text-sm">
-            <div className="rounded-md border border-gray-800 p-3 text-gray-300">
-              LLM mensual: {formatMoney(settings.budget.monthly_cost_eur, 'EUR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {formatMoney(settings.budget.monthly_cap_eur, 'EUR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <div className="rounded-md border border-gray-800 p-3 text-gray-300">
-              LLM diario: {formatMoney(settings.budget.daily_cost_eur, 'EUR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {formatMoney(settings.budget.daily_cap_eur, 'EUR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <div className="rounded-md border border-gray-800 p-3 text-gray-300">
-              Conectores activos: {configuredConnectors.length || 0}
-            </div>
-          </div>
-        </div>
       </section>
 
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
