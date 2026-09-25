@@ -520,11 +520,7 @@ def refresh_sec_filings(
             processed = ingested = queued_documents = 0
             errors: list[dict] = []
             emitted: set[str] = set()
-            companies = (
-                _companies(db, ticker)
-                if ticker
-                else (_tracked_companies(db) if scope == "tracked" else _companies(db))
-            )
+            companies = _companies(db, ticker)
             for company in companies:
                 if not company.cik:
                     continue
@@ -579,7 +575,6 @@ def refresh_sec_filings(
             return {
                 "status": _batch_status(processed, errors),
                 "actor": actor_name,
-                "scope": scope,
                 "companies_processed": processed,
                 "news_ingested": ingested,
                 "documents_queued": queued_documents,
@@ -762,7 +757,12 @@ def refresh_news(
             service = FeedIngestionService()
             processed = ingested = 0
             errors: list[dict] = []
-            for company in _companies(db, ticker):
+            companies = (
+                _companies(db, ticker)
+                if ticker
+                else (_tracked_companies(db) if scope == "tracked" else _companies(db))
+            )
+            for company in companies:
                 try:
                     query = f'"{company.name}" OR {company.ticker}'
                     result = _run(
@@ -798,6 +798,7 @@ def refresh_news(
             return {
                 "status": _batch_status(processed, errors),
                 "actor": actor_name,
+                "scope": scope,
                 "companies_processed": processed,
                 "news_ingested": ingested,
                 "errors": errors,
