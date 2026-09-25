@@ -806,6 +806,17 @@ async def refresh_fmp_financials(ticker: str, db: Session = Depends(get_db)) -> 
         # Sanitize: httpx exception text embeds the full request URL,
         # which carries the FMP api key - never log or return it.
         status = exc.response.status_code
+        if status == 402:
+            # El plan gratuito de FMP no cubre mercados fuera de US ni
+            # algunos endpoints; mensaje accionable en vez de un error crudo.
+            raise HTTPException(
+                status_code=424,
+                detail=(
+                    "El plan gratuito de FMP no cubre este mercado. "
+                    "Para emisores europeos usa la fuente ESEF y para "
+                    "americanos la SEC."
+                ),
+            ) from None
         raise HTTPException(
             status_code=424,
             detail=f"FMP request failed with HTTP {status}",

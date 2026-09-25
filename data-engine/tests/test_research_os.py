@@ -601,3 +601,33 @@ def test_fmp_refresh_normalizes_facts_and_valuation_uses_them(monkeypatch):
     assert thesis_payload["data_confidence_score"] == 55
     assert "Mandatory drivers missing:" in thesis_payload["thesis_markdown"]
     assert "Mandatory drivers missing: none" not in thesis_payload["thesis_markdown"]
+
+
+def test_fmp_refresh_402_returns_actionable_message(monkeypatch):
+    """El plan free de FMP no cubre no-US: 402 -> 424 con mensaje claro (B30)."""
+    import httpx
+
+    from app.api.routes import companies as companies_route
+
+    class DeniedFMPClient:
+        async def income_statement(self, ticker: str, limit: int = 5):
+            request = httpx.Request(
+                "GET", "https://financialmodelingprep.com/stable/income-statement"
+            )
+            response = httpx.Response(402, request=request)
+            raise httpx.HTTPStatusError(
+                "payment required", request=request, response=response
+            )
+
+    init_db()
+    seed()
+    monkeypatch.setattr(companies_route, "FMPClient", DeniedFMPClient)
+    client = TestClient(main.app)
+
+    refresh = client.post("/api/companies/MSFT/refresh/fmp")
+    assert refresh.status_code == 424
+    detail = refresh.json()["detail"]
+    assert "plan gratuito de FMP" in detail
+    # La URL con la api key nunca se filtra en el detalle.
+    assert "apikey" not in detail
+    assert "http" not in detail.lower()
