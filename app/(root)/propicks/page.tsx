@@ -34,11 +34,14 @@ export default async function ProPicksPage() {
                     </div>
                 </div>
                 <p className="text-sm text-gray-500">
-                    El embudo evalúa el universo completo de acciones con datos point-in-time
-                    (solo lo que era público en cada fecha) y publica aquí la selección del
-                    último run. El backtest es walk-forward: cada corte mensual usa solo
-                    información disponible en ese corte, con costes de 15 pb por operación
-                    y SPY como referencia.
+                    El embudo IA evalúa el universo líquido con 6 categorías
+                    (valor, crecimiento, rentabilidad, caja, momentum, salud
+                    financiera) y publica aquí la selección del último run
+                    con su fecha de datos en cada tarjeta. El backtest de la
+                    pestaña «Backtesting» es un baseline walk-forward aparte
+                    (momentum 12-1M sobre 30 valores, costes 15 pb, SPY como
+                    referencia): sirve para validar el motor point-in-time,
+                    no como validación de la estrategia IA.
                 </p>
             </div>
 

@@ -115,9 +115,12 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
             <TabsContent value="backtest" className="mt-6 space-y-4">
                 <Card className="flex min-w-0 flex-col gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4 md:flex-row md:items-center md:justify-between">
                     <p className="max-w-xl text-sm leading-6 text-gray-400">
-                        Motor walk-forward point-in-time: cada corte mensual solo usa precios
-                        anteriores a ese corte (momentum 12-1M, universo líquido de 30 valores),
-                        con costes de 15 pb por pata y SPY como benchmark.
+                        Baseline walk-forward point-in-time (momentum 12-1M,
+                        universo líquido de 30 valores, costes 15 pb por pata,
+                        SPY como benchmark). No valida los Picks IA de arriba:
+                        valida que el motor no mira el futuro. El backtest por
+                        estrategia con fundamentales point-in-time llegará
+                        cuando haya TTM persistido.
                     </p>
                     <Button
                         onClick={() => runBacktest()}
