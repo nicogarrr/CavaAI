@@ -11,7 +11,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { LogOut, ShieldCheck } from "lucide-react";
+import { ChevronDown, CircleHelp, Download, LogOut, ShieldCheck, Target } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
 
 const UserDropdown = ({ user }: { user: User }) => {
@@ -24,22 +24,21 @@ const UserDropdown = ({ user }: { user: User }) => {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button className="flex items-center gap-3 text-gray-4 hover:bg-gray-800 bg-gray-800" aria-label="Menú de usuario">
+                <Button className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700" aria-label="Menú de usuario">
                     <Avatar className="h-8 w-8">
                         <AvatarFallback className="bg-teal-500 text-teal-900 text-sm font-bold">
                             {user.name[0]}
                         </AvatarFallback>
                     </Avatar>
-                    <div className="hidden md:flex flex-col items-start ">
-                        <span className='text-base font-medium text-gray-400 hover:text-teal-500 '>
-                            {user.name}
-                        </span>
-                    </div>
+                    <span className="hidden text-sm font-medium text-gray-400 md:inline">{user.name}</span>
+                    <ChevronDown aria-hidden="true" className="hidden h-4 w-4 text-gray-500 md:inline" />
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="text-gray-400 bg-gray-800 relative right-5">
+            {/* `align="end" + sideOffset` sustituye al `relative right-5` con el
+                que se corrigia a mano la alineacion del menu. */}
+            <DropdownMenuContent align="end" sideOffset={8} className="bg-gray-800 text-gray-400">
                 <DropdownMenuLabel>
-                    <div className="flex relative items-center gap-3 py-2">
+                    <div className="flex items-center gap-3 py-2">
                         <Avatar className="h-10 w-10">
                             <AvatarFallback className="bg-teal-500 text-teal-900 text-sm font-bold">
                                 {user.name[0]}
@@ -54,15 +53,42 @@ const UserDropdown = ({ user }: { user: User }) => {
                     </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-gray-600" />
-                                <DropdownMenuItem
-                                    onClick={() => router.push("/security")}
-                                    className="text-gray-100 text-md font-medium focus:bg-transparent focus:text-teal-500 transition-colors cursor-pointer"
-                                >
-                                    <ShieldCheck className="h-4 w-4 mr-2 hidden sm:block" />
-                                    Seguridad
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={handleSignOut} className="text-gray-100 text-md font-medium focus:bg-transparent focus:text-teal-500 transition-colors cursor-pointer">
-                    <LogOut className="h-4 w-4 mr-2 hidden sm:block" />
+                {/* Destinos que antes no Tenian entrada en ningun sitio: /plan,
+                    /export y /help (este ultimo era un huerfano total). */}
+                <DropdownMenuItem
+                    onClick={() => router.push("/plan")}
+                    className="cursor-pointer text-sm font-medium text-gray-100 transition-colors focus:text-teal-300"
+                >
+                    <Target aria-hidden="true" className="mr-2 hidden h-4 w-4 sm:block" />
+                    Mi plan
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                    onClick={() => router.push("/export")}
+                    className="cursor-pointer text-sm font-medium text-gray-100 transition-colors focus:text-teal-300"
+                >
+                    <Download aria-hidden="true" className="mr-2 hidden h-4 w-4 sm:block" />
+                    Exportar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                    onClick={() => router.push("/help")}
+                    className="cursor-pointer text-sm font-medium text-gray-100 transition-colors focus:text-teal-300"
+                >
+                    <CircleHelp aria-hidden="true" className="mr-2 hidden h-4 w-4 sm:block" />
+                    Ayuda
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-gray-600" />
+                <DropdownMenuItem
+                    onClick={() => router.push("/security")}
+                    className="cursor-pointer text-sm font-medium text-gray-100 transition-colors focus:text-teal-300"
+                >
+                    <ShieldCheck aria-hidden="true" className="mr-2 hidden h-4 w-4 sm:block" />
+                    Seguridad
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                    onClick={handleSignOut}
+                    className="cursor-pointer text-sm font-medium text-gray-100 transition-colors focus:text-teal-300"
+                >
+                    <LogOut aria-hidden="true" className="mr-2 hidden h-4 w-4 sm:block" />
                     Cerrar sesión
                 </DropdownMenuItem>
             </DropdownMenuContent>

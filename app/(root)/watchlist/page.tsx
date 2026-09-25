@@ -105,7 +105,7 @@ export default async function WatchlistPage() {
     };
 
     return (
-        <div className="mx-auto flex min-h-screen w-full max-w-full min-w-0 flex-col space-y-6 overflow-x-clip p-4 sm:p-6">
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full max-w-full min-w-0 flex-col space-y-6 overflow-x-clip p-4 sm:p-6">
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                     <h1 className="flex items-center gap-2 text-2xl font-bold break-words text-gray-100 sm:gap-3 sm:text-3xl">
@@ -283,6 +283,7 @@ export default async function WatchlistPage() {
                     </div>
                 </>
             )}
-        </div>
+        </main>
     );
 }
+

@@ -6,7 +6,7 @@ export const revalidate = 0;
 
 export default async function AlertsPage() {
     return (
-        <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6">
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6">
             <header className="flex flex-col gap-4 border-b border-gray-800 pb-5">
                 <div className="min-w-0">
                     <p className="text-sm font-semibold uppercase text-teal-300">Notificaciones</p>

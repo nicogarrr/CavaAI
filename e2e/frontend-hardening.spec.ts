@@ -9,11 +9,28 @@ function source(...parts: string[]): string {
 }
 
 test.describe("hardening frontend estático", () => {
-  test("el layout raíz no envuelve páginas con otro landmark main", () => {
+  test("el shell raíz aporta skip-link y deja el landmark main a cada página", () => {
     const layout = source("app", "(root)", "layout.tsx");
 
+    // El layout no envuelve a las páginas en otro <main>: cada página es la
+    // dueña de su landmark, y el skip-link apunta al id que estas declaran.
     expect(layout).not.toContain("<main");
-    expect(layout).toContain('<div className="min-h-screen text-gray-400">');
+    expect(layout).toContain('href="#content"');
+    expect(layout).toContain("Saltar al contenido");
+    // La geometria del shell sale de variables CSS, no de 4rem/100vh sueltos.
+    expect(layout).toContain("min-h-dvh");
+  });
+
+  test("el sidebar y el drawer comparten breakpoint de navegación", () => {
+    const sidebar = source("components", "layout", "Sidebar.tsx");
+    const mobileNav = source("components", "MobileNav.tsx");
+
+    // Entre 640px y 767px no puede existir una ventana sin navegación.
+    expect(sidebar).toContain("md:flex");
+    expect(mobileNav).toContain("md:hidden");
+    // La trampa de foco del drawer vive en un solo sitio.
+    expect(mobileNav).toContain("querySelectorAll<HTMLElement>");
+    expect(mobileNav).not.toContain("onDrawerKeyDown");
   });
 
   test("la pantalla de error no muestra el mensaje interno", () => {
@@ -63,6 +80,8 @@ test.describe("hardening frontend en navegador", () => {
   test("las páginas raíz exponen un único main", async ({ page }) => {
     await page.goto("/alerts");
     await expect(page.locator("main")).toHaveCount(1);
+    // El skip-link existe y lleva al contenido (no hay #content roto).
+    await expect(page.getByRole("link", { name: "Saltar al contenido" })).toHaveCount(1);
   });
 
   test("el menú móvil abre, enfoca y restaura el foco", async ({ page }) => {
