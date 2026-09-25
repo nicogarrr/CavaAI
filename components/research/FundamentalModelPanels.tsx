@@ -123,6 +123,10 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
           {model.horizon_years} años · {model.status} · cobertura {model.source_coverage.coverage_percent.toFixed(0)}%
         </span>
       </div>
+      <p className="mb-4 text-xs leading-5 text-gray-500">
+        El «Value/share» de cada escenario es un cálculo interno del modelo (versión/fecha propias).
+        Puede no coincidir con la vista Valoración persistida: compara versión y fecha antes de usarlo.
+      </p>
 
       {model.missing_inputs.length ? (
         <div className="mb-4 rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">

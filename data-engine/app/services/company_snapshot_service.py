@@ -72,6 +72,14 @@ class CompanySnapshotService:
             score += 10
         if counts["claims"] > 0:
             score += 10
+        # Anti-falsa-seguridad: sin tesis no hay nota alta aunque haya
+        # hechos+documentos+modelo (era 70/100 con 0 afirmaciones y sin
+        # tesis). Sin afirmaciones tampoco se supera el notable.
+        # Ponderación: 20 por capa (docs, facts, tesis, modelo) +10 métricas +10 claims.
+        if thesis is None:
+            score = min(score, 59)
+        elif counts["claims"] == 0:
+            score = min(score, 69)
         if counts["documents"] == counts["facts"] == counts["claims"] == 0:
             health_status = "empty"
         elif review_required:

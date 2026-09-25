@@ -8,9 +8,7 @@ import {
   BookOpen,
   Briefcase,
   Building2,
-  Download,
   Filter,
-  FlaskConical,
   Gauge,
   Home,
   Receipt,
@@ -64,6 +62,8 @@ export const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
 } as const;
 
 // Configuración de logging
@@ -88,7 +88,10 @@ export const ERROR_MESSAGES = {
 } as const;
 
 // Etiquetas en espanol, alineadas con el titulo (H1) de cada pagina.
-// Menu agrupado por secciones (aprobado por Nico 2026-09-23):
+// Menu agrupado por secciones (aprobado por Nico 2026-09-23, revisado
+// 2026-09-25): Cartera es un árbol (cartera + exposiciones + intelligence),
+// Análisis no duplica Inicio, Movers/Insider/13F son señales accionables,
+// Corp. es conciliación de cartera y Exportar vive en cada objeto.
 // "Buscar" vive fijo en la cabecera (Ctrl+K) y "Seguridad" en el menu del
 // avatar, asi que no se repiten aqui; /search y /security siguen existiendo.
 export const NAV_SECTIONS = [
@@ -97,25 +100,20 @@ export const NAV_SECTIONS = [
     items: [
       { href: '/', label: 'Inicio', icon: Home },
       { href: '/portfolio', label: 'Cartera', icon: Briefcase },
+      { href: '/portfolio/intelligence', label: 'Cartera · Intelligence', icon: Sparkles },
+      { href: '/risk', label: 'Cartera · Exposiciones', icon: Gauge },
       { href: '/propicks', label: 'ProPicks', icon: Sparkles },
-      { href: '/research', label: 'Análisis', icon: FlaskConical },
     ],
   },
   {
-    title: 'Seguimiento',
+    title: 'Señales',
     items: [
       { href: '/watchlist', label: 'Watchlist', icon: Star },
-      { href: '/movers', label: 'Movers', icon: TrendingUp },
+      { href: '/movers', label: 'Señales · Movers', icon: TrendingUp },
+      { href: '/insider', label: 'Señales · Insider', icon: Users },
+      { href: '/ownership', label: 'Señales · 13F', icon: Landmark },
       { href: '/alerts', label: 'Alertas', icon: Bell },
       { href: '/screeners', label: 'Screeners', icon: Filter },
-    ],
-  },
-  {
-    title: 'Señales y datos',
-    items: [
-      { href: '/insider', label: 'Insider', icon: Users },
-      { href: '/ownership', label: '13F', icon: Landmark },
-      { href: '/risk', label: 'Riesgo', icon: Gauge },
     ],
   },
   {
@@ -123,8 +121,7 @@ export const NAV_SECTIONS = [
     items: [
       { href: '/plan', label: 'Plan', icon: Target },
       { href: '/taxes', label: 'Impuestos', icon: Receipt },
-      { href: '/corporate-actions', label: 'Corp.', icon: Building2 },
-      { href: '/export', label: 'Exportar', icon: Download },
+      { href: '/corporate-actions', label: 'Cartera · Corp. actions', icon: Building2 },
     ],
   },
   {
@@ -142,25 +139,7 @@ export const NAV_ITEMS: ReadonlyArray<{ href: string; label: string; icon: Lucid
     [],
   );
 
-// TradingView Widget Configurations
-export const HEATMAP_WIDGET_CONFIG = {
-  colorTheme: "dark",
-  dateRange: "12M",
-  exchanges: [],
-  showFloatingTooltip: true,
-  showSymbolLogo: true,
-  symbolType: "ETF",
-  hasTopBar: false,
-  isTransparent: true,
-  width: "100%",
-  height: 500,
-  locale: "es",
-  dataSource: "FRED",
-  blockSize: "market_cap_basic",
-  blockColor: "change|60",
-  grouping: "sector"
-} as const;
-
+// TradingView eliminado (P1): 0 usos verificados. Reintroducir bajo feature flag si vuelve.
 export const MARKET_DATA_WIDGET_CONFIG = {
   colorTheme: "dark",
   width: "100%",
@@ -273,78 +252,4 @@ export const PREFERRED_INDUSTRIES = [
   { value: "communication", label: "Comunicación" }
 ] as const;
 
-// TradingView Widget Config Functions
-export const SYMBOL_INFO_WIDGET_CONFIG = (symbol: string) => ({
-  symbol,
-  width: "100%",
-  locale: "es",
-  colorTheme: "dark",
-  isTransparent: true
-});
-
-export const CANDLE_CHART_WIDGET_CONFIG = (symbol: string) => ({
-  symbol,
-  interval: "D",
-  width: "100%",
-  height: 650,
-  locale: "es",
-  dateRange: "12M",
-  colorTheme: "dark",
-  isTransparent: true,
-  autosize: true,
-  // Indicadores técnicos: RSI, MACD, Medias Móviles, Bollinger Bands
-  studies: [
-    "RSI@tv-basicstudies",
-    "MACD@tv-basicstudies",
-    "MASimple@tv-basicstudies",           // Media móvil simple 20
-    "MAExp@tv-basicstudies",              // Media móvil exponencial
-    "BB@tv-basicstudies",                 // Bandas de Bollinger
-    "VWAP@tv-basicstudies"                // VWAP (Volume Weighted Average Price)
-  ],
-  // Configuraciones de estudios personalizadas
-  studies_overrides: {
-    "moving average.length": 20,
-    "moving average.plot.color": "#2962FF",
-    "bollinger bands.length": 20,
-    "bollinger bands.mult": 2
-  },
-  container_id: "chart_container",
-  hide_top_toolbar: false,
-  save_image: true,
-  calendar: false,
-  // Permitir dibujar en el gráfico (líneas de tendencia, soportes)
-  allow_symbol_change: true,
-  enable_publishing: false,
-  withdateranges: true,
-  hide_side_toolbar: false,  // Mostrar herramientas de dibujo
-  drawings_access: { type: "all" }  // Permitir dibujar líneas de soporte/resistencia
-});
-
-export const TECHNICAL_ANALYSIS_WIDGET_CONFIG = (symbol: string) => ({
-  symbol,
-  showIntervalTabs: true,
-  width: "100%",
-  height: 400,
-  locale: "es",
-  colorTheme: "dark",
-  isTransparent: true
-});
-
-export const COMPANY_PROFILE_WIDGET_CONFIG = (symbol: string) => ({
-  symbol,
-  width: "100%",
-  height: 440,
-  locale: "es",
-  colorTheme: "dark",
-  isTransparent: true
-});
-
-export const COMPANY_FINANCIALS_WIDGET_CONFIG = (symbol: string) => ({
-  symbol,
-  width: "100%",
-  height: 700,
-  locale: "es",
-  colorTheme: "dark",
-  isTransparent: true,
-  displayMode: "regular"
-});
+// Widgets TradingView eliminados (P1): ver nota arriba.
