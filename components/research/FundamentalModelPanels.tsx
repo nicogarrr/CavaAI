@@ -23,6 +23,36 @@ function percentage(value: number | null | undefined) {
   return value == null || !Number.isFinite(value) ? 'N/A' : formatPercent(value);
 }
 
+/** Frases «what must be true» en español (F24). El backend las genera en
+ *  inglés, pero cada condición trae id + valor estructurados: se redacta la
+ *  prosa en la UI. Id desconocido: se muestra la frase original, nunca se
+ *  oculta una condición. */
+function conditionInSpanish(
+  item: { id: string; condition: string; value?: number | null; comparison?: number | null },
+  bindingConstraint: string | null | undefined,
+): string {
+  const pct = (v: number | null | undefined) =>
+    v == null || !Number.isFinite(v) ? 's/d' : formatPercent(v);
+  switch (item.id) {
+    case 'revenue_growth':
+      return `Los ingresos deben crecer al menos un ${pct(item.value)} anual`;
+    case 'fcf_margin':
+      return `El margen FCF normalizado debe mantenerse al menos en un ${pct(item.value)}`;
+    case 'roic_above_wacc':
+      return `El ROIC (${pct(item.value)}) debe mantenerse por encima del WACC (${pct(item.comparison)}) para crear valor`;
+    case 'price_expectations':
+      return `El precio actual descuenta un crecimiento de ingresos de en torno al ${pct(item.value)}`;
+    case 'share_count':
+      return `El número de acciones no debe crecer más rápido que lo asumido por el modelo (${pct(item.value)} anual)`;
+    case 'competitive_position':
+      return 'La cuota de mercado no debe deteriorarse materialmente';
+    case 'binding_constraint':
+      return `La restricción vinculante (${bindingConstraint ?? 'desconocida'}) debe soportar el escenario base`;
+    default:
+      return item.condition;
+  }
+}
+
 function ModelStat({ label, value, positive = false }: { label: string; value: string; positive?: boolean }) {
   return (
     <div className="rounded-lg border border-gray-800 bg-[#111111] p-4">
@@ -187,12 +217,12 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
 
       <div className="mt-5 grid gap-6 lg:grid-cols-2">
         <div>
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">What must be true</div>
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Lo que debe cumplirse</div>
           <ul className="space-y-2 text-sm">
             {model.what_must_be_true.slice(0, 6).map((item) => (
               <li key={item.id} className="flex gap-2 text-gray-300">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
-                <span>{item.condition}</span>
+                <span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint)}</span>
               </li>
             ))}
           </ul>
