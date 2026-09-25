@@ -1246,6 +1246,109 @@ class MetricCalculationService:
             "passed": result.value > threshold_value,
         }
 
+    def _wacc_esef_equity_only(
+        self, db: Session, company: Company
+    ) -> tuple[Decimal, dict] | None:
+        """WACC = coste de equity puro para emisores ESEF sin deuda desagregable.
+
+        Aproximacion declarada (Nico, 25/9, documentada en /metodologia):
+        como el coste de la deuda tras impuestos es inferior al coste del
+        equity, el WACC todo-equity es una COTA SUPERIOR del WACC real -
+        umbral conservador AL ALZA para los checks roic/cfroi > wacc.
+        Solo se usa dentro de quality_moat_score_v2: el metric wacc
+        almacenado no se toca.
+        """
+        rf_facts = self._facts_for_metric(db, company, "risk_free_rate")
+        beta_facts = self._facts_for_metric(db, company, "beta")
+        erp_facts = self._facts_for_metric(db, company, "equity_risk_premium")
+        if not rf_facts or not beta_facts or not erp_facts:
+            return None
+        risk_free, _ = self._normalize_rate(rf_facts[0].value, allow_negative=True)
+        erp, _ = self._normalize_rate(erp_facts[0].value)
+        if risk_free is None or erp is None:
+            return None
+        beta = Decimal(beta_facts[0].value)
+        country_rate = Decimal("0")
+        crp_facts = self._facts_for_metric(db, company, "country_risk_premium")
+        if crp_facts:
+            normalized_crp, _ = self._normalize_rate(crp_facts[0].value)
+            if normalized_crp is not None:
+                country_rate = normalized_crp
+        cost_of_equity = risk_free + beta * erp + country_rate
+        fact_ids = [rf_facts[0].id, beta_facts[0].id, erp_facts[0].id]
+        if crp_facts:
+            fact_ids.append(crp_facts[0].id)
+        trace = {
+            "method": "wacc_esef_equity_only",
+            "approximation": (
+                "sin deuda ESEF desagregable (IFRS la reparte y la metodologia "
+                "prohibe sumarla): WACC = coste de equity puro, cota superior "
+                "del WACC real - umbral conservador al alza; aproximacion "
+                "declarada por Nico 25/9, documentada en /metodologia"
+            ),
+            "cost_of_equity": str(cost_of_equity),
+            "risk_free_rate": str(risk_free),
+            "beta": str(beta),
+            "equity_risk_premium": str(erp),
+            "country_risk_premium": str(country_rate),
+            "input_fact_ids": fact_ids,
+        }
+        return _quantize(cost_of_equity), trace
+
+    def _roic_approx_esef(
+        self, db: Session, company: Company
+    ) -> tuple[Decimal, dict] | None:
+        """ROIC aproximado para emisores ESEF sin desglose de deuda.
+
+        Hueco IFRS honesto: borrowings current/noncurrent/lease van repartidos
+        y la metodologia prohibe sumarlos (ver ESEF_METRIC_MAP). Aproximacion
+        declarada (Nico, 25/9, documentada en /metodologia): capital invertido
+        ~ total_assets - cash_and_equivalents. Como activos - caja >= deuda +
+        equity - caja, el denominador se sobreestima y el ROIC queda
+        conservador A LA BAJA: nunca infla el check roic_gt_wacc.
+        """
+        assets = self._annual_facts_by_year(db, company, "total_assets")
+        cash = self._annual_facts_by_year(db, company, "cash_and_equivalents")
+        operating = self._annual_facts_by_year(db, company, "operating_income")
+        common = sorted(set(assets) & set(cash) & set(operating), reverse=True)
+        if not common:
+            return None
+        year = common[0]
+        tax_rate, tax_trace, _ = self._tax_rate_for_period(
+            db, company, operating[year], allow_fallback=True
+        )
+        if tax_rate is None:
+            return None
+        nopat = Decimal(operating[year].value) * (Decimal("1") - tax_rate)
+        invested = Decimal(assets[year].value) - Decimal(cash[year].value)
+        prior_invested = None
+        basis = "current_period"
+        prior_years = [y for y in common if y < year]
+        if prior_years:
+            py = prior_years[0]
+            prior_invested = Decimal(assets[py].value) - Decimal(cash[py].value)
+            invested = (invested + prior_invested) / Decimal("2")
+            basis = "average_current_and_prior_period"
+        if invested <= 0:
+            return None
+        trace = {
+            "method": "roic_approx_esef_assets_menos_caja",
+            "approximation": (
+                "capital invertido aproximado como total_assets - cash_and_equivalents "
+                "(>= deuda + equity - caja: ROIC conservador a la baja); "
+                "aproximacion declarada por Nico 25/9, documentada en /metodologia"
+            ),
+            "fiscal_year": year,
+            **tax_trace,
+            "nopat": str(nopat),
+            "invested_capital": str(invested),
+            "invested_capital_basis": basis,
+            "prior_invested_capital": (
+                str(prior_invested) if prior_invested is not None else None
+            ),
+        }
+        return _quantize(nopat / invested), trace
+
     def _base_quality_checks(
         self,
         db: Session,
@@ -1377,6 +1480,37 @@ class MetricCalculationService:
     ) -> MetricResult:
         checks, component_results = self._base_quality_checks(db, company, persist)
 
+        # Aproximaciones declaradas ESEF (Nico, 25/9, documentadas en
+        # /metodologia): IFRS reparte la deuda (borrowings current/noncurrent/
+        # lease) y la metodologia prohibe sumarla, asi que el ROIC estandar y
+        # el WACC estandar no son calculables para emisores ESEF. Ambas
+        # aproximaciones son conservadoras CONTRA el check: WACC = coste de
+        # equity puro (cota superior del umbral) y capital invertido =
+        # activos - caja (cota superior del denominador, ROIC a la baja).
+        esef_wacc = None
+        if company.currency == "EUR":
+            esef_wacc = self._wacc_esef_equity_only(db, company)
+            if esef_wacc is not None:
+                wacc_value, wacc_trace = esef_wacc
+                roic_approx = self._roic_approx_esef(db, company)
+                for i, check in enumerate(checks):
+                    if check["check"] != "roic_gt_wacc" or check["passed"] is not None:
+                        continue
+                    if roic_approx is None:
+                        continue
+                    roic_value, roic_trace = roic_approx
+                    checks[i] = {
+                        "check": "roic_gt_wacc",
+                        "metric": "roic",
+                        "threshold": str(wacc_value),
+                        "value": str(roic_value),
+                        "passed": roic_value > wacc_value,
+                        "approximation": {
+                            "roic": roic_trace,
+                            "wacc": wacc_trace,
+                        },
+                    }
+
         # CFROI (aproximacion declarada) por encima del coste de capital:
         # creacion de valor en terminos de caja, no solo contables.
         cfroi_result = self.calculate(db, company, "cfroi_approx", persist=persist)
@@ -1389,6 +1523,18 @@ class MetricCalculationService:
                     "threshold": str(wacc_result.value),
                     "value": str(cfroi_result.value),
                     "passed": cfroi_result.value > wacc_result.value,
+                }
+            )
+        elif esef_wacc is not None and cfroi_result.status == "ok":
+            wacc_value, wacc_trace = esef_wacc
+            checks.append(
+                {
+                    "check": "cfroi_approx_gt_wacc",
+                    "metric": "cfroi_approx",
+                    "threshold": str(wacc_value),
+                    "value": str(cfroi_result.value),
+                    "passed": cfroi_result.value > wacc_value,
+                    "approximation": {"wacc": wacc_trace},
                 }
             )
         else:

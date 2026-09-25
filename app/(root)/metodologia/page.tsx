@@ -319,6 +319,15 @@ export default function MetodologiaPage() {
           aproximación conservadora declarada (Buffett, carta de 1986); el CFROI usa la
           aproximación declarada del sistema, no el CFROI completo de Credit Suisse.
         </p>
+        <p className="mt-4 rounded-xl border border-gray-800 bg-black/30 p-4 text-sm leading-6 text-gray-400">
+          Emisores ESEF (España/UE): IFRS reparte la deuda en varios tags y la metodología
+          prohíbe sumarlos, así que ROIC y WACC estándar no son calculables. En su lugar el V2
+          usa dos aproximaciones declaradas, ambas conservadoras contra el check: el WACC se
+          calcula como coste de equity puro (cota superior del WACC real, umbral más exigente)
+          y el capital invertido como activos − caja (cota superior del denominador, ROIC a la
+          baja). Si una empresa no tiene datos suficientes, el check queda no evaluable aunque
+          el grado sea alcanzable: nunca se maquilla.
+        </p>
       </section>
 
       <section className="min-w-0">
