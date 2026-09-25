@@ -95,10 +95,10 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
 # IFRS (ESEF) -> metricas internas. Mismo contrato que SEC: los alias se
 # FUSIONAN por periodo (gana el primer alias que informa el periodo, NUNCA
 # se suman tags). Solo conceptos verificados en los snapshots reales de los
-# 6 emisores reviewed (24-25/9). Huecos honestos: total_debt (IFRS reparte
-# borrowings current/noncurrent/lease y sumarlos esta prohibido) y
-# shares_diluted (ninguno de los 6 reviewed trae WeightedAverageNumberOfShares
-# en base scope). EBITDA no es tag IFRS estandar: se deriva como
+# 6 emisores reviewed (24-25/9); ampliado 25/9 con componentes de deuda
+# verificados en 105 emisores (27+ con CurrentFinancialLiabilities). Hueco
+# honesto: shares_diluted (ninguno de los 6 reviewed trae
+# WeightedAverageNumberOfShares en base scope). EBITDA no es tag IFRS estandar: se deriva como
 # operating_income + D&A en _derive_esef_metrics (no aplica a bancos sin
 # beneficio operativo, p.ej. SAN).
 ESEF_METRIC_MAP: list[tuple[str, list[str], str]] = [
@@ -116,6 +116,12 @@ ESEF_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("total_liabilities", ["ifrs-full:Liabilities"],                                                     "iso4217:EUR"),
     ("total_equity",      ["ifrs-full:EquityAttributableToOwnersOfParent", "ifrs-full:Equity"],          "iso4217:EUR"),
     ("cash_and_equivalents", ["ifrs-full:CashAndCashEquivalents"],                                       "iso4217:EUR"),
+    # Componentes de deuda financiera (no alias: partes disjuntas del pasivo
+    # financiero). total_debt se DERIVE como suma declarada en _derive_esef_metrics.
+    ("financial_liabilities_current", ["ifrs-full:CurrentFinancialLiabilities"],                          "iso4217:EUR"),
+    ("financial_liabilities_noncurrent", ["ifrs-full:NoncurrentFinancialLiabilities"],                    "iso4217:EUR"),
+    ("lease_liabilities_current", ["ifrs-full:CurrentLeaseLiabilities"],                                  "iso4217:EUR"),
+    ("lease_liabilities_noncurrent", ["ifrs-full:NoncurrentLeaseLiabilities"],                            "iso4217:EUR"),
     ("operating_cash_flow", ["ifrs-full:CashFlowsFromUsedInOperatingActivities"],                        "iso4217:EUR"),
     ("capital_expenditure", ["ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
                              "ifrs-full:PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities",
@@ -706,10 +712,11 @@ class FinancialIngestionService:
         """Metricas derivadas de los hechos ESEF, mismo contrato que
         _derive_sec_metrics: FCF = OCF + capex (capex ya negativo), margenes
         (bruto, operativo, neto, FCF), crecimiento de revenue, tipo impositivo
-        efectivo y EBITDA = EBIT + D&A. is_reported=False: derivadas, nunca
-        presentadas como reportadas. net_debt se omite a proposito: IFRS
-        reparte borrowings current/noncurrent/lease y sumarlos esta
-        prohibido (hueco honesto documentado en ESEF_METRIC_MAP)."""
+        efectivo y EBITDA = EBIT + D&A. total_debt = financial_liabilities_current
+        + financial_liabilities_noncurrent, SOLO cuando ambos componentes
+        existen ese ejercicio (son partes disjuntas del pasivo financiero, no
+        alias: la suma es contablemente correcta y queda declarada aqui).
+        is_reported=False: derivadas, nunca presentadas como reportadas."""
         by_metric: dict[str, dict[int, FinancialFact]] = {}
         for fact in db.scalars(
             select(FinancialFact).where(
@@ -756,6 +763,26 @@ class FinancialIngestionService:
             income_before_tax = year_fact("income_before_tax", year)
             income_tax_expense = year_fact("income_tax_expense", year)
             depreciation = year_fact("depreciation_amortization", year)
+            fl_current = year_fact("financial_liabilities_current", year)
+            fl_noncurrent = year_fact("financial_liabilities_noncurrent", year)
+
+            if fl_current is not None and fl_noncurrent is not None:
+                db.add(
+                    FinancialFact(
+                        company_id=company.id,
+                        metric="total_debt",
+                        value=fl_current.value + fl_noncurrent.value,
+                        unit="EUR",
+                        period=fl_current.period,
+                        fiscal_year=year,
+                        fiscal_quarter="FY",
+                        source_id=document.id,
+                        source_type="ESEF",
+                        is_reported=False,
+                        confidence=Decimal("0.85"),
+                    )
+                )
+                derived += 1
 
             fcf: FinancialFact | None = None
             if ocf is not None and capex is not None:

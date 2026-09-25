@@ -1,6 +1,7 @@
 """ESEF ingestion: consolidated-only facts, annual windows, alias merge, honest gaps."""
 
 import asyncio
+import json
 from decimal import Decimal
 
 import pytest
@@ -186,3 +187,56 @@ def test_derived_metrics_skipped_when_inputs_missing(db, monkeypatch):
     metrics = {f.metric for f in facts}
     assert metrics == {"revenue"}  # sin OCF/EBIT no hay FCF, margenes ni EBITDA inventados
 
+
+
+def _snapshot_with_debt(include_noncurrent=True):
+    snap = json.loads(json.dumps(SNAPSHOT))
+    snap["facts"]["ifrs-full:CurrentFinancialLiabilities"] = {"iso4217:EUR": [
+        _inst(9000000000, "2025-01-31"), _inst(8500000000, "2024-01-31")]}
+    if include_noncurrent:
+        snap["facts"]["ifrs-full:NoncurrentFinancialLiabilities"] = {"iso4217:EUR": [
+            _inst(21000000000, "2025-01-31"), _inst(23000000000, "2024-01-31")]}
+    return snap
+
+
+def test_total_debt_derived_from_components(db, monkeypatch):
+    monkeypatch.setattr(
+        ingestion.esef_connector, "read_esef_snapshot",
+        lambda ticker: _snapshot_with_debt(),
+    )
+    service = FinancialIngestionService()
+    company = _company(db)
+    asyncio.run(service.refresh_from_esef(db=db, company=company))
+    debts = db.scalars(
+        select(FinancialFact).where(
+            FinancialFact.company_id == company.id,
+            FinancialFact.metric == "total_debt",
+        )
+    ).all()
+    by_year = {f.fiscal_year: f for f in debts}
+    assert set(by_year) == {2024, 2025}
+    assert by_year[2025].value == Decimal(30000000000)
+    assert by_year[2025].is_reported is False  # derivada, nunca reportada
+    # componentes tambien importados como hechos propios
+    assert db.scalar(
+        select(FinancialFact).where(
+            FinancialFact.company_id == company.id,
+            FinancialFact.metric == "financial_liabilities_current",
+        )
+    )
+
+
+def test_total_debt_honest_gap_with_one_component(db, monkeypatch):
+    monkeypatch.setattr(
+        ingestion.esef_connector, "read_esef_snapshot",
+        lambda ticker: _snapshot_with_debt(include_noncurrent=False),
+    )
+    service = FinancialIngestionService()
+    company = _company(db)
+    asyncio.run(service.refresh_from_esef(db=db, company=company))
+    assert not db.scalars(
+        select(FinancialFact).where(
+            FinancialFact.company_id == company.id,
+            FinancialFact.metric == "total_debt",
+        )
+    ).all()
