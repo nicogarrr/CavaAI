@@ -55,7 +55,7 @@ class CommodityCycleEngine(ValuationEngine):
         tax_fact = latest("effective_tax_rate")
         multiple_fact = latest("commodity_earnings_multiple")
         shares = snapshot.value("shares_diluted")
-        net_debt = snapshot.value("net_debt") or 0.0
+        net_debt = snapshot.value("net_debt")
 
         missing: list[str] = []
         if volume_fact is None:
@@ -70,6 +70,10 @@ class CommodityCycleEngine(ValuationEngine):
             missing.append("commodity_earnings_multiple")
         if shares is None or shares <= 0:
             missing.append("shares_diluted")
+        if net_debt is None:
+            # A commodity NAV is an enterprise value; converting it to equity
+            # value requires net debt. Zero is not the same as unknown.
+            missing.append("net_debt")
 
         if missing:
             result = insufficient_result(
@@ -160,13 +164,36 @@ class CommodityCycleEngine(ValuationEngine):
                 "scenario_style": "commodity_price_grid",
                 "fact_ids": {
                     **snapshot.fact_ids(),
-                    "production_volume": volume_fact.id,
-                    "cash_cost_per_unit": cost_fact.id,
-                    "commodity_price": price_fact.id,
-                    "effective_tax_rate": tax_fact.id,
-                    "commodity_earnings_multiple": multiple_fact.id,
+                    # Key by the fact's REAL metric name: the engine resolves
+                    # aliases (production_volume/sales_volume), and labelling a
+                    # sales_volume row as "production_volume" makes the
+                    # provenance trail a lie for anyone auditing it.
+                    volume_fact.metric: volume_fact.id,
+                    cost_fact.metric: cost_fact.id,
+                    price_fact.metric: price_fact.id,
+                    tax_fact.metric: tax_fact.id,
+                    multiple_fact.metric: multiple_fact.id,
                 },
-                "periods": snapshot.periods(),
+                # The commodity inputs drive 100% of this NAV but are not part
+                # of the snapshot, so they must be listed here: the
+                # point-in-time guard only inspects trace["periods"], and
+                # without them an as_of valuation silently accepted facts from
+                # a later fiscal year.
+                "periods": {
+                    **snapshot.periods(),
+                    volume_fact.metric: volume_fact.period,
+                    cost_fact.metric: cost_fact.period,
+                    price_fact.metric: price_fact.period,
+                    tax_fact.metric: tax_fact.period,
+                    multiple_fact.metric: multiple_fact.period,
+                },
+                "commodity_input_metrics": {
+                    "volume": volume_fact.metric,
+                    "cost": cost_fact.metric,
+                    "price": price_fact.metric,
+                    "effective_tax_rate": tax_fact.metric,
+                    "earnings_multiple": multiple_fact.metric,
+                },
                 "commodity_sensitivity": grid,
                 "probabilities": probabilities,
                 "probability_method": "source_confidence_plus_operating_spread",

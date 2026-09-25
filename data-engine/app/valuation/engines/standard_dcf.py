@@ -18,17 +18,26 @@ from app.valuation.engines.base import (
     MODEL_VERSION,
     ValuationContext,
     ValuationEngine,
+    clamp_fcf_margin,
     default_growth,
     default_terminal_growth,
     default_wacc,
     insufficient_result,
     margin_of_safety,
+    traceable_wacc,
 )
 from app.valuation.moat_framework import empty_moat_framework
 from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth
 from app.valuation.scenario_definitions import mechanical_dcf_scenarios
 from app.valuation.scenario_model import Scenario, probability_weighted_value
 from app.valuation.sensitivity import sensitivity_grid
+
+# The facts the standard FCFF DCF actually reads. Used to scope
+# ``evidence_confidence`` so unrelated ingested facts cannot move the
+# scenario probabilities.
+MODEL_INPUT_METRICS = frozenset(
+    {"revenue", "fcf_margin", "free_cash_flow", "revenue_growth", "net_debt", "shares_diluted"}
+)
 
 
 class StandardDCFEngine(ValuationEngine):
@@ -85,18 +94,71 @@ class StandardDCFEngine(ValuationEngine):
                 return result
             margin = fcf / revenue
 
+        if margin <= 0:
+            # A known-negative FCF margin means the company consumes cash. The
+            # FCFF DCF cannot represent that: clamping the floor to +1% would
+            # turn a reported burn into a positive enterprise value. Refuse
+            # instead of publishing a sign-flipped valuation.
+            result = insufficient_result(
+                ticker=company.ticker,
+                model_type=company.valuation_model,
+                engine_key=self.key,
+                current_price=current_price,
+                missing_inputs=["non_negative_fcf_margin"],
+                reason=(
+                    f"Sourced FCF margin is {margin:.4f} (the company burns cash). "
+                    "A FCFF DCF cannot value a negative FCF margin without "
+                    "misrepresenting it; use a funding-gap / dilution model."
+                ),
+                snapshot=snapshot,
+            )
+            result["moat"] = empty_moat_framework(
+                company.company_type, company.factor_tags or [], company.special_risks or []
+            )
+            return result
+
         growth = snapshot.value("revenue_growth")
         if growth is None:
-            growth = default_growth(company)
+            raw_growth = default_growth(company)
             growth_source = "tag_default"
         else:
+            raw_growth = growth
             growth_source = "financial_facts"
 
-        growth = max(min(growth, 0.45), -0.15)
-        margin = max(min(margin, 0.50), 0.01)
-        wacc = default_wacc(company)
+        raw_margin = margin
+        growth = max(min(raw_growth, 0.45), -0.15)
+        margin, margin_clamped = clamp_fcf_margin(margin, ceiling=0.50)
+
+        wacc_traceable = traceable_wacc(context.db, company)
+        if wacc_traceable is not None:
+            wacc = wacc_traceable
+            wacc_source = "calculated_metric"
+        else:
+            wacc = default_wacc(company)
+            wacc_source = "tag_default"
         terminal = default_terminal_growth(company)
-        net_debt = snapshot.value("net_debt") or 0.0
+
+        net_debt = snapshot.value("net_debt")
+        if net_debt is None:
+            # Missing net debt is never treated as "debt-free": the equity
+            # bridge is EV - net_debt, so 0.0 would invent equity out of thin
+            # air and inflate value per share by exactly net_debt / shares.
+            result = insufficient_result(
+                ticker=company.ticker,
+                model_type=company.valuation_model,
+                engine_key=self.key,
+                current_price=current_price,
+                missing_inputs=["net_debt"],
+                reason=(
+                    "net_debt is required for the equity bridge (EV - net debt) and "
+                    "must not be assumed to be zero."
+                ),
+                snapshot=snapshot,
+            )
+            result["moat"] = empty_moat_framework(
+                company.company_type, company.factor_tags or [], company.special_risks or []
+            )
+            return result
 
         base_inputs = DCFInputs(
             revenue=revenue,
@@ -108,8 +170,17 @@ class StandardDCFEngine(ValuationEngine):
             shares_outstanding=shares,
         )
 
-        evidence_confidence = sum(float(fact.confidence) for fact in snapshot.facts.values()) / len(
-            snapshot.facts
+        # Only the facts the DCF actually consumes may move the evidence
+        # confidence: averaging in balance-sheet rows the model never reads
+        # would shift the base-case probability just because a balance sheet
+        # happened to be ingested.
+        confidence_facts = [
+            fact for metric, fact in snapshot.facts.items() if metric in MODEL_INPUT_METRICS
+        ]
+        evidence_confidence = (
+            sum(float(fact.confidence) for fact in confidence_facts) / len(confidence_facts)
+            if confidence_facts
+            else 0.0
         )
         scenarios = mechanical_dcf_scenarios(
             growth,
@@ -175,6 +246,32 @@ class StandardDCFEngine(ValuationEngine):
         base = scenario_results["base"]["value_per_share"]
         bull = scenario_results["bull"]["value_per_share"]
 
+        # Terminal value share guard: a DCF where >80% of the EV is the terminal
+        # value is not a 5-year forecast, it is a perpetuity assumption.
+        base_trace = scenario_results["base"]["trace"]
+        pv_explicit = base_trace.get("pv_explicit_fcf")
+        pv_terminal = base_trace.get("pv_terminal_value")
+        terminal_share = None
+        if isinstance(pv_explicit, (int, float)) and isinstance(pv_terminal, (int, float)):
+            total = pv_explicit + pv_terminal
+            if total > 0:
+                terminal_share = pv_terminal / total
+
+        clamp_notes: list[str] = []
+        if margin_clamped:
+            clamp_notes.append(f"fcf_margin {raw_margin:.4f} clamped to the {margin:.4f} ceiling")
+        if growth != raw_growth:
+            clamp_notes.append(f"revenue_growth {raw_growth:.4f} clamped to {growth:.4f}")
+        if terminal_share is not None and terminal_share > 0.80:
+            clamp_notes.append(
+                f"terminal value is {terminal_share:.1%} of enterprise value; "
+                "the 5-year forecast is not the driver of this valuation"
+            )
+
+        publication_blockers: list[str] = []
+        if wacc_source != "calculated_metric":
+            publication_blockers.append("traceable_wacc")
+
         return {
             "ticker": company.ticker,
             "model_type": company.valuation_model,
@@ -187,6 +284,7 @@ class StandardDCFEngine(ValuationEngine):
             "expected_value": expected,
             "margin_of_safety": margin_of_safety(expected, current_price),
             "missing_inputs": [],
+            "publication_blockers": publication_blockers,
             "reverse_dcf": reverse,
             "sensitivity": sensitivity,
             "moat": empty_moat_framework(
@@ -200,10 +298,19 @@ class StandardDCFEngine(ValuationEngine):
                 "status": "ok",
                 "model_version": MODEL_VERSION,
                 "growth_source": growth_source,
-                "wacc_source": "tag_default",
+                "growth_clamped_from": raw_growth if growth != raw_growth else None,
+                "fcf_margin_source": "financial_facts",
+                "fcf_margin_clamped_from": raw_margin if margin_clamped else None,
+                "wacc_source": wacc_source,
+                "wacc": wacc,
+                "net_debt": net_debt,
+                "terminal_value_share": terminal_share,
+                "clamp_notes": clamp_notes,
+                "publication_blockers": publication_blockers,
                 "scenario_style": "fact_anchored_sensitivity",
                 "probability_method": "source_confidence_plus_company_financials",
                 "evidence_confidence": evidence_confidence,
+                "evidence_confidence_inputs": sorted(MODEL_INPUT_METRICS & set(snapshot.facts)),
                 "fact_ids": snapshot.fact_ids(),
                 "periods": snapshot.periods(),
                 "snapshot": {

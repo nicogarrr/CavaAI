@@ -1438,11 +1438,13 @@ class LongTermModelService:
                 years=horizon,
             )
         )
+        required = solved.get("required_revenue_growth")
+        base_growth = assumptions["revenue_growth"].value or 0
         return {
-            "status": "ok",
+            "status": solved.get("status", "ok"),
             **solved,
             "base_revenue_growth": assumptions["revenue_growth"].value,
-            "growth_gap_vs_base": solved["required_revenue_growth"] - (assumptions["revenue_growth"].value or 0),
+            "growth_gap_vs_base": (required - base_growth) if required is not None else None,
             "source_fact_ids": _unique_ids(ids=assumptions["revenue_growth"].source_fact_ids + assumptions["fcf_margin"].source_fact_ids),
             "trace": {**solved["trace"], "source_fact_ids": assumptions["revenue_growth"].source_fact_ids + assumptions["fcf_margin"].source_fact_ids, "horizon_years": horizon},
         }
@@ -1560,9 +1562,14 @@ class LongTermModelService:
             roic = base_scenario["terminal_year"]["roic"]
             wacc = assumptions["wacc"].value
             conditions.append({"id": "roic_above_wacc", "condition": "ROIC must remain above WACC to create value", "value": roic, "comparison": wacc, "unit": "decimal", "source_fact_ids": base_scenario["terminal_year"]["evidence"]["roic"]["source_fact_ids"], "status": "monitor"})
-        if reverse_dcf.get("status") == "ok":
+        if reverse_dcf.get("status") == "ok" and reverse_dcf.get("required_revenue_growth") is not None:
             required = reverse_dcf["required_revenue_growth"]
             conditions.append({"id": "price_expectations", "condition": f"The current price requires revenue growth of about {required:.1%}", "value": required, "unit": "decimal", "source_fact_ids": reverse_dcf.get("source_fact_ids", []), "status": "valuation_implied"})
+        elif reverse_dcf.get("out_of_bounds"):
+            # The price is outside every valueable scenario: there is no
+            # required growth to state, and inventing one from the search
+            # bound would read as a forecast.
+            conditions.append({"id": "price_expectations", "condition": f"The current price is outside the valueable range: {reverse_dcf.get('reason', 'no achievable growth reproduces this price')}", "value": None, "unit": "decimal", "source_fact_ids": reverse_dcf.get("source_fact_ids", []), "status": "out_of_bounds"})
         if self._fact_for_year(fact_cache["shares_diluted"], latest_year) is not None:
             conditions.append({"id": "share_count", "condition": "Share count must not expand faster than the model assumption", "value": assumptions["shares_cagr"].value, "unit": "decimal", "source_fact_ids": assumptions["shares_cagr"].source_fact_ids, "status": "monitor"})
         market_share = market_opportunity.get("market_share", {})

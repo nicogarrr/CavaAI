@@ -15,7 +15,7 @@ from decimal import Decimal
 from sqlalchemy import delete, select
 
 from app.core.database import SessionLocal, init_db
-from app.models import Company, FinancialFact, MarketPrice
+from app.models import CalculatedMetric, Company, FinancialFact, MarketPrice
 from app.services.valuation_service import ValuationService
 
 PERIOD = "FY2025"
@@ -27,6 +27,11 @@ def _make_company(db, ticker, *, company_type, valuation_model, factor_tags=None
     if existing:
         db.execute(delete(FinancialFact).where(FinancialFact.company_id == existing.id))
         db.execute(delete(MarketPrice).where(MarketPrice.company_id == existing.id))
+        # SQLite reuses rowids, so a recreated company can inherit a stale
+        # calculated_metrics row (e.g. a WACC) from a previous test. The
+        # valuation engines now prefer the persisted traceable WACC, so the
+        # leftovers have to go with the company.
+        db.execute(delete(CalculatedMetric).where(CalculatedMetric.company_id == existing.id))
         db.delete(existing)
         db.commit()
     company = Company(
@@ -85,6 +90,7 @@ def _cleanup(db, tickers):
     if ids:
         db.execute(delete(FinancialFact).where(FinancialFact.company_id.in_(ids)))
         db.execute(delete(MarketPrice).where(MarketPrice.company_id.in_(ids)))
+        db.execute(delete(CalculatedMetric).where(CalculatedMetric.company_id.in_(ids)))
         db.execute(delete(Company).where(Company.id.in_(ids)))
         db.commit()
 
@@ -286,7 +292,14 @@ def test_cross_engine_coherence_same_company():
         db.close()
 
 
-def test_edge_negative_earnings_clamped_not_nan():
+def test_edge_negative_earnings_refused_not_sign_flipped():
+    """Un margen FCF negativo conocido NO se convierte en positivo.
+
+    Antes el motor acotaba el margen a [1%, 50%], asi que una empresa que
+    quema caja (FCF -80 sobre revenue 1000, margen real -8%) se valoraba con
+    un margen del +1% y devolvia un fair value positivo. El DCF FCFF no puede
+    representar un FCF negativo, asi que el resultado correcto es negarse.
+    """
     init_db()
     db = SessionLocal()
     tickers = ["NEGFCFA", "NEGFCFB"]
@@ -310,9 +323,11 @@ def test_edge_negative_earnings_clamped_not_nan():
         for ticker in tickers:
             company = db.scalar(select(Company).where(Company.ticker == ticker))
             result = ValuationService().value_company(db, company)
-            assert result["status"] == "ok", (ticker, result["status"])
-            _assert_range_and_sensitivity(result, ticker)
-            assert result["base_value"] > 0, ticker
+            assert result["status"] == "insufficient_data", (ticker, result["status"])
+            assert "non_negative_fcf_margin" in result["missing_inputs"], ticker
+            # No se publica ningun valor: ni positivo (inventado) ni negativo.
+            for field in ("bear_value", "base_value", "bull_value", "expected_value"):
+                assert result[field] is None, (ticker, field, result[field])
     finally:
         _cleanup(db, tickers)
         db.close()
