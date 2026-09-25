@@ -277,3 +277,19 @@ def test_refresh_stores_yfinance_beta_and_market_cap(db, monkeypatch):
         assert fact is not None
         assert fact.value == Decimal(expected)
         assert fact.source_type == "yfinance"
+
+
+def test_yahoo_symbol_adds_mc_suffix_for_spanish_exchanges():
+    bme = Company(ticker="TEF", exchange="BME")
+    bolsa = Company(ticker="SAN", exchange="BOLSA DE MADRID")
+    assert WaccInputService._yahoo_symbol(bme) == "TEF.MC"
+    assert WaccInputService._yahoo_symbol(bolsa) == "SAN.MC"
+
+
+def test_yahoo_symbol_keeps_us_and_already_suffixed_tickers():
+    us = Company(ticker="AAPL", exchange="NASDAQ NMS - GLOBAL MARKET")
+    already = Company(ticker="TEF.MC", exchange="BME")
+    unknown = Company(ticker="XYZ", exchange=None)
+    assert WaccInputService._yahoo_symbol(us) == "AAPL"
+    assert WaccInputService._yahoo_symbol(already) == "TEF.MC"
+    assert WaccInputService._yahoo_symbol(unknown) == "XYZ"
