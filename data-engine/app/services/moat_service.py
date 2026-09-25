@@ -175,7 +175,10 @@ class MoatService:
                 },
             }
             results.append(payload)
-            if persist:
+            # F29: una corrida sin evidencia no es una puntuacion. No se
+            # persiste ningun tipo con 0 evidencia y nunca se pisa una
+            # evaluacion real con ceros: la fila anterior se conserva.
+            if persist and evidence_count > 0:
                 self._persist(db, company, payload)
         if persist and commit:
             db.commit()
