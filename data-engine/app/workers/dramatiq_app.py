@@ -131,6 +131,37 @@ def _companies(db, ticker: str | None = None):
     return list(db.scalars(statement.order_by(Company.ticker)).all())
 
 
+def _tracked_companies(db):
+    """Carril rápido de noticias: cartera + watchlist/seguidas del tenant.
+
+    Decisión de Nico (2026-09-25): sus empresas cada 30 min; el universo
+    completo sigue en background con el job scope="all".
+    """
+    from sqlalchemy import select
+
+    from app.models import Company, Position, WatchItem
+
+    tickers: set[str] = set()
+    for (symbol,) in db.execute(select(WatchItem.symbol)).all():
+        if symbol:
+            tickers.add(str(symbol).upper())
+            tickers.add(str(symbol).upper().split(".")[0])
+    company_ids = [
+        row[0]
+        for row in db.execute(select(Position.company_id).distinct()).all()
+        if row[0] is not None
+    ]
+    from sqlalchemy import or_
+
+    statement = select(Company).where(
+        or_(
+            Company.ticker.in_(tickers) if tickers else Company.id.is_(None),
+            Company.id.in_(company_ids) if company_ids else Company.id.is_(None),
+        )
+    )
+    return list(db.scalars(statement.order_by(Company.ticker)).all())
+
+
 def _rollback(db) -> None:
     try:
         db.rollback()
@@ -405,11 +436,19 @@ def refresh_portfolio_prices_intraday(
         }
     db = _session(tenant_id, user_id)
     try:
+        # DISTINCT sobre la entidad completa rompe en Postgres: las columnas
+        # json (special_sources, special_risks, factor_tags) no tienen
+        # operador de igualdad. Dedup por id en subconsulta escalar.
+        company_ids = (
+            _select(Position.company_id)
+            .where(Position.company_id.is_not(None))
+            .distinct()
+            .scalar_subquery()
+        )
         companies = list(
             db.scalars(
                 _select(Company)
-                .join(Position, Position.company_id == Company.id)
-                .distinct()
+                .where(Company.id.in_(company_ids))
                 .order_by(Company.ticker)
             ).all()
         )
@@ -489,7 +528,8 @@ def refresh_sec_filings(
             processed = ingested = queued_documents = 0
             errors: list[dict] = []
             emitted: set[str] = set()
-            for company in _companies(db, ticker):
+            companies = _companies(db, ticker)
+            for company in companies:
                 if not company.cik:
                     continue
                 try:
@@ -714,6 +754,7 @@ def refresh_news(
     user_id: str | None = None,
     ticker: str | None = None,
     max_records: int = 25,
+    scope: str = "all",
 ) -> dict[str, Any]:
     actor_name = "refresh_news"
     try:
@@ -724,7 +765,12 @@ def refresh_news(
             service = FeedIngestionService()
             processed = ingested = 0
             errors: list[dict] = []
-            for company in _companies(db, ticker):
+            companies = (
+                _companies(db, ticker)
+                if ticker
+                else (_tracked_companies(db) if scope == "tracked" else _companies(db))
+            )
+            for company in companies:
                 try:
                     query = f'"{company.name}" OR {company.ticker}'
                     result = _run(
@@ -760,6 +806,7 @@ def refresh_news(
             return {
                 "status": _batch_status(processed, errors),
                 "actor": actor_name,
+                "scope": scope,
                 "companies_processed": processed,
                 "news_ingested": ingested,
                 "errors": errors,

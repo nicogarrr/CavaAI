@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
 
 import { getMarketMovers, type MarketMover } from '@/lib/actions/market.actions';
-import { formatNumber, formatPercent, formatPrice } from '@/lib/format';
+import { formatCompact, formatPercent, formatPrice } from '@/lib/format';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 
@@ -29,28 +29,28 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
         <caption className="sr-only">{caption}</caption>
         <thead className="text-xs uppercase text-gray-500">
           <tr>
-            <th className="border-b border-gray-800 py-2" scope="col">Empresa</th>
-            <th className="border-b border-gray-800 py-2 text-right" scope="col">Precio</th>
-            <th className="border-b border-gray-800 py-2 text-right" scope="col">Cambio</th>
-            <th className="border-b border-gray-800 py-2 text-right" scope="col">Volumen</th>
+            <th className="border-b border-gray-800 py-2 pr-3" scope="col">Empresa</th>
+            <th className="border-b border-gray-800 px-3 py-2 text-right" scope="col">Precio</th>
+            <th className="border-b border-gray-800 px-3 py-2 text-right" scope="col">Cambio</th>
+            <th className="border-b border-gray-800 py-2 pl-3 text-right" scope="col">Volumen</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr className="border-b border-gray-900" key={row.ticker}>
-              <td className="py-3">
+              <td className="py-3 pr-3">
                 <Link className="font-semibold text-teal-300 hover:text-teal-200" href={`/research/${row.ticker}`}>
                   {row.ticker}
                 </Link>
                 {row.name && row.name.trim().toUpperCase() !== row.ticker.trim().toUpperCase() ? (
-                  <div className="max-w-40 truncate text-xs text-gray-500" title={row.name}>{row.name}</div>
+                  <div className="max-w-28 truncate text-xs text-gray-500" title={row.name}>{row.name}</div>
                 ) : null}
               </td>
-              <td className="py-3 text-right whitespace-nowrap text-gray-300">{formatPrice(row.price, safeCurrency(row.currency))}</td>
-              <td className={`py-3 text-right font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
+              <td className="py-3 px-3 text-right whitespace-nowrap text-gray-300">{formatPrice(row.price, safeCurrency(row.currency))}</td>
+              <td className={`py-3 px-3 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
               </td>
-              <td className="py-3 text-right text-gray-400">{formatNumber(row.volume, { maximumFractionDigits: 0 })}</td>
+              <td className="py-3 pl-3 text-right whitespace-nowrap text-gray-400">{formatCompact(row.volume, { maximumFractionDigits: 1 })}</td>
             </tr>
           ))}
         </tbody>
@@ -93,7 +93,7 @@ export default async function MoversPage() {
         </section>
       ) : (
         <div className="grid gap-6 xl:grid-cols-3 md:grid-cols-1">
-          <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+          <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
             <div className="mb-4 flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Subidas</h2>
@@ -101,7 +101,7 @@ export default async function MoversPage() {
             <MoversTable rows={movers.gainers} caption="Mayores subidas" />
           </section>
 
-          <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+          <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
             <div className="mb-4 flex items-center gap-2">
               <TrendingDown className="h-5 w-5 text-red-400" />
               <h2 className="font-semibold text-gray-100">Bajadas</h2>
@@ -109,7 +109,7 @@ export default async function MoversPage() {
             <MoversTable rows={movers.losers} caption="Mayores bajadas" />
           </section>
 
-          <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+          <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
             <div className="mb-4 flex items-center gap-2">
               <Activity className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Más activas</h2>
