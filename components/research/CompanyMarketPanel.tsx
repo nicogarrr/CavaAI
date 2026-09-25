@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatNumber, formatPercent } from '@/lib/format';
 
 import { Badge } from '@/components/ui/badge';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
@@ -44,9 +44,9 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                       <div className="sm:ml-auto sm:text-right">
                           <div className="text-2xl font-bold text-gray-100 sm:text-3xl">{money(snapshot.quote.price, snapshot.currency)}</div>
                         <div className={positive ? 'text-teal-300' : 'text-red-300'}>
-                            {snapshot.quote.change == null ? 'N/A' : `${positive ? '+' : ''}${snapshot.quote.change.toFixed(2)}`}
+                            {snapshot.quote.change == null ? 'N/A' : formatNumber(snapshot.quote.change, { signDisplay: 'always', maximumFractionDigits: 2 })}
                             {' · '}
-                            {snapshot.quote.changePercent == null ? 'N/A' : `${positive ? '+' : ''}${snapshot.quote.changePercent.toFixed(2)}%`}
+                            {snapshot.quote.changePercent == null ? 'N/A' : formatPercent(snapshot.quote.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                         </div>
                     </div>
                 </div>
@@ -68,7 +68,9 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
             <section className="rounded-xl border border-gray-800 bg-[#111111] p-4 sm:p-5">
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="font-semibold text-gray-100">Historial de precio · 1 año</h3>
-                    <Badge variant="outline" className="w-fit">{snapshot.status}</Badge>
+                    <Badge variant="outline" className="w-fit">
+                        {{ available: 'disponible', partial: 'parcial', unavailable: 'no disponible' }[snapshot.status] ?? snapshot.status}
+                    </Badge>
                 </div>
                 {snapshot.history.length ? (
                     <CompanyMarketChart history={snapshot.history} />
