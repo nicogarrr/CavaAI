@@ -15,6 +15,7 @@ preferida, no se escribe nada. Nunca se sobrescribe un hecho existente.
 
 from __future__ import annotations
 
+import gzip
 import io
 import json
 import urllib.request
@@ -67,16 +68,24 @@ def pick_member(facts: list[DimensionedFact], preferred: str | None) -> str | No
     return None
 
 
+def _read_response(response) -> bytes:
+    data = response.read()
+    # EDGAR sirve gzip cuando el cliente lo anuncia; urllib no descomprime.
+    if response.headers.get("Content-Encoding") == "gzip":
+        data = gzip.decompress(data)
+    return data
+
+
 def _fetch_json(url: str) -> dict[str, Any]:
     request = urllib.request.Request(url, headers=default_headers())
     with urllib.request.urlopen(request, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
+        return json.loads(_read_response(response).decode("utf-8"))
 
 
 def _fetch_bytes(url: str) -> bytes:
     request = urllib.request.Request(url, headers=default_headers())
     with urllib.request.urlopen(request, timeout=60) as response:
-        return response.read()
+        return _read_response(response)
 
 
 def _latest_10k_instance_url(cik: str, fetch_json: Callable[[str], dict]) -> str | None:
