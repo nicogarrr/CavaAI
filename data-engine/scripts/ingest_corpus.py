@@ -37,7 +37,6 @@ COLLECTION_NAME = "Corpus libre value investing"
 COLLECTION_SLUG = "corpus-libre-value-investing"
 
 NUMANTIA_AUTHOR = "Emérito Quintana (Numantia Patrimonio)"
-NUMANTIA_YEARS = range(2017, 2026)
 
 BUFFETT_AUTHOR = "Warren E. Buffett (Berkshire Hathaway)"
 BUFFETT_INDEX = "https://www.berkshirehathaway.com/letters/letters.html"
@@ -45,18 +44,37 @@ BUFFETT_INDEX = "https://www.berkshirehathaway.com/letters/letters.html"
 USER_AGENT = "CavaAI research corpus ingest (contact: owner-configured)"
 
 
-def _declared_numantia_sources() -> list[dict]:
-    return [
-        {
-            "title": f"Numantia Patrimonio - Carta anual {year}",
-            "url": f"https://numantiapatrimonio.com/pdfs/Numantia{year}.pdf",
-            "filename": f"Numantia{year}.pdf",
-            "author": NUMANTIA_AUTHOR,
-            "document_type": "fund_letter",
-            "language": "es",
-        }
-        for year in NUMANTIA_YEARS
-    ]
+NUMANTIA_HOME = "https://numantiapatrimonio.com/"
+
+
+def _discover_numantia_sources(client: httpx.Client) -> list[dict]:
+    """Descubre las cartas publicadas en la web de la gestora (home lista los
+    PDFs vigentes: anuales + semestrales sueltas). Si la home no responde,
+    se devuelve lista vacia y se reporta - nunca se fabrican URLs."""
+    try:
+        response = client.get(NUMANTIA_HOME)
+        response.raise_for_status()
+    except Exception:
+        return []
+    sources: list[dict] = []
+    seen: set[str] = set()
+    for href in re.findall(r'href="(pdfs/[^"]+\.pdf)"', response.text, re.IGNORECASE):
+        if href in seen:
+            continue
+        seen.add(href)
+        filename = href.rsplit("/", 1)[-1]
+        label = filename.replace("Numantia", "").replace(".pdf", "").strip("_") or "?"
+        sources.append(
+            {
+                "title": f"Numantia Patrimonio - Carta {label}",
+                "url": f"https://numantiapatrimonio.com/{href}",
+                "filename": filename,
+                "author": NUMANTIA_AUTHOR,
+                "document_type": "fund_letter",
+                "language": "es",
+            }
+        )
+    return sources
 
 
 def _discover_buffett_sources(client: httpx.Client) -> list[dict]:
@@ -112,10 +130,58 @@ def _get_or_create_collection(db) -> KnowledgeCollection:
     return collection
 
 
+
+def _ingest_from_dir(db, service, collection, directory: Path, dry_run: bool) -> dict:
+    """Ingiere ficheros locales declarados en <dir>/manifest.json.
+
+    Formato del manifest: [{"file": "Berkshire2023.pdf", "title": "...",
+    "author": "...", "source_url": "https://...", "document_type":
+    "fund_letter", "language": "en"}, ...]. La URL de origen se declara
+    siempre: descargar a mano no convierte la procedencia en implicita.
+    """
+    stats = {"ingested": 0, "duplicates": 0, "failed": [], "skipped_sources": []}
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        stats["failed"].append({"title": str(manifest_path), "error": "manifest.json no encontrado"})
+        return stats
+    entries = json.loads(manifest_path.read_text())
+    for entry in entries:
+        file_path = directory / entry["file"]
+        if dry_run:
+            print(f"DRY: {entry['title']} <- {file_path.name} (origen: {entry.get('source_url')})")
+            continue
+        try:
+            result = service.ingest_bytes(
+                db,
+                title=entry["title"],
+                content=file_path.read_bytes(),
+                filename=entry["file"],
+                document_type=entry.get("document_type", "fund_letter"),
+                collection_id=collection.id,
+                author=entry.get("author"),
+                source_url=entry.get("source_url"),
+                language=entry.get("language", "en"),
+            )
+            db.commit()
+            if result["status"] == "duplicate":
+                stats["duplicates"] += 1
+            else:
+                stats["ingested"] += 1
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            stats["failed"].append({"title": entry.get("title"), "error": str(exc)[:200]})
+    return stats
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tenant-external-id", required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--from-dir",
+        help="Ingiere ficheros locales con manifest.json (para fuentes que bloquean "
+        "la IP del servidor; el manifest declara titulo, autor y URL de origen).",
+    )
     args = parser.parse_args()
 
     stats = {"ingested": 0, "duplicates": 0, "failed": [], "skipped_sources": []}
@@ -134,10 +200,17 @@ def main() -> int:
         collection = _get_or_create_collection(db)
         db.commit()
 
+        if args.from_dir:
+            stats.update(_ingest_from_dir(db, service, collection, Path(args.from_dir), args.dry_run))
+            print("RESULTADO:", json.dumps(stats, indent=2, ensure_ascii=False))
+            return 0
+
         with httpx.Client(
             headers={"User-Agent": USER_AGENT}, timeout=60, follow_redirects=True
         ) as client:
-            sources = _declared_numantia_sources()
+            sources = _discover_numantia_sources(client)
+            if not sources:
+                stats["skipped_sources"].append("numantia_home_unreachable")
             buffett = _discover_buffett_sources(client)
             if not buffett:
                 stats["skipped_sources"].append("buffett_index_unreachable")
