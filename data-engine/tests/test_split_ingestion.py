@@ -23,6 +23,20 @@ class FakeFMP:
         return self.payload
 
 
+class FakeYahoo:
+    def __init__(self, payload=None, error=None):
+        self.payload = payload if payload is not None else []
+        self.error = error
+
+    async def splits(self, ticker: str):
+        if self.error:
+            raise self.error
+        return self.payload
+
+
+_YAHOO_DOWN = FakeYahoo(error=RuntimeError("yahoo down"))
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite:///:memory:")
@@ -62,7 +76,7 @@ SPLIT_PAYLOAD = [
 
 
 def test_sync_inserts_unapplied_deduped_splits(db):
-    service = SplitIngestionService(fmp=FakeFMP(payload=SPLIT_PAYLOAD * 2))
+    service = SplitIngestionService(fmp=FakeFMP(payload=SPLIT_PAYLOAD * 2), yahoo=_YAHOO_DOWN)
     _company(db)
     first = asyncio.run(service.sync_company(db, ticker="AAPL"))
     assert first["status"] == "ok"
@@ -78,7 +92,7 @@ def test_sync_inserts_unapplied_deduped_splits(db):
 
 def test_reverse_split_classification(db):
     payload = [{"symbol": "AAPL", "date": "2024-01-15", "numerator": 1, "denominator": 10}]
-    service = SplitIngestionService(fmp=FakeFMP(payload=payload))
+    service = SplitIngestionService(fmp=FakeFMP(payload=payload), yahoo=_YAHOO_DOWN)
     _company(db)
     result = asyncio.run(service.sync_company(db, ticker="AAPL"))
     assert result["inserted"] == 1
@@ -88,7 +102,7 @@ def test_reverse_split_classification(db):
 
 
 def test_provider_failure_is_unavailable_not_fabricated(db):
-    service = SplitIngestionService(fmp=FakeFMP(error=RuntimeError("403 Forbidden")))
+    service = SplitIngestionService(fmp=FakeFMP(error=RuntimeError("403 Forbidden")), yahoo=_YAHOO_DOWN)
     _company(db)
     result = asyncio.run(service.sync_company(db, ticker="AAPL"))
     assert result["status"] == "unavailable"
@@ -101,7 +115,7 @@ def test_malformed_rows_skipped(db):
         {"symbol": "AAPL", "date": "2020-08-31", "numerator": 0, "denominator": 1},
         {"symbol": "AAPL"},
     ]
-    service = SplitIngestionService(fmp=FakeFMP(payload=payload))
+    service = SplitIngestionService(fmp=FakeFMP(payload=payload), yahoo=_YAHOO_DOWN)
     _company(db)
     result = asyncio.run(service.sync_company(db, ticker="AAPL"))
     assert result["inserted"] == 0
@@ -111,8 +125,50 @@ def test_malformed_rows_skipped(db):
 def test_sync_portfolio_provenance(db):
     company = _company(db)
     _position(db, company)
-    service = SplitIngestionService(fmp=FakeFMP(payload=SPLIT_PAYLOAD))
+    service = SplitIngestionService(fmp=FakeFMP(payload=SPLIT_PAYLOAD), yahoo=_YAHOO_DOWN)
     result = asyncio.run(service.sync_portfolio(db))
     assert result["synced"] == 1
     assert result["provenance"]["source_kind"] == "unofficial"
     assert result["provenance"]["coverage"] == "ok"
+
+
+YAHOO_SPLIT_PAYLOAD = [
+    {"date": 1598832000, "numerator": 4, "denominator": 1, "splitRatio": "4:1"},
+    {"date": 1402272000, "numerator": 7, "denominator": 1, "splitRatio": "7:1"},
+]
+
+
+def test_yahoo_is_primary_and_labels_source(db):
+    service = SplitIngestionService(
+        fmp=FakeFMP(payload=SPLIT_PAYLOAD), yahoo=FakeYahoo(payload=YAHOO_SPLIT_PAYLOAD)
+    )
+    _company(db)
+    result = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert result["status"] == "ok" and result["source"] == "yahoo_finance"
+    assert result["inserted"] == 2
+    rows = db.scalars(select(CorporateAction)).all()
+    assert {r.source for r in rows} == {"yahoo_finance"}
+    assert {str(r.effective_date) for r in rows} == {"2020-08-31", "2014-06-09"}
+
+
+def test_yahoo_failure_falls_back_to_fmp(db):
+    service = SplitIngestionService(
+        fmp=FakeFMP(payload=SPLIT_PAYLOAD), yahoo=_YAHOO_DOWN
+    )
+    _company(db)
+    result = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert result["status"] == "ok" and result["source"] == "fmp"
+    assert result["inserted"] == 2
+    rows = db.scalars(select(CorporateAction)).all()
+    assert {r.source for r in rows} == {"fmp"}
+
+
+def test_both_providers_down_is_unavailable(db):
+    service = SplitIngestionService(
+        fmp=FakeFMP(error=RuntimeError("402")),
+        yahoo=FakeYahoo(error=RuntimeError("timeout")),
+    )
+    _company(db)
+    result = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert result["status"] == "unavailable"
+    assert db.scalars(select(CorporateAction)).all() == []
