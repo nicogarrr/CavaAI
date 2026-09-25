@@ -389,14 +389,7 @@
     display: none;
 }
 
-/* TradingView Advanced Chart Widget Styles */
-.tradingview-widget-container {
-    position: relative;
-    background-color: #18181b !important;
-    border-radius: 0.5rem !important;
-    overflow: hidden !important;
-}
-
+/* TradingView eliminado (P1): 0 usos. */
 .tv-embed-widget-wrapper__body {
     background-color: #18181b !important;
 }

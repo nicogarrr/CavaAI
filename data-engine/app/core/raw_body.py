@@ -14,8 +14,9 @@ from typing import Any
 
 
 class RawBodyMiddleware:
-    def __init__(self, app):
+    def __init__(self, app, max_body_bytes: int = 10 * 1024 * 1024):
         self.app = app
+        self.max_body_bytes = max_body_bytes
 
     async def __call__(self, scope: dict, receive, send) -> None:
         if scope["type"] != "http":
@@ -23,11 +24,23 @@ class RawBodyMiddleware:
             return
 
         chunks: list[bytes] = []
+        total = 0
         message: dict[str, Any] = await receive()
-        chunks.append(message.get("body", b""))
-        while message.get("more_body"):
+        while True:
+            chunk = message.get("body", b"")
+            chunks.append(chunk)
+            total += len(chunk)
+            # El limite se aplica tras CADA chunk: un body de un solo chunk
+            # tambien debe rechazarse si supera max_body_bytes.
+            if total > self.max_body_bytes:
+                from starlette.responses import JSONResponse
+
+                response = JSONResponse({"detail": "body too large"}, status_code=413)
+                await response(scope, receive, send)
+                return
+            if not message.get("more_body"):
+                break
             message = await receive()
-            chunks.append(message.get("body", b""))
         raw_body = b"".join(chunks)
 
         scope.setdefault("state", {})["raw_body"] = raw_body

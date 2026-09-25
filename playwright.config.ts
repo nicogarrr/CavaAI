@@ -63,6 +63,8 @@ export default defineConfig({
         env: {
           BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? "cavaai-e2e-secret-at-least-32-characters",
           BETTER_AUTH_URL: uiBaseURL,
+          // El bypass E2E exige APP_ENV=test de forma estricta (ver require-user.ts).
+          APP_ENV: "test",
           E2E_AUTH_BYPASS: "1",
           FMP_BACKEND_URL: uiBackendURL,
           RESEARCH_AUTH_SECRET: e2eResearchSecret,

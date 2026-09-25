@@ -29,10 +29,10 @@ test.describe("investor screener flow", () => {
       await expect(followButton).toBeVisible();
       await expect(followButton).toBeEnabled();
     }
-    // Tickers link out to their stock page.
+    // Tickers link out to their research page.
     await expect(rows.first().locator("td").first().getByRole("link")).toHaveAttribute(
       "href",
-      /\/stocks\//,
+      /\/research\//,
     );
   });
 
