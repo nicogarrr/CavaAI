@@ -464,6 +464,37 @@ def test_windowed_ratio_averages_five_years_with_coverage():
         cleanup_metric_test_artifacts()
 
 
+def test_windowed_ratio_real_period_row_replaces_unknown_period_row():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2024, 2025])
+        db.commit()
+
+        service = MetricCalculationService()
+        first = service.calculate(db, company, "fcf_margin_5y", persist=True)
+        assert first.status == "unavailable"
+        assert first.period == "FY2024-FY2025"
+
+        add_quality_year_facts(db, company, [2021, 2022, 2023])
+        db.commit()
+        second = service.calculate(db, company, "fcf_margin_5y", persist=True)
+        assert second.status == "ok"
+        assert second.period == "FY2021-FY2025"
+
+        periods = db.scalars(
+            select(CalculatedMetric.period).where(
+                CalculatedMetric.company_id == company.id,
+                CalculatedMetric.metric == "fcf_margin_5y",
+            )
+        ).all()
+        assert periods == ["FY2021-FY2025"]
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
 def test_quality_moat_score_full_pass_and_partial_coverage():
     cleanup_metric_test_artifacts()
     db = SessionLocal()
