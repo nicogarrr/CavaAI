@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from collections import Counter
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -197,6 +198,47 @@ async def _free_data_snapshot(ticker: str, cik: str) -> dict[str, Any]:
     return snapshot
 
 
+def _modal_fiscal_end_month(us_gaap: dict[str, Any]) -> str | None:
+    """Mes modal de cierre de ejercicio a partir de TODOS los hechos de flujo
+    anuales candidatos (300-380 dias, fp=FY, 10-K/20-F). Los acumulados TTM de
+    ~365 dias que cierran en fin de trimestre (caso real AA/AAL: revenue
+    2019-04-01 -> 2020-03-31 etiquetado FY) pasan el filtro de duracion, pero
+    su mes de cierre es minoritario frente al del ejercicio real. Modalidad por
+    MES (no por dia exacto) para absorber el drift de ejercicios de 52/53
+    semanas (AAPL cierra el ultimo sabado de septiembre: 09-25, 09-26, 09-28).
+    Devuelve None si no hay candidatos de flujo (emisor sin historia anual).
+    """
+    counts: Counter[str] = Counter()
+    latest_end: dict[str, str] = {}
+    for _metric, concepts, unit in SEC_METRIC_MAP:
+        xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
+        for concept in concepts:
+            entries = us_gaap.get(concept, {}).get("units", {}).get(xbrl_unit_key, [])
+            for e in entries:
+                if e.get("fp") != "FY" or e.get("form") not in {"10-K", "20-F"}:
+                    continue
+                start = e.get("start")
+                if not start:
+                    continue
+                try:
+                    span = (date.fromisoformat(str(e["end"])) - date.fromisoformat(str(start))).days
+                except (TypeError, ValueError):
+                    continue
+                if not 300 <= span <= 380:
+                    continue
+                end = str(e.get("end") or "")
+                if len(end) < 7:
+                    continue
+                month = end[5:7]
+                counts[month] += 1
+                if end > latest_end.get(month, ""):
+                    latest_end[month] = end
+    if not counts:
+        return None
+    # Empate: gana el mes con el cierre mas reciente (ejercicio actual).
+    return max(counts, key=lambda m: (counts[m], latest_end.get(m, "")))
+
+
 class FinancialIngestionService:
     """Normalize provider data into auditable financial facts."""
 
@@ -296,6 +338,7 @@ class FinancialIngestionService:
 
         facts_imported = 0
         cash_restricted_years: set[int] = set()
+        modal_fy_month = _modal_fiscal_end_month(us_gaap)
 
         for metric, concepts, unit in SEC_METRIC_MAP:
             xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
@@ -331,6 +374,16 @@ class FinancialIngestionService:
                         except (TypeError, ValueError):
                             continue
                         if not 300 <= span <= 380:
+                            continue
+                        # Segunda pasada F28: el filtro de duracion solo no
+                        # basta; los TTM de ~365 dias que cierran en fin de
+                        # trimestre lo superan (AA/AAL 2020). Solo entra el
+                        # mes modal de cierre del emisor; los instantaneos
+                        # (sin start) no se ven afectados.
+                        if (
+                            modal_fy_month
+                            and str(e.get("end") or "")[5:7] != modal_fy_month
+                        ):
                             continue
                     annual.append(e)
                 # OJO: `fy` es el ANIO DEL FILING, no el del periodo. Un 10-K
