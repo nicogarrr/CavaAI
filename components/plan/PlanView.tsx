@@ -5,6 +5,7 @@ import { Crosshair, Landmark, PiggyBank, Target } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RecordDetail, RecordList, type DataRecord } from '@/components/data/RecordViews';
 import { getPlan, getPlanContributions, getPlanDrift } from '@/lib/actions/plan.actions';
+import PlanSetupDialog from '@/components/plan/PlanSetupDialog';
 
 interface PlanViewProps {
     initialPlan: DataRecord | null;
@@ -54,6 +55,8 @@ export default function PlanView({ initialPlan, initialContributions, initialDri
                 fetchRecord={getPlan}
                 maxKeys={20}
                 emptyMessage="No hay plan de inversión configurado todavía."
+                emptyAction={<PlanSetupDialog />}
+                actions={<PlanSetupDialog triggerLabel="Editar plan" initial={initialPlan} />}
             />
 
             <Card className="rounded-lg border border-gray-700 bg-gray-800/50">

@@ -1,5 +1,7 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
+
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchRequest } from '@/lib/research/client';
 
@@ -29,4 +31,28 @@ export async function getPlanContributions(): Promise<PlanRecord[]> {
 export async function getPlanDrift(): Promise<PlanRecord | null> {
     await requireAuthenticatedUser();
     return nullIfPlanStub(await researchRequest<PlanRecord>('/api/plan/drift'));
+}
+export type PlanTargetInput = {
+    kind: 'ticker';
+    label: string;
+    target_pct: number;
+    band_pct: number;
+};
+
+export type PlanUpsertPayload = {
+    monthly_contribution: number;
+    start_date: string;
+    horizon_years: number;
+    target_allocations: PlanTargetInput[];
+};
+
+/** PUT /api/plan — crea o actualiza el plan de inversión (B12: antes no
+ *  existía ninguna vía de alta desde la UI). */
+export async function upsertPlan(payload: PlanUpsertPayload): Promise<void> {
+    await requireAuthenticatedUser();
+    await researchRequest('/api/plan', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+    });
+    revalidatePath('/plan');
 }
