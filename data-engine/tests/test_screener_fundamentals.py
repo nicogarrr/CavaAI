@@ -151,7 +151,7 @@ def test_route_items_merge_ratios(monkeypatch):
 
     monkeypatch.setattr(screeners, "_REAL_UNIVERSE", [("AAPL", "Apple", "Technology")])
     monkeypatch.setattr(screeners, "_load_universe_from_db", lambda: {})
-    monkeypatch.setattr(screeners, "_load_screener_ratios", lambda: {"AAPL": {"pe": 30.0, "pb": 54.0, "roe": 20.0}})
+    monkeypatch.setattr(screeners, "_load_screener_ratios", lambda **_: {"AAPL": {"pe": 30.0, "pb": 54.0, "roe": 20.0}})
     monkeypatch.setattr(screeners, "_fetch_quote", lambda client, symbol, vendor: {
         "price": 180.0, "change": 1.0, "changePercent": 0.56, "volume": 1000.0, "prevClose": 179.0, "asOf": 1,
     })
@@ -168,7 +168,7 @@ def test_route_items_keep_nulls_without_facts(monkeypatch):
 
     monkeypatch.setattr(screeners, "_REAL_UNIVERSE", [("AAPL", "Apple", "Technology")])
     monkeypatch.setattr(screeners, "_load_universe_from_db", lambda: {})
-    monkeypatch.setattr(screeners, "_load_screener_ratios", lambda: {})
+    monkeypatch.setattr(screeners, "_load_screener_ratios", lambda **_: {})
     monkeypatch.setattr(screeners, "_fetch_quote", lambda client, symbol, vendor: {
         "price": 180.0, "change": 1.0, "changePercent": 0.56, "volume": 1000.0, "prevClose": 179.0, "asOf": 1,
     })
@@ -177,3 +177,48 @@ def test_route_items_keep_nulls_without_facts(monkeypatch):
     })
     items = screeners._refetch_real_items(vendor="finnhub")
     assert items[0]["pe"] is None and items[0]["pb"] is None and items[0]["roe"] is None
+
+
+def test_live_price_fallback_when_no_market_price_in_db(db):
+    company = _company(db, "GOOGL")
+    _fact(db, company, "eps_diluted", "8", "USD/share")
+    out = load_screener_ratios(
+        db,
+        {"GOOGL"},
+        today=TODAY,
+        live_prices={"GOOGL": {"price": 160.0, "source": "yahoo_finance", "as_of": "2026-09-25T20:00:00Z"}},
+    )
+    metrics = out["GOOGL"]
+    assert metrics["pe"] == 20.0
+    assert metrics["ratioProvenance"]["price"] == {
+        "source": "yahoo_finance",
+        "date": "2026-09-25T20:00:00Z",
+        "id": None,
+    }
+    assert metrics["ratioProvenance"]["facts"]["pe"]["source"] == "SEC"
+
+
+def test_db_price_wins_over_live_price(db):
+    company = _company(db, "AAPL")
+    _price(db, company, "100")
+    _fact(db, company, "eps_diluted", "5", "USD/share")
+    out = load_screener_ratios(
+        db,
+        {"AAPL"},
+        today=TODAY,
+        live_prices={"AAPL": {"price": 300.0, "source": "yahoo_finance", "as_of": None}},
+    )
+    assert out["AAPL"]["pe"] == 20.0
+    assert out["AAPL"]["ratioProvenance"]["price"]["source"] == "yahoo"
+
+
+def test_invalid_or_missing_live_price_stays_null(db):
+    company = _company(db, "CRM")
+    _fact(db, company, "eps_diluted", "8", "USD/share")
+    for live in (
+        {"CRM": {"price": 0, "source": "yahoo_finance", "as_of": None}},
+        {"CRM": {"price": None, "source": "yahoo_finance", "as_of": None}},
+        {"CRM": {"price": "not-a-number", "source": "yahoo_finance", "as_of": None}},
+    ):
+        out = load_screener_ratios(db, {"CRM"}, today=TODAY, live_prices=live)
+        assert out["CRM"]["pe"] is None

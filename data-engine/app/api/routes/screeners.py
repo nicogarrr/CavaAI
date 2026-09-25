@@ -268,14 +268,18 @@ def _load_universe_from_db() -> dict[str, tuple[str, str]]:
         return {}
 
 
-def _load_screener_ratios() -> dict[str, dict]:
+def _load_screener_ratios(live_prices: dict[str, dict] | None = None) -> dict[str, dict]:
     """Best effort: financial ratios must not break the quote endpoint."""
     try:
         from app.core.database import SessionLocal
         from app.services.screener_fundamentals import load_screener_ratios
 
         with SessionLocal() as db:
-            return load_screener_ratios(db, {symbol for symbol, _, _ in _REAL_UNIVERSE})
+            return load_screener_ratios(
+                db,
+                {symbol for symbol, _, _ in _REAL_UNIVERSE},
+                live_prices=live_prices,
+            )
     except Exception:  # noqa: BLE001 — sin base de datos, datos ausentes
         return {}
 
@@ -708,7 +712,6 @@ def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
     dentro del límite gratuito de 60 llamadas/min para el universo de 35 tickers.
     """
     db_universe = _load_universe_from_db()
-    ratios = _load_screener_ratios()
     settings = get_settings()
     active = resolve_screener_vendor(
         vendor if vendor is not None else settings.screener_quote_vendor
@@ -728,6 +731,23 @@ def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
                 quote = future.result()
                 if quote:
                     quotes[symbol] = quote
+
+    # Precio en vivo como fallback del ratio cuando no hay MarketPrice en BD
+    # (la procedencia del ratio queda marcada con el vendor en vivo).
+    live_prices = {
+        symbol: {
+            "price": quote["price"],
+            "source": active.source_label,
+            "as_of": (
+                time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(quote["asOf"]))
+                if quote.get("asOf")
+                else None
+            ),
+        }
+        for symbol, quote in quotes.items()
+        if quote.get("price")
+    }
+    ratios = _load_screener_ratios(live_prices=live_prices)
 
     profiles: dict[str, dict] = {}
     profile_symbols = [symbol for symbol, _, _ in _REAL_UNIVERSE if symbol in quotes]
