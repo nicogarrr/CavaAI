@@ -121,6 +121,7 @@ YahooIntradayFetcher = Callable[[list[str]], dict[str, "tuple[Decimal, date]"]]
 def fetch_intraday_yahoo(symbols: list[str]) -> dict[str, tuple[Decimal, date]]:
     """Ultimo precio intradia (velas de 15 min) via yfinance. Aislado para tests."""
     import yfinance as yf
+    from pandas import Timestamp
 
     if not symbols:
         return {}
@@ -133,6 +134,8 @@ def fetch_intraday_yahoo(symbols: list[str]) -> dict[str, tuple[Decimal, date]]:
         progress=False,
         auto_adjust=False,
     )
+    if frame is None or frame.empty:
+        return {}
     latest: dict[str, tuple[Decimal, date]] = {}
     for symbol in symbols:
         try:
@@ -144,7 +147,7 @@ def fetch_intraday_yahoo(symbols: list[str]) -> dict[str, tuple[Decimal, date]]:
             if closes.empty:
                 continue
             value = Decimal(str(round(float(closes.iloc[-1]), 4)))
-            day = closes.index[-1].date()
+            day = Timestamp(closes.index[-1]).date()
             if value > 0:
                 latest[symbol] = (value, day)
         except (KeyError, IndexError):
