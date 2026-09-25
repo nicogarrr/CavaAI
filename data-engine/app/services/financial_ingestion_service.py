@@ -342,6 +342,68 @@ class FinancialIngestionService:
 
         for metric, concepts, unit in SEC_METRIC_MAP:
             xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
+            # --- Trimestres (10-Q): mismas reglas de fusion por `end` ---
+            # fp Q1-Q4 + form 10-Q; flujo = 70-110 dias (trimestre real; los
+            # acumulados YTD de ~180 dias y los TTM quedan fuera); instantaneos
+            # (balance, sin start) pasan. fiscal_year queda NULL a proposito:
+            # los consumidores anuales seleccionan por fiscal_year (y los que
+            # ordenan por el usan nullslast), asi las filas :Qn nunca se
+            # confunden con el ejercicio anual. period = "<end>:Q<n>".
+            by_end_q: dict[str, dict[str, Any]] = {}
+            for concept in concepts:
+                entries = (
+                    us_gaap.get(concept, {}).get("units", {}).get(xbrl_unit_key, [])
+                )
+                for e in entries:
+                    fp = e.get("fp")
+                    if fp not in {"Q1", "Q2", "Q3", "Q4"} or e.get("form") != "10-Q":
+                        continue
+                    start = e.get("start")
+                    if start:
+                        try:
+                            span = (
+                                date.fromisoformat(str(e["end"]))
+                                - date.fromisoformat(str(start))
+                            ).days
+                        except (TypeError, ValueError):
+                            continue
+                        if not 70 <= span <= 110:
+                            continue
+                    end = str(e.get("end") or "")
+                    if not end:
+                        continue
+                    current = by_end_q.get(end)
+                    if current is None or str(e.get("filed", "")) > str(
+                        current.get("filed", "")
+                    ):
+                        by_end_q[end] = {**e, "_concept": concept}
+            if by_end_q:
+                q_sorted = sorted(
+                    by_end_q.values(), key=lambda e: str(e["end"]), reverse=True
+                )[:12]
+                for entry in q_sorted:
+                    val = _decimal(entry.get("val"))
+                    if val is None:
+                        continue
+                    if metric == "capital_expenditure":
+                        val = -val
+                    fp = str(entry["fp"])
+                    db.add(
+                        FinancialFact(
+                            company_id=company.id,
+                            metric=metric,
+                            value=val,
+                            unit=unit,
+                            period=f"{entry['end']}:{fp}",
+                            fiscal_year=None,
+                            fiscal_quarter=fp,
+                            source_id=document.id,
+                            source_type="SEC",
+                            is_reported=True,
+                            confidence=Decimal("0.9"),
+                        )
+                    )
+                    facts_imported += 1
             # Los alias se FUSIONAN, no "gana el primero que informe": muchos
             # filers migraron de tag (Revenues -> SalesRevenueNet ->
             # RevenueFromContractWithCustomer...) y el tag antiguo queda
