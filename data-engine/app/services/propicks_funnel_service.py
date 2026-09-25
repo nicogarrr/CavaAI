@@ -25,7 +25,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Company, CalculatedMetric, FinancialFact
+from app.models import Company, CalculatedMetric, FinancialFact, ProPickCandidate, ProPickRun
 
 # --- Funnel constants (declared; tune only with an explicit decision) -------
 
@@ -180,7 +180,7 @@ def _revenue_cagr(db: Session) -> dict[int, float]:
             continue
         first_fy, first_val = years[0]
         last_fy, last_val = years[-1]
-        span = last_fy - first_fy
+        span = int(last_fy) - int(first_fy)
         if span < 1 or first_val <= 0 or last_val <= 0:
             continue
         out[cid] = (last_val / first_val) ** (1.0 / span) - 1.0
@@ -339,7 +339,7 @@ def run_funnel(db: Session, *, top_n: int = 20) -> tuple[list[FunnelResult], dic
 
     ranked = sorted(
         (r for r in results if r.passed and r.score is not None),
-        key=lambda r: (-r.score, r.company_id),
+        key=lambda r: (-(r.score or 0.0), r.company_id),
     )
     for idx, r in enumerate(ranked[:top_n], start=1):
         r.metrics["rank"] = float(idx)
@@ -362,11 +362,9 @@ def run_funnel(db: Session, *, top_n: int = 20) -> tuple[list[FunnelResult], dic
 
 # --- Persistence ------------------------------------------------------------
 
-def execute_run(db: Session, *, top_n: int = 20) -> "ProPickRun":
+def execute_run(db: Session, *, top_n: int = 20) -> ProPickRun:
     """Run the funnel over the whole universe and persist run + candidates."""
     from datetime import UTC, datetime
-
-    from app.models import ProPickCandidate, ProPickRun
 
     results, stats = run_funnel(db, top_n=top_n)
     run = ProPickRun(
@@ -383,7 +381,7 @@ def execute_run(db: Session, *, top_n: int = 20) -> "ProPickRun":
     db.flush()
     ordered = sorted(
         (x for x in results if x.passed and x.score is not None),
-        key=lambda x: (-x.score, x.company_id),
+        key=lambda x: (-(x.score or 0.0), x.company_id),
     )
     rank_of = {x.company_id: i + 1 for i, x in enumerate(ordered[:top_n])}
     for r in results:
