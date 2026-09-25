@@ -109,6 +109,39 @@ def test_quarterly_promise_matches_quarterly_fact(db):
     assert p.status == "met"
 
 
+def test_quarterly_promise_matches_ten_q_fact_with_null_fiscal_year(db):
+    """Hechos de la ingesta 10-Q: fiscal_year NULL, period '<end>:Qn'."""
+    c = _company(db)
+    fact = FinancialFact(
+        company_id=c.id, metric="revenue", value=Decimal("130"),
+        unit="USD", period="2025-06-30:Q2",
+        fiscal_year=None, fiscal_quarter="Q2",
+        source_type="filing",
+    )
+    db.add(fact)
+    db.commit()
+    _promise(db, c, period="2025 Q2")
+    [p] = ManagementCredibilityService().reconcile(db, c)
+    assert p.status == "met"
+    assert p.actual_fact_id == fact.id
+
+
+def test_quarterly_promise_ignores_null_fiscal_year_fact_from_other_year(db):
+    c = _company(db)
+    fact = FinancialFact(
+        company_id=c.id, metric="revenue", value=Decimal("130"),
+        unit="USD", period="2024-06-30:Q2",
+        fiscal_year=None, fiscal_quarter="Q2",
+        source_type="filing",
+    )
+    db.add(fact)
+    db.commit()
+    _promise(db, c, period="2025 Q2")
+    [p] = ManagementCredibilityService().reconcile(db, c)
+    assert p.status == "open"
+    assert p.actual_fact_id is None
+
+
 def test_unmatched_promise_stays_open(db):
     c = _company(db)
     _promise(db, c)
