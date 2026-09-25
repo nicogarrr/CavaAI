@@ -10,20 +10,17 @@ import { getResearchDashboard } from '@/lib/actions/research.actions';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import WorkProductButton from '@/components/work-products/WorkProductButton';
+import { formatMoney, formatPercent } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 function money(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(Number.isFinite(value) ? value : 0);
+  return formatMoney(value, 'USD', { maximumFractionDigits: 0 });
 }
 
 function pct(value: number) {
-  return `${((Number.isFinite(value) ? value : 0) * 100).toFixed(1)}%`;
+  return formatPercent(value, { fromRatio: true, digits: 1 });
 }
 
 function Stat({
@@ -166,10 +163,10 @@ export default async function ResearchPage() {
           </div>
           <div className="grid gap-3 text-sm">
             <div className="rounded-md border border-gray-800 p-3 text-gray-300">
-              LLM mensual: {settings.budget.monthly_cost_eur.toFixed(2)} / {settings.budget.monthly_cap_eur.toFixed(2)} EUR
+              LLM mensual: {formatMoney(settings.budget.monthly_cost_eur, 'EUR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {formatMoney(settings.budget.monthly_cap_eur, 'EUR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div className="rounded-md border border-gray-800 p-3 text-gray-300">
-              LLM diario: {settings.budget.daily_cost_eur.toFixed(2)} / {settings.budget.daily_cap_eur.toFixed(2)} EUR
+              LLM diario: {formatMoney(settings.budget.daily_cost_eur, 'EUR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {formatMoney(settings.budget.daily_cap_eur, 'EUR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div className="rounded-md border border-gray-800 p-3 text-gray-300">
               Conectores activos: {configuredConnectors.length || 0}

@@ -2,6 +2,8 @@
 
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
+import { formatMoney } from '@/lib/format';
+
 export type NavPoint = {
     date: string;
     value: number;
@@ -10,10 +12,12 @@ export type NavPoint = {
 type Props = {
     data: NavPoint[];
     positive: boolean;
+    /** Divisa base de la cartera (la misma que el resumen). */
+    currency?: string;
 };
 
 /** Gráfico de área del NAV (carga diferida: recharts no va al bundle inicial). */
-export default function PortfolioNavChart({ data, positive }: Props) {
+export default function PortfolioNavChart({ data, positive, currency = 'USD' }: Props) {
     const color = positive ? '#14b8a6' : '#ef4444';
     return (
         <ResponsiveContainer width="100%" height="100%">
@@ -39,7 +43,7 @@ export default function PortfolioNavChart({ data, positive }: Props) {
                         borderRadius: '8px',
                     }}
                     labelStyle={{ color: '#9ca3af' }}
-                    formatter={(value: number) => [`$${value.toFixed(2)}`, 'Valor']}
+                    formatter={(value: number) => [formatMoney(value, currency), 'Valor']}
                 />
                 <Area
                     type="monotone"

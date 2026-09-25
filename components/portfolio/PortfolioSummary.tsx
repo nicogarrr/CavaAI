@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatPercent } from '@/lib/format';
 import { TrendingUp, TrendingDown, DollarSign, PiggyBank } from 'lucide-react';
 import type { PortfolioSummary as PortfolioSummaryType } from '@/lib/actions/portfolio.actions';
 
@@ -61,7 +61,7 @@ export default function PortfolioSummary({ summary }: Props) {
         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Rendimiento</p>
         <div className="flex items-baseline gap-2">
           <p className={`text-xl sm:text-2xl font-bold tracking-tight ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-            {isPositive ? '+' : ''}{summary.totalGainPercent.toFixed(2)}%
+            {formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
           </p>
         </div>
         {/* Barra de progreso visual */}

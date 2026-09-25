@@ -81,6 +81,11 @@ export function formatMoney(
 
 /**
  * Cifra compacta en español (1,2 M · 3,4 mil M) para métricas y market caps.
+ *
+ * Intl es-ES con notation "compact" es inconsistente para miles de millones:
+ * 9.447.000.000 se renderiza como "9447 M" mientras que 416.160.000.000 sale
+ * como "416,16 mil M" (B18). Aquí la escala se fija siempre: millones como
+ * "M" y miles de millones como "mil M", con decimales es-ES.
  */
 export function formatCompact(
   value: NumericInput,
@@ -89,10 +94,18 @@ export function formatCompact(
 ): string {
   const parsed = toFinite(value);
   if (parsed === null) return fallback;
+  const abs = Math.abs(parsed);
+  const { maximumFractionDigits = 2, ...rest } = options;
+  if (abs >= 1e9) {
+    return `${formatNumber(parsed / 1e9, { maximumFractionDigits, ...rest }, fallback)} mil M`;
+  }
+  if (abs >= 1e6) {
+    return `${formatNumber(parsed / 1e6, { maximumFractionDigits, ...rest }, fallback)} M`;
+  }
   return new Intl.NumberFormat(FORMAT_LOCALE, {
     notation: 'compact',
-    maximumFractionDigits: 2,
-    ...options,
+    maximumFractionDigits,
+    ...rest,
   }).format(parsed);
 }
 
