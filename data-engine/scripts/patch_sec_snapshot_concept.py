@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import polars as pl  # noqa: E402
 
-from build_sec_snapshots import _entry_value  # noqa: E402
+from sec_snapshot_values import entry_value  # noqa: E402
 
 
 def main() -> int:
@@ -48,7 +48,7 @@ def main() -> int:
         concept["units"].setdefault(unit, []).append({
             "end": row["end"], "fy": int(row["fy"]) if row["fy"] else None,
             "fp": row["fp"], "form": row["form"], "filed": row["filed"],
-            "val": _entry_value(row["val_dec"]),
+            "val": entry_value(row["val_dec"]),
         })
 
     stats = {"files": 0, "entries": 0, "fractional": 0, "missing": 0}
