@@ -157,9 +157,10 @@ services:
       - LANGFUSE_ENABLED=false
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
-      - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-}
+      - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-/data/esef-snapshots}
     volumes:
       - duckdb_data:/data
+      - ./data-esef-snapshots:/data/esef-snapshots:ro
     healthcheck:
       # python:3.12-slim no trae curl: sonda equivalente a `curl -f http://localhost:8000/health/ready`.
       test:
@@ -220,10 +221,11 @@ services:
       - MINIO_BUCKET=research
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
-      - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-}
+      - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-/data/esef-snapshots}
       - RSS_FEEDS=${RSS_FEEDS:-}
     volumes:
       - duckdb_data:/data
+      - ./data-esef-snapshots:/data/esef-snapshots:ro
     healthcheck:
       # Sin HTTP: dramatiq vivo (PID 1) + Redis de cola accesible.
       test:
