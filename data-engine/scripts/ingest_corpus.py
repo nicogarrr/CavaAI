@@ -4,6 +4,16 @@ Solo fuentes PUBLICAS y declaradas (division "libre" del corpus aprobada):
 - Cartas anuales de Numantia Patrimonio (Emerito Quintana), publicadas por
   la propia gestora en su web (2017-hoy).
 - Cartas anuales de Warren Buffett (Berkshire Hathaway), indice publico.
+Las siguientes fuentes se anaden tras la peticion del usuario del 2026-09-25
+de ampliar la ingesta con mas fuentes gratuitas hacia el RAG; misma politica:
+solo documentos publicos publicados por la propia gestora:
+- Cartas a inversores de Azvalor AM (indice publico de la gestora; cada
+  anuncio enlaza la "carta en PDF" oficial).
+Cobas AM queda fuera por ahora: sus comentarios se publican como paginas
+HTML con mucho chrome de sitio y sin enlace PDF estable; candidata a una
+futura ingesta de contenido HTML con extraccion de cuerpo.
+- Cartas trimestrales de Magallanes Value Investors (seccion #cartas de su
+  pagina de noticias; PDFs publicos).
 
 Los libros con copyright (Parames, Rallo, Huerta de Soto...) NO se ingieren:
 de ellos solo existiran fichas/notas generadas desde el corpus libre.
@@ -42,6 +52,108 @@ BUFFETT_AUTHOR = "Warren E. Buffett (Berkshire Hathaway)"
 BUFFETT_INDEX = "https://www.berkshirehathaway.com/letters/letters.html"
 
 USER_AGENT = "CavaAI research corpus ingest (contact: owner-configured)"
+
+AZVALOR_AUTHOR = "Azvalor Asset Management"
+AZVALOR_INDEX = "https://www.azvalor.com/categorias_anuncios/cartas-a-inversores/"
+
+MAGALLANES_AUTHOR = "Magallanes Value Investors"
+MAGALLANES_NOTICIAS = "https://magallanesvalue.com/noticias/"
+
+MAX_LETTER_PAGES_PER_SOURCE = 40
+
+
+def _slug_title(slug: str) -> str:
+    return slug.strip("/").rsplit("/", 1)[-1].replace("-", " ").strip()
+
+
+def _extract_azvalor_pages(html: str) -> list[str]:
+    """Enlaces a anuncios de cartas en el indice publico de Azvalor."""
+    found = re.findall(
+        r'href="(https://www\.azvalor\.com/anuncios-y-comunicados/carta-[^"]+/?)"',
+        html,
+        re.IGNORECASE,
+    )
+    return sorted(set(found))
+
+
+def _extract_azvalor_gateway(html: str) -> str | None:
+    """En cada anuncio, el enlace oficial a la carta en PDF: los recientes usan
+    una pagina pasarela /azvalor-carta-* (redirect al PDF) y los antiguos un
+    PDF directo en wp-content/uploads con "Carta" en el nombre."""
+    match = re.search(r'href="(https://www\.azvalor\.com/azvalor-carta-[^"]+/?)"', html, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(
+        r'href="(https://www\.azvalor\.com/wp-content/uploads/[^"]*Carta[^"]*\.pdf)"',
+        html,
+        re.IGNORECASE,
+    )
+    return match.group(1) if match else None
+
+
+def _discover_azvalor_sources(client: httpx.Client) -> list[dict]:
+    try:
+        response = client.get(AZVALOR_INDEX)
+        response.raise_for_status()
+    except Exception:
+        return []
+    sources: list[dict] = []
+    for page_url in _extract_azvalor_pages(response.text)[:MAX_LETTER_PAGES_PER_SOURCE]:
+        try:
+            page = client.get(page_url)
+            page.raise_for_status()
+        except Exception:
+            continue
+        gateway = _extract_azvalor_gateway(page.text)
+        if not gateway:
+            continue
+        slug = _slug_title(page_url)
+        sources.append(
+            {
+                "title": f"Azvalor - {slug}",
+                "url": gateway,
+                "filename": f"Azvalor-{slug.replace(' ', '_')}.pdf",
+                "author": AZVALOR_AUTHOR,
+                "document_type": "fund_letter",
+                "language": "es",
+            }
+        )
+        time.sleep(0.5)
+    return sources
+
+
+def _extract_magallanes_pdfs(html: str) -> list[str]:
+    found = re.findall(
+        r'href="(https://magallanesvalue\.com/wp-content/uploads/MAGALLANES-(?:CARTA|LETTER)-[^"#]+\.pdf)',
+        html,
+        re.IGNORECASE,
+    )
+    return sorted(set(found))
+
+
+def _discover_magallanes_sources(client: httpx.Client) -> list[dict]:
+    try:
+        response = client.get(MAGALLANES_NOTICIAS)
+        response.raise_for_status()
+    except Exception:
+        return []
+    sources: list[dict] = []
+    for pdf_url in _extract_magallanes_pdfs(response.text):
+        filename = pdf_url.rsplit("/", 1)[-1]
+        label = filename.replace("MAGALLANES-", "").replace(".pdf", "").replace("-", " ")
+        label = label.removeprefix("CARTA ").removeprefix("LETTER ")
+        sources.append(
+            {
+                "title": f"Magallanes Value Investors - Carta {label}",
+                "url": pdf_url,
+                "filename": filename,
+                "author": MAGALLANES_AUTHOR,
+                "document_type": "fund_letter",
+                "language": "es",
+            }
+        )
+    return sources
+
 
 
 NUMANTIA_HOME = "https://numantiapatrimonio.com/"
@@ -215,6 +327,14 @@ def main() -> int:
             if not buffett:
                 stats["skipped_sources"].append("buffett_index_unreachable")
             sources.extend(buffett)
+            for name, discoverer in (
+                ("azvalor", _discover_azvalor_sources),
+                ("magallanes", _discover_magallanes_sources),
+            ):
+                found = discoverer(client)
+                if not found:
+                    stats["skipped_sources"].append(f"{name}_unreachable_or_empty")
+                sources.extend(found)
 
             for source in sources:
                 if args.dry_run:
