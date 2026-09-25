@@ -67,8 +67,8 @@ test.describe("company research workspace", () => {
 
     await page.getByRole("link", { name: "Qué ha cambiado", exact: true }).click();
     await expect(page).toHaveURL(/view=changes/);
-    await expect(page.getByRole("heading", { name: "Decision Journal" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Expectation vs Reality" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Diario de decisiones" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Expectativa vs realidad" })).toBeVisible();
     await page.screenshot({ path: "test-results/cavaai-company-workspace.png", fullPage: true });
   });
 });
