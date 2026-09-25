@@ -405,11 +405,19 @@ def refresh_portfolio_prices_intraday(
         }
     db = _session(tenant_id, user_id)
     try:
+        # DISTINCT sobre la entidad completa rompe en Postgres: las columnas
+        # json (special_sources, special_risks, factor_tags) no tienen
+        # operador de igualdad. Dedup por id en subconsulta escalar.
+        company_ids = (
+            _select(Position.company_id)
+            .where(Position.company_id.is_not(None))
+            .distinct()
+            .scalar_subquery()
+        )
         companies = list(
             db.scalars(
                 _select(Company)
-                .join(Position, Position.company_id == Company.id)
-                .distinct()
+                .where(Company.id.in_(company_ids))
                 .order_by(Company.ticker)
             ).all()
         )
