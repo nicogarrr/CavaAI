@@ -8,6 +8,7 @@ import {
   Scale,
   Search,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Target,
   TriangleAlert,
@@ -274,6 +275,49 @@ export default function MetodologiaPage() {
           mes y publica su backtest neto de costes. Las cuatro estrategias (adaptativa, value,
           momentum y defensiva) están publicadas con sus métricas: si una aún no tiene datos, su
           ficha lo dice en lugar de mostrar estimaciones.
+        </p>
+      </section>
+
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">Marco de calidad (MOAT)</h2>
+          <Badge className="sm:ml-auto" variant="outline">
+            8 checks
+          </Badge>
+        </div>
+        <p className="mb-4 text-sm leading-6 text-gray-400">
+          El marco puntúa cada empresa con 8 checks trazables; cada uno declara su valor y su
+          umbral, y un check sin datos queda como no evaluable, nunca como superado. Los cinco
+          primeros son el marco original (V1); los tres últimos (V2, sept 2026) miran la caja y
+          la disciplina de capital con criterios estándar del value investing.
+        </p>
+        <ul className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
+          {[
+            ['Margen FCF 5 años', 'media > 5%'],
+            ['Margen neto 5 años', 'media > 15%'],
+            ['ROE 5 años', 'media > 15%'],
+            ['ROA 5 años', 'media > 7%'],
+            ['ROIC', '> WACC'],
+            ['CFROI (aprox. declarada)', '> WACC'],
+            ['Owner earnings 5 años (Buffett)', 'media > 0'],
+            ['Capex / D&A 5 años', 'media ≤ 1,5 (1,0 = solo mantenimiento)'],
+          ].map(([check, threshold]) => (
+            <li
+              className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-gray-800 bg-black/30 p-4 break-words"
+              key={check}
+            >
+              <span className="text-sm text-gray-200">{check}</span>
+              <span className="shrink-0 text-sm font-semibold text-teal-300">{threshold}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 rounded-xl border border-teal-900/60 bg-teal-950/20 p-4 text-sm leading-6 text-teal-100">
+          Los umbrales son ajustables: están definidos como constantes documentadas en el motor
+          de métricas (metric_calculation_service.py) y aquí para revisarlos en cualquier
+          momento. Owner earnings estima el capex de mantenimiento como min(|capex|, D&A), una
+          aproximación conservadora declarada (Buffett, carta de 1986); el CFROI usa la
+          aproximación declarada del sistema, no el CFROI completo de Credit Suisse.
         </p>
       </section>
 

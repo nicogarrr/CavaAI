@@ -30,6 +30,21 @@ WINDOWED_RATIO_METRICS: dict[str, tuple[str, str]] = {
 WINDOW_MIN_YEARS = 3
 WINDOW_MAX_YEARS = 5
 
+# Umbrales MARCO_NICO_V2 (criterios estandar value/Buffett; Nico delego la
+# eleccion el 2026-09-25: "usa los criterios que veas convenientes").
+# Documentados en /metodologia para que pueda ajustarlos despues:
+# - owner earnings (Buffett, carta 1986): la media de hasta 5 anos debe ser
+#   positiva.
+# - intensidad de capex: |capex|/D&A medio <= 1.5 (1.0 = solo mantenimiento;
+#   hasta 1.5 admite crecimiento sin ser devorador de capital).
+# - CFROI (aprox declarada) > WACC: creacion de valor en terminos de caja,
+#   complementario al ROIC > WACC contable.
+V2_OWNER_EARNINGS_MIN = Decimal("0")
+V2_CAPEX_TO_DA_MAX = Decimal("1.5")
+
+# Metricas compuestas con ventana propia (no caben en WINDOWED_RATIO_METRICS).
+WINDOWED_COMPOSED_METRICS = ("owner_earnings_5y", "capex_to_da_5y")
+
 METRIC_DEFINITIONS: dict[str, MetricFormula] = {
     "fcf_margin": ("FCF_MARGIN_V1", "free_cash_flow / revenue", ("free_cash_flow", "revenue"), "decimal"),
     "net_margin": ("NET_MARGIN_V1", "net_income / revenue", ("net_income", "revenue"), "decimal"),
@@ -107,12 +122,33 @@ METRIC_DEFINITIONS: dict[str, MetricFormula] = {
         ("net_income", "depreciation_amortization", "interest_expense", "total_assets"),
         "decimal",
     ),
+    "owner_earnings_5y": (
+        "OWNER_EARNINGS_5Y_V1",
+        "mean of annual (net_income + depreciation_amortization - min(abs(capital_expenditure), depreciation_amortization)) over up to 5 most recent fiscal years, minimum 3; maintenance capex is a declared conservative estimate (Buffett owner earnings)",
+        ("net_income", "depreciation_amortization", "capital_expenditure"),
+        "USD",
+    ),
+    "capex_to_da_5y": (
+        "CAPEX_TO_DA_5Y_V1",
+        "mean of annual abs(capital_expenditure) / depreciation_amortization over up to 5 most recent fiscal years, minimum 3; 1.0 = maintenance-only investment, higher = growth or capital intensity",
+        ("capital_expenditure", "depreciation_amortization"),
+        "decimal",
+    ),
     # Marco de calidad de Nico (apuntes manuscritos, sept 2026): 5 checks
     # trazables. Cada check no evaluable queda declarado como null, nunca
     # cuenta como superado.
     "quality_moat_score": (
         "MARCO_NICO_V1",
         "count of passed checks: fcf_margin_5y > 0.05, net_margin_5y > 0.15, roe_5y > 0.15, roa_5y > 0.07, roic > wacc; each check traceable with its value and threshold",
+        (),
+        "score",
+    ),
+    # V2 (2026-09-25): los 5 checks de V1 mas tres de caja y disciplina de
+    # capital. Umbrales elegidos por delegacion de Nico y documentados en
+    # /metodologia; cada check no evaluable queda null, nunca cuenta.
+    "quality_moat_score_v2": (
+        "MARCO_NICO_V2",
+        "V1 checks (fcf_margin_5y > 0.05, net_margin_5y > 0.15, roe_5y > 0.15, roa_5y > 0.07, roic > wacc) plus cfroi_approx > wacc, owner_earnings_5y > 0, capex_to_da_5y <= 1.5; each check traceable with its value and threshold",
         (),
         "score",
     ),
@@ -160,8 +196,12 @@ class MetricCalculationService:
             return self._calculate_cfroi(db, company, persist)
         if metric in WINDOWED_RATIO_METRICS:
             return self._calculate_windowed_ratio(db, company, metric, persist)
+        if metric in WINDOWED_COMPOSED_METRICS:
+            return self._calculate_windowed_composed(db, company, metric, persist)
         if metric == "quality_moat_score":
             return self._calculate_quality_score(db, company, persist)
+        if metric == "quality_moat_score_v2":
+            return self._calculate_quality_score_v2(db, company, persist)
 
         facts = self._coherent_facts(
             db,
@@ -1094,6 +1134,83 @@ class MetricCalculationService:
         )
         return self._persist_if_requested(db, company, result, persist)
 
+    def _calculate_windowed_composed(
+        self,
+        db: Session,
+        company: Company,
+        metric: str,
+        persist: bool,
+    ) -> MetricResult:
+        definition_version, formula, inputs, unit = METRIC_DEFINITIONS[metric]
+        facts_by_year = {
+            input_metric: self._annual_facts_by_year(db, company, input_metric)
+            for input_metric in inputs
+        }
+        common_years = set.intersection(
+            *(set(facts) for facts in facts_by_year.values())
+        )
+        usable_years = sorted(common_years, reverse=True)[:WINDOW_MAX_YEARS]
+        facts_used = [
+            fact
+            for year in usable_years
+            for fact in (facts_by_year[input_metric][year] for input_metric in inputs)
+        ]
+
+        yearly: dict[int, Decimal] = {}
+        skipped_zero_da: list[int] = []
+        for year in usable_years:
+            da = Decimal(facts_by_year["depreciation_amortization"][year].value)
+            capex = abs(Decimal(facts_by_year["capital_expenditure"][year].value))
+            if metric == "owner_earnings_5y":
+                ni = Decimal(facts_by_year["net_income"][year].value)
+                yearly[year] = ni + da - min(capex, da)
+            else:  # capex_to_da_5y
+                if da == 0:
+                    skipped_zero_da.append(year)
+                    continue
+                yearly[year] = capex / da
+
+        if len(yearly) < WINDOW_MIN_YEARS:
+            return self._window_unavailable(
+                db, company, metric, persist, sorted(yearly), facts_used
+            )
+
+        value = _quantize(sum(yearly.values()) / Decimal(len(yearly)))
+        confidence = min(
+            (Decimal(fact.confidence) for fact in facts_used),
+            default=Decimal("0.70"),
+        )
+        years = sorted(yearly)
+        result = MetricResult(
+            metric=metric,
+            status="ok",
+            period=f"FY{min(years)}-FY{max(years)}",
+            value=value,
+            unit=unit,
+            definition_version=definition_version,
+            formula=formula,
+            numerator=None,
+            denominator=None,
+            source_fact_ids=[fact.id for fact in facts_used],
+            calculation_trace={
+                "aggregation": "mean_of_annual_values",
+                "coverage": f"{len(yearly)}/{WINDOW_MAX_YEARS}",
+                "years": years,
+                "values": {str(year): str(_quantize(v)) for year, v in yearly.items()},
+                "skipped_zero_depreciation_years": skipped_zero_da,
+                "inputs": {
+                    str(year): {
+                        f"{input_metric}_fact_id": facts_by_year[input_metric][year].id
+                        for input_metric in inputs
+                    }
+                    for year in years
+                },
+            },
+            confidence=confidence,
+            fiscal_year=max(years),
+        )
+        return self._persist_if_requested(db, company, result, persist)
+
     def _latest_stored(self, db: Session, company: Company, metric: str) -> CalculatedMetric | None:
         return db.scalar(
             select(CalculatedMetric)
@@ -1129,13 +1246,12 @@ class MetricCalculationService:
             "passed": result.value > threshold_value,
         }
 
-    def _calculate_quality_score(
+    def _base_quality_checks(
         self,
         db: Session,
         company: Company,
         persist: bool,
-    ) -> MetricResult:
-        definition_version, formula, _, unit = METRIC_DEFINITIONS["quality_moat_score"]
+    ) -> tuple[list[dict], list[MetricResult]]:
         fcf_result = self._calculate_windowed_ratio(db, company, "fcf_margin_5y", persist)
         net_margin_result = self._calculate_windowed_ratio(db, company, "net_margin_5y", persist)
         roe_result = self._calculate_windowed_ratio(db, company, "roe_5y", persist)
@@ -1172,8 +1288,6 @@ class MetricCalculationService:
                 }
             )
 
-        evaluable = [check for check in checks if check["passed"] is not None]
-        score = sum(1 for check in checks if check["passed"] is True)
         component_results = [
             fcf_result,
             net_margin_result,
@@ -1182,6 +1296,21 @@ class MetricCalculationService:
             roic_result,
             wacc_result,
         ]
+        return checks, component_results
+
+    def _quality_score_result(
+        self,
+        db: Session,
+        company: Company,
+        persist: bool,
+        metric: str,
+        framework_label: str,
+        checks: list[dict],
+        component_results: list[MetricResult],
+    ) -> MetricResult:
+        definition_version, formula, _, unit = METRIC_DEFINITIONS[metric]
+        evaluable = [check for check in checks if check["passed"] is not None]
+        score = sum(1 for check in checks if check["passed"] is True)
         if not evaluable:
             status = "unavailable"
             value = None
@@ -1193,7 +1322,7 @@ class MetricCalculationService:
             value = Decimal(score)
         periods = [r.period for r in component_results if r.period and r.period != "unknown"]
         result = MetricResult(
-            metric="quality_moat_score",
+            metric=metric,
             status=status,
             period=periods[0] if periods else "unknown",
             value=value,
@@ -1206,7 +1335,7 @@ class MetricCalculationService:
                 {fact_id for r in component_results for fact_id in r.source_fact_ids}
             ),
             calculation_trace={
-                "framework": "MARCO_NICO_V1 (apuntes manuscritos de Nico, sept 2026)",
+                "framework": framework_label,
                 "checks": checks,
                 "checks_evaluable": len(evaluable),
                 "checks_total": len(checks),
@@ -1222,6 +1351,102 @@ class MetricCalculationService:
             ),
         )
         return self._persist_if_requested(db, company, result, persist)
+
+    def _calculate_quality_score(
+        self,
+        db: Session,
+        company: Company,
+        persist: bool,
+    ) -> MetricResult:
+        checks, component_results = self._base_quality_checks(db, company, persist)
+        return self._quality_score_result(
+            db,
+            company,
+            persist,
+            "quality_moat_score",
+            "MARCO_NICO_V1 (apuntes manuscritos de Nico, sept 2026)",
+            checks,
+            component_results,
+        )
+
+    def _calculate_quality_score_v2(
+        self,
+        db: Session,
+        company: Company,
+        persist: bool,
+    ) -> MetricResult:
+        checks, component_results = self._base_quality_checks(db, company, persist)
+
+        # CFROI (aproximacion declarada) por encima del coste de capital:
+        # creacion de valor en terminos de caja, no solo contables.
+        cfroi_result = self.calculate(db, company, "cfroi_approx", persist=persist)
+        wacc_result = component_results[-1]
+        if cfroi_result.status == "ok" and wacc_result.status == "ok":
+            checks.append(
+                {
+                    "check": "cfroi_approx_gt_wacc",
+                    "metric": "cfroi_approx",
+                    "threshold": str(wacc_result.value),
+                    "value": str(cfroi_result.value),
+                    "passed": cfroi_result.value > wacc_result.value,
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "check": "cfroi_approx_gt_wacc",
+                    "metric": "cfroi_approx",
+                    "threshold": str(wacc_result.value) if wacc_result.value is not None else None,
+                    "value": str(cfroi_result.value) if cfroi_result.value is not None else None,
+                    "passed": None,
+                    "reason": "cfroi_approx_or_wacc_unavailable",
+                }
+            )
+        component_results.append(cfroi_result)
+
+        # Owner earnings (Buffett): la media de hasta 5 anos debe ser
+        # positiva; un negocio que no genera caja para el dueno tras
+        # mantenimiento no tiene foso economico.
+        oe_result = self._calculate_windowed_composed(db, company, "owner_earnings_5y", persist)
+        checks.append(self._ratio_check(oe_result, str(V2_OWNER_EARNINGS_MIN), "owner_earnings_5y_positive"))
+        component_results.append(oe_result)
+
+        # Disciplina de capital: |capex|/D&A medio <= 1.5 (1.0 = solo
+        # mantenimiento). Mas arriba, el negocio exige reinversion pesada
+        # continua - el foso queda en duda. Umbral <=, no <.
+        capex_da_result = self._calculate_windowed_composed(db, company, "capex_to_da_5y", persist)
+        if capex_da_result.status == "ok" and capex_da_result.value is not None:
+            checks.append(
+                {
+                    "check": "capex_to_da_5y_le_150pct",
+                    "metric": "capex_to_da_5y",
+                    "threshold": str(V2_CAPEX_TO_DA_MAX),
+                    "value": str(capex_da_result.value),
+                    "passed": capex_da_result.value <= V2_CAPEX_TO_DA_MAX,
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "check": "capex_to_da_5y_le_150pct",
+                    "metric": "capex_to_da_5y",
+                    "threshold": str(V2_CAPEX_TO_DA_MAX),
+                    "value": None,
+                    "passed": None,
+                    "reason": capex_da_result.calculation_trace.get("reason", capex_da_result.status),
+                }
+            )
+        component_results.append(capex_da_result)
+
+        return self._quality_score_result(
+            db,
+            company,
+            persist,
+            "quality_moat_score_v2",
+            "MARCO_NICO_V2 (V1 + cfroi/owner earnings/capex; umbrales delegados por Nico 2026-09-25)",
+            checks,
+            component_results,
+        )
 
     def _persist_if_requested(
         self,
