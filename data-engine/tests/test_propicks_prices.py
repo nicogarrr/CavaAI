@@ -1,0 +1,140 @@
+"""F2: ingesta de precios ProPicks + momentum (yahoo symbol, upsert, metricas)."""
+
+from datetime import date, timedelta
+from decimal import Decimal
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from app.core.database import Base
+from app.models import (
+    CalculatedMetric,
+    Company,
+    MarketPrice,
+    ProPickCandidate,
+    ProPickRun,
+    Tenant,
+)
+from app.services.propicks_price_service import (
+    PriceBar,
+    compute_momentum_metrics,
+    momentum_from_series,
+    refresh_propicks_prices,
+    upsert_prices,
+    yahoo_symbol,
+)
+
+
+def _company(ticker: str, currency: str = "USD") -> Company:
+    return Company(
+        ticker=ticker,
+        name=f"{ticker} Co",
+        exchange="TEST",
+        currency=currency,
+        sector="Industrials",
+        industry="Test",
+        company_type="standard",
+        valuation_model="standard_dcf",
+        special_sources=[],
+        special_risks=[],
+        factor_tags=[],
+    )
+
+
+def _db() -> Session:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    tenant = Tenant(external_id="prices-test", name="Prices test")
+    db.add(tenant)
+    db.flush()
+    db.info["tenant_id"] = tenant.id
+    return db
+
+
+def _series(days: int, start: str = "100") -> list[tuple[date, Decimal]]:
+    base = date(2026, 9, 25) - timedelta(days=days)
+    price = Decimal(start)
+    out = []
+    for i in range(days + 1):
+        out.append((base + timedelta(days=i), price))
+        price = price + Decimal("1")
+    return out
+
+
+def _fake_fetcher(symbols, *, period="1y"):
+    bars = {}
+    for symbol in symbols:
+        bars[symbol] = [
+            PriceBar(day=d, close=p, adj_close=p, volume=1000) for d, p in _series(300)
+        ]
+    return bars
+
+
+def test_yahoo_symbol_eur_gets_mc_suffix():
+    assert yahoo_symbol(_company("TEF", currency="EUR")) == "TEF.MC"
+    assert yahoo_symbol(_company("AAPL", currency="USD")) == "AAPL"
+
+
+def test_momentum_6m_and_12m():
+    series = _series(300)
+    mom6 = momentum_from_series(series, 126)
+    mom12 = momentum_from_series(series, 252)
+    assert mom6 is not None and mom6 > 0
+    assert mom12 is not None and mom12 > mom6  # serie creciente: 12m > 6m
+    # Esperado 6m: (400-274)/274
+    expected = (Decimal(400) - Decimal(274)) / Decimal(274)
+    assert abs(mom6 - expected) < Decimal("0.001")
+
+
+def test_momentum_honest_without_data():
+    assert momentum_from_series([], 126) is None
+    assert momentum_from_series(_series(30), 126) is None  # punto pasado demasiado lejos
+
+
+def test_upsert_idempotent():
+    with _db() as db:
+        company = _company("IDEM")
+        db.add(company)
+        db.flush()
+        bars = [PriceBar(day=date(2026, 9, 24), close=Decimal("10"), adj_close=Decimal("9.5"), volume=100)]
+        assert upsert_prices(db, company, bars) == 1
+        bars2 = [PriceBar(day=date(2026, 9, 24), close=Decimal("11"), adj_close=Decimal("10.5"), volume=200)]
+        assert upsert_prices(db, company, bars2) == 1
+        db.commit()
+        rows = db.scalars(select(MarketPrice).where(MarketPrice.company_id == company.id)).all()
+        assert len(rows) == 1
+        assert rows[0].close == Decimal("11")
+        assert rows[0].source == "yfinance"
+
+
+def test_refresh_writes_metrics_only_with_coverage():
+    with _db() as db:
+        from datetime import UTC, datetime
+        run = ProPickRun(as_of=datetime.now(UTC), status="completed", funnel_version="test",
+                         universe_size=1, passed_count=1, top_n=5, duration_ms=1, params={})
+        db.add(run)
+        company = _company("MOMCO")
+        db.add(company)
+        db.flush()
+        db.add(ProPickCandidate(run_id=run.id, company_id=company.id, passed=True,
+                                rank=1, score=90.0, failed_gates=[], metrics={}, coverage={}))
+        db.commit()
+
+        result = refresh_propicks_prices(db, top_n=5, fetcher=_fake_fetcher,
+                                         as_of=date(2026, 9, 25))
+        assert result["status"] == "ok"
+        assert result["covered"] == 1
+        assert result["bars_written"] == 301
+        metrics = db.scalars(
+            select(CalculatedMetric).where(CalculatedMetric.company_id == company.id)
+        ).all()
+        assert {m.metric for m in metrics} == {"momentum_6m", "momentum_12m"}
+        assert all(m.value is not None and m.value > 0 for m in metrics)
+        assert all("yfinance" in m.formula for m in metrics)
+
+
+def test_refresh_skips_without_run():
+    with _db() as db:
+        result = refresh_propicks_prices(db, fetcher=_fake_fetcher)
+        assert result["status"] == "skipped"
