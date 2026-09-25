@@ -23,6 +23,20 @@ class FakeFMP:
         return self.payload
 
 
+class FakeYahoo:
+    def __init__(self, payload=None, error=None):
+        self.payload = payload if payload is not None else []
+        self.error = error
+
+    async def dividends(self, ticker: str):
+        if self.error:
+            raise self.error
+        return self.payload
+
+
+_YAHOO_DOWN = FakeYahoo(error=RuntimeError("yahoo down"))
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite:///:memory:")
@@ -87,7 +101,7 @@ PAYLOAD = [
 
 
 def test_sync_inserts_deduped_records(db):
-    service = DividendIngestionService(fmp=FakeFMP(payload=PAYLOAD * 2))
+    service = DividendIngestionService(fmp=FakeFMP(payload=PAYLOAD * 2), yahoo=_YAHOO_DOWN)
     _company(db)
     first = asyncio.run(service.sync_company(db, ticker="AAPL"))
     assert first["status"] == "ok"
@@ -100,7 +114,7 @@ def test_sync_inserts_deduped_records(db):
 
 
 def test_sync_provider_failure_is_unavailable_not_fabricated(db):
-    service = DividendIngestionService(fmp=FakeFMP(error=RuntimeError("402 Payment Required")))
+    service = DividendIngestionService(fmp=FakeFMP(error=RuntimeError("402 Payment Required")), yahoo=_YAHOO_DOWN)
     _company(db)
     result = asyncio.run(service.sync_company(db, ticker="AAPL"))
     assert result["status"] == "unavailable"
@@ -109,7 +123,7 @@ def test_sync_provider_failure_is_unavailable_not_fabricated(db):
 
 
 def test_sync_unknown_company(db):
-    service = DividendIngestionService(fmp=FakeFMP(payload=PAYLOAD))
+    service = DividendIngestionService(fmp=FakeFMP(payload=PAYLOAD), yahoo=_YAHOO_DOWN)
     result = asyncio.run(service.sync_company(db, ticker="NOPE"))
     assert result["status"] == "unknown_company"
 
@@ -129,7 +143,7 @@ def test_portfolio_yields_real_math_and_coverage(db):
             )
         )
     db.commit()
-    result = DividendIngestionService(fmp=FakeFMP()).portfolio_yields(db)
+    result = DividendIngestionService(fmp=FakeFMP(), yahoo=_YAHOO_DOWN).portfolio_yields(db)
     assert result["coverage"]["positions_with_dividend_data"] == 1
     position = result["positions"][0]
     assert position["ttm_dividend_per_share"] == pytest.approx(2.0)
@@ -141,7 +155,7 @@ def test_portfolio_yields_real_math_and_coverage(db):
 def test_portfolio_yields_honest_nulls_without_data(db):
     company = _company(db, ticker="BRK")
     _position(db, company, price=400.0)
-    result = DividendIngestionService(fmp=FakeFMP()).portfolio_yields(db)
+    result = DividendIngestionService(fmp=FakeFMP(), yahoo=_YAHOO_DOWN).portfolio_yields(db)
     position = result["positions"][0]
     assert position["dividend_yield"] is None
     assert position["ttm_dividend_per_share"] is None
@@ -162,7 +176,58 @@ def test_currency_mismatch_excluded_from_yield(db):
         )
     )
     db.commit()
-    result = DividendIngestionService(fmp=FakeFMP()).portfolio_yields(db)
+    result = DividendIngestionService(fmp=FakeFMP(), yahoo=_YAHOO_DOWN).portfolio_yields(db)
     position = result["positions"][0]
     assert position["skipped_currency_mismatch"] == 1
     assert position["dividend_yield"] == pytest.approx(0.0)  # USD record not mixed into EUR price
+
+
+YAHOO_PAYLOAD = [
+    {"date": 1750000000, "amount": 0.26},
+    {"date": 1740000000, "amount": 0.25},
+]
+
+
+def test_yahoo_is_primary_and_labels_source(db):
+    fmp = FakeFMP(payload=PAYLOAD)
+    service = DividendIngestionService(fmp=fmp, yahoo=FakeYahoo(payload=YAHOO_PAYLOAD))
+    _company(db)
+    result = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert result["status"] == "ok" and result["source"] == "yahoo_finance"
+    assert result["inserted"] == 2
+    rows = db.scalars(select(DividendRecord)).all()
+    assert {r.source for r in rows} == {"yahoo_finance"}
+    assert all(r.currency == "USD" for r in rows)
+
+
+def test_yahoo_success_empty_does_not_fall_back(db):
+    fmp = FakeFMP(payload=PAYLOAD)
+    service = DividendIngestionService(fmp=fmp, yahoo=FakeYahoo(payload=[]))
+    _company(db)
+    result = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert result["status"] == "ok" and result["source"] == "yahoo_finance"
+    assert result["inserted"] == 0
+    assert db.scalars(select(DividendRecord)).all() == []
+
+
+def test_yahoo_failure_falls_back_to_fmp(db):
+    service = DividendIngestionService(
+        fmp=FakeFMP(payload=PAYLOAD), yahoo=_YAHOO_DOWN
+    )
+    _company(db)
+    result = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert result["status"] == "ok" and result["source"] == "fmp"
+    assert result["inserted"] == 1
+    rows = db.scalars(select(DividendRecord)).all()
+    assert rows[0].source == "fmp"
+
+
+def test_both_providers_down_is_unavailable(db):
+    service = DividendIngestionService(
+        fmp=FakeFMP(error=RuntimeError("402")),
+        yahoo=FakeYahoo(error=RuntimeError("timeout")),
+    )
+    _company(db)
+    result = asyncio.run(service.sync_company(db, ticker="AAPL"))
+    assert result["status"] == "unavailable"
+    assert db.scalars(select(DividendRecord)).all() == []
