@@ -280,6 +280,63 @@ export default function MetodologiaPage() {
 
       <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Search className="h-5 w-5 text-teal-300" />
+          <h2 className="text-lg font-semibold text-gray-100">
+            Embudo ProPicks (etapa big-data, v1)
+          </h2>
+          <Badge className="sm:ml-auto" variant="outline">
+            propicks-funnel-v1
+          </Badge>
+        </div>
+        <div className="space-y-3 text-sm leading-6 text-gray-400">
+          <p>
+            El embudo evalúa <strong className="text-gray-200">todo el universo persistido</strong>{' '}
+            (2.110 empresas: SEC + ESEF) con métricas ya calculadas en base de datos. Nada se
+            imputa: cada empresa lleva su mapa de cobertura por métrica (ok / missing / approx) y
+            el motivo exacto de cada filtro que no supera.
+          </p>
+          <ul className="list-disc space-y-2 pl-5">
+            <li>
+              <strong className="text-gray-200">Cobertura mínima:</strong> al menos 6 de las 9
+              métricas de calidad (ROIC, CFROI aproximado, FCF margin 5y, owner earnings 5y,
+              márgenes 5y, ROE 5y, ROA 5y, capex/DA, MOAT V2).
+            </li>
+            <li>
+              <strong className="text-gray-200">Consistencia de beneficios</strong> (Graham /
+              Buffett): beneficio neto positivo en al menos 4 de los últimos 5 ejercicios con
+              datos; con menos de 4 años de datos no hay evidencia suficiente.
+            </li>
+            <li>
+              <strong className="text-gray-200">Deuda:</strong> ND/EBITDA &lt; 3 cuando la métrica
+              existe (hoy cobertura US; en EUR se declara missing y no se aplica, nunca se inventa).
+            </li>
+            <li>
+              <strong className="text-gray-200">Filtro de calidad por rama sectorial:</strong> el
+              ROIC/CFROI no es significativo en bancos y aseguradoras (Greenblatt las excluye de la
+              Magic Formula por la misma razón). Financieras: ROE 5y &gt; coste de equity, con la
+              aproximación declarada de usar el WACC almacenado como proxy del coste de equity.
+              Resto: ROIC &gt; WACC y CFROI &gt; WACC.
+            </li>
+            <li>
+              <strong className="text-gray-200">Ranking:</strong> cada componente se convierte a
+              percentil sobre el universo y se pondera: spread ROIC-WACC 25%, spread CFROI-WACC
+              15%, MOAT V2 20%, ROE 5y 10%, FCF margin 5y 10%, crecimiento de ingresos (CAGR) 10%,
+              owner earnings 5y 5%, conversión FCF 5%. Si un componente no aplica o falta, los pesos
+              se renormalizan y queda declarado.
+            </li>
+          </ul>
+          <p>
+            <strong className="text-gray-200">Lo que v1 NO incluye todavía:</strong> valoración
+            (FCF yield / earnings yield) y momentum — ambos necesitan series de precios que aún no
+            están persistidas. Cada ejecución del embudo se guarda completa (runs y candidatos,
+            incluidos los descartados con sus motivos), así que el histórico y el diff entra/sale
+            son auditables.
+          </p>
+        </div>
+      </section>
+
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Marco de calidad (MOAT)</h2>
           <Badge className="sm:ml-auto" variant="outline">
