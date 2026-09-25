@@ -621,3 +621,145 @@ def test_cfroi_approx_is_declared_and_never_confused_with_cfroi_v1():
     finally:
         db.close()
         cleanup_metric_test_artifacts()
+
+
+def add_owner_year_facts(db, company: Company, years: list[int], capex: str = "-80") -> None:
+    for year in years:
+        period = f"FY{year}"
+        add_fact(db, company, "depreciation_amortization", "100", period, year)
+        add_fact(db, company, "capital_expenditure", capex, period, year)
+
+
+def add_wacc_facts(db, company: Company) -> None:
+    add_fact(db, company, "risk_free_rate", "0.04", "2025-12-31", 2025, None)
+    add_fact(db, company, "beta", "1.2", "2025-12-31", 2025, None)
+    add_fact(db, company, "equity_risk_premium", "0.05", "2025-12-31", 2025, None)
+    add_fact(db, company, "country_risk_premium", "0.01", "2025-12-31", 2025, None)
+    add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None)
+    add_fact(db, company, "interest_expense", "30", "FY2025", 2025)
+    add_fact(db, company, "effective_tax_rate", "0.25", "FY2025", 2025)
+
+
+def test_owner_earnings_5y_mean_of_annual_values():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        db.commit()
+
+        result = MetricCalculationService().calculate(db, company, "owner_earnings_5y", persist=True)
+        assert result.status == "ok"
+        assert result.definition_version == "OWNER_EARNINGS_5Y_V1"
+        # 200 NI + 100 D&A - min(80, 100) = 220 cada ano
+        assert result.value == Decimal("220.00000000")
+        assert result.period == "FY2021-FY2025"
+        assert result.calculation_trace["coverage"] == "5/5"
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_owner_earnings_5y_requires_minimum_history():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2024, 2025])
+        add_owner_year_facts(db, company, [2024, 2025])
+        db.commit()
+
+        result = MetricCalculationService().calculate(db, company, "owner_earnings_5y", persist=True)
+        assert result.status == "unavailable"
+        assert result.calculation_trace["reason"] == "insufficient_history"
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_capex_to_da_5y_uses_absolute_capex():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025], capex="-150")
+        db.commit()
+
+        result = MetricCalculationService().calculate(db, company, "capex_to_da_5y", persist=True)
+        assert result.status == "ok"
+        assert result.definition_version == "CAPEX_TO_DA_5Y_V1"
+        assert result.value == Decimal("1.50000000")
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_quality_moat_score_v2_full_pass_and_partial():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        add_fact(db, company, "operating_income", "300", "FY2025", 2025)
+        add_fact(db, company, "total_debt", "500", "FY2025", 2025)
+        add_fact(db, company, "cash_and_equivalents", "100", "FY2025", 2025)
+        add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
+        add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
+        db.commit()
+
+        service = MetricCalculationService()
+
+        partial = service.calculate(db, company, "quality_moat_score_v2", persist=True)
+        db.commit()
+        assert partial.status == "partial"
+        assert partial.definition_version == "MARCO_NICO_V2"
+        checks = {c["check"]: c for c in partial.calculation_trace["checks"]}
+        assert len(checks) == 8
+        assert checks["owner_earnings_5y_positive"]["passed"] is True
+        assert checks["capex_to_da_5y_le_150pct"]["passed"] is True
+        assert checks["roic_gt_wacc"]["passed"] is None
+        assert checks["cfroi_approx_gt_wacc"]["passed"] is None
+        assert partial.value == Decimal("6")
+
+        add_wacc_facts(db, company)
+        db.commit()
+
+        full = service.calculate(db, company, "quality_moat_score_v2", persist=True)
+        db.commit()
+        assert full.status == "ok"
+        assert full.value == Decimal("8")
+        full_checks = {c["check"]: c for c in full.calculation_trace["checks"]}
+        assert full_checks["cfroi_approx_gt_wacc"]["passed"] is True
+        assert full_checks["roic_gt_wacc"]["passed"] is True
+        assert full.calculation_trace["checks_evaluable"] == 8
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_quality_moat_score_v2_capex_intensity_fails_when_heavy():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025], capex="-300")
+        add_fact(db, company, "operating_income", "300", "FY2025", 2025)
+        add_fact(db, company, "total_debt", "500", "FY2025", 2025)
+        add_fact(db, company, "cash_and_equivalents", "100", "FY2025", 2025)
+        add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
+        add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
+        db.commit()
+
+        result = MetricCalculationService().calculate(db, company, "quality_moat_score_v2", persist=True)
+        checks = {c["check"]: c for c in result.calculation_trace["checks"]}
+        # |capex|/D&A = 3.0 > 1.5: el check de disciplina de capital falla
+        assert checks["capex_to_da_5y_le_150pct"]["passed"] is False
+        # owner earnings: 200 + 100 - min(300, 100) = 200 > 0, sigue pasando
+        assert checks["owner_earnings_5y_positive"]["passed"] is True
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
