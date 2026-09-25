@@ -119,3 +119,77 @@ async def _test_build_marks_failed_entity_lookup_unresolved_not_guessed_impl(tmp
     assert manifest["issuers"] == {}
     assert manifest["unresolved"][LEI_UNKNOWN] == "<entity lookup failed>"
     assert not list((tmp_path / "snapshots").iterdir()) if (tmp_path / "snapshots").exists() else True
+
+
+def _doc(revenue_val: str, start: str, end: str, lei: str = LEI_ITX) -> dict:
+    return {
+        "facts": {
+            "fact-1": {
+                "value": revenue_val,
+                "decimals": 0,
+                "dimensions": {
+                    "concept": "ifrs-full:Revenue",
+                    "entity": f"scheme:{lei}",
+                    "period": f"{start}T00:00:00/{end}T00:00:00",
+                    "unit": "iso4217:EUR",
+                },
+            }
+        }
+    }
+
+
+def test_filings_per_lei_picks_newest_distinct_periods_up_to_max():
+    from build_esef_snapshots import filings_per_lei
+
+    filings = [
+        _filing(LEI_ITX, "2024-12-31"),
+        _filing(LEI_ITX, "2024-12-31"),  # duplicado de periodo: se ignora
+        _filing(LEI_ITX, "2023-12-31"),
+        _filing(LEI_ITX, "2022-12-31"),
+        _filing(LEI_ITX, "2021-12-31"),
+        _filing(LEI_ITX, "2020-12-31"),
+        _filing(LEI_ITX, "2019-12-31"),  # fuera con max 5
+        _filing(LEI_ITX, "2018-12-31", with_json=False),  # sin json: nunca
+    ]
+    chosen = filings_per_lei(filings, max_filings=5)[LEI_ITX]
+    assert [f.period_end for f in chosen] == [
+        "2024-12-31",
+        "2023-12-31",
+        "2022-12-31",
+        "2021-12-31",
+        "2020-12-31",
+    ]
+
+
+def test_merge_facts_dedupes_and_newest_filing_wins_restatements():
+    from build_esef_snapshots import merge_facts
+    from app.services.connectors.esef import normalize_xbrl_json
+
+    newest = normalize_xbrl_json(_doc("1100", "2024-01-01", "2025-01-01"))
+    older = normalize_xbrl_json(_doc("1000", "2024-01-01", "2025-01-01"))
+    older_year = normalize_xbrl_json(_doc("900", "2023-01-01", "2024-01-01"))
+    merged = merge_facts([newest, older, older_year])
+    entries = merged["ifrs-full:Revenue"]["iso4217:EUR"]
+    assert len(entries) == 2
+    by_end = {e["end"]: e["val"] for e in entries}
+    assert by_end["2025-01-01"] == "1100"  # reexpresion del filing reciente
+    assert by_end["2024-01-01"] == "900"
+
+
+def test_build_merges_multiple_filings_into_one_snapshot(tmp_path):
+    class MultiDocClient(FakeClient):
+        async def fetch_filing_json(self, filing):
+            docs = {
+                "2024-12-31": _doc("1100", "2024-01-01", "2025-01-01"),
+                "2023-12-31": _doc("900", "2023-01-01", "2024-01-01"),
+            }
+            return docs[filing.period_end]
+
+    filings = [_filing(LEI_ITX, "2024-12-31"), _filing(LEI_ITX, "2023-12-31")]
+    client = MultiDocClient(filings, {LEI_ITX: "INDUSTRIA DE DISEÑO TEXTIL, S.A."}, {})
+    manifest = asyncio.run(build(tmp_path, "ES", "2026-09-25", client))
+    entry = manifest["issuers"][LEI_ITX]
+    assert entry["periods"] == ["2024-12-31", "2023-12-31"]
+    snapshot = json.loads((tmp_path / "snapshots" / f"{LEI_ITX}.json").read_text())
+    entries = snapshot["facts"]["ifrs-full:Revenue"]["iso4217:EUR"]
+    assert {e["end"] for e in entries} == {"2025-01-01", "2024-01-01"}
