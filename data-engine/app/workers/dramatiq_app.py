@@ -341,7 +341,7 @@ def evaluate_alert_rules(
         db.close()
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000)
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name="prices")
 def refresh_market_pipeline(
     tenant_id: int | None = None,
     user_id: str | None = None,
@@ -373,7 +373,7 @@ def refresh_market_pipeline(
         db.close()
 
 
-@dramatiq.actor(max_retries=1, min_backoff=30_000)
+@dramatiq.actor(max_retries=1, min_backoff=30_000, queue_name="prices")
 def refresh_portfolio_prices_intraday(
     tenant_id: int | None = None,
     user_id: str | None = None,

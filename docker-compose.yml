@@ -251,7 +251,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: ["dramatiq", "app.workers.dramatiq_app"]
+    command: ["dramatiq", "app.workers.dramatiq_app", "-Q", "default", "prices"]
 
   # ==========================================
   # Scheduler - recurring research jobs

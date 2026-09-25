@@ -189,7 +189,7 @@ services:
     image: cavaai-backend:prod
     container_name: cavaai-worker
     restart: unless-stopped
-    command: ["dramatiq", "app.workers.dramatiq_app", "--processes", "1", "--threads", "2"]
+    command: ["dramatiq", "app.workers.dramatiq_app", "--processes", "1", "--threads", "2", "-Q", "default", "prices"]
     environment:
       - PYTHONUNBUFFERED=1
       # Solo adiciones de mapeo: el worker ejecuta los actores (refresh de
