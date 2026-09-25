@@ -1,11 +1,13 @@
 """Genera snapshots ESEF (xBRL-JSON normalizado) para emisores IBEX reviewed.
 
 Fuente: filings.xbrl.org (indice ESEF de XBRL International, gratuito, sin key).
-Para cada LEI con filings ES se toma el filing MAS RECIENTE con json_url y se
-normaliza a un layout tipo companyfacts. Solo se construyen snapshots de
-emisores cuyo nombre legal resuelve contra la tabla REVIEWED de cnmv_mapping:
-ningun ticker se asigna por aproximacion; los no resueltos quedan listados en
-el manifest como "unresolved", nunca inventados.
+Para cada LEI con filings ES se toman los N filings mas recientes con json_url
+(--max-filings, por defecto 5: historia real de ~5 ejercicios) y se normalizan
+a un layout tipo companyfacts, fusionando con dedup por (concepto, unidad,
+start, end): ante reexpresiones gana el filing mas reciente. Solo se construyen
+snapshots de emisores cuyo nombre legal resuelve contra la tabla REVIEWED de
+cnmv_mapping: ningun ticker se asigna por aproximacion; los no resueltos quedan
+listados en el manifest como "unresolved", nunca inventados.
 
 Uso:
     python scripts/build_esef_snapshots.py --out data/esef_snapshots \
@@ -43,14 +45,49 @@ def latest_filing_per_lei(filings: list[EsefFiling]) -> dict[str, EsefFiling]:
     return best
 
 
-async def build(out: Path, country: str, fetched_at: str, client: EsefClient) -> dict:
+def filings_per_lei(filings: list[EsefFiling], max_filings: int = 5) -> dict[str, list[EsefFiling]]:
+    """Hasta max_filings filings por LEI: period_end distintos, mas reciente
+    primero, solo con json_url. La historia de 5y de las metricas windowed
+    sale de aqui; sin filings antiguos esas metricas quedan honestamente
+    insufficient_history."""
+    selected: dict[str, list[EsefFiling]] = {}
+    for f in sorted(filings, key=lambda x: x.period_end or "", reverse=True):
+        if not f.json_url:
+            continue
+        chosen = selected.setdefault(f.lei, [])
+        if len(chosen) >= max_filings or any(c.period_end == f.period_end for c in chosen):
+            continue
+        chosen.append(f)
+    return selected
+
+
+def merge_facts(normalized_docs: list[dict]) -> dict:
+    """Fusiona facts normalizados de varios filings (mas reciente primero).
+    Dedup por (concepto, unidad, start, end): el filing mas reciente gana
+    porque recoge las reexpresiones."""
+    merged: dict = {}
+    seen: set = set()
+    for facts in normalized_docs:
+        for concept, units in facts.items():
+            for unit, entries in units.items():
+                bucket = merged.setdefault(concept, {}).setdefault(unit, [])
+                for entry in entries:
+                    key = (concept, unit, entry.get("start"), entry.get("end"))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    bucket.append(entry)
+    return merged
+
+
+async def build(out: Path, country: str, fetched_at: str, client: EsefClient, max_filings: int = 5) -> dict:
     filings = await client.list_all_filings(country)
-    latest = latest_filing_per_lei(filings)
+    selected = filings_per_lei(filings, max_filings)
     (out / "snapshots").mkdir(parents=True, exist_ok=True)
 
     issuers: dict[str, dict] = {}
     unresolved: dict[str, str] = {}
-    for lei, filing in sorted(latest.items()):
+    for lei, issuer_filings in sorted(selected.items()):
         try:
             name = await client.get_entity_name(lei)
         except EsefError:
@@ -59,15 +96,21 @@ async def build(out: Path, country: str, fetched_at: str, client: EsefClient) ->
         if issuer is None:
             unresolved[lei] = name or "<entity lookup failed>"
             continue
-        doc = await client.fetch_filing_json(filing)
-        facts = normalize_xbrl_json(doc)
+        normalized_docs = []
+        for filing in issuer_filings:
+            doc = await client.fetch_filing_json(filing)
+            normalized_docs.append(normalize_xbrl_json(doc))
+        facts = merge_facts(normalized_docs)
+        latest = issuer_filings[0]
+        periods = [f.period_end for f in issuer_filings]
         payload = {
             "lei": lei,
             "ticker": issuer.ticker,
             "entity_name": name,
-            "period_end": filing.period_end,
-            "fxo_id": filing.fxo_id,
-            "sha256": filing.sha256,
+            "period_end": latest.period_end,
+            "periods": periods,
+            "fxo_id": latest.fxo_id,
+            "sha256": latest.sha256,
             "fetched_at": fetched_at,
             "facts": facts,
         }
@@ -76,12 +119,13 @@ async def build(out: Path, country: str, fetched_at: str, client: EsefClient) ->
         issuers[lei] = {
             "ticker": issuer.ticker,
             "entity_name": name,
-            "period_end": filing.period_end,
-            "fxo_id": filing.fxo_id,
-            "sha256": filing.sha256,
+            "period_end": latest.period_end,
+            "periods": periods,
+            "fxo_id": latest.fxo_id,
+            "sha256": latest.sha256,
         }
         n = sum(len(u) for c in facts.values() for u in c.values())
-        print(f"{issuer.ticker} ({name}): {len(facts)} conceptos, {n} entradas, period {filing.period_end} -> {path}")
+        print(f"{issuer.ticker} ({name}): {len(facts)} conceptos, {n} entradas, {len(periods)} filings, period {latest.period_end} -> {path}")
 
     manifest = {
         "issuers": dict(sorted(issuers.items())),
@@ -99,8 +143,10 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--country", default="ES")
     parser.add_argument("--fetched-at", required=True, help="Fecha de captura (provenance).")
+    parser.add_argument("--max-filings", type=int, default=5,
+                        help="Filings mas recientes por emisor (historia ~5 ejercicios).")
     args = parser.parse_args()
-    asyncio.run(build(Path(args.out), args.country, args.fetched_at, EsefClient()))
+    asyncio.run(build(Path(args.out), args.country, args.fetched_at, EsefClient(), args.max_filings))
     return 0
 
 
