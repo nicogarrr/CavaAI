@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Protocol
+from typing import Callable, Protocol
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ from app.services.connectors.ecb import ECBClient, ECBRates
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.fmp import FMPClient
 from app.services.portfolio_fx_service import PortfolioFXService
+from app.services.propicks_price_service import yahoo_symbol
 from app.services.portfolio_ledger_service import PortfolioLedgerService
 from app.services.risk_service import RiskService
 from app.services.screener_service import ScreenerService
@@ -114,6 +115,79 @@ class PublicPriceProvider:
         return company, None, {"ticker": company.ticker, "reason": reason}
 
 
+YahooIntradayFetcher = Callable[[list[str]], dict[str, "tuple[Decimal, date]"]]
+
+
+def fetch_intraday_yahoo(symbols: list[str]) -> dict[str, tuple[Decimal, date]]:
+    """Ultimo precio intradia (velas de 15 min) via yfinance. Aislado para tests."""
+    import yfinance as yf
+
+    if not symbols:
+        return {}
+    frame = yf.download(
+        " ".join(symbols),
+        period="1d",
+        interval="15m",
+        group_by="ticker",
+        threads=True,
+        progress=False,
+        auto_adjust=False,
+    )
+    latest: dict[str, tuple[Decimal, date]] = {}
+    for symbol in symbols:
+        try:
+            try:
+                closes = frame[(symbol, "Close")]
+            except KeyError:
+                closes = frame["Close"]
+            closes = closes.dropna()
+            if closes.empty:
+                continue
+            value = Decimal(str(round(float(closes.iloc[-1]), 4)))
+            day = closes.index[-1].date()
+            if value > 0:
+                latest[symbol] = (value, day)
+        except (KeyError, IndexError):
+            continue
+    return latest
+
+
+class YahooIntradayPriceProvider:
+    """Precios intradia (retardo ~15 min) via Yahoo Finance: gratis, sin key.
+
+    Una sola descarga por lote (yfinance agrupa los tickers), asi el coste
+    no crece con el numero de posiciones. Pensado para el refresco de 15
+    minutos de la cartera durante la sesion US (F17).
+    """
+
+    def __init__(self, fetcher: YahooIntradayFetcher | None = None) -> None:
+        self.fetcher = fetcher or fetch_intraday_yahoo
+
+    async def fetch(
+        self, companies: list[Company], *, as_of: date
+    ) -> tuple[dict[str, PriceObservation], list[dict]]:
+        yahoo_by_ticker = {company.ticker: yahoo_symbol(company) for company in companies}
+        ticker_by_yahoo = {symbol: ticker for ticker, symbol in yahoo_by_ticker.items()}
+        try:
+            latest = await asyncio.to_thread(self.fetcher, sorted(ticker_by_yahoo))
+        except Exception as exc:
+            return {}, [{"provider": "yahoo", "reason": f"{type(exc).__name__}:{exc}"}]
+        observations: dict[str, PriceObservation] = {}
+        for symbol, (value, day) in latest.items():
+            ticker = ticker_by_yahoo.get(symbol)
+            if ticker is None:
+                continue
+            observations[ticker] = PriceObservation(
+                ticker=ticker, price=value, price_date=day, source="yahoo_finance_intraday"
+            )
+        errors = [
+            {"ticker": company.ticker, "reason": "yahoo_sin_precio_intradia"}
+            for company in companies
+            if company.ticker not in observations
+        ]
+        return observations, errors
+
+
 class ECBFXProvider:
     async def fetch(self, *, base_currency: str, quote_currencies: set[str]) -> ECBRates:
         return await ECBClient().conversion_rates(
@@ -132,7 +206,13 @@ class MarketRefreshService:
         self.fx_provider = fx_provider or ECBFXProvider()
         self.settings = get_settings()
 
-    async def refresh(self, db: Session, *, as_of: date | None = None) -> dict:
+    async def refresh(
+        self,
+        db: Session,
+        *,
+        as_of: date | None = None,
+        companies: list[Company] | None = None,
+    ) -> dict:
         if db.info.get("tenant_id") is None:
             raise ValueError("Tenant context is required for market refresh")
         as_of = as_of or date.today()
@@ -145,7 +225,8 @@ class MarketRefreshService:
         # Prices feed the screener and company alerts as well as the portfolio,
         # so refresh the complete tenant company universe. FX and revaluation
         # remain position-specific in the following stages.
-        companies = list(db.scalars(select(Company).order_by(Company.ticker)).all())
+        if companies is None:
+            companies = list(db.scalars(select(Company).order_by(Company.ticker)).all())
         stages: list[dict] = []
 
         observations, price_errors = await self.price_provider.fetch(companies, as_of=as_of)

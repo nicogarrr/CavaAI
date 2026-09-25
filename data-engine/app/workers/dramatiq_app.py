@@ -374,6 +374,72 @@ def refresh_market_pipeline(
 
 
 @dramatiq.actor(max_retries=1, min_backoff=30_000)
+def refresh_portfolio_prices_intraday(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """F17: refresco intradia (15 min, Yahoo) solo de tickers con posiciones.
+
+    A diferencia del refresh horario (universo completo del tenant), aqui
+    solo se piden precios de las empresas con posiciones abiertas: el coste
+    por ciclo es minimo y aguanta la cadencia de 15 minutos.
+    """
+    from sqlalchemy import select as _select
+
+    from app.models import Company, Position
+    from app.services.market_refresh_service import (
+        MarketRefreshService,
+        YahooIntradayPriceProvider,
+    )
+
+    lease = acquire_job_lease(
+        f"refresh_portfolio_prices_intraday:{tenant_id}",
+        ttl_seconds=900,
+        redis_url=_lease_redis_url(),
+    )
+    if lease is None:
+        return {
+            "status": "skipped",
+            "actor": "refresh_portfolio_prices_intraday",
+            "reason": "lease_held",
+        }
+    db = _session(tenant_id, user_id)
+    try:
+        companies = list(
+            db.scalars(
+                _select(Company)
+                .join(Position, Position.company_id == Company.id)
+                .distinct()
+                .order_by(Company.ticker)
+            ).all()
+        )
+        if not companies:
+            return {
+                "actor": "refresh_portfolio_prices_intraday",
+                "status": "skipped",
+                "reason": "no_positions",
+            }
+        result = _run(
+            MarketRefreshService(price_provider=YahooIntradayPriceProvider()).refresh(
+                db, companies=companies
+            )
+        )
+        return {"actor": "refresh_portfolio_prices_intraday", **result}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error(
+            "refresh_portfolio_prices_intraday", exc, tenant_id=tenant_id
+        )
+    finally:
+        release_job_lease(
+            f"refresh_portfolio_prices_intraday:{tenant_id}",
+            lease,
+            redis_url=_lease_redis_url(),
+        )
+        db.close()
+
+
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
 def refresh_propicks_prices(
     tenant_id: int | None = None,
     user_id: str | None = None,
