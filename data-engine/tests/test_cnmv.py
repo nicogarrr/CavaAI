@@ -45,7 +45,7 @@ def test_mapping_exact_forms_resolve():
 def test_mapping_unknown_is_unavailable_not_guessed():
     assert resolve_issuer("") is None
     assert resolve_issuer("IND") is None            # partial legal name: no guessing
-    assert resolve_issuer("GRIFOLS") is None        # not reviewed yet
+    assert resolve_issuer("DEOLEO") is None          # not reviewed yet
     assert resolve_issuer("AAPL") is None           # US ticker: out of scope
     assert resolve_issuer("  ") is None
 

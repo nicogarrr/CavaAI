@@ -37,13 +37,8 @@ def test_unmapped_ticker_is_unavailable_never_guessed():
 
 def test_mapped_ticker_filters_by_nif(monkeypatch):
     _fixture_client(monkeypatch)
-    # fixture entities are not in the reviewed table; add Viscofan temporarily
-    from app.services import cnmv_mapping
-
-    viscofan = cnmv_mapping.CNMVIssuer("VIS", "VISCOFAN, S.A.", "A-31065501", "ES0184262212")
-    monkeypatch.setattr(
-        cnmv_mapping, "REVIEWED_ISSUERS", cnmv_mapping.REVIEWED_ISSUERS + (viscofan,)
-    )
+    # Viscofan esta en la tabla revisada (tanda 1, 2026-09-25, verificada
+    # contra datosentidad + ancv/isin de CNMV).
     result = cnmv_service.get_oir_for_ticker("VIS")
     assert result["status"] == "ok"
     assert result["legal_name"] == "VISCOFAN, S.A."
