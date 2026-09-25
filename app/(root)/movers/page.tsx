@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
 
 import { getMarketMovers, type MarketMover } from '@/lib/actions/market.actions';
-import { formatMoney, formatNumber, formatPercent } from '@/lib/format';
+import { formatNumber, formatPercent, formatPrice } from '@/lib/format';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 
@@ -25,7 +25,7 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
   }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[560px] text-left text-sm">
+      <table className="w-full text-left text-sm">
         <caption className="sr-only">{caption}</caption>
         <thead className="text-xs uppercase text-gray-500">
           <tr>
@@ -42,9 +42,11 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
                 <Link className="font-semibold text-teal-300 hover:text-teal-200" href={`/research/${row.ticker}`}>
                   {row.ticker}
                 </Link>
-                <div className="text-xs text-gray-500">{row.name}</div>
+                {row.name && row.name.trim().toUpperCase() !== row.ticker.trim().toUpperCase() ? (
+                  <div className="max-w-40 truncate text-xs text-gray-500" title={row.name}>{row.name}</div>
+                ) : null}
               </td>
-              <td className="py-3 text-right text-gray-300">{formatMoney(row.price, safeCurrency(row.currency))}</td>
+              <td className="py-3 text-right whitespace-nowrap text-gray-300">{formatPrice(row.price, safeCurrency(row.currency))}</td>
               <td className={`py-3 text-right font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
               </td>
