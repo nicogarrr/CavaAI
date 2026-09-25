@@ -18,7 +18,6 @@ export default async function ProPicksPage() {
         getAvailableStrategies(),
     ]);
 
-    const currentMonth = new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
     const generatedAt = new Date().toISOString();
 
     return (
@@ -30,15 +29,16 @@ export default async function ProPicksPage() {
                     <div className="min-w-0">
                         <h1 className="break-words text-2xl font-bold text-gray-100 sm:text-3xl">ProPicks IA</h1>
                         <p className="text-gray-400 mt-1">
-                            Selección de acciones por Inteligencia Artificial - {currentMonth}
+                            Selección vigente del último run del embudo, con la fecha de datos en cada tarjeta
                         </p>
                     </div>
                 </div>
                 <p className="text-sm text-gray-500">
-                    Nuestro sistema analiza más de 100 métricas financieras, compara con pares
-                    y utiliza IA para identificar las mejores oportunidades.
-                    La selección se rebalancea el día 1 de cada mes en 4 estrategias
-                    (adaptativa, value, momentum y defensiva), con backtest neto de costes.
+                    El embudo evalúa el universo completo de acciones con datos point-in-time
+                    (solo lo que era público en cada fecha) y publica aquí la selección del
+                    último run. El backtest es walk-forward: cada corte mensual usa solo
+                    información disponible en ese corte, con costes de 15 pb por operación
+                    y SPY como referencia.
                 </p>
             </div>
 
