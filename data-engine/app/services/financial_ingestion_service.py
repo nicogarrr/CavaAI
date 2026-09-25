@@ -309,10 +309,30 @@ class FinancialIngestionService:
             for concept in concepts:
                 concept_data = us_gaap.get(concept, {})
                 entries = concept_data.get("units", {}).get(xbrl_unit_key, [])
-                annual = [
-                    e for e in entries
-                    if e.get("fp") == "FY" and e.get("form") in {"10-K", "20-F"}
-                ]
+                annual = []
+                for e in entries:
+                    if e.get("fp") != "FY" or e.get("form") not in {"10-K", "20-F"}:
+                        continue
+                    # fp="FY" NO garantiza hecho anual: los 10-K incluyen
+                    # segmentos trimestrales etiquetados FY (caso real AAPL
+                    # FY2020: revenue 2020-03-28 de 91 dias colado como anual).
+                    # Regla (igual que en la via ESEF): anual = 300-380 dias.
+                    # Los hechos instantaneos (balance: sin `start`) pasan
+                    # igual que antes; el filtro solo aplica a hechos de flujo.
+                    start = e.get("start")
+                    if start:
+                        try:
+                            from datetime import date as _date
+
+                            span = (
+                                _date.fromisoformat(str(e["end"]))
+                                - _date.fromisoformat(str(start))
+                            ).days
+                        except (TypeError, ValueError):
+                            continue
+                        if not 300 <= span <= 380:
+                            continue
+                    annual.append(e)
                 # OJO: `fy` es el ANIO DEL FILING, no el del periodo. Un 10-K
                 # de FY2025 trae revenue de 2025, 2024 y 2023; el ano fiscal
                 # correcto es el del `end`. Ante re-presentaciones del mismo
