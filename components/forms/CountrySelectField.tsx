@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Control, Controller, FieldError } from 'react-hook-form';
+import { Control, Controller, FieldError, FieldValues, Path } from 'react-hook-form';
 import {
     Popover,
     PopoverContent,
@@ -22,10 +22,10 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import countryList from 'react-select-country-list';
 
-type CountrySelectProps = {
-    name: string;
+type CountrySelectProps<TFieldValues extends FieldValues = FieldValues> = {
+    name: Path<TFieldValues>;
     label: string;
-    control: Control<any>;
+    control: Control<TFieldValues, any, any>;
     error?: FieldError;
     required?: boolean;
 };
@@ -124,13 +124,13 @@ const CountrySelect = ({
     );
 };
 
-export const CountrySelectField = ({
+export const CountrySelectField = <TFieldValues extends FieldValues = FieldValues>({
                                        name,
                                        label,
                                        control,
                                        error,
                                        required = false,
-                                   }: CountrySelectProps) => {
+                                   }: CountrySelectProps<TFieldValues>) => {
     const errorId = `${name}-error`;
     const hintId = `${name}-hint`;
     return (
