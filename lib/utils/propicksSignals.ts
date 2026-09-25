@@ -289,7 +289,7 @@ async function shortInterestOverlay(symbol: string, cutoffDay: string): Promise<
                 return {
                     factor: 'shortInterest',
                     impact,
-                    detail: `Interés en corto FINRA de ${cached.si.toLocaleString('en-US')} acciones a ${cached.settle} (valor ${cached.si})`,
+                    detail: `Interés en corto FINRA de ${cached.si.toLocaleString('es-ES')} acciones a ${cached.settle} (valor ${cached.si})`,
                     metric: 'ov_shortInterest',
                     value: cached.si,
                     asOf: cutoffDay,
@@ -313,7 +313,7 @@ async function shortInterestOverlay(symbol: string, cutoffDay: string): Promise<
                     return {
                         factor: 'shortInterest',
                         impact,
-                        detail: `Interés en corto FINRA de ${parsed.si.toLocaleString('en-US')} acciones a ${parsed.settle} (valor ${parsed.si})`,
+                        detail: `Interés en corto FINRA de ${parsed.si.toLocaleString('es-ES')} acciones a ${parsed.settle} (valor ${parsed.si})`,
                         metric: 'ov_shortInterest',
                         value: parsed.si,
                         asOf: cutoffDay,
