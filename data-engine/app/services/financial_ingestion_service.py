@@ -11,6 +11,7 @@ from app.models import Company, Document, FinancialFact, FinancialStatement, Mar
 from app.services.connectors import fred as fred_connector
 from app.services.connectors import sec_edgar as sec_edgar_connector
 from app.services.connectors import esef as esef_connector
+from app.services.fact_chunk_service import sync_company_fact_chunks
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.sec import SECClient
 
@@ -410,6 +411,8 @@ class FinancialIngestionService:
         except Exception:
             free_data = {"status": "unavailable", "recent_filings": [], "macro": None}
         document.metadata_ = {**(document.metadata_ or {}), "free_data": free_data}
+        # Chunks RAG desde los hechos persistidos (ver refresh_from_esef).
+        sync_company_fact_chunks(db, company)
         db.commit()
 
         return {
@@ -500,6 +503,9 @@ class FinancialIngestionService:
             "snapshot_fetched_at": snapshot.get("fetched_at"),
             "last_refreshed_at": datetime.now(UTC).isoformat(),
         }
+        # Chunks RAG desde los hechos persistidos (documento parseado no existe:
+        # el snapshot es XBRL, no texto). Sin esto rebuild_tenant no indexa nada.
+        sync_company_fact_chunks(db, company)
         db.commit()
 
         return {
