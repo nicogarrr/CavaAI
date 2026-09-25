@@ -174,15 +174,21 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
 
                             <div className="mb-4">
                                 <p className="text-3xl font-bold text-white">
-                                    {formatMoney(summary.totalValue)}
+                                    {formatMoney(summary.totalValue, summary.baseCurrency)}
                                 </p>
+                                {summary.holdings.length === 0 ? (
+                                    <p className="text-sm text-gray-500">
+                                        Sin posiciones todavía: el rendimiento aparecerá cuando registres la primera.
+                                    </p>
+                                ) : (
                                 <p className={`text-sm flex items-center gap-1 ${summary.totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                     {summary.totalGain >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                                     {summary.totalGain >= 0 ? '+' : ''}{summary.totalGainPercent.toFixed(2)}%
                                     <span className="text-gray-500">
-                                        ({summary.totalGain >= 0 ? '+' : ''}{formatMoney(summary.totalGain)})
+                                        ({summary.totalGain >= 0 ? '+' : ''}{formatMoney(summary.totalGain, summary.baseCurrency)})
                                     </span>
                                 </p>
+                                )}
                             </div>
 
                             {/* Gráfico de área */}
