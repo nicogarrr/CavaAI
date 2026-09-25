@@ -12,7 +12,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from math import isfinite
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Company, FinancialFact, MarketPrice
@@ -68,7 +68,7 @@ def load_screener_ratios(db: Session, symbols: set[str], *, today: date | None =
             FinancialFact.fiscal_year >= today.year - _FACT_MAX_AGE_YEARS,
             FinancialFact.source_type.in_(_TRUSTED_SOURCES),
             FinancialFact.is_reported.is_(True),
-            FinancialFact.fiscal_quarter.is_(None),
+            or_(FinancialFact.fiscal_quarter.is_(None), FinancialFact.fiscal_quarter == 'FY'),
         )
         .order_by(FinancialFact.fiscal_year.desc(), FinancialFact.created_at.desc(), FinancialFact.id.desc())
     ).all()
