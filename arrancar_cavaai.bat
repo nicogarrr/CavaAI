@@ -27,6 +27,10 @@ REM no existe).
 REM =====================================================================
 cd /d "%~dp0"
 set "FRONT_MODE=DEV"
+REM Valores por defecto de Postgres (el .bat no carga el .env): si el entorno
+REM no define POSTGRES_USER/POSTGRES_DB, usa los del docker-compose.
+if not defined POSTGRES_USER set "POSTGRES_USER=portfolio"
+if not defined POSTGRES_DB set "POSTGRES_DB=cavaai_research"
 if /i "%~1"=="/prod" set "FRONT_MODE=PROD"
 if /i "%~1"=="prod" set "FRONT_MODE=PROD"
 if /i "%~1"=="--prod" set "FRONT_MODE=PROD"
@@ -41,7 +45,16 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [2/5] Esperando a Qdrant...
+echo [2/5] Esperando a Postgres y Qdrant...
+for /L %%i in (1,1,30) do (
+  docker exec cavaai-postgres pg_isready -U %POSTGRES_USER% -d %POSTGRES_DB% >nul 2>&1 && goto postgres_ok
+  timeout /t 2 /nobreak >nul
+)
+echo ERROR: Postgres no responde a pg_isready tras 60s; NO sigo: las migraciones y el backend fallarian.
+echo Comprueba "docker compose ps postgres" y que POSTGRES_USER/POSTGRES_DB del entorno (o los valores por defecto) coinciden con el .env.
+pause
+exit /b 1
+:postgres_ok
 for /L %%i in (1,1,30) do (
   curl -sf http://localhost:6333/healthz >nul 2>&1 && goto qdrant_ok
   timeout /t 2 /nobreak >nul
@@ -49,7 +62,7 @@ for /L %%i in (1,1,30) do (
 echo AVISO: Qdrant no responde; sigo sin busqueda semantica.
 :qdrant_ok
 
-echo [3/5] Liberando puertos 8000 y 3000 (procesos huerfanos de sesiones anteriores)...
+echo [3/5] Liberando puertos 8000 y 3000 (solo node.exe y python.exe huerfanos de CavaAI)...
 call :free_port 8000
 call :free_port 3000
 
@@ -94,12 +107,17 @@ pause
 goto :eof
 
 REM ---------------------------------------------------------------------
-REM :free_port <puerto> - mata todo proceso en LISTENING sobre el puerto
+REM :free_port <puerto> - mata SOLO node.exe / python.exe en LISTENING sobre
+REM el puerto (evita matar procesos ajenos como IDEs, Docker o antivirus).
 REM ---------------------------------------------------------------------
 :free_port
 set "PORT=%~1"
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":%PORT% .*LISTENING"') do (
-  echo   Liberando puerto %PORT% ^(PID %%p^)...
-  taskkill /F /PID %%p >nul 2>&1
+  for /f "tokens=1" %%n in ('tasklist /FI "PID eq %%p" /FO TABLE /NH 2^>nul') do (
+    echo %%n | findstr /i /c:"node.exe" /c:"python.exe" >nul && (
+      echo   Liberando puerto %PORT% ^(%%n PID %%p^)...
+      taskkill /F /PID %%p >nul 2>&1
+    ) || echo   Puerto %PORT% ocupado por %%n ^(PID %%p^): no lo toco, revisalo manualmente.
+  )
 )
 exit /b 0
