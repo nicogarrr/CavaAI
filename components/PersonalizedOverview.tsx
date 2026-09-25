@@ -54,12 +54,12 @@ type NewsArticle = {
 const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: MarketIndex }) {
     return (
         <Card className="bg-gray-800/40 border-gray-700/50 hover:bg-gray-800/60 transition-colors">
-            <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                    <p className="text-sm text-gray-400 font-medium">{index.name}</p>
+            <CardContent className="p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm text-gray-400 font-medium truncate">{index.name}</p>
                     <p className="text-xl font-bold text-white mt-1">{formatMoney(index.price)}</p>
                 </div>
-                <div className={`text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className={`shrink-0 text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     <div className="flex items-center justify-end gap-1">
                         {index.changePercent >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                         <span className="font-bold">{formatPercent(index.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}</span>
@@ -302,7 +302,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             </div>
 
             {/* Market Indices Ticker */}
-            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
                 {indicesLoading ? (
                     [1, 2, 3, 4].map((i) => <StockCardSkeleton key={i} />)
                 ) : marketIndices.length > 0 ? marketIndices.map((index) => (
