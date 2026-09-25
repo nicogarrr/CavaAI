@@ -1338,6 +1338,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/macro/ecb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ecb Macro
+         * @description Ultimas observaciones de las series macro clave del BCE.
+         *
+         *     Shape alineado con el MacroData del frontend (source/indicator/name/
+         *     value/unit/date) mas change/previousValue cuando hay 2 observaciones.
+         *     Series caidas simplemente no aparecen; nunca se inventan valores.
+         */
+        get: operations["ecb_macro_api_macro_ecb_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/market/candles/{symbol}": {
         parameters: {
             query?: never;
@@ -8816,6 +8840,46 @@ export interface operations {
                 "application/json": components["schemas"]["PrincipleAction"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ecb_macro_api_macro_ecb_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
