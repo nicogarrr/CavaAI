@@ -61,8 +61,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-CavaAI-Tenant", "X-CavaAI-User", "X-CavaAI-Timestamp", "X-CavaAI-Nonce", "X-CavaAI-Method", "X-CavaAI-Path", "X-CavaAI-Body-Hash", "X-CavaAI-Signature"],
 )
 
 private_dependencies = [Depends(get_research_principal), Depends(enforce_rate_limit)]
@@ -124,11 +124,16 @@ def _probe_redis(settings) -> str:
 
 
 def _probe_qdrant(settings) -> str:
-    """Qdrant readiness; un 4xx/5xx nunca se considera una respuesta sana."""
+    """Qdrant liveness; un 4xx/5xx nunca se considera una respuesta sana.
+
+    Unificado con docker-compose (GET /healthz vía bash /dev/tcp).
+    /readyz exigía colecciones/shards listos y marcaba degraded en
+    arranques fríos aunque Qdrant ya aceptaba tráfico.
+    """
     import urllib.request
 
     with urllib.request.urlopen(
-        f"{settings.qdrant_url.rstrip('/')}/readyz",
+        f"{settings.qdrant_url.rstrip('/')}/healthz",
         timeout=HEALTH_READY_TIMEOUT_SECONDS,
     ) as resp:
         return "ok" if resp.status < 500 else f"error:status_{resp.status}"

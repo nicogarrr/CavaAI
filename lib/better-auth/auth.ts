@@ -13,11 +13,15 @@ const createAuthInstance = (database?: ReturnType<typeof mongodbAdapter>) => bet
     baseURL: env.BETTER_AUTH_URL || env.VERCEL_URL || 'http://localhost:3000',
     emailAndPassword: {
         enabled: true,
-        disableSignUp: false,
-        requireEmailVerification: false,
+        // P0: en producción el signup queda cerrado por defecto para evitar
+        // creación masiva de cuentas por bots. Para abrirlo de forma
+        // controlada usa ALLOW_PUBLIC_SIGNUP=true + verificación de email.
+        // En dev/test se mantiene abierto para no friccionar el desarrollo.
+        disableSignUp: process.env.NODE_ENV === 'production' && process.env.ALLOW_PUBLIC_SIGNUP !== 'true',
+        requireEmailVerification: process.env.NODE_ENV === 'production' || process.env.REQUIRE_EMAIL_VERIFICATION === 'true',
         minPasswordLength: 8,
         maxPasswordLength: 128,
-        autoSignIn: true,
+        autoSignIn: !(process.env.NODE_ENV === 'production' && process.env.ALLOW_PUBLIC_SIGNUP !== 'true'),
     },
     // Perfil inversor persistido en el documento `user` de MongoDB.
     // Mongo es schemaless: additionalFields no requiere migraciones SQL,

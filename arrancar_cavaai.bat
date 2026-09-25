@@ -41,7 +41,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [2/5] Esperando a Qdrant...
+echo [2/5] Esperando a Postgres y Qdrant...
+for /L %%i in (1,1,30) do (
+  docker exec cavaai-postgres pg_isready -U %POSTGRES_USER:-portfolio% -d %POSTGRES_DB:-cavaai_research% >nul 2>&1 && goto postgres_ok
+  timeout /t 2 /nobreak >nul
+)
+echo AVISO: Postgres no responde a pg_isready; las migraciones pueden fallar.
+:postgres_ok
 for /L %%i in (1,1,30) do (
   curl -sf http://localhost:6333/healthz >nul 2>&1 && goto qdrant_ok
   timeout /t 2 /nobreak >nul
@@ -49,7 +55,7 @@ for /L %%i in (1,1,30) do (
 echo AVISO: Qdrant no responde; sigo sin busqueda semantica.
 :qdrant_ok
 
-echo [3/5] Liberando puertos 8000 y 3000 (procesos huerfanos de sesiones anteriores)...
+echo [3/5] Liberando puertos 8000 y 3000 (solo node.exe y python.exe huerfanos de CavaAI)...
 call :free_port 8000
 call :free_port 3000
 
@@ -94,12 +100,17 @@ pause
 goto :eof
 
 REM ---------------------------------------------------------------------
-REM :free_port <puerto> - mata todo proceso en LISTENING sobre el puerto
+REM :free_port <puerto> - mata SOLO node.exe / python.exe en LISTENING sobre
+REM el puerto (evita matar procesos ajenos como IDEs, Docker o antivirus).
 REM ---------------------------------------------------------------------
 :free_port
 set "PORT=%~1"
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":%PORT% .*LISTENING"') do (
-  echo   Liberando puerto %PORT% ^(PID %%p^)...
-  taskkill /F /PID %%p >nul 2>&1
+  for /f "tokens=1" %%n in ('tasklist /FI "PID eq %%p" /FO TABLE /NH 2^>nul') do (
+    echo %%n | findstr /i /c:"node.exe" /c:"python.exe" >nul && (
+      echo   Liberando puerto %PORT% ^(%%n PID %%p^)...
+      taskkill /F /PID %%p >nul 2>&1
+    ) || echo   Puerto %PORT% ocupado por %%n ^(PID %%p^): no lo toco, revisalo manualmente.
+  )
 )
 exit /b 0
