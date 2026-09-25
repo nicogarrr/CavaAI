@@ -84,11 +84,14 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
     const formatLastGenerated = (isoString: string | null) => {
         if (!isoString) return null;
         const date = new Date(isoString);
+        // timeZone fija: el SSR corre en UTC y el navegador en Europe/Madrid;
+        // sin ella el texto difiere y React rompe la hidratacion (F23, #418).
         return date.toLocaleString('es-ES', {
             day: 'numeric',
             month: 'short',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            timeZone: 'Europe/Madrid'
         });
     };
 
@@ -344,7 +347,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
 
                                     {pick.asOf && (
                                         <p className="text-[11px] text-gray-500 mb-3">
-                                            Datos al {new Date(pick.asOf).toLocaleDateString('es-ES')}
+                                            Datos al {new Date(pick.asOf).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' })}
                                         </p>
                                     )}
 
