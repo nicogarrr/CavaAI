@@ -97,6 +97,29 @@ def test_per_prefix_limit_lets_document_uploads_through():
     assert response.status_code == 413
 
 
+def test_sources_ingest_file_route_uses_document_limit():
+    """/api/sources/documents/ingest-file valida 15MB en la ruta; el
+    middleware debe dejar pasar ese rango (mas overhead multipart)."""
+    app = FastAPI()
+    app.add_middleware(
+        RawBodyMiddleware,
+        max_body_bytes_by_prefix={"/api/sources/documents/ingest-file": 16 * 1024 * 1024},
+    )
+
+    @app.post("/api/sources/documents/ingest-file")
+    async def ingest(request: Request):
+        body = await request.body()
+        return JSONResponse({"len": len(body)})
+
+    client = TestClient(app)
+    payload = b"x" * (12 * 1024 * 1024)  # 12MB: entre 10 y 16
+    response = client.post("/api/sources/documents/ingest-file", content=payload)
+    assert response.status_code == 200
+    assert response.json()["len"] == len(payload)
+    response = client.post("/api/sources/documents/ingest-file", content=b"x" * (17 * 1024 * 1024))
+    assert response.status_code == 413
+
+
 def test_per_prefix_limit_still_rejects_above_its_cap():
     app = FastAPI()
     app.add_middleware(

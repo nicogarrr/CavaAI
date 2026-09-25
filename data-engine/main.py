@@ -63,6 +63,10 @@ app.add_middleware(
         # middleware le deja pasar hasta 16MB para que sea ella quien
         # responda con su error de validacion, no un 413 generico.
         "/api/knowledge/documents/upload": 16 * 1024 * 1024,
+        # Misma regla para la ingesta de fuentes: la ruta valida el fichero
+        # decodificado contra MAX_DOCUMENT_BYTES (15MB) y el middleware deja
+        # margen de ~1MB para el overhead multipart (boundaries + headers).
+        "/api/sources/documents/ingest-file": 16 * 1024 * 1024,
     },
 )
 app.add_middleware(
