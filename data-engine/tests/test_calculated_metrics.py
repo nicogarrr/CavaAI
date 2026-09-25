@@ -763,3 +763,72 @@ def test_quality_moat_score_v2_capex_intensity_fails_when_heavy():
     finally:
         db.close()
         cleanup_metric_test_artifacts()
+
+
+def test_quality_moat_score_v2_esef_approx_roic_and_wacc_without_debt():
+    """EUR sin deuda desagregable: roic_gt_wacc se evalua con las
+    aproximaciones declaradas ESEF (WACC equity-only, capital invertido
+    assets-cash), solo en V2 y solo para EUR."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        company.currency = "EUR"
+        add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        for year in (2024, 2025):
+            add_fact(db, company, "operating_income", "300", f"FY{year}", year)
+            add_fact(db, company, "cash_and_equivalents", "100", f"FY{year}", year)
+        add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
+        add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
+        add_fact(db, company, "risk_free_rate", "0.04", "2025-12-31", 2025, None)
+        add_fact(db, company, "beta", "1.2", "2025-12-31", 2025, None)
+        add_fact(db, company, "equity_risk_premium", "0.05", "2025-12-31", 2025, None)
+        db.commit()
+
+        result = MetricCalculationService().calculate(db, company, "quality_moat_score_v2", persist=True)
+        checks = {c["check"]: c for c in result.calculation_trace["checks"]}
+        roic_check = checks["roic_gt_wacc"]
+        assert roic_check["passed"] is not None
+        # WACC equity-only = 0.04 + 1.2*0.05 = 0.10; ROIC aprox = NOPAT/(assets-cash)
+        # NOPAT = 300*(1-0.25) = 225; capital medio = 2000-100 = 1900 -> 0.118 > 0.10
+        assert Decimal(roic_check["threshold"]) == Decimal("0.10000000")
+        assert Decimal(roic_check["value"]) == Decimal("0.11842105")
+        assert roic_check["passed"] is True
+        assert roic_check["approximation"]["wacc"]["method"] == "wacc_esef_equity_only"
+        assert roic_check["approximation"]["roic"]["method"] == "roic_approx_esef_assets_menos_caja"
+
+        # La V1 comparte los checks base: SIN la aproximacion (scope V2).
+        v1 = MetricCalculationService().calculate(db, company, "quality_moat_score", persist=False)
+        v1_checks = {c["check"]: c for c in v1.calculation_trace["checks"]}
+        assert v1_checks["roic_gt_wacc"]["passed"] is None
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_quality_moat_score_v2_esef_approx_no_aplica_a_usd():
+    """La aproximacion declarada ESEF no se aplica fuera de EUR."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)  # currency USD por defecto
+        add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        for year in (2024, 2025):
+            add_fact(db, company, "operating_income", "300", f"FY{year}", year)
+            add_fact(db, company, "cash_and_equivalents", "100", f"FY{year}", year)
+        add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
+        add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
+        add_fact(db, company, "risk_free_rate", "0.04", "2025-12-31", 2025, None)
+        add_fact(db, company, "beta", "1.2", "2025-12-31", 2025, None)
+        add_fact(db, company, "equity_risk_premium", "0.05", "2025-12-31", 2025, None)
+        db.commit()
+
+        result = MetricCalculationService().calculate(db, company, "quality_moat_score_v2", persist=True)
+        checks = {c["check"]: c for c in result.calculation_trace["checks"]}
+        assert checks["roic_gt_wacc"]["passed"] is None
+        assert "approximation" not in checks["roic_gt_wacc"]
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
