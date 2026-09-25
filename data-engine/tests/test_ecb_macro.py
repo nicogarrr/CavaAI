@@ -17,6 +17,8 @@ CSV_GAPS = (
     "X.Y,A,,2.0,PCPA\n"
     "X.Y,A,2025,,PCPA\n"
     "X.Y,A,2026,not-a-number,PCPA\n"
+    "X.Y,A,2027,NaN,PCPA\n"
+    "X.Y,A,2028,Infinity,PCPA\n"
 )
 
 
