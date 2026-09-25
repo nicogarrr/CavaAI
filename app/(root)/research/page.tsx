@@ -66,9 +66,9 @@ export default async function ResearchPage() {
       <header className="flex flex-col gap-3 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase text-teal-300">Research OS</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-100">Portfolio Research Desk</h1>
+          <h1 className="mt-1 text-3xl font-bold text-gray-100">Mesa de research de cartera</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            Tesis versionadas, auditoria de fuentes, valoracion determinista, riesgo y workflows conectados al backend Python.
+            Tesis versionadas, auditoría de fuentes, valoración determinista, riesgo y workflows conectados al backend Python.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -127,7 +127,7 @@ export default async function ResearchPage() {
           </div>
           <div className="grid gap-3 text-sm">
             <p className="rounded-md border border-gray-800 bg-black/30 p-3 leading-6 text-gray-300">
-              Toda afirmacion o valoracion exige una fuente trazable con fecha y versionado:
+              Toda afirmación o valoración exige una fuente trazable con fecha y versionado:
               sin evidencia contrastable no se incorpora a la tesis.
             </p>
           </div>

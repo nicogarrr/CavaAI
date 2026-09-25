@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RecordDetail, formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
+import { formatPercent } from '@/lib/format';
 import { getRiskDashboard } from '@/lib/actions/risk.actions';
 
 interface RiskDashboardViewProps {
@@ -63,7 +64,7 @@ function headlineRecord(dashboard: DataRecord | null): DataRecord | null {
 function weightText(position: DataRecord): string {
     const weight = position.weight;
     if (typeof weight === 'number' && Number.isFinite(weight)) {
-        return `${(weight * 100).toFixed(2)}%`;
+        return formatPercent(weight, { fromRatio: true, digits: 2 });
     }
     return '—';
 }
@@ -81,6 +82,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                 record={headlineRecord(initialDashboard)}
                 fetchRecord={async () => headlineRecord(await getRiskDashboard())}
                 maxKeys={32}
+                hiddenKeys={['trace']}
                 emptyMessage="No hay métricas de riesgo disponibles. Comprueba que tu cartera tiene posiciones."
             />
 

@@ -380,7 +380,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                     <h3 className="text-lg font-medium text-white mb-2">Comienza tu viaje</h3>
                                     <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">Añade tu primera inversión para ver análisis y métricas detalladas.</p>
                                     <Link href="/portfolio" className="inline-flex min-h-[44px] items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full transition-colors font-medium">
-                                        Añadir Inversiones
+                                        Añadir inversión
                                     </Link>
                                 </div>
                             )}
