@@ -10,6 +10,13 @@ from app.models import Company, Document, FinancialFact
 from app.services.connectors.fred import FREDClient
 
 
+# Sufijos Yahoo por bolsa (free tier): solo mercados confirmados en prod.
+_YAHOO_SUFFIX_BY_EXCHANGE = {
+    "BME": ".MC",
+    "BOLSA DE MADRID": ".MC",
+}
+
+
 class WaccInputService:
     """Refresh dated, sourced market assumptions used by WACC_STANDARD_V1."""
 
@@ -132,7 +139,7 @@ class WaccInputService:
         # Beta y market cap: yfinance (fuente declarada, confianza menor).
         # Si Yahoo no tiene el ticker, los inputs quedan honestamente
         # ausentes y se reportan en "missing".
-        market = await self._yfinance_market_inputs(company.ticker)
+        market = await self._yfinance_market_inputs(self._yahoo_symbol(company))
         if market:
             market_document = self._source_document(
                 db,
@@ -143,6 +150,7 @@ class WaccInputService:
                     "source": "yfinance Ticker.info",
                     "date": as_of,
                     "ticker": company.ticker,
+                    "yahoo_symbol": self._yahoo_symbol(company),
                     "fields": sorted(market.keys()),
                 },
             )
@@ -252,6 +260,18 @@ class WaccInputService:
             fact.source_id = source.id
             fact.confidence = confidence
         return fact
+
+    @staticmethod
+    def _yahoo_symbol(company: Company) -> str:
+        """Simbolo Yahoo para la empresa: las bolsas espanolas cotizan con
+        sufijo (TEF.MC); sin el, Yahoo devuelve 404 y beta/market cap
+        quedarian siempre ausentes. El simbolo usado queda declarado en el
+        documento fuente."""
+        exchange = (company.exchange or "").strip().upper()
+        suffix = _YAHOO_SUFFIX_BY_EXCHANGE.get(exchange)
+        if suffix and not company.ticker.upper().endswith(suffix):
+            return f"{company.ticker}{suffix}"
+        return company.ticker
 
     async def _yfinance_market_inputs(self, ticker: str) -> dict[str, Decimal]:
         """Beta y marketCap desde Yahoo Finance; {} si no hay datos."""
