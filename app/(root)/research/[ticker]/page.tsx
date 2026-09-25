@@ -297,7 +297,7 @@ function MetricsGrid({ metrics, ticker }: { metrics: ResearchCalculatedMetric[];
           </div>
           <div className="mt-2 text-xl text-teal-300">{metricValue(metric.value, metric.unit)}</div>
           <div className="mt-2 text-xs text-gray-500">{metric.period} · {metric.definition_version}</div>
-          <div className="mt-2 text-xs text-gray-600">{metric.formula}</div>
+          <div className="mt-2 text-xs leading-5 text-gray-400">{metric.formula}</div>
         </div>
       ))}
     </div>
