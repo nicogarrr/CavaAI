@@ -68,3 +68,48 @@ def test_body_exactly_at_limit_accepted():
     response = client.post("/echo", content=b"z" * DEFAULT_LIMIT)
     assert response.status_code == 200
     assert response.json() == {"len": DEFAULT_LIMIT}
+
+
+def test_per_prefix_limit_lets_document_uploads_through():
+    app = FastAPI()
+    app.add_middleware(
+        RawBodyMiddleware,
+        max_body_bytes_by_prefix={"/api/knowledge/documents/upload": 16 * 1024 * 1024},
+    )
+
+    @app.post("/api/knowledge/documents/upload")
+    async def upload(request: Request):
+        body = await request.body()
+        return JSONResponse({"len": len(body)})
+
+    @app.post("/api/other")
+    async def other(request: Request):
+        body = await request.body()
+        return JSONResponse({"len": len(body)})
+
+    client = TestClient(app)
+    payload = b"x" * (12 * 1024 * 1024)  # 12MB: entre 10 y 16
+    response = client.post("/api/knowledge/documents/upload", content=payload)
+    assert response.status_code == 200
+    assert response.json()["len"] == len(payload)
+    # El resto de rutas siguen con el tope global de 10MB:
+    response = client.post("/api/other", content=payload)
+    assert response.status_code == 413
+
+
+def test_per_prefix_limit_still_rejects_above_its_cap():
+    app = FastAPI()
+    app.add_middleware(
+        RawBodyMiddleware,
+        max_body_bytes_by_prefix={"/api/knowledge/documents/upload": 16 * 1024 * 1024},
+    )
+
+    @app.post("/api/knowledge/documents/upload")
+    async def upload(request: Request):
+        body = await request.body()
+        return JSONResponse({"len": len(body)})
+
+    client = TestClient(app)
+    payload = b"x" * (17 * 1024 * 1024)
+    response = client.post("/api/knowledge/documents/upload", content=payload)
+    assert response.status_code == 413
