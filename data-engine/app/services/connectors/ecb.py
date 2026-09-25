@@ -107,6 +107,10 @@ def parse_sdw_csv(text: str, indicator: str, name: str, unit: str) -> list[ECBMa
             value = Decimal(raw)
         except Exception:
             continue
+        # Decimal('NaN')/Infinity pasan el parse y luego rompen la
+        # serializacion JSON del endpoint (float('nan') no es JSON valido).
+        if not value.is_finite():
+            continue
         points.append(
             ECBMacroPoint(indicator=indicator, name=name, unit=unit, date=period, value=value)
         )
