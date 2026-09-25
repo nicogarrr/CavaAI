@@ -125,7 +125,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                             variant={isPositive ? 'default' : 'destructive'}
                             className={`${isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
                           >
-                            {isPositive ? '+' : ''}{holding.gainPercent.toFixed(2)}%
+                            {holding.cost > 0 ? `${isPositive ? '+' : ''}${holding.gainPercent.toFixed(2)}%` : 's/d'}
                           </Badge>
                         </dd>
                       </div>
@@ -203,7 +203,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                             variant={isPositive ? 'default' : 'destructive'}
                             className={`${isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
                           >
-                            {isPositive ? '+' : ''}{holding.gainPercent.toFixed(2)}%
+                            {holding.cost > 0 ? `${isPositive ? '+' : ''}${holding.gainPercent.toFixed(2)}%` : 's/d'}
                           </Badge>
                         </div>
                       </TableCell>
