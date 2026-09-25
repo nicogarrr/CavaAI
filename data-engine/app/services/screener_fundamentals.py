@@ -9,7 +9,7 @@ missing inputs stay null (honest "sin datos"), never fabricated.
 from __future__ import annotations
 
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from math import isfinite
 
 from sqlalchemy import or_, select
@@ -39,13 +39,23 @@ def _unit_currency(unit: str | None) -> str:
     return text.split("/", 1)[0].strip()
 
 
-def load_screener_ratios(db: Session, symbols: set[str], *, today: date | None = None) -> dict[str, dict]:
+def load_screener_ratios(
+    db: Session,
+    symbols: set[str],
+    *,
+    today: date | None = None,
+    live_prices: dict[str, dict] | None = None,
+) -> dict[str, dict]:
     """Bulk-load pe/pb/roe without N+1 queries. Missing/stale inputs stay null.
 
     Each ratio uses one complete annual snapshot (same fiscal year, same
     filing family): PE = close / diluted EPS, PB = close / (equity / shares),
     ROE = net income / equity * 100. Currency must match the company's quote
     currency; negative EPS or equity yields a null ratio, not a fake number.
+
+    live_prices: cotizacion en vivo por ticker ({"price": float, "source":
+    str, "as_of": str|None}) usada SOLO cuando no hay MarketPrice fresco en
+    BD; la procedencia del ratio lo refleja (price.source = vendor en vivo).
     """
     if not symbols:
         return {}
@@ -89,16 +99,32 @@ def load_screener_ratios(db: Session, symbols: set[str], *, today: date | None =
         by_company.setdefault(fact.company_id, {}).setdefault((fact.fiscal_year, fact.metric), fact)
 
     output: dict[str, dict] = {}
+    live_prices = live_prices or {}
     for company in companies:
         price = latest_price.get(company.id)
         metrics: dict = {"pe": None, "pb": None, "roe": None}
-        if not price:
+        live = live_prices.get(company.ticker.upper()) if not price else None
+        live_close: Decimal | None = None
+        if live is not None:
+            try:
+                live_close = Decimal(str(live.get("price") or ""))
+            except (InvalidOperation, ValueError):
+                live_close = None
+            if live_close is not None and live_close <= 0:
+                live_close = None
+        if not price and live_close is None:
             output[company.ticker.upper()] = metrics
             continue
+        close = price.close if price else live_close
+        price_provenance = (
+            {"source": price.source, "date": price.date.isoformat(), "id": price.id}
+            if price
+            else {"source": live.get("source") or "live", "date": live.get("as_of"), "id": None}
+        )
         currency = (company.currency or "").upper()
         facts_for_company = by_company.get(company.id, {})
         years = sorted({year for year, _ in facts_for_company}, reverse=True)
-        provenance = {"price": {"source": price.source, "date": price.date.isoformat(), "id": price.id}, "facts": {}}
+        provenance = {"price": price_provenance, "facts": {}}
 
         def pair(left: str, right: str):
             for year in years:
@@ -111,14 +137,14 @@ def load_screener_ratios(db: Session, symbols: set[str], *, today: date | None =
         for year in years:
             eps = facts_for_company.get((year, "eps_diluted"))
             if eps and eps.value and eps.value > 0 and _unit_currency(eps.unit) == currency:
-                metrics["pe"] = _ratio(price.close / eps.value)
+                metrics["pe"] = _ratio(close / eps.value)
                 provenance["facts"]["pe"] = {"id": eps.id, "source": eps.source_type, "year": year}
                 break
         equity_shares = pair("total_equity", "shares_diluted")
         if equity_shares:
             equity, shares = equity_shares
             if equity.value > 0 and _unit_currency(equity.unit) == currency and (shares.unit or "").lower() == "shares":
-                metrics["pb"] = _ratio(price.close / (equity.value / shares.value))
+                metrics["pb"] = _ratio(close / (equity.value / shares.value))
                 provenance["facts"]["pb"] = {"ids": [equity.id, shares.id], "sources": [equity.source_type, shares.source_type], "year": equity.fiscal_year}
         income_equity = pair("net_income", "total_equity")
         if income_equity:
