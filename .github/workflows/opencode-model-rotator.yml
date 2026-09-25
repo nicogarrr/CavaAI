@@ -1,0 +1,54 @@
+name: OpenCode model rotator
+
+on:
+  schedule:
+    - cron: "23 5 * * 1" # lunes 05:23 UTC (~07:23 Madrid en verano)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: opencode-model-rotator
+  cancel-in-progress: false
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Decide el mejor modelo gratuito (Zen + models.dev + LMArena WebDev)
+        id: rot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python scripts/opencode_model_rotator.py
+
+      - name: Aplica la rotacion si hay cambio
+        if: steps.rot.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODEL: ${{ steps.rot.outputs.model }}
+          REASON: ${{ steps.rot.outputs.reason }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add opencode.json
+          git commit -m "chore(opencode): rotar modelo a $MODEL - $REASON [skip ci]"
+          if git push; then
+            echo "Rotacion aplicada: push directo a main."
+          else
+            BR="opencode-rotator/$(date +%Y%m%d-%H%M)"
+            echo "Push a main bloqueado (proteccion de rama): abro PR $BR"
+            git checkout -b "$BR"
+            git push -u origin "$BR"
+            gh pr create --title "chore(opencode): rotar modelo a $MODEL" --body "$REASON" --base main
+          fi
