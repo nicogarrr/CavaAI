@@ -53,6 +53,31 @@ function conditionInSpanish(
   }
 }
 
+
+/** F24: la vista del modelo se presenta en español. Los ids tecnicos
+ *  (organic_growth, PREVIEW_ONLY, nombres de drivers/KPIs) se quedan como
+ *  estan; lo que se traduce son etiquetas y prosa de presentacion. Los
+ *  mapas tienen fallback al texto original: nunca se oculta informacion. */
+const SCENARIO_LABELS: Record<string, string> = { bear: 'Bajista', base: 'Base', bull: 'Alcista' };
+const QUALITY_LABELS: Record<string, string> = { high: 'alta', medium: 'media', unknown: 's/d' };
+const VERDICT_LABELS: Record<string, string> = {
+  unknown: 's/d',
+  reasonable: 'razonable',
+  aggressive_but_possible: 'agresivo pero posible',
+  unrealistic_without_new_evidence: 'irrealista sin nueva evidencia',
+};
+const IMPACT_LABELS: Record<string, string> = { positive: 'positivo', negative: 'negativo', neutral: 'neutro', none: 'sin impacto' };
+const PROSE_ES: Record<string, string> = {
+  'Growth quality is a partial assessment until price/volume/mix, M&A and working-capital drivers are sourced.':
+    'La calidad del crecimiento es una evaluación parcial hasta que se contrasten los drivers de precio/volumen/mix, M&A y capital de trabajo.',
+  'net income + D&A - maintenance capex - normalized change in working capital':
+    'beneficio neto + D&A − capex de mantenimiento − cambio normalizado del capital de trabajo',
+};
+function translate(map: Record<string, string>, value: string | null | undefined, fallback = 's/d'): string {
+  if (value == null || value === '') return fallback;
+  return map[value] ?? value;
+}
+
 function ModelStat({ label, value, positive = false }: { label: string; value: string; positive?: boolean }) {
   return (
     <div className="rounded-lg border border-gray-800 bg-[#111111] p-4">
@@ -68,7 +93,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="flex items-center gap-2">
           <BrainCircuit className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Long-Term Fundamental Model</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Modelo fundamental a largo plazo</h2>
         </div>
         <p className="mt-3 text-sm text-gray-500">No se pudo construir el modelo con los datos disponibles.</p>
       </section>
@@ -86,10 +111,10 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
         <div className="flex items-center gap-2">
           <BrainCircuit className="h-5 w-5 text-teal-300" />
-          <h2 className="text-lg font-semibold text-gray-100">Long-Term Fundamental Model</h2>
+          <h2 className="text-lg font-semibold text-gray-100">Modelo fundamental a largo plazo</h2>
         </div>
         <span className="text-xs uppercase tracking-wide text-gray-500 md:ml-auto">
-          {model.horizon_years}Y · {model.status} · coverage {model.source_coverage.coverage_percent.toFixed(0)}%
+          {model.horizon_years} años · {model.status} · cobertura {model.source_coverage.coverage_percent.toFixed(0)}%
         </span>
       </div>
 
@@ -106,27 +131,27 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <ModelStat label={`${year5?.year ?? '5Y'} Revenue`} value={compactNumber(year5?.revenue)} />
-        <ModelStat label={`${year5?.year ?? '5Y'} FCF`} value={compactNumber(year5?.free_cash_flow)} positive />
-        <ModelStat label="FCF margin" value={percentage(year5?.fcf_margin)} />
-        <ModelStat label="FCF / share" value={compactNumber(year5?.fcf_per_share)} positive />
+        <ModelStat label={`Ingresos ${year5?.year ?? 'año 5'}`} value={compactNumber(year5?.revenue)} />
+        <ModelStat label={`FCF ${year5?.year ?? 'año 5'}`} value={compactNumber(year5?.free_cash_flow)} positive />
+        <ModelStat label="Margen FCF" value={percentage(year5?.fcf_margin)} />
+        <ModelStat label="FCF / acción" value={compactNumber(year5?.fcf_per_share)} positive />
       </div>
 
       <div className="mt-5 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div>
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Bear / Base / Bull</div>
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Bajista / Base / Alcista</div>
           {/* Móvil: cards sin scroll horizontal */}
           <div className="space-y-3 md:hidden">
             {Object.entries(model.scenarios).map(([name, scenario]) => {
               const point = scenario.terminal_year;
               return (
                 <div key={name} className="rounded-lg border border-gray-800 p-3">
-                  <div className="font-semibold capitalize text-gray-200">{name}</div>
+                  <div className="font-semibold capitalize text-gray-200">{translate(SCENARIO_LABELS, name)}</div>
                   <dl className="mt-2 space-y-1.5 text-sm">
-                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">Revenue</dt><dd className="text-gray-300">{compactNumber(point?.revenue)}</dd></div>
+                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">Ingresos</dt><dd className="text-gray-300">{compactNumber(point?.revenue)}</dd></div>
                     <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">FCF</dt><dd className="text-gray-300">{compactNumber(point?.free_cash_flow)}</dd></div>
-                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">FCF margin</dt><dd className="text-gray-300">{percentage(point?.fcf_margin)}</dd></div>
-                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">Value/share</dt><dd className="font-semibold text-teal-200">{compactNumber(scenario.valuation?.value_per_share)}</dd></div>
+                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">Margen FCF</dt><dd className="text-gray-300">{percentage(point?.fcf_margin)}</dd></div>
+                    <div className="flex items-center justify-between gap-2"><dt className="text-gray-500">Valor/acción</dt><dd className="font-semibold text-teal-200">{compactNumber(scenario.valuation?.value_per_share)}</dd></div>
                   </dl>
                 </div>
               );
@@ -136,11 +161,11 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="border-b border-gray-800 py-2">Scenario</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Revenue</th>
+                  <th className="border-b border-gray-800 py-2">Escenario</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Ingresos</th>
                   <th className="border-b border-gray-800 py-2 text-right">FCF</th>
-                  <th className="border-b border-gray-800 py-2 text-right">FCF margin</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Value/share</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Margen FCF</th>
+                  <th className="border-b border-gray-800 py-2 text-right">Valor/acción</th>
                 </tr>
               </thead>
               <tbody>
@@ -148,7 +173,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
                   const point = scenario.terminal_year;
                   return (
                     <tr key={name} className="border-b border-gray-900 last:border-0">
-                      <td className="py-3 font-semibold capitalize text-gray-200">{name}</td>
+                      <td className="py-3 font-semibold capitalize text-gray-200">{translate(SCENARIO_LABELS, name)}</td>
                       <td className="py-3 text-right text-gray-300">{compactNumber(point?.revenue)}</td>
                       <td className="py-3 text-right text-gray-300">{compactNumber(point?.free_cash_flow)}</td>
                       <td className="py-3 text-right text-gray-300">{percentage(point?.fcf_margin)}</td>
@@ -164,16 +189,16 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
 
         <div className="space-y-3">
           <div className="rounded-md border border-gray-800 p-3">
-            <div className="text-xs font-semibold uppercase text-gray-500">Base assumptions</div>
+            <div className="text-xs font-semibold uppercase text-gray-500">Supuestos base</div>
             <div className="mt-2 grid gap-2 text-sm">
-              <div className="flex justify-between gap-3"><span className="text-gray-400">Revenue CAGR</span><span className="text-gray-200">{percentage(growthAssumption?.value)}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-400">Normalized FCF margin</span><span className="text-gray-200">{percentage(marginAssumption?.value)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-400">CAGR de ingresos</span><span className="text-gray-200">{percentage(growthAssumption?.value)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-400">Margen FCF normalizado</span><span className="text-gray-200">{percentage(marginAssumption?.value)}</span></div>
               <div className="flex justify-between gap-3"><span className="text-gray-400"><GlossaryTerm k="roic" icon={false}>ROIC</GlossaryTerm> / <GlossaryTerm k="wacc" icon={false}>WACC</GlossaryTerm></span><span className="text-gray-200">{percentage(terminal?.roic)} / {percentage(model.assumptions.wacc?.value)}</span></div>
             </div>
             <p className="mt-3 text-xs leading-5 text-gray-500">
               El WACC es la tasa con la que se descuentan los flujos futuros: lo que piden conjuntamente accionistas y prestamistas. El ROIC es lo que la empresa gana con su capital invertido; solo crea valor cuando supera el WACC.
             </p>
-            <p className="mt-3 text-xs leading-5 text-gray-500">Sources revenue: {growthAssumption?.source_fact_ids.join(', ') || 'missing'} · FCF: {marginAssumption?.source_fact_ids.join(', ') || 'missing'}</p>
+            <p className="mt-3 text-xs leading-5 text-gray-500">Fuentes ingresos: {growthAssumption?.source_fact_ids.join(', ') || 'sin fuente'} · FCF: {marginAssumption?.source_fact_ids.join(', ') || 'sin fuente'}</p>
           </div>
           <div className="rounded-md border border-gray-800 p-3 text-sm">
             <div className="text-xs font-semibold uppercase text-gray-500">
@@ -196,22 +221,27 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
 
       <div className="mt-5 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-md border border-gray-800 p-3 text-sm">
-          <div className="text-xs font-semibold uppercase text-gray-500">Quality of growth</div>
-          <div className="mt-2 text-xl font-semibold capitalize text-gray-200">{model.quality_of_growth.quality}</div>
-          <p className="mt-2 text-gray-400">Revenue CAGR {percentage(model.quality_of_growth.revenue_cagr.value)} · FCF margin change {percentage(model.quality_of_growth.fcf_margin_change.value)}</p>
-          <p className="mt-2 text-xs leading-5 text-gray-500">{model.quality_of_growth.conclusion}</p>
+          <div className="text-xs font-semibold uppercase text-gray-500">Calidad del crecimiento</div>
+          <div className="mt-2 text-xl font-semibold capitalize text-gray-200">{translate(QUALITY_LABELS, model.quality_of_growth.quality)}</div>
+          <p className="mt-2 text-gray-400">CAGR de ingresos {percentage(model.quality_of_growth.revenue_cagr.value)} · cambio de margen FCF {percentage(model.quality_of_growth.fcf_margin_change.value)}</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500">{translate(PROSE_ES, model.quality_of_growth.conclusion, model.quality_of_growth.conclusion)}</p>
         </div>
         <div className="rounded-md border border-gray-800 p-3 text-sm">
-          <div className="text-xs font-semibold uppercase text-gray-500">Owner earnings</div>
+          <div className="text-xs font-semibold uppercase text-gray-500">Beneficio del propietario</div>
           <div className="mt-2 text-xl font-semibold text-gray-200">{compactNumber(model.owner_earnings.value)}</div>
-          <p className="mt-2 text-xs leading-5 text-gray-500">{model.owner_earnings.status === 'ok' ? model.owner_earnings.formula : `Insuficiente: ${(model.owner_earnings.missing_inputs ?? []).join(', ')}.`}</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500">{model.owner_earnings.status === 'ok' ? translate(PROSE_ES, model.owner_earnings.formula, model.owner_earnings.formula) : `Insuficiente: ${(model.owner_earnings.missing_inputs ?? []).join(', ')}.`}</p>
         </div>
         <div className="rounded-md border border-gray-800 p-3 text-sm">
-          <div className="text-xs font-semibold uppercase text-gray-500">Market Opportunity Engine</div>
+          <div className="text-xs font-semibold uppercase text-gray-500">Motor de oportunidad de mercado</div>
           <div className="mt-2 text-sm font-semibold text-gray-200">{model.framework.label}</div>
-          <p className="mt-2 text-gray-400">Top-down TAM {compactNumber(model.market_opportunity.top_down.tam.value)} · bottom-up {compactNumber(model.market_opportunity.bottom_up.value)}</p>
-          <p className="mt-2 text-gray-400">Binding constraint: {model.market_opportunity.constraints.binding_constraint ?? 'unknown'}</p>
-          <p className="mt-2 text-xs leading-5 text-gray-500">{model.market_opportunity.verdict.label} · {model.market_opportunity.verdict.conclusion}</p>
+          <p className="mt-2 text-gray-400">TAM top-down {compactNumber(model.market_opportunity.top_down.tam.value)} · bottom-up {compactNumber(model.market_opportunity.bottom_up.value)}</p>
+          <p className="mt-2 text-gray-400">Restricción vinculante: {model.market_opportunity.constraints.binding_constraint ?? 'desconocida'}</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500">
+              {translate(VERDICT_LABELS, model.market_opportunity.verdict.label)} ·{' '}
+              {model.market_opportunity.verdict.conclusion.startsWith('Base revenue uses') && model.market_opportunity.verdict.base_revenue_to_binding_capacity != null
+                ? `El escenario base usa el ${formatPercent(model.market_opportunity.verdict.base_revenue_to_binding_capacity)} de la estimación de mercado/capacidad más restrictiva contrastada.`
+                : model.market_opportunity.verdict.conclusion}
+            </p>
         </div>
       </div>
 
@@ -228,12 +258,12 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
           </ul>
         </div>
         <div>
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Recent company timeline</div>
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Cronología reciente de la empresa</div>
           <div className="space-y-2 text-sm">
             {model.timeline.slice(0, 4).map((event, index) => (
               <div key={`${event.date}-${event.title}-${index}`} className="rounded-md border border-gray-800 p-2">
-                <div className="flex justify-between gap-3"><span className="font-medium text-gray-300">{event.title}</span><span className="text-xs text-gray-500">{event.date?.slice(0, 10) ?? 'unknown'}</span></div>
-                <div className="mt-1 text-xs text-gray-500">{event.type} · {event.source} · impact {event.thesis_impact}</div>
+                <div className="flex justify-between gap-3"><span className="font-medium text-gray-300">{event.title}</span><span className="text-xs text-gray-500">{event.date?.slice(0, 10) ?? 's/d'}</span></div>
+                <div className="mt-1 text-xs text-gray-500">{event.type} · {event.source} · impacto {translate(IMPACT_LABELS, event.thesis_impact, event.thesis_impact)}</div>
               </div>
             ))}
             {!model.timeline.length ? <div className="text-sm text-gray-500">No hay eventos históricos almacenados.</div> : null}

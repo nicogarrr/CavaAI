@@ -63,7 +63,7 @@ test.describe("company research workspace", () => {
 
     await page.getByRole("link", { name: "Modelo a largo plazo", exact: true }).click();
     await expect(page).toHaveURL(/view=model/);
-    await expect(page.getByRole("heading", { name: "Long-Term Fundamental Model" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Modelo fundamental a largo plazo" })).toBeVisible();
 
     await page.getByRole("link", { name: "Qué ha cambiado", exact: true }).click();
     await expect(page).toHaveURL(/view=changes/);
