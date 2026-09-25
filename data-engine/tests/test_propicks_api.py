@@ -185,3 +185,48 @@ def test_propicks_run_endpoints(required_auth):
     db.execute(delete(Tenant).where(Tenant.id == tenant.id))
     db.commit()
     db.close()
+
+
+def test_propicks_run_detail_prices(required_auth):
+    """Detalle del run: current_price/price_as_of desde market_prices (None honesto sin precio)."""
+    from datetime import date
+
+    from app.models import MarketPrice
+
+    init_db()
+    suffix = uuid4().hex[:8]
+    tenant_ext = f"propicks-price-{suffix}"
+    db = SessionLocal()
+    tenant = Tenant(external_id=tenant_ext, name="ProPicks price test")
+    db.add(tenant)
+    db.commit()
+    db.refresh(tenant)
+    priced = _seed_company(db, tenant.id, f"PRIC{suffix[:4]}", "0.20", "0.16")
+    unpriced = _seed_company(db, tenant.id, f"NOPR{suffix[:4]}", "0.19", "0.15")
+    db.add(
+        MarketPrice(
+            company_id=priced.id,
+            date=date(2026, 9, 24),
+            open=123.45,
+            high=123.45,
+            low=123.45,
+            close=123.45,
+        )
+    )
+    db.commit()
+    priced_id, unpriced_id = priced.id, unpriced.id
+    db.close()
+
+    client = TestClient(main.app)
+    headers = _headers(tenant_ext, "propicks-price-user")
+    created = client.post("/api/propicks/runs", headers=headers)
+    assert created.status_code == 201, created.text
+    run_id = created.json()["id"]
+
+    detail = client.get(f"/api/propicks/runs/{run_id}", headers=headers)
+    assert detail.status_code == 200
+    by_company = {c["company_id"]: c for c in detail.json()["candidates"]}
+    assert by_company[priced_id]["current_price"] == 123.45
+    assert by_company[priced_id]["price_as_of"] == "2026-09-24"
+    assert by_company[unpriced_id]["current_price"] is None
+    assert by_company[unpriced_id]["price_as_of"] is None

@@ -290,6 +290,7 @@ def run_funnel(db: Session, *, top_n: int = 20) -> tuple[list[FunnelResult], dic
             "quality_moat_score_v2": get("quality_moat_score_v2"),
             "roe_5y": roe,
             "fcf_margin_5y": get("fcf_margin_5y"),
+                    "momentum_12m": get("momentum_12m"),
             "owner_earnings_5y": get("owner_earnings_5y"),
             "revenue_cagr": cagr,
             "fcf_conversion": get("fcf_conversion"),

@@ -10,6 +10,7 @@ import {
 } from '@/lib/utils/proPicksStrategies';
 
 import type { SignalOverlay } from '@/lib/utils/propicksSignals';
+import { getLatestFunnelPicks } from '@/lib/actions/propicks-funnel.actions';
 
 /** Selección con tope de rotación (núcleo puro en proPicksStrategies, reexportada aquí para el pipeline). */
 import { selectRebalancedPicks, type RankedCandidate } from '@/lib/utils/proPicksStrategies';
@@ -418,13 +419,24 @@ async function evaluateUniverse(strategyId: string): Promise<ProPick[]> {
 
 export async function generateProPicks(limit = 5, strategyId = 'adaptive'): Promise<ProPick[]> {
   await requireAuthenticatedUser();
-  const picks = await evaluateUniverse(strategyId);
+  // Fuente: ultimo run persistido del embudo (F1). El path viejo evaluaba ~70
+  // tickers en vivo contra Finnhub desde serverless (rate limit/timeout, F11).
+  const funnel = await getLatestFunnelPicks();
+  const strategy = getStrategyById(strategyId) ?? PROPICKS_STRATEGIES[0];
+  const picks = (funnel?.picks ?? []).map((pick) => ({
+    ...pick,
+    strategy: strategy.id,
+    strategyScore: calculateStrategyScore(
+      { categoryScores: pick.categoryScores } as AdvancedScoreData,
+      strategy
+    ),
+  }));
   const qualified = picks.filter((pick) => pick.score >= 60);
   const finalists = (qualified.length > 0 ? qualified : picks)
     .sort((left, right) => (right.strategyScore ?? right.score) - (left.strategyScore ?? left.score))
     .slice(0, Math.max(1, Math.min(limit, 100)));
   // Overlays externos SOLO sobre finalistas (máx 20); [] si el módulo aún no existe.
-  return attachSignalOverlays(finalists);
+  return attachSignalOverlays(finalists, funnel?.runAsOf);
 }
 
 export async function generateProPicksForStrategy(strategyId: string, limit = 10): Promise<ProPick[]> {
@@ -459,7 +471,9 @@ const SECTOR_ALIASES: Record<string, string[]> = {
 export async function generateEnhancedProPicks(filters: EnhancedProPicksFilters = {}): Promise<ProPick[]> {
   await requireAuthenticatedUser();
   const { limit = 20, minScore = 70, sector = 'all', sortBy = 'score' } = filters;
-  let picks = await evaluateUniverse('adaptive');
+  // Fuente: ultimo run del embudo (ver generateProPicks).
+  const funnel = await getLatestFunnelPicks();
+  let picks = funnel?.picks ?? [];
   picks = picks.filter((pick) => pick.score >= minScore);
 
   if (sector !== 'all') {
@@ -473,5 +487,5 @@ export async function generateEnhancedProPicks(filters: EnhancedProPicksFilters 
   };
   const finalists = picks.sort((left, right) => scoreFor(right) - scoreFor(left)).slice(0, Math.max(1, Math.min(limit, 100)));
   // Overlays externos SOLO sobre finalistas (máx 20); [] si el módulo aún no existe.
-  return attachSignalOverlays(finalists);
+  return attachSignalOverlays(finalists, funnel?.runAsOf);
 }
