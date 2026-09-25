@@ -191,7 +191,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                                         El historial aparecerá cuando existan snapshots reales de la cartera.
                                     </div>
                                 ) : (
-                                <PortfolioNavChart data={chartData} positive={summary.totalGain >= 0} />
+                                <PortfolioNavChart data={chartData} positive={summary.totalGain >= 0} currency={summary.baseCurrency} />
                                 )}
                             </div>
                         </div>

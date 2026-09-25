@@ -8,13 +8,21 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { formatMoney, formatNumber, formatPercent } from '../lib/format.ts';
+import { formatCompact, formatMoney, formatNumber, formatPercent } from '../lib/format.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const source = (relativePath: string): string => readFileSync(join(root, relativePath), 'utf8');
 
 describe('formato numérico es-ES', () => {
+  it('formatCompact usa escala consistente M / mil M (B18)', () => {
+    assert.equal(formatCompact(9447000), '9,45 M');
+    assert.equal(formatCompact(9447000000), '9,45 mil M');
+    assert.equal(formatCompact(416160000000), '416,16 mil M');
+    assert.equal(formatCompact(1200000), '1,2 M');
+    assert.equal(formatCompact(-2500000000), '-2,5 mil M');
+  });
+
   it('usa coma decimal en números, porcentajes e importes', () => {
     assert.equal(formatNumber(-0.8), '-0,8');
     assert.equal(formatPercent(-0.008, { digits: 2 }), '-0,80\u00a0%');
