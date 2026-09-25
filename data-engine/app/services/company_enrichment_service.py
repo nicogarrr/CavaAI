@@ -21,6 +21,71 @@ logger = logging.getLogger(__name__)
 
 _PLACEHOLDER_EXCHANGES = {None, "", "UNKNOWN", "UNKNOWN_EXCHANGE"}
 
+_PLACEHOLDER_SECTORS = {None, "", "Unknown", "UNKNOWN"}
+
+# Mapeo declarado (GICS de 11 sectores) de los valores de `finnhubIndustry`
+# observados en nuestro universo. Finnhub no expone sector: esto es una
+# heuristica explicita y revisable, no un dato de la API. Industrias no
+# mapeadas dejan el sector en "Unknown" (honesto, nunca se inventa).
+FINNHUB_INDUSTRY_TO_SECTOR: dict[str, str] = {
+    "Aerospace & Defense": "Industrials",
+    "Airlines": "Industrials",
+    "Auto Components": "Consumer Discretionary",
+    "Automobiles": "Consumer Discretionary",
+    "Banking": "Financials",
+    "Banks": "Financials",
+    "Beverages": "Consumer Staples",
+    "Biotechnology": "Health Care",
+    "Building": "Industrials",
+    "Chemicals": "Materials",
+    "Commercial Services & Supplies": "Industrials",
+    "Communications": "Communication Services",
+    "Construction": "Industrials",
+    "Consumer products": "Consumer Staples",
+    "Distributors": "Consumer Discretionary",
+    "Diversified Consumer Services": "Consumer Discretionary",
+    "Electrical Equipment": "Industrials",
+    "Electric Utilities": "Utilities",
+    "Energy": "Energy",
+    "Financial Services": "Financials",
+    "Food Products": "Consumer Staples",
+    "Health Care": "Health Care",
+    "Hotels, Restaurants & Leisure": "Consumer Discretionary",
+    "Industrial Conglomerates": "Industrials",
+    "Insurance": "Financials",
+    "Leisure Products": "Consumer Discretionary",
+    "Life Sciences Tools & Services": "Health Care",
+    "Logistics & Transportation": "Industrials",
+    "Machinery": "Industrials",
+    "Marine": "Industrials",
+    "Media": "Communication Services",
+    "Metals & Mining": "Materials",
+    "Oil & Gas Integrated": "Energy",
+    "Packaging": "Materials",
+    "Paper & Forest": "Materials",
+    "Pharmaceuticals": "Health Care",
+    "Professional Services": "Industrials",
+    "Real Estate": "Real Estate",
+    "Retail": "Consumer Discretionary",
+    "Road & Rail": "Industrials",
+    "Semiconductors": "Information Technology",
+    "Technology": "Information Technology",
+    "Telecom": "Communication Services",
+    "Telecommunication": "Communication Services",
+    "Textiles, Apparel & Luxury Goods": "Consumer Discretionary",
+    "Tobacco": "Consumer Staples",
+    "Trading Companies & Distributors": "Industrials",
+    "Transportation Infrastructure": "Industrials",
+    "Utilities": "Utilities",
+}
+
+
+def sector_for_industry(industry: str | None) -> str | None:
+    """Devuelve el sector GICS declarado para una industria Finnhub, o None."""
+    if not industry:
+        return None
+    return FINNHUB_INDUSTRY_TO_SECTOR.get(industry.strip())
+
 
 class CompanyEnrichmentService:
     """Completa Company.name/exchange/sector/currency desde Finnhub."""
@@ -109,6 +174,11 @@ class CompanyEnrichmentService:
         if industry and industry.upper() not in {"N/A", "UNKNOWN"}:
             company.industry = industry
             changed = True
+        if company.sector in _PLACEHOLDER_SECTORS:
+            sector = sector_for_industry(company.industry)
+            if sector:
+                company.sector = sector
+                changed = True
         currency = (profile.get("currency") or "").strip()
         if currency:
             company.currency = currency
