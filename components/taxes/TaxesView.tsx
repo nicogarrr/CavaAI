@@ -12,6 +12,7 @@ import {
     type DataRecord,
 } from '@/components/data/RecordViews';
 import { getTaxHoldings, getTaxReport, regenerateTaxReport } from '@/lib/actions/taxes.actions';
+import { formatDateTime, formatMoney } from '@/lib/format';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 
@@ -30,6 +31,75 @@ function toDisplayReport(raw: DataRecord | null): DataRecord | null {
     if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return raw;
     const display: DataRecord = { ...(summary as DataRecord) };
     if (raw.generated_at) display.generated_at = raw.generated_at;
+    return humanizeTaxReport(display);
+}
+
+/** Etiquetas en español para las claves conocidas del resumen fiscal (F20).
+ *  Las claves desconocidas se humanizan (snake_case -> frase) sin ocultarse. */
+const TAX_LABELS: Record<string, string> = {
+    fiscal_year: 'Ejercicio',
+    base_currency: 'Divisa base',
+    total_dividends_base: 'Dividendos brutos',
+    total_withholding_base: 'Retenciones soportadas',
+    total_realized_gain_base: 'Plusvalías/minusvalías realizadas',
+    total_blocked_loss_base: 'Minusvalías bloqueadas (regla de los 2 meses)',
+    net_taxable_base: 'Base neta estimada',
+    wash_sale_rule: 'Regla anti-recompra',
+    wash_sale_window_open: 'Ventana anti-recompra abierta en',
+    dividend_count: 'Dividendos (nº)',
+    sell_count: 'Ventas (nº)',
+    over_sell: 'Ventas sin compras que las cubran',
+    method: 'Método de valoración',
+    incomplete_fx: 'Tipos de cambio incompletos',
+    missing_fx: 'Sin tipo de cambio para',
+    generated_at: 'Generado',
+};
+
+const WASH_RULE_LABELS: Record<string, string> = {
+    'es-irpf-2m': 'IRPF español: no recomprar en 2 meses',
+};
+
+function humanizeKey(key: string): string {
+    const known = TAX_LABELS[key];
+    if (known) return known;
+    const words = key.replaceAll('_', ' ').trim();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Convierte el resumen fiscal a filas etiquetadas en español con valores
+ *  formateados (importes con divisa, listas de tickers, fechas). Nunca
+ *  inventa: los null quedan como «s/d» y las claves raras se humanizan. */
+function humanizeTaxReport(summary: DataRecord): DataRecord {
+    const currency = typeof summary.base_currency === 'string' && summary.base_currency
+        ? summary.base_currency
+        : 'EUR';
+    const moneyKeys = new Set([
+        'total_dividends_base',
+        'total_withholding_base',
+        'total_realized_gain_base',
+        'total_blocked_loss_base',
+        'net_taxable_base',
+    ]);
+    const listKeys = new Set(['wash_sale_window_open', 'over_sell', 'missing_fx']);
+    const display: DataRecord = {};
+    for (const [key, value] of Object.entries(summary)) {
+        const label = humanizeKey(key);
+        if (moneyKeys.has(key)) {
+            display[label] = value === null || value === undefined
+                ? 's/d (faltan tipos de cambio)'
+                : formatMoney(value as number | string, currency);
+        } else if (listKeys.has(key)) {
+            display[label] = Array.isArray(value) && value.length > 0 ? value.join(', ') : 'Ninguno';
+        } else if (key === 'wash_sale_rule') {
+            display[label] = WASH_RULE_LABELS[String(value)] ?? String(value);
+        } else if (key === 'generated_at') {
+            display[label] = formatDateTime(value as string);
+        } else if (typeof value === 'boolean') {
+            display[label] = value ? 'Sí' : 'No';
+        } else {
+            display[label] = value;
+        }
+    }
     return display;
 }
 
