@@ -160,7 +160,7 @@ export default function AddTransactionButton({ userId }: Props) {
       <DialogTrigger asChild>
         <Button className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700">
           <Plus className="h-4 w-4" />
-          Agregar Inversión
+          Añadir inversión
         </Button>
       </DialogTrigger>
       <DialogContent className="bg-gray-900 border-gray-700 max-w-md">

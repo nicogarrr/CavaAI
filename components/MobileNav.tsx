@@ -153,7 +153,7 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                             <NavItems initialStocks={initialStocks} />
                         </nav>
                         <p className="border-t border-gray-700/50 px-4 py-3 text-xs text-gray-500">
-                            Usa el buscador (Ctrl+K) para ir a cualquier acción.
+                            Usa el buscador para ir a cualquier acción.
                         </p>
                     </aside>
                 </div>,

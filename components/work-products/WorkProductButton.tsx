@@ -70,12 +70,12 @@ export default function WorkProductButton() {
             <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2 border-gray-700 text-gray-300 hover:text-teal-400">
                     <FileOutput className="h-4 w-4" />
-                    Generar Work Product
+                    Generar entregable
                 </Button>
             </DialogTrigger>
             <DialogContent className="border-gray-700 bg-gray-800">
                 <DialogHeader>
-                    <DialogTitle className="text-gray-100">Generar Work Product</DialogTitle>
+                    <DialogTitle className="text-gray-100">Generar entregable</DialogTitle>
                     <DialogDescription className="text-gray-400">
                         Produce un documento de análisis (memo, tesis, revisión...) a partir del motor de research.
                     </DialogDescription>
