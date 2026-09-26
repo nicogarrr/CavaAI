@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+﻿from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -1866,7 +1866,9 @@ class DividendRecord(TenantOwnedMixin, Base, TimestampMixin):
 
     __tablename__ = "dividend_records"
     __table_args__ = (
-        UniqueConstraint("company_id", "ex_date", "amount", name="uq_dividend_record"),
+        UniqueConstraint(
+            "tenant_id", "company_id", "ex_date", "amount", name="uq_dividend_record_tenant"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -1887,7 +1889,7 @@ class FundManager(TenantOwnedMixin, Base, TimestampMixin):
     """
 
     __tablename__ = "fund_managers"
-    __table_args__ = (UniqueConstraint("cik", name="uq_fund_manager_cik"),)
+    __table_args__ = (UniqueConstraint("tenant_id", "cik", name="uq_fund_manager_tenant_cik"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     cik: Mapped[str] = mapped_column(String(10), index=True)
