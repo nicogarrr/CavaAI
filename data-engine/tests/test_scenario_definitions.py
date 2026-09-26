@@ -120,9 +120,21 @@ def test_probabilidades_mecanicas_suman_uno():
     )
 
 
-def test_suelo_margen_bear_por_debajo_del_minimo_de_los_motores():
-    bear, base, _ = mechanical_dcf_scenarios(0.10, -0.02, 0.10, 0.02, 0.0)
-    assert bear.assumptions["fcf_margin"] == pytest.approx(0.005)
+def test_quema_de_caja_dispersa_solo_por_margen():
+    # Con margen base negativo, variar crecimiento/WACC invertiría la
+    # economía: crecer más quema más (bull peor) y descontar pérdidas a
+    # más WACC las encoge (bear mejor). Solo el margen dispersa.
+    bear, base, bull = mechanical_dcf_scenarios(0.10, -0.02, 0.10, 0.02, 0.0)
+    assert bear.assumptions["fcf_margin"] == pytest.approx(-0.08)
+    assert bear.assumptions["revenue_growth"] == base.assumptions["revenue_growth"]
+    assert bear.assumptions["wacc"] == base.assumptions["wacc"]
+    assert bull.assumptions["revenue_growth"] == base.assumptions["revenue_growth"]
+    assert bull.assumptions["wacc"] == base.assumptions["wacc"]
+    assert (
+        bear.assumptions["fcf_margin"]
+        < base.assumptions["fcf_margin"]
+        < bull.assumptions["fcf_margin"]
+    )
     assert base.assumptions["fcf_margin"] == pytest.approx(-0.02)
 
 
@@ -159,10 +171,30 @@ def test_escenarios_especulativos_nombres_y_dilucion():
     assert sum(s.probability for s in scenarios) == pytest.approx(1.0)
 
 
-def test_margen_bear_especulativo_tiene_suelo_en_uno_por_ciento():
-    bear, base, _ = speculative_causal_scenarios(0.30, -0.05, 0.12, 0.02, 0.0, 0.0)
-    assert bear.assumptions["fcf_margin"] == pytest.approx(0.01)
-    assert base.assumptions["fcf_margin"] == pytest.approx(-0.05)
+def test_margen_bear_especulativo_respeta_el_signo_y_el_orden():
+    # Con margen base negativo (quema de caja), un suelo positivo en el bear
+    # lo colocaba POR ENCIMA del base: bear mejor que base en valoracion.
+    bear, base, bull = speculative_causal_scenarios(0.30, -0.15, 0.12, 0.02, 0.0, 0.0)
+    assert bear.assumptions["fcf_margin"] == pytest.approx(-0.23)
+    assert base.assumptions["fcf_margin"] == pytest.approx(-0.15)
+    assert (
+        bear.assumptions["fcf_margin"]
+        < base.assumptions["fcf_margin"]
+        < bull.assumptions["fcf_margin"]
+    )
+
+
+def test_margen_bear_mecanico_respeta_el_signo_y_el_orden():
+    # El suelo de +0.5% del bear mecanico tenia el mismo defecto: con margen
+    # base -15% el bear salia +0.5%, invertido sobre el base.
+    bear, base, bull = mechanical_dcf_scenarios(0.05, -0.15, 0.10, 0.02, 0.0)
+    assert bear.assumptions["fcf_margin"] == pytest.approx(-0.21)
+    assert base.assumptions["fcf_margin"] == pytest.approx(-0.15)
+    assert (
+        bear.assumptions["fcf_margin"]
+        < base.assumptions["fcf_margin"]
+        < bull.assumptions["fcf_margin"]
+    )
 
 
 def test_dilucion_cero_mantiene_el_suelo_de_quince_por_ciento_en_bear():
