@@ -19,7 +19,7 @@ from decimal import Decimal
 import pytest
 
 from app.services.metric_calculation_service import (
-    _capital_amounts_share_scale,
+    _capital_scale_conflict,
     MetricCalculationService,
 )
 from app.valuation.dcf_fcff import DCFInputs, run_dcf
@@ -32,7 +32,7 @@ PERIOD = "2025-12-31"
 # --------------------------------------------------------------------------
 
 
-def _wacc_facts(db, company, **overrides):
+def _wacc_facts(db, company, market_cap_source="test_wacc_units", total_debt_source="test_wacc_units", **overrides):
     base = {
         "risk_free_rate": "0.04",
         "beta": "1.0",
@@ -46,13 +46,16 @@ def _wacc_facts(db, company, **overrides):
     for metric, value in base.items():
         if value is None:
             continue
+        source = total_debt_source if metric == "total_debt" else (
+            market_cap_source if metric in ("market_cap", "market_capitalization") else "test_wacc_units"
+        )
         db.add(
-            _fact(company, metric, value, PERIOD, 2025, None)
+            _fact(company, metric, value, PERIOD, 2025, None, source_type=source)
         )
     db.flush()
 
 
-def _fact(company, metric, value, period, fiscal_year, fiscal_quarter):
+def _fact(company, metric, value, period, fiscal_year, fiscal_quarter, source_type="test_wacc_units"):
     from app.models import FinancialFact
 
     return FinancialFact(
@@ -63,7 +66,7 @@ def _fact(company, metric, value, period, fiscal_year, fiscal_quarter):
         period=period,
         fiscal_year=fiscal_year,
         fiscal_quarter=fiscal_quarter,
-        source_type="test_wacc_units",
+        source_type=source_type,
         is_reported=True,
         confidence=Decimal("0.90"),
     )
@@ -159,17 +162,50 @@ def test_wacc_uses_market_equity_when_available(company_factory):
 # --------------------------------------------------------------------------
 
 
+def _scale_fact(value, source_type, unit="USD"):
+    from app.models import FinancialFact
+
+    return FinancialFact(
+        company_id=1,
+        metric="m",
+        value=Decimal(value),
+        unit=unit,
+        period=PERIOD,
+        fiscal_year=2025,
+        source_type=source_type,
+        is_reported=True,
+        confidence=Decimal("0.90"),
+    )
+
+
 @pytest.mark.parametrize(
-    "equity,debt,expected",
+    "equity,debt,equity_src,debt_src,expected",
     [
-        (Decimal("10000"), Decimal("3000"), True),
-        (Decimal("200000000"), Decimal("300"), False),
-        (Decimal("10000"), Decimal("0"), True),
-        (Decimal("10000"), Decimal("-1"), False),
+        # Ratios razonables: comparables vengan de donde vengan.
+        ("10000", "3000", "yfinance", "SEC", False),
+        # Falso positivo del detector por magnitud: mega-cap casi sin deuda
+        # con AMBAS fuentes absolutas es estructura de capital real.
+        ("200000000000", "300000000", "yfinance", "SEC", False),
+        # Sin deuda: comparable con cualquier escala.
+        ("10000", "0", "yfinance", "ESEF", False),
+        # ESEF es fail-closed SIEMPRE: el pipeline pierde ix:nonFraction
+        # scale, asi que ni mismo tipo+unidad ni magnitud razonable lo
+        # verifican (dos documentos pueden escalar distinto: 666.667x).
+        ("200000000", "300", "ESEF", "ESEF", True),
+        ("200000000", "30000000", "ESEF", "ESEF", True),
+        # Provenance mixta con ESEF: conflicto a cualquier magnitud
+        # (el caso original: cap absoluto + debt escalado).
+        ("200000000", "300", "yfinance", "ESEF", True),
+        ("200000000", "30000000", "yfinance", "ESEF", True),
     ],
 )
-def test_capital_scale_guard(equity, debt, expected):
-    assert _capital_amounts_share_scale(equity, debt) is expected
+def test_capital_scale_guard(equity, debt, equity_src, debt_src, expected):
+    assert (
+        _capital_scale_conflict(
+            _scale_fact(equity, equity_src), _scale_fact(debt, debt_src)
+        )
+        is expected
+    )
 
 
 def test_wacc_unavailable_when_capital_amounts_have_different_scales(company_factory):
@@ -182,6 +218,8 @@ def test_wacc_unavailable_when_capital_amounts_have_different_scales(company_fac
     _wacc_facts(
         db,
         company,
+        market_cap_source="yfinance",
+        total_debt_source="ESEF",
         risk_free_rate="0.08",
         beta="1.5",
         market_cap="200000000",
@@ -252,3 +290,31 @@ def test_dcf_rejects_a_wacc_below_minus_one():
                 shares_outstanding=100.0,
             )
         )
+
+
+def test_wacc_computes_for_megacap_with_tiny_real_debt(company_factory):
+    """Regresion del falso positivo: ratio >100 con fuentes absolutas.
+
+    market cap 200000M (yfinance, absoluto) y deuda 300M (SEC, absoluto)
+    dan ratio ~667x: es una estructura de capital real, no un error de
+    unidades, y el WACC debe calcularse.
+    """
+    db, company = company_factory
+    _wacc_facts(
+        db,
+        company,
+        market_cap_source="yfinance",
+        total_debt_source="SEC",
+        market_cap="200000000000",
+        total_debt="300000000",
+        interest_expense="27000000",
+    )
+    db.commit()
+
+    result = MetricCalculationService().calculate(db, company, "wacc", persist=False)
+
+    assert result.status == "ok"
+    trace = result.calculation_trace
+    assert Decimal(trace["debt_weight"]) == Decimal("300000000") / Decimal(
+        "200300000000"
+    )
