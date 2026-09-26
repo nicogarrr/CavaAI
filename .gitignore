@@ -56,6 +56,8 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
+*.db-journal-*
 *.sqlite*
 data-engine/knowledge_base/
 data-engine/funds_cache.json
