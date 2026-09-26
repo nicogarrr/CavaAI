@@ -42,7 +42,7 @@ class BudgetController:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    def current_usage(self, db: Session) -> dict:
+    def current_usage(self, db: Session, *, admin: bool = False) -> dict:
         today = date.today()
         # BudgetUsage es TenantOwnedMixin, asi que el agregado tiene que
         # filtrar por tenant. Sin el predicado, `db.scalar(select(sum(...)))`
@@ -51,6 +51,15 @@ class BudgetController:
         # agotar el tope diario de todos los demas, y ningun tenant podia
         # ver su propio consumo. La columna existia precisely para esto.
         tenant_id = db.info.get("tenant_id")
+        if tenant_id is None and not admin:
+            # Falla cerrado: sin tenant el agregado seria GLOBAL y can_spend
+            # dejaria que un tenant sin contexto consumiera el tope de todos.
+            # Solo una vista de operacion consciente pide admin=True.
+            raise RuntimeError(
+                "BudgetController.current_usage requiere contexto de tenant "
+                "(db.info['tenant_id']); pasa admin=True solo desde vistas de "
+                "operacion conscientes de que el agregado es global"
+            )
         tenant_filter = (
             [] if tenant_id is None else [BudgetUsage.tenant_id == tenant_id]
         )
@@ -81,7 +90,12 @@ class BudgetController:
         }
 
     def can_spend(self, db: Session, estimated_cost_eur: float) -> bool:
-        usage = self.current_usage(db)
+        # Decision consciente de contexto: con tenant, el tope es por tenant
+        # (un tenant no puede agotar el de los demas). Sin contexto de tenant
+        # (sesiones anonimas, scripts admin, tests de servicio), el tope actua
+        # como cortacircuitos GLOBAL del despliegue: es el contexto admin y se
+        # pide explicitamente.
+        usage = self.current_usage(db, admin=db.info.get("tenant_id") is None)
         return (
             usage["daily_cost_eur"] + estimated_cost_eur <= self.settings.llm_daily_cap_eur
             and usage["monthly_cost_eur"] + estimated_cost_eur <= self.settings.llm_monthly_cap_eur
