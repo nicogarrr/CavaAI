@@ -19,7 +19,10 @@ class GDELTClient:
     clase (proceso): todas las instancias comparten la misma ventana.
 
     429: se honra ``Retry-After`` (acotado) hasta ``max_429_retries`` veces;
-    después se deja subir el error y el conector degrada a ``failed``.
+    después se deja subir el error y el conector degrada a ``failed``. Una
+    cabecera por encima de ``MAX_RETRY_AFTER`` pide una espera que esta
+    corrida no puede pagar: NO se trunca ni se reintenta inline, el error
+    sube de inmediato.
     """
 
     base_url = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -50,22 +53,44 @@ class GDELTClient:
         )
 
     async def _throttle(self) -> None:
-        with GDELTClient._rate_lock:
-            now = time.monotonic()
-            start = max(now, GDELTClient._next_allowed_at)
-            GDELTClient._next_allowed_at = start + self.min_interval
-            delay = start - now
-        if delay > 0:
-            await asyncio.sleep(delay)
+        """Guarantee at least ``min_interval`` between two real requests.
+
+        The reservation used to be claimed BEFORE sleeping, from a slot
+        computed off the previous reservation. A slow wake-up then consumed the
+        slot without having waited, and the next call found ``_next_allowed_at``
+        already in the past and went out immediately: the spacing collapsed
+        exactly under load, which is when GDELT starts answering 429.
+
+        The slot is now claimed only once it is genuinely available, and the
+        next slot is measured from the real current time, so an overrun pushes
+        the following request out instead of letting it through.
+        """
+        if self.min_interval <= 0:
+            return
+        while True:
+            with GDELTClient._rate_lock:
+                now = time.monotonic()
+                wait = GDELTClient._next_allowed_at - now
+                if wait <= 0:
+                    GDELTClient._next_allowed_at = now + self.min_interval
+                    return
+            await asyncio.sleep(wait)
 
     @classmethod
-    def _retry_after_seconds(cls, response: httpx.Response) -> float:
+    def _raw_retry_after(cls, response: httpx.Response) -> float | None:
         raw = response.headers.get("Retry-After")
         if raw:
             try:
-                return min(float(raw), cls.MAX_RETRY_AFTER)
+                return max(0.0, float(raw))
             except ValueError:
                 pass
+        return None
+
+    @classmethod
+    def _retry_after_seconds(cls, response: httpx.Response) -> float:
+        raw = cls._raw_retry_after(response)
+        if raw is not None:
+            return min(raw, cls.MAX_RETRY_AFTER)
         return cls.DEFAULT_RETRY_AFTER
 
     async def news_search(self, query: str, max_records: int = 50) -> dict:
@@ -84,10 +109,16 @@ class GDELTClient:
             else:
                 async with httpx.AsyncClient(timeout=30) as client:
                     response = await client.get(self.base_url, params=params)
-            if response.status_code == 429 and attempt < self.max_429_retries:
-                attempt += 1
-                await asyncio.sleep(self._retry_after_seconds(response))
-                continue
+            if response.status_code == 429:
+                raw_retry_after = self._raw_retry_after(response)
+                if raw_retry_after is not None and raw_retry_after > self.MAX_RETRY_AFTER:
+                    # Ventana prohibida demasiado larga para esta corrida:
+                    # no se trunca ni se reintenta inline, el 429 sube.
+                    response.raise_for_status()
+                if attempt < self.max_429_retries:
+                    attempt += 1
+                    await asyncio.sleep(self._retry_after_seconds(response))
+                    continue
             response.raise_for_status()
             return response.json()
 

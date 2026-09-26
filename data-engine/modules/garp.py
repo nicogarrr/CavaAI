@@ -1,9 +1,10 @@
 
-import yfinance as yf
-import pandas as pd
-import requests
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import pandas as pd
+import requests
+import yfinance as yf
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -31,8 +32,8 @@ def get_sp500_tickers():
         return []
 
 # ... imports
-import requests
 import time
+
 
 def analyze_stock_garp(ticker):
     try:

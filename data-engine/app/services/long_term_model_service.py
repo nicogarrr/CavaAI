@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal
 from math import isfinite, sqrt
 from statistics import median
 from typing import Any
@@ -28,14 +27,13 @@ from app.models import (
     ThesisChange,
 )
 from app.services.company_framework import CompanyFramework, resolve_company_framework
-from app.services.driver_operating_model import DriverOperatingModel
-from app.services.driver_dimensions import driver_metadata
 from app.services.driver_assumption_service import DriverAssumptionService
+from app.services.driver_dimensions import driver_metadata
+from app.services.driver_operating_model import DriverOperatingModel
 from app.services.fundamental_model_repository import FundamentalModelRepository
 from app.services.market_opportunity_service import MarketOpportunityEngine
 from app.valuation.engines.base import default_terminal_growth, default_wacc
 from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth
-
 
 MODEL_VERSION = "long-term-fundamental-model-v2"
 ALGORITHM_VERSION = "driver-formulas-funding-rollforward-v2"
@@ -1086,8 +1084,6 @@ class LongTermModelService:
         driver_rows = {
             int(row["year"]): row for row in (driver_forecast.get("years") or [])
         }
-        latest_fcf = self._derived_fcf_value(fact_cache, latest_year)
-        latest_margin = latest_fcf / latest_revenue if latest_fcf is not None and latest_revenue else fcf_margin
         forecasts: list[dict[str, Any]] = []
         for offset in range(1, horizon + 1):
             year = latest_year + offset

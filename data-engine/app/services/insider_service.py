@@ -13,9 +13,11 @@ envuelto en try/except -> devuelve {"status": "skipped", ...}).
 
 from __future__ import annotations
 
+import re
 import time
+from collections.abc import Callable
 from datetime import UTC, date, datetime
-from typing import Any, Callable
+from typing import Any
 
 from app.core.config import get_settings
 from app.services.connectors import form4 as form4_connector
@@ -83,8 +85,6 @@ def clear_filing_xml_cache() -> None:
     _xml_cache.clear()
     _xml_cache_fetched_at.clear()
 
-_CEO_TOKENS = ("chief executive", "ceo", "president")
-_CFO_TOKENS = ("chief financial", "cfo")
 
 
 def _parse_date(value: Any) -> date | None:
@@ -114,20 +114,62 @@ def _to_float(value: Any) -> float | None:
 
 
 def _is_c_suite(tx: dict) -> bool:
+    return _is_ceo(tx) or _is_cfo(tx)
+
+
+# Matched against the WHOLE title as words, never as a substring: "president"
+# is a substring of "Vice President, Human Resources", so a VP of HR was
+# reported as the CEO buying, and the alert named the wrong person.
+_CEO_TITLE_PATTERNS = (
+    r"\bchief\s+executive(\s+officer)?\b",
+    r"\bceo\b",
+    r"\bpresident\s+and\s+chief\s+executive\b",
+    r"\bpresident\s*,?\s+chief\s+executive\b",
+    r"\bchairman\s+and\s+ceo\b",
+    r"\bchair\s+and\s+ceo\b",
+)
+_CFO_TITLE_PATTERNS = (
+    r"\bchief\s+financial(\s+officer)?\b",
+    r"\bcfo\b",
+    r"\bvice\s+president\s+and\s+cfo\b",
+    r"\bpresident\s*,?\s+chief\s+financial\s+officer\b",
+)
+# A title that marks the holder as NOT the top officer, and that can appear
+# ALONGSIDE a real top-officer marker ("Vice President and CFO"), so the veto
+# below only applies when no explicit marker is present.
+_NOT_TOP_OFFICER = re.compile(r"\b(vice\s+president|vp|deputy|assistant|associate)\b")
+# An explicit statement that this person IS the top officer.
+_TOP_OFFICER_MARKER = re.compile(
+    r"\b(chief|ceo|cfo|coo|cio|cpres|chairman|chair)\b"
+)
+
+
+def _title_matches(tx: dict, patterns: tuple[str, ...]) -> bool:
     title = str(tx.get("officer_title") or "").lower()
     role = str(tx.get("role") or "").lower()
+    if not title and not role:
+        return False
+    # Only a DIRECTOR/OFFICER can be C-suite by title; a plain shareholder is
+    # not promoted by the word "president" appearing anywhere.
+    if role and "director" not in role and "officer" not in role:
+        return False
     haystack = f"{title} {role}"
-    return any(tok in haystack for tok in (*_CEO_TOKENS, *_CFO_TOKENS))
+    if not any(re.search(pattern, haystack) for pattern in patterns):
+        return False
+    # "Vice President, Finance" also contains "president", so without this the
+    # substring match would promote a VP. But "Vice President and CFO" names
+    # the office explicitly and must survive.
+    if _NOT_TOP_OFFICER.search(title) and not _TOP_OFFICER_MARKER.search(title):
+        return False
+    return True
 
 
 def _is_ceo(tx: dict) -> bool:
-    haystack = f"{tx.get('officer_title') or ''} {tx.get('role') or ''}".lower()
-    return any(tok in haystack for tok in _CEO_TOKENS)
+    return _title_matches(tx, _CEO_TITLE_PATTERNS)
 
 
 def _is_cfo(tx: dict) -> bool:
-    haystack = f"{tx.get('officer_title') or ''} {tx.get('role') or ''}".lower()
-    return any(tok in haystack for tok in _CFO_TOKENS)
+    return _title_matches(tx, _CFO_TITLE_PATTERNS)
 
 
 def open_market_buys(transactions: list[dict]) -> list[dict]:
@@ -288,11 +330,27 @@ def get_signals_for_ticker(
                 errors.append(f"{filing.get('accession_number')}: {type(exc).__name__}")
         signals = detect_signals(transactions)
         parse_error_count = len(errors)
+        scanned = len(filings[:limit])
+        parsed_ok = scanned - parse_error_count
+        # `status` is what the endpoint's consumers read, and it was hardcoded
+        # to "ok": with 20 filings all failing to fetch, the response said "ok"
+        # with `signals: []` and `buy_count: 0`, which reads as "no insider
+        # activity" when the truth is "nothing could be read". The user then
+        # skips a company on a false all-clear.
+        if parse_error_count and parsed_ok == 0:
+            status = "degraded"
+        elif parse_error_count:
+            status = "partial"
+        else:
+            status = "ok"
         result: dict = {
             "ticker": wanted,
             "cik": resolved_cik,
-            "status": "ok",
-            "filings_scanned": len(filings[:limit]),
+            "status": status,
+            "filings_scanned": scanned,
+            "filings_parsed": parsed_ok,
+            "filings_failed": parse_error_count,
+            "coverage_ratio": (parsed_ok / scanned) if scanned else None,
             "buy_count": len(open_market_buys(transactions)),
             "signals": signals,
             "parse_error_count": parse_error_count,
@@ -317,8 +375,29 @@ def get_signals_for_ticker(
                 "reason": f"{type(exc).__name__}: {exc}", "signals": []}
 
 
-def _cik_for_ticker(ticker: str, client=None) -> str | None:
-    """Resuelve el CIK via company_tickers.json (inyectable en tests)."""
+# company_tickers.json son ~2 MB y se descarga una vez por ticker resuelto.
+# resolve_ciks lo llama en bucle sobre la watchlist, asi que una watchlist de 40
+# tickers son 40 descargas de 2 MB a sec.gov en una pasada: ademas de lento, es
+# exactamente el patron que hace que la SEC limite o banee la IP de salida
+# (fair-access). El mapeo se cachea por proceso; solo se invalida al reiniciar
+# el worker, y para CIK de emisores es un dato estable.
+_CIK_MAP_CACHE: dict[str, str] | None = None
+_CIK_MAP_TTL_SECONDS = 6 * 60 * 60
+_CIK_MAP_LOADED_AT: float = 0.0
+
+
+def _load_cik_map(client=None) -> dict[str, str]:
+    """ticker en MAYUSCULAS -> CIK de 10 digitos, cacheado por proceso."""
+    global _CIK_MAP_CACHE, _CIK_MAP_LOADED_AT
+    import time
+
+    now = time.monotonic()
+    if (
+        _CIK_MAP_CACHE is not None
+        and now - _CIK_MAP_LOADED_AT < _CIK_MAP_TTL_SECONDS
+    ):
+        return _CIK_MAP_CACHE
+
     import httpx as _httpx
 
     url = "https://www.sec.gov/files/company_tickers.json"
@@ -329,10 +408,22 @@ def _cik_for_ticker(ticker: str, client=None) -> str | None:
         with _httpx.Client(timeout=30, headers=headers) as owned:
             response = owned.get(url)
     response.raise_for_status()
+
+    mapping: dict[str, str] = {}
     for entry in response.json().values():
-        if isinstance(entry, dict) and str(entry.get("ticker", "")).upper() == ticker:
-            return str(entry["cik_str"]).zfill(10)
-    return None
+        if isinstance(entry, dict):
+            symbol = str(entry.get("ticker", "")).upper()
+            cik = entry.get("cik_str")
+            if symbol and cik is not None:
+                mapping.setdefault(symbol, str(cik).zfill(10))
+    _CIK_MAP_CACHE = mapping
+    _CIK_MAP_LOADED_AT = now
+    return mapping
+
+
+def _cik_for_ticker(ticker: str, client=None) -> str | None:
+    """Resuelve el CIK via company_tickers.json (inyectable en tests)."""
+    return _load_cik_map(client=client).get(ticker.strip().upper())
 
 
 # ---------------- Enganche minimo Telegram (nunca rompe) ----------------

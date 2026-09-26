@@ -5,6 +5,7 @@ All functions return plain dicts/lists — no DataFrame objects leave this modul
 """
 
 from __future__ import annotations
+
 from typing import Optional
 
 import numpy as np
@@ -14,12 +15,11 @@ import yfinance as yf
 import quantstats as qs
 from quantstats.montecarlo import run_models
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _fetch_returns(symbol: str, period: str = "2y") -> Optional[pd.Series]:
+def _fetch_returns(symbol: str, period: str = "2y") -> pd.Series | None:
     """Download adjusted close prices and return daily log returns."""
     try:
         ticker = yf.Ticker(symbol)
@@ -51,7 +51,7 @@ def _fetch_multi_returns(symbols: list[str], period: str = "2y") -> pd.DataFrame
     return df
 
 
-def _safe_float(val) -> Optional[float]:
+def _safe_float(val) -> float | None:
     """Convert numpy/pandas scalar to Python float, or None if NaN/inf."""
     if val is None:
         return None
@@ -68,7 +68,7 @@ def _safe_float(val) -> Optional[float]:
 
 def get_portfolio_performance(
     symbols: list[str],
-    weights: Optional[list[float]] = None,
+    weights: list[float] | None = None,
     period: str = "2y",
     rf: float = 0.0,
     benchmark: str = "SPY",
@@ -96,7 +96,7 @@ def get_portfolio_performance(
     portfolio_returns.name = "portfolio"
 
     # Benchmark
-    bench_returns: Optional[pd.Series] = None
+    bench_returns: pd.Series | None = None
     if benchmark:
         bench_series = _fetch_returns(benchmark, period)
         if bench_series is not None:
@@ -201,13 +201,13 @@ def get_holding_metrics(symbol: str, period: str = "2y") -> dict:
 
 def run_portfolio_montecarlo(
     symbols: list[str],
-    weights: Optional[list[float]] = None,
+    weights: list[float] | None = None,
     period: str = "3y",
     horizon: int = 252,
     sims: int = 1000,
     bust: float = -0.5,
     goal: float = 0.5,
-    models: Optional[list[str]] = None,
+    models: list[str] | None = None,
 ) -> dict:
     """
     Run multi-model Monte Carlo simulation on a weighted portfolio.
@@ -328,7 +328,7 @@ def get_correlation_matrix(
     corr = df.corr(method=method)
 
     # Full matrix as nested dict (JSON-serialisable)
-    matrix: dict[str, dict[str, Optional[float]]] = {}
+    matrix: dict[str, dict[str, float | None]] = {}
     for sym_i in corr.index:
         matrix[sym_i] = {}
         for sym_j in corr.columns:

@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, FXRate, Portfolio, Transaction
+from app.models.entities import Base, Company, Portfolio, Transaction
 from app.services.portfolio_ledger_service import PortfolioLedgerService
 from app.services.tax_report_service import TaxReportService
 

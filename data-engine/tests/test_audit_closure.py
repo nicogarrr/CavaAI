@@ -7,7 +7,6 @@ provenance real.
 """
 
 import ast
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -16,8 +15,8 @@ from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.api.routes.insider import insider_filings
 from app.api.routes.alerts import telegram_status
+from app.api.routes.insider import insider_filings
 from app.api.routes.thesis import ThesisApproveRequest, _epub_citations, approve_thesis
 from app.core.database import Base
 from app.models.entities import (
@@ -28,6 +27,7 @@ from app.models.entities import (
     InsiderTransaction,
     ThesisVersion,
 )
+from app.services.thesis_approval_service import apply_approval_decision
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEDULER_SRC = (REPO_ROOT / "app" / "workers" / "scheduler.py").read_text()
@@ -107,13 +107,65 @@ def test_approve_thesis_transitions_status(db):
     result = approve_thesis(
         "ACME", ThesisApproveRequest(decision="approved", actor="nico"), db=db
     )
-    assert result["status"] == "approved"
+    # La ruta REST delega ahora en la MISMA funcion de transicion que el
+    # poller de Telegram, con un vocabulario unico: "published". Antes cada
+    # camino escribia su propio estado ("approved" / "published") y ninguno
+    # podia constraining al otro.
+    assert result["status"] == "published"
     assert result["decision"] == "approved"
     assert result["actor"] == "nico"
     assert result["version"] == 1
     assert result["telegram_auto_approval"] == "future"
     stored = db.query(ThesisVersion).one()
-    assert stored.status == "approved"
+    assert stored.status == "published"
+
+
+def test_approve_thesis_refuses_an_insufficient_data_version(db):
+    """Una tesis que dice 'no publicable' no puede quedar aprobada."""
+    company = _company(db)
+    db.add(ThesisVersion(
+        company_id=company.id, version=1, status="insufficient_data",
+        thesis_markdown="# NO VALUATION", executive_summary="insufficient data",
+    ))
+    db.commit()
+    with pytest.raises(HTTPException) as exc:
+        approve_thesis("ACME", ThesisApproveRequest(decision="approved"), db=db)
+    assert exc.value.status_code == 409
+    stored = db.query(ThesisVersion).one()
+    assert stored.status == "insufficient_data"
+
+
+def test_approve_thesis_refuses_a_failed_audit_version(db):
+    company = _company(db)
+    db.add(ThesisVersion(
+        company_id=company.id, version=1, status="draft_failed_audit",
+        thesis_markdown="# t", executive_summary="e",
+    ))
+    db.commit()
+    with pytest.raises(HTTPException) as exc:
+        approve_thesis("ACME", ThesisApproveRequest(decision="approved"), db=db)
+    assert exc.value.status_code == 409
+
+
+def test_approve_thesis_refuses_a_stale_version(db):
+    """Aprobar una version que ya no es la vigente deja dos 'publicadas'."""
+    company = _company(db)
+    db.add_all([
+        ThesisVersion(
+            company_id=company.id, version=1, status="draft",
+            thesis_markdown="# v1", executive_summary="e",
+        ),
+    ])
+    db.commit()
+    first = db.query(ThesisVersion).one()
+    db.add(ThesisVersion(
+        company_id=company.id, version=2, status="draft",
+        thesis_markdown="# v2", executive_summary="e",
+    ))
+    db.commit()
+    with pytest.raises(ValueError) as exc:
+        apply_approval_decision(db, first.id, "approve", via="test")
+    assert "stale" in str(exc.value)
 
 
 def test_approve_thesis_rejects_and_404s_without_thesis(db):

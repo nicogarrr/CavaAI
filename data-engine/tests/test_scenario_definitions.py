@@ -17,7 +17,6 @@ from app.valuation.scenario_definitions import (
     speculative_causal_scenarios,
 )
 
-
 # ---------------- evidence_weighted_probabilities ----------------
 
 
