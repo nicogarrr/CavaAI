@@ -102,7 +102,7 @@ export type NavSection = {
 export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Principal',
-    items: [{ href: '/', label: 'Inicio', icon: Home }],
+    items: [{ href: '/inicio', label: 'Inicio', icon: Home }],
   },
   {
     title: 'Cartera',

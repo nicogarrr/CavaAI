@@ -22,7 +22,7 @@ const modules = [
   },
   {
     href: '/risk',
-    title: 'Riesgo',
+    title: 'Exposiciones',
     text: 'Pesos, concentración (top 1 y top 5) y exposición por sector y factor. No calcula VaR, drawdown ni volatilidad: son métricas de estructura de cartera.',
   },
   {

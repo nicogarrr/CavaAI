@@ -231,6 +231,18 @@ class CompanySnapshotOut(BaseModel):
     recent_changes: list[SnapshotRecentChangeOut] = Field(default_factory=list)
 
 
+class CompanySnapshotsBatchOut(BaseModel):
+    """Respuesta del snapshot por lote del indice de research.
+
+    ``snapshots`` va keyed por ticker de la Company resuelta; ``missing``
+    lista los tickers pedidos sin company en el registro (nunca se
+    fabrican snapshots vacios para ellos).
+    """
+
+    snapshots: dict[str, CompanySnapshotOut]
+    missing: list[str] = Field(default_factory=list)
+
+
 class ThesisGenerateRequest(BaseModel):
     ticker: str = Field(min_length=1, max_length=20)
     force_new_version: bool = False

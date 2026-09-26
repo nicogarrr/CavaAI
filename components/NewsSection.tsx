@@ -26,7 +26,7 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                 </p>
                 <Link
                     className="mt-3 inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-amber-400/30 px-4 text-sm text-amber-200 transition-colors hover:text-amber-100"
-                    href="/"
+                    href="/research/news"
                 >
                     <RefreshCcw aria-hidden="true" className="h-4 w-4" />
                     Reintentar
