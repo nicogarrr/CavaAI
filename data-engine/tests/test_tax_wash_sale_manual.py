@@ -177,3 +177,22 @@ def test_informe_siempre_orientativo(db):
     assert report["summary"]["wash_sale_basis"] == "manual-aeat-2025"
     assert "orientativo" in report["summary"]["fiscal_disclaimer"]
     assert "asesor fiscal" in report["summary"]["fiscal_disclaimer"]
+
+
+def test_manual_historial_incluye_ventas_rentables(db):
+    """Secuencia del auditor: venta rentable previa NO puede inflar las
+    existencias al inicio de la ventana y desactivar la excepcion de compra
+    unica (bloquearia una perdida que AEAT permite computar)."""
+    _eur_portfolio(db)
+    c = _company(db, "M8")
+    _tx(db, c, date(2025, 10, 1), "buy", 100, 10)
+    _tx(db, c, date(2025, 11, 1), "sell", 100, 12)  # venta RENTABLE previa
+    _tx(db, c, date(2026, 1, 5), "buy", 100, 10)  # compra unica en ventana
+    _tx(db, c, date(2026, 1, 10), "sell", 60, 8)  # perdida -2/accion
+    _tx(db, c, date(2026, 6, 1), "buy", 1, 8)  # cierra la ventana de datos
+    report = TaxReportService().compute_report(db, 2026)
+    row = next(r for r in report["realized"] if r["ticker"] == "M8")
+    (sale,) = row["sales"]
+    assert sale["wash_sale_blocked"] is False
+    assert sale["blocked_loss_native"] == 0.0
+    assert sale["gain_native"] == -120.0

@@ -354,6 +354,11 @@ class TaxReportService:
                 over_sell = over_sell_quantity > 0
 
                 gain_native = proceeds_native - cost_native
+                # TODA venta válida entra en el historial, con ganancia o con
+                # pérdida: holdings_before_window alimenta la excepción de
+                # compra única del Manual, y omitir las ventas rentables lo
+                # infla (bloquearía pérdidas que AEAT permite computar).
+                prior_sells.append((transaction.trade_date, transaction.quantity))
                 if gain_native < 0:
                     sale = {
                         "date": transaction.trade_date,
@@ -404,7 +409,6 @@ class TaxReportService:
                         sale["blocked_qty"] += take
                         sale["qty_unblocked"] -= take
                         to_block -= take
-                    prior_sells.append((transaction.trade_date, transaction.quantity))
                     open_loss_sales.append(sale)
                 else:
                     sale = None
