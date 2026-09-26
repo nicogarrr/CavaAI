@@ -29,15 +29,14 @@ correspondia al modelo que la documentacion del modulo describe.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
-from types import SimpleNamespace
 from decimal import Decimal
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 from quantstats.montecarlo.analytics import max_drawdowns
-
 
 # --------------------------------------------------------------------------
 # 1. adj_close cero no puede fabricar un dia de -100%

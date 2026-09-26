@@ -15,8 +15,8 @@ from typing import Any
 
 import httpx
 
-from app.services.connectors.base import get_with_retry
 from app.core.config import get_settings
+from app.services.connectors.base import get_with_retry
 
 _BROWSER_HEADERS: dict[str, str] = {
     "User-Agent": (
