@@ -13,9 +13,10 @@ from typing import Any
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_RETRY_BASE_SECONDS = 0.5
 # Las ventanas de Retry-After de cuotas por minuto caben con margen en 120s.
-# Por encima se TRUNCA y no se afirma cumplimiento del header: una cuota
-# diaria agotada (FMP free: 250 llamadas/dia) debe salir como
-# UpstreamRateLimited, no quemar reintentos dentro de la misma corrida.
+# Por encima NO se reintenta inline: una cuota diaria agotada (FMP free: 250
+# llamadas/dia) devuelve ventanas de horas y esperarlas dentro de la corrida
+# contradice el header y quema llamadas en ventana prohibida. Se pospone
+# via UpstreamRateLimited.
 DEFAULT_RETRY_CAP_SECONDS = 120.0
 
 
@@ -23,27 +24,34 @@ class UpstreamRateLimited(RuntimeError):
     """El proveedor respondio 429 y se agotaron los reintentos con presupuesto."""
 
 
-def retry_after_seconds(response: Any, cap: float = DEFAULT_RETRY_CAP_SECONDS) -> float:
-    """Respeta la cabecera Retry-After del proveedor hasta ``cap`` segundos.
-
-    Ignorarla y reintentar con backoff propio es lo que convierte un 429 en un
-    baneo de la clave: el proveedor dice explicitamente cuando puede volver a
-    intentarse. Valores por encima del cap se truncan: el default (120s)
-    cubre las ventanas de cuotas por minuto con margen; una cuota diaria
-    agotada devuelve ventanas de horas, que NUNCA se esperan inline - el
-    caller recibe UpstreamRateLimited tras el presupuesto de reintentos.
-    """
+def _raw_retry_after(response: Any) -> float | None:
+    """Valor crudo de la cabecera Retry-After, o None si no hay/ no parsea."""
     header = None
     try:
         header = response.headers.get("retry-after")
     except AttributeError:
-        return 0.0
+        return None
     if not header:
-        return 0.0
+        return None
     try:
-        return max(0.0, min(float(header), cap))
+        return max(0.0, float(header))
     except (TypeError, ValueError):
+        return None
+
+
+def retry_after_seconds(response: Any, cap: float = DEFAULT_RETRY_CAP_SECONDS) -> float:
+    """Segundos a esperar antes del reintento inline, nunca mas de ``cap``.
+
+    Ignorarla y reintentar con backoff propio es lo que convierte un 429 en un
+    baneo de la clave: el proveedor dice explicitamente cuando puede volver a
+    intentarse. Solo se usa para esperas que CABEN en el cap (cuotas por
+    minuto); ``get_with_retry`` nunca la invoca para ventanas mayores, que se
+    posponen sin reintento inline.
+    """
+    raw = _raw_retry_after(response)
+    if raw is None:
         return 0.0
+    return min(raw, cap)
 
 
 async def get_with_retry(
@@ -82,18 +90,31 @@ dentro de la misma corrida.
             continue
 
         status = getattr(response, "status_code", 200)
-        if status == 429 and attempt < max_retries:
-            await asyncio.sleep(
-                max(retry_after_seconds(response), base_seconds * (2**attempt))
-            )
-            continue
-        if status >= 500 and attempt < max_retries:
-            await asyncio.sleep(min(base_seconds * (2**attempt), cap_seconds))
-            continue
         if status == 429:
+            raw_retry_after = _raw_retry_after(response)
+            if raw_retry_after is not None and raw_retry_after > cap_seconds:
+                # El proveedor pide esperar mas de lo que esta corrida puede
+                # pagar (p.ej. cuota diaria agotada: ventanas de horas). No se
+                # trunca ni se reintenta inline: se pospone y el caller marca
+                # el proveedor no disponible para esta corrida.
+                raise UpstreamRateLimited(
+                    f"upstream pidio Retry-After {raw_retry_after:.0f}s "
+                    f"(> cap {cap_seconds:.0f}s): pospuesto sin reintento inline"
+                )
+            if attempt < max_retries:
+                await asyncio.sleep(
+                    max(
+                        retry_after_seconds(response, cap_seconds),
+                        base_seconds * (2**attempt),
+                    )
+                )
+                continue
             raise UpstreamRateLimited(
                 f"upstream rate limited after {max_retries} retries"
             )
+        if status >= 500 and attempt < max_retries:
+            await asyncio.sleep(min(base_seconds * (2**attempt), cap_seconds))
+            continue
         response.raise_for_status()
         return response
 
