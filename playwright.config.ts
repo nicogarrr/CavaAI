@@ -8,6 +8,10 @@ const uiBaseURL = process.env.E2E_UI_URL ?? "http://127.0.0.1:3100";
 const uiPort = new URL(uiBaseURL).port || "3100";
 const apiPort = new URL(apiBaseURL).port || "8101";
 const uiBackendURL = process.env.E2E_UI_BACKEND_URL ?? "http://127.0.0.1:8100";
+// Instancia SIN bypass de auth para los tests de visitante anonimo real:
+// sin E2E_AUTH_BYPASS ni APP_ENV=test, require-user.ts no deja pasar a nadie.
+const anonBaseURL = process.env.E2E_ANON_UI_URL ?? "http://127.0.0.1:3101";
+const anonPort = new URL(anonBaseURL).port || "3101";
 const e2eResearchSecret = process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
 const pythonBin = process.env.PYTHON_BIN ?? "python";
 const apiTimestamp = Math.floor(Date.now() / 1000).toString();
@@ -71,6 +75,23 @@ export default defineConfig({
           NEXT_DIST_DIR: ".next-e2e",
         },
         url: `${uiBaseURL}/sign-in`,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
+      {
+        command: `npm run dev -- --hostname 127.0.0.1 --port ${anonPort}`,
+        env: {
+          BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? "cavaai-e2e-secret-at-least-32-characters",
+          BETTER_AUTH_URL: anonBaseURL,
+          // A proposito SIN APP_ENV=test ni E2E_AUTH_BYPASS: aqui la auth
+          // real decide, como en produccion. Sigue siendo `next dev`
+          // (NODE_ENV=development); el build de produccion se valida en el
+          // job de frontend de CI.
+          FMP_BACKEND_URL: uiBackendURL,
+          RESEARCH_AUTH_SECRET: e2eResearchSecret,
+          NEXT_DIST_DIR: ".next-e2e-anon",
+        },
+        url: `${anonBaseURL}/`,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
       },
