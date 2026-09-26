@@ -197,7 +197,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
     return (
         <div className="grid gap-6">
             <RecordDetail
-                title="Dashboard de Riesgo"
+                title="Exposiciones de cartera"
                 description="Estructura de la cartera: pesos, concentración (top 1 y top 5) y exposición por sector y factor. No calcula VaR, drawdown ni volatilidad: hace falta historia de precios que el motor aún no usa."
                 icon={<Gauge className="h-5 w-5 text-teal-400" aria-hidden="true" />}
                 record={humanizeRiskDashboard(headlineRecord(initialDashboard))}
