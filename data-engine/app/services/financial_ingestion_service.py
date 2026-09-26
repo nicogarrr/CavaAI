@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.models import Company, Document, FinancialFact, FinancialStatement, MarketPrice
 from app.services.connectors import esef as esef_connector
 from app.services.connectors import fred as fred_connector
@@ -491,12 +492,12 @@ async def _free_data_snapshot(ticker: str, cik: str) -> dict[str, Any]:
         )
     except Exception as exc:
         snapshot["recent_filings"] = []
-        snapshot["filings_error"] = str(exc)[:200]
+        snapshot["filings_error"] = redact_secrets(str(exc))[:200]
     try:
         snapshot["macro"] = await fred_connector.latest_observation("cpi")
     except Exception as exc:  # pragma: no cover - red defensiva
         snapshot["macro"] = None
-        snapshot["macro_error"] = str(exc)[:200]
+        snapshot["macro_error"] = redact_secrets(str(exc))[:200]
     return snapshot
 
 
