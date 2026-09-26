@@ -63,8 +63,14 @@ const sources = [
 ].map((file) => [file, readFileSync(file, 'utf8')]);
 
 for (const route of OFF_NAV_ROUTES) {
-  const ownPage = join(root, 'app/(root)', route.replace(/^\//, ''), 'page.tsx');
-  const inbound = sources.filter(([file, content]) => file !== ownPage && content.includes(`href="${route}"`));
+  // La propia pagina puede vivir en cualquier route group ((root), (public)...):
+  // un enlace a si misma no cuenta como inbound en ninguna de ellas.
+  const ownPages = new Set(
+    routeGroups
+      .map((group) => join(root, 'app', group, route.replace(/^\//, ''), 'page.tsx'))
+      .concat([join(root, 'app', route.replace(/^\//, ''), 'page.tsx')]),
+  );
+  const inbound = sources.filter(([file, content]) => !ownPages.has(file) && content.includes(`href="${route}"`));
   if (inbound.length === 0) {
     failures.push(`${route} has no inbound links — it is unreachable in the UI (add a contextual link or remove the route)`);
   }
