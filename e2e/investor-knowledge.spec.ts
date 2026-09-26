@@ -22,12 +22,15 @@ test.describe("investor knowledge flow", () => {
     await expect(page.locator('input[type="file"]').first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Subir", exact: true })).toBeVisible();
 
+    // El listado (y su estado vacío) vive en la pestaña Biblioteca: en una
+    // página con pestañas server-rendered solo el contenido de la pestaña
+    // activa está en el DOM, así que el chequeo de vacío va tras navegar.
+    await page.goto("/knowledge");
+
     if (await page.getByText("Aún no hay documentos de conocimiento.").isVisible()) {
       return;
     }
 
-    // El listado vive en la pestaña Biblioteca.
-    await page.goto("/knowledge");
     // Listed documents expose chunk browsing and principle extraction per row.
     const chunksLinks = page.getByRole("link", { name: "Fragmentos" });
     expect(await chunksLinks.count()).toBeGreaterThan(0);
