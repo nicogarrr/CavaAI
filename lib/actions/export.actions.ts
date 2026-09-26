@@ -63,11 +63,12 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
 
     if (!response.ok) {
         // El cuerpo del engine puede traer trazas internas (rutas, SQL,
-        // hostnames): se registra en el servidor y al cliente solo se le da
-        // el status, nunca el detalle crudo.
-        const detail = await response.text().catch(() => response.statusText);
+        // hostnames) o eco de la peticion con credenciales (apikey en la
+        // URL): NUNCA se registra - ni entero ni truncado. Al log solo van
+        // el status y la referencia fija del endpoint; al cliente, el
+        // mensaje publico generico.
         console.error(
-            `[exportJournal] research engine respondió ${response.status}: ${detail.slice(0, 500)}`,
+            `[exportJournal] research engine respondió ${response.status} para ${exportPath}`,
         );
         throw new AppError(
             `Exportación falló (${response.status})`,

@@ -40,8 +40,12 @@ describe('exportJournal fija el destino de la petición', () => {
         assert.match(src, /year < 2000 \|\| year > 2100/);
     });
 
-    it('el error publico es generico y el detalle crudo solo va al log', () => {
+    it('el error publico es generico y el cuerpo crudo NO se loguea', () => {
         assert.doesNotMatch(src, /detail\.slice\(0, 300\)/);
+        // El cuerpo del engine puede llevar credenciales (apikey en URL) o
+        // trazas internas: ni entero ni truncado al log, solo status + ruta.
+        assert.doesNotMatch(src, /detail\.slice/);
+        assert.doesNotMatch(src, /console\.error\([^)]*detail/);
         assert.match(src, /console\.error\(/);
         assert.match(src, /`Exportación falló \(\$\{response\.status\}\)`/);
     });
