@@ -70,6 +70,20 @@ class NotificationService:
         db.refresh(alert)
         return deliveries
 
+    @staticmethod
+    def _classify_send_error(exc: Exception) -> str:
+        """Inequivoco ('failed', reintento inmediato seguro) o ambiguo
+        ('unknown': reconciliar por claim expirado, NUNCA reintento
+        inmediato - el proveedor pudo aceptar y entregar)."""
+        if isinstance(exc, httpx.HTTPStatusError):
+            # 4xx (incl. 429): el proveedor respondio que NO lo entrega.
+            return "failed" if exc.response.status_code < 500 else "unknown"
+        if isinstance(exc, httpx.ConnectError):
+            # La conexion nunca se establecio: no salio nada.
+            return "failed"
+        # Timeout, corte a mitad de respuesta, etc.: ambiguo por definicion.
+        return "unknown"
+
     def _dispatch_webhook(self, settings, payload: dict, channel: str) -> dict:
         endpoint = (
             getattr(settings, "alert_email_webhook_url", None)
@@ -94,7 +108,9 @@ class NotificationService:
         except Exception as exc:
             # Webhook errors can contain signed URLs, request bodies and
             # provider paths. Persist only the exception class.
-            return self._result("failed", error=type(exc).__name__)
+            return self._result(
+                self._classify_send_error(exc), error=type(exc).__name__
+            )
 
     def _ensure_delivery_row(self, db: Session, alert: ResearchAlert, channel: str) -> None:
         if self._get_delivery(db, alert, channel) is not None:
@@ -135,9 +151,16 @@ class NotificationService:
                 AlertDelivery.alert_id == alert.id,
                 AlertDelivery.channel == channel,
                 or_(
+                    # Inequivocos: nunca salio nada (pending), conexion no
+                    # establecida o rechazo 4xx (failed). Reintento seguro.
                     AlertDelivery.status.in_(("pending", "failed")),
+                    # Ambiguos: 'sending' (commit fallido o worker muerto) y
+                    # 'unknown' (timeout/5xx: el proveedor pudo aceptar y
+                    # entregar). NUNCA reintento inmediato: solo reconciliacion
+                    # por claim expirado. Sin idempotency key del proveedor no
+                    # existe exactly-once.
                     and_(
-                        AlertDelivery.status == "sending",
+                        AlertDelivery.status.in_(("sending", "unknown")),
                         AlertDelivery.updated_at < stale_before,
                     ),
                 )
@@ -191,7 +214,9 @@ class NotificationService:
         except Exception as exc:
             # Never persist upstream exception text: it may contain the bot token,
             # the fully-qualified endpoint, the request body, or a response body.
-            return self._result("failed", error=type(exc).__name__)
+            return self._result(
+                self._classify_send_error(exc), error=type(exc).__name__
+            )
 
     @staticmethod
     def _telegram_text(payload: dict) -> str:

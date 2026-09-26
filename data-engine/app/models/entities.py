@@ -1109,6 +1109,9 @@ class AlertDelivery(TenantOwnedMixin, Base, TimestampMixin):
     fila a la vez. Un commit fallido tras el envio deja la fila en
     'sending' y un retry inmediato NO la reclama (no hay reenvio); solo
     un claim expirado (> STALE_CLAIM_SECONDS) vuelve a ser elegible.
+    Resultados ambiguos ('unknown': timeout/5xx, el proveedor pudo
+    entregar) tampoco se reclaman de inmediato; los inequivocos
+    ('failed': conexion no establecida o rechazo 4xx) si.
     """
 
     __tablename__ = "alert_deliveries"

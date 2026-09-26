@@ -102,7 +102,7 @@ def test_configured_telegram_failure_does_not_leak_token_or_url(monkeypatch, db)
 
     deliveries = NotificationService().dispatch(db, _alert(db, ["telegram"]))
 
-    assert deliveries["telegram"]["status"] == "failed"
+    assert deliveries["telegram"]["status"] == "unknown"
     error = deliveries["telegram"]["error"]
     assert "RuntimeError" in error
     assert token not in error
@@ -137,7 +137,8 @@ def test_webhook_failure_does_not_persist_url_or_body(monkeypatch, db):
 
     deliveries = NotificationService().dispatch(db, _alert(db, ["email", "push"]))
     for channel in ("email", "push"):
-        assert deliveries[channel]["status"] == "failed"
+        # RuntimeError generico: ambiguo (no se sabe si el proveedor acepto).
+        assert deliveries[channel]["status"] == "unknown"
         assert deliveries[channel]["error"] == "RuntimeError"
         assert endpoint not in deliveries[channel]["error"]
 
@@ -367,3 +368,95 @@ def test_stale_claim_becomes_eligible_after_ttl(monkeypatch, db):
         )
     ).scalar_one()
     assert row.attempts == 2
+
+
+class _TimeoutClient:
+    """Timeout tras enviar: el proveedor pudo aceptar. Resultado ambiguo."""
+
+    calls: list[str] = []
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def post(self, url, json):
+        type(self).calls.append(url)
+        import httpx as _httpx
+
+        request = _httpx.Request("POST", url, json=json)
+        raise _httpx.ReadTimeout("read timed out", request=request)
+
+
+class _RejectedClient:
+    """400 del proveedor: rechazo inequivoco (nunca se entregara tal cual)."""
+
+    calls: list[str] = []
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def post(self, url, json):
+        import httpx as _httpx
+
+        type(self).calls.append(url)
+        request = _httpx.Request("POST", url, json=json)
+        response = _httpx.Response(400, request=request)
+        raise _httpx.HTTPStatusError("400 Bad Request", request=request, response=response)
+
+
+def test_timeout_is_ambiguous_and_not_retried_immediately(monkeypatch, db):
+    """Timeout tras posible aceptacion remota: 'unknown', sin reintento
+    inmediato (reintentar duplicaria si el proveedor ya entrego)."""
+    _TimeoutClient.calls = []
+    monkeypatch.setattr(notification_service.httpx, "Client", _TimeoutClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    alert = _alert(db, ["email"])
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["status"] == "unknown"
+    assert deliveries["email"]["error"] == "ReadTimeout"
+
+    # Retry inmediato: NO reclama (ambiguos enfrian como 'sending').
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["status"] == "unknown"
+    assert _TimeoutClient.calls.count("https://hooks.example/email") == 1
+
+    # Tras el TTL de claim expirado, la reconciliacion si reintenta (una vez).
+    db.execute(
+        update(AlertDelivery)
+        .where(AlertDelivery.alert_id == alert.id, AlertDelivery.channel == "email")
+        .values(
+            updated_at=datetime.now(UTC) - timedelta(seconds=STALE_CLAIM_SECONDS + 5)
+        )
+    )
+    db.commit()
+    deliveries = NotificationService().dispatch(db, alert)
+    assert _TimeoutClient.calls.count("https://hooks.example/email") == 2
+    assert deliveries["email"]["status"] == "unknown"  # sigue fallando el stub
+
+
+def test_4xx_rejection_is_unambiguous_and_retried_immediately(monkeypatch, db):
+    """4xx: el proveedor respondio que no lo entrega; reintento seguro."""
+    _RejectedClient.calls = []
+    monkeypatch.setattr(notification_service.httpx, "Client", _RejectedClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    alert = _alert(db, ["email"])
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["status"] == "failed"
+    assert deliveries["email"]["error"] == "HTTPStatusError"
+
+    # Retry inmediato: reclamable (inequivoco), vuelve a intentar.
+    NotificationService().dispatch(db, alert)
+    assert _RejectedClient.calls.count("https://hooks.example/email") == 2
