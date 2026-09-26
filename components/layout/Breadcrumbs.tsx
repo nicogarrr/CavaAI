@@ -24,6 +24,9 @@ const SUBROUTE_LABELS: Record<string, string> = {
   'management-credibility': 'Credibilidad de la directiva',
 };
 
+/** El dashboard vive en `/inicio` porque `/` es la landing pública. */
+const HOME_HREF = '/inicio';
+
 function buildCrumbs(pathname: string): Crumb[] {
   const items = flattenNavItems();
   const parentOf = new Map<string, NavItem>();
@@ -38,14 +41,14 @@ function buildCrumbs(pathname: string): Crumb[] {
     }
   }
 
-  if (pathname === '/') return [{ href: '/', label: 'Inicio' }];
+  if (pathname === HOME_HREF) return [{ href: HOME_HREF, label: 'Inicio' }];
 
   // Ancla: el href mas largo que sea prefijo de la ruta.
   const anchor = items
-    .filter((item) => item.href !== '/' && (pathname === item.href || pathname.startsWith(`${item.href}/`)))
+    .filter((item) => item.href !== HOME_HREF && (pathname === item.href || pathname.startsWith(`${item.href}/`)))
     .sort((a, b) => b.href.length - a.href.length)[0];
 
-  const crumbs: Crumb[] = [{ href: '/', label: 'Inicio' }];
+  const crumbs: Crumb[] = [{ href: HOME_HREF, label: 'Inicio' }];
 
   if (!anchor) return crumbs;
 
