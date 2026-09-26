@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import io
-import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree
@@ -11,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import CashBalance, Company, Position, Transaction
+from app.services.number_parsing import parse_localized_number
 from app.services.portfolio_fx_service import PortfolioFXService
 
 
@@ -18,48 +18,10 @@ class IBKRImportError(ValueError):
     """Fichero IBKR inválido: mensaje accionable en español."""
 
 
-def _parse_amount(value: str | None) -> Decimal | None:
-    """Parse a money amount written in either en-US or es-ES notation.
-
-    IBKR Flex exports follow the statement currency's locale, so the same
-    importer receives ``1,234.56`` and ``1.234,56``. Stripping every comma
-    turned the Spanish form into ``1.23456`` (a 1000x error) and ``0,24`` into
-    ``24`` (100x), and ``_is_number`` agreed the Spanish form was valid, so the
-    corruption passed validation and was persisted.
-
-    The last separator is the decimal one when both are present, and a lone
-    separator is decimal only when it is followed by 1-2 digits (so
-    ``1,234`` stays one thousand two hundred thirty-four).
-    """
-    if value in (None, ""):
-        return None
-    raw = str(value).strip().replace("\u00a0", "").replace(" ", "")
-    if not raw:
-        return None
-    negative = False
-    if raw.startswith("(") and raw.endswith(")"):
-        negative, raw = True, raw[1:-1]
-    if not re.fullmatch(r"[-+]?\d[\d.,]*", raw):
-        return None
-    sign = ""
-    if raw[0] in "+-":
-        sign, raw = raw[0], raw[1:]
-    if "," in raw and "." in raw:
-        raw = raw.replace(",", "") if raw.rindex(".") > raw.rindex(",") else raw.replace(".", "").replace(",", ".")
-    elif "," in raw:
-        tail = raw.rsplit(",", 1)[1]
-        raw = raw.replace(",", "") if len(tail) == 3 else raw.replace(",", ".")
-    try:
-        parsed = Decimal(f"{sign}{raw}")
-    except (InvalidOperation, ValueError):
-        return None
-    return -parsed if negative else parsed
-
-
 def _is_number(value: str | None) -> bool:
     if value in (None, ""):
         return False
-    return _parse_amount(value) is not None
+    return parse_localized_number(value) is not None
 
 
 def _is_date(value: str | None) -> bool:
@@ -292,7 +254,7 @@ def _tag_name(element: ElementTree.Element) -> str:
 def _decimal(value: str | None, default: str = "0") -> Decimal:
     if value in (None, ""):
         return Decimal(default)
-    parsed = _parse_amount(value)
+    parsed = parse_localized_number(value)
     if parsed is None:
         # An unparseable amount must not become a silent 0: a zero cash flow is
         # a real fact, and coercing a corrupt one to zero writes a false entry
@@ -301,7 +263,7 @@ def _decimal(value: str | None, default: str = "0") -> Decimal:
             f"Importe no interpretable: {value!r}. Usa notacion en-US (1,234.56) "
             "o es-ES (1.234,56)."
         )
-    return parsed
+    return parsed[0]
 
 
 def _date(value: str | None) -> date:
