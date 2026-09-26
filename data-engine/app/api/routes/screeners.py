@@ -813,9 +813,11 @@ def _refetch_real_items(
 
     quotes: dict[str, dict] = {}
     with httpx.Client(headers=headers, timeout=15) as client:
-        profile_vendor = resolve_profile_vendor(active)
         fn_key = settings.finnhub_api_key
-        client.params = {"token": fn_key} if fn_key and profile_vendor.name == "finnhub" else {}
+        # El token solo se fija cuando el vendor de QUOTES es Finnhub: con
+        # Yahoo activo, httpx fusionaria Client(params) en cada URL de quote
+        # y la key de Finnhub se filtraria a Yahoo.
+        client.params = {"token": fn_key} if fn_key and active.name == "finnhub" else {}
         with ThreadPoolExecutor(max_workers=QUOTE_MAX_WORKERS) as pool:
             futures = {
                 pool.submit(_safe_fetch_quote, client, symbol, active.name): symbol

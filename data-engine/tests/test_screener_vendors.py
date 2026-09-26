@@ -166,6 +166,75 @@ def test_sector_filter_matches_gics_across_universe_db_and_profile(monkeypatch):
     assert legacy["count"] == len(items)
 
 
+def test_quote_client_never_leaks_finnhub_token_to_yahoo(monkeypatch):
+    """Regresion de seguridad: con SCREENER_QUOTE_VENDOR=yahoo y key Finnhub
+    (necesaria para perfiles), el cliente de la fase quotes NO puede fijar
+    client.params={'token': key}: httpx 0.28 fusiona Client(params) con los
+    params por request y la URL de quote a Yahoo llevaria ?token=SECRET."""
+    import httpx as real_httpx
+
+    class _Settings:
+        finnhub_api_key = "k" * 8
+        screener_quote_vendor = "yahoo"
+
+    monkeypatch.setattr(screeners, "get_settings", lambda: _Settings())
+    monkeypatch.setattr(screeners, "_load_universe_from_db", lambda: {})
+    monkeypatch.setattr(screeners, "_load_screener_ratios", lambda **kwargs: {})
+
+    quote_client = _FakeClient(
+        {
+            "chart": _FakeResponse(
+                {
+                    "chart": {
+                        "result": [
+                            {
+                                "timestamp": [7],
+                                "meta": {},
+                                "indicators": {"quote": [{"close": [99.0], "volume": [3]}]},
+                            }
+                        ]
+                    }
+                }
+            )
+        }
+    )
+    profile_client = _FakeClient(
+        {
+            "/stock/profile2": _FakeResponse(
+                {
+                    "ticker": "X",
+                    "name": "X Co",
+                    "marketCapitalization": 2.0,
+                    "finnhubIndustry": "Technology",
+                    "exchange": "NASDAQ",
+                }
+            )
+        }
+    )
+    clients = [quote_client, profile_client]
+    monkeypatch.setattr(screeners.httpx, "Client", lambda **kwargs: clients.pop(0))
+
+    items = screeners._refetch_real_items(vendor="yahoo", tenant_id=None)
+    assert items, "Yahoo falso debe producir items"
+    assert getattr(quote_client, "params", {}) == {}, (
+        "la fase quotes NO puede llevar el token Finnhub (fuga a Yahoo)"
+    )
+    assert profile_client.params == {"token": "k" * 8}, (
+        "la fase perfiles si lo lleva: va a Finnhub"
+    )
+
+    # Verificacion a nivel httpx real: con los params de la fase quotes,
+    # la URL construida para Yahoo no lleva token.
+    # (monkeypatch parchea el atributo en el modulo httpx global: hay que
+    # deshacerlo antes de usar el Client real)
+    monkeypatch.undo()
+    with real_httpx.Client(params=getattr(quote_client, "params", {})) as real:
+        req = real.build_request(
+            "GET", "https://query1.finance.yahoo.com/v8/finance/chart/AAPL"
+        )
+        assert "token" not in str(req.url).lower()
+
+
 def test_resolve_vendor_falls_back_to_finnhub():
     assert resolve_screener_vendor(None).name == "finnhub"
     assert resolve_screener_vendor("").name == "finnhub"
