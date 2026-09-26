@@ -34,3 +34,20 @@ void test('la pestaña Simulación (Monte Carlo retirado) no vuelve sin un endpo
     const offenders = frontendFiles.filter((path) => /montecarlo|PortfolioRiskSimulator|generateRiskAnalysis/i.test(readFileSync(path, 'utf8')));
     assert.deepEqual(offenders.map((path) => path.slice(root.length + 1)), []);
 });
+
+void test('ningún copy ni comentario remite a la pestaña Simulación retirada', () => {
+    // F130 bonus: quedaban remisiones visibles en /risk y /portfolio/intelligence
+    // ("el riesgo simulado, la pestaña Simulación"). La única simulación legítima
+    // que queda es el backtest walk-forward de ProPicks.
+    const offenders = frontendFiles.filter((path) => {
+        const text = readFileSync(path, 'utf8').replace(/simulación walk-forward/gi, '');
+        return /simulaci/i.test(text);
+    });
+    assert.deepEqual(offenders.map((path) => path.slice(root.length + 1)), []);
+});
+
+void test('Exposiciones no niega medidas que Inteligencia sí ofrece (F130)', () => {
+    const risk = readFileSync(join(root, 'app/(root)/risk/page.tsx'), 'utf8');
+    assert.ok(!risk.includes('el motor aún no usa'), 'el motor SÍ usa historia de precios (Inteligencia)');
+    assert.ok(risk.includes('esas medidas están en Inteligencia'), 'la distinción honesta: esta página no las calcula');
+});
