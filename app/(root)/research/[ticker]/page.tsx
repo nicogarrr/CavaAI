@@ -222,20 +222,21 @@ function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string })
         ) : null}
       </div>
       {/* Escritorio: tabla completa */}
-      <div className="hidden overflow-x-auto md:block">
+      <div aria-label="Hechos reportados" className="hidden overflow-x-auto md:block" role="region" tabIndex={0}>
       <table className="w-full text-left text-sm">
+        <caption className="sr-only">Hechos reportados de la empresa: métrica, periodo, valor y tipo de fuente</caption>
         <thead className="text-xs uppercase text-gray-500">
           <tr>
-            <th className="border-b border-gray-800 py-2">Métrica</th>
-            <th className="border-b border-gray-800 py-2">Periodo</th>
-            <th className="border-b border-gray-800 py-2 text-right">Valor</th>
-            <th className="border-b border-gray-800 py-2 text-right">Fuente</th>
+            <th className="border-b border-gray-800 py-2" scope="col">Métrica</th>
+            <th className="border-b border-gray-800 py-2" scope="col">Periodo</th>
+            <th className="border-b border-gray-800 py-2 text-right" scope="col">Valor</th>
+            <th className="border-b border-gray-800 py-2 text-right" scope="col">Fuente</th>
           </tr>
         </thead>
         <tbody>
           {facts.map((fact) => (
             <tr key={fact.id} className="text-gray-300">
-              <td className="border-b border-gray-900 py-2 font-medium">{fact.metric}</td>
+              <th className="border-b border-gray-900 py-2 text-left text-sm font-medium" scope="row">{fact.metric}</th>
               <td className="border-b border-gray-900 py-2">{fact.period}</td>
               <td className="border-b border-gray-900 py-2 text-right">{metricValue(fact.value, fact.unit)}</td>
               <td className="border-b border-gray-900 py-2 text-right text-xs text-gray-500">{label(fact.source_type)}</td>
@@ -583,7 +584,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                   {entry.diff ? (
                     <p className="mt-2 text-sm leading-6 text-gray-400">{entry.diff.change_summary}</p>
                   ) : (
-                    <p className="mt-2 text-xs text-gray-600">Primera versión registrada o sin diff persistido.</p>
+                    <p className="mt-2 text-xs text-gray-500">Primera versión registrada o sin diff persistido.</p>
                   )}
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                     <span>red-team {entry.red_team_score}/100</span>
@@ -593,7 +594,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               ))}
             </div>
           )}
-          <p className="mt-3 text-xs text-gray-600">
+          <p className="mt-3 text-xs text-gray-500">
             El historial muestra estado, fecha y resumen del cambio tal como están persistidos; el sistema no registra quién aprobó cada versión.
           </p>
         </Panel>
@@ -726,7 +727,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 <div className="flex justify-between gap-3"><MoatTerm type={item.type} /><Badge>{item.strength}/100</Badge></div>
                 <p className="mt-3 text-sm text-gray-400">{label(item.status)} · {label(item.trend)} · persistencia {item.persistence}</p>
                 {definition ? <p className="mt-2 text-xs leading-5 text-gray-500">{definition}</p> : null}
-                <p className="mt-2 text-xs text-gray-600">{item.supporting_claim_ids.length} afirmaciones a favor · {item.contradicting_claim_ids.length} en contra</p>
+                <p className="mt-2 text-xs text-gray-500">{item.supporting_claim_ids.length} afirmaciones a favor · {item.contradicting_claim_ids.length} en contra</p>
               </div>
             );
           }) : (

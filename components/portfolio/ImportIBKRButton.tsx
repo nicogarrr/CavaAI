@@ -130,17 +130,18 @@ export default function ImportIBKRButton({ userId }: ImportIBKRButtonProps) {
                 size="sm"
                 onClick={handleImport}
                 disabled={busy}
+                aria-busy={isImporting}
                 className="border-gray-600 hover:bg-gray-700 text-gray-200"
                 title="Importar cartera desde Interactive Brokers (Flex statement)"
             >
                 {isImporting ? (
                     <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
                         Importando IBKR...
                     </>
                 ) : (
                     <>
-                        <Landmark className="mr-2 h-4 w-4" />
+                        <Landmark aria-hidden="true" className="mr-2 h-4 w-4" />
                         Importar IBKR
                     </>
                 )}
@@ -150,17 +151,18 @@ export default function ImportIBKRButton({ userId }: ImportIBKRButtonProps) {
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
+                aria-busy={isUploading}
                 className="border-gray-600 hover:bg-gray-700 text-gray-200"
                 title="Subir un Flex XML o CSV de actividad descargado de IBKR"
             >
                 {isUploading ? (
                     <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
                         Subiendo...
                     </>
                 ) : (
                     <>
-                        <Upload className="mr-2 h-4 w-4" />
+                        <Upload aria-hidden="true" className="mr-2 h-4 w-4" />
                         Subir fichero
                     </>
                 )}
