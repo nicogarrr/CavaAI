@@ -11,14 +11,30 @@ The report follows Spanish IRPF conventions:
 - Withholding is matched from cash transactions whose type contains
   "withholding" / "tax" (IBKR reports gross dividend and withheld tax as
   separate CashTransaction rows in the same statement).
-- Wash-sale (art. 33.5.b LIRPF): a realized loss is NOT computable when
-  homogeneous shares are repurchased within two months before or after the
-  sale. The blocked loss is deferred by adding it to the repurchase lot's
-  cost basis, so it surfaces when that lot is eventually sold. Losses whose
-  forward repurchase window extends beyond the available data are reported
-  as provisionally computable and flagged per sale and in the summary. The
-  convention is labeled in the report (wash_sale_rule = "es-irpf-2m") and
-  applies only to this Spanish IRPF report.
+- Wash-sale (art. 33.5.f LIRPF, valores cotizados): a realized loss is NOT
+  computable when homogeneous shares are repurchased within two months
+  before or after the sale AND those shares remain in the portfolio after
+  the sale (Manual Renta 2025, cap. 11, apdo. E: "dichos valores continúan
+  en el patrimonio del contribuyente tras la transmisión"; if nothing
+  remains, "la pérdida patrimonial podrá imputarse íntegramente").
+  Backward repurchases follow the Manual's proportionality: recompra =
+  min(remanente tras la venta, comprado en los 2 meses previos), with the
+  Manual's single-purchase exception (only one buy op in the prior window
+  and zero holdings at its start → no limitation; the initial purchase
+  itself is not a repurchase). The blocked loss is absorbed FIFO onto the
+  oldest surviving in-window lots' cost basis, so it surfaces when those
+  lots are sold. Forward (posterior) repurchases are also taken into
+  account ("deben tenerse en cuenta las compras posteriores"),
+  blocking proportionally up to the posterior buy quantity; the Manual gives no
+  explicit posterior prorrata, so this is a documented interpretation.
+  Losses whose forward window extends beyond the available data are
+  reported as provisionally computable and flagged per sale and in the
+  summary. The convention is labeled in the report
+  (wash_sale_rule = "es-irpf-2m", wash_sale_basis = "manual-aeat-2025")
+  and applies only to this Spanish IRPF report.
+  ORIENTATIVO: this report is a working paper ("orientativo, no apto para
+  declarar") until signed off by a colegiado fiscal adviser. See
+  summary.fiscal_disclaimer.
   Limitation: Company metadata has no ISIN/security identifier or listing
   flag, so the engine cannot prove that a ticker is a listed homogeneous
   security or distinguish dividends from unlisted instruments. No such
@@ -47,11 +63,24 @@ from app.services.portfolio_fx_service import PortfolioFXService
 FIFO_METHOD = "fifo"
 AVERAGE_METHOD = "average"
 
-# Spanish IRPF wash-sale convention (art. 33.5.b LIRPF, listed securities):
-# homogeneous shares repurchased within two months before or after a loss
-# sale block the loss, which is deferred onto the repurchase lot's basis.
+# Spanish IRPF wash-sale convention (art. 33.5.f LIRPF, listed securities),
+# developed by Manual Renta 2025 cap. 11 apdo. E (procedimiento de recompra):
+# homogeneous shares acquired within two months before or after a loss sale
+# block the loss only while they remain in the portfolio after the sale,
+# proportionally (min(remanente, comprado previo)), absorbed FIFO.
 WASH_SALE_RULE_ID = "es-irpf-2m"
+WASH_SALE_BASIS = "manual-aeat-2025"
 WASH_SALE_WINDOW = relativedelta(months=2)
+
+# Working-paper label: the figures follow the Manual's procedure but the
+# ledger has no ISIN/listing proof and no external-broker coverage, so the
+# report must be presented as orientativo until a fiscal adviser signs off.
+FISCAL_DISCLAIMER = (
+    "Informe orientativo, no apto para declarar sin la validación de un "
+    "asesor fiscal: wash-sale según procedimiento del Manual AEAT 2025 "
+    "(art. 33.5.f LIRPF, proporcionalidad y FIFO); sin ISIN/cotización ni "
+    "cobertura multibróker verificadas."
+)
 
 DIVIDEND_ACTIONS = {"dividend", "div", "cash_dividend", "withholding"}
 SELL_ACTIONS = {"sell", "sold"}
@@ -224,9 +253,15 @@ class TaxReportService:
         # across fiscal years; only sales inside [start, end] enter the
         # report (a prior-year sale must never leak into this year's totals).
         #
-        # Documented simplifications for this personal report:
-        # - A pre-sale buy blocks only for the shares still held at sale
-        #   time (shares already sold again cannot carry deferred basis).
+        # Documented procedure (Manual Renta 2025, cap. 11, apdo. E):
+        # - Backward: prior-window buys block only for the shares still held
+        #   at sale time, proportionally as min(remanente, comprado previo),
+        #   absorbed FIFO onto the oldest surviving in-window lots. Single
+        #   prior buy op with zero holdings at the window start is the initial
+        #   purchase, not a repurchase → no limitation.
+        # - Forward: posterior-window buys are also taken into account and
+        #   block proportionally up to the posterior buy quantity (the Manual
+        #   gives no explicit posterior prorrata: documented interpretation).
         # - A partial repurchase blocks the loss proportionally.
         # - When a sale's forward window extends beyond the latest available
         #   transaction, the unblocked remainder is reported as provisionally
@@ -251,6 +286,11 @@ class TaxReportService:
             lots: deque[dict] = deque()
             open_loss_sales: list[dict] = []
             year_sales: list[dict] = []
+            # Chronological buy/sell history for this ticker, used ONLY for
+            # the Manual AEAT 2025 backward proportionality
+            # (min(remanente, comprado previo) + single-purchase exception).
+            prior_buys: list[tuple] = []  # (trade_date, quantity)
+            prior_sells: list[tuple] = []  # (trade_date, quantity)
             for transaction in events:
                 action = (transaction.action or "").lower()
                 if action in BUY_ACTIONS:
@@ -284,6 +324,7 @@ class TaxReportService:
                         still_open.append(sale)
                     open_loss_sales = still_open
                     lots.append(lot)
+                    prior_buys.append((transaction.trade_date, transaction.quantity))
                     continue
                 if action not in SELL_ACTIONS:
                     continue
@@ -313,6 +354,11 @@ class TaxReportService:
                 over_sell = over_sell_quantity > 0
 
                 gain_native = proceeds_native - cost_native
+                # TODA venta válida entra en el historial, con ganancia o con
+                # pérdida: holdings_before_window alimenta la excepción de
+                # compra única del Manual, y omitir las ventas rentables lo
+                # infla (bloquearía pérdidas que AEAT permite computar).
+                prior_sells.append((transaction.trade_date, transaction.quantity))
                 if gain_native < 0:
                     sale = {
                         "date": transaction.trade_date,
@@ -320,19 +366,49 @@ class TaxReportService:
                         "loss_per_share": -gain_native / transaction.quantity,
                         "blocked_qty": Decimal("0"),
                     }
-                    # Backward window: buys from the two months before the sale
-                    # block the loss for the shares still held.
+                    # Backward window (Manual Renta 2025, apdo. E.1): prior-window
+                    # buys block only for the shares still held, proportionally:
+                    #   recompra = min(remanente tras la venta,
+                    #                  comprado en los 2 meses previos),
+                    # absorbed FIFO onto the oldest surviving in-window lots.
+                    # Exception: a single buy op in the prior window with zero
+                    # holdings at its start is the initial purchase itself,
+                    # not a repurchase → no limitation.
                     window_start = transaction.trade_date - WASH_SALE_WINDOW
+                    bought_prev = Decimal("0")
+                    buy_ops_prev = 0
+                    for buy_date, buy_qty in prior_buys:
+                        if buy_date >= window_start:
+                            bought_prev += buy_qty
+                            buy_ops_prev += 1
+                    holdings_before_window = Decimal("0")
+                    for buy_date, buy_qty in prior_buys:
+                        if buy_date < window_start:
+                            holdings_before_window += buy_qty
+                    for sell_date, sell_qty in prior_sells:
+                        if sell_date < window_start:
+                            holdings_before_window -= sell_qty
+                    if holdings_before_window < 0:
+                        holdings_before_window = Decimal("0")
+                    remaining_after = sum(lot["qty"] for lot in lots)
+                    if buy_ops_prev == 1 and holdings_before_window <= 0:
+                        recompra_prev_qty = Decimal("0")
+                    else:
+                        recompra_prev_qty = min(
+                            remaining_after, bought_prev, sale["qty_unblocked"]
+                        )
+                    to_block = recompra_prev_qty
                     for lot in lots:
-                        if sale["qty_unblocked"] <= 0:
+                        if to_block <= 0 or sale["qty_unblocked"] <= 0:
                             break
                         if lot["date"] < window_start or lot["capacity"] <= 0 or lot["qty"] <= 0:
                             continue
-                        take = min(lot["capacity"], lot["qty"], sale["qty_unblocked"])
+                        take = min(lot["capacity"], lot["qty"], to_block, sale["qty_unblocked"])
                         lot["deferred"] += take * sale["loss_per_share"]
                         lot["capacity"] -= take
                         sale["blocked_qty"] += take
                         sale["qty_unblocked"] -= take
+                        to_block -= take
                     open_loss_sales.append(sale)
                 else:
                     sale = None
@@ -502,6 +578,8 @@ class TaxReportService:
             "total_realized_gain_base": None if realized_incomplete else _money(total_gain),
             "total_blocked_loss_base": None if realized_incomplete else _money(total_blocked),
             "wash_sale_rule": WASH_SALE_RULE_ID,
+            "wash_sale_basis": WASH_SALE_BASIS,
+            "fiscal_disclaimer": FISCAL_DISCLAIMER,
             "wash_sale_window_open": sorted(
                 b["ticker"] for b in realized if b["wash_sale_window_open"]
             ),
