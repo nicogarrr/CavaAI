@@ -285,9 +285,11 @@ export type PortfolioAnalyticsResult = {
     cvar_95: number | null;
     win_rate: number | null;
     calmar: number | null;
-    score_quality: number;
-    score_growth: number;
-    score_value: number;
+    // null cuando la métrica que alimenta la banda no existe (sin historial,
+    // sin cobertura). Un 0 es una medición; null es su ausencia.
+    score_quality: number | null;
+    score_growth: number | null;
+    score_value: number | null;
     score_cagr3y: number | null;
     trading_days: number;
     start_date: string;
@@ -306,36 +308,57 @@ export type PortfolioPerformanceHistory = {
     end_date: string;
 };
 
-// Obtener métricas reales del portfolio via quantstats-pro
-export async function getPortfolioScores(userId: string): Promise<{
-    quality: number;
-    growth: number;
-    value: number;
-    dividend: number;
-    cagr3y: number;
+/**
+ * Portfolio factor scores, 0-100.
+ *
+ * `null` means "not computable from what we have", and it is NOT the same as 0:
+ * a 0 is a real measurement (a portfolio with no growth has 0 growth), while
+ * null is the absence of the metric the score would come from. The distinction
+ * used to be erased here: every missing tearsheet metric, a portfolio with no
+ * holdings and a failed backend request all produced five zeros, so a backend
+ * hiccup was displayed as "your portfolio scores 0/100" and a portfolio with no
+ * history looked identical to a portfolio with terrible history.
+ */
+export type PortfolioScores = {
+    quality: number | null;
+    growth: number | null;
+    value: number | null;
+    dividend: number | null;
+    cagr3y: number | null;
     analytics?: PortfolioAnalyticsResult;
     history?: PortfolioPerformanceHistory;
-}> {
+};
+
+const NO_PORTFOLIO_SCORES = {
+    quality: null,
+    growth: null,
+    value: null,
+    dividend: null,
+    cagr3y: null,
+} as const satisfies Omit<PortfolioScores, 'analytics' | 'history'>;
+
+// Obtener métricas reales del portfolio via quantstats-pro
+export async function getPortfolioScores(userId: string): Promise<PortfolioScores> {
     const canonicalUserId = await resolveUserId(userId);
     const empty = { quality: 0, growth: 0, value: 0, dividend: 0, cagr3y: 0 };
 
     try {
         const summary = await getPortfolioSummary(canonicalUserId);
-        if (summary.holdings.length === 0) return empty;
+        if (summary.holdings.length === 0) return { ...NO_PORTFOLIO_SCORES };
 
         // Scores 0-100 derivados de métricas reales del tearsheet
         // (GET /api/portfolio/tearsheet): bandas documentadas, sin inventos.
         // quality = consistencia (Sharpe/win_rate), growth = acumulado,
-        // value = resiliencia (drawdown). Dividend queda en 0 hasta tener
-        // motor de yield real.
+        // value = resiliencia (drawdown). Cada banda devuelve null cuando la
+        // métrica que la alimenta no existe: un 0 seria una medición.
         const clamp100 = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
         const sheet = await getPortfolioTearsheet(canonicalUserId);
         // Real dividend score: trailing-12M declared-dividend yield from
         // GET /api/portfolio/dividends (FMP-ingested records, provenance
         // attached). Linear band documented here: 0% yield -> 0, 6% -> 100.
-        // When no position has ingested dividend records the score stays 0
-        // (same honest empty state as before, no fabricated yield).
-        let dividendScore = 0;
+        // Sin posiciones con dividendos ingeridos la puntuación es null, no 0:
+        // un yield de 0% es un hecho ("no reparte") y "no lo sabemos" no lo es.
+        let dividendScore: number | null = null;
         try {
             const dividends = await cachedFetch<{
                 portfolio_yield: number | null;
@@ -355,18 +378,23 @@ export async function getPortfolioScores(userId: string): Promise<{
                 dividendScore = clamp100((dividends.portfolio_yield / 0.06) * 100);
             }
         } catch {
-            // Endpoint unavailable: keep the honest zero state.
-            dividendScore = 0;
+            // Endpoint unavailable: the yield is unknown, not zero.
+            dividendScore = null;
         }
         const m = sheet?.metrics ?? null;
         const sharpe = m?.sharpe ?? null;
         const winRate = m?.win_rate ?? null;
         const maxDD = m?.max_drawdown ?? null;
         const cumulative = m?.cumulative_return ?? null;
-        const quality = sharpe == null ? 0 : clamp100(50 + sharpe * 25);
-        const growth = cumulative == null ? 0 : clamp100(50 + cumulative * 200);
-        const value = maxDD == null ? 0 : clamp100(100 + maxDD * 200);
-        const consistency = winRate == null ? quality : clamp100(quality * 0.7 + winRate * 100 * 0.3);
+        const quality = sharpe == null ? null : clamp100(50 + sharpe * 25);
+        const growth = cumulative == null ? null : clamp100(50 + cumulative * 200);
+        const value = maxDD == null ? null : clamp100(100 + maxDD * 200);
+        const consistency =
+            quality == null
+                ? null
+                : winRate == null
+                  ? quality
+                  : clamp100(quality * 0.7 + winRate * 100 * 0.3);
         const data: PortfolioAnalyticsResult = {
             cagr: cumulative,
             volatility_ann: null,
@@ -387,17 +415,17 @@ export async function getPortfolioScores(userId: string): Promise<{
         };
 
         return {
-            quality: data.score_quality ?? 0,
-            growth: data.score_growth ?? 0,
-            value: data.score_value ?? 0,
+            quality: data.score_quality ?? null,
+            growth: data.score_growth ?? null,
+            value: data.score_value ?? null,
             dividend: dividendScore,
-            cagr3y: data.cagr != null ? Math.round(data.cagr * 10000) / 100 : 0,
+            cagr3y: data.cagr != null ? Math.round(data.cagr * 10000) / 100 : null,
             analytics: data,
             history: undefined,
         };
     } catch (error) {
         console.error('Error getting portfolio scores:', error);
-        return empty;
+        return { ...NO_PORTFOLIO_SCORES };
     }
 }
 
@@ -446,7 +474,7 @@ export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Pr
 // Actualizar TODO el portfolio: posiciones + KPIs (para botón de refresco completo)
 export async function updateAllPortfolioPrices(userId: string): Promise<{
     summary: PortfolioSummary;
-    scores: { quality: number; growth: number; value: number; dividend: number; cagr3y: number }
+    scores: PortfolioScores;
 }> {
     await resolveUserId(userId);
     // Force fresh fetch of everything - no cache

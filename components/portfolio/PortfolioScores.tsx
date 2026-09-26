@@ -5,11 +5,11 @@ import { Shield, TrendingUp, CircleDollarSign, Coins, Percent } from 'lucide-rea
 
 interface PortfolioScoresProps {
     scores: {
-        quality: number;
-        growth: number;
-        value: number;
-        dividend: number;
-        cagr3y: number;
+        quality: number | null;
+        growth: number | null;
+        value: number | null;
+        dividend: number | null;
+        cagr3y: number | null;
     };
 }
 
@@ -21,6 +21,7 @@ export default function PortfolioScores({ scores }: PortfolioScoresProps) {
         { label: 'Dividend', value: scores.dividend, icon: Coins, color: 'text-yellow-400' },
         { label: 'CAGR 3Y', value: scores.cagr3y, icon: Percent, color: 'text-teal-400', isPercent: true },
     ];
+    const missing = scoreItems.filter((item) => item.value == null).map((item) => item.label);
 
     return (
         <Card className="bg-gray-800/50 border-gray-700">
@@ -32,13 +33,34 @@ export default function PortfolioScores({ scores }: PortfolioScoresProps) {
                     {scoreItems.map((item) => (
                         <div key={item.label} className="text-center p-3 bg-gray-900/50 rounded-lg">
                             <item.icon className={`h-6 w-6 mx-auto mb-2 ${item.color}`} />
-                            <div className="text-2xl font-bold text-gray-100">
-                                {item.isPercent ? `${item.value.toFixed(2)}%` : item.value.toFixed(2)}
-                            </div>
-                            <div className="text-xs text-gray-400">{item.label}</div>
+                            {item.value == null ? (
+                                <>
+                                    <div
+                                        className="text-2xl font-bold text-gray-500"
+                                        title="No hay datos suficientes para calcular esta puntuaci��n"
+                                    >
+                                        &mdash;
+                                    </div>
+                                    <div className="text-[10px] uppercase tracking-wide text-gray-500">
+                                        sin datos
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="text-2xl font-bold text-gray-100">
+                                        {item.isPercent ? `${item.value.toFixed(2)}%` : item.value.toFixed(2)}
+                                    </div>
+                                    <div className="text-xs text-gray-400">{item.label}</div>
+                                </>
+                            )}
                         </div>
                     ))}
                 </div>
+                {missing.length > 0 && (
+                    <p className="mt-3 text-xs text-gray-500">
+                        Sin datos para: {missing.join(', ')}. Una puntuaci��n sin datos no es un 0.
+                    </p>
+                )}
             </CardContent>
         </Card>
     );
