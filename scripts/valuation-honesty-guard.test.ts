@@ -22,6 +22,17 @@ void test('la vista de valoración separa notPublishable antes de pintar número
   assert.ok(view.includes('(orientación)'), 'los números se etiquetan como orientación');
 });
 
+void test('sin blockers el panel NO afirma una causa por defecto', () => {
+  const page = source('app/(root)/research/[ticker]/page.tsx');
+  const view = page.slice(page.indexOf('function ValuationView'), page.indexOf('function MarketOpportunityView'));
+  // La causa concreta (entradas sin trazabilidad, supuestos por defecto) solo
+  // puede aparecer condicionada a que existan blockers/missing/notice.
+  assert.ok(!view.includes('le faltan entradas trazables a una fuente fechada'), 'causa por defecto prohibida');
+  assert.ok(!view.includes('salida cruda del modelo con supuestos por defecto'), 'causa por defecto prohibida');
+  assert.ok(view.includes('Motivos registrados:'), 'los motivos se muestran cuando existen');
+  assert.ok(view.includes('engineNotice'), 'la nota del motor se muestra cuando existe');
+});
+
 void test('los números de orientación van degradados (opacity), no como tarjetas limpias', () => {
   const page = source('app/(root)/research/[ticker]/page.tsx');
   const view = page.slice(page.indexOf('function ValuationView'), page.indexOf('function MarketOpportunityView'));

@@ -380,6 +380,8 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
   const blockers = Array.isArray(valuation.trace?.publication_blockers)
     ? (valuation.trace?.publication_blockers as unknown[]).map(String).filter(Boolean)
     : [];
+  const missingInputs = (valuation.missing_inputs ?? []).filter(Boolean);
+  const engineNotice = typeof valuation.trace?.notice === 'string' ? valuation.trace.notice : null;
   const notPublishable = valuation.status !== 'ok' || valuation.publishable === false;
   if (notPublishable) {
     return (
@@ -390,11 +392,12 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
         <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-4 text-sm text-amber-200">
           <p className="font-semibold">Orientación del motor, no precio objetivo.</p>
           <p className="mt-1">
-            La valoración no es publicable: le faltan entradas trazables a una fuente fechada
-            {blockers.length ? ` (${blockers.join(', ')})` : ''}. Los números de abajo son la salida
-            cruda del modelo con supuestos por defecto; no los uses como valoración final ni como
-            precio objetivo.
+            Esta valoración no es publicable (estado {valuation.status ?? 'desconocido'}): los números de
+            abajo son una orientación del motor, no una valoración final ni un precio objetivo.
           </p>
+          {blockers.length ? <p className="mt-2 text-xs">Motivos registrados: {blockers.join(', ')}.</p> : null}
+          {missingInputs.length ? <p className="mt-2 text-xs">Entradas faltantes: {missingInputs.join(', ')}.</p> : null}
+          {engineNotice ? <p className="mt-2 text-xs text-amber-200/70">Nota del motor: {engineNotice}</p> : null}
         </div>
         <div className="grid gap-4 opacity-60 sm:grid-cols-3">
           <Stat label="Bear (orientación)" value={formatMoney(valuation.bear_value, currency)} />
