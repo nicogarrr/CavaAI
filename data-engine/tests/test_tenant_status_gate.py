@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-import time
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -8,27 +6,12 @@ from sqlalchemy import delete, select
 
 import main
 from app.core import auth as auth_module
-from app.core.auth import sign_research_identity
 from app.core.database import SessionLocal, init_db
 from app.models import Tenant
 
+from tests.auth_helpers import auth_settings, bound_headers
+
 SECRET = "tenant-status-test-secret-at-least-32-characters"
-
-
-def _headers(tenant_external_id: str) -> dict[str, str]:
-    timestamp = str(int(time.time()))
-    user_id = f"status-user-{tenant_external_id}"
-    return {
-        "X-CavaAI-Tenant": tenant_external_id,
-        "X-CavaAI-User": user_id,
-        "X-CavaAI-Timestamp": timestamp,
-        "X-CavaAI-Signature": sign_research_identity(
-            SECRET,
-            tenant_id=tenant_external_id,
-            user_id=user_id,
-            timestamp=timestamp,
-        ),
-    }
 
 
 @pytest.mark.parametrize(
@@ -44,13 +27,7 @@ def test_signed_principal_requires_active_tenant(
     monkeypatch.setattr(
         auth_module,
         "get_settings",
-        lambda: SimpleNamespace(
-            app_env="test",
-            is_production=False,
-            research_auth_required=True,
-            research_auth_secret=SECRET,
-            research_auth_max_age_seconds=300,
-        ),
+        lambda: auth_settings(strict=True, secret=SECRET),
     )
 
     db = SessionLocal()
@@ -66,7 +43,14 @@ def test_signed_principal_requires_active_tenant(
 
     try:
         response = TestClient(main.app).get(
-            "/api/memory/claims", headers=_headers(tenant_external_id)
+            "/api/memory/claims",
+            headers=bound_headers(
+                SECRET,
+                tenant_external_id,
+                f"status-user-{tenant_external_id}",
+                method="GET",
+                path="/api/memory/claims",
+            ),
         )
 
         assert response.status_code == expected_status_code
