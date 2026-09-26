@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { normalizeResearchBody, researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { AppError, ExternalAPIError, ValidationError } from '@/lib/types/errors';
+import { assertPositiveInt } from '@/lib/validation/pathParams';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -376,7 +377,7 @@ export async function getKnowledgeLibrary() {
 
 export async function getKnowledgeDocumentChunks(documentId: number | null) {
   if (!documentId) return [];
-  return requestJson<KnowledgeChunk[]>(`/api/knowledge/documents/${documentId}/chunks?limit=300`);
+  return requestJson<KnowledgeChunk[]>(`/api/knowledge/documents/${assertPositiveInt(documentId, 'documentId')}/chunks?limit=300`);
 }
 
 export async function installKnowledgeDefaults() {
@@ -409,7 +410,7 @@ export async function uploadKnowledgeDocument(formData: FormData) {
 }
 
 export async function extractKnowledgePrinciples(documentId: number) {
-  await requestJson(`/api/knowledge/documents/${documentId}/extract-principles`, { method: 'POST' });
+  await requestJson(`/api/knowledge/documents/${assertPositiveInt(documentId, 'documentId')}/extract-principles`, { method: 'POST' });
   revalidatePath('/knowledge');
 }
 
@@ -417,7 +418,7 @@ export async function decideKnowledgePrinciple(
   principleId: number,
   action: 'approve' | 'reject',
 ) {
-  await requestJson(`/api/knowledge/principles/${principleId}/action`, {
+  await requestJson(`/api/knowledge/principles/${assertPositiveInt(principleId, 'principleId')}/action`, {
     method: 'POST',
     body: JSON.stringify({ action, actor: 'user' }),
   });
@@ -425,7 +426,7 @@ export async function decideKnowledgePrinciple(
 }
 
 export async function mergeKnowledgePrinciple(principleId: number, canonicalId: number) {
-  await requestJson(`/api/knowledge/principles/${principleId}/action`, {
+  await requestJson(`/api/knowledge/principles/${assertPositiveInt(principleId, 'principleId')}/action`, {
     method: 'POST',
     body: JSON.stringify({
       action: 'merge',
@@ -437,7 +438,7 @@ export async function mergeKnowledgePrinciple(principleId: number, canonicalId: 
 }
 
 export async function reviseKnowledgePrinciple(principleId: number, formData: FormData) {
-  await requestJson(`/api/knowledge/principles/${principleId}`, {
+  await requestJson(`/api/knowledge/principles/${assertPositiveInt(principleId, 'principleId')}`, {
     method: 'PUT',
     body: JSON.stringify({
       principle: required(formData, 'principle', 'Principle'),
@@ -549,7 +550,7 @@ export async function runAdHocScreen(input: {
 }
 
 export async function runSavedScreen(screenId: number): Promise<ScreenResult> {
-  return requestJson(`/api/screeners/screens/${screenId}/run`, { method: 'POST' });
+  return requestJson(`/api/screeners/screens/${assertPositiveInt(screenId, 'screenId')}/run`, { method: 'POST' });
 }
 
 export async function getFinancialTerminal(
@@ -601,7 +602,7 @@ export async function proposeDecisionLessons(ticker: string) {
 }
 
 export async function updateDecisionLesson(ticker: string, lessonId: number, formData: FormData) {
-  await requestJson(`/api/companies/${encodeURIComponent(ticker.toUpperCase())}/decision-lessons/${lessonId}`, {
+  await requestJson(`/api/companies/${encodeURIComponent(ticker.toUpperCase())}/decision-lessons/${assertPositiveInt(lessonId, 'lessonId')}`, {
     method: 'PUT',
     body: JSON.stringify({
       taxonomy: required(formData, 'taxonomy', 'Taxonomy'),
@@ -615,7 +616,7 @@ export async function updateDecisionLesson(ticker: string, lessonId: number, for
 }
 
 export async function decideDecisionLesson(ticker: string, lessonId: number, action: 'approve' | 'reject') {
-  await requestJson(`/api/companies/${encodeURIComponent(ticker.toUpperCase())}/decision-lessons/${lessonId}/action`, {
+  await requestJson(`/api/companies/${encodeURIComponent(ticker.toUpperCase())}/decision-lessons/${assertPositiveInt(lessonId, 'lessonId')}/action`, {
     method: 'POST',
     body: JSON.stringify({ action }),
   });
@@ -680,5 +681,5 @@ export async function syncKnowledgeGraph() {
 }
 
 export async function getKnowledgeNeighborhood(nodeId: number, depth = 2): Promise<KnowledgeGraph> {
-  return requestJson(`/api/knowledge-graph/nodes/${nodeId}/neighbors?depth=${Math.max(1, Math.min(4, depth))}`);
+  return requestJson(`/api/knowledge-graph/nodes/${assertPositiveInt(nodeId, 'nodeId')}/neighbors?depth=${Math.max(1, Math.min(4, depth))}`);
 }
