@@ -71,7 +71,7 @@ export default async function MoversPage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6">
+    <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="border-b border-gray-800 pb-5">
         <p className="text-sm font-semibold uppercase text-teal-300">Mercado</p>
         <h1 className="mt-1 text-3xl font-bold text-gray-100">Movers</h1>

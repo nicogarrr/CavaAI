@@ -18,7 +18,7 @@ export default async function ResearchSourcesPage() {
   const { documents, audits } = await getResearchSources();
 
   return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6">
+    <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Button asChild className="mb-4" size="sm" variant="ghost">

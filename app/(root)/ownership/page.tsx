@@ -65,7 +65,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
         : null;
 
     return (
-        <main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 overflow-x-clip">
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 overflow-x-clip">
             <header className="flex flex-col gap-3 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <p className="text-sm font-semibold uppercase text-teal-300">Ownership</p>

@@ -21,7 +21,7 @@ export default async function ProPicksPage() {
     const generatedAt = new Date().toISOString();
 
     return (
-        <div className="mx-auto flex min-h-screen w-full min-w-0 max-w-7xl flex-col overflow-x-clip p-4 sm:p-6">
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-7xl flex-col overflow-x-clip p-4 sm:p-6">
             {/* Header */}
             <div className="mb-8">
                 <div className="flex items-center gap-3 mb-4">
@@ -47,6 +47,6 @@ export default async function ProPicksPage() {
 
             {/* Picks IA + Backtesting por estrategia */}
             <ProPicksTabs strategies={strategies} initialPicks={initialPicks} generatedAt={generatedAt} />
-        </div>
+        </main>
     );
 }
