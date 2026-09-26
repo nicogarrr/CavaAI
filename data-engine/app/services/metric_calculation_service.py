@@ -178,34 +178,50 @@ def _quantize(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
 
 
-# Separacion de magnitud tolerable entre dos importes que se suman para un
-# peso de estructura de capital. 100x cubre "uno en miles y el otro en
-# unidades" con holgura; mas alla de eso las unidades no son comparables.
+# Separacion de magnitud tolerable cuando la provenance no garantiza
+# unidades comparables. 100x cubre con holgura cualquier estructura de
+# capital real; mas alla de eso, y solo si la fuente no es de confianza
+# absoluta, las unidades no son comparables.
 _CAPITAL_SCALE_RATIO_LIMIT = Decimal("100")
 
+# Fuentes cuyos importes monetarios llegan en unidades absolutas: market data
+# (yfinance, Finnhub) y hechos SEC/FMP. Entre ellas un ratio extremo entre
+# capitalizacion y deuda es estructura de capital real (una mega-cap casi sin
+# deuda), NO un error de unidades. ESEF queda fuera: ix:nonFraction scale no
+# se conserva en el pipeline y un hecho puede llegar en miles o millones.
+_ABSOLUTE_AMOUNT_SOURCES = frozenset({"yfinance", "Finnhub", "SEC", "FMP"})
 
-def _capital_amounts_share_scale(equity_value: Decimal, debt: Decimal) -> bool:
-    """¿Equity y debt estan expresados en la misma unidad?
 
-    El WACC necesita los dos en la misma escala. ``market_cap`` llega de
-    yfinance en unidades absolutas (2.5e11) mientras que ``total_debt`` llega
-    de los fatos declarados, cuya magnitud depende de la fuente (1e6 en
-    algunas, absoluta en otras). Sumarlos sin reconciliar no da un peso de
-    deuda "~pequeño", da un peso de deuda cero: con market cap 200M (real) y
-    debt 300 (millones), Dw salia 1,5e-6 y el WACC 18,0% donde correspondía
-    12,6%.
+def _capital_scale_conflict(equity_fact: FinancialFact, debt_fact: FinancialFact) -> bool:
+    """True si equity y debt no son comparables en magnitud para el WACC.
 
-    No se intenta deducir el factor: se declara la inconsistencia y el metodo
-    queda unavailable en vez de publicar un WACC con un error de 43%.
+    La provenance manda, no la magnitud pura:
+    - Las dos fuentes absolutas: comparables siempre, a cualquier ratio.
+    - Misma fuente y misma unidad declarada (p.ej. dos hechos del mismo
+      filing ESEF): consistentes entre si, comparables.
+    - Provenance mixta con alguna fuente no absoluta: la escala no se puede
+      verificar; solo entonces la magnitud decide con el limite de 100x.
+
+    Nunca se deduce un factor de escala: si no son comparables, el metodo
+    queda unavailable en vez de publicar un WACC inventado.
     """
-    if debt == 0:
-        # Sin deuda el peso es 0 con cualquier escala; no hay conflicto.
-        return True
-    larger = max(equity_value, debt)
-    smaller = min(equity_value, debt)
-    if smaller <= 0:
+    if debt_fact.value == 0:
         return False
-    return larger / smaller <= _CAPITAL_SCALE_RATIO_LIMIT
+    if (
+        equity_fact.source_type in _ABSOLUTE_AMOUNT_SOURCES
+        and debt_fact.source_type in _ABSOLUTE_AMOUNT_SOURCES
+    ):
+        return False
+    if (
+        equity_fact.source_type == debt_fact.source_type
+        and equity_fact.unit == debt_fact.unit
+    ):
+        return False
+    larger = max(abs(equity_fact.value), abs(debt_fact.value))
+    smaller = min(abs(equity_fact.value), abs(debt_fact.value))
+    if smaller <= 0:
+        return True
+    return larger / smaller > _CAPITAL_SCALE_RATIO_LIMIT
 
 
 class MetricCalculationService:
@@ -888,12 +904,12 @@ class MetricCalculationService:
                 best_missing = ["valid_rates_and_capital_weights"]
                 best_tax_trace = tax_trace
                 continue
-            if not _capital_amounts_share_scale(equity_value, debt):
-                # market_cap viene de yfinance en unidades absolutas; total_debt
-                # viene de los fatos declarados, cuya magnitud depende de la
-                # fuente. Sumarlos sin reconciliar daba Dw ~= 1,5e-6 en un
-                # emisor apalancado: WACC 18,0% donde correspondía 12,6% (-34%
-                # de valor de salida). No se adivina un factor de escala: se
+            if _capital_scale_conflict(facts["equity_value"], facts["total_debt"]):
+                # market_cap viene de market data en unidades absolutas;
+                # total_debt ESEF puede llegar escalado (scale no se conserva).
+                # Sumarlos sin reconciliar daba Dw ~= 1,5e-6 en un emisor
+                # apalancado: WACC 18,0% donde correspondía 12,6% (-34% de
+                # valor de salida). No se adivina un factor de escala: se
                 # declara inconsistente.
                 best_facts = facts
                 best_missing = ["capital_amounts_scale_mismatch"]
