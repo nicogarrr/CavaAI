@@ -15,20 +15,36 @@ bloquear el loop en curso seria peor que el bug original.
 from __future__ import annotations
 
 import asyncio
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Coroutine, TypeVar
 
 T = TypeVar("T")
 
 _BRIDGE = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cavaai-jev-bridge")
+_BRIDGE_LOCAL = threading.local()
+# Espera maxima cuando el llamador esta en el hilo de un loop activo: sin tope,
+# un proveedor colgado dejaria el loop entero bloqueado para siempre.
+LOOP_WAIT_TIMEOUT_SECONDS = 120.0
+
+
+def _run_in_bridge(coro: Coroutine[Any, Any, T]) -> T:
+    _BRIDGE_LOCAL.active = True
+    try:
+        return asyncio.run(coro)
+    finally:
+        _BRIDGE_LOCAL.active = False
 
 
 def run_from_any_context(coro: Coroutine[Any, Any, T], timeout: float | None = None) -> T:
-    """Ejecuta ``coro`` tanto en codigo sync como dentro de un loop activo.
+    """Ejecuta ``coro`` tanto en codigo sync como desde un hilo con loop activo.
 
-    Sin loop en marcha es un ``asyncio.run`` normal. Con loop activo, la
-    corrutina corre en un hilo del pool con su propio event loop, de forma que
-    no choca con el loop del llamador ni lo bloquea.
+    Sin loop en marcha es un ``asyncio.run`` normal. Con loop activo en el hilo
+    NO hay forma sync de esperar una corrutina sin bloquear ese hilo: la
+    corrutina corre en un hilo del pool con su propio loop y el llamador espera
+    con un tope duro. Las rutas async deben evitar este camino llamando al
+    servicio sync via ``run_in_threadpool``/``asyncio.to_thread`` (ver
+    knowledge.upload_document e sources.ingest_document_file).
     """
     try:
         asyncio.get_running_loop()
@@ -36,5 +52,16 @@ def run_from_any_context(coro: Coroutine[Any, Any, T], timeout: float | None = N
         # No hay loop en este hilo: es el caso sync normal.
         return asyncio.run(coro)
 
-    future = _BRIDGE.submit(lambda: asyncio.run(coro))
-    return future.result(timeout=timeout)
+    if getattr(_BRIDGE_LOCAL, "active", False):
+        # Reentrada desde un hilo puente: otro submit consumiria un segundo
+        # worker mientras el primero espera; con 4 llamadas encadenadas el
+        # pool se agota y hay deadlock. Falla en voz alta en su lugar.
+        coro.close()
+        raise RuntimeError(
+            "run_from_any_context no puede anidarse desde un hilo puente: "
+            "usa 'await' dentro de la cadena async o run_in_threadpool"
+        )
+    future = _BRIDGE.submit(_run_in_bridge, coro)
+    return future.result(
+        timeout=timeout if timeout is not None else LOOP_WAIT_TIMEOUT_SECONDS
+    )

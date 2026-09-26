@@ -1,3 +1,4 @@
+from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
@@ -326,7 +327,10 @@ async def ingest_document_file(
             content.extend(chunk)
             if len(content) > MAX_DOCUMENT_BYTES:
                 raise ValueError("Document exceeds 15MB local ingestion limit")
-        return DocumentIngestionService().ingest_bytes(
+        # Ingesta sync con llamadas externas: en el pool de hilos para no
+        # bloquear el event loop (esta ruta es async).
+        return await run_in_threadpool(
+            DocumentIngestionService().ingest_bytes,
             db,
             ticker=ticker,
             title=title,
