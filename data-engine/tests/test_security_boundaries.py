@@ -60,13 +60,16 @@ def test_research_auth_settings_are_real_and_private_by_default(monkeypatch):
 
 
 def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
+    # research_auth_required explicito: el suite lo apaga por defecto
+    # (tests/conftest.py) y estos asserts son sobre garantias de produccion.
     with pytest.raises(ValidationError, match="RESEARCH_AUTH_SECRET"):
-        Settings(_env_file=None, app_env="production")
+        Settings(_env_file=None, app_env="production", research_auth_required=True)
 
     with pytest.raises(ValidationError, match="MINIO_SECRET_KEY"):
         Settings(
             _env_file=None,
             app_env="production",
+            research_auth_required=True,
             research_auth_secret=SECRET,
             minio_access_key="production-minio-access-not-a-default",
         )
@@ -74,6 +77,7 @@ def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
     configured = Settings(
         _env_file=None,
         app_env="production",
+        research_auth_required=True,
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
         minio_access_key="production-minio-access-not-a-default",
@@ -99,6 +103,7 @@ def test_is_production_accepts_both_aliases():
     prod = Settings(
         _env_file=None,
         app_env="prod",
+        research_auth_required=True,
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
         minio_access_key="production-minio-access-not-a-default",
@@ -106,6 +111,7 @@ def test_is_production_accepts_both_aliases():
     production = Settings(
         _env_file=None,
         app_env="production",
+        research_auth_required=True,
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
         minio_access_key="production-minio-access-not-a-default",
@@ -114,6 +120,85 @@ def test_is_production_accepts_both_aliases():
     assert prod.is_production is True
     assert production.is_production is True
     assert local.is_production is False
+
+
+def test_is_production_is_a_denylist_not_an_allowlist():
+    # Regresion: con una allowlist {'production','prod'}, cualquier otro
+    # APP_ENV (staging, preprod, prod-eu, o el default 'local' por typo)
+    # degradaba en silencio la firma ligada al request, el nonce en Redis y el
+    # rate limit. Ahora todo lo que no sea un entorno local conocido es
+    # produccion.
+    for value, expected in [
+        ("production", True),
+        ("prod", True),
+        ("PRODUCTION", True),
+        ("  prod  ", True),
+        ("staging", True),
+        ("stage", True),
+        ("preprod", True),
+        ("prod-eu", True),
+        ("typo", True),
+        ("local", False),
+        ("test", False),
+        ("ci", False),
+        ("dev", False),
+        ("development", False),
+    ]:
+        # Con app_env de produccion hay que aportar las garantias que
+        # validate_production_security exige; si no, el Settings ni siquiera
+        # se construye y la asercion que importa no llega a ejecutarse.
+        kwargs = (
+            {
+                "research_auth_required": True,
+                "research_auth_secret": SECRET,
+                "minio_secret_key": "production-minio-secret-not-a-default",
+                "minio_access_key": "production-minio-access-not-a-default",
+            }
+            if expected
+            else {}
+        )
+        settings = Settings(_env_file=None, app_env=value, **kwargs)
+        assert settings.is_production is expected, value
+        assert settings.is_local_environment is (not expected), value
+
+
+def test_production_rejects_disabling_signed_auth():
+    # Desactivar la auth firmada no solo abre la API: deja la sesion sin
+    # tenant_id y con el tenant ausente los guards de aislamiento no inyectan
+    # scope, asi que se leerian/escribirian datos de otros tenants.
+    with pytest.raises(ValidationError, match="tenant isolation"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            research_auth_required=False,
+            research_auth_secret=SECRET,
+            minio_secret_key="production-minio-secret-not-a-default",
+            minio_access_key="production-minio-access-not-a-default",
+        )
+
+
+def test_production_rejects_wildcard_cors_origin():
+    # CORS se monta con allow_credentials=True: un origin '*' hace que
+    # Starlette refleje el Origin del atacante y sirva respuestas autenticadas.
+    with pytest.raises(ValidationError, match=r"CORS_ORIGINS"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            research_auth_required=True,
+            research_auth_secret=SECRET,
+            minio_secret_key="production-minio-secret-not-a-default",
+            minio_access_key="production-minio-access-not-a-default",
+            cors_origins=["*"],
+        )
+
+
+def test_strict_binding_flag_exists_and_defaults_on():
+    # El flag se leia por getattr sobre un Settings que no lo tenia, y como
+    # model_config es extra="ignore" la variable de entorno se descartaba en
+    # silencio: getattr devolvia False para siempre.
+    settings = Settings(_env_file=None, app_env="test")
+    assert settings.research_auth_strict_binding is True
+    assert auth_module._strict_binding(settings) is True
 
 
 def test_private_routers_reject_missing_and_invalid_signed_identity(required_auth):
