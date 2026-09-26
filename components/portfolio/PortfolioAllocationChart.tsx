@@ -42,23 +42,30 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
         const data = payload[0].payload;
         const isPositive = data.gain >= 0;
+        const isCash = data.symbol === 'Caja';
 
         return (
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 shadow-xl">
-                <Link href={`/research/${data.symbol}`} className="font-bold text-teal-400 hover:text-teal-300 mb-1 block">
-                    {data.symbol}
-                </Link>
+                {isCash ? (
+                    <span className="font-bold text-gray-200 mb-1 block">Caja</span>
+                ) : (
+                    <Link href={`/research/${data.symbol}`} className="font-bold text-teal-400 hover:text-teal-300 mb-1 block">
+                        {data.symbol}
+                    </Link>
+                )}
                 <p className="text-gray-300 text-sm">
                     Valor: <span className="font-semibold text-white">{formatMoney(data.value)}</span>
                 </p>
                 <p className="text-gray-300 text-sm">
                     Peso: <span className="font-semibold text-white">{formatPercent(data.percentage, { fromRatio: false, digits: 1 })}</span>
                 </p>
-                <p className="text-gray-300 text-sm">
-                    G/P: <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                        {formatPercent(data.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
-                    </span>
-                </p>
+                {!isCash && (
+                    <p className="text-gray-300 text-sm">
+                        G/P: <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            {formatPercent(data.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                        </span>
+                    </p>
+                )}
             </div>
         );
     }

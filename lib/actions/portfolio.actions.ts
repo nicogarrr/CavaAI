@@ -5,6 +5,7 @@ import { jsonBody, researchRequest } from '@/lib/research/client';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
 import { requestCache } from '@/lib/cache/requestCache';
 import { AuthorizationError, ValidationError } from '@/lib/types/errors';
+import { sumCashByCurrency } from '@/lib/portfolio-cash';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
@@ -63,7 +64,8 @@ export type PortfolioSummary = {
     holdings: PortfolioHolding[];
     /** Valor en renta variable (suma de posiciones), sin caja. */
     equityValue: number;
-    /** Caja total en divisa base. totalValue = equityValue + cash. */
+    /** Caja total en divisa base. totalValue = equityValue + cash.
+     *  Derivada del diccionario `cash` por moneda del backend. */
     cash: number;
     baseCurrency: string;
     status: 'ok' | 'incomplete_fx';
@@ -112,7 +114,8 @@ type ResearchPortfolioPosition = {
 type ResearchPortfolioSummaryResponse = {
     total_value: number;
     equity_value: number;
-    cash: number;
+    /** Diccionario por moneda ya en divisa base: { EUR: 1234.56 }. */
+    cash: Record<string, number>;
     status: 'ok' | 'incomplete_fx';
     base_currency: string;
     missing_fx: Array<Record<string, unknown>>;
@@ -216,7 +219,7 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
         totalGainPercent: totalCost > 0 ? (totalGain / totalCost) * 100 : 0,
         holdings: holdings.sort((a, b) => b.value - a.value),
         equityValue: backendSummary.equity_value,
-        cash: backendSummary.cash,
+        cash: sumCashByCurrency(backendSummary.cash),
         baseCurrency: backendSummary.base_currency,
         status: backendSummary.status,
         missingFx: backendSummary.missing_fx,

@@ -18,9 +18,12 @@ const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChar
 type Props = {
     holdings: PortfolioHolding[];
     totalValue: number;
+    /** Caja en divisa base: entra como segmento propio para que el donut
+     *  represente de verdad el total con caja que anuncia la etiqueta. */
+    cash?: number | null;
 };
 
-export default function PortfolioAllocation({ holdings, totalValue }: Props) {
+export default function PortfolioAllocation({ holdings, totalValue, cash }: Props) {
     if (holdings.length === 0) {
         return (
             <Card className="bg-gray-800/50 border-gray-700">
@@ -49,6 +52,17 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
             gainPercent: holding.gainPercent,
         }))
         .sort((a, b) => b.value - a.value); // Ordenar por valor descendente
+
+    const cashValue = typeof cash === 'number' && cash > 0 ? cash : 0;
+    if (cashValue > 0 && totalValue > 0) {
+        chartData.push({
+            symbol: 'Caja',
+            value: cashValue,
+            percentage: (cashValue / totalValue) * 100,
+            gain: 0,
+            gainPercent: 0,
+        });
+    }
 
     return (
         <div className="bg-[#111111] border border-gray-800 rounded-2xl p-6 h-full flex flex-col">
@@ -82,12 +96,16 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
                                     className="w-3 h-3 rounded-full"
                                     style={{ backgroundColor: COLORS[index % COLORS.length] }}
                                 />
-                                <Link
-                                    href={`/research/${item.symbol}`}
-                                    className="text-sm text-gray-300 hover:text-teal-300 transition-colors"
-                                >
-                                    {item.symbol}
-                                </Link>
+                                {item.symbol === 'Caja' ? (
+                                    <span className="text-sm text-gray-300">Caja</span>
+                                ) : (
+                                    <Link
+                                        href={`/research/${item.symbol}`}
+                                        className="text-sm text-gray-300 hover:text-teal-300 transition-colors"
+                                    >
+                                        {item.symbol}
+                                    </Link>
+                                )}
                             </div>
                             <span className="text-sm text-gray-400 tabular-nums">
                                 {formatPercent(item.percentage, { fromRatio: false, digits: 1 })}
