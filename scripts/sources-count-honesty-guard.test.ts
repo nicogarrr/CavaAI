@@ -30,7 +30,7 @@ void test('la cabecera usa el total real de /documents/count, no el tamano de pa
 void test('la tabla declara cuando esta truncada', () => {
     const page = source('app/(root)/research/sources/page.tsx');
     assert.ok(page.includes('documentsTotal > documents.length'), 'condicion de truncado presente');
-    assert.ok(page.includes('mas recientes de'), 'copy honesto de truncado');
+    assert.ok(page.includes('más recientes de'), 'copy honesto de truncado');
 });
 
 void test('/documents/count se registra antes que /documents/{document_id} (FastAPI casa en orden)', () => {
