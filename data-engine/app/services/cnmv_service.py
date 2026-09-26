@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
+from app.core.errors import redact_secrets
 from app.services import cnmv_mapping
 from app.services.connectors import cnmv
 from app.services.provenance import Coverage, SourceKind, provenance
@@ -32,14 +33,14 @@ def get_oir_for_ticker(ticker: str, *, days: int = 7) -> dict:
         return {
             "ticker": wanted,
             "status": "degraded",
-            "reason": f"CNMV page structure changed: {exc}",
+            "reason": redact_secrets(f"CNMV page structure changed: {exc}"),
             "filings": [],
         }
     except Exception as exc:  # noqa: BLE001 — red/HTTP: degradar, nunca 500
         return {
             "ticker": wanted,
             "status": "degraded",
-            "reason": f"{type(exc).__name__}: {exc}",
+            "reason": redact_secrets(f"{type(exc).__name__}: {exc}"),
             "filings": [],
         }
     mine = [f for f in filings if f["nif"].replace("-", "") == issuer.nif.replace("-", "")]

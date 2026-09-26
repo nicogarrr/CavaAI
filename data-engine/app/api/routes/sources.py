@@ -4,6 +4,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.errors import safe_detail
 from app.llm.errors import LLMError
 from app.models import (
     Claim,
@@ -55,7 +56,7 @@ def rebuild_document_index(db: Session = Depends(get_db)) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Vector index rebuild failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=safe_detail(exc, 502)) from exc
 
 
 @router.get("/tiers")
