@@ -38,6 +38,22 @@ def test_pending_actions_are_reader_facing():
         assert not LEAK.search(action), f"accion con texto interno: {action}"
 
 
+# Promesas operativas que el sistema no cumple: el copy pendiente describe
+# el hueco y la capacidad real (presente), nunca acciones futuras inventadas.
+FALSE_PROMISE = re.compile(
+    r"se (ampliar|añadir|incorporar|reintentar|actualizar|podr)[a-záéíóú]*"
+    r"|próxima actualización automática",
+    re.IGNORECASE,
+)
+
+
+def test_pending_actions_make_no_false_promises():
+    for action in _action_literals():
+        if action.isupper():
+            continue
+        assert not FALSE_PROMISE.search(action), f"promesa inventada: {action}"
+
+
 def test_external_thesis_howto_has_no_routes():
     from app.services.thesis_evidence_service import EXTERNAL_THESIS_HOWTO
 

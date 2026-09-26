@@ -485,7 +485,6 @@ class ThesisEvidenceService:
             return _pending(
                 "news pipeline (NewsEvent)",
                 "Sin noticias ingeridas para este ticker.",
-                action="Las noticias se incorporarán en la próxima actualización automática.",
             )
         return {
             "status": "ok",
@@ -511,7 +510,6 @@ class ThesisEvidenceService:
             return _pending(
                 "NASDAQ earnings calendar",
                 f"Calendario inaccesible: {exc}"[:200],
-                action="Se reintentará cuando el calendario vuelva a estar accesible.",
             )
         wanted = company.ticker.upper()
         coming = sorted(
@@ -526,7 +524,6 @@ class ThesisEvidenceService:
             return _pending(
                 "NASDAQ earnings calendar",
                 f"Sin earnings de {wanted} en los proximos {EARNINGS_LOOKAHEAD_DAYS} dias.",
-                action="Se ampliará el rango de búsqueda en la próxima revisión.",
             )
         nxt = coming[0]
         return {
@@ -549,7 +546,7 @@ class ThesisEvidenceService:
             return _pending(
                 "transcripts",
                 "Pendiente transcripcion: sin fuente gratuita disponible.",
-                action="La transcripción se añadirá cuando haya una fuente disponible.",
+                action="Puede añadirse manualmente desde Fuentes.",
             )
         return {
             "status": "ok",
@@ -573,7 +570,7 @@ class ThesisEvidenceService:
             return _pending(
                 "IR de la empresa",
                 f"IR inaccesible ({ir_url}): {exc}"[:200],
-                action="La presentación se podrá añadir manualmente desde Fuentes.",
+                action="Puede añadirse manualmente desde Fuentes.",
             )
         items = getattr(result, "items", None) or []
         created = 0
@@ -603,7 +600,7 @@ class ThesisEvidenceService:
             return _pending(
                 "IR de la empresa",
                 f"IR sin releases detectados ({'; '.join(errors)[:200]}).",
-                action="La presentación se podrá añadir manualmente desde Fuentes.",
+                action="Puede añadirse manualmente desde Fuentes.",
             )
         return {
             "status": "ok",
