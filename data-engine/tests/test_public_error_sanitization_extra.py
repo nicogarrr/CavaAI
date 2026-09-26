@@ -56,14 +56,15 @@ _INFRASTRUCTURE_EXCEPTIONS = {
 }
 
 _DETAIL_RAISE = re.compile(r"detail\s*=\s*(.+?)\)\s*from\s")
-_EXCEPT_LINE = re.compile(r"^\s*except\s+(?:[\w.]+\s*)*([\w]+|\([^)]*\))")
+_EXCEPT_LINE = re.compile(r"^\s*except\s+(.+?):")
+_AS_ALIAS = re.compile(r"\s+as\s+\w+$")
 
 
 def _except_types(line: str) -> set[str]:
     match = _EXCEPT_LINE.match(line)
     if not match:
         return set()
-    body = match.group(1).strip("()")
+    body = _AS_ALIAS.sub("", match.group(1)).strip().strip("()")
     if not body or body == "Exception":
         return set()
     return {part.strip().split(".")[-1] for part in body.split(",") if part.strip()}
