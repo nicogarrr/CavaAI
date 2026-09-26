@@ -4,7 +4,7 @@ import json
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -25,26 +25,14 @@ from app.models import (
 from app.services.budget import BudgetController, BudgetExceededError
 from app.services.company_framework import resolve_company_framework
 from app.services.langfuse_client import LangfuseTracer
-from app.services.number_parsing import find_number_tokens, parse_localized_number
+from app.services.number_parsing import (
+    find_number_tokens,
+    find_number_tokens_with_units,
+    parse_localized_number,
+)
 from app.services.prompt_registry import get_prompt
 
 PROMPT_VERSION = get_prompt("company_kpi_extraction", allow_remote=False).version
-
-# Scales tolerated when matching a reported KPI value against the figures a
-# quote states: the quote omits the unit multiplier and a percent is divided by
-# 100, so "3.456,7 millones" must match 3456700000 and "12.5%" must match 0.125.
-_MAGNITUDE_SCALES = (
-    Decimal("1"),
-    Decimal("1000"),
-    Decimal("1000000"),
-    Decimal("1000000000"),
-    Decimal("100"),
-    Decimal("10"),
-    Decimal("0.01"),
-    Decimal("0.001"),
-    Decimal("0.000001"),
-    Decimal("0.000000001"),
-)
 
 # Magnitude words, most specific first, in the two locales the sources use.
 # The Spanish plural is not a nicety here: "millones" is how a CNMV/ESEF filing
@@ -63,6 +51,24 @@ _UNIT_SCALES: tuple[tuple[re.Pattern[str], Decimal], ...] = (
 )
 # Percentages arrive as "%" or, in a Spanish filing, "por ciento"/"%".
 _PERCENT_UNITS = re.compile(r"%|percent|por\s+ciento|pct")
+
+
+
+class _QuoteFigure(NamedTuple):
+    """One figure a quote states, tied to its own sign and explicit unit.
+
+    The grounding check used to flatten every number in the quote to its
+    absolute value and then accept any ratio in 1e-9..1e9, so "Ingresos
+    FY2025: 100 millones" vouched for 2.025.000.000 (the year, at a tolerated
+    scale) and for -100.000.000 (the sign, dropped). A figure can only vouch
+    for the value its own unit produces: "100 millones" supports 100.000.000
+    and nothing else.
+    """
+
+    value: Decimal
+    scale: Decimal
+    percent: bool
+    year_like: bool
 
 
 def _value_token(raw_value: str) -> str | None:
@@ -356,11 +362,13 @@ class KPIExtractionService:
             # `locator_valid` only proved the SENTENCE was in the chunk, so a
             # model could return a verbatim quote and an unrelated number, and
             # `approve()` then wrote that number as a canonical reported fact.
-            grounded, value_in_quote = self._value_in_quote(quote)
+            figures = self._quote_figures(quote)
+            grounded = {figure.value for figure in figures}
+            value_in_quote = bool(figures)
             value_matches_quote = (
                 normalized is not None
-                and bool(grounded)
-                and self._same_magnitude(normalized, grounded)
+                and bool(figures)
+                and self._value_supported(normalized, figures, kpi.canonical_unit)
             )
             reconciliation = (
                 "reconciled"
@@ -525,7 +533,7 @@ class KPIExtractionService:
           bare "b" or "m" inside the value text triggered 1e9 / 1e6.
         * Nothing tied the number to the quote at all, so a verbatim sentence
           could vouch for an unrelated figure. The value is now verified against
-          the figures the quote states (see :meth:`_value_in_quote`).
+          the figures the quote states (see :meth:`_quote_figures`).
         """
         # Extract the numeric token first: the raw value routinely carries a
         # unit suffix ("12.5%", "3.456,7 M€") that is not part of the number.
@@ -568,44 +576,87 @@ class KPIExtractionService:
         return normalize(quote) in normalize(text)
 
     @staticmethod
-    def _value_in_quote(quote: str) -> tuple[set[Decimal], bool]:
-        """Every magnitude the quote states, and whether it states any.
+    def _quote_figures(quote: str) -> list[_QuoteFigure]:
+        """Every figure the quote states, with its own sign and unit attached.
 
         A quote of "los ingresos del ejercicio" carries no figure, so it cannot
-        vouch for any number. A quote that does carry figures must contain the
-        number the model reported, otherwise the extraction is not grounded even
-        though the sentence is verbatim in the chunk.
-
-        The whole set is returned rather than a single "the" number: a sentence
-        carries years and percentages too, so guessing which one the sentence is
-        about is exactly the kind of assumption that produced a 1000x error.
+        vouch for any number. A quote that does carry figures vouches only for
+        what those figures say: each token keeps its sign (accounting
+        parentheses included), picks up the scale of the unit written right
+        after it ("100 millones" -> 100 x 1e6, "12,5%" -> a rate), and a bare
+        calendar year is marked ``year_like`` so "FY2025" can never stand in
+        for the KPI of the sentence.
         """
         if not quote:
-            return set(), False
-        found: set[Decimal] = set()
-        for token in find_number_tokens(quote):
+            return []
+        figures: list[_QuoteFigure] = []
+        for token, context in find_number_tokens_with_units(quote):
             parsed = parse_localized_number(token)
-            if parsed is not None:
-                found.add(abs(parsed[0]))
-        return found, bool(found)
+            if parsed is None:
+                continue
+            value, negative = parsed
+            if negative:
+                value = -abs(value)
+            unit_text = context.lower()
+            scale = Decimal("1")
+            for pattern, candidate in _UNIT_SCALES:
+                if pattern.search(unit_text):
+                    scale = candidate
+                    break
+            percent = bool(_PERCENT_UNITS.search(unit_text))
+            year_like = (
+                scale == 1
+                and not percent
+                and value == value.to_integral_value()
+                and Decimal("1900") <= abs(value) <= Decimal("2099")
+            )
+            figures.append(
+                _QuoteFigure(value=value, scale=scale, percent=percent, year_like=year_like)
+            )
+        return figures
 
     @staticmethod
-    def _same_magnitude(reported: Decimal, grounded: set[Decimal]) -> bool:
-        """Whether the reported value matches any figure the quote states.
+    def _value_supported(
+        reported: Decimal, figures: list[_QuoteFigure], canonical_unit: str
+    ) -> bool:
+        """Whether the reported value matches a figure the quote states.
 
-        The quote usually writes "3.456,7 millones" while the canonical value
-        is 3.456.700.000 after the multiplier, and percentages are divided by
-        100, so the comparison is on the significant figures rather than an
-        exact equality.
+        The match is exact against the value the figure's own unit produces,
+        never against a global ladder of tolerated scales: "1.234,5 millones"
+        supports 1.234.500.000 because the quote says "millones". The sign
+        must agree, so "(100) millones" supports -100.000.000 and never
+        +100.000.000, and a ``year_like`` figure supports nothing.
+
+        A percentage figure follows the canonical unit of the KPI, because a
+        rate is stored as a fraction: with canonical unit "decimal", "12,5%"
+        supports 0.125 and ONLY 0.125 - accepting the points as written
+        vouched a reported 12,5 (1250%) for a rate the document stated at
+        12,5%, a 100x error that reached pending_approval when the raw unit
+        arrived as "unknown". The tolerance only covers rounding in the last
+        digit the quote carries.
         """
-        for candidate in grounded:
-            if reported == candidate:
-                return True
-            if candidate == 0:
+        for figure in figures:
+            if figure.year_like:
                 continue
-            ratio = abs(reported) / candidate
-            for scale in _MAGNITUDE_SCALES:
-                if abs(ratio * scale - Decimal(1)) <= Decimal("0.001"):
+            if figure.value == 0:
+                if reported == 0:
+                    return True
+                continue
+            if (reported < 0) != (figure.value < 0):
+                continue
+            magnitude = abs(figure.value)
+            if figure.percent:
+                expected = (
+                    {magnitude / Decimal("100")}
+                    if canonical_unit == "decimal"
+                    else {magnitude}
+                )
+            else:
+                expected = {magnitude * figure.scale}
+            for candidate in expected:
+                if candidate == 0:
+                    continue
+                if abs(abs(reported) / candidate - Decimal(1)) <= Decimal("0.001"):
                     return True
         return False
 

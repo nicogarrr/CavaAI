@@ -108,3 +108,23 @@ def parse_localized_number(value: object) -> tuple[Decimal, bool] | None:
     except (InvalidOperation, ValueError):
         return None
     return (-abs(parsed) if negative else parsed), negative
+
+
+def find_number_tokens_with_units(text: object, window: int = 25) -> list[tuple[str, str]]:
+    """Every numeric token paired with the text that follows it.
+
+    The trailing context is where the figure's unit lives ("1.234,5 millones",
+    "12,5 %"), and grounding a KPI needs THAT unit, not a scale guessed from
+    global tolerance. The window is cut where the next token starts, so one
+    figure can never borrow the unit of the figure after it, and capped at
+    ``window`` characters so a distant word cannot attach itself either.
+    """
+    if text is None:
+        return []
+    joined = _SPACE_THOUSANDS.sub("", str(text))
+    matches = list(_NUMBER_RUN.finditer(joined))
+    result: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        limit = matches[index + 1].start() if index + 1 < len(matches) else len(joined)
+        result.append((match.group().strip(), joined[match.end() : min(match.end() + window, limit)]))
+    return result
