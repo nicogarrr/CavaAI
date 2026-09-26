@@ -1,4 +1,10 @@
 from datetime import UTC, date, datetime
+
+# Alias para las columnas llamadas `date`. Dentro del cuerpo de una clase,
+# `date: Mapped[date]` hace que el anotado se refiera a la propia columna
+# mientras se evalua, y pyright lo rechaza con "Type of 'date' could not be
+# determined because it refers to itself".
+_DateT = date
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -563,7 +569,7 @@ class MarketPrice(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    date: Mapped[date] = mapped_column(Date, index=True)
+    date: Mapped[_DateT] = mapped_column(Date, index=True)
     open: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     high: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     low: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
@@ -1827,7 +1833,7 @@ class PlanContribution(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     plan_id: Mapped[int] = mapped_column(ForeignKey("investment_plans.id", ondelete="CASCADE"), index=True)
-    date: Mapped[date] = mapped_column(Date, index=True)
+    date: Mapped[_DateT] = mapped_column(Date, index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     currency: Mapped[str] = mapped_column(String(10), default="EUR")
     external_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
