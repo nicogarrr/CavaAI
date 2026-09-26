@@ -51,6 +51,29 @@ describe('F215: búsqueda con estado explícito', () => {
     assert.equal(gate.isLatest(masNueva), true);
   });
 
+  it('gate: cambiar o borrar la query ANTES del debounce invalida lo que está en vuelo', () => {
+    // Simula: "AA" en vuelo, el usuario escribe "AAPL" (o borra) antes de
+    // que dispare el debounce de 300ms. invalidate() debe anular el ticket
+    // de AA aunque aún no haya empezado la búsqueda nueva.
+    const gate = createLatestRequestGate();
+    const enVuelo = gate.begin();
+    gate.invalidate(); // onChange/effect, antes del debounce
+    assert.equal(gate.isLatest(enVuelo), false, 'la respuesta tardía queda anulada');
+    // y si la nueva búsqueda nunca llega (texto borrado), nada repinta
+    assert.equal(gate.isLatest(enVuelo), false);
+  });
+
+  it('el alta de transacciones invalida en el efecto de query, no tras el debounce', () => {
+    const add = source('components/portfolio/AddTransactionButton.tsx');
+    const effect = add.slice(add.indexOf('useEffect('), add.indexOf('}, [searchQuery, handleSearch])'));
+    const invalidateAt = effect.indexOf('searchGateRef.current.invalidate()');
+    const debounceAt = effect.indexOf('setTimeout(');
+    assert.ok(invalidateAt !== -1, 'el efecto debe invalidar lo que está en vuelo');
+    assert.ok(invalidateAt < debounceAt, 'la invalidación va ANTES del debounce, no detrás');
+    const emptyBranch = effect.slice(effect.indexOf('} else {'));
+    assert.ok(emptyBranch.includes('setSearchLoading(false)'), 'al borrar, el spinner no puede quedarse colgado de una respuesta vieja');
+  });
+
   it('el alta de transacciones invalida respuestas tardías y limpia el error al borrar', () => {
     const add = source('components/portfolio/AddTransactionButton.tsx');
     assert.ok(add.includes('searchGateRef.current.begin()'), 'cada búsqueda pide ticket');

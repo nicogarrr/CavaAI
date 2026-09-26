@@ -109,6 +109,10 @@ export default function AddTransactionButton({ userId }: Props) {
   }, []);
 
   useEffect(() => {
+    // La query cambió: invalida YA cualquier búsqueda en vuelo. No esperar
+    // al debounce: una respuesta tardía de la query anterior no puede
+    // pintar resultados ni errores sobre la nueva (ni repintar tras borrar).
+    searchGateRef.current.invalidate();
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -121,6 +125,7 @@ export default function AddTransactionButton({ userId }: Props) {
       setSearchResults([]);
       setShowResults(false);
       setSearchError(false);
+      setSearchLoading(false);
     }
 
     return () => {

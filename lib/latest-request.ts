@@ -6,6 +6,7 @@
  */
 export interface LatestRequestGate {
     begin(): number;
+    invalidate(): void;
     isLatest(ticket: number): boolean;
 }
 
@@ -15,6 +16,12 @@ export function createLatestRequestGate(): LatestRequestGate {
         begin() {
             latest += 1;
             return latest;
+        },
+        invalidate() {
+            // Invalida cualquier petición en vuelo en el momento en que la
+            // query cambia (no cuando dispara el debounce): una respuesta
+            // tardía ya no puede pintar sobre el estado nuevo.
+            latest += 1;
         },
         isLatest(ticket: number) {
             return ticket === latest;
