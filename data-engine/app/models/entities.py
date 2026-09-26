@@ -1101,6 +1101,31 @@ class ResearchAlert(TenantOwnedMixin, Base, TimestampMixin):
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 
+class AlertDelivery(TenantOwnedMixin, Base, TimestampMixin):
+    """Outbox de entrega por canal con claim atomico.
+
+    Una fila por (alerta, canal). El claim es un unico UPDATE ... WHERE
+    status elegible RETURNING: dos workers no pueden reclamar la misma
+    fila a la vez. Un commit fallido tras el envio deja la fila en
+    'sending' y un retry inmediato NO la reclama (no hay reenvio); solo
+    un claim expirado (> STALE_CLAIM_SECONDS) vuelve a ser elegible.
+    """
+
+    __tablename__ = "alert_deliveries"
+    __table_args__ = (
+        UniqueConstraint("alert_id", "channel", name="uq_alert_delivery_channel"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alert_id: Mapped[int] = mapped_column(
+        ForeignKey("research_alerts.id", ondelete="CASCADE"), index=True
+    )
+    channel: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
 class AlertRule(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "alert_rules"
     __table_args__ = (

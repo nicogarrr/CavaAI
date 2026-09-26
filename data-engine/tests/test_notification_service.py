@@ -5,16 +5,20 @@ unconfigured channels say so explicitly, failures are recorded without
 leaking URLs or bodies, and every attempt is persisted on the alert.
 """
 
-from datetime import datetime
+import threading
+import time
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, ResearchAlert
+from app.models.entities import AlertDelivery, Base, Company, ResearchAlert
 from app.services import notification_service
 from app.services.notification_service import NotificationService
+
+STALE_CLAIM_SECONDS = getattr(notification_service, "STALE_CLAIM_SECONDS", 600)
 
 
 @pytest.fixture
@@ -188,17 +192,26 @@ class _CountingClient:
         return SimpleNamespace(raise_for_status=lambda: None)
 
 
-def test_dispatch_persists_pending_state_before_sending(monkeypatch, db):
-    """Outbox: cuando el envio sale, el intento ya consta persistido."""
+def test_dispatch_claims_delivery_row_before_sending(monkeypatch, db):
+    """Outbox con claim: cuando el POST sale, la fila ya consta 'sending'."""
     _CountingClient.calls = []
     observed_states: list[str] = []
 
     class _InspectingClient(_CountingClient):
         def post(self, url, json):
-            db.expire_all()
-            alert = db.get(ResearchAlert, json["alert_id"])
+            row = db.execute(
+                select(AlertDelivery).where(
+                    AlertDelivery.alert_id == json["alert_id"],
+                    AlertDelivery.channel == json["channel"],
+                )
+            ).scalar_one()
+            db.expire(row)
             observed_states.append(
-                alert.metadata_["deliveries"][json["channel"]]["status"]
+                db.execute(
+                    select(AlertDelivery.status).where(
+                        AlertDelivery.id == row.id
+                    )
+                ).scalar_one()
             )
             return super().post(url, json)
 
@@ -207,25 +220,31 @@ def test_dispatch_persists_pending_state_before_sending(monkeypatch, db):
 
     deliveries = NotificationService().dispatch(db, _alert(db, ["email", "push"]))
 
-    assert observed_states == ["pending", "pending"]
+    assert observed_states == ["sending", "sending"]
     assert deliveries["email"]["status"] == "delivered"
     assert deliveries["push"]["status"] == "delivered"
 
 
-def test_retry_after_failed_commit_does_not_resend_delivered_channels(monkeypatch, db):
-    """Commit que falla tras un envio: el retry salta canales ya delivered."""
+def test_retry_after_failed_commit_does_not_resend(monkeypatch, db):
+    """Commit que falla JUSTO tras un envio: el retry NO reenvia ese canal.
+
+    La fila queda en 'sending' (claim persistido antes de enviar) y un retry
+    inmediato no la reclama. El canal queda pendiente de recuperacion por
+    claim expirado, nunca de reenvio inmediato.
+    """
     _CountingClient.calls = []
     monkeypatch.setattr(notification_service.httpx, "Client", _CountingClient)
     monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
 
     alert = _alert(db, ["email", "push"])
     real_commit = db.commit
-    commits = {"n": 0}
+    failed = {"done": False}
 
     def flaky_commit():
-        commits["n"] += 1
-        if commits["n"] == 4:
-            # Falla el commit del resultado 'delivered' de push (post-envio).
+        # Falla el primer commit intentado DESPUES de un POST (el commit del
+        # resultado post-envio), da igual cuantos commits internos haya antes.
+        if _CountingClient.calls and not failed["done"]:
+            failed["done"] = True
             raise RuntimeError("db connection lost mid-dispatch")
         return real_commit()
 
@@ -236,14 +255,115 @@ def test_retry_after_failed_commit_does_not_resend_delivered_channels(monkeypatc
     db.rollback()
     monkeypatch.setattr(db, "commit", real_commit)
 
-    db.refresh(alert)
-    assert alert.metadata_["deliveries"]["email"]["status"] == "delivered"
-    assert alert.metadata_["deliveries"]["push"]["status"] == "pending"
+    # email quedo 'sending' (su POST salio, el commit del resultado fallo).
+    row = db.execute(
+        select(AlertDelivery).where(
+            AlertDelivery.alert_id == alert.id, AlertDelivery.channel == "email"
+        )
+    ).scalar_one()
+    assert row.status == "sending"
+
+    deliveries = NotificationService().dispatch(db, alert)
+
+    # email NO se reenvia: sigue 'sending' (claim vivo), ningun POST nuevo.
+    # push nunca se envio: se reclama y entrega con normalidad (1 POST).
+    assert deliveries["email"]["status"] == "sending"
+    assert deliveries["push"]["status"] == "delivered"
+    assert _CountingClient.calls.count("https://hooks.example/email") == 1
+    assert _CountingClient.calls.count("https://hooks.example/push") == 1
+
+
+def test_two_workers_cannot_send_the_same_channel_twice(monkeypatch, tmp_path):
+    """Dos workers concurrentes: un solo POST por canal (claim atomico)."""
+    engine = create_engine(
+        f"sqlite:///{tmp_path}/race.db", connect_args={"check_same_thread": False}
+    )
+    Base.metadata.create_all(engine)
+
+    _CountingClient.calls = []
+    lock = threading.Lock()
+
+    class _SlowClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, url, json):
+            time.sleep(0.2)  # ventana para que el otro worker intente el claim
+            with lock:
+                _CountingClient.calls.append(url)
+            return SimpleNamespace(raise_for_status=lambda: None)
+
+    monkeypatch.setattr(notification_service.httpx, "Client", _SlowClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    with Session(engine) as session:
+        alert = _alert(session, ["email"])
+        alert_id = alert.id
+
+    errors: list[Exception] = []
+
+    def worker():
+        try:
+            with Session(engine) as session:
+                alert = session.get(ResearchAlert, alert_id)
+                NotificationService().dispatch(session, alert)
+        except Exception as exc:  # pragma: no cover - failure path asserted below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    # Un solo POST aunque los dos workers despacharon la misma alerta.
+    assert _CountingClient.calls.count("https://hooks.example/email") == 1
+    with Session(engine) as session:
+        row = session.execute(
+            select(AlertDelivery).where(
+                AlertDelivery.alert_id == alert_id, AlertDelivery.channel == "email"
+            )
+        ).scalar_one()
+        assert row.status == "delivered"
+        assert row.attempts == 1
+
+
+def test_stale_claim_becomes_eligible_after_ttl(monkeypatch, db):
+    """Claim expirado (worker muerto): recuperable pasado STALE_CLAIM_SECONDS.
+
+    Es el residuo at-least-once documentado: si el envio original llego, la
+    recuperacion puede repetir ESE canal una vez.
+    """
+    _CountingClient.calls = []
+    monkeypatch.setattr(notification_service.httpx, "Client", _CountingClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    alert = _alert(db, ["email"])
+    NotificationService().dispatch(db, alert)  # 1er POST (queda delivered)
+    db.execute(
+        update(AlertDelivery)
+        .where(AlertDelivery.alert_id == alert.id, AlertDelivery.channel == "email")
+        .values(
+            status="sending",
+            updated_at=datetime.now(UTC) - timedelta(seconds=STALE_CLAIM_SECONDS + 5),
+        )
+    )
+    db.commit()
 
     deliveries = NotificationService().dispatch(db, alert)
 
     assert deliveries["email"]["status"] == "delivered"
-    assert deliveries["push"]["status"] == "delivered"
-    # email no se reenvia (ya delivered); push si (at-least-once documentado).
-    assert _CountingClient.calls.count("https://hooks.example/email") == 1
-    assert _CountingClient.calls.count("https://hooks.example/push") == 2
+    assert _CountingClient.calls.count("https://hooks.example/email") == 2
+    row = db.execute(
+        select(AlertDelivery).where(
+            AlertDelivery.alert_id == alert.id, AlertDelivery.channel == "email"
+        )
+    ).scalar_one()
+    assert row.attempts == 2

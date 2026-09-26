@@ -1,4 +1,5 @@
 from app.models.entities import (
+    AlertDelivery,
     AlertRule,
     BudgetUsage,
     CalculatedMetric,
@@ -149,6 +150,7 @@ __all__ = [
     "PortfolioDailySnapshot",
     "ProcessingJob",
     "RedTeamRun",
+    "AlertDelivery",
     "ResearchAlert",
     "SavedScreen",
     "SavedScreenMatch",

@@ -38,6 +38,20 @@ class _FakeDB:
         return None
 
 
+
+def _service_with_stubbed_outbox():
+    """NotificationService con el outbox (alert_deliveries) stubado.
+
+    Estos tests cubren el canal Telegram (texto, config, 429); la capa de
+    claim atomico tiene sus propios tests con SQLite real en
+    test_notification_service.py.
+    """
+    svc = notification_service.NotificationService()
+    svc._ensure_delivery_row = lambda db, alert, channel: None
+    svc._claim_delivery = lambda db, alert, channel: True
+    svc._finish_delivery = lambda db, alert, channel, status, error: None
+    return svc
+
 def _alert(channels: list[str]):
     return SimpleNamespace(
         id=7,
@@ -68,9 +82,7 @@ def test_telegram_notification_uses_configured_channel_without_leaking_token(mon
         ),
     )
 
-    result = notification_service.NotificationService().dispatch(
-        _FakeDB(), _alert(["telegram"])
-    )
+    result = _service_with_stubbed_outbox().dispatch(_FakeDB(), _alert(["telegram"]))
 
     assert result["telegram"]["status"] == "delivered"
     url, body = _FakeClient.calls[0]
@@ -93,9 +105,7 @@ def test_telegram_notification_is_silent_when_not_configured(monkeypatch):
         ),
     )
 
-    result = notification_service.NotificationService().dispatch(
-        _FakeDB(), _alert(["telegram"])
-    )
+    result = _service_with_stubbed_outbox().dispatch(_FakeDB(), _alert(["telegram"]))
 
     assert result["telegram"]["status"] == "not_configured"
 
@@ -154,9 +164,7 @@ def test_telegram_429_fails_honestly_without_retry_storm(monkeypatch):
         ),
     )
 
-    result = notification_service.NotificationService().dispatch(
-        _FakeDB(), _alert(["telegram"])
-    )
+    result = _service_with_stubbed_outbox().dispatch(_FakeDB(), _alert(["telegram"]))
 
     delivery = result["telegram"]
     assert delivery["status"] == "failed"
