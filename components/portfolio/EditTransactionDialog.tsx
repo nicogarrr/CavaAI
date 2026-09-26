@@ -48,7 +48,7 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
         type: transaction.type,
         quantity: transaction.quantity.toString(),
         price: transaction.price.toString(),
-        date: new Date(transaction.date).toISOString().split('T')[0],
+        date: transaction.date.slice(0, 10),
         notes: transaction.notes || '',
         currency: transaction.currency || 'USD',
     });

@@ -9,6 +9,9 @@ import { TrendingUp, Sparkles, ArrowRight, Loader2, RefreshCw, Clock, Plus, Chec
 import EnhancedProPicksFilters, { ProPicksFilters } from './EnhancedProPicksFilters';
 import { generateEnhancedProPicks, type ProPick } from '@/lib/actions/proPicks.actions';
 import { addToWatchlist } from '@/lib/actions/watchlist.actions';
+import { formatNumber, formatPercent, formatPrice, formatUserDate, formatUserDateTime } from '@/lib/format';
+import { etiquetaSector } from '@/lib/labels';
+import { t } from '@/lib/i18n/t';
 import { toast } from 'sonner';
 
 interface EnhancedProPicksContentProps {
@@ -83,16 +86,10 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
 
     const formatLastGenerated = (isoString: string | null) => {
         if (!isoString) return null;
-        const date = new Date(isoString);
-        // timeZone fija: el SSR corre en UTC y el navegador en Europe/Madrid;
-        // sin ella el texto difiere y React rompe la hidratacion (F23, #418).
-        return date.toLocaleString('es-ES', {
-            day: 'numeric',
-            month: 'short',
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'Europe/Madrid'
-        });
+        // formatUserDateTime fija la zona (Europe/Madrid): el SSR corre en UTC y
+        // el navegador en hora local, sin timeZone el texto difiere y React
+        // rompe la hidratación (F23, #418).
+        return formatUserDateTime(isoString);
     };
 
     const getScoreColor = (score: number) => {
@@ -136,7 +133,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                         ) : (
                             <RefreshCw className="h-4 w-4" />
                         )}
-                        Regenerar Picks
+                        {t('propicks.regenerate')}
                     </Button>
                     {lastGenerated && (
                         <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
@@ -174,7 +171,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                             <Badge variant="outline" className="text-teal-400 border-teal-400">
-                                Top {picks.length}
+                                Top {formatNumber(picks.length, { maximumFractionDigits: 0 })}
                             </Badge>
                             <span className="text-sm text-gray-400">
                                 {timePeriodLabels[filters.timePeriod]}
@@ -214,7 +211,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                             ) : (
                                 <RefreshCw className="h-4 w-4" />
                             )}
-                            Reintentar
+                            {t('common.actions.retry')}
                         </Button>
                     </Card>
                 )}
@@ -223,7 +220,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                     <Card className="p-8 rounded-lg border border-gray-700 bg-gray-800/50 text-center">
                         <Sparkles className="h-12 w-12 mx-auto mb-4 text-gray-600" />
                         <p className="text-gray-300 font-medium">
-                            Sin resultados con estos filtros
+                            {t('propicks.noResults')}
                         </p>
                         <p className="text-sm text-gray-500 mt-2">
                             No se encontraron acciones con los filtros seleccionados.
@@ -239,7 +236,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                             ) : (
                                 <RefreshCw className="h-4 w-4" />
                             )}
-                            Reintentar
+                            {t('common.actions.retry')}
                         </Button>
                     </Card>
                 ) : picks.length > 0 ? (
@@ -273,7 +270,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                             </div>
                                             <p className="line-clamp-1 min-w-0 break-words text-sm text-gray-400">{pick.company}</p>
                                             {pick.sector && (
-                                                <p className="mt-1 break-words text-xs text-gray-500">{pick.sector}</p>
+                                                <p className="mt-1 break-words text-xs text-gray-500">{etiquetaSector(pick.sector)}</p>
                                             )}
                                         </div>
                                         <div className={`text-right px-3 py-2 rounded-lg border ${getScoreColor(pick.score)}`}>
@@ -288,7 +285,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                         {pick.currentPrice > 0 && (
                                             <div>
                                                 <div className="text-xl font-semibold text-gray-100">
-                                                    ${pick.currentPrice.toFixed(2)}
+                                                    {formatPrice(pick.currentPrice, 'USD')}
                                                 </div>
                                                 <div className="text-xs text-gray-500">Precio actual</div>
                                             </div>
@@ -296,7 +293,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                         {pick.upsidePotential && pick.upsidePotential > 0 && (
                                             <div className="text-right">
                                                 <div className={`text-xl font-bold ${pick.upsidePotential > 15 ? 'text-emerald-400' : 'text-green-400'}`}>
-                                                    +{pick.upsidePotential.toFixed(1)}%
+                                                    {formatPercent(pick.upsidePotential, { fromRatio: false, digits: 1, signDisplay: 'always' })}
                                                 </div>
                                                 <div className="text-xs text-gray-500">Potencial (12m)</div>
                                             </div>
@@ -329,7 +326,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                         <span className="text-xs text-gray-400">
                                             Confianza:{' '}
                                             <span className="font-semibold text-teal-300">
-                                                {pick.confidenceLevel} ({pick.confidence}/100)
+                                                {pick.confidenceLevel} ({formatNumber(pick.confidence, { maximumFractionDigits: 0 })}/100)
                                             </span>
                                         </span>
                                     </div>
@@ -347,7 +344,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
 
                                     {pick.asOf && (
                                         <p className="text-[11px] text-gray-500 mb-3">
-                                            Datos al {new Date(pick.asOf).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' })}
+                                            {t('signals.asOf', { date: formatUserDate(pick.asOf) })}
                                         </p>
                                     )}
 
@@ -366,7 +363,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                             ) : (
                                                 <Plus className="h-3 w-3" />
                                             )}
-                                            {followed[pick.symbol] ? 'Siguiendo' : 'Seguir'}
+                                            {followed[pick.symbol] ? t('propicks.followed') : t('propicks.follow')}
                                         </Button>
                                         <Button variant="ghost" size="sm" className="h-11 gap-2 text-xs text-gray-400 group-hover:text-teal-400 sm:h-8">
                                             Ver análisis completo

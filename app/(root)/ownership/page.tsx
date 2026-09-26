@@ -8,6 +8,8 @@ import {
     type ManagerChanges,
     type ManagerHoldings,
 } from '@/lib/actions/ownership.actions';
+import { formatCompact, formatDate, formatDateTime, formatNumber, NA } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 
 import SyncButton from './SyncButton';
 
@@ -36,15 +38,22 @@ const CHANGE_LABELS: Record<string, string> = {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+/** `value_usd_thousands` viene en miles de dólares (13F): se pasa a unidades
+ *  y de ahí a la cifra compacta es-ES ("416,16 mil M", no "416.16B"). */
 function formatValueUsd(thousands: number | null): string {
-    if (thousands === null) return 'n/d';
-    const millions = thousands / 1000;
-    return `$${millions.toLocaleString('es-ES', { maximumFractionDigits: 0 })}M`;
+    if (thousands === null) return NA;
+    return formatCompact(thousands * 1000, { maximumFractionDigits: 2 });
 }
 
 function formatShares(shares: number | null): string {
-    if (shares === null) return 'n/d';
-    return shares.toLocaleString('es-ES', { maximumFractionDigits: 0 });
+    if (shares === null) return NA;
+    return formatNumber(shares, { maximumFractionDigits: 0 });
+}
+
+/** Periodo 13F ("2026-06-30"): fecha en español; si el backend manda una
+ *  etiqueta de trimestre, se muestra tal cual en vez de esconderla. */
+function reportLabel(value: string | null | undefined): string {
+    return value ? formatDate(value, { day: 'numeric', month: 'short', year: 'numeric' }, value) : NA;
 }
 
 type PageProps = {
@@ -68,7 +77,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 overflow-x-clip">
             <header className="flex flex-col gap-3 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <p className="text-sm font-semibold uppercase text-teal-300">Ownership</p>
+                    <p className="text-sm font-semibold uppercase text-teal-300">{t('ownership.title')}</p>
                     <h1 className="mt-1 text-3xl font-bold text-gray-100">Propiedad institucional (13F)</h1>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
                         Carteras de gestores institucionales revisados, tal como se declaran ante la SEC
@@ -120,7 +129,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                     <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
                         <div className="flex flex-col gap-2 md:flex-row md:items-center">
                             <h2 className="font-semibold text-gray-100">
-                                {holdings.manager} - informe {holdings.report_date}
+                                {holdings.manager} - informe {reportLabel(holdings.report_date)}
                             </h2>
                             <Badge className="md:ml-auto" variant="outline">
                                 cobertura {holdings.coverage}
@@ -148,7 +157,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                                                     <Badge className="ml-2" variant="outline">enmienda</Badge>
                                                 ) : null}
                                             </td>
-                                            <td className="py-3 text-gray-400">{row.title_of_class || '-'}</td>
+                                            <td className="py-3 text-gray-400">{row.title_of_class || NA}</td>
                                             <td className="py-3 font-mono text-xs text-gray-400">{row.cusip}</td>
                                             <td className="py-3 text-right text-gray-200">{formatValueUsd(row.value_usd_thousands)}</td>
                                             <td className="py-3 text-right text-gray-400">{formatShares(row.shares)}</td>
@@ -173,7 +182,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                         {holdings.provenance ? (
                             <p className="mt-3 text-xs text-gray-500">
                                 Fuente: {holdings.provenance.source} ({holdings.provenance.source_kind}),
-                                obtenido {new Date(holdings.provenance.fetched_at).toLocaleString('es-ES')}.
+                                obtenido {formatDateTime(holdings.provenance.fetched_at)}.
                             </p>
                         ) : null}
                     </section>
@@ -192,10 +201,10 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                     <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
                         <div className="flex flex-col gap-2 md:flex-row md:items-center">
                             <h2 className="font-semibold text-gray-100">
-                                Cambios trimestre a trimestre ({changes.previous_report} → {changes.latest_report})
+                                Cambios trimestre a trimestre ({reportLabel(changes.previous_report)} → {reportLabel(changes.latest_report)})
                             </h2>
                             <Badge className="md:ml-auto" variant="outline">
-                                {changes.changes.filter((c) => c.change !== 'unchanged').length} movimientos
+                                {formatNumber(changes.changes.filter((c) => c.change !== 'unchanged').length, { maximumFractionDigits: 0 })} movimientos
                             </Badge>
                         </div>
                         <p className="mt-2 text-xs text-gray-500">{changes.compared_accessions?.rule}</p>

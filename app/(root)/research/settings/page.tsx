@@ -2,7 +2,7 @@ import { ArrowLeft, CheckCircle2, Cpu, Database, DollarSign, XCircle } from 'luc
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { getResearchDashboard } from '@/lib/actions/research.actions';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, NA } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -150,7 +150,7 @@ export default async function ResearchSettingsPage() {
             </div>
             <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
               <span className="text-gray-400">Modelo LLM</span>
-              <span className="font-mono font-semibold text-gray-200">{settings.llm.model ?? '—'}</span>
+              <span className="font-mono font-semibold text-gray-200">{settings.llm.model ?? NA}</span>
             </div>
             <div className="flex items-center justify-between rounded-md border border-gray-800 p-3">
               <span className="text-gray-400">Estado LLM</span>

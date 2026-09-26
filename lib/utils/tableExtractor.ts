@@ -3,6 +3,8 @@
  * Extrae datos estructurados de tablas en markdown para generar visualizaciones
  */
 
+import { parseLocalizedNumber } from '@/lib/format';
+
 export interface TableData {
     headers: string[];
     rows: string[][];
@@ -78,20 +80,19 @@ export function tableToChartData(tableData: TableData, xAxisIndex: number = 0, y
 }
 
 /**
- * Extrae valor numérico de una cadena formateada
+ * Extrae valor numérico de una cadena formateada.
+ *
+ * Las tablas en markdown las genera el LLM o vienen de un informe, así que
+ * aparecen ambos formatos: "$1.234,56" (es-ES) y "$1,234.56" (en-US).
+ * `parseLocalizedNumber` cubre los dos (con coma -> decimal español; sin
+ * coma -> se parsea tal cual). El parseo anterior quita los puntos SIEMPRE y
+ * convertía la primera coma, así que "$1,234.56" acababa en 1.23456.
  */
 function extractNumericValue(str: string): number {
-    // Eliminar símbolos comunes y espacios
     const cleaned = str
-        .replace(/[$€£]/g, '')
+        .replace(/[$€£]/g, '') // símbolos de divisa
         .replace(/%/g, '')
-        .replace(/\s/g, '')
-        .replace(/\./g, '') // Eliminar separadores de miles
-        .replace(',', '.') // Convertir coma decimal a punto
-        .trim();
-    
-    // Intentar parsear
-    const value = parseFloat(cleaned);
-    return isNaN(value) ? 0 : value;
+        .replace(/\s/g, '');
+    return parseLocalizedNumber(cleaned) ?? 0;
 }
 
