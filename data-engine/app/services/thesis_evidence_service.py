@@ -78,8 +78,7 @@ EARNINGS_LOOKAHEAD_DAYS = 14
 FETCH_TIMEOUT_S = 20.0
 
 EXTERNAL_THESIS_HOWTO = (
-    "Pega URLs via POST /api/sources/documents/ingest-url "
-    "(source_type='external_thesis') o suscribe el RSS del autor; "
+    "Las tesis externas se pueden añadir desde Fuentes pegando la URL; "
     "no se scrapean paywalls."
 )
 
@@ -486,7 +485,7 @@ class ThesisEvidenceService:
             return _pending(
                 "news pipeline (NewsEvent)",
                 "Sin noticias ingeridas para este ticker.",
-                action="Ingiere via POST /api/news/ingest o espera al worker de news.",
+                action="Las noticias se incorporarán en la próxima actualización automática.",
             )
         return {
             "status": "ok",
@@ -512,7 +511,7 @@ class ThesisEvidenceService:
             return _pending(
                 "NASDAQ earnings calendar",
                 f"Calendario inaccesible: {exc}"[:200],
-                action="Revisa GET /api/calendar/earnings cuando haya red.",
+                action="Se reintentará cuando el calendario vuelva a estar accesible.",
             )
         wanted = company.ticker.upper()
         coming = sorted(
@@ -527,7 +526,7 @@ class ThesisEvidenceService:
             return _pending(
                 "NASDAQ earnings calendar",
                 f"Sin earnings de {wanted} en los proximos {EARNINGS_LOOKAHEAD_DAYS} dias.",
-                action="Revisa GET /api/calendar/earnings con un rango mayor.",
+                action="Se ampliará el rango de búsqueda en la próxima revisión.",
             )
         nxt = coming[0]
         return {
@@ -550,7 +549,7 @@ class ThesisEvidenceService:
             return _pending(
                 "transcripts",
                 "Pendiente transcripcion: sin fuente gratuita disponible.",
-                action="Importa el texto via ManualTranscriptImportService.import_text.",
+                action="La transcripción se añadirá cuando haya una fuente disponible.",
             )
         return {
             "status": "ok",
@@ -566,7 +565,7 @@ class ThesisEvidenceService:
             return _pending(
                 "IR de la empresa",
                 "Sin ir_url en el master; hueco marcado.",
-                action="Anade ir_url al company master.",
+                action="Falta la URL de relación con inversores en la ficha de la compañía.",
             )
         try:
             result = self._fetch_ir(ir_url, company.ticker.upper())
@@ -574,7 +573,7 @@ class ThesisEvidenceService:
             return _pending(
                 "IR de la empresa",
                 f"IR inaccesible ({ir_url}): {exc}"[:200],
-                action="Reintenta o pega la presentacion via /documents/ingest-url.",
+                action="La presentación se podrá añadir manualmente desde Fuentes.",
             )
         items = getattr(result, "items", None) or []
         created = 0
@@ -604,7 +603,7 @@ class ThesisEvidenceService:
             return _pending(
                 "IR de la empresa",
                 f"IR sin releases detectados ({'; '.join(errors)[:200]}).",
-                action="Pega la presentacion via /documents/ingest-url.",
+                action="La presentación se podrá añadir manualmente desde Fuentes.",
             )
         return {
             "status": "ok",
