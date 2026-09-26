@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, Portfolio, Position
+from app.models.entities import Base, Company, MarketPrice, Portfolio, Position
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 
 
@@ -91,3 +91,32 @@ def test_base_currency_fallback_uses_native_value(db):
     assert result["missing_fx"] == []
     assert result["concentration"]["weights"] == {"CCC": 1.0}
     assert result["exposures"]["currencies"] == {"EUR": 1.0}
+
+
+def test_attribution_with_spot_null_adj_close_at_end_does_not_raise(db):
+    """Historica ajustada al inicio + fila spot (adj_close NULL) al final.
+
+    El ratio de extremos exige AMBOS ajustados: sin la guarda, dividir por el
+    None final lanzaba TypeError al abrir /portfolio/intelligence. Con ella el
+    retorno queda honestamente desconocido.
+    """
+    _eur_portfolio(db)
+    eur = _company(db, "DDD", currency="EUR")
+    _position(db, eur, currency="EUR", market_value_base="1000")
+    db.add(MarketPrice(
+        company_id=eur.id, date=date(2026, 9, 24),
+        open=Decimal("10"), high=Decimal("10"), low=Decimal("10"),
+        close=Decimal("10"), adj_close=Decimal("9.5"), source="yfinance",
+    ))
+    db.add(MarketPrice(
+        company_id=eur.id, date=date(2026, 9, 25),
+        open=Decimal("11"), high=Decimal("11"), low=Decimal("11"),
+        close=Decimal("11"), adj_close=None, source="Finnhub",
+    ))
+    db.commit()
+
+    result = PortfolioIntelligenceService().build(db)
+
+    positions = result["attribution"]["positions"]
+    assert len(positions) == 1
+    assert positions[0]["total_return"] is None

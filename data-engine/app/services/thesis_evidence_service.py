@@ -326,31 +326,55 @@ class ThesisEvidenceService:
             result["detail"] = f"Quote inaccesible: {exc}"[:200]
             quote = None
         price = _decimal((quote or {}).get("c")) if quote else None
+        # Fallar cerrado ante payload malformado: timestamp o volumen invalidos
+        # no propagan una excepcion; sin fecha honesta no se escribe barra.
+        try:
+            timestamp = int((quote or {}).get("t") or 0) if quote else 0
+            quote_date = datetime.fromtimestamp(timestamp, tz=UTC).date() if timestamp > 0 else None
+        except (TypeError, ValueError, OverflowError, OSError):
+            quote_date = None
+        try:
+            volume = int(quote["v"]) if quote and quote.get("v") is not None else None
+        except (TypeError, ValueError):
+            volume = None
         if price is not None and price > 0:
-            today = datetime.now(UTC).date()
-            existing = db.scalar(
-                select(MarketPrice).where(
-                    MarketPrice.company_id == company.id, MarketPrice.date == today
-                )
-            )
-            if existing:
-                existing.close = price
-                existing.adj_close = price
-                existing.source = "Finnhub"
+            if quote_date is None:
+                # Sin timestamp del proveedor no hay fecha honesta: fechar la
+                # quote con el dia de la ingesta fabricaba barras de fin de
+                # semana con el ultimo cierre conocido.
+                result["detail"] = "Quote sin timestamp valido del proveedor: no se escribe barra sin fecha honesta."
+            elif quote_date > datetime.now(UTC).date():
+                result["detail"] = "Quote con fecha futura rechazada."
             else:
-                db.add(
-                    MarketPrice(
-                        company_id=company.id,
-                        date=today,
-                        open=price,
-                        high=price,
-                        low=price,
-                        close=price,
-                        adj_close=price,
-                        source="Finnhub",
+                existing = db.scalar(
+                    select(MarketPrice).where(
+                        MarketPrice.company_id == company.id, MarketPrice.date == quote_date
                     )
                 )
-            result.update({"status": "ok", "price": float(price)})
+                if existing:
+                    # Barra real ya persistida: se actualiza solo el close y se
+                    # preservan OHLC y el adjusted autentico de esa fecha.
+                    existing.close = price
+                    if volume is not None:
+                        existing.volume = volume
+                    existing.source = "Finnhub"
+                else:
+                    # Spot no es barra ajustada: adj_close NULL, nunca una copia
+                    # de close que afirme un ajuste no realizado.
+                    db.add(
+                        MarketPrice(
+                            company_id=company.id,
+                            date=quote_date,
+                            open=price,
+                            high=price,
+                            low=price,
+                            close=price,
+                            adj_close=None,
+                            volume=volume,
+                            source="Finnhub",
+                        )
+                    )
+                result.update({"status": "ok", "price": float(price), "price_as_of": quote_date.isoformat()})
         else:
             result["detail"] = result.get("detail") or "Quote sin precio util (c<=0 o vacio)."
         try:
