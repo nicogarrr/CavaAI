@@ -6,7 +6,8 @@
 #
 # Knobs de entorno (para el drill de verificacion en proyecto aislado; en
 # produccion no hace falta definir nada):
-#   COMPOSE_CMD          compose completo a usar (def.: docker compose -f docker-compose.prod.yml)
+#   COMPOSE_CMD          compose completo a usar (def.: docker compose -f docker-compose.prod.yml
+#                        --env-file .env.production si existe)
 #   QDRANT_API_URL       API de Qdrant (def.: http://127.0.0.1:6333)
 #   QDRANT_VOLUME        volumen para el fallback en crudo (def.: cavaai-prod-qdrant)
 #   MINIO_VOLUME         volumen de MinIO (def.: cavaai-prod-minio)
@@ -19,7 +20,14 @@ BACKUP_PATH="${1:?Uso: ./scripts/restore.sh <backup-path> --confirm-restore}"
 case "${BACKUP_PATH}" in backups/*) ;; *) echo "El backup debe estar dentro de ./backups/"; exit 1;; esac
 [ -f "${BACKUP_PATH}/postgres.dump" ] || { echo "No existe ${BACKUP_PATH}/postgres.dump"; exit 1; }
 
-COMPOSE="${COMPOSE_CMD:-docker compose -f docker-compose.prod.yml}"
+# Mismo fallback que backup.sh: .env.production no se carga solo (no es el
+# nombre por defecto de compose) y sin el las variables obligatorias hacen
+# fallar cualquier subcomando. COMPOSE_CMD externo tiene prioridad.
+if [ -z "${COMPOSE_CMD:-}" ] && [ -f .env.production ]; then
+  COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.production"
+else
+  COMPOSE="${COMPOSE_CMD:-docker compose -f docker-compose.prod.yml}"
+fi
 QDRANT_API_URL="${QDRANT_API_URL:-http://127.0.0.1:6333}"
 QDRANT_VOLUME="${QDRANT_VOLUME:-cavaai-prod-qdrant}"
 MINIO_VOLUME="${MINIO_VOLUME:-cavaai-prod-minio}"

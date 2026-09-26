@@ -92,7 +92,14 @@ echo "[backup] manifest verificable…"
   echo "git_commit=$(git rev-parse --short HEAD 2>/dev/null || echo n/a)"
 } > "${DEST}/manifest.txt"
 
-# Conteos por tabla (misma base viva; pequeno drift respecto al dump posible).
+# LIMITACION conocida: los conteos del manifest (tablas postgres y puntos
+# qdrant) se leen del sistema VIVO tras el pg_dump/snapshot, no del propio
+# artefacto. Con escrituras concurrentes durante el backup puede haber drift
+# entre el manifest y lo restaurado; la verificacion entonces fallaria en
+# falso o pasaria con un conteo distinto del real. Eliminarlo exige parar el
+# writer durante el backup o exportar un snapshot consistente de postgres
+# (pg_dump --snapshot); para un despliegue personal de baja concurrencia el
+# drift esperado es cero y se documenta aqui como deuda consciente.
 ${COMPOSE} exec -T postgres psql -U "${POSTGRES_USER:-portfolio}" -d "${POSTGRES_DB:-cavaai_research}" -tAc \
   "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY 1" \
   | while read -r T; do
