@@ -236,8 +236,10 @@ def test_list_alerts_is_repeatable(monkeypatch):
         db.close()
 
 
-def test_snoozed_alert_without_expiry_is_still_visible(monkeypatch):
-    """Una alerta snoozada sin fecha de caducidad no se esconde para siempre."""
+def test_snoozed_alert_without_expiry_stays_hidden(monkeypatch):
+    """Snooze SIN fecha = indefinido = oculta por defecto (semantica de
+    'silenciar'); con include_snoozed=True sigue estando disponible, y el
+    GET no escribe nada."""
     init_db()
     from app.core import auth as auth_module
 
@@ -259,6 +261,14 @@ def test_snoozed_alert_without_expiry_is_still_visible(monkeypatch):
     client = TestClient(main.app)
     response = signed_request(
         client, SECRET, REQUEST_TENANT, "u", "GET", "/api/alerts"
+    )
+    assert response.status_code == 200, response.text
+    assert alert_id not in {item["id"] for item in response.json()}
+
+    # Con include_snoozed=True la alerta indefinida sigue listandose.
+    response = signed_request(
+        client, SECRET, REQUEST_TENANT, "u", "GET", "/api/alerts",
+        params={"include_snoozed": "true"},
     )
     assert response.status_code == 200, response.text
     assert alert_id in {item["id"] for item in response.json()}

@@ -2701,8 +2701,8 @@ export interface paths {
          *     (una escritura) hacia que un GET tuviera efectos de estado: no idempotente,
          *     imposible de cachear y capaz de devolver 500 en un camino de lectura. El
          *     calculo forzado vive en POST /report/{fiscal_year}/regenerate, que ya
-         *     existe; este handler delega en el servicio sin `regenerate`, que devuelve el
-         *     informe persistido o lo calcula sin escribir.
+         *     existe; este handler usa `get_report`, que devuelve el informe persistido
+         *     o lo calcula EN MEMORIA sin escribir (`persisted=False`).
          */
         get: operations["tax_report_api_taxes_report__fiscal_year__get"];
         put?: never;
