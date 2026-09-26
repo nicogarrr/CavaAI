@@ -10,9 +10,24 @@ correlate a user report with the server log.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 
 logger = logging.getLogger("cavaai.request_errors")
+
+# Credenciales de proveedor en query string (?token=, ?apikey=, ?api_key=...).
+# Los clientes de mercado (Finnhub, FMP, AlphaVantage, TwelveData) las llevan
+# ahi, y httpx/fetch meten la URL completa en el texto de sus excepciones, de
+# modo que sin esto la key del servidor acaba en el log y a veces en la
+# respuesta. Se aplica tambien al log: el log no es un sitio seguro.
+_SECRET_QUERY_RE = re.compile(
+    r"(?i)\b(token|apikey|api_key|api-key|access_token|secret_key|signature|sig)=([^&\s\"'<>]+)"
+)
+
+
+def redact_secrets(text: str) -> str:
+    """Sustituye el valor de los parametros de credencial por REDACTED."""
+    return _SECRET_QUERY_RE.sub(r"\1=REDACTED", text)
 
 _STATUS_DEFAULTS: dict[int, str] = {
     400: "Invalid request",

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.core.errors import redact_secrets
 
 from collections import Counter
 from datetime import UTC, date, datetime
@@ -189,12 +190,12 @@ async def _free_data_snapshot(ticker: str, cik: str) -> dict[str, Any]:
         )
     except Exception as exc:
         snapshot["recent_filings"] = []
-        snapshot["filings_error"] = str(exc)[:200]
+        snapshot["filings_error"] = redact_secrets(str(exc))[:200]
     try:
         snapshot["macro"] = await fred_connector.latest_observation("cpi")
     except Exception as exc:  # pragma: no cover - red defensiva
         snapshot["macro"] = None
-        snapshot["macro_error"] = str(exc)[:200]
+        snapshot["macro_error"] = redact_secrets(str(exc))[:200]
     return snapshot
 
 

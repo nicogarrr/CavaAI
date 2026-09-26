@@ -1,3 +1,4 @@
+from app.core.errors import redact_secrets
 import hashlib
 import os
 import re
@@ -202,7 +203,7 @@ class DocumentIngestionService:
 
                 rag_result = RAGIndex().ingest_document(db, document)
             except Exception as exc:
-                rag_result = {"chunks_indexed": 0, "error": str(exc)}
+                rag_result = {"chunks_indexed": 0, "error": redact_secrets(str(exc))}
         else:
             rag_result = {"chunks_indexed": 0, "skipped": "Set CAVAAI_ENABLE_VECTOR_INGEST=1 to index Qdrant."}
 
@@ -218,7 +219,7 @@ class DocumentIngestionService:
             except Exception as exc:
                 intelligence_result = {
                     "status": "failed",
-                    "error": str(exc),
+                    "error": redact_secrets(str(exc)),
                     "document_id": document.id,
                 }
         else:

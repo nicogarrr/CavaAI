@@ -1,6 +1,7 @@
 """Company valuation orchestration — engine registry, no bootstrap fair values."""
 
 from __future__ import annotations
+from app.core.errors import redact_secrets
 
 import re
 from collections.abc import Mapping
@@ -156,7 +157,7 @@ class ValuationService:
             result["moat"] = {
                 "status": "unavailable",
                 "moats": [],
-                "error": str(exc),
+                "error": redact_secrets(str(exc)),
             }
         result["trace"] = result.get("trace") or {}
         result["trace"].setdefault("engine", resolve_engine_key(company))

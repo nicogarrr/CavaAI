@@ -1,3 +1,4 @@
+from app.core.errors import redact_secrets
 from datetime import UTC, datetime
 from decimal import Decimal
 import re
@@ -231,7 +232,7 @@ class EarningsWorkflowService:
             except Exception as exc:
                 valuation_trace = {
                     "status": "failed",
-                    "error": str(exc),
+                    "error": redact_secrets(str(exc)),
                 }
 
             new_thesis_id = None

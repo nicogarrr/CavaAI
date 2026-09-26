@@ -1,3 +1,4 @@
+from app.core.errors import redact_secrets
 from qdrant_client import QdrantClient
 
 from app.core.config import get_settings
@@ -85,7 +86,7 @@ class RAGIndex:
             client.upsert(collection_name=self.collection_name, points=points)
             db.commit()
         except Exception as exc:
-            return {"chunks_indexed": 0, "error": str(exc), "collection": self.collection_name}
+            return {"chunks_indexed": 0, "error": redact_secrets(str(exc)), "collection": self.collection_name}
 
         return {"chunks_indexed": len(points), "collection": self.collection_name}
 
@@ -142,7 +143,7 @@ class RAGIndex:
         except Exception as exc:
             return {
                 "chunks_indexed": 0,
-                "error": str(exc),
+                "error": redact_secrets(str(exc)),
                 "collection": self.collection_name,
             }
         return {"chunks_indexed": len(points), "collection": self.collection_name}
@@ -278,4 +279,4 @@ class RAGIndex:
             collections = self.client().get_collections()
             return {"configured": True, "collections": [c.name for c in collections.collections]}
         except Exception as exc:
-            return {"configured": False, "error": str(exc)}
+            return {"configured": False, "error": redact_secrets(str(exc))}
