@@ -15,7 +15,13 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
     const [searchTerm, setSearchTerm] = useState("")
     const [loading, setLoading] = useState(false)
     const [searchError, setSearchError] = useState(false)
-    const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks);
+    // Populares: si no llegan por props (el shell ya no las bloquea en el
+    // primer byte), se cargan perezosamente la PRIMERA vez que se abre el
+    // buscador y se reutilizan el resto de la sesion. Quien nunca abre la
+    // busqueda nunca dispara esta llamada.
+    const [popular, setPopular] = useState<StockWithWatchlistStatus[]>(initialStocks ?? []);
+    const popularFetchedRef = useRef(initialStocks !== undefined);
+    const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks ?? []);
     const [mounted, setMounted] = useState(false);
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -58,7 +64,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         }
 
         if (!query.trim()) {
-            setStocks(initialStocks);
+            setStocks(popular);
             setSearchError(false);
             setLoading(false);
             return;
@@ -92,7 +98,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 setLoading(false);
             }
         }
-    }, [initialStocks]);
+    }, [popular]);
 
     // Debounce efectivo
     useEffect(() => {
@@ -109,7 +115,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         const trimmedQuery = searchTerm.trim();
 
         if (!trimmedQuery) {
-            setStocks(initialStocks);
+            setStocks(popular);
             setSearchError(false);
             setLoading(false);
             return;
@@ -129,13 +135,13 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 abortControllerRef.current.abort();
             }
         };
-    }, [searchTerm, handleSearch, initialStocks]);
+    }, [searchTerm, handleSearch, popular]);
 
     // Limpiar cuando se cierra el diálogo
     useEffect(() => {
         if (!open) {
             setSearchTerm("");
-            setStocks(initialStocks);
+            setStocks(popular);
             setSearchError(false);
             if (searchTimeoutRef.current) {
                 clearTimeout(searchTimeoutRef.current);
@@ -143,8 +149,37 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
+            return;
         }
-    }, [open, initialStocks]);
+        // Carga perezosa de las populares al abrir por primera vez.
+        if (popularFetchedRef.current) return;
+        popularFetchedRef.current = true;
+        let cancelled = false;
+        setLoading(true);
+        searchStocks()
+            .then((results) => {
+                if (cancelled) return;
+                const list = results || [];
+                setPopular(list);
+                setStocks((current) => (searchTerm.trim() ? current : list));
+            })
+            .catch((error: unknown) => {
+                // Sin populares el buscador sigue funcionando por query; se
+                // deja la lista vacia (estado honesto, sin fabricar).
+                if (!cancelled && !isNextRedirectError(error)) {
+                    showErrorToast(error, {});
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+        // popular/searchTerm leidos por ref/estado fresco en el cierre: no
+        // queremos relanzar el fetch al teclear.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
 
     const go = useCallback((href: string) => {
         setOpen(false);

@@ -10,7 +10,7 @@ import MobileNav from '@/components/MobileNav';
  * sticky permanente en movil; ahora por debajo de sm solo hay un icono de lupa
  * que abre el mismo dialogo (Ctrl+K y "/" tambien lo abren).
  */
-const Header = ({ user, initialStocks }: { user: User; initialStocks: StockWithWatchlistStatus[] }) => {
+const Header = ({ user, initialStocks }: { user: User; initialStocks?: StockWithWatchlistStatus[] }) => {
     return (
         <header className="header">
             {/* El padding horizontal vive unicamente en `.container`; antes se
