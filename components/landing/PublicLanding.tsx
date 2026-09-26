@@ -109,7 +109,11 @@ const demoThesis = {
         { label: 'Base', value: 51, probability: 0.5, highlight: true },
         { label: 'Alcista', value: 78, probability: 0.25 },
     ],
-    marginOfSafety: 0.22,
+    // Derivado de los escenarios, nunca tecleado aparte: valor esperado
+    // 24*0,25 + 51*0,5 + 78*0,25 = 51; margen = (51 - 42) / 51 = 17,6 %.
+    // El 22 % anterior no cuadraba con ninguna referencia visible.
+    marginOfSafety:
+        (24 * 0.25 + 51 * 0.5 + 78 * 0.25 - 42) / (24 * 0.25 + 51 * 0.5 + 78 * 0.25),
     catalysts: [
         { label: 'Resultados del tercer trimestre', date: '30 oct 2026' },
         { label: 'Revisión del contrato principal', date: 'sin fecha confirmada' },
@@ -141,12 +145,14 @@ const demoClaims = [
     },
 ];
 
+// Cada check declara su unidad: antes el formato se elegia por passed, y un
+// valor que no es tasa (420) salia formateado como porcentaje (42.000 %).
 const demoMoat = [
-    { check: 'Margen de caja libre 5 años', value: 0.18, threshold: '> 5%', passed: true },
-    { check: 'Rentabilidad sobre recursos propios 5 años', value: 0.21, threshold: '> 15%', passed: true },
-    { check: 'Rentabilidad del capital invertido', value: 0.11, threshold: '> coste de capital', passed: true },
-    { check: 'Ganancias del propietario 5 años', value: 420, threshold: '> 0', passed: true },
-    { check: 'Inversión sobre depreciación 5 años', value: 1.8, threshold: '≤ 1,5', passed: false },
+    { check: 'Margen de caja libre 5 años', value: 0.18, unit: 'rate', threshold: '> 5%', passed: true },
+    { check: 'Rentabilidad sobre recursos propios 5 años', value: 0.21, unit: 'rate', threshold: '> 15%', passed: true },
+    { check: 'Rentabilidad del capital invertido', value: 0.11, unit: 'rate', threshold: '> coste de capital', passed: true },
+    { check: 'Ganancias del propietario 5 años', value: 0.42, unit: 'rate', threshold: '> 0', passed: true },
+    { check: 'Inversión sobre depreciación 5 años', value: 1.8, unit: 'multiple', threshold: '≤ 1,5', passed: false },
 ];
 
 const demoValuation = {
@@ -413,7 +419,7 @@ export default function PublicLanding() {
                                         <span className="text-sm text-gray-300">{check.check}</span>
                                         <span className="shrink-0 text-xs">
                                             <span className="font-mono text-gray-200">
-                                                {check.passed
+                                                {check.unit === 'rate'
                                                     ? formatPercent(check.value)
                                                     : formatNumber(check.value, { maximumFractionDigits: 1 })}
                                             </span>{' '}
