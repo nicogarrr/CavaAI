@@ -18,12 +18,11 @@ const PortfolioNavChart = dynamic(() => import('./PortfolioNavChart'), {
 });
 import PortfolioScores from '@/components/portfolio/PortfolioScores';
 import PortfolioTearsheet from '@/components/portfolio/PortfolioTearsheet';
-import { PortfolioRiskSimulator } from '@/components/portfolio/PortfolioRiskSimulator';
 import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
 import ImportIBKRButton from '@/components/portfolio/ImportIBKRButton';
 import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
-import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, Gauge, ShieldAlert, Activity } from 'lucide-react';
+import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, Gauge, Activity } from 'lucide-react';
 import type { PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType, PortfolioTearsheet as PortfolioTearsheetType } from '@/lib/actions/portfolio.actions';
 
 type Transaction = {
@@ -139,16 +138,6 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                         <Brain aria-hidden="true" className="h-4 w-4" />
                         Factores
                     </TabsTrigger>
-                    <TabsTrigger
-                        value="simulacion"
-                        className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
-                    >
-                        {/* "Riesgo" colisionaba con /risk (concentraciones) y con
-                            Inteligencia (volatilidad, VaR, drawdown). Esto es un
-                            Monte Carlo: se llama Simulación. */}
-                        <ShieldAlert aria-hidden="true" className="h-4 w-4" />
-                        Simulación
-                    </TabsTrigger>
                 </TabsList>
                 </div>
 
@@ -259,10 +248,6 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                     <PortfolioScores scores={scores} />
                 </TabsContent>
 
-                {/* Tab: Simulación Monte Carlo */}
-                <TabsContent value="simulacion" className="mt-0">
-                    <PortfolioRiskSimulator userId={userId} />
-                </TabsContent>
             </Tabs>
 
             <PortfolioChat userId={userId} />
