@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0034_market_price_volume_nullable"
+revision = "0034_market_price_volume_null"
 down_revision = "0033_alert_deliveries"
 branch_labels = None
 depends_on = None
