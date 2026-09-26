@@ -47,11 +47,22 @@ _USERINFO_RE = re.compile(
     r"(?i)(\b[a-z][a-z0-9+.-]*://[^/\s:@]+):([^@\s/]+)@"
 )
 
+# Pares clave=valor de passwords en textos de error ("password=hunter2" en
+# un fallo de conexion a base de datos). token/apikey/... ya los cubre
+# _SECRET_QUERY_RE; esto cierra el resto de nombres habituales. Idempotente:
+# REDACTED no contiene '=' ni caracteres excluidos, re-aplicar no cambia nada.
+_SECRET_KV_RE = re.compile(
+    r"(?i)\b(password|passwd|pwd|secret|private_key|client_secret)=([^\s&\"'<>]+)"
+)
+
 
 def redact_secrets(text: str) -> str:
-    """Redacta credenciales: pares de query y userinfo de URL."""
-    return _SECRET_QUERY_RE.sub(
-        r"\1=REDACTED", _USERINFO_RE.sub(r"\1:REDACTED@", text)
+    """Redacta credenciales: pares de query, userinfo de URL y password=."""
+    return _SECRET_KV_RE.sub(
+        r"\1=REDACTED",
+        _SECRET_QUERY_RE.sub(
+            r"\1=REDACTED", _USERINFO_RE.sub(r"\1:REDACTED@", text)
+        ),
     )
 
 
