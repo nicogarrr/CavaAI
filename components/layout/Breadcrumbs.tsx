@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 import { flattenNavItems, NAV_SECTIONS, type NavItem } from '@/lib/constants';
 
-type Crumb = { href: string; label: string };
+type Crumb = { href: string; label: string; navigable?: boolean };
 
 /**
  * Migas derivadas de `NAV_SECTIONS`: la ruta se ancla al href mas largo que
@@ -51,7 +51,10 @@ function buildCrumbs(pathname: string): Crumb[] {
 
   const sectionTitle = sectionOf.get(anchor.href);
   if (sectionTitle && sectionTitle !== 'Principal') {
-    crumbs.push({ href: `#${sectionTitle}`, label: sectionTitle });
+    // La seccion es un agrupador del menu, no una pagina: antes enlazaba a
+    // `#Seccion`, un ancla sin destino en el documento (clic muerto). Se
+    // muestra como texto, sin Link.
+    crumbs.push({ href: `section:${sectionTitle}`, label: sectionTitle, navigable: false });
   }
   crumbs.push({ href: anchor.href, label: anchor.label });
 
@@ -88,6 +91,8 @@ export default function Breadcrumbs() {
               {index > 0 && <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />}
               {isLast ? (
                 <span aria-current="page" className="max-w-[24ch] truncate text-gray-300">{crumb.label}</span>
+              ) : crumb.navigable === false ? (
+                <span className="max-w-[24ch] truncate">{crumb.label}</span>
               ) : (
                 <Link href={crumb.href} className="max-w-[24ch] truncate hover:text-teal-300">{crumb.label}</Link>
               )}
