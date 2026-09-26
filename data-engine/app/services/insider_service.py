@@ -13,6 +13,7 @@ envuelto en try/except -> devuelve {"status": "skipped", ...}).
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from datetime import UTC, date, datetime
@@ -84,8 +85,6 @@ def clear_filing_xml_cache() -> None:
     _xml_cache.clear()
     _xml_cache_fetched_at.clear()
 
-_CEO_TOKENS = ("chief executive", "ceo", "president")
-_CFO_TOKENS = ("chief financial", "cfo")
 
 
 def _parse_date(value: Any) -> date | None:
@@ -115,20 +114,62 @@ def _to_float(value: Any) -> float | None:
 
 
 def _is_c_suite(tx: dict) -> bool:
+    return _is_ceo(tx) or _is_cfo(tx)
+
+
+# Matched against the WHOLE title as words, never as a substring: "president"
+# is a substring of "Vice President, Human Resources", so a VP of HR was
+# reported as the CEO buying, and the alert named the wrong person.
+_CEO_TITLE_PATTERNS = (
+    r"\bchief\s+executive(\s+officer)?\b",
+    r"\bceo\b",
+    r"\bpresident\s+and\s+chief\s+executive\b",
+    r"\bpresident\s*,?\s+chief\s+executive\b",
+    r"\bchairman\s+and\s+ceo\b",
+    r"\bchair\s+and\s+ceo\b",
+)
+_CFO_TITLE_PATTERNS = (
+    r"\bchief\s+financial(\s+officer)?\b",
+    r"\bcfo\b",
+    r"\bvice\s+president\s+and\s+cfo\b",
+    r"\bpresident\s*,?\s+chief\s+financial\s+officer\b",
+)
+# A title that marks the holder as NOT the top officer, and that can appear
+# ALONGSIDE a real top-officer marker ("Vice President and CFO"), so the veto
+# below only applies when no explicit marker is present.
+_NOT_TOP_OFFICER = re.compile(r"\b(vice\s+president|vp|deputy|assistant|associate)\b")
+# An explicit statement that this person IS the top officer.
+_TOP_OFFICER_MARKER = re.compile(
+    r"\b(chief|ceo|cfo|coo|cio|cpres|chairman|chair)\b"
+)
+
+
+def _title_matches(tx: dict, patterns: tuple[str, ...]) -> bool:
     title = str(tx.get("officer_title") or "").lower()
     role = str(tx.get("role") or "").lower()
+    if not title and not role:
+        return False
+    # Only a DIRECTOR/OFFICER can be C-suite by title; a plain shareholder is
+    # not promoted by the word "president" appearing anywhere.
+    if role and "director" not in role and "officer" not in role:
+        return False
     haystack = f"{title} {role}"
-    return any(tok in haystack for tok in (*_CEO_TOKENS, *_CFO_TOKENS))
+    if not any(re.search(pattern, haystack) for pattern in patterns):
+        return False
+    # "Vice President, Finance" also contains "president", so without this the
+    # substring match would promote a VP. But "Vice President and CFO" names
+    # the office explicitly and must survive.
+    if _NOT_TOP_OFFICER.search(title) and not _TOP_OFFICER_MARKER.search(title):
+        return False
+    return True
 
 
 def _is_ceo(tx: dict) -> bool:
-    haystack = f"{tx.get('officer_title') or ''} {tx.get('role') or ''}".lower()
-    return any(tok in haystack for tok in _CEO_TOKENS)
+    return _title_matches(tx, _CEO_TITLE_PATTERNS)
 
 
 def _is_cfo(tx: dict) -> bool:
-    haystack = f"{tx.get('officer_title') or ''} {tx.get('role') or ''}".lower()
-    return any(tok in haystack for tok in _CFO_TOKENS)
+    return _title_matches(tx, _CFO_TITLE_PATTERNS)
 
 
 def open_market_buys(transactions: list[dict]) -> list[dict]:
@@ -289,11 +330,27 @@ def get_signals_for_ticker(
                 errors.append(f"{filing.get('accession_number')}: {type(exc).__name__}")
         signals = detect_signals(transactions)
         parse_error_count = len(errors)
+        scanned = len(filings[:limit])
+        parsed_ok = scanned - parse_error_count
+        # `status` is what the endpoint's consumers read, and it was hardcoded
+        # to "ok": with 20 filings all failing to fetch, the response said "ok"
+        # with `signals: []` and `buy_count: 0`, which reads as "no insider
+        # activity" when the truth is "nothing could be read". The user then
+        # skips a company on a false all-clear.
+        if parse_error_count and parsed_ok == 0:
+            status = "degraded"
+        elif parse_error_count:
+            status = "partial"
+        else:
+            status = "ok"
         result: dict = {
             "ticker": wanted,
             "cik": resolved_cik,
-            "status": "ok",
-            "filings_scanned": len(filings[:limit]),
+            "status": status,
+            "filings_scanned": scanned,
+            "filings_parsed": parsed_ok,
+            "filings_failed": parse_error_count,
+            "coverage_ratio": (parsed_ok / scanned) if scanned else None,
             "buy_count": len(open_market_buys(transactions)),
             "signals": signals,
             "parse_error_count": parse_error_count,

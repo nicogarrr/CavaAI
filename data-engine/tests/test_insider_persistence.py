@@ -144,7 +144,10 @@ def test_get_signals_persists_best_effort(monkeypatch):
         result = insider_service.get_signals_for_ticker(
             "ACME", fetcher=lambda f: CEO_BUY_XML, db=db
         )
-        assert result["status"] == "ok"
+        # A read whose persistence failed must not claim "ok": the signals were
+        # produced but nothing was stored, and "ok" reads as a clean scan.
+        assert result["status"] == "degraded"
+        assert result["filings_parsed"] == 0
         assert any("persist" in e for e in result.get("filing_errors", []))
     finally:
         _cleanup(db)

@@ -72,8 +72,9 @@ def _fiscal_info_batch(
     """
     if not as_of_by_company:
         return {}
-    first_buys = dict(
-        db.execute(
+    first_buys = {
+        row[0]: row[1]
+        for row in db.execute(
             select(Transaction.company_id, func.min(Transaction.trade_date))
             .where(
                 Transaction.company_id.in_(set(as_of_by_company)),
@@ -81,7 +82,7 @@ def _fiscal_info_batch(
             )
             .group_by(Transaction.company_id)
         ).all()
-    )
+    }
     result: dict[int, dict] = {}
     for company_id, as_of in as_of_by_company.items():
         first_buy = first_buys.get(company_id)
