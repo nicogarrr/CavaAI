@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
-from app.services import cnmv_mapping
 from app.core.errors import redact_secrets
+from app.services import cnmv_mapping
 from app.services.connectors import cnmv
 from app.services.provenance import Coverage, SourceKind, provenance
 

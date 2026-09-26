@@ -22,8 +22,8 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import FundManager, ManagerHolding
 from app.core.errors import redact_secrets
+from app.models import FundManager, ManagerHolding
 from app.services.connectors import form13f
 from app.services.provenance import Coverage, SourceKind, provenance
 

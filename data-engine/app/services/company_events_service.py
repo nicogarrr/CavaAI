@@ -25,8 +25,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Company, Document
 from app.core.errors import redact_secrets
+from app.models import Company, Document
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.sec import SECClient
 
