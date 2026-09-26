@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { generateEnhancedProPicks, getAvailableStrategies } from '@/lib/actions/proPicks.actions';
+import { generateEnhancedProPicksWithRun, getAvailableStrategies } from '@/lib/actions/proPicks.actions';
 import { Sparkles } from 'lucide-react';
 import ProPicksTabs from '@/components/proPicks/ProPicksTabs';
 import BackendOffline from '@/components/system/BackendOffline';
@@ -19,11 +19,11 @@ export const metadata: Metadata = {
 
 export default async function ProPicksPage() {
     // Preparar picks iniciales y estrategias disponibles en paralelo
-    let initialPicks: Awaited<ReturnType<typeof generateEnhancedProPicks>>;
+    let initialResult: Awaited<ReturnType<typeof generateEnhancedProPicksWithRun>>;
     let strategies: Awaited<ReturnType<typeof getAvailableStrategies>>;
     try {
-        [initialPicks, strategies] = await Promise.all([
-            generateEnhancedProPicks({
+        [initialResult, strategies] = await Promise.all([
+            generateEnhancedProPicksWithRun({
                 timePeriod: 'month',
                 limit: 20,
                 minScore: 70,
@@ -41,7 +41,10 @@ export default async function ProPicksPage() {
         throw error;
     }
 
-    const generatedAt = new Date().toISOString();
+    // La fecha mostrada es el corte de datos (as_of) del último run real del
+    // embudo, nunca la hora de carga de la página (F49). Sin run completado
+    // es null y la tarjeta lo dice en vez de inventar una fecha.
+    const generatedAt = initialResult.runAsOf ?? undefined;
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-7xl flex-col overflow-x-clip p-4 sm:p-6">
@@ -69,7 +72,7 @@ export default async function ProPicksPage() {
             </div>
 
             {/* Picks IA + Backtesting por estrategia */}
-            <ProPicksTabs strategies={strategies} initialPicks={initialPicks} generatedAt={generatedAt} />
+            <ProPicksTabs strategies={strategies} initialPicks={initialResult.picks} generatedAt={generatedAt} />
         </main>
     );
 }

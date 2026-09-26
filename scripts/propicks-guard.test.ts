@@ -369,3 +369,39 @@ describe('propicks overlays en el action (contrato fuente)', () => {
         }
     });
 });
+
+describe('F49: la fecha de ProPicks es la del run real, no la de carga', () => {
+    it('la página no fabrica la fecha con new Date() y usa runAsOf del run', () => {
+        const page = readSource('app/(root)/propicks/page.tsx');
+        assert.ok(!page.includes('new Date().toISOString()'), 'page.tsx no debe fechar con la hora de carga');
+        assert.ok(page.includes('generateEnhancedProPicksWithRun'), 'page.tsx debe leer runAsOf del run');
+        assert.ok(page.includes('initialResult.runAsOf'), 'la fecha mostrada debe ser runAsOf');
+    });
+
+    it('el contenido no re-fecha tras aplicar filtros o reintentar', () => {
+        const content = readSource('components/proPicks/EnhancedProPicksContent.tsx');
+        assert.ok(!content.includes('new Date().toISOString()'), 'la fecha nunca es la hora del clic');
+        assert.ok(content.includes('setLastGenerated(result.runAsOf)'), 'los refetch fijan la fecha del run');
+    });
+
+    it('el estado vacío distingue "sin run" de "run sin candidatos que cumplan filtros"', () => {
+        const content = readSource('components/proPicks/EnhancedProPicksContent.tsx');
+        assert.ok(
+            content.includes('El embudo todavía no ha publicado un run completado'),
+            'sin run completado el estado vacío debe decirlo',
+        );
+        assert.ok(
+            content.includes('cumple los filtros actuales'),
+            'con run, el estado vacío debe remitir a los filtros actuales',
+        );
+    });
+
+    it('generateEnhancedProPicksWithRun expone runAsOf y la variante simple lo reutiliza', () => {
+        const actions = readSource('lib/actions/proPicks.actions.ts');
+        assert.ok(actions.includes('runAsOf: funnel?.runAsOf ?? null'), 'el resultado debe exponer el runAsOf del embudo');
+        assert.ok(
+            actions.includes('const { picks } = await generateEnhancedProPicksWithRun(filters);'),
+            'generateEnhancedProPicks debe delegar en la variante con run para no duplicar la lectura',
+        );
+    });
+});
