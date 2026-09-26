@@ -286,11 +286,12 @@ export interface paths {
          * @description Snapshots de varias empresas en UNA llamada (indice de research).
          *
          *     Sustituye el fan-out de ~40 GET /{ticker}/snapshot por visita del
-         *     indice: las queries van agregadas por IN(company_ids) (~13 para todo
-         *     el lote, no 5 por empresa). Limites honestos: maximo
-         *     MAX_SNAPSHOT_BATCH_TICKERS tickers por llamada (400 por encima); los
-         *     tickers sin company en el registro vuelven en ``missing`` y NUNCA se
-         *     fabrican snapshots vacios para ellos.
+         *     indice: la resolucion de tickers va en 1-2 queries IN (politica de
+         *     alias de sufijos de resolve_company) y las del snapshot agregadas por
+         *     IN(company_ids) (~13 para todo el lote, no 5 por empresa). Limites
+         *     honestos: maximo MAX_SNAPSHOT_BATCH_TICKERS tickers por llamada (400
+         *     por encima); los tickers sin company en el registro vuelven en
+         *     ``missing`` y NUNCA se fabrican snapshots vacios para ellos.
          */
         get: operations["company_snapshots_batch_api_companies_snapshots_get"];
         put?: never;
