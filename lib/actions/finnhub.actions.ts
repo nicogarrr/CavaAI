@@ -596,9 +596,8 @@ function exchangeFromDisplaySymbol(displaySymbol?: string): string | undefined {
     return EXCHANGE_LABEL_BY_SUFFIX[suffix] ?? suffix;
 }
 
-export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
-    await requireAuthenticatedUser();
-    try {
+const searchStocksOrThrow = async (query?: string): Promise<StockWithWatchlistStatus[]> => {    await requireAuthenticatedUser();
+    {
         const token = env.FINNHUB_API_KEY;
         if (!token) {
             // Finnhub is optional; the search command renders an explicit empty state.
@@ -699,10 +698,29 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
             .slice(0, 15);
 
         return mapped;
+    }
+};
+
+export type SearchStocksResult =
+    | { status: 'ok'; stocks: StockWithWatchlistStatus[] }
+    | { status: 'error'; stocks: [] };
+
+/** Búsqueda con ESTADO explícito (F215): con la cuota de Finnhub agotada el
+ *  buscador global afirmaba "Sin resultados" para AAPL porque el error se
+ *  tragaba y volvía como []. Aquí el fallo de proveedor/red es `error` y la
+ *  UI lo dice en vez de mentir. */
+export const searchStocksWithStatus = cache(async (query?: string): Promise<SearchStocksResult> => {
+    try {
+        return { status: 'ok', stocks: await searchStocksOrThrow(query) };
     } catch (err) {
         console.error('Error in stock search:', err);
-        return [];
+        return { status: 'error', stocks: [] };
     }
+});
+
+export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
+    const result = await searchStocksWithStatus(query);
+    return result.stocks;
 });
 
 /**

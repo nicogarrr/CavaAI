@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Search, TrendingUp, Loader2 } from 'lucide-react';
 import { addTransaction } from '@/lib/actions/portfolio.actions';
-import { searchStocks } from '@/lib/actions/finnhub.actions';
+import { searchStocksWithStatus } from '@/lib/actions/finnhub.actions';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
@@ -58,6 +58,7 @@ export default function AddTransactionButton({ userId }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<StockResult[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [formData, setFormData] = useState({
@@ -81,12 +82,20 @@ export default function AddTransactionButton({ userId }: Props) {
 
     setSearchLoading(true);
     try {
-      const results = await searchStocks(query);
-      setSearchResults(results?.slice(0, 8) || []);
-      setShowResults(true);
+      const result = await searchStocksWithStatus(query);
+      if (result.status === 'error') {
+        // Fallo del proveedor: no fingir "sin resultados" (F215).
+        setSearchError(true);
+        setShowResults(false);
+      } else {
+        setSearchError(false);
+        setSearchResults(result.stocks.slice(0, 8));
+        setShowResults(true);
+      }
     } catch (error) {
       console.error('Error searching stocks:', error);
-      setSearchResults([]);
+      setSearchError(true);
+      setShowResults(false);
     }
     setSearchLoading(false);
   }, []);
@@ -217,6 +226,11 @@ export default function AddTransactionButton({ userId }: Props) {
             </div>
 
             {/* Dropdown de resultados */}
+            {searchError && (
+              <p className="mt-1 text-xs text-red-400">
+                No se pudo buscar ahora mismo (fallo del proveedor de datos). Inténtalo de nuevo en unos segundos.
+              </p>
+            )}
             {showResults && searchResults.length > 0 && (
               <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto">
                 {searchResults.map((stock, index) => (
