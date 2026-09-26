@@ -450,7 +450,9 @@ function AlertsManager() {
                                     ) : (
                                         item.channels.map((channel) => {
                                             const delivery = item.deliveries[channel];
-                                            const status = delivery?.status ?? 'pendiente';
+                                            // Sin registro de entrega no hay estado «pendiente»:
+                                            // mostrar pendiente sería inventar un envío en curso.
+                                            const status = delivery?.status ?? 'sin registro';
                                             const tone =
                                                 status === 'delivered'
                                                     ? 'border-teal-800 text-teal-300'
