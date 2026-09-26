@@ -1,12 +1,31 @@
+import type { Metadata } from 'next';
 import { Gauge } from 'lucide-react';
 import RiskDashboardView from '@/components/risk/RiskDashboardView';
-import { getRiskDashboard } from '@/lib/actions/risk.actions';
+import BackendOffline from '@/components/system/BackendOffline';
+import { getRiskDashboard, type RiskDashboardRecord } from '@/lib/actions/risk.actions';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+export const metadata: Metadata = {
+    title: 'Exposiciones de cartera',
+    description:
+        'Pesos, concentración (top 1 y top 5) y exposición por sector y posición de tu cartera.',
+};
+
 export default async function RiskPage() {
-    const dashboard = await getRiskDashboard().catch(() => null);
+    let dashboard: RiskDashboardRecord;
+    try {
+        dashboard = await getRiskDashboard();
+    } catch (error) {
+        // `catch(() => null)` dejaba a RiskDashboardView sin datos: el mismo
+        // texto salía para "cartera vacía" y para "motor apagado".
+        if (isBackendUnavailableError(error)) {
+            return <BackendOffline feature="Exposiciones de cartera" retryHref="/risk" />;
+        }
+        throw error;
+    }
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex max-w-6xl flex-col gap-6">

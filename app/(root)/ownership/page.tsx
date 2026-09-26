@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { Building2, ExternalLink, FileText } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import BackendOffline from '@/components/system/BackendOffline';
 import {
     getManagerChanges,
     getManagerHoldings,
@@ -8,6 +11,7 @@ import {
     type ManagerChanges,
     type ManagerHoldings,
 } from '@/lib/actions/ownership.actions';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 import { formatCompact, formatDate, formatDateTime, formatNumber, NA } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 
@@ -38,6 +42,12 @@ const CHANGE_LABELS: Record<string, string> = {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+export const metadata: Metadata = {
+    title: 'Propiedad institucional (13F)',
+    description:
+        'Carteras de gestores institucionales tal como se declaran ante la SEC (Form 13F, EDGAR), con cambios trimestre a trimestre.',
+};
+
 /** `value_usd_thousands` viene en miles de dólares (13F): se pasa a unidades
  *  y de ahí a la cifra compacta es-ES ("416,16 mil M", no "416.16B"). */
 function formatValueUsd(thousands: number | null): string {
@@ -62,16 +72,46 @@ type PageProps = {
 
 export default async function OwnershipPage({ searchParams }: PageProps) {
     const { cik: selectedCik } = await searchParams;
-    const managersResult = await getOwnershipManagers().catch(() => null);
-    const managers = managersResult?.managers ?? [];
-    const limitations = managersResult?.limitations ?? [];
+    const activeHref = selectedCik ? `/ownership?cik=${encodeURIComponent(selectedCik)}` : '/ownership';
+    // La lista de gestores es la lectura esencial: sin ella la página no tiene
+    // nada que mostrar. Antes su fallo se tragaba con `.catch(() => null)` y la
+    // pantalla decía "no hay gestores (o el backend no responde)": dos estados
+    // en un mismo texto, imposible de distinguir para el usuario.
+    let managersResult: Awaited<ReturnType<typeof getOwnershipManagers>>;
+    try {
+        managersResult = await getOwnershipManagers();
+    } catch (error) {
+        if (isBackendUnavailableError(error)) {
+            return <BackendOffline feature="Propiedad institucional (13F)" retryHref={activeHref} />;
+        }
+        throw error;
+    }
+    const managers = managersResult.managers;
+    const limitations = managersResult.limitations;
     const activeCik = selectedCik ?? managers[0]?.cik ?? null;
-    const holdings: ManagerHoldings | null = activeCik
-        ? await getManagerHoldings(activeCik).catch(() => null)
-        : null;
-    const changes: ManagerChanges | null = activeCik
-        ? await getManagerChanges(activeCik).catch(() => null)
-        : null;
+
+    let holdings: ManagerHoldings | null = null;
+    let changes: ManagerChanges | null = null;
+    if (activeCik) {
+        const [holdingsRead, changesRead] = await Promise.all([
+            getManagerHoldings(activeCik).then(
+                (value) => ({ value, error: null as unknown }),
+                (error: unknown) => ({ value: null, error }),
+            ),
+            getManagerChanges(activeCik).then(
+                (value) => ({ value, error: null as unknown }),
+                (error: unknown) => ({ value: null, error }),
+            ),
+        ]);
+        const readError = holdingsRead.error ?? changesRead.error;
+        // Mismo backend para las tres lecturas: si alguna cae, el 13F entero no
+        // es fiable y se dice, en vez de pintar tablas a medias como vacías.
+        if (readError && isBackendUnavailableError(readError)) {
+            return <BackendOffline feature="Propiedad institucional (13F)" retryHref={activeHref} />;
+        }
+        holdings = holdingsRead.value;
+        changes = changesRead.value;
+    }
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 overflow-x-clip">
@@ -105,10 +145,10 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
             ) : null}
 
             {!managers.length ? (
-                <section className="rounded-xl border border-gray-800 bg-[#101010] p-5 text-sm text-gray-400">
-                    No hay gestores revisados disponibles (o el backend no responde). La lista de
-                    gestores es una tabla revisada en codigo; se amplia explicitamente.
-                </section>
+                <EmptyState
+                    description="La lista de gestores es una tabla revisada en código; se amplía de forma explícita en cada versión."
+                    title="No hay gestores revisados en esta versión"
+                />
             ) : (
                 <section className="flex flex-wrap gap-2">
                     {managers.map((manager) => (

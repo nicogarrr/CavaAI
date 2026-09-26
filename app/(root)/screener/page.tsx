@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { getSavedScreenerEngines, getScreenerStocksReal } from '@/lib/actions/screener.actions';
 import { formatCompact, formatPercent, formatPrice } from '@/lib/format';
@@ -7,10 +8,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import { RefreshCcw } from 'lucide-react';
 import FollowButton from '@/components/screener/FollowButton';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+export const metadata: Metadata = {
+  title: 'Screener',
+  description:
+    'Large caps líquidos con precio y market cap reales, filtros guardados del motor de análisis y lectura offline con Finnhub.',
+};
 
 /** Sectores que el Screener ofrece: etiqueta ES de lib/labels.ts + valor EN
  *  que espera el backend. */
@@ -113,15 +121,33 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
           <CardContent className="min-w-0 px-3 sm:px-6">
             {rows.length === 0 ? (
               backendDown ? (
+              /* Mismo aspecto y mismo reintento que components/system/BackendOffline.tsx
+               * (distintivo ámbar + explicación + botón Reintentar), pero en línea:
+               * aquí la página sigue teniendo contenido útil (filtros de sector,
+               * índices) y sustituir la tabla por un error a pantalla completa
+               * tiraría el H1 y el panel del motor. */
               <div className="px-4 py-10 text-center">
-                <p className="text-sm text-gray-500 sm:text-base">
-                  No hay datos ahora mismo — el backend puede estar arrancando. Reintenta en 30s.
+                <span className="inline-block rounded-full border border-amber-900/60 bg-amber-950/40 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
+                  Motor de análisis desconectado
+                </span>
+                <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-gray-400 sm:text-base">
+                  No hay datos ahora mismo: el motor no responde y puede estar arrancando. Tus datos
+                  están a salvo, reintenta en unos segundos.
                 </p>
-                <Button asChild variant="outline" className="mt-4 min-h-[44px] px-5">
-                  <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>Reintentar</Link>
+                <Button asChild className="mt-4 min-h-[44px] px-6">
+                  <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>
+                    <RefreshCcw aria-hidden="true" className="h-4 w-4" />
+                    Reintentar
+                  </Link>
                 </Button>
+                <p className="mt-4 text-xs text-gray-500">
+                  Si el problema persiste, el backend local no está en marcha.
+                </p>
               </div>
               ) : (
+              /* Distinto del anterior: aquí el motor responde y el filtro no tiene
+               * coincidencias. No se ofrece "Reintentar" porque repetir la misma
+               * consulta daría el mismo vacío: la acción es cambiar de sector. */
               <div className="px-4 py-10 text-center">
                 <p className="text-sm text-gray-500 sm:text-base">
                   Sin resultados para {sectorEs(sector)} con este filtro. Prueba con otro sector.
