@@ -6,7 +6,10 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  // `overflow-x-auto` y no `overflow-auto`: con `auto` en ambos ejes el
+  // contenedorellia el scroll vertical de la pagina al hacer scroll sobre la
+  // tabla, y `min-w-0` evita que la tabla ensanche un contenedor flex.
+  <div className="relative w-full min-w-0 overflow-x-auto">
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
