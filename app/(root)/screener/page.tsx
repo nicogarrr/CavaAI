@@ -46,7 +46,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
   const { rows, backendDown } = screenerResult;
 
   return (
-    <div className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
+    <main id="content" tabIndex={-1} className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
       <div className="min-w-0">
         <h1 className="text-2xl font-semibold break-words text-gray-100">Screener</h1>
         <p className="mt-1 text-sm text-gray-400">Large caps líquidos con precio y market cap reales (motor de análisis, caché 60s)</p>
@@ -205,6 +205,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
           </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   );
 }
+

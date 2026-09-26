@@ -72,7 +72,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
         return [];
     }, [chartPeriod, scores.history]);
     return (
-        <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col overflow-x-clip p-4 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24">
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full max-w-[1600px] flex-col overflow-x-clip p-4 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24">
                 {/* Header */}
                 <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
@@ -240,6 +240,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
             </Tabs>
 
             <PortfolioChat userId={userId} />
-        </div>
+        </main>
     );
 }
+
