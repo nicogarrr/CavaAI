@@ -32,7 +32,7 @@ export default function WalkForwardResults({ result }: WalkForwardResultsProps) 
         <Card className="w-full min-w-0 overflow-hidden rounded-lg border border-gray-700 bg-gray-800/50 p-4 sm:p-6">
             <div className="mb-6">
                 <div className="mb-2 flex items-center gap-3">
-                    <BarChart3 className="h-6 w-6 text-teal-400" />
+                    <BarChart3 aria-hidden="true" className="h-6 w-6 text-teal-400" />
                     <h3 className="text-xl font-bold text-gray-100">Backtest walk-forward point-in-time</h3>
                 </div>
                 <p className="text-sm text-gray-400">
@@ -64,21 +64,22 @@ export default function WalkForwardResults({ result }: WalkForwardResultsProps) 
 
             <div className="mb-6 min-w-0">
                 <h4 className="mb-3 text-sm font-semibold text-gray-300">Desempeño mensual</h4>
-                <div className="hidden overflow-x-auto md:block">
+                <div aria-label="Desempeño mensual del backtest" className="hidden overflow-x-auto md:block" role="region" tabIndex={0}>
                     <table className="w-full text-sm">
+                        <caption className="sr-only">Desempeño mensual del backtest walk-forward: corte, picks, retorno neto, SPY y rotación</caption>
                         <thead>
                             <tr className="border-b border-gray-700">
-                                <th className="py-2 text-left text-gray-400">Corte</th>
-                                <th className="py-2 text-left text-gray-400">Picks</th>
-                                <th className="py-2 text-right text-gray-400">Mes neto</th>
-                                <th className="py-2 text-right text-gray-400">SPY</th>
-                                <th className="py-2 text-right text-gray-400">Rotación</th>
+                                <th className="py-2 text-left text-gray-400" scope="col">Corte</th>
+                                <th className="py-2 text-left text-gray-400" scope="col">Picks</th>
+                                <th className="py-2 text-right text-gray-400" scope="col">Mes neto</th>
+                                <th className="py-2 text-right text-gray-400" scope="col">SPY</th>
+                                <th className="py-2 text-right text-gray-400" scope="col">Rotación</th>
                             </tr>
                         </thead>
                         <tbody>
                             {result.tablaMensual.map((row) => (
                                 <tr key={row.asOf} className="border-b border-gray-700/50">
-                                    <td className="py-2 text-gray-300">{formatUserDate(row.asOf)}</td>
+                                    <th className="py-2 text-left text-sm font-normal text-gray-300" scope="row">{formatUserDate(row.asOf)}</th>
                                     <td className="py-2 text-gray-400">{row.picks.join(', ')}</td>
                                     <td className={`py-2 text-right font-bold ${signedClass(row.retNeto)}`}>{fmtPct(row.retNeto)}</td>
                                     <td className={`py-2 text-right ${signedClass(row.spy)}`}>{fmtPct(row.spy)}</td>
@@ -107,7 +108,7 @@ export default function WalkForwardResults({ result }: WalkForwardResultsProps) 
 
             <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
                 <div className="mb-3 flex items-center gap-2">
-                    <Target className="h-4 w-4 text-teal-400" />
+                    <Target aria-hidden="true" className="h-4 w-4 text-teal-400" />
                     <h4 className="text-sm font-semibold text-gray-300">Metodología</h4>
                 </div>
                 <ul className="list-disc space-y-1 pl-5 text-xs leading-5 text-gray-400">

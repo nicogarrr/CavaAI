@@ -126,18 +126,19 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                     <Button
                         onClick={handleRefresh}
                         disabled={loading}
+                        aria-busy={loading}
                         className="h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700"
                     >
                         {loading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                         ) : (
-                            <RefreshCw className="h-4 w-4" />
+                            <RefreshCw aria-hidden="true" className="h-4 w-4" />
                         )}
                         {t('propicks.regenerate')}
                     </Button>
                     {lastGenerated && (
                         <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-                            <Clock className="h-3 w-3" />
+                            <Clock aria-hidden="true" className="h-3 w-3" />
                             Generado: {formatLastGenerated(lastGenerated)}
                         </div>
                     )}
@@ -178,8 +179,8 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                             </span>
                         </div>
                         {loading && (
-                            <div className="flex items-center gap-2 text-sm text-gray-400">
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                            <div aria-busy="true" className="flex items-center gap-2 text-sm text-gray-400">
+                                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                                 Procesando...
                             </div>
                         )}
@@ -204,12 +205,13 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                         <Button
                             onClick={handleRefresh}
                             disabled={loading}
+                            aria-busy={loading}
                             className="mt-4 h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 sm:w-auto"
                         >
                             {loading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                             ) : (
-                                <RefreshCw className="h-4 w-4" />
+                                <RefreshCw aria-hidden="true" className="h-4 w-4" />
                             )}
                             {t('common.actions.retry')}
                         </Button>
@@ -218,7 +220,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
 
                 {picks.length === 0 && !error ? (
                     <Card className="p-8 rounded-lg border border-gray-700 bg-gray-800/50 text-center">
-                        <Sparkles className="h-12 w-12 mx-auto mb-4 text-gray-600" />
+                        <Sparkles aria-hidden="true" className="h-12 w-12 mx-auto mb-4 text-gray-500" />
                         <p className="text-gray-300 font-medium">
                             {t('propicks.noResults')}
                         </p>
@@ -229,12 +231,13 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                         <Button
                             onClick={handleRefresh}
                             disabled={loading}
+                            aria-busy={loading}
                             className="mt-4 h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 sm:w-auto"
                         >
                             {loading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                             ) : (
-                                <RefreshCw className="h-4 w-4" />
+                                <RefreshCw aria-hidden="true" className="h-4 w-4" />
                             )}
                             {t('common.actions.retry')}
                         </Button>
@@ -335,7 +338,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                         <div className="space-y-1.5 mb-3">
                                             {pick.confidenceReasons.slice(0, 3).map((reason, reasonIndex) => (
                                                 <div key={reasonIndex} className="flex min-w-0 items-start gap-2 text-xs text-gray-300" title={`Dato verificado: ${reason.metric} = ${reason.value}`}>
-                                                    <TrendingUp className="h-3 w-3 text-teal-400 flex-shrink-0 mt-0.5" />
+                                                    <TrendingUp aria-hidden="true" className="h-3 w-3 text-teal-400 flex-shrink-0 mt-0.5" />
                                                     <span className="line-clamp-1 min-w-0 break-words">{reason.text}</span>
                                                 </div>
                                             ))}
@@ -354,21 +357,28 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                                             size="sm"
                                             onClick={(e) => handleFollow(e, pick.symbol, pick.company)}
                                             disabled={!!followed[pick.symbol] || following === pick.symbol}
+                                            aria-busy={following === pick.symbol}
                                             className="h-11 gap-1.5 text-xs text-gray-400 hover:text-teal-400 sm:h-8"
                                         >
                                             {following === pick.symbol ? (
-                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
                                             ) : followed[pick.symbol] ? (
-                                                <Check className="h-3 w-3 text-teal-400" />
+                                                <Check aria-hidden="true" className="h-3 w-3 text-teal-400" />
                                             ) : (
-                                                <Plus className="h-3 w-3" />
+                                                <Plus aria-hidden="true" className="h-3 w-3" />
                                             )}
                                             {followed[pick.symbol] ? t('propicks.followed') : t('propicks.follow')}
                                         </Button>
-                                        <Button variant="ghost" size="sm" className="h-11 gap-2 text-xs text-gray-400 group-hover:text-teal-400 sm:h-8">
+                                        {/* No es un <Button>: esta tarjeta entera
+                                            es un <Link> y anidar un boton sin
+                                            onClick dentro de un enlace produce
+                                            dos elementos interactivos anidados
+                                            (HTML invalido) y un boton que no
+                                            hace nada. El enlace ya es la accion. */}
+                                        <span className="inline-flex h-11 items-center gap-2 text-xs text-gray-400 group-hover:text-teal-400 sm:h-8">
                                             Ver análisis completo
-                                            <ArrowRight className="h-3 w-3" />
-                                        </Button>
+                                            <ArrowRight aria-hidden="true" className="h-3 w-3" />
+                                        </span>
                                     </div>
                                 </Card>
                             </Link>

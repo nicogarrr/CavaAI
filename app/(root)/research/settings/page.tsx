@@ -55,7 +55,7 @@ export default async function ResearchSettingsPage() {
         <div>
           <Button asChild className="mb-4" size="sm" variant="ghost">
             <Link href="/research">
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Research
             </Link>
           </Button>
@@ -72,7 +72,7 @@ export default async function ResearchSettingsPage() {
 
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
-          <Database className="h-5 w-5 text-teal-300" />
+          <Database aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Conectores</h2>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -91,9 +91,9 @@ export default async function ResearchSettingsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
                     {status === 'configured' ? (
-                      <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-teal-300" />
+                      <CheckCircle2 aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-teal-300" />
                     ) : (
-                      <XCircle className="h-4 w-4 flex-shrink-0 text-gray-600" />
+                      <XCircle aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-gray-500" />
                     )}
                     <span className="font-semibold text-gray-200">{meta?.label ?? key}</span>
                   </div>
@@ -111,7 +111,7 @@ export default async function ResearchSettingsPage() {
       <section className="grid gap-6 md:grid-cols-2">
         <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
           <div className="mb-4 flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-teal-300" />
+            <DollarSign aria-hidden="true" className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Presupuesto</h2>
           </div>
           <div className="space-y-3 text-sm">
@@ -132,7 +132,7 @@ export default async function ResearchSettingsPage() {
 
         <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
           <div className="mb-4 flex items-center gap-2">
-            <Cpu className="h-5 w-5 text-teal-300" />
+            <Cpu aria-hidden="true" className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Entorno de ejecución</h2>
           </div>
           <div className="space-y-3 text-sm">
