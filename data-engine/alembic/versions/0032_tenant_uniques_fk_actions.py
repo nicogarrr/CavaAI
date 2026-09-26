@@ -1,6 +1,6 @@
 """0032 tenant-scoped uniques and missing tenant indexes
 
-Revision ID: 0032_tenant_uniques_and_fk_actions
+Revision ID: 0032_tenant_uniques_fk_actions
 Revises: 0031_propick_runs
 
 Unique constraints globales sobre columnas de datos compartidos, en tablas que
@@ -55,7 +55,7 @@ disponible para verificarlo):
 
 from alembic import op
 
-revision = "0032_tenant_uniques_and_fk_actions"
+revision = "0032_tenant_uniques_fk_actions"
 down_revision = "0031_propick_runs"
 branch_labels = None
 depends_on = None
@@ -87,6 +87,6 @@ def downgrade() -> None:
     # deduplicar por tenant primero y verificarlo: operacion deliberada,
     # no un `alembic downgrade`.
     raise RuntimeError(
-        "0032_tenant_uniques_and_fk_actions es forward-only: restaurar los "
+        "0032_tenant_uniques_fk_actions es forward-only: restaurar los "
         "unique globales exige deduplicar por tenant y verificarlo a mano"
     )

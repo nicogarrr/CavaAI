@@ -184,7 +184,7 @@ jobs:
             echo "0032 downgrade should have raised (forward-only)" >&2
             exit 1
           fi
-          python -m alembic current | grep -q "0032_tenant_uniques_and_fk_actions"
+          python -m alembic current | grep -q "0032_tenant_uniques_fk_actions"
           python -c "
           import os
           import sqlalchemy as sa
