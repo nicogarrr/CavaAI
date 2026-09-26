@@ -70,7 +70,9 @@ fi
 
 # 3) MinIO: tar del volumen (datos en reposo, consistencia garantizada si parado).
 echo "[backup] minio…"
-docker run --rm -v "${MINIO_VOLUME}":/data:ro -v "$(pwd)/${DEST}":/out alpine tar czf /out/minio.tar.gz -C /data .
+# .minio.sys es metadato vivo de MinIO (locks, formato, tmp): lo regenera al
+# arrancar y reescribirlo tras el restore falseaba el conteo del drill.
+docker run --rm -v "${MINIO_VOLUME}":/data:ro -v "$(pwd)/${DEST}":/out alpine tar czf /out/minio.tar.gz --exclude='./.minio.sys' -C /data .
 
 # 4) DuckDB: fichero unico.
 echo "[backup] duckdb…"

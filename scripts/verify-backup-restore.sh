@@ -139,7 +139,9 @@ for V in "minio:${MINIO_VOLUME}:minio.tar.gz" "duckdb:${DUCKDB_VOLUME}:duckdb.ta
   NAME="${V%%:*}"; REST="${V#*:}"; VOL="${REST%%:*}"; TAR="${REST#*:}"
   WANT=$(grep "^file_count\.${TAR}=" "${MANIFEST}" | cut -d= -f2 || true)
   [ -n "${WANT}" ] || { echo "[verify] aviso: manifest sin file_count.${TAR}; se omite ${NAME}"; continue; }
-  GOT=$(docker run --rm -v "${VOL}":/data:ro alpine sh -c 'find /data -type f | wc -l')
+  # MinIO regenera .minio.sys al arrancar (metadato vivo, no va en el tar):
+  # contar solo ficheros de usuario o el drill falla en falso.
+  GOT=$(docker run --rm -v "${VOL}":/data:ro alpine sh -c 'find /data -type f ! -path "/data/.minio.sys/*" | wc -l')
   if [ "${GOT}" != "${WANT}" ]; then
     echo "[verify] ERROR: ${NAME}: ${GOT} ficheros restaurados, ${WANT} en el backup"
     exit 1

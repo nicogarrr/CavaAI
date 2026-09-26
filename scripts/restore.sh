@@ -83,7 +83,7 @@ fi
 # 3) MinIO.
 if [ -f "${BACKUP_PATH}/minio.tar.gz" ]; then
   echo "[restore] minio…"
-  docker run --rm -v "${MINIO_VOLUME}":/data -v "$(pwd)/${BACKUP_PATH}":/in:ro alpine sh -c 'rm -rf /data/* && tar xzf /in/minio.tar.gz -C /data'
+  docker run --rm -v "${MINIO_VOLUME}":/data -v "$(pwd)/${BACKUP_PATH}":/in:ro alpine sh -c 'rm -rf /data/* /data/.minio.sys && tar xzf /in/minio.tar.gz -C /data'
 fi
 
 # 4) DuckDB.
