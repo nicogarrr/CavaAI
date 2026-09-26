@@ -146,12 +146,13 @@ const demoClaims = [
 ];
 
 // Cada check declara su unidad: antes el formato se elegia por passed, y un
-// valor que no es tasa (420) salia formateado como porcentaje (42.000 %).
+// importe (420) salia formateado como porcentaje (42.000 %). Las ganancias
+// del propietario son un flujo monetario (millones), no una tasa.
 const demoMoat = [
     { check: 'Margen de caja libre 5 años', value: 0.18, unit: 'rate', threshold: '> 5%', passed: true },
     { check: 'Rentabilidad sobre recursos propios 5 años', value: 0.21, unit: 'rate', threshold: '> 15%', passed: true },
     { check: 'Rentabilidad del capital invertido', value: 0.11, unit: 'rate', threshold: '> coste de capital', passed: true },
-    { check: 'Ganancias del propietario 5 años', value: 0.42, unit: 'rate', threshold: '> 0', passed: true },
+    { check: 'Ganancias del propietario 5 años', value: 420, unit: 'moneyM', threshold: '> 0', passed: true },
     { check: 'Inversión sobre depreciación 5 años', value: 1.8, unit: 'multiple', threshold: '≤ 1,5', passed: false },
 ];
 
@@ -421,7 +422,9 @@ export default function PublicLanding() {
                                             <span className="font-mono text-gray-200">
                                                 {check.unit === 'rate'
                                                     ? formatPercent(check.value)
-                                                    : formatNumber(check.value, { maximumFractionDigits: 1 })}
+                                                    : check.unit === 'moneyM'
+                                                      ? `${formatNumber(check.value, { maximumFractionDigits: 0 })} M €`
+                                                      : formatNumber(check.value, { maximumFractionDigits: 1 })}
                                             </span>{' '}
                                             <span className="text-gray-500">frente a {check.threshold}</span>
                                             <span className={check.passed ? ' text-teal-300' : ' text-amber-300'}>

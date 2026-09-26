@@ -25,7 +25,22 @@ void test('cada check del foso declara unidad y el formato no depende de passed'
     assert.equal(units.length, checks.length, 'todo check declara unit');
     assert.ok(!/check\.passed\s*\?\s*formatPercent/.test(landing), 'el formato no se elige por passed');
     assert.ok(landing.includes("check.unit === 'rate'"), 'el formato se elige por unidad');
-    assert.ok(!moatBlock.includes('value: 420'), 'sin valores sin unidad clara (420 era el 42.000 %)');
+    assert.ok(landing.includes("check.unit === 'moneyM'"), 'los importes tienen unidad monetaria');
+
+    // Asercion semantica de unidad: las tasas van como ratio (0..1), nunca un
+    // importe convertido a «porcentaje» por conveniencia del formato.
+    const entries = [...moatBlock.matchAll(/value: ([\d.]+), unit: '(rate|moneyM|multiple)'/g)];
+    assert.ok(entries.length >= checks.length, 'toda entrada parseable');
+    for (const [, raw, unit] of entries) {
+        const value = Number(raw);
+        if (unit === 'rate') {
+            assert.ok(value > 0 && value <= 1, `tasa como ratio 0..1, no ${value}`);
+        } else {
+            assert.ok(value > 1, `${unit} como magnitud, no ${value}`);
+        }
+    }
+    // Las ganancias del propietario son flujo monetario, no tasa.
+    assert.ok(/Ganancias del propietario[^}]*unit: 'moneyM'/.test(moatBlock), 'owner earnings en unidad monetaria');
 });
 
 void test('el margen de seguridad demo se deriva de los escenarios', () => {
