@@ -99,7 +99,24 @@ class PublicPriceProvider:
                 item = payload[0] if isinstance(payload, list) and payload else None
                 value = Decimal(str(item.get("price"))) if isinstance(item, dict) else None
                 if value and value > 0:
-                    return company, PriceObservation(company.ticker, value, as_of, "FMP"), None
+                    # Stamp the quote with the provider's own date, never with
+                    # `as_of`. The FMP profile endpoint returns the LAST traded
+                    # close, so a Sunday refresh wrote a Sunday bar holding
+                    # Friday's close: market_movers then reported a 0.00% move
+                    # that never happened, and `age_days` came out as 0, which
+                    # silently disabled the staleness guard for every alert on
+                    # that symbol. Finnhub already derived its date from the
+                    # payload timestamp; FMP did not, so the two providers had
+                    # different semantics for the same column.
+                    quote_date = _provider_date(item, as_of)
+                    if quote_date is None or quote_date > as_of:
+                        errors.append("FMP:quote_date_unknown")
+                    else:
+                        return (
+                            company,
+                            PriceObservation(company.ticker, value, quote_date, "FMP"),
+                            None,
+                        )
             except Exception as exc:
                 errors.append(f"FMP:{type(exc).__name__}")
         if self.finnhub.configured():
@@ -114,6 +131,35 @@ class PublicPriceProvider:
                 errors.append(f"Finnhub:{type(exc).__name__}")
         reason = ",".join(errors) if errors else "no_price_provider_configured"
         return company, None, {"ticker": company.ticker, "reason": reason}
+
+
+def _provider_date(item: dict, fallback: date) -> date | None:
+    """The provider's own observation date, or None when it does not give one.
+
+    A quote without a date is not a quote for "today": writing it under
+    `fallback` is what produced Sunday bars with Friday's close. Returning None
+    lets the caller skip the observation instead of mis-dating it.
+    """
+    for key in ("date", "datetime", "timestamp", "lastUpdated"):
+        raw = item.get(key)
+        if raw in (None, ""):
+            continue
+        if isinstance(raw, (int, float)) and raw > 0:
+            try:
+                return datetime.fromtimestamp(int(raw), tz=UTC).date()
+            except (OverflowError, OSError, ValueError):
+                continue
+        text = str(raw).strip().replace("Z", "")
+        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y%m%d"):
+            try:
+                return datetime.strptime(text[: len(fmt) + 2].strip(), fmt).date()
+            except ValueError:
+                continue
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            continue
+    return None
 
 
 YahooIntradayFetcher = Callable[[list[str]], dict[str, "tuple[Decimal, date]"]]
@@ -254,17 +300,31 @@ class MarketRefreshService:
         for company, observation in observed:
             market = existing_prices.get((company.id, observation.price_date))
             if market is None:
+                # A SPOT price is not a daily bar. Writing one overwrote the
+                # real open/high/low/close of that session and set
+                # `adj_close = close`, which is by definition "unadjusted" and
+                # therefore corrupts every total-return, beta and Sharpe
+                # computed over a history that includes a split or a dividend.
+                # adj_close stays NULL: the provider gave a spot, not a
+                # split/dividend-adjusted series. A NULL is honest; a copy of
+                # `close` claims an adjustment that was never performed.
                 market = MarketPrice(
                     company_id=company.id,
                     date=observation.price_date,
+                    open=observation.price,
+                    high=observation.price,
+                    low=observation.price,
+                    close=observation.price,
+                    adj_close=None,
+                    volume=0,
+                    source=observation.source,
                 )
                 db.add(market)
-            market.open = observation.price
-            market.high = observation.price
-            market.low = observation.price
-            market.close = observation.price
-            market.adj_close = observation.price
-            market.source = observation.source
+            else:
+                # An existing row is a real bar from the OHLCV path: update
+                # only the close, never the session's open/high/low.
+                market.close = observation.price
+                market.source = observation.source
         db.commit()
         stages.append(
             {
