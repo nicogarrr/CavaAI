@@ -2,6 +2,7 @@
 
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchRequest } from '@/lib/research/client';
+import { assertPositiveInt } from '@/lib/validation/pathParams';
 
 export interface ThesisJobPhase {
     name: string;
@@ -45,7 +46,7 @@ export async function startThesisJob(
 /** GET /api/thesis/jobs/{id} — estado real del job (fases reales, sin ETAs). */
 export async function getThesisJobStatus(runId: number): Promise<ThesisJobStatus> {
     await requireAuthenticatedUser();
-    return researchRequest<ThesisJobStatus>(`/api/thesis/jobs/${runId}`);
+    return researchRequest<ThesisJobStatus>(`/api/thesis/jobs/${assertPositiveInt(runId, 'runId')}`);
 }
 
 export interface ThesisDebateResult {
