@@ -22,22 +22,27 @@ export const metadata: Metadata = {
 
 /** Sectores que el Screener ofrece: etiqueta ES de lib/labels.ts + valor EN
  *  que espera el backend. */
+// Nombres GICS exactamente como los sirve el backend: filtrar por un nombre
+// distinto (p.ej. 'Technology' en vez de 'Information Technology') devuelve
+// 0 filas y el primer pintado salía siempre vacío (F223).
 const SECTORES = [
-  { en: 'Technology' },
+  { en: 'Information Technology' },
   { en: 'Health Care' },
-  { en: 'Financial Services' },
-  { en: 'Consumer Cyclical' },
+  { en: 'Financials' },
+  { en: 'Consumer Discretionary' },
+  { en: 'Consumer Staples' },
   { en: 'Energy' },
-  { en: 'Utilities' },
+  { en: 'Communication Services' },
+  { en: 'Materials' },
 ];
 
 const sectorEn = (value: string) =>
-  SECTORES.some((s) => s.en === value) ? value : 'Technology';
+  SECTORES.some((s) => s.en === value) ? value : 'Information Technology';
 
 const sectorEs = (value: string) => etiquetaSector(value);
 
 export default async function ScreenerPage({ searchParams }: { searchParams?: Promise<{ sector?: string }> }) {
-  const sector = sectorEn((await searchParams)?.sector ?? 'Technology');
+  const sector = sectorEn((await searchParams)?.sector ?? 'Information Technology');
   // Screener (backend) e índices (backend) son independientes: en paralelo
   // en vez de en serie. El flag distingue "backend caído" (reintentar) de
   // "filtro sin resultados" (cambiar de sector).
@@ -205,7 +210,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                         <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Market Cap</span>
                           <span className="font-mono text-gray-300">
-                            {formatCompact(r.marketCap, { maximumFractionDigits: 1 })}
+                            {r.marketCap > 0 ? formatCompact(r.marketCap, { maximumFractionDigits: 1 }) : 'N/D'}
                           </span>
                         </td>
                         <td className="mt-2 flex items-center justify-between gap-3 border-t border-gray-800/60 pt-3 md:table-cell md:mt-0 md:border-0 md:py-3 md:pt-3 md:text-right">
