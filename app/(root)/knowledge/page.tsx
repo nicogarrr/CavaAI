@@ -104,10 +104,10 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
           </p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-          <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/search"><FileSearch className="h-4 w-4" />Buscar en todo</Link></Button>
-          <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge-graph"><Library className="h-4 w-4" />Grafo de conocimiento</Link></Button>
+          <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/search"><FileSearch aria-hidden="true" className="h-4 w-4" />Buscar en todo</Link></Button>
+          <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge-graph"><Library aria-hidden="true" className="h-4 w-4" />Grafo de conocimiento</Link></Button>
           <MutationForm action={installKnowledgeDefaults} className="w-full sm:w-auto" successMessage="Colecciones por defecto listas">
-            <Button className="h-11 w-full sm:w-auto" type="submit"><Library className="h-4 w-4" />Instalar por defecto</Button>
+            <Button className="h-11 w-full sm:w-auto" type="submit"><Library aria-hidden="true" className="h-4 w-4" />Instalar por defecto</Button>
           </MutationForm>
         </div>
       </header>
@@ -138,7 +138,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
 
       <section className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-2">
         <MutationForm action={createKnowledgeCollection} className="rounded-xl border border-gray-800 bg-[#101010] p-5" resetOnSuccess successMessage="Colección creada">
-          <div className="mb-4 flex items-center gap-2"><Library className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Nueva colección</h2></div>
+          <div className="mb-4 flex items-center gap-2"><Library aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Nueva colección</h2></div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input className="h-11 w-full" name="name" placeholder={t('knowledge.qualityCompounders')} required />
             <Input className="h-11 w-full" name="collection_type" defaultValue="custom" placeholder="Tipo de colección" required />
@@ -148,7 +148,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         </MutationForm>
 
         <MutationForm id="upload-knowledge" action={uploadKnowledgeDocument} className="rounded-xl border border-gray-800 bg-[#101010] p-5" resetOnSuccess successMessage="Documento ingerido">
-          <div className="mb-4 flex items-center gap-2"><UploadCloud className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">{t('knowledge.upload')}</h2></div>
+          <div className="mb-4 flex items-center gap-2"><UploadCloud aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">{t('knowledge.upload')}</h2></div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input className="h-11 w-full" name="title" placeholder="Título del documento" required />
             <select className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" name="collection_id" defaultValue="">
@@ -161,29 +161,30 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
             <Input className="h-11 w-full" name="language" defaultValue="en" placeholder="Idioma" />
             <Input className="h-11 w-full sm:col-span-2" name="source_url" placeholder="URL de la fuente (opcional)" type="url" />
             <FileUploadInput accept=".pdf,.docx,.txt,.md,.html,.xlsx,.csv" className="h-11 w-full sm:col-span-2" name="file" required />
-            <Button className="h-11 w-full sm:col-span-2 sm:w-fit" type="submit"><UploadCloud className="h-4 w-4" />Subir</Button>
+            <Button className="h-11 w-full sm:col-span-2 sm:w-fit" type="submit"><UploadCloud aria-hidden="true" className="h-4 w-4" />Subir</Button>
           </div>
         </MutationForm>
       </section>
 
       <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
-        <div className="mb-4 flex items-center gap-2"><BookOpen className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">{t('knowledge.documents')}</h2></div>
+        <div className="mb-4 flex items-center gap-2">            <BookOpen aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">{t('knowledge.documents')}</h2></div>
         {!documents.length ? <div className="py-2 text-sm text-gray-500"><p>Aún no hay documentos de conocimiento.</p><a className="mt-2 inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 hover:border-teal-600 hover:text-teal-200" href="#upload-knowledge">Sube tu primer libro, carta o caso de estudio</a></div> : null}
-        <div className="hidden overflow-x-auto md:block">
+        <div aria-label="Documentos de conocimiento" className="hidden overflow-x-auto md:block" role="region" tabIndex={0}>
           <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="text-xs uppercase text-gray-500"><tr><th className="border-b border-gray-800 py-2">Documento</th><th className="border-b border-gray-800 py-2">Colección</th><th className="border-b border-gray-800 py-2">Tipo</th><th className="border-b border-gray-800 py-2">Extractor</th><th className="border-b border-gray-800 py-2">Estado</th><th className="border-b border-gray-800 py-2 text-right">Acciones</th></tr></thead>
+            <caption className="sr-only">Documentos de conocimiento ingeridos, con colección, tipo, extractor, estado y acciones de extracción</caption>
+            <thead className="text-xs uppercase text-gray-500"><tr><th className="border-b border-gray-800 py-2" scope="col">Documento</th><th className="border-b border-gray-800 py-2" scope="col">Colección</th><th className="border-b border-gray-800 py-2" scope="col">Tipo</th><th className="border-b border-gray-800 py-2" scope="col">Extractor</th><th className="border-b border-gray-800 py-2" scope="col">Estado</th><th className="border-b border-gray-800 py-2 text-right" scope="col">Acciones</th></tr></thead>
             <tbody>
               {documents.map((document) => {
                 const job = latestJobByDocument.get(document.id);
                 const busy = job?.status === 'queued' || job?.status === 'running';
                 return (
                 <tr className="border-b border-gray-900" key={document.id}>
-                  <td className="py-3"><div className="font-medium text-gray-200">{document.title}</div><div className="text-xs text-gray-500">{document.author ?? 'Autor desconocido'} · {formatDate(document.publication_date, undefined, NA)}</div></td>
+                  <th className="py-3 text-left text-sm font-normal" scope="row"><div className="font-medium text-gray-200">{document.title}</div><div className="text-xs text-gray-500">{document.author ?? 'Autor desconocido'} · {formatDate(document.publication_date, undefined, NA)}</div></th>
                   <td className="py-3 text-gray-400">{document.collection_id ? collectionNames.get(document.collection_id) : 'Sin colección'}</td>
                   <td className="py-3 text-gray-400">{document.document_type}</td>
                   <td className="py-3 text-gray-500">{String(document.metadata.parser ?? 'desconocido')}</td>
                   <td className="py-3"><Badge className={statusTone(document.status)} variant="outline">{label(document.status)}</Badge></td>
-                  <td className="py-3"><div className="flex justify-end gap-2"><Button asChild size="sm" variant="outline"><Link href={`/knowledge?document=${document.id}`}>Fragmentos</Link></Button><MutationForm action={extractKnowledgePrinciples.bind(null, document.id)} successMessage="Extracción encolada"><Button disabled={busy} size="sm" type="submit"><Sparkles className="h-4 w-4" />{busy ? label(job?.status) : 'Extraer'}</Button></MutationForm></div>{job?.status === 'failed' ? <div className="mt-1 max-w-xs text-right text-xs text-red-300">{job.error}</div> : null}</td>
+                  <td className="py-3"><div className="flex justify-end gap-2"><Button asChild size="sm" variant="outline"><Link href={`/knowledge?document=${document.id}`}>Fragmentos</Link></Button><MutationForm action={extractKnowledgePrinciples.bind(null, document.id)} successMessage="Extracción encolada"><Button disabled={busy} size="sm" type="submit"><Sparkles aria-hidden="true" className="h-4 w-4" />{busy ? label(job?.status) : 'Extraer'}</Button></MutationForm></div>{job?.status === 'failed' ? <div className="mt-1 max-w-xs text-right text-xs text-red-300">{job.error}</div> : null}</td>
                 </tr>
                 );
               })}
@@ -208,7 +209,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
                 <div className="mt-4 grid grid-cols-1 gap-2">
                   <Button asChild className="h-11 w-full" size="sm" variant="outline"><Link href={`/knowledge?document=${document.id}`}>Fragmentos</Link></Button>
                   <MutationForm action={extractKnowledgePrinciples.bind(null, document.id)} successMessage="Extracción encolada">
-                    <Button className="h-11 w-full" disabled={busy} size="sm" type="submit"><Sparkles className="h-4 w-4" />{busy ? label(job?.status) : 'Extraer'}</Button>
+                    <Button className="h-11 w-full" disabled={busy} size="sm" type="submit"><Sparkles aria-hidden="true" className="h-4 w-4" />{busy ? label(job?.status) : 'Extraer'}</Button>
                   </MutationForm>
                 </div>
               </article>
@@ -228,7 +229,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
       ) : null}
 
       <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center"><div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">Principios de inversión</h2></div><div className="flex flex-wrap gap-2 md:ml-auto">{['', 'proposed', 'approved', 'rejected', 'merged', 'superseded'].map((status) => <Button asChild className="min-h-[44px]" key={status || 'all'} size="sm" variant={(query.status ?? '') === status ? 'default' : 'outline'}><Link href={status ? `/knowledge?status=${status}` : '/knowledge'}>{PRINCIPLE_STATUS_LABELS[status] ?? status}</Link></Button>)}</div></div>
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center"><div className="flex items-center gap-2"><Sparkles aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">Principios de inversión</h2></div><div className="flex flex-wrap gap-2 md:ml-auto">{['', 'proposed', 'approved', 'rejected', 'merged', 'superseded'].map((status) => <Button asChild className="min-h-[44px]" key={status || 'all'} size="sm" variant={(query.status ?? '') === status ? 'default' : 'outline'}><Link href={status ? `/knowledge?status=${status}` : '/knowledge'}>{PRINCIPLE_STATUS_LABELS[status] ?? status}</Link></Button>)}</div></div>
         <div className="grid gap-4 xl:grid-cols-2">
           {visiblePrinciples.map((principle) => (
             <article className="min-w-0 rounded-lg border border-gray-800 bg-black/30 p-4 break-words" key={principle.id}>
@@ -239,7 +240,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
               {principle.application_conditions.length ? <p className="mt-3 text-sm text-gray-300"><span className="font-semibold text-gray-400">Aplicar cuando:</span> {principle.application_conditions.join('; ')}</p> : null}
               {principle.exceptions.length ? <p className="mt-2 text-sm text-amber-200"><span className="font-semibold">Excepciones:</span> {principle.exceptions.join('; ')}</p> : null}
               {principle.semantic_duplicate_of_id ? <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-2 text-xs text-amber-200">Posible duplicado del principio #{principle.semantic_duplicate_of_id}. Revísalo antes de aprobar.</div> : null}
-              {principle.status === 'proposed' ? <div className="mt-4 flex flex-wrap gap-2"><MutationForm action={decideKnowledgePrinciple.bind(null, principle.id, 'approve')} successMessage="Principio aprobado"><Button className="min-h-[44px]" size="sm" type="submit"><Check className="h-4 w-4" />Aprobar</Button></MutationForm><MutationForm action={decideKnowledgePrinciple.bind(null, principle.id, 'reject')} successMessage="Principio rechazado"><Button className="min-h-[44px]" size="sm" type="submit" variant="outline"><X className="h-4 w-4" />Rechazar</Button></MutationForm>{principle.semantic_duplicate_of_id ? <MutationForm action={mergeKnowledgePrinciple.bind(null, principle.id, principle.semantic_duplicate_of_id)} successMessage="Principio fusionado"><Button className="min-h-[44px]" size="sm" type="submit" variant="outline">Fusionar duplicado</Button></MutationForm> : null}</div> : null}
+              {principle.status === 'proposed' ? <div className="mt-4 flex flex-wrap gap-2"><MutationForm action={decideKnowledgePrinciple.bind(null, principle.id, 'approve')} successMessage="Principio aprobado"><Button className="min-h-[44px]" size="sm" type="submit"><Check aria-hidden="true" className="h-4 w-4" />Aprobar</Button></MutationForm><MutationForm action={decideKnowledgePrinciple.bind(null, principle.id, 'reject')} successMessage="Principio rechazado"><Button className="min-h-[44px]" size="sm" type="submit" variant="outline"><X aria-hidden="true" className="h-4 w-4" />Rechazar</Button></MutationForm>{principle.semantic_duplicate_of_id ? <MutationForm action={mergeKnowledgePrinciple.bind(null, principle.id, principle.semantic_duplicate_of_id)} successMessage="Principio fusionado"><Button className="min-h-[44px]" size="sm" type="submit" variant="outline">Fusionar duplicado</Button></MutationForm> : null}</div> : null}
               {['proposed', 'approved'].includes(principle.status) ? <details className="mt-4 border-t border-gray-800 pt-3"><summary className="cursor-pointer text-xs font-semibold uppercase text-gray-500">Corregir como nueva versión</summary><MutationForm action={reviseKnowledgePrinciple.bind(null, principle.id)} className="mt-3 grid grid-cols-1 gap-2" successMessage="Revisión propuesta"><Textarea className="min-h-[88px] w-full text-base md:text-sm" defaultValue={principle.principle} name="principle" required /><Input className="h-11 w-full" defaultValue={principle.category} name="category" required /><Input className="h-11 w-full" defaultValue={principle.application_conditions.join(', ')} name="application_conditions" placeholder="Condiciones, separadas por comas" /><Input className="h-11 w-full" defaultValue={principle.exceptions.join(', ')} name="exceptions" placeholder="Excepciones, separadas por comas" /><Button className="h-11 w-full sm:w-fit" size="sm" type="submit">Crear revisión</Button></MutationForm></details> : null}
             </article>
           ))}

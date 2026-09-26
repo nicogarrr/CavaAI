@@ -24,7 +24,7 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
     return <p className="text-sm text-gray-500">Sin datos todavía — en cuanto haya precios registrados aparecerán aquí.</p>;
   }
   return (
-    <div className="overflow-x-auto">
+    <div aria-label={caption} className="overflow-x-auto" role="region" tabIndex={0}>
       <table className="w-full text-left text-sm">
         <caption className="sr-only">{caption}</caption>
         <thead className="text-xs uppercase text-gray-500">
@@ -38,14 +38,14 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
         <tbody>
           {rows.map((row) => (
             <tr className="border-b border-gray-900" key={row.ticker}>
-              <td className="py-3 pr-3">
+              <th className="py-3 pr-3 text-left text-sm font-normal" scope="row">
                 <Link className="font-semibold text-teal-300 hover:text-teal-200" href={`/research/${row.ticker}`}>
                   {row.ticker}
                 </Link>
                 {row.name && row.name.trim().toUpperCase() !== row.ticker.trim().toUpperCase() ? (
                   <div className="max-w-28 truncate text-xs text-gray-500" title={row.name}>{row.name}</div>
                 ) : null}
-              </td>
+              </th>
               <td className="py-3 px-3 text-right whitespace-nowrap text-gray-300">{formatPrice(row.price, safeCurrency(row.currency))}</td>
               <td className={`py-3 px-3 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
@@ -95,7 +95,7 @@ export default async function MoversPage() {
         <div className="grid gap-6 xl:grid-cols-3 md:grid-cols-1">
           <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
             <div className="mb-4 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-teal-300" />
+              <TrendingUp aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Subidas</h2>
             </div>
             <MoversTable rows={movers.gainers} caption="Mayores subidas" />
@@ -103,7 +103,7 @@ export default async function MoversPage() {
 
           <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
             <div className="mb-4 flex items-center gap-2">
-              <TrendingDown className="h-5 w-5 text-red-400" />
+              <TrendingDown aria-hidden="true" className="h-5 w-5 text-red-400" />
               <h2 className="font-semibold text-gray-100">Bajadas</h2>
             </div>
             <MoversTable rows={movers.losers} caption="Mayores bajadas" />
@@ -111,7 +111,7 @@ export default async function MoversPage() {
 
           <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
             <div className="mb-4 flex items-center gap-2">
-              <Activity className="h-5 w-5 text-teal-300" />
+              <Activity aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Más activas</h2>
             </div>
             <MoversTable rows={movers.most_active} caption="Mayor volumen" />
