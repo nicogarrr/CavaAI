@@ -31,7 +31,11 @@ test.describe("investor alerts flow", () => {
 
     await page.getByRole("button", { name: "Nueva Alerta" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByText("Crear Nueva Alerta")).toBeVisible();
+    // El titulo del dialogo es un heading ("Crear Alerta"); anclarlo por rol
+    // evita ambiguedad con el boton de submit, que lleva el mismo texto.
+    await expect(
+      page.getByRole("heading", { name: "Crear Alerta" }),
+    ).toBeVisible();
     await expect(page.getByLabel("Símbolo")).toBeVisible();
     await expect(page.getByRole("button", { name: "Crear Alerta" })).toBeVisible();
   });
