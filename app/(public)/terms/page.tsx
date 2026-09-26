@@ -4,6 +4,9 @@ import { SUPPORT_EMAIL } from '@/lib/config/brand';
 export const metadata: Metadata = {
   title: 'Términos de Servicio',
   description: 'Términos de servicio justos - construidos sobre confianza y transparencia',
+  // Página pública: puede leerse sin iniciar sesión. El noindex de
+  // `app/layout.tsx` lo sobrescribe `app/(public)/layout.tsx`.
+  robots: { index: true, follow: true },
 };
 
 // Forzar renderizado dinámico

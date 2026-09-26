@@ -101,6 +101,19 @@ export default function HelpTabs() {
             Metodología y fuentes
           </Link>
         </p>
+        {/* Esta página es pública, pero casi todos los módulos que documenta
+            viven dentro de la app. Se avisa aquí para que nadie pulse un enlace
+            y se encuentre de golpe con el formulario de acceso. */}
+        <p className="mx-auto mt-6 max-w-2xl rounded-lg border border-gray-700/50 bg-gray-800/60 p-4 text-left text-sm text-gray-300">
+          Los enlaces a <span className="text-gray-100">research</span>,{' '}
+          <span className="text-gray-100">cartera</span>, <span className="text-gray-100">riesgo</span>,{' '}
+          <span className="text-gray-100">ProPicks</span>, <span className="text-gray-100">alertas</span>,{' '}
+          <span className="text-gray-100">insiders</span>, <span className="text-gray-100">watchlist</span> y{' '}
+          <span className="text-gray-100">exportación</span>{' '}
+          describen módulos del espacio de trabajo y{' '}
+          <strong className="text-gray-100">requieren iniciar sesión</strong>. Esta página de ayuda, la
+          metodología y los términos se leen sin cuenta.
+        </p>
       </div>
 
       {/* Tabs */}
