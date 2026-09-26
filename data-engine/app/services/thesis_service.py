@@ -5,9 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from decimal import Decimal
-
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
@@ -22,15 +21,15 @@ from app.models import (
     SourceAudit,
     ThesisVersion,
 )
+from app.services.claim_scope import supersede_claims_of
+from app.services.company_resolver import resolve_company
+from app.services.long_term_model_service import LongTermModelService
 from app.services.source_auditor import SourceAuditor
 from app.services.source_hierarchy_service import classify_source
-from app.services.long_term_model_service import LongTermModelService
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import MODEL_VERSION
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
 from app.valuation.moat_framework import empty_moat_framework
-from app.services.company_resolver import resolve_company
-from app.services.claim_scope import supersede_claims_of
 
 logger = logging.getLogger(__name__)
 
@@ -318,9 +317,10 @@ class ThesisService:
         # every consumer that read claims by company_id saw both, so
         # red_team_score fell with each regeneration and the graph accumulated
         # nodes from superseded versions.
-        superseded_claims = 0
         if previous is not None and previous.id != thesis.id:
-            superseded_claims = supersede_claims_of(db, company.id, previous.id)
+            # El efecto importa (marca los claims del modelo previo como
+            # superados); el conteo no se usa todavia.
+            supersede_claims_of(db, company.id, previous.id)
         self._persist_claims(db, company, thesis, claims)
         db.add(
             SourceAudit(

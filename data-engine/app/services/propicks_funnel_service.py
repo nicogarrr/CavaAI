@@ -25,7 +25,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Company, CalculatedMetric, FinancialFact, ProPickCandidate, ProPickRun
+from app.models import CalculatedMetric, Company, FinancialFact, ProPickCandidate, ProPickRun
 
 # --- Funnel constants (declared; tune only with an explicit decision) -------
 

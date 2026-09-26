@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 import main
 from app.api.routes import knowledge, sources
 
-
 _INTERNAL_DETAIL = (
     "provider=https://secret.example/path?token=abc "
     "local=C:/private/cavaai/cache.sql "

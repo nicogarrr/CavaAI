@@ -1,23 +1,21 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import desc, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.models import (
     CalculatedMetric,
-    Claim,
     Company,
     RedTeamRun,
     ResearchReview,
     SourceAudit,
     ThesisVersion,
 )
+from app.services.claim_scope import live_claims
 from app.services.moat_service import MoatService
 from app.services.peer_analysis_service import PeerAnalysisService
 from app.services.review_alert_service import ReviewAlertService
 from app.services.valuation_service import ValuationService
-from app.services.claim_scope import live_claims
-
 
 SEVERITY_PENALTY = {
     "critical": 25,

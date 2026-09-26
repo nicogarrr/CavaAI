@@ -20,9 +20,9 @@ import argparse
 import asyncio
 import sys
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 
-from app.models.entities import Company, FinancialFact, Tenant
+from app.models.entities import Company, FinancialFact
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.workers.dramatiq_app import _session, tenant_contexts
 

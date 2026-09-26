@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 MOAT_CATEGORIES = (
     "network_effects",
     "switching_costs",

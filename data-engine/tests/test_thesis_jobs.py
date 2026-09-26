@@ -3,11 +3,11 @@ failure classification, duplicate-delivery safety, status endpoint."""
 
 from datetime import timedelta
 
-import main
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+import main
 from app.core.database import SessionLocal, init_db
 from app.models.entities import WorkflowRun, WorkflowStepRun
 from app.seed import seed
@@ -62,8 +62,9 @@ def _enqueue_without_dispatch(
 
 
 def test_enqueue_persists_tenant_and_user_context(monkeypatch):
-    from app.models import Tenant
     from uuid import uuid4
+
+    from app.models import Tenant
 
     external_id = f"thesis-enqueue-tenant-{uuid4().hex[:8]}"
     db = SessionLocal()
@@ -333,8 +334,9 @@ def test_queued_run_without_dispatch_marker_is_recoverable(monkeypatch):
 
 
 def test_same_ticker_key_is_scoped_by_tenant(monkeypatch):
-    from app.models import Tenant
     from uuid import uuid4
+
+    from app.models import Tenant
 
     ids = []
     db = SessionLocal()

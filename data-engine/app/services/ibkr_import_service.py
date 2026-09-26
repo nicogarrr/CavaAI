@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from xml.etree import ElementTree
 
 from sqlalchemy import select

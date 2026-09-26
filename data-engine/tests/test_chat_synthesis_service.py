@@ -10,8 +10,6 @@ unverifiable LLM answer presented as grounded.
 import asyncio
 import json
 
-import pytest
-
 from app.llm import LLMResponse, Message
 from app.llm.contracts import Usage
 from app.schemas import ChatResponse, SynthesisSection

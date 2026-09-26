@@ -7,7 +7,6 @@ provenance real.
 """
 
 import ast
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -16,11 +15,10 @@ from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.api.routes.insider import insider_filings
 from app.api.routes.alerts import telegram_status
+from app.api.routes.insider import insider_filings
 from app.api.routes.thesis import ThesisApproveRequest, _epub_citations, approve_thesis
 from app.core.database import Base
-from app.services.thesis_approval_service import apply_approval_decision
 from app.models.entities import (
     Claim,
     ClaimEvidence,
@@ -29,6 +27,7 @@ from app.models.entities import (
     InsiderTransaction,
     ThesisVersion,
 )
+from app.services.thesis_approval_service import apply_approval_decision
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEDULER_SRC = (REPO_ROOT / "app" / "workers" / "scheduler.py").read_text()

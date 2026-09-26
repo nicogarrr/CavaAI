@@ -9,8 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router as research_api_router
 from app.api.routes.health import router as health_router
-from app.core.config import get_settings
 from app.core.auth import get_research_principal
+from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.core.rate_limit import enforce_rate_limit
 from app.core.raw_body import RawBodyMiddleware
@@ -18,10 +18,10 @@ from app.llm.factory import validate_llm_configuration
 from app.llm.model_aliases import configure_model_aliases
 from app.seed import ensure_company_master
 
-
 try:  # preload optional probe modules during process startup, not in a request
-    import redis  # noqa: F401
     import urllib.request  # noqa: F401
+
+    import redis  # noqa: F401
 except Exception:  # noqa: BLE001 — readiness reports the unavailable dependency
     pass
 
@@ -216,7 +216,7 @@ async def _run_health_probe(
             timeout=HEALTH_READY_TIMEOUT_SECONDS,
         )
         return name, str(result)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return name, "error:TimeoutError"
     except Exception as exc:  # noqa: BLE001 — reportar y continuar
         return name, f"error:{type(exc).__name__}"

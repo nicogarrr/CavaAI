@@ -1,9 +1,7 @@
 """Stage 3: Langfuse shadow tracing — muestreo, fallos siempre, redaccion."""
 
-import os
 
 import pytest
-from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db

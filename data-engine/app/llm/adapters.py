@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
-from typing import Any, Mapping
-from urllib.parse import quote
+from collections.abc import Mapping
+from typing import Any
 
 import httpx
 
 from app.llm.base import LLMProvider
 from app.llm.contracts import LLMRequest, LLMResponse, Message, MessageRole, Usage
-from app.llm.errors import ProviderDisabledError, ProviderRequestError, ProviderResponseError
+from app.llm.errors import ProviderDisabledError, ProviderResponseError
 from app.llm.routing import TaskModelRouter
 
 

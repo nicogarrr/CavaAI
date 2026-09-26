@@ -13,10 +13,8 @@ from sqlalchemy.orm import Session
 from app.llm import LLMRequest, Message, ResponseFormat, parse_json_response
 from app.llm.base import LLMProvider
 from app.schemas import ChatResponse, SynthesisSection
-from app.services.langfuse_client import LangfuseTracer
 from app.services.budget import BudgetController, BudgetExceededError
-
-
+from app.services.langfuse_client import LangfuseTracer
 from app.services.prompt_registry import get_prompt
 
 PROMPT_VERSION = get_prompt("chat_source_synthesis", allow_remote=False).version

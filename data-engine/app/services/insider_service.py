@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from datetime import UTC, date, datetime
-from typing import Any, Callable
+from typing import Any
 
 from app.core.config import get_settings
 from app.services.connectors import form4 as form4_connector

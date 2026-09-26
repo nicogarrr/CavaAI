@@ -5,14 +5,14 @@ fingerprint uniqueness, watermark monotonicity, freshness-threshold coverage,
 no-null contracts on critical fields, and honest-state vocabulary.
 """
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.core.database import Base
 import app.models  # noqa: F401 — register all tables
+from app.core.database import Base
 from app.models.entities import (
     Company,
     ConnectorState,

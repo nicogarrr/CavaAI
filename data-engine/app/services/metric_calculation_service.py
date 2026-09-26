@@ -1,12 +1,11 @@
 import re
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
 from app.models import CalculatedMetric, Company, FinancialFact
-
 
 MetricFormula = tuple[str, str, tuple[str, ...], str]
 

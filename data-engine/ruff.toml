@@ -8,7 +8,61 @@ extend-exclude = [
 ]
 
 [lint]
-select = ["E9", "F63", "F7", "F82"]
+# Antes: ["E9", "F63", "F7", "F82"], que es el minimo por defecto de ruff:
+# errores de sintaxis/IO, tres reglas de comparacion y nombres indefinidos.
+# No incluia F401 (import sin usar), F841 (variable sin usar), B, UP ni S, de
+# modo que `ruff check .` era verde por construccion y no podia detecting que
+# se acumulasen imports muertos o影子 shadowing en 200 ficheros de tests y en
+# todo app/.
+select = [
+  "E9",    # errores de sintaxis e IO
+  "F401",  # import sin usar
+  "F811",  # redefinicion (en tests es legitimo, ver per-file-ignores)
+  "F821",  # nombre no definido en tiempo de ejecucion
+  "F841",  # variable local sin usar
+  "B",     # bugbear: except vacios, mutaciones de argumentos, comparaciones
+  "UP",    # pyupgrade: sintaxis obsoleta (type hints, Literal, etc.)
+  "C4",    # comprehensiones: list/set/dict que se pueden simplificar
+  "SIM",   # simplify: ifs anidados, return redundante
+  "I",     # isort: orden de imports (estable y verificable)
+]
+
+# Coste de migrar 200 ficheros de una vez: los codigos nuevos que ya hemos
+# corregido se avisan aqui en vez de bloquear el PR, y se pueden ir quitando.
+ignore = [
+  "UP038",  # isinstance(x, (A, B)) vs Union: py3.10+ lo prefiere, pero es ruido
+  "SIM108", # ternario en vez de if/else: estilo, no correccion
+  # B008: `db: Session = Depends(get_db)` ES el patron de FastAPI. Marcarlo
+  # globalmente es correcto: exijalo solo en app/models/ dejaria los 184
+  # hallazgos en el resto de rutas, que es donde se usa de verdad.
+  "B008",
+  # Pendientes de una pasada con criterio, no de un --fix automatico. Se
+  # enumeran aqui para que la deuda sea visible y no para silenciarla: son
+  # 74 hallazgos en 20 ficheros, en su mayoria cierres con captura tardia de
+  # variables de bucle (B023) que merecen leerse uno a uno.
+  # TODO: resolver y quitar de esta lista.
+  "B023",   # function-uses-loop-variable: cierre tardio, requiere revision manual
+  "B905",   # zip sin strict=: revisar de uno en uno (cambia semantica)
+  "B007",   # variable de control de bucle sin usar: solo estetico
+  "C408",   # dict()/list() como llamada: estetico
+  "C416",   # comprehension que se puede simplificar: estetico
+  "SIM102", # if anidado: estetico
+  "SIM103", # bool que se puede colapsar: estetico
+  "SIM105", # contextlib.suppress en vez de try/except/pass: estetico
+  "SIM113", # enumerate en vez de range(len()): estetico
+  "UP042",  # StrEnum: requiere 3.11+ en el objetivo de despliegue
+  "UP047",  # sintaxis de generic nueva (PEP 695): 3.12+
+  # F841 en codigo de produccion se mantiene: variable muerta = codigo que se
+  # calculo y no se uso, que es como se esconden bugs de unidades. En tests se
+  # permite porque los fixtures siembran la BD sin leer el valor de vuelta (ver
+  # per-file-ignores).
+]
 
 [lint.per-file-ignores]
-"tests/*.py" = ["F811"]
+# Los tests redefinen fixtures y helpers a proposito.
+"tests/*.py" = ["F811", "B011", "SIM117", "C901", "B017", "B905", "B023", "F841"]
+# modules/ es codigo heredado (yfinance/funds/garp) que se mantiene aparte.
+"modules/*.py" = ["F841", "F401", "B008", "E501", "UP035"]
+
+[lint.isort]
+known-first-party = ["app", "modules"]

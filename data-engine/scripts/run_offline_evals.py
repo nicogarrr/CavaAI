@@ -38,7 +38,7 @@ def main() -> int:
     dataset_path = ROOT / "evals" / "thesis_quality_v1.json"
     dataset = json.loads(dataset_path.read_text())
     failures: list[str] = []
-    executed: dict[str, int] = {name: 0 for name in GATES}
+    executed: dict[str, int] = dict.fromkeys(GATES, 0)
     total = 0
     for case in dataset["cases"]:
         expected_failure = case.get("expect_gate_failure")

@@ -23,9 +23,9 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-import pytest
 from sqlalchemy import delete, select, update
 
 import main

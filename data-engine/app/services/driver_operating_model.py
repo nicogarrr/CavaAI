@@ -8,14 +8,14 @@ replaced with a plausible number.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from math import isfinite
-from typing import Any, Callable
+from typing import Any
 
 from app.models import FinancialFact
 from app.services.company_framework import CompanyFramework
 from app.services.driver_dimensions import DriverDimensionValidator
-
 
 RATE_DRIVERS = {
     "penetration",

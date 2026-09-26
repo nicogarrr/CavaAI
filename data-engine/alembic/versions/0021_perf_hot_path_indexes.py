@@ -6,7 +6,6 @@ Revises: 0020_news_event_metadata
 
 from alembic import op
 
-
 revision = "0021_perf_hot_path_indexes"
 down_revision = "0020_news_event_metadata"
 branch_labels = None

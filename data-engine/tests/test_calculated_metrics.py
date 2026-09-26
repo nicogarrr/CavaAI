@@ -8,7 +8,6 @@ from app.core.database import SessionLocal, init_db
 from app.models import CalculatedMetric, Company, FinancialFact
 from app.services.metric_calculation_service import MetricCalculationService
 
-
 TEST_TICKER = "TCALC"
 PEER_TICKERS = ["TPEER1", "TPEER2"]
 

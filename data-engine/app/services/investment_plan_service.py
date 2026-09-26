@@ -20,7 +20,6 @@ from app.models import (
     InvestmentPlan,
     PlanContribution,
     Position,
-    Portfolio,
 )
 from app.services.portfolio_fx_service import PortfolioFXService
 

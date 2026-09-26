@@ -5,9 +5,9 @@ Revises: 0005_tenant_document_chunks
 Create Date: 2026-07-15 00:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0006_fundamental_model_journal"
 down_revision = "0005_tenant_document_chunks"

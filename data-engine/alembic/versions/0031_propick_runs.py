@@ -9,6 +9,7 @@ for the rebalance digest.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0031_propick_runs"

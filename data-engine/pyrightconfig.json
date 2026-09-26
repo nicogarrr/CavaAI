@@ -12,20 +12,21 @@
     "storage"
   ],
   "pythonVersion": "3.12",
-  "venvPath": ".",
-  "venv": ".venv",
   "typeCheckingMode": "basic",
-  "reportMissingImports": "warning",
   "reportMissingTypeStubs": "none",
+
+  "reportMissingImports": "warning",
   "reportArgumentType": "warning",
-  "reportAssignmentType": "warning",
   "reportAttributeAccessIssue": "warning",
-  "reportCallIssue": "warning",
-  "reportGeneralTypeIssues": "warning",
-  "reportIndexIssue": "warning",
-  "reportInvalidTypeForm": "warning",
-  "reportOperatorIssue": "warning",
   "reportOptionalMemberAccess": "warning",
-  "reportOptionalOperand": "warning",
-  "reportReturnType": "warning"
+
+  "reportGeneralTypeIssues": "error",
+  "reportIndexIssue": "error",
+  "reportInvalidTypeForm": "error",
+  "reportReturnType": "error",
+  "reportRedeclaration": "error",
+  "reportUnboundVariable": "error",
+
+  "reportOperatorIssue": "warning",
+  "reportOptionalOperand": "warning"
 }

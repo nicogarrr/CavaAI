@@ -6,12 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, ExternalClaim, NewsEvent, ThesisChange, ThesisVersion
 from app.schemas import ManualNewsResponse, NewsFeedItem, NewsIngestResponse
-from app.services.source_hierarchy_service import classify_source
 from app.services.claim_intelligence_service import ClaimIntelligenceService
+from app.services.company_resolver import resolve_company
 from app.services.materiality_service import MaterialityService
 from app.services.review_alert_service import ReviewAlertService
+from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_graph_service import ThesisGraphService
-from app.services.company_resolver import resolve_company
 
 
 class NewsService:

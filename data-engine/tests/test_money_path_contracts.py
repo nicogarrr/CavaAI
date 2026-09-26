@@ -21,8 +21,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base
 from app.models import Company, FXRate, Portfolio, Transaction
+from app.models.entities import Base
 from app.services.ibkr_import_service import _decimal, _is_number
 from app.services.number_parsing import parse_localized_number
 from app.services.portfolio_ledger_service import (
@@ -237,6 +237,6 @@ def test_tax_report_surfaces_withholding_separately(db):
 
 
 def test_ledger_action_sets_are_disjoint_and_cover_the_verbs():
-    assert BUY_ACTIONS & SELL_ACTIONS == frozenset()
+    assert frozenset() == BUY_ACTIONS & SELL_ACTIONS
     assert "buy" in BUY_ACTIONS
     assert "sell" in SELL_ACTIONS

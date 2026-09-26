@@ -1,4 +1,10 @@
 from datetime import UTC, date, datetime
+
+# Alias para las columnas llamadas `date`. Dentro del cuerpo de una clase,
+# `date: Mapped[date]` hace que el anotado se refiera a la propia columna
+# mientras se evalua, y pyright lo rechaza con "Type of 'date' could not be
+# determined because it refers to itself".
+_DateT = date
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -563,7 +569,7 @@ class MarketPrice(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    date: Mapped[date] = mapped_column(Date, index=True)
+    date: Mapped[_DateT] = mapped_column(Date, index=True)
     open: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     high: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     low: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
@@ -1093,6 +1099,34 @@ class ResearchAlert(TenantOwnedMixin, Base, TimestampMixin):
     snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class AlertDelivery(TenantOwnedMixin, Base, TimestampMixin):
+    """Outbox de entrega por canal con claim atomico.
+
+    Una fila por (alerta, canal). El claim es un unico UPDATE ... WHERE
+    status elegible RETURNING: dos workers no pueden reclamar la misma
+    fila a la vez. Un commit fallido tras el envio deja la fila en
+    'sending' y un retry inmediato NO la reclama (no hay reenvio); solo
+    un claim expirado (> STALE_CLAIM_SECONDS) vuelve a ser elegible.
+    Resultados ambiguos ('unknown': timeout/5xx, el proveedor pudo
+    entregar) tampoco se reclaman de inmediato; los inequivocos
+    ('failed': conexion no establecida o rechazo 4xx) si.
+    """
+
+    __tablename__ = "alert_deliveries"
+    __table_args__ = (
+        UniqueConstraint("alert_id", "channel", name="uq_alert_delivery_channel"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alert_id: Mapped[int] = mapped_column(
+        ForeignKey("research_alerts.id", ondelete="CASCADE"), index=True
+    )
+    channel: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
 
 class AlertRule(TenantOwnedMixin, Base, TimestampMixin):
@@ -1827,7 +1861,7 @@ class PlanContribution(TenantOwnedMixin, Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     plan_id: Mapped[int] = mapped_column(ForeignKey("investment_plans.id", ondelete="CASCADE"), index=True)
-    date: Mapped[date] = mapped_column(Date, index=True)
+    date: Mapped[_DateT] = mapped_column(Date, index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     currency: Mapped[str] = mapped_column(String(10), default="EUR")
     external_id: Mapped[str | None] = mapped_column(String(120), nullable=True)

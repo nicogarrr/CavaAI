@@ -11,10 +11,9 @@ us-gaap de 10-K (anual) y 10-Q (trimestral).
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import asyncio
 import os
+from pathlib import Path
 from typing import Any
 
 import httpx

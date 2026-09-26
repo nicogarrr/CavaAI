@@ -17,7 +17,6 @@ from app.models import (
 )
 from app.services.propicks_price_service import (
     PriceBar,
-    compute_momentum_metrics,
     momentum_from_series,
     refresh_propicks_prices,
     upsert_prices,

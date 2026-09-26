@@ -3,16 +3,14 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import uuid4
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import delete, select, update
 
 import main
 from app.core import auth as auth_module
 from app.core.config import Settings
-
-from tests.auth_helpers import auth_settings, bound_headers, signed_request
 from app.core.database import SessionLocal, init_db
 from app.models import (
     Claim,
@@ -28,7 +26,7 @@ from app.models import (
 from app.seed import seed
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.workers import dramatiq_app
-
+from tests.auth_helpers import auth_settings, bound_headers, signed_request
 
 SECRET = "research-security-test-secret-at-least-32-chars"
 
