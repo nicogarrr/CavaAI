@@ -36,7 +36,7 @@ test.describe("landing pública (harness E2E con bypass de auth)", () => {
     await expect(page).toHaveURL(/\/(inicio|sign-in)/);
   });
 
-  test("metodología, términos y ayuda cargan sin sesión", async ({ page }) => {
+  test("metodología, términos y ayuda cargan en el harness", async ({ page }) => {
     for (const path of ["/metodologia", "/terms", "/help"]) {
       await page.goto(path);
       await expect(page.getByRole("heading").first()).toBeVisible();
