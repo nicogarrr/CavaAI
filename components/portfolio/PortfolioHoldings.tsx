@@ -18,14 +18,20 @@ import { showErrorToast } from '@/lib/toast';
 type Props = {
   holdings: PortfolioHolding[];
   userId: string;
+  /** Caja total en divisa base; se muestra como línea propia para que
+   *  Valor Total = posiciones + caja cuadre a simple vista. */
+  cash?: number | null;
+  baseCurrency?: string;
 };
 
-export default function PortfolioHoldings({ holdings, userId }: Props) {
+export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency }: Props) {
   const router = useRouter();
   const [currentHoldings, setCurrentHoldings] = useState<PortfolioHolding[]>(holdings);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const format = (value: number, currency: string) => formatMoney(value, currency, { maximumFractionDigits: 2 });
+  const cashCurrency = baseCurrency ?? holdings[0]?.baseCurrency ?? 'EUR';
+  const showCash = typeof cash === 'number' && cash !== 0;
 
   // Sync props if they change (e.g. from server revalidation)
   useEffect(() => {
@@ -155,6 +161,17 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                   </div>
                 );
               })}
+              {showCash && (
+                <div className="rounded-xl border border-gray-700 border-dashed p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-lg font-bold text-gray-300">Caja</span>
+                  </div>
+                  <dl className="mt-3 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-2"><dt className="text-gray-500">Valor</dt><dd className="font-semibold text-gray-100">{format(cash, cashCurrency)}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-gray-500">G/P</dt><dd className="text-gray-500">{NA}</dd></div>
+                  </dl>
+                </div>
+              )}
             </div>
             {/* Escritorio: tabla completa */}
             <div className="hidden overflow-x-auto md:block">
@@ -257,6 +274,22 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                     </TableRow>
                   );
                 })}
+                {showCash && (
+                  <TableRow className="border-gray-700 border-dashed hover:bg-gray-800/50">
+                    <TableCell>
+                      <span className="font-bold text-gray-300">Caja</span>
+                    </TableCell>
+                    <TableCell className="text-right text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-right text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-right text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-right font-semibold text-gray-100">
+                      {format(cash, cashCurrency)}
+                    </TableCell>
+                    <TableCell className="text-right text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-center text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-center" />
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
             </div>

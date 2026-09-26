@@ -55,6 +55,7 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
             {/* Header */}
             <div className="flex items-center justify-between mb-2">
                 <span className="text-gray-400 text-sm font-medium">Distribución</span>
+                <span className="text-xs text-gray-500">Pesos sobre el valor total (caja incluida)</span>
             </div>
 
             {/* Contenido: Pie Chart + Leyenda */}

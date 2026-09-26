@@ -61,6 +61,10 @@ export type PortfolioSummary = {
     totalGain: number;
     totalGainPercent: number;
     holdings: PortfolioHolding[];
+    /** Valor en renta variable (suma de posiciones), sin caja. */
+    equityValue: number;
+    /** Caja total en divisa base. totalValue = equityValue + cash. */
+    cash: number;
     baseCurrency: string;
     status: 'ok' | 'incomplete_fx';
     missingFx: Array<Record<string, unknown>>;
@@ -108,6 +112,7 @@ type ResearchPortfolioPosition = {
 type ResearchPortfolioSummaryResponse = {
     total_value: number;
     equity_value: number;
+    cash: number;
     status: 'ok' | 'incomplete_fx';
     base_currency: string;
     missing_fx: Array<Record<string, unknown>>;
@@ -210,6 +215,8 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
         totalGain,
         totalGainPercent: totalCost > 0 ? (totalGain / totalCost) * 100 : 0,
         holdings: holdings.sort((a, b) => b.value - a.value),
+        equityValue: backendSummary.equity_value,
+        cash: backendSummary.cash,
         baseCurrency: backendSummary.base_currency,
         status: backendSummary.status,
         missingFx: backendSummary.missing_fx,
