@@ -91,6 +91,14 @@ def test_429_retry_after_then_success():
     assert len(stub.calls) == 2
 
 
+def test_429_retry_after_beyond_max_raises_without_retry():
+    stub = _StubClient([_resp(429, retry_after="3600"), _resp(200, {"articles": []})])
+    client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(client.news_search("q"))
+    assert len(stub.calls) == 1  # la ventana prohibida no se reintenta inline
+
+
 def test_429_exhaustion_raises():
     stub = _StubClient([_resp(429, retry_after="0"), _resp(429, retry_after="0"), _resp(429, retry_after="0")])
     client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
