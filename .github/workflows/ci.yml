@@ -51,6 +51,8 @@ jobs:
         run: node --experimental-strip-types --test scripts/error-cause.test.ts
       - name: Transaction form validation (F1, no silent submits)
         run: node --experimental-strip-types --test scripts/transaction-validation.test.ts
+      - name: SSRF guard (export actions)
+        run: node --experimental-strip-types --test scripts/export-url-guard.test.ts
       - run: npm run build
       - name: Bundle budget
         run: node scripts/check-bundle-budget.mjs
