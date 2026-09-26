@@ -33,7 +33,12 @@ def test_health_ready_times_out_dependencies_without_serial_wait(monkeypatch):
     response = asyncio.run(main.health_ready())
     elapsed = time.perf_counter() - started
 
-    assert elapsed < 0.15, f"health_ready tardó {elapsed:.3f}s"
+    # El deadline de la sonda es 0,05 s y las tres sondas opcionales duermen
+    # 0,20 s. Una implementacion SECUELA tardaria >=0,20 s; una concurrente,
+    # ~0,05 s. El umbral de 0,15 s solo dejaba 1,33x de margen sobre el deadline
+    # y hacia fallar el test con carga de maquina sin que hubiera una regresion.
+    # 0,18 s sigue fallando una espera serial (0,20 s) y tolera el ruido.
+    assert elapsed < 0.18, f"health_ready tardó {elapsed:.3f}s"
     assert response.status_code == 200
     payload = json.loads(response.body)
     assert payload["checks"] == {
