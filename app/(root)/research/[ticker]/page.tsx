@@ -373,6 +373,45 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
     .filter(([, value]) => value)
     .map(([metric, period]) => `${metric}: ${period}`)
     .join(' · ');
+  // Una valoración no publicable (estado distinto de ok, p.ej. partial por
+  // entradas sin trazabilidad fechada como traceable_wacc) no puede
+  // presentarse como precio objetivo: los números son una orientación del
+  // motor y van degradados, con el motivo primero.
+  const blockers = Array.isArray(valuation.trace?.publication_blockers)
+    ? (valuation.trace?.publication_blockers as unknown[]).map(String).filter(Boolean)
+    : [];
+  const missingInputs = (valuation.missing_inputs ?? []).filter(Boolean);
+  const engineNotice = typeof valuation.trace?.notice === 'string' ? valuation.trace.notice : null;
+  const notPublishable = valuation.status !== 'ok' || valuation.publishable === false;
+  if (notPublishable) {
+    return (
+      <div className="space-y-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Stat label="Precio actual" value={formatMoney(valuation.current_price, currency)} />
+        </div>
+        <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-4 text-sm text-amber-200">
+          <p className="font-semibold">Orientación del motor, no precio objetivo.</p>
+          <p className="mt-1">
+            Esta valoración no es publicable (estado {valuation.status ?? 'desconocido'}): los números de
+            abajo son una orientación del motor, no una valoración final ni un precio objetivo.
+          </p>
+          {blockers.length ? <p className="mt-2 text-xs">Motivos registrados: {blockers.join(', ')}.</p> : null}
+          {missingInputs.length ? <p className="mt-2 text-xs">Entradas faltantes: {missingInputs.join(', ')}.</p> : null}
+          {engineNotice ? <p className="mt-2 text-xs text-amber-200/70">Nota del motor: {engineNotice}</p> : null}
+        </div>
+        <div className="grid gap-4 opacity-60 sm:grid-cols-3">
+          <Stat label="Bear (orientación)" value={formatMoney(valuation.bear_value, currency)} />
+          <Stat label="Base (orientación)" value={formatMoney(valuation.base_value, currency)} />
+          <Stat label="Bull (orientación)" value={formatMoney(valuation.bull_value, currency)} />
+        </div>
+        <p className="text-xs leading-5 text-gray-500">
+          Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
+          El «Value/share» del Modelo a largo plazo es otro cálculo (otra versión/fecha/motor).
+          Fuente de datos: {inputSource ?? NA}{periods ? ` · periodos ${periods}` : ` · periodos ${NA}`}.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-3">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
