@@ -20,12 +20,10 @@ Dos fallos silenciosos:
 from __future__ import annotations
 
 import asyncio
-from decimal import Decimal
 
 import pytest
 
 from app.services.async_bridge import run_from_any_context
-
 
 # --------------------------------------------------------------------------
 # 1. El puente funciona desde sync y desde async
