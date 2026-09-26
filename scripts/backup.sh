@@ -19,7 +19,14 @@
 #   ./scripts/backup.sh [--stop-storage]
 set -euo pipefail
 
-COMPOSE="${COMPOSE_CMD:-docker compose -f docker-compose.prod.yml}"
+# .env.production no se carga solo (no es el nombre por defecto de compose);
+# sin el las variables obligatorias (POSTGRES_PASSWORD, MINIO_ROOT_*, ...)
+# hacen fallar cualquier subcomando. COMPOSE_CMD externo tiene prioridad.
+if [ -z "${COMPOSE_CMD:-}" ] && [ -f .env.production ]; then
+  COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.production"
+else
+  COMPOSE="${COMPOSE_CMD:-docker compose -f docker-compose.prod.yml}"
+fi
 # Knobs para el drill de verificacion en proyecto aislado (ver
 # scripts/verify-backup-restore.sh); en produccion no hace falta definirlos.
 QDRANT_API_URL="${QDRANT_API_URL:-http://127.0.0.1:6333}"
@@ -73,14 +80,42 @@ if [ "${STOP_STORAGE}" = "1" ]; then
   ${COMPOSE} start minio backend worker scheduler
 fi
 
-# 5) Manifest.
+# 5) Manifest verificable: conteos por tabla, puntos qdrant, checksums y
+#    numero de ficheros por tar. El drill (verify-backup-restore.sh) compara
+#    lo restaurado contra estos valores; sin ellos el restore no es prueba.
+echo "[backup] manifest verificable…"
 {
   echo "timestamp_utc=${STAMP}"
   echo "postgres_db=${POSTGRES_DB:-cavaai_research}"
   echo "git_commit=$(git rev-parse --short HEAD 2>/dev/null || echo n/a)"
-  echo "files:"
-  ls -lh "${DEST}"
 } > "${DEST}/manifest.txt"
+
+# Conteos por tabla (misma base viva; pequeno drift respecto al dump posible).
+${COMPOSE} exec -T postgres psql -U "${POSTGRES_USER:-portfolio}" -d "${POSTGRES_DB:-cavaai_research}" -tAc \
+  "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY 1" \
+  | while read -r T; do
+      [ -n "${T}" ] || continue
+      C=$(${COMPOSE} exec -T postgres psql -U "${POSTGRES_USER:-portfolio}" -d "${POSTGRES_DB:-cavaai_research}" -tAc "SELECT count(*) FROM \"${T}\"")
+      echo "pg_table_count.${T}=${C}" >> "${DEST}/manifest.txt"
+    done
+
+# Puntos por coleccion de Qdrant (si la API respondio).
+if [ -d "${DEST}/qdrant-snapshots" ]; then
+  for SNAP in "${DEST}"/qdrant-snapshots/*.snapshot; do
+    COLL="$(basename "${SNAP}" .snapshot)"
+    PTS=$(curl -fsS "${QDRANT_API_URL}/collections/${COLL}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["points_count"])')
+    echo "qdrant_points.${COLL}=${PTS}" >> "${DEST}/manifest.txt"
+  done
+fi
+
+# Checksums y numero de ficheros de cada artefacto.
+( cd "${DEST}" && find . -maxdepth 2 -type f ! -name manifest.txt -print0 | sort -z | xargs -0 sha256sum ) \
+  | awk '{f=$2; sub(/^\.\//,"",f); print "sha256." f "=" $1}' >> "${DEST}/manifest.txt"
+for TAR in minio.tar.gz duckdb.tar.gz qdrant-raw.tar.gz; do
+  if [ -f "${DEST}/${TAR}" ]; then
+    echo "file_count.${TAR}=$(tar tzf "${DEST}/${TAR}" | grep -cv '/$')" >> "${DEST}/manifest.txt"
+  fi
+done
 
 echo "[backup] completado: ${DEST}"
 

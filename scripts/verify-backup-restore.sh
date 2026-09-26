@@ -18,12 +18,20 @@ BACKUP_PATH="${1:?Uso: ./scripts/verify-backup-restore.sh backups/YYYYMMDD-HHMMS
 case "${BACKUP_PATH}" in backups/*) ;; *) echo "El backup debe estar dentro de ./backups/"; exit 1;; esac
 [ -f "${BACKUP_PATH}/postgres.dump" ] || { echo "No existe ${BACKUP_PATH}/postgres.dump"; exit 1; }
 
+# El compose de prod exige variables de .env.production (POSTGRES_PASSWORD,
+# MINIO_ROOT_*, RESEARCH_AUTH_SECRET, BACKEND_DOMAIN): sin --env-file,
+# `docker compose config` falla antes de empezar. No es el nombre por
+# defecto de compose, asi que hay que pasarlo explicitamente.
+ENV_FILE="${ENV_FILE:-.env.production}"
+[ -f "${ENV_FILE}" ] || { echo "No existe ${ENV_FILE} (hace falta para las credenciales del compose aislado)"; exit 1; }
+[ -f "${BACKUP_PATH}/manifest.txt" ] || { echo "No existe ${BACKUP_PATH}/manifest.txt"; exit 1; }
+
 # El compose generado va en la RAIZ del repo: las rutas relativas del compose
 # de prod (build ./data-engine, mounts ./data-esef-snapshots, ./infra/...) se
 # resuelven desde el directorio del primer -f. Dentro de backups/ quedarian
 # rotas o apuntando a carpetas equivocadas.
 VERIFY_COMPOSE=".verify-compose.yml"
-export COMPOSE_CMD="docker compose -p cavaai-verify -f ${VERIFY_COMPOSE}"
+export COMPOSE_CMD="docker compose -p cavaai-verify -f ${VERIFY_COMPOSE} --env-file ${ENV_FILE}"
 export QDRANT_API_URL="http://127.0.0.1:16333"
 export QDRANT_VOLUME="cavaai-verify-qdrant"
 export MINIO_VOLUME="cavaai-verify-minio"
@@ -79,33 +87,66 @@ done
 curl -fsS "${QDRANT_API_URL}/collections" >/dev/null
 
 # ---------------------------------------------------------------- 3/5 ----
-echo "[verify] 3/5 restore REAL contra el proyecto aislado…"
+echo "[verify] 3/5 integridad del backup (checksums del manifest) y restore REAL…"
+# Cada artefacto tiene que casar con su sha256 del manifest: un backup
+# corrupto en disco/R2 se detecta ANTES de restaurarlo.
+grep '^sha256\.' "${BACKUP_PATH}/manifest.txt" | while IFS= read -r LINE; do
+  KEY="${LINE#sha256.}"; FILE="${KEY%%=*}"; WANT="${KEY#*=}"
+  GOT=$(sha256sum "${BACKUP_PATH}/${FILE}" | awk '{print $1}')
+  [ "${GOT}" = "${WANT}" ] || { echo "[verify] ERROR: checksum no casa en ${FILE}"; exit 1; }
+done || exit 1
+echo "[verify] checksums del backup: OK"
 ./scripts/restore.sh "${BACKUP_PATH}" --confirm-restore
 
 # ---------------------------------------------------------------- 4/5 ----
 echo "[verify] 4/5 comprobaciones…"
 PG_COUNT() { ${COMPOSE_CMD} exec -T postgres psql -U "${POSTGRES_USER:-portfolio}" -d "${POSTGRES_DB:-cavaai_research}" -tAc "$1"; }
 
-TABLES=$(PG_COUNT "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
-[ "${TABLES}" -gt 0 ] || { echo "[verify] ERROR: postgres del drill sin tablas"; exit 1; }
-echo "[verify] postgres: ${TABLES} tablas publicas. Filas por tabla (comparar con produccion):"
-PG_COUNT "SELECT string_agg(format('%I', table_name), ' ' ORDER BY table_name) FROM information_schema.tables WHERE table_schema='public'" \
-  | tr ' ' '\n' \
-  | while read -r T; do [ -n "${T}" ] && echo "  ${T}: $(PG_COUNT "SELECT count(*) FROM \"${T}\"")"; done
+# Comparacion REAL contra el manifest del backup (no contra produccion en
+# vivo): cada conteo restaurado tiene que igualar lo que el backup declaro.
+MANIFEST="${BACKUP_PATH}/manifest.txt"
+grep -q '^pg_table_count\.' "${MANIFEST}" || {
+  echo "[verify] ERROR: el manifest no tiene conteos por tabla (pg_table_count.*)."
+  echo "[verify] Regenera el backup con el scripts/backup.sh actualizado y repite el drill."
+  exit 1
+}
+MISMATCHES=0
+while IFS= read -r LINE; do
+  KEY="${LINE#pg_table_count.}"; T="${KEY%%=*}"; WANT="${KEY#*=}"
+  GOT=$(PG_COUNT "SELECT count(*) FROM \"${T}\"")
+  if [ "${GOT}" != "${WANT}" ]; then
+    echo "[verify] ERROR: tabla ${T}: restaurado=${GOT} manifest=${WANT}"
+    MISMATCHES=$((MISMATCHES + 1))
+  fi
+done < <(grep '^pg_table_count\.' "${MANIFEST}")
+[ "${MISMATCHES}" -eq 0 ] || { echo "[verify] ERROR: ${MISMATCHES} tablas no casan con el backup"; exit 1; }
+echo "[verify] postgres: $(grep -c '^pg_table_count\.' "${MANIFEST}") tablas con conteos identicos al backup: OK"
 
-QCOLLS=$(curl -fsS "${QDRANT_API_URL}/collections" | python3 -c 'import json,sys; [print(c["name"]) for c in json.load(sys.stdin)["result"]["collections"]]')
-[ -n "${QCOLLS}" ] || { echo "[verify] ERROR: qdrant del drill sin colecciones"; exit 1; }
-for C in ${QCOLLS}; do
-  PTS=$(curl -fsS "${QDRANT_API_URL}/collections/${C}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["points_count"])')
-  echo "[verify] qdrant: ${C} -> ${PTS} puntos (comparar con produccion)"
+while IFS= read -r LINE; do
+  KEY="${LINE#qdrant_points.}"; C="${KEY%%=*}"; WANT="${KEY#*=}"
+  GOT=$(curl -fsS "${QDRANT_API_URL}/collections/${C}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["points_count"])')
+  if [ "${GOT}" != "${WANT}" ]; then
+    echo "[verify] ERROR: coleccion ${C}: restaurado=${GOT} manifest=${WANT}"
+    MISMATCHES=$((MISMATCHES + 1))
+  fi
+done < <(grep '^qdrant_points\.' "${MANIFEST}" || true)
+[ "${MISMATCHES}" -eq 0 ] || { echo "[verify] ERROR: colecciones qdrant no casan con el backup"; exit 1; }
+QCOLLS_OK=$(grep -c '^qdrant_points\.' "${MANIFEST}" || true)
+echo "[verify] qdrant: ${QCOLLS_OK} colecciones con puntos identicos al backup: OK"
+
+# MinIO y DuckDB: numero de ficheros restaurados = entradas fichero del tar.
+for V in "minio:${MINIO_VOLUME}:minio.tar.gz" "duckdb:${DUCKDB_VOLUME}:duckdb.tar.gz"; do
+  NAME="${V%%:*}"; REST="${V#*:}"; VOL="${REST%%:*}"; TAR="${REST#*:}"
+  WANT=$(grep "^file_count\.${TAR}=" "${MANIFEST}" | cut -d= -f2 || true)
+  [ -n "${WANT}" ] || { echo "[verify] aviso: manifest sin file_count.${TAR}; se omite ${NAME}"; continue; }
+  GOT=$(docker run --rm -v "${VOL}":/data:ro alpine sh -c 'find /data -type f | wc -l')
+  if [ "${GOT}" != "${WANT}" ]; then
+    echo "[verify] ERROR: ${NAME}: ${GOT} ficheros restaurados, ${WANT} en el backup"
+    exit 1
+  fi
+  echo "[verify] ${NAME}: ${GOT} ficheros, identico al backup: OK"
 done
 
-docker run --rm -v "${MINIO_VOLUME}":/data:ro alpine sh -c 'test -n "$(find /data -type f -print -quit)"' \
-  && echo "[verify] minio: volumen con datos OK"
-docker run --rm -v "${DUCKDB_VOLUME}":/data:ro alpine sh -c 'test -n "$(find /data -type f -print -quit)"' \
-  && echo "[verify] duckdb: volumen con datos OK"
-
 # ---------------------------------------------------------------- 5/5 ----
-echo "[verify] 5/5 TODO OK. Comparacion final sugerida: filas/puntos de arriba contra"
-echo "    produccion (psql en cavaai-postgres y http://127.0.0.1:6333/collections)."
-echo "[verify] la limpieza del proyecto aislado corre sola al salir."
+echo "[verify] 5/5 DRILL COMPLETO: el backup restaura y cada conteo y checksum"
+echo "    casa con el manifest. La limpieza del proyecto aislado corre sola al salir."
