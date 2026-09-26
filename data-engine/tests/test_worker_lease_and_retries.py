@@ -158,3 +158,62 @@ def test_lease_acquisition_failure_closes_the_session(monkeypatch, actor_name):
     assert fake.closed, f"{actor_name}: la sesion quedo abierta tras el fallo"
     if result is not None:
         assert "error" in str(result).lower()
+
+
+class _FakeRedisEvalOnly:
+    """Redis de mentira SIN get/delete: solo eval (compare-and-del Lua).
+
+    Si release_job_lease volviera a usar GET+DEL separados, este fake rompe
+    el test: el camino correcto es una unica operacion atomica.
+    """
+
+    def __init__(self, store: dict[str, str]):
+        self.store = store
+        self.eval_calls: list[tuple[int, str, str]] = []
+
+    def eval(self, script, keys_count, key, token):
+        assert keys_count == 1
+        self.eval_calls.append((keys_count, key, token))
+        # Misma semantica que el script Lua: borra solo si el token coincide.
+        if self.store.get(key) == token:
+            del self.store[key]
+            return 1
+        return 0
+
+    def close(self):
+        return None
+
+
+def _patch_fake_redis(monkeypatch, fake):
+    import redis as redis_sync
+
+    monkeypatch.setattr(redis_sync.Redis, "from_url", lambda *a, **k: fake)
+
+
+def test_release_lease_is_atomic_compare_and_del(monkeypatch):
+    """Token correcto: una sola operacion eval, lease borrado."""
+    from app.workers import dramatiq_app
+
+    store = {"cavaai:job-lease:job-x": "token-a"}
+    fake = _FakeRedisEvalOnly(store)
+    _patch_fake_redis(monkeypatch, fake)
+
+    dramatiq_app.release_job_lease("job-x", "token-a", redis_url="redis://fake")
+
+    assert store == {}
+    assert fake.eval_calls == [(1, "cavaai:job-lease:job-x", "token-a")]
+
+
+def test_release_lease_never_deletes_another_workers_lease(monkeypatch):
+    """Token viejo tras re-adquisicion ajena: NO se borra el lease nuevo."""
+    from app.workers import dramatiq_app
+
+    # El TTL vencio y otro worker readquirio con token-b: el release
+    # tardio de token-a no puede borrarlo (ventana GET/DEL eliminada).
+    store = {"cavaai:job-lease:job-x": "token-b"}
+    fake = _FakeRedisEvalOnly(store)
+    _patch_fake_redis(monkeypatch, fake)
+
+    dramatiq_app.release_job_lease("job-x", "token-a", redis_url="redis://fake")
+
+    assert store == {"cavaai:job-lease:job-x": "token-b"}
