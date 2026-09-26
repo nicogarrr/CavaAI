@@ -2,6 +2,9 @@
   "framework": "nextjs",
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
+  "regions": [
+    "fra1"
+  ],
   "functions": {
     "app/(root)/research/**": {
       "maxDuration": 60
