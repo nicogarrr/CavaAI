@@ -1,5 +1,7 @@
 import { generateProPicks, type ProPick } from '@/lib/actions/proPicks.actions';
 import { SCORING_WEIGHTS } from '@/lib/utils/advancedStockScoring';
+import { formatDate, formatNumber, formatPercent, formatPrice, USER_TZ } from '@/lib/format';
+import { etiquetaSector } from '@/lib/labels';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -34,7 +36,9 @@ export default async function ProPicksSection() {
         );
     }
 
-    const currentMonth = new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    // Zona fija: el servidor renderiza en UTC y el mes puede no coincidir con
+    // el del usuario en la frontera de mes.
+    const currentMonth = formatDate(new Date(), { month: 'long', year: 'numeric', timeZone: USER_TZ });
 
     return (
         <Card className="p-6 rounded-lg border border-gray-700 bg-gray-800/50">
@@ -77,7 +81,7 @@ export default async function ProPicksSection() {
                         ).map(([label, weight]) => (
                             <div key={label}>
                                 <div className="text-gray-500">{label}</div>
-                                <div className="text-gray-300 font-medium">{Math.round(weight * 100)}%</div>
+                                <div className="text-gray-300 font-medium">{formatPercent(weight, { digits: 0 })}</div>
                             </div>
                         ))}
                     </div>
@@ -116,7 +120,7 @@ export default async function ProPicksSection() {
                                     </div>
                                     <p className="text-sm text-gray-400 line-clamp-1">{pick.company}</p>
                                     {pick.sector && (
-                                        <p className="text-xs text-gray-500 mt-1">{pick.sector}</p>
+                                        <p className="text-xs text-gray-500 mt-1">{etiquetaSector(pick.sector)}</p>
                                     )}
                                 </div>
                                 <div className="text-right">
@@ -134,9 +138,9 @@ export default async function ProPicksSection() {
                             
                             {pick.currentPrice > 0 && (
                                 <div className="text-sm text-gray-300 mb-3">
-                                    <span className="font-medium">${pick.currentPrice.toFixed(2)}</span>
+                                    <span className="font-medium">{formatPrice(pick.currentPrice, 'USD')}</span>
                                     <span className="ml-2 text-xs text-teal-400">
-                                        Confianza {pick.confidenceLevel} ({pick.confidence}/100)
+                                        Confianza {pick.confidenceLevel} ({formatNumber(pick.confidence, { maximumFractionDigits: 0 })}/100)
                                     </span>
                                 </div>
                             )}
@@ -160,19 +164,19 @@ export default async function ProPicksSection() {
                                         <div>
                                             <div className="text-gray-500">Valor</div>
                                             <div className={`font-medium ${pick.vsSector.value > 5 ? 'text-green-400' : pick.vsSector.value < -5 ? 'text-red-400' : 'text-gray-400'}`}>
-                                                {pick.vsSector.value > 0 ? '+' : ''}{pick.vsSector.value.toFixed(0)}
+                                                {formatNumber(pick.vsSector.value, { maximumFractionDigits: 0, signDisplay: 'auto' })}
                                             </div>
                                         </div>
                                         <div>
                                             <div className="text-gray-500">Crecimiento</div>
                                             <div className={`font-medium ${pick.vsSector.growth > 5 ? 'text-green-400' : pick.vsSector.growth < -5 ? 'text-red-400' : 'text-gray-400'}`}>
-                                                {pick.vsSector.growth > 0 ? '+' : ''}{pick.vsSector.growth.toFixed(0)}
+                                                {formatNumber(pick.vsSector.growth, { maximumFractionDigits: 0, signDisplay: 'auto' })}
                                             </div>
                                         </div>
                                         <div>
                                             <div className="text-gray-500">Rentabilidad</div>
                                             <div className={`font-medium ${pick.vsSector.profitability > 5 ? 'text-green-400' : pick.vsSector.profitability < -5 ? 'text-red-400' : 'text-gray-400'}`}>
-                                                {pick.vsSector.profitability > 0 ? '+' : ''}{pick.vsSector.profitability.toFixed(0)}
+                                                {formatNumber(pick.vsSector.profitability, { maximumFractionDigits: 0, signDisplay: 'auto' })}
                                             </div>
                                         </div>
                                     </div>
@@ -185,7 +189,8 @@ export default async function ProPicksSection() {
 
             <div className="flex items-center justify-between pt-4 border-t border-gray-700">
                 <p className="text-xs text-gray-500">
-                    {picks.length} acciones seleccionadas por IA • Última actualización: {new Date().toLocaleDateString('es-ES')}
+                    {formatNumber(picks.length, { maximumFractionDigits: 0 })} acciones seleccionadas por IA • Última actualización:{' '}
+                    {formatDate(new Date(), { timeZone: USER_TZ })}
                 </p>
                 <Button asChild variant="outline" size="sm" className="gap-2">
                     <Link href="/propicks">

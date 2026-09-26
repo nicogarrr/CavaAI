@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney, formatNumber, formatPercent, formatDate } from '@/lib/format';
+import { formatMoney, formatNumber, formatPercent, formatDate, NA } from '@/lib/format';
 import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -377,7 +377,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                 >
                                                     <span className="text-white font-semibold">{h.symbol}</span>
                                                     <span className={`font-mono ${h.cost > 0 ? (h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400') : 'text-gray-500'}`}>
-                                                        {h.cost > 0 ? formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }) : 's/d'}
+                                                        {h.cost > 0 ? formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }) : NA}
                                                     </span>
                                                 </Link>
                                             ))}

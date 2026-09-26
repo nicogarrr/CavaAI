@@ -3,17 +3,20 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Gauge, TrendingDown, Target } from 'lucide-react';
 import type { PortfolioTearsheet } from '@/lib/actions/portfolio.actions';
+import { formatNumber, formatPercent } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 
 type Props = {
     tearsheet: PortfolioTearsheet | null;
 };
 
 function formatMetric(value: number | null, digits = 2): string {
-    return value === null || value === undefined || !Number.isFinite(value) ? 'N/D' : value.toFixed(digits);
+    return formatNumber(value, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-function formatPercent(value: number | null, digits = 2): string {
-    return value === null || value === undefined || !Number.isFinite(value) ? 'N/D' : `${(value * 100).toFixed(digits)}%`;
+/** Las métricas del tearsheet llegan como ratios (0.087 -> 8,70 %). */
+function formatRatioPercent(value: number | null, digits = 2): string {
+    return formatPercent(value, { fromRatio: true, digits });
 }
 
 export default function PortfolioTearsheet({ tearsheet }: Props) {
@@ -38,8 +41,8 @@ export default function PortfolioTearsheet({ tearsheet }: Props) {
     const sharpePositive = (metrics.sharpe ?? 0) >= 0;
     const items = [
         { label: 'Sharpe', value: formatMetric(metrics.sharpe), icon: Gauge, color: sharpePositive ? 'text-green-400' : 'text-red-400' },
-        { label: 'Max Drawdown', value: formatPercent(metrics.max_drawdown), icon: TrendingDown, color: 'text-orange-400' },
-        { label: 'Win Rate', value: formatPercent(metrics.win_rate), icon: Target, color: 'text-blue-400' },
+        { label: t('portfolio.tearsheet.maxDrawdown'), value: formatRatioPercent(metrics.max_drawdown), icon: TrendingDown, color: 'text-orange-400' },
+        { label: t('portfolio.tearsheet.winRate'), value: formatRatioPercent(metrics.win_rate), icon: Target, color: 'text-blue-400' },
     ];
 
     return (
@@ -58,9 +61,10 @@ export default function PortfolioTearsheet({ tearsheet }: Props) {
                     ))}
                 </div>
                 <p className="mt-3 text-xs text-gray-500">
-                    {metrics.n_observations} sesiones · Ret. acumulado {formatPercent(metrics.cumulative_return)} ·
-                    Mejor día {formatPercent(metrics.best_day)} · Peor día {formatPercent(metrics.worst_day)}
-                    {tearsheet.exposure ? ` · ${tearsheet.exposure.n_positions} posiciones` : ''}
+                    {formatNumber(metrics.n_observations, { maximumFractionDigits: 0 })} sesiones · Ret. acumulado{' '}
+                    {formatRatioPercent(metrics.cumulative_return)} · Mejor día {formatRatioPercent(metrics.best_day)} · Peor día{' '}
+                    {formatRatioPercent(metrics.worst_day)}
+                    {tearsheet.exposure ? ` · ${formatNumber(tearsheet.exposure.n_positions, { maximumFractionDigits: 0 })} posiciones` : ''}
                 </p>
             </CardContent>
         </Card>

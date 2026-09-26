@@ -1,7 +1,8 @@
 'use client';
 
-import { formatMoney, formatPercent } from '@/lib/format';
+import { formatMoney, formatPercent, NA } from '@/lib/format';
 import { TrendingUp, TrendingDown, DollarSign, PiggyBank } from 'lucide-react';
+import { t } from '@/lib/i18n/t';
 import type { PortfolioSummary as PortfolioSummaryType } from '@/lib/actions/portfolio.actions';
 
 type Props = {
@@ -21,7 +22,7 @@ export default function PortfolioSummary({ summary }: Props) {
     <div className="space-y-3">
       {summary.status === 'incomplete_fx' ? (
         <div className="rounded-lg border border-amber-800/70 bg-amber-950/30 p-3 text-sm text-amber-200">
-          Portfolio totals exclude {summary.missingFx.length} balance or position without a valid FX rate.
+          {t('portfolio.fxMissingNotice', { n: summary.missingFx.length })}
         </div>
       ) : null}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
@@ -57,7 +58,13 @@ export default function PortfolioSummary({ summary }: Props) {
         </div>
         <p className="text-gray-400 text-[11px] sm:text-xs uppercase tracking-normal sm:tracking-wider font-semibold mb-1">Ganancia/Pérdida</p>
         <p className={`text-xl sm:text-2xl font-bold tracking-tight ${isEmpty ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
-          {isEmpty ? 's/d' : `${isPositive ? '+' : ''}${format(summary.totalGain)}`}
+          {isEmpty
+            ? NA
+            : formatMoney(summary.totalGain, summary.baseCurrency, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+                signDisplay: 'auto',
+              })}
         </p>
       </div>
 
@@ -65,7 +72,7 @@ export default function PortfolioSummary({ summary }: Props) {
         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Rendimiento</p>
         <div className="flex items-baseline gap-2">
           <p className={`text-xl sm:text-2xl font-bold tracking-tight ${isEmpty ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
-            {isEmpty ? 's/d' : formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+            {isEmpty ? NA : formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
           </p>
         </div>
         {/* Barra de progreso visual */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -111,7 +111,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                       </Button>
                     </div>
                     <dl className="mt-3 space-y-1.5 text-sm">
-                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Cantidad</dt><dd className="text-gray-200">{holding.quantity.toFixed(2)}</dd></div>
+                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Cantidad</dt><dd className="text-gray-200">{formatNumber(holding.quantity, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
                       <div className="flex justify-between gap-2"><dt className="text-gray-500">Promedio</dt><dd className="text-gray-200">{format(holding.avgPrice, holding.nativeCurrency)}</dd></div>
                       <div className="flex justify-between gap-2"><dt className="text-gray-500">Actual</dt><dd className="font-medium text-gray-200">{format(holding.currentPrice, holding.nativeCurrency)}</dd></div>
                       <div className="flex justify-between gap-2"><dt className="text-gray-500">Valor</dt><dd className="font-semibold text-gray-100">{holding.fxMissing ? 'FX missing' : format(holding.value, holding.baseCurrency)}</dd></div>
@@ -119,13 +119,13 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                         <dt className="text-gray-500">G/P</dt>
                         <dd className="flex items-center gap-2">
                           <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                            {holding.fxMissing ? 'N/A' : `${isPositive ? '+' : ''}${format(holding.gain, holding.baseCurrency)}`}
+                            {holding.fxMissing ? NA : format(holding.gain, holding.baseCurrency)}
                           </span>
                           <Badge
                             variant={isPositive ? 'default' : 'destructive'}
                             className={`${isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
                           >
-                            {holding.cost > 0 ? `${isPositive ? '+' : ''}${holding.gainPercent.toFixed(2)}%` : 's/d'}
+                            {formatPercent(holding.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }, NA)}
                           </Badge>
                         </dd>
                       </div>
@@ -145,7 +145,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                               {holding.holdingDays !== null ? ` · ${holding.holdingDays}d` : ''}
                             </Badge>
                           ) : (
-                            <span className="text-xs text-gray-600">N/D</span>
+                            <span className="text-xs text-gray-600">{NA}</span>
                           )}
                         </dd>
                       </div>
@@ -183,7 +183,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                         </Link>
                       </TableCell>
                       <TableCell className="text-right text-gray-300">
-                        {holding.quantity.toFixed(2)}
+                        {formatNumber(holding.quantity, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </TableCell>
                       <TableCell className="text-right text-gray-300">
                         {format(holding.avgPrice, holding.nativeCurrency)}
@@ -197,13 +197,13 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end gap-1">
                           <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                            {holding.fxMissing ? 'N/A' : `${isPositive ? '+' : ''}${format(holding.gain, holding.baseCurrency)}`}
+                            {holding.fxMissing ? NA : format(holding.gain, holding.baseCurrency)}
                           </span>
                           <Badge
                             variant={isPositive ? 'default' : 'destructive'}
                             className={`${isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
                           >
-                            {holding.cost > 0 ? `${isPositive ? '+' : ''}${holding.gainPercent.toFixed(2)}%` : 's/d'}
+                            {formatPercent(holding.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }, NA)}
                           </Badge>
                         </div>
                       </TableCell>
@@ -231,7 +231,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                           </div>
                         ) : (
                           <span className="text-xs text-gray-600" title="Sin historial de compra registrado">
-                            N/D
+                            {NA}
                           </span>
                         )}
                       </TableCell>
