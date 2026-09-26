@@ -6,10 +6,11 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Activity, ArrowRight, BellRing, Eye, Gem, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { Activity, ArrowRight, BellRing, Eye, Gem, Minus, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { getPortfolioSummary, type PortfolioHolding, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getMarketIndices } from '@/lib/actions/market.actions';
+import { sectionError } from '@/lib/section-error';
 import { getStockFinancialData, getStockQuote } from '@/lib/actions/finnhub.actions';
 import { getScreenerStocksReal, getFairValue } from '@/lib/actions/screener.actions';
 import {
@@ -27,8 +28,9 @@ interface PersonalizedOverviewProps {
 interface WatchlistItem {
     symbol: string;
     name: string;
-    price: number;
-    changePercent: number;
+    // null = sin cotización disponible: nunca se fabrica un 0.
+    price: number | null;
+    changePercent: number | null;
 }
 
 interface MarketIndex {
@@ -94,13 +96,7 @@ function SectionSkeleton({ rows = 3, className }: { rows?: number; className?: s
     );
 }
 
-function sectionError(error: unknown): string {
-    if (error instanceof Error && error.message) {
-        const message = error.message.replace(/https?:\/\/\S+/g, 'el servicio');
-        return `${message}. Reintenta en unos segundos.`;
-    }
-    return 'No se pudieron cargar los datos. Reintenta en unos segundos.';
-}
+
 
 function InlineSectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
     return (
@@ -238,14 +234,17 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             const watchlistPromise = Promise.all(watchlistItems.slice(0, 5).map(async (item): Promise<WatchlistItem> => {
                 try {
                     const data = await getStockFinancialData(item.symbol);
+                    const quote = data?.quote?.c;
+                    const change = data?.quote?.dp;
                     return {
                         symbol: item.symbol,
                         name: data?.profile?.name || item.symbol,
-                        price: data?.quote?.c || 0,
-                        changePercent: data?.quote?.dp || 0,
+                        // Un 0 de Finnhub es "sin dato", no un precio.
+                        price: typeof quote === 'number' && quote > 0 ? quote : null,
+                        changePercent: typeof change === 'number' ? change : null,
                     };
                 } catch {
-                    return { symbol: item.symbol, name: item.symbol, price: 0, changePercent: 0 };
+                    return { symbol: item.symbol, name: item.symbol, price: null, changePercent: null };
                 }
             }));
 
@@ -498,8 +497,8 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                     className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-900/30 rounded-lg hover:bg-gray-800/80 transition-colors group"
                                 >
                                     <div className="flex min-w-0 items-center gap-3">
-                                        <div className={`shrink-0 p-2 rounded-full ${stock.changePercent >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                                            {stock.changePercent >= 0 ? <TrendingUp aria-hidden="true" className="h-4 w-4" /> : <TrendingDown aria-hidden="true" className="h-4 w-4" />}
+                                        <div className={`shrink-0 p-2 rounded-full ${stock.changePercent == null ? 'bg-gray-500/10 text-gray-500' : stock.changePercent >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                            {stock.changePercent == null ? <Minus aria-hidden="true" className="h-4 w-4" /> : stock.changePercent >= 0 ? <TrendingUp aria-hidden="true" className="h-4 w-4" /> : <TrendingDown aria-hidden="true" className="h-4 w-4" />}
                                         </div>
                                         <div className="min-w-0">
                                             <span className="block truncate text-white font-medium group-hover:text-yellow-400 transition-colors">{stock.symbol}</span>
@@ -507,10 +506,21 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                         </div>
                                     </div>
                                     <div className="shrink-0 text-right">
-                                        <div className="text-white font-mono">{formatMoney(stock.price)}</div>
-                                        <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                            {formatPercent(stock.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
-                                        </div>
+                                        {stock.price != null ? (
+                                            <>
+                                                <div className="text-white font-mono">{formatMoney(stock.price)}</div>
+                                                {stock.changePercent != null && (
+                                                    <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                        {formatPercent(stock.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                                                    </div>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="font-mono text-gray-500" title="No hay cotización disponible">&mdash;</div>
+                                                <div className="text-[10px] uppercase tracking-wide text-gray-500">sin datos</div>
+                                            </>
+                                        )}
                                     </div>
                                 </Link>
                             ))}
