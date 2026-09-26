@@ -6,6 +6,17 @@ import { AppError } from '@/lib/types/errors';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
+// Destino fijo: los unicos años exportables son 2000-2100 y cada uno mapea a
+// una ruta constante construida desde literales. El valor remoto (`year`)
+// solo se usa como clave del mapa, nunca para componer la URL, de modo que
+// ningun dato del cliente llega al fetch (CodeQL js/request-forgery).
+const EXPORT_PATHS: Readonly<Record<number, string>> = Object.fromEntries(
+    Array.from({ length: 101 }, (_, i) => {
+        const y = 2000 + i;
+        return [y, `/api/export/${y}`];
+    }),
+);
+
 export type ExportFormat = 'csv' | 'json';
 
 export interface ExportResult {
@@ -30,12 +41,11 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
         throw new AppError('Formato de exportación inválido', 'VALIDATION_ERROR', 400);
     }
 
-    // La peticion sale hacia el backend configurado y nada mas: la URL se
-    // construye con el constructor URL, se fija el origen al de BACKEND_URL y
-    // los valores que vienen del cliente entran como constantes revalidadas
-    // (year acotado arriba; format mapeado a literal). Asi ningun valor
-    // remoto puede desviar el fetch a otro host ni inyectar en la query.
-    const exportUrl = new URL(`/api/export/${year}`, BACKEND_URL);
+    // La peticion sale hacia el backend configurado y nada mas: la ruta sale
+    // del mapa de constantes (year solo actua de clave), se fija el origen al
+    // de BACKEND_URL y format entra como literal revalidado.
+    const exportPath = EXPORT_PATHS[year];
+    const exportUrl = new URL(exportPath, BACKEND_URL);
     if (exportUrl.origin !== new URL(BACKEND_URL).origin) {
         throw new AppError('Backend de exportación mal configurado', 'CONFIG_ERROR', 500);
     }
@@ -44,7 +54,7 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
 
     const identityHeaders = await researchIdentityHeaders({
         method: 'GET',
-        path: `/api/export/${year}`,
+        path: exportPath,
     });
     const response = await fetch(exportUrl, {
         headers: { ...identityHeaders },
@@ -52,9 +62,15 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
     });
 
     if (!response.ok) {
+        // El cuerpo del engine puede traer trazas internas (rutas, SQL,
+        // hostnames): se registra en el servidor y al cliente solo se le da
+        // el status, nunca el detalle crudo.
         const detail = await response.text().catch(() => response.statusText);
+        console.error(
+            `[exportJournal] research engine respondió ${response.status}: ${detail.slice(0, 500)}`,
+        );
         throw new AppError(
-            `Exportación falló (${response.status}): ${detail.slice(0, 300)}`,
+            `Exportación falló (${response.status})`,
             'RESEARCH_API_ERROR',
             response.status,
         );

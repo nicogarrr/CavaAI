@@ -14,8 +14,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, '..', 'lib', 'actions', 'export.actions.ts'), 'utf8');
 
 describe('exportJournal fija el destino de la petición', () => {
-    it('construye la URL con el constructor URL sobre BACKEND_URL', () => {
-        assert.match(src, /new URL\(`\/api\/export\/\$\{year\}`, BACKEND_URL\)/);
+    it('la ruta sale de un mapa de constantes: year solo actua de clave', () => {
+        assert.match(src, /const EXPORT_PATHS/);
+        assert.match(src, /const exportPath = EXPORT_PATHS\[year\]/);
+        assert.match(src, /new URL\(exportPath, BACKEND_URL\)/);
+        assert.doesNotMatch(src, /new URL\(`\/api\/export\/\$\{year\}`/);
     });
 
     it('no interpola valores en la URL del fetch por template literal', () => {
@@ -35,5 +38,11 @@ describe('exportJournal fija el destino de la petición', () => {
     it('mantiene year acotado a un entero razonable', () => {
         assert.match(src, /Number\.isInteger\(year\)/);
         assert.match(src, /year < 2000 \|\| year > 2100/);
+    });
+
+    it('el error publico es generico y el detalle crudo solo va al log', () => {
+        assert.doesNotMatch(src, /detail\.slice\(0, 300\)/);
+        assert.match(src, /console\.error\(/);
+        assert.match(src, /`Exportación falló \(\$\{response\.status\}\)`/);
     });
 });
