@@ -8,7 +8,7 @@ from app.models import Company, ExternalClaim, NewsEvent, ThesisChange, ThesisVe
 from app.schemas import ManualNewsResponse, NewsFeedItem, NewsIngestResponse
 from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.company_resolver import resolve_company
-from app.services.materiality_service import MaterialityService
+from app.services.materiality_service import MaterialityService, apply_recency_policy
 from app.services.review_alert_service import ReviewAlertService
 from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_graph_service import ThesisGraphService
@@ -58,6 +58,7 @@ class NewsService:
         source: str,
         url: str | None,
         ticker: str | None = None,
+        published_at: datetime | None = None,
     ) -> ManualNewsResponse:
         company = self._company_for_item(db, text, ticker)
         # Gate Jev (3): duplicate/noise con confianza >= 0.85 -> via ligera:
@@ -83,7 +84,7 @@ class NewsService:
                 )
         except Exception:  # noqa: BLE001 — Jev nunca rompe ingesta
             jev_light = False
-        assessment = self.materiality.assess_news(db, company, text, source, url)
+        assessment = self.materiality.assess_news(db, company, text, source, url, published_at=published_at)
         materiality_reasons = list(assessment.reasons)
         if jev_light_marker:
             materiality_reasons.append(jev_light_marker)
@@ -113,12 +114,19 @@ class NewsService:
                 and semantic_impact.affected_claim_ids
                 and materiality_score >= 7
             )
+        # La politica de recencia tambien cubre la urgencia derivada del
+        # impacto semantico: un filing antiguo nunca es urgente por recencia.
+        requires_update = apply_recency_policy(requires_update, published_at, materiality_reasons)
 
         summary = " ".join(text.strip().split())[:320]
         # Tipo de noticia con Jev (earnings/filing/macro/opinion): 1 llamada
         # best-effort (~$0.042/MTok in) guardada en metadata. Sin
         # TYPESAFE_API_KEY o ante error, la noticia se ingiere sin `jev_doc_type`.
-        news_metadata: dict = {}
+        news_metadata: dict = {
+            # Procedencia de la fecha: sin published_at la UI no debe dar la
+            # fecha de ingesta como si fuera la de la fuente.
+            "date_source": "source" if published_at else "ingested_at_fallback",
+        }
         try:
             from app.services.jev_triage_service import (
                 classify_doc_type_sync,
@@ -132,7 +140,11 @@ class NewsService:
             pass
         news = NewsEvent(
             company_id=company.id if company else None,
-            date=datetime.now(UTC),
+            # La fecha del evento es la de publicacion de la fuente (filing,
+            # noticia), no la de ingesta: con la de ingesta, una tanda de
+            # filings de 2025 aparecia como "100 eventos de hoy" y las
+            # urgencias por recencia se disparaban sobre historia antigua.
+            date=published_at or datetime.now(UTC),
             title=summary[:180],
             source=source,
             url=url,
@@ -259,6 +271,7 @@ class NewsService:
                     source=item.source or default_source,
                     url=item.url,
                     ticker=item.ticker,
+                    published_at=item.published_at,
                 )
             )
 
