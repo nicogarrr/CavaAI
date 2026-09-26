@@ -415,6 +415,51 @@ class _RejectedClient:
         raise _httpx.HTTPStatusError("400 Bad Request", request=request, response=response)
 
 
+class _ThrottledClient:
+    """429 del proveedor: pidio esperar. No entregado, pero enfria."""
+
+    calls: list[str] = []
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def post(self, url, json):
+        import httpx as _httpx
+
+        type(self).calls.append(url)
+        request = _httpx.Request("POST", url, json=json)
+        response = _httpx.Response(429, request=request, headers={"Retry-After": "30"})
+        raise _httpx.HTTPStatusError("429 Too Many Requests", request=request, response=response)
+
+
+class _ConnectErrorClient:
+    """La conexion nunca se establecio: inequivoco, no salio nada."""
+
+    calls: list[str] = []
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def post(self, url, json):
+        import httpx as _httpx
+
+        type(self).calls.append(url)
+        request = _httpx.Request("POST", url, json=json)
+        raise _httpx.ConnectError("connection refused", request=request)
+
+
 def test_timeout_is_ambiguous_and_not_retried_immediately(monkeypatch, db):
     """Timeout tras posible aceptacion remota: 'unknown', sin reintento
     inmediato (reintentar duplicaria si el proveedor ya entrego)."""
@@ -446,8 +491,10 @@ def test_timeout_is_ambiguous_and_not_retried_immediately(monkeypatch, db):
     assert deliveries["email"]["status"] == "unknown"  # sigue fallando el stub
 
 
-def test_4xx_rejection_is_unambiguous_and_retried_immediately(monkeypatch, db):
-    """4xx: el proveedor respondio que no lo entrega; reintento seguro."""
+def test_4xx_rejection_is_permanent_and_never_retried(monkeypatch, db):
+    """4xx (!= 429): el proveedor RECHAZO el mensaje tal cual. Reintentar el
+    mismo cuerpo solo repite el rechazo: 'failed' es terminal, ni el retry
+    inmediato ni el reconciliador lo reclaman jamas."""
     _RejectedClient.calls = []
     monkeypatch.setattr(notification_service.httpx, "Client", _RejectedClient)
     monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
@@ -457,6 +504,119 @@ def test_4xx_rejection_is_unambiguous_and_retried_immediately(monkeypatch, db):
     assert deliveries["email"]["status"] == "failed"
     assert deliveries["email"]["error"] == "HTTPStatusError"
 
-    # Retry inmediato: reclamable (inequivoco), vuelve a intentar.
+    # Retry inmediato: NO reclama (permanente).
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["status"] == "failed"
+    assert _RejectedClient.calls.count("https://hooks.example/email") == 1
+
+    # Ni tras expirar el TTL ni via reconciliador.
+    db.execute(
+        update(AlertDelivery)
+        .where(AlertDelivery.alert_id == alert.id, AlertDelivery.channel == "email")
+        .values(
+            updated_at=datetime.now(UTC) - timedelta(seconds=STALE_CLAIM_SECONDS + 5)
+        )
+    )
+    db.commit()
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["status"] == "failed"
+    stats = NotificationService().reconcile_stale_deliveries(db)
+    assert stats["candidates"] == 0
+    assert _RejectedClient.calls.count("https://hooks.example/email") == 1
+
+
+def test_connect_error_retries_immediately(monkeypatch, db):
+    """ConnectError: la conexion nunca se establecio (inequivoco). La fila
+    queda 'pending' y el retry inmediato reintenta sin cooldown."""
+    _ConnectErrorClient.calls = []
+    monkeypatch.setattr(notification_service.httpx, "Client", _ConnectErrorClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    alert = _alert(db, ["email"])
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["status"] == "pending"
+    assert deliveries["email"]["error"] == "ConnectError"
+
     NotificationService().dispatch(db, alert)
-    assert _RejectedClient.calls.count("https://hooks.example/email") == 2
+    assert _ConnectErrorClient.calls.count("https://hooks.example/email") == 2
+
+
+def test_429_throttled_cools_down_and_reconciles(monkeypatch, db):
+    """429: no entregado, pero el reintento inmediato solo empeora el rate
+    limit. Enfria como 'sending'; vuelve via reconciliador tras el TTL."""
+    _ThrottledClient.calls = []
+    monkeypatch.setattr(notification_service.httpx, "Client", _ThrottledClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    alert = _alert(db, ["email"])
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["status"] == "throttled"
+    assert deliveries["email"]["error"] == "HTTPStatusError"
+
+    # Retry inmediato: NO reclama (enfriando).
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["status"] == "throttled"
+    assert _ThrottledClient.calls.count("https://hooks.example/email") == 1
+
+    # Reconciliador tras el TTL: si reintenta.
+    db.execute(
+        update(AlertDelivery)
+        .where(AlertDelivery.alert_id == alert.id, AlertDelivery.channel == "email")
+        .values(
+            updated_at=datetime.now(UTC) - timedelta(seconds=STALE_CLAIM_SECONDS + 5)
+        )
+    )
+    db.commit()
+    stats = NotificationService().reconcile_stale_deliveries(db)
+    assert stats["candidates"] == 1
+    assert stats["redispatched"] == 1
+    assert _ThrottledClient.calls.count("https://hooks.example/email") == 2
+
+
+def test_reconciler_skips_fresh_rows_and_redispatches_stale_unknown(monkeypatch, db):
+    """El reconciliador solo toca claims expirados: filas 'unknown' frescas
+    (aun enfriando) y entregadas quedan intactas."""
+    _TimeoutClient.calls = []
+    monkeypatch.setattr(notification_service.httpx, "Client", _TimeoutClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    stale_alert = _alert(db, ["email"])
+    NotificationService().dispatch(db, stale_alert)
+    company2 = Company(
+        ticker="MSFT", name="Microsoft", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company2)
+    db.flush()
+    fresh_alert = ResearchAlert(
+        company_id=company2.id, alert_type="price_above", severity="high",
+        title="MSFT: price_above > 400", message="MSFT rule matched: observed=410",
+        fingerprint="fp-test-2", channels=["email"], metadata_={},
+    )
+    db.add(fresh_alert)
+    db.commit()
+    NotificationService().dispatch(db, fresh_alert)
+
+    # Solo la primera envejece mas alla del TTL.
+    db.execute(
+        update(AlertDelivery)
+        .where(AlertDelivery.alert_id == stale_alert.id)
+        .values(
+            updated_at=datetime.now(UTC) - timedelta(seconds=STALE_CLAIM_SECONDS + 5)
+        )
+    )
+    db.commit()
+
+    stats = NotificationService().reconcile_stale_deliveries(db)
+    assert stats["candidates"] == 1
+    assert stats["redispatched"] == 1
+    # 1 envio inicial por alerta + 1 reintento reconciliado = 3 totales.
+    assert _TimeoutClient.calls.count("https://hooks.example/email") == 3
+
+    # La fila fresca sigue 'unknown' y no fue reclamada.
+    fresh_row = db.execute(
+        select(AlertDelivery).where(AlertDelivery.alert_id == fresh_alert.id)
+    ).scalar_one()
+    assert fresh_row.status == "unknown"
+    assert fresh_row.attempts == 1

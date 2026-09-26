@@ -148,8 +148,10 @@ class _RateLimitedClient:
 
 
 def test_telegram_429_fails_honestly_without_retry_storm(monkeypatch):
-    """429 → failed honesto: el servicio no reintenta (sin backoff en el
-    fuente) y persiste solo la clase de error, nunca el token ni el body."""
+    """429 → 'throttled' honesto: el servicio no reintenta en caliente (sin
+    backoff en el fuente; la fila enfria y solo vuelve via reconciliador por
+    claim expirado) y persiste solo la clase de error, nunca el token ni el
+    body."""
     _RateLimitedClient.attempts = 0
     monkeypatch.setattr(notification_service.httpx, "Client", _RateLimitedClient)
     monkeypatch.setattr(
@@ -167,7 +169,7 @@ def test_telegram_429_fails_honestly_without_retry_storm(monkeypatch):
     result = _service_with_stubbed_outbox().dispatch(_FakeDB(), _alert(["telegram"]))
 
     delivery = result["telegram"]
-    assert delivery["status"] == "failed"
+    assert delivery["status"] == "throttled"
     assert delivery["error"] == "HTTPStatusError"
     assert _RateLimitedClient.attempts == 1
     assert "rotated-test-token" not in str(result)

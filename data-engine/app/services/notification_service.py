@@ -70,17 +70,81 @@ class NotificationService:
         db.refresh(alert)
         return deliveries
 
+    def reconcile_stale_deliveries(
+        self,
+        db: Session,
+        *,
+        tenant_id: int | None = None,
+        limit: int = 100,
+    ) -> dict:
+        """Re-despacha entregas atascadas cuyo claim ya expiro.
+
+        Sin este barrido, una fila 'sending'/'unknown'/'throttled' solo se
+        reintenta si el emisor original vuelve a invocar dispatch para ESA
+        alerta; el TTL solo ayuda si alguien re-entra. Es el cierre del
+        residual at-least-once documentado: si el envio original llego, la
+        reconciliacion puede repetir ESE canal una vez pasado el TTL.
+        """
+        cutoff = datetime.now(UTC) - timedelta(seconds=STALE_CLAIM_SECONDS)
+        statement = (
+            select(AlertDelivery.alert_id)
+            .where(
+                AlertDelivery.status.in_(("sending", "unknown", "throttled")),
+                AlertDelivery.updated_at < cutoff,
+            )
+            .distinct()
+            .limit(limit)
+        )
+        if tenant_id is not None:
+            statement = statement.where(AlertDelivery.tenant_id == tenant_id)
+        alert_ids = list(db.execute(statement).scalars())
+        redispatched = 0
+        errors: list[str] = []
+        for alert_id in alert_ids:
+            alert = db.get(ResearchAlert, alert_id)
+            if alert is None:
+                continue
+            try:
+                self.dispatch(db, alert)
+                redispatched += 1
+            except Exception:  # noqa: BLE001 - una alerta rota no frena el barrido
+                db.rollback()
+                errors.append(f"alert_id={alert_id}")
+        return {
+            "candidates": len(alert_ids),
+            "redispatched": redispatched,
+            "errors": errors,
+        }
+
     @staticmethod
     def _classify_send_error(exc: Exception) -> str:
-        """Inequivoco ('failed', reintento inmediato seguro) o ambiguo
-        ('unknown': reconciliar por claim expirado, NUNCA reintento
-        inmediato - el proveedor pudo aceptar y entregar)."""
+        """Clasifica el resultado de un envio fallido.
+
+        - 'pending' (ConnectError): la conexion nunca se establecio, no salio
+          nada. Reintento inmediato seguro (inequivoco).
+        - 'failed' (4xx distinto de 429): el proveedor RECHAZO el mensaje tal
+          cual. Permanente: NUNCA se reclama de nuevo (reintentar el mismo
+          cuerpo solo repite el rechazo).
+        - 'throttled' (429): el proveedor pidio esperar. No es ambiguo (no se
+          entrego), pero el reintento inmediato solo empeora el rate limit:
+          enfria como 'sending' y vuelve via reconciliador. Retry-After no se
+          persiste (sin columna dedicada); el cooldown fijo STALE_CLAIM_SECONDS
+          cubre los valores habituales y, si el proveedor insiste, la
+          reconciliacion vuelve a enfriar (backoff natural acotado por TTL).
+        - 'unknown' (timeout/5xx/otros): ambiguo por definicion - el proveedor
+          pudo aceptar y entregar. NUNCA reintento inmediato; reconciliar por
+          claim expirado.
+        """
         if isinstance(exc, httpx.HTTPStatusError):
-            # 4xx (incl. 429): el proveedor respondio que NO lo entrega.
-            return "failed" if exc.response.status_code < 500 else "unknown"
+            status_code = exc.response.status_code
+            if status_code == 429:
+                return "throttled"
+            if status_code < 500:
+                return "failed"
+            return "unknown"
         if isinstance(exc, httpx.ConnectError):
             # La conexion nunca se establecio: no salio nada.
-            return "failed"
+            return "pending"
         # Timeout, corte a mitad de respuesta, etc.: ambiguo por definicion.
         return "unknown"
 
@@ -151,18 +215,21 @@ class NotificationService:
                 AlertDelivery.alert_id == alert.id,
                 AlertDelivery.channel == channel,
                 or_(
-                    # Inequivocos: nunca salio nada (pending), conexion no
-                    # establecida o rechazo 4xx (failed). Reintento seguro.
-                    AlertDelivery.status.in_(("pending", "failed")),
-                    # Ambiguos: 'sending' (commit fallido o worker muerto) y
+                    # Inequivoco inmediato: nunca salio nada (pending inicial
+                    # o ConnectError). Reintento seguro.
+                    AlertDelivery.status == "pending",
+                    # Enfriados: 'sending' (commit fallido o worker muerto),
                     # 'unknown' (timeout/5xx: el proveedor pudo aceptar y
-                    # entregar). NUNCA reintento inmediato: solo reconciliacion
-                    # por claim expirado. Sin idempotency key del proveedor no
-                    # existe exactly-once.
+                    # entregar) y 'throttled' (429: pidio esperar). NUNCA
+                    # reintento inmediato: solo reconciliacion por claim
+                    # expirado. Sin idempotency key del proveedor no existe
+                    # exactly-once.
                     and_(
-                        AlertDelivery.status.in_(("sending", "unknown")),
+                        AlertDelivery.status.in_(("sending", "unknown", "throttled")),
                         AlertDelivery.updated_at < stale_before,
                     ),
+                    # 'failed' (4xx != 429: rechazo permanente), 'delivered' y
+                    # 'not_configured' NO son elegibles nunca.
                 )
             )
             .values(status="sending", attempts=AlertDelivery.attempts + 1, last_error=None)
