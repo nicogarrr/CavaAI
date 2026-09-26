@@ -39,10 +39,20 @@ _SECRET_QUERY_RE = re.compile(
     r"(?i)\b(token|apikey|api_key|api-key|access_token|secret_key|signature|sig)=([^&\s\"'<>]+)"
 )
 
+# Credenciales en userinfo de URL (esquema://usuario:password@host): un DSN
+# de Redis o Postgres lleva la password ahi, y el traceback de un fallo de
+# conexion a cache/broker la muestra entera. El usuario se conserva porque
+# no es secreto y ayuda a correlacionar.
+_USERINFO_RE = re.compile(
+    r"(?i)(\b[a-z][a-z0-9+.-]*://[^/\s:@]+):([^@\s/]+)@"
+)
+
 
 def redact_secrets(text: str) -> str:
-    """Sustituye el valor de los parametros de credencial por REDACTED."""
-    return _SECRET_QUERY_RE.sub(r"\1=REDACTED", text)
+    """Redacta credenciales: pares de query y userinfo de URL."""
+    return _SECRET_QUERY_RE.sub(
+        r"\1=REDACTED", _USERINFO_RE.sub(r"\1:REDACTED@", text)
+    )
 
 
 def safe_detail(exc: Exception, status_code: int) -> str:
@@ -64,4 +74,3 @@ def safe_detail(exc: Exception, status_code: int) -> str:
     )
     base = _STATUS_DEFAULTS.get(status_code, "Request failed")
     return f"{base} (ref: {ref})"
-
