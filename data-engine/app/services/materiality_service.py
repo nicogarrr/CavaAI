@@ -47,7 +47,8 @@ def apply_recency_policy(
     moment = published_at if published_at.tzinfo is not None else published_at.replace(tzinfo=UTC)
     age = datetime.now(UTC) - moment
     if age > RECENT_URGENCY_WINDOW:
-        reasons.append(f"historical_event age={age.days}d => urgencia por recencia suprimida")
+        if not any(r.startswith("historical_event") for r in reasons):
+            reasons.append(f"historical_event age={age.days}d => urgencia por recencia suprimida")
         return False
     return requires_update
 
