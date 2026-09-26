@@ -583,6 +583,23 @@ class PortfolioIntelligenceService:
         with_contribution = 0
         for position, company in rows:
             ledger = by_company.get(company.id, [])
+            if not ledger:
+                # Sin registro de transacciones no hay reconstrucción posible:
+                # contribution = end_value - 0 - 0 + 0 sería el valor íntegro
+                # de la posición presentado como ganancia. Nulo honesto.
+                reasons["missing_ledger"] += 1
+                positions_out.append(
+                    {
+                        "ticker": company.ticker,
+                        "contribution_pnl": None,
+                        "end_value": float(position.market_value_base or 0),
+                        "start_value": None,
+                        "net_invested": None,
+                        "income": None,
+                        "reason": "missing_ledger",
+                    }
+                )
+                continue
             qty_at_cutoff = 0.0
             buys = 0.0
             sells = 0.0

@@ -164,3 +164,15 @@ def test_multi_position_shares_sum_to_one(db):
     assert shares[0] == pytest.approx(1.5)  # signed share: winner > 100%
     assert shares[1] == pytest.approx(-0.5)
     assert sum(shares) == pytest.approx(1.0)
+
+
+def test_position_without_ledger_is_honest_null(db):
+    """Sin transacciones no hay reconstrucción: P&L = valor íntegro es mentira."""
+    company = _company(db, "NOLEDGER")
+    _position(db, company, qty=10, price=1770.20)
+    result = PortfolioIntelligenceService()._ledger_contribution(db, [(db.query(Position).one(), company)], CUTOFF)
+    assert result["positions"][0]["contribution_pnl"] is None
+    assert result["positions"][0]["reason"] == "missing_ledger"
+    assert result["total_pnl"] is None
+    assert result["coverage"]["with_contribution"] == 0
+    assert result["coverage"]["reasons"] == {"missing_ledger": 1}
