@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Inbox, Loader2, RefreshCw } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
@@ -107,7 +108,7 @@ export function RecordList({
     const visibleColumns = pickColumns(records, columns);
 
     return (
-        <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
+        <Card className="rounded-lg border border-gray-700">
             <CardHeader className="flex flex-col gap-3 border-b border-gray-700/50 pb-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div className="flex items-center gap-3">
                     {icon}
@@ -133,15 +134,11 @@ export function RecordList({
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Cargando...
                     </div>
                 ) : records.length === 0 ? (
-                    <div className="py-10 text-center text-gray-500">
-                        <Inbox className="mx-auto mb-3 h-10 w-10 text-gray-600" />
-                        <p className="text-sm">{emptyMessage}</p>
-                        {emptyAction ? <div className="mt-4 flex justify-center">{emptyAction}</div> : null}
-                    </div>
+                    <EmptyState action={emptyAction} icon={Inbox} title={emptyMessage} />
                 ) : visibleColumns.length === 0 ? (
                     <div className="space-y-2">
                         {records.map((record, index) => (
-                            <pre key={index} className="overflow-x-auto rounded border border-gray-700/50 bg-gray-900/50 p-3 text-xs text-gray-400">
+                            <pre key={index} className="overflow-x-auto rounded border border-gray-700/50 bg-surface-0/50 p-3 text-xs text-gray-400">
                                 {JSON.stringify(record, null, 2)}
                             </pre>
                         ))}
@@ -249,7 +246,7 @@ export function RecordDetail({
         : [];
 
     return (
-        <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
+        <Card className="rounded-lg border border-gray-700">
             <CardHeader className="flex flex-col gap-3 border-b border-gray-700/50 pb-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div className="flex items-center gap-3">
                     {icon}
@@ -275,15 +272,11 @@ export function RecordDetail({
             </CardHeader>
             <CardContent className="pt-4">
                 {!data || entries.length === 0 ? (
-                    <div className="py-10 text-center text-gray-500">
-                        <Inbox className="mx-auto mb-3 h-10 w-10 text-gray-600" />
-                        <p className="text-sm">{emptyMessage}</p>
-                        {emptyAction ? <div className="mt-4 flex justify-center">{emptyAction}</div> : null}
-                    </div>
+                    <EmptyState action={emptyAction} icon={Inbox} title={emptyMessage} />
                 ) : (
                     <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-gray-700/50 bg-gray-700/40 sm:grid-cols-2">
                         {entries.map(([key, value]) => (
-                            <div key={key} className="flex flex-col gap-1 bg-gray-900/60 p-3">
+                            <div key={key} className="flex flex-col gap-1 bg-surface-0/60 p-3">
                                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{key}</span>
                                 <span className="break-words text-sm text-gray-200">
                                     <span className="line-clamp-4">{formatRecordValue(value)}</span>

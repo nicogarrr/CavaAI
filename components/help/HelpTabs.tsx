@@ -89,7 +89,7 @@ export default function HelpTabs() {
   const [activeTab, setActiveTab] = useState<'faq' | 'api' | 'community'>('faq');
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
+    <main id="content" tabIndex={-1} className="mx-auto w-full max-w-4xl px-4 py-12">
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold text-gray-100 mb-4">Centro de Ayuda</h1>
         <p className="text-xl text-gray-200 mb-4">
@@ -264,6 +264,7 @@ export default function HelpTabs() {
           </div>
         </section>
       )}
-    </div>
+    </main>
   );
 }
+

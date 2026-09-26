@@ -8,14 +8,24 @@ import {
   BookOpen,
   Briefcase,
   Building2,
+  CircleHelp,
+  Download,
+  FileSearch,
   Filter,
   Gauge,
   Home,
+  Library,
+  Lightbulb,
+  LineChart,
+  Newspaper,
   Receipt,
+  Settings,
+  Share2,
   Sparkles,
   Star,
   Target,
   TrendingUp,
+  Workflow,
   Landmark,
     Users,
 } from 'lucide-react';
@@ -55,165 +65,137 @@ export const SYMBOL_VALIDATION = {
   PATTERN: /^[A-Z0-9.-]+$/, // Solo letras mayúsculas, números, puntos y guiones
 } as const;
 
-// Headers de seguridad
-export const SECURITY_HEADERS = {
-  'X-DNS-Prefetch-Control': 'on',
-  'X-Frame-Options': 'SAMEORIGIN',
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
-} as const;
-
-// Configuración de logging
-export const LOG_LEVELS = {
-  ERROR: 'error',
-  WARN: 'warn',
-  INFO: 'info',
-  DEBUG: 'debug',
-} as const;
-
-// Mensajes de error comunes
+// Mensajes de error comunes. En espanol: los de AUTH_* los muestra el usuario
+// en /sign-in y /sign-up a traves de las server actions, y una app es-ES no
+// puede mostrar "Authentication failed" en el formulario de acceso.
 export const ERROR_MESSAGES = {
-  AUTH_FAILED: 'Authentication failed. Please check your credentials.',
-  AUTH_UNAVAILABLE: 'Authentication service is temporarily unavailable. Please try again later.',
-  INVALID_SYMBOL: 'Invalid symbol format. Symbols must be 1-10 characters and contain only letters, numbers, dots, and hyphens.',
-  MISSING_API_KEY: 'API key not configured. Please check your environment variables.',
-  RATE_LIMIT_EXCEEDED: 'Rate limit exceeded. Please try again later.',
-  DATABASE_ERROR: 'Database connection failed. Please try again later.',
-  EXTERNAL_API_ERROR: 'Failed to fetch data from external service.',
-  NOT_FOUND: 'Resource not found.',
-  VALIDATION_ERROR: 'Invalid input data.',
+  AUTH_FAILED: 'No se pudo iniciar sesión. Revisa tu correo y tu contraseña.',
+  AUTH_UNAVAILABLE: 'El servicio de autenticación no está disponible ahora mismo. Inténtalo de nuevo en unos minutos.',
+  INVALID_SYMBOL: 'Símbolo con formato no válido. Debe tener entre 1 y 10 caracteres y solo letras, números, puntos y guiones.',
+  MISSING_API_KEY: 'Falta la clave de API. Revisa tus variables de entorno.',
+  RATE_LIMIT_EXCEEDED: 'Has superado el límite de peticiones. Inténtalo de nuevo en unos minutos.',
+  DATABASE_ERROR: 'No se pudo conectar con la base de datos. Inténtalo de nuevo.',
+  EXTERNAL_API_ERROR: 'No se pudieron obtener los datos del servicio externo.',
+  NOT_FOUND: 'No se encontró el recurso solicitado.',
+  VALIDATION_ERROR: 'Los datos introducidos no son válidos.',
 } as const;
 
 // Etiquetas en espanol, alineadas con el titulo (H1) de cada pagina.
-// Menu agrupado por secciones (aprobado por Nico 2026-09-23, revisado
-// 2026-09-25): Cartera es un árbol (cartera + exposiciones + intelligence),
-// Análisis no duplica Inicio, Movers/Insider/13F son señales accionables,
-// Corp. es conciliación de cartera y Exportar vive en cada objeto.
-// "Buscar" vive fijo en la cabecera (Ctrl+K) y "Seguridad" en el menu del
-// avatar, asi que no se repiten aqui; /search y /security siguen existiendo.
-export const NAV_SECTIONS = [
+//
+// Estructura de ARBOL, no de lista plana con prefijos: `children` crea la
+// indentacion real y hace que "Cartera" agrupe sus cuatro vistas en vez de
+// repetir "Cartera · " en cada etiqueta. Un href solo debe aparecer una vez:
+// `Sidebar`, `NavItems` y `Breadcrumbs` leen de aqui, y las paginas huerfanas
+// se descubren comparando las rutas del app/ con esta lista.
+export type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  children?: NavItem[];
+};
+
+export type NavSection = {
+  title: string;
+  items: NavItem[];
+};
+
+export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Principal',
+    items: [{ href: '/', label: 'Inicio', icon: Home }],
+  },
+  {
+    title: 'Cartera',
     items: [
-      { href: '/', label: 'Inicio', icon: Home },
-      { href: '/portfolio', label: 'Cartera', icon: Briefcase },
-      { href: '/portfolio/intelligence', label: 'Cartera · Inteligencia', icon: Sparkles },
-      { href: '/risk', label: 'Cartera · Exposiciones', icon: Gauge },
-      { href: '/propicks', label: 'ProPicks', icon: Sparkles },
+      { href: '/portfolio', label: 'Resumen', icon: Briefcase },
+      { href: '/portfolio/intelligence', label: 'Inteligencia', icon: Sparkles },
+      { href: '/risk', label: 'Exposiciones', icon: Gauge },
+      { href: '/taxes', label: 'Impuestos', icon: Receipt },
+      { href: '/corporate-actions', label: 'Acciones corp.', icon: Building2 },
     ],
   },
   {
-    title: 'Señales',
+    title: 'Analisis',
+    items: [
+      {
+        href: '/research',
+        label: 'Research',
+        icon: FileSearch,
+        children: [
+          { href: '/research/news', label: 'Noticias', icon: Newspaper },
+          { href: '/research/sources', label: 'Fuentes', icon: Library },
+          { href: '/research/workflows', label: 'Workflows', icon: Workflow },
+          { href: '/research/settings', label: 'Ajustes', icon: Settings },
+        ],
+      },
+      {
+        href: '/screeners',
+        label: 'Screeners',
+        icon: Filter,
+        children: [{ href: '/screener', label: 'Vista de mercado', icon: LineChart }],
+      },
+      {
+        href: '/knowledge',
+        label: 'Conocimiento',
+        icon: BookOpen,
+        children: [{ href: '/knowledge-graph', label: 'Grafo', icon: Share2 }],
+      },
+    ],
+  },
+  {
+    title: 'Senales',
     items: [
       { href: '/watchlist', label: 'Watchlist', icon: Star },
-      { href: '/movers', label: 'Señales · Movers', icon: TrendingUp },
-      { href: '/insider', label: 'Señales · Insider', icon: Users },
-      { href: '/ownership', label: 'Señales · 13F', icon: Landmark },
+      { href: '/movers', label: 'Movers', icon: TrendingUp },
+      { href: '/insider', label: 'Insider', icon: Users },
+      { href: '/ownership', label: '13F', icon: Landmark },
       { href: '/alerts', label: 'Alertas', icon: Bell },
-      { href: '/screeners', label: 'Screeners', icon: Filter },
+      { href: '/propicks', label: 'ProPicks', icon: Lightbulb },
     ],
   },
   {
     title: 'Mi plan',
     items: [
       { href: '/plan', label: 'Plan', icon: Target },
-      { href: '/taxes', label: 'Impuestos', icon: Receipt },
-      { href: '/corporate-actions', label: 'Cartera · Acciones corp.', icon: Building2 },
+      { href: '/export', label: 'Exportar', icon: Download },
     ],
   },
   {
     title: 'Sistema',
-    items: [
-      { href: '/knowledge', label: 'Conocimiento', icon: BookOpen },
-    ],
+    // /security vive en el menu del avatar y /screener como hijo de Screeners.
+    items: [{ href: '/help', label: 'Ayuda', icon: CircleHelp }],
   },
 ];
 
-// Lista plana derivada, por compatibilidad con consumidores existentes.
-export const NAV_ITEMS: ReadonlyArray<{ href: string; label: string; icon: LucideIcon }> =
-  NAV_SECTIONS.reduce<Array<{ href: string; label: string; icon: LucideIcon }>>(
-    (acc, section) => acc.concat(section.items),
-    [],
+/** Aplana el arbol a una lista de rutas, para buscar un href puntual. */
+export function flattenNavItems(sections: NavSection[] = NAV_SECTIONS): NavItem[] {
+  return sections.flatMap((section) =>
+    section.items.flatMap((item) => (item.children ? [item, ...item.children] : [item])),
   );
+}
 
-// TradingView eliminado (P1): 0 usos verificados. Reintroducir bajo feature flag si vuelve.
-export const MARKET_DATA_WIDGET_CONFIG = {
-  colorTheme: "dark",
-  width: "100%",
-  height: 46,
-  showFloatingTooltip: true,
-  symbolType: "stock",
-  locale: "es",
-  isTransparent: true,
-  largeChartUrl: "",
-  showSymbolLogo: true,
-  symbols: [
-    { title: "S&P 500", proName: "FOREXCOM:SPXUSD" },
-    { title: "Nasdaq 100", proName: "FOREXCOM:NSXUSD" },
-    { title: "EUR/USD", proName: "FX_IDC:EURUSD" },
-    { title: "BTC/USD", proName: "BITSTAMP:BTCUSD" },
-    { title: "Gold", proName: "OANDA:XAUUSD" }
-  ]
-} as const;
+/**
+ * Un href esta activo si es el mas largo que coincide con la ruta: con
+ * `pathname.startsWith(href)` a secas, /portfolio/intelligence encendia
+ * "Cartera" y "Cartera · Intelligence" a la vez.
+ */
+export function isNavItemActive(pathname: string, href: string): boolean {
+  if (href === '/') return pathname === '/';
+  if (pathname === href) return true;
+  if (!pathname.startsWith(`${href}/`)) return false;
+  // Un ancestro no se ilumina si existe un destino mas especifico que tambien
+  // coincide: en /portfolio/intelligence solo se enciende "Inteligencia".
+  const hasMoreSpecificMatch = flattenNavItems().some(
+    (item) =>
+      item.href !== href && (pathname === item.href || pathname.startsWith(`${item.href}/`)),
+  );
+  return !hasMoreSpecificMatch;
+}
 
-export const MARKET_OVERVIEW_WIDGET_CONFIG = {
-  colorTheme: "dark",
-  width: "100%",
-  height: 400,
-  locale: "es",
-  isTransparent: true,
-  showSymbolLogo: true,
-  dateRange: "12M",
-  plotLineColorGrowing: "rgba(41, 98, 255, 1)",
-  plotLineColorFalling: "rgba(255, 82, 82, 1)",
-  gridLineColor: "rgba(42, 46, 57, 0)",
-  scaleFontColor: "rgba(134, 137, 147, 1)",
-  belowLineFillColorGrowing: "rgba(41, 98, 255, 0.12)",
-  belowLineFillColorFalling: "rgba(255, 82, 82, 0.12)",
-  tabs: [
-    {
-      title: "Índices",
-      symbols: [
-        { s: "FOREXCOM:SPXUSD", d: "S&P 500" },
-        { s: "FOREXCOM:NSXUSD", d: "Nasdaq 100" },
-        { s: "FOREXCOM:DJI", d: "Dow 30" },
-        { s: "INDEX:IBEX35", d: "IBEX 35" }
-      ]
-    },
-    {
-      title: "Forex",
-      symbols: [
-        { s: "FX:EURUSD", d: "EUR/USD" },
-        { s: "FX:GBPUSD", d: "GBP/USD" },
-        { s: "FX:USDJPY", d: "USD/JPY" }
-      ]
-    },
-    {
-      title: "Criptos",
-      symbols: [
-        { s: "BITSTAMP:BTCUSD", d: "Bitcoin" },
-        { s: "BITSTAMP:ETHUSD", d: "Ethereum" },
-        { s: "BINANCE:SOLUSD", d: "Solana" }
-      ]
-    }
-  ]
-} as const;
-
-export const NEWS_SYMBOLS = [
-  "NASDAQ:AAPL",
-  "NASDAQ:MSFT",
-  "NASDAQ:GOOGL",
-  "NASDAQ:AMZN",
-  "NASDAQ:NVDA",
-  "NASDAQ:META",
-  "NASDAQ:TSLA",
-  "NYSE:JPM",
-  "NYSE:V",
-  "NYSE:JNJ"
-] as const;
+/** Encabezado de seccion visible solo si la seccion aporta mas de un destino. */
+export function showsNavSectionTitle(section: NavSection): boolean {
+  return section.items.length > 1;
+}
 
 export const POPULAR_STOCK_SYMBOLS = [
   "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
@@ -248,8 +230,6 @@ export const PREFERRED_INDUSTRIES = [
   { value: "industrial", label: "Industrial" },
   { value: "real_estate", label: "Inmobiliario" },
   { value: "materials", label: "Materiales" },
-  { value: "utilities", label: "Utilities" },
+  { value: "utilities", label: "Servicios públicos" },
   { value: "communication", label: "Comunicación" }
 ] as const;
-
-// Widgets TradingView eliminados (P1): ver nota arriba.

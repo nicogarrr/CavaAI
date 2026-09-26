@@ -26,28 +26,35 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
     return (
         <main className="auth-layout">
             <section className="auth-left-section scrollbar-hide-default">
-                <Link href="/" className="auth-logo flex items-center gap-2">
-                    <CavaAIWordmark />
-                </Link>
+                {/* Tope de ancho: sin el, en pantallas ultrawide (2560px) el
+                    formulario se estiraba a ~1150px y las lineas de texto
+                    ilegibles. */}
+                <div className="mx-auto flex w-full max-w-md flex-col">
+                    <Link href="/" className="auth-logo flex items-center gap-2">
+                        <CavaAIWordmark />
+                    </Link>
 
-                <div className="pb-6 lg:pb-8 flex-1">
-                    {children}
+                    <div className="flex-1 pb-6 lg:pb-8">
+                        {children}
+                    </div>
                 </div>
             </section>
             <section className="auth-right-section">
-                <div className="z-10 relative lg:mt-4 lg:mb-16">
+                <div className="lg:mt-4 lg:mb-16">
                     <blockquote className="auth-blockquote">
                         &ldquo;CavaAI convierte evidencia, memoria y modelos company-specific en una tesis que puedes contrastar con la realidad.&rdquo;
                     </blockquote>
                     <div className="flex items-center justify-end">
                         <div className="flex items-center gap-0.5">
                             {[1,2,3,4,5].map((star) => (
-                                <Star aria-hidden="true" className="h-4 w-4 fill-slate-300 text-slate-300" key={star}/>
+                                <Star aria-hidden="true" className="h-4 w-4 fill-teal-400 text-teal-400" key={star}/>
                             ))}
                         </div>
                     </div>
                 </div>
-                <div className="flex-1 rounded-2xl border border-slate-800 bg-slate-950/70 p-6 shadow-2xl shadow-teal-950/20">
+                {/* Escala gray del tema, no slate: hasta ahora esta pantalla era
+                    la unica con dos grises distintos (slate + gray) a la vez. */}
+                <div className="flex-1 rounded-xl border border-gray-700/50 bg-surface-overlay p-6 shadow-2xl shadow-teal-950/20">
                     <div className="mb-6 flex items-start justify-between gap-4">
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300">Espacio de trabajo de la empresa</p>
@@ -57,11 +64,11 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
                     </div>
                     <div className="grid gap-3">
                         {productModules.map(({icon: ItemIcon, title, description}) => (
-                                <div className="flex gap-4 rounded-xl border border-slate-800 bg-slate-900/70 p-4" key={title}>
+                                <div className="flex gap-4 rounded-lg border border-gray-700/50 bg-gray-800/50 p-4" key={title}>
                                     <ItemIcon aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-teal-300"/>
                                     <div>
-                                        <p className="font-medium text-slate-100">{title}</p>
-                                        <p className="mt-1 text-sm leading-6 text-slate-400">{description}</p>
+                                        <p className="font-medium text-gray-100">{title}</p>
+                                        <p className="mt-1 text-sm leading-6 text-gray-400">{description}</p>
                                     </div>
                                 </div>
                         ))}
