@@ -91,7 +91,12 @@ class BudgetController:
         }
 
     def can_spend(self, db: Session, estimated_cost_eur: float) -> bool:
-        usage = self.current_usage(db)
+        # Decision consciente de contexto: con tenant, el tope es por tenant
+        # (un tenant no puede agotar el de los demas). Sin contexto de tenant
+        # (sesiones anonimas, scripts admin, tests de servicio), el tope actua
+        # como cortacircuitos GLOBAL del despliegue: es el contexto admin y se
+        # pide explicitamente.
+        usage = self.current_usage(db, admin=db.info.get("tenant_id") is None)
         return (
             usage["daily_cost_eur"] + estimated_cost_eur <= self.settings.llm_daily_cap_eur
             and usage["monthly_cost_eur"] + estimated_cost_eur <= self.settings.llm_monthly_cap_eur
