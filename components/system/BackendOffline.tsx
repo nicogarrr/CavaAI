@@ -31,11 +31,11 @@ export default function BackendOffline({ feature, retryHref }: Props) {
       </p>
       <Button asChild className="min-h-[44px] px-6">
         <Link href={retryHref}>
-          <RefreshCcw className="h-4 w-4" />
+          <RefreshCcw aria-hidden="true" className="h-4 w-4" />
           Reintentar
         </Link>
       </Button>
-      <p className="text-xs text-gray-600">
+      <p className="text-xs text-gray-500">
         Si el problema persiste, el backend local no está en marcha.
       </p>
     </main>

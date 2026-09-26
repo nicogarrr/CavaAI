@@ -2,7 +2,7 @@
 
 import { formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
@@ -71,9 +71,10 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
           size="sm"
           onClick={handleRefresh}
           disabled={refreshing || currentHoldings.length === 0}
+          aria-busy={refreshing}
           className="h-11 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white sm:h-8"
         >
-          <RefreshCw className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
+          <RefreshCw aria-hidden="true" className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
           Actualizar Precios
         </Button>
       </CardHeader>
@@ -103,11 +104,12 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                         size="sm"
                         onClick={() => handleDelete(holding.symbol)}
                         disabled={deleting === holding.symbol}
+                        aria-busy={deleting === holding.symbol}
                         className="min-h-[44px] min-w-[44px] text-red-400 hover:text-red-300 hover:bg-red-950/20"
                         title="Eliminar posición completa"
                         aria-label={`Eliminar posición en ${holding.symbol}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
                       </Button>
                     </div>
                     <dl className="mt-3 space-y-1.5 text-sm">
@@ -145,7 +147,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                               {holding.holdingDays !== null ? ` · ${holding.holdingDays}d` : ''}
                             </Badge>
                           ) : (
-                            <span className="text-xs text-gray-600">{NA}</span>
+                            <span className="text-xs text-gray-500">{NA}</span>
                           )}
                         </dd>
                       </div>
@@ -156,7 +158,8 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
             </div>
             {/* Escritorio: tabla completa */}
             <div className="hidden overflow-x-auto md:block">
-            <Table>
+            <Table regionLabel="Posiciones de la cartera">
+              <TableCaption className="sr-only">Posiciones abiertas de la cartera: símbolo, cantidad, precio medio, precio actual, valor, ganancia o pérdida y régimen fiscal.</TableCaption>
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-gray-700">
                   <TableHead className="text-gray-400">Símbolo</TableHead>
@@ -230,7 +233,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                             )}
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-600" title="Sin historial de compra registrado">
+                          <span className="text-xs text-gray-500" title="Sin historial de compra registrado">
                             {NA}
                           </span>
                         )}
@@ -241,10 +244,14 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                           size="icon"
                           onClick={() => handleDelete(holding.symbol)}
                           disabled={deleting === holding.symbol}
+                          aria-busy={deleting === holding.symbol}
                           className="text-red-400 hover:text-red-300 hover:bg-red-950/20"
                           title="Eliminar posición completa"
+                          // `title` no se expone de forma fiable en tactil ni en
+                          // varios lectores: el nombre accesible va en aria-label.
+                          aria-label={`Eliminar ${holding.symbol} de la cartera`}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 aria-hidden="true" className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>

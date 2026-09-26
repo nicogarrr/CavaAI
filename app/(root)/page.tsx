@@ -19,13 +19,18 @@ async function getUserId(): Promise<string> {
 
 function DashboardSkeleton() {
     return (
-        <div className="space-y-8" role="status" aria-live="polite" aria-label="Cargando dashboard">
+        <div className="space-y-8">
+            {/* Una region live presente en el primer render nunca se anuncia: el
+                texto va en un nodo sr-only y el esqueleto queda aria-hidden. */}
+            <span className="sr-only">Cargando…</span>
+            <div aria-hidden="true">
             <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
                 {[1, 2, 3, 4, 5].map((i) => (
                     <StockCardSkeleton key={i} />
                 ))}
             </div>
             <ChartLoadingSkeleton />
+            </div>
         </div>
     );
 }

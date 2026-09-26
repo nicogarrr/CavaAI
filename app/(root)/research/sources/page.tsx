@@ -24,7 +24,7 @@ export default async function ResearchSourcesPage() {
         <div>
           <Button asChild className="mb-4" size="sm" variant="ghost">
             <Link href="/research">
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Research
             </Link>
           </Button>
@@ -43,7 +43,7 @@ export default async function ResearchSourcesPage() {
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <MutationForm action={importResearchSource} className="rounded-lg border border-gray-800 bg-[#111111] p-5" resetOnSuccess successMessage="Fuente importada">
           <div className="mb-4 flex items-center gap-2">
-            <UploadCloud className="h-5 w-5 text-teal-300" />
+            <UploadCloud aria-hidden="true" className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Importar fuente manual</h2>
           </div>
           <div className="grid gap-3">
@@ -74,7 +74,7 @@ export default async function ResearchSourcesPage() {
               />
             </div>
             <Button className="w-full sm:w-fit" type="submit">
-              <UploadCloud className="h-4 w-4" />
+              <UploadCloud aria-hidden="true" className="h-4 w-4" />
               Importar fuente
             </Button>
           </div>
@@ -83,7 +83,7 @@ export default async function ResearchSourcesPage() {
         <section className="grid gap-6">
           <MutationForm action={importResearchDocumentFile} className="rounded-lg border border-gray-800 bg-[#111111] p-5" resetOnSuccess successMessage="Documento importado">
             <div className="mb-4 flex items-center gap-2">
-              <UploadCloud className="h-5 w-5 text-teal-300" />
+              <UploadCloud aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="text-lg font-semibold text-gray-100">Subir documento</h2>
             </div>
             <div className="grid gap-3">
@@ -108,15 +108,15 @@ export default async function ResearchSourcesPage() {
                 <Input accept=".txt,.md,.html,.htm,.pdf,.docx,.xlsx,.csv,.tsv" id="file" name="file" required type="file" />
               </div>
               <Button className="w-full sm:w-fit" type="submit">
-                <UploadCloud className="h-4 w-4" />
-                Subir documento
+              <UploadCloud aria-hidden="true" className="h-4 w-4" />
+              Subir documento
               </Button>
             </div>
           </MutationForm>
 
           <MutationForm action={importResearchDocumentUrl} className="rounded-lg border border-gray-800 bg-[#111111] p-5" resetOnSuccess successMessage="URL importada">
             <div className="mb-4 flex items-center gap-2">
-              <FileText className="h-5 w-5 text-teal-300" />
+              <FileText aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="text-lg font-semibold text-gray-100">Ingerir desde URL</h2>
             </div>
             <div className="grid gap-3">
@@ -137,8 +137,8 @@ export default async function ResearchSourcesPage() {
                 <Input id="url" name="url" placeholder="https://..." required type="url" />
               </div>
               <Button className="w-full sm:w-fit" type="submit" variant="outline">
-                <UploadCloud className="h-4 w-4" />
-                Ingerir URL
+              <UploadCloud aria-hidden="true" className="h-4 w-4" />
+              Ingerir URL
               </Button>
             </div>
           </MutationForm>
@@ -146,7 +146,7 @@ export default async function ResearchSourcesPage() {
 
         <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
           <div className="mb-4 flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-teal-300" />
+            <ShieldCheck aria-hidden="true" className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Auditorías de fuentes</h2>
           </div>
           <div className="grid gap-3">
@@ -180,25 +180,26 @@ export default async function ResearchSourcesPage() {
 
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
-          <FileText className="h-5 w-5 text-teal-300" />
+          <FileText aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Documentos</h2>
         </div>
-        <div className="overflow-x-auto">
+        <div aria-label="Documentos importados" className="overflow-x-auto" role="region" tabIndex={0}>
           <table className="w-full min-w-[820px] text-left text-sm">
+            <caption className="sr-only">Documentos, transcripts y auditorías que alimentan la evidencia, con fuente, nivel y fecha de publicación</caption>
             <thead className="text-xs uppercase text-gray-500">
               <tr>
-                <th className="border-b border-gray-800 py-2">Ticker</th>
-                <th className="border-b border-gray-800 py-2">Título</th>
-                <th className="border-b border-gray-800 py-2">Fuente</th>
-                <th className="border-b border-gray-800 py-2">Nivel</th>
-                <th className="border-b border-gray-800 py-2">Publicado</th>
-                <th className="border-b border-gray-800 py-2">URL</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Ticker</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Título</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Fuente</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Nivel</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Publicado</th>
+                <th className="border-b border-gray-800 py-2" scope="col">URL</th>
               </tr>
             </thead>
             <tbody>
               {documents.map((document) => (
                 <tr key={document.id} className="border-b border-gray-900 last:border-0">
-                  <td className="py-3 font-semibold text-gray-200">{document.ticker ?? 'GLOBAL'}</td>
+                  <th className="py-3 text-left text-sm font-semibold text-gray-200" scope="row">{document.ticker ?? 'GLOBAL'}</th>
                   <td className="py-3 text-gray-300">{document.title}</td>
                   <td className="py-3 text-gray-400">{document.source_type}</td>
                   <td className="py-3 text-gray-400">{document.source_tier}</td>
@@ -218,7 +219,7 @@ export default async function ResearchSourcesPage() {
                 <tr>
                   <td className="py-6 text-center text-gray-500" colSpan={6}>
                     <p>Sin documentos importados.</p>
-                    <span className="mt-2 block text-xs text-gray-600">
+                    <span className="mt-2 block text-xs text-gray-500">
                       Usa los formularios de arriba para subir tu primer documento o ingerir una URL.
                     </span>
                   </td>

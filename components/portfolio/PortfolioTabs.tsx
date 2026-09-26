@@ -81,17 +81,17 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                 <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
                         <div className="h-10 w-10 shrink-0 rounded-xl bg-gradient-to-br from-teal-500 to-blue-600 flex items-center justify-center">
-                            <Wallet className="h-5 w-5 text-white" />
+                            <Wallet aria-hidden="true" className="h-5 w-5 text-white" />
                         </div>
                         <div className="min-w-0">
                             <h1 className="text-xl font-bold text-gray-100 sm:text-2xl">Mi Cartera</h1>
                             <p className="text-sm text-gray-500">Seguimiento de tus inversiones</p>
-                            <p className="mt-0.5 text-xs text-gray-600">Precios con ~15 min de retardo durante el horario de mercado (Yahoo Finance)</p>
+                            <p className="mt-0.5 text-xs text-gray-500">Precios con ~15 min de retardo durante el horario de mercado (Yahoo Finance)</p>
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
                         <Link className="inline-flex min-h-[44px] col-span-2 items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2.5 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300 sm:col-span-1 sm:min-h-0 sm:h-9 sm:w-auto" href="/portfolio/intelligence">
-                            <Activity className="h-4 w-4" /> {t('portfolio.tabs.intelligence')}
+                            <Activity aria-hidden="true" className="h-4 w-4" /> {t('portfolio.tabs.intelligence')}
                         </Link>
                         <RefreshPortfolioButton userId={userId} />
                                             <ImportIBKRButton userId={userId} />
@@ -107,41 +107,43 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
 
                 {/* Tabs Navigation */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+                {/* Con teclado no hay barra de scroll: la region enfocable deja las
+                    pestañas alcanzables con las flechas (WCAG 2.1.1). */}
+                <div role="region" aria-label="Secciones de la cartera" tabIndex={0} className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
                     <TabsList className="bg-[#0a0a0a] border border-gray-800 p-1 rounded-xl mb-6 flex w-max max-w-none gap-1">
                     <TabsTrigger
                         value="resumen"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <LayoutDashboard className="h-4 w-4" />
+                        <LayoutDashboard aria-hidden="true" className="h-4 w-4" />
                         Resumen
                     </TabsTrigger>
                     <TabsTrigger
                         value="posiciones"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <Briefcase className="h-4 w-4" />
+                        <Briefcase aria-hidden="true" className="h-4 w-4" />
                         Posiciones
                     </TabsTrigger>
                     <TabsTrigger
                         value="movimientos"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <History className="h-4 w-4" />
+                        <History aria-hidden="true" className="h-4 w-4" />
                         Movimientos
                     </TabsTrigger>
                     <TabsTrigger
                         value="estrategia"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <Brain className="h-4 w-4" />
+                        <Brain aria-hidden="true" className="h-4 w-4" />
                         Factores
                     </TabsTrigger>
                     <TabsTrigger
                         value="riesgo"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <ShieldAlert className="h-4 w-4" />
+                        <ShieldAlert aria-hidden="true" className="h-4 w-4" />
                         Riesgo
                     </TabsTrigger>
                 </TabsList>
@@ -186,7 +188,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                                     </p>
                                 ) : (
                                 <p className={`text-sm flex items-center gap-1 ${summary.totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {summary.totalGain >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                                    {summary.totalGain >= 0 ? <TrendingUp aria-hidden="true" className="h-4 w-4" /> : <TrendingDown aria-hidden="true" className="h-4 w-4" />}
                                     {formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                                     <span className="text-gray-500">
                                         ({formatMoney(summary.totalGain, summary.baseCurrency, { signDisplay: 'auto' })})
