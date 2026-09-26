@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getPortfolioSummary, getPortfolioTransactions, getPortfolioScores, getPortfolioTearsheet } from '@/lib/actions/portfolio.actions';
 import PortfolioTabs from '@/components/portfolio/PortfolioTabs';
@@ -8,6 +9,12 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 // Forzar renderizado dinámico
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+export const metadata: Metadata = {
+  title: 'Tu cartera',
+  description:
+    'Posiciones, movimientos, factores de calidad y tearsheet de tu cartera, con base de coste y tipos de cambio por transacción.',
+};
 
 export default async function PortfolioPage() {
   let userId: string;

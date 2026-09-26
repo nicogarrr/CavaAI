@@ -1,13 +1,23 @@
+import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+
 import PersonalizedOverview from '@/components/PersonalizedOverview';
 import NewsSection from '@/components/NewsSection';
-import { ChartLoadingSkeleton, NewsLoadingSkeleton, StockCardSkeleton } from '@/components/LoadingState';
-import { redirect } from 'next/navigation';
+import { NewsLoadingSkeleton } from '@/components/LoadingState';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 // Forzar renderizado dinámico porque requiere datos de usuario
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+// La home es la raíz ("/"): el template de app/layout.tsx ("%s | CavaAI")
+// repetiría la marca, así que el título va absoluto.
+export const metadata: Metadata = {
+    title: { absolute: 'CavaAI · Research OS de inversión' },
+    description:
+        'Qué ha cambiado en tus posiciones, valor de cartera, alertas disparadas, watchlist y oportunidades por valor intrínseco.',
+};
 
 async function getUserId(): Promise<string> {
     try {
@@ -17,32 +27,22 @@ async function getUserId(): Promise<string> {
     }
 }
 
-function DashboardSkeleton() {
-    return (
-        <div className="space-y-8">
-            {/* Una region live presente en el primer render nunca se anuncia: el
-                texto va en un nodo sr-only y el esqueleto queda aria-hidden. */}
-            <span className="sr-only">Cargando…</span>
-            <div aria-hidden="true">
-            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
-                {[1, 2, 3, 4, 5].map((i) => (
-                    <StockCardSkeleton key={i} />
-                ))}
-            </div>
-            <ChartLoadingSkeleton />
-            </div>
-        </div>
-    );
-}
-
 export default async function Home() {
     const userId = await getUserId();
 
     return (
         <main id="content" tabIndex={-1} className="flex w-full max-w-full min-w-0 flex-col gap-6 overflow-x-clip p-4 sm:gap-8 sm:p-6">
-            <Suspense fallback={<DashboardSkeleton />}>
-                <PersonalizedOverview userId={userId} />
-            </Suspense>
+            {/*
+                PersonalizedOverview no lleva <Suspense>: es un client component
+                que pinta sus propios esqueletos, así que el fallback de servidor
+                era código muerto (nunca se veía) y retrasaba el LCP. El único
+                estado de carga de esta página es, por tanto, el de las secciones.
+
+                NewsSection sí es un server component async: su <Suspense> es
+                real y deja que las noticias lleguen por streaming al final del
+                scroll, sin bloquear el resto del dashboard.
+            */}
+            <PersonalizedOverview userId={userId} />
             <Suspense fallback={<NewsLoadingSkeleton />}>
                 <NewsSection />
             </Suspense>
