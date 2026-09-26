@@ -185,9 +185,8 @@ export default async function ResearchSourcesPage() {
         </div>
         {documentsTotal > documents.length ? (
           <p className="mb-4 text-sm text-gray-500">
-            Mostrando los {formatNumber(documents.length, { maximumFractionDigits: 0 })} mas recientes de{' '}
-            {formatNumber(documentsTotal, { maximumFractionDigits: 0 })}. El resto esta en la ficha de cada
-            compania (vista Documentos).
+            Mostrando los {formatNumber(documents.length, { maximumFractionDigits: 0 })} más recientes de{' '}
+            {formatNumber(documentsTotal, { maximumFractionDigits: 0 })}.
           </p>
         ) : null}
         <div aria-label="Documentos importados" className="overflow-x-auto" role="region" tabIndex={0}>
