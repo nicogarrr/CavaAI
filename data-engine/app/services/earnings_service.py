@@ -5,6 +5,7 @@ from decimal import Decimal
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.models import (
     CallClaim,
     Company,
@@ -230,7 +231,7 @@ class EarningsWorkflowService:
             except Exception as exc:
                 valuation_trace = {
                     "status": "failed",
-                    "error": str(exc),
+                    "error": redact_secrets(str(exc)),
                 }
 
             new_thesis_id = None
@@ -246,7 +247,7 @@ class EarningsWorkflowService:
                 except Exception as exc:
                     run.trace = {
                         **run.trace,
-                        "thesis_generation_error": str(exc),
+                        "thesis_generation_error": redact_secrets(str(exc)),
                     }
 
             run.status = "completed"
@@ -277,7 +278,7 @@ class EarningsWorkflowService:
             return run
         except Exception as exc:
             run.status = "failed"
-            run.error = str(exc)
+            run.error = redact_secrets(str(exc))
             run.trace = {
                 **(run.trace or {}),
                 "failed_at": datetime.now(UTC).isoformat(),
