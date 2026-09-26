@@ -520,6 +520,17 @@ def test_safe_detail_never_returns_exception_text(caplog):
     assert "hunter2" in caplog.text
 
 
+def test_safe_detail_redacts_vendor_keys_in_server_log(caplog):
+    # httpx mete la URL completa (con la key del servidor) en el texto de la
+    # excepcion: el log tampoco puede guardarla.
+    exc = RuntimeError("GET https://finnhub.io/api/v1/quote?symbol=AAPL&token=secrettoken123 failed")
+    with caplog.at_level(logging.ERROR, logger="cavaai.request_errors"):
+        detail = safe_detail(exc, 500)
+    assert "secrettoken123" not in detail
+    assert "secrettoken123" not in caplog.text
+    assert "token=REDACTED" in caplog.text
+
+
 # ---------------------------------------------------------------------------
 # P2-7 — sin fallback NEXT_PUBLIC_FINNHUB_API_KEY en server actions
 # ---------------------------------------------------------------------------

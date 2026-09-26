@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import traceback
 import uuid
 
 logger = logging.getLogger("cavaai.request_errors")
@@ -52,13 +53,16 @@ def safe_detail(exc: Exception, status_code: int) -> str:
     directly.
     """
     ref = uuid.uuid4().hex[:12]
+    # El log tampoco es un sitio seguro: el texto de la excepcion y el
+    # traceback llevan la URL del proveedor con su key (httpx la incluye en
+    # el mensaje de HTTPStatusError). Se loguea el traceback formateado y
+    # REDACTED, nunca exc_info=exc en crudo.
     logger.error(
-        "request_error ref=%s status=%s type=%s: %s",
+        "request_error ref=%s status=%s type=%s\n%s",
         ref,
         status_code,
         type(exc).__name__,
-        exc,
-        exc_info=exc,
+        redact_secrets("".join(traceback.format_exception(type(exc), exc, exc.__traceback__))),
     )
     base = _STATUS_DEFAULTS.get(status_code, "Request failed")
     return f"{base} (ref: {ref})"
