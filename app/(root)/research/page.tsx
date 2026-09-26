@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, FileSearch, Library, Newspaper, Settings, Workflow } from 'lucide-react';
 
-import { getResearchCompanySnapshot, getResearchDashboard } from '@/lib/actions/research.actions';
+import { getResearchCompanySnapshots, getResearchDashboard } from '@/lib/actions/research.actions';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import WorkProductButton from '@/components/work-products/WorkProductButton';
@@ -25,7 +25,8 @@ export const metadata: Metadata = {
 /**
  * El registro de empresas (`/api/companies`) solo trae la ficha de la empresa,
  * así que el rating y la fecha de la última tesis salen de su snapshot. Se
- * piden en paralelo (uno por empresa) y con tope: por encima de este número se
+ * piden en UNA llamada batch (`/api/companies/snapshots?tickers=...`, queries
+ * agregadas por IN en el backend) y con tope: por encima de este número se
  * listan todas las empresas pero solo las primeras llevan detalle de tesis, y
  * se dice en pantalla en lugar de cortar en silencio.
  */
@@ -92,7 +93,7 @@ const TOOLS = [
 
 type Dashboard = Awaited<ReturnType<typeof getResearchDashboard>>;
 type Company = Dashboard['companies'][number];
-type CompanySnapshot = Awaited<ReturnType<typeof getResearchCompanySnapshot>>;
+type CompanySnapshot = Awaited<ReturnType<typeof getResearchCompanySnapshots>>['snapshots'][string];
 
 type CompanyRow = {
     company: Company;
@@ -180,22 +181,29 @@ export default async function ResearchPage() {
 
     // Orden estable por ticker: el índice no debe reordenar solo entre renders.
     const ordered = [...companies].sort((left, right) => left.ticker.localeCompare(right.ticker, 'es'));
-    const rows: CompanyRow[] = await Promise.all(
-        ordered.map(async (company, index): Promise<CompanyRow> => {
-            if (index >= THESIS_DETAIL_LIMIT) {
-                // Se listan todas las empresas del registro; pasado el tope, la
-                // ficha se abre sin pedir su snapshot en esta visita.
-                return { company, snapshot: null, unreadable: false, pendiente: true };
-            }
-            try {
-                return { company, snapshot: await getResearchCompanySnapshot(company.ticker), unreadable: false, pendiente: false };
-            } catch {
-                // Un snapshot que falla no puede tirar el índice entero: la
-                // empresa se lista igual y se marca como no leída.
-                return { company, snapshot: null, unreadable: true, pendiente: false };
-            }
-        }),
-    );
+    const detailed = ordered.slice(0, THESIS_DETAIL_LIMIT);
+    let snapshots: Awaited<ReturnType<typeof getResearchCompanySnapshots>> | null = null;
+    try {
+        if (detailed.length) {
+            snapshots = await getResearchCompanySnapshots(detailed.map((company) => company.ticker));
+        }
+    } catch {
+        // La llamada batch que falla no puede tirar el índice entero: las
+        // empresas se listan igual y sus tarjetas se marcan como no leídas.
+        snapshots = null;
+    }
+    const missing = new Set(snapshots?.missing ?? []);
+    const rows: CompanyRow[] = ordered.map((company, index): CompanyRow => {
+        if (index >= THESIS_DETAIL_LIMIT) {
+            // Se listan todas las empresas del registro; pasado el tope, la
+            // ficha se abre sin pedir su snapshot en esta visita.
+            return { company, snapshot: null, unreadable: false, pendiente: true };
+        }
+        if (snapshots === null || missing.has(company.ticker)) {
+            return { company, snapshot: null, unreadable: true, pendiente: false };
+        }
+        return { company, snapshot: snapshots.snapshots[company.ticker] ?? null, unreadable: false, pendiente: false };
+    });
     const pendingCount = rows.filter((row) => row.pendiente).length;
 
     return (

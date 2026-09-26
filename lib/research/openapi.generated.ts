@@ -274,6 +274,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Snapshots Batch
+         * @description Snapshots de varias empresas en UNA llamada (indice de research).
+         *
+         *     Sustituye el fan-out de ~40 GET /{ticker}/snapshot por visita del
+         *     indice: las queries van agregadas por IN(company_ids) (~13 para todo
+         *     el lote, no 5 por empresa). Limites honestos: maximo
+         *     MAX_SNAPSHOT_BATCH_TICKERS tickers por llamada (400 por encima); los
+         *     tickers sin company en el registro vuelven en ``missing`` y NUNCA se
+         *     fabrican snapshots vacios para ellos.
+         */
+        get: operations["company_snapshots_batch_api_companies_snapshots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{ticker}": {
         parameters: {
             query?: never;
@@ -3673,6 +3700,22 @@ export interface components {
             research_health: components["schemas"]["ResearchHealthOut"];
             valuation_summary: components["schemas"]["SnapshotValuationSummaryOut"];
         };
+        /**
+         * CompanySnapshotsBatchOut
+         * @description Respuesta del snapshot por lote del indice de research.
+         *
+         *     ``snapshots`` va keyed por ticker de la Company resuelta; ``missing``
+         *     lista los tickers pedidos sin company en el registro (nunca se
+         *     fabrican snapshots vacios para ellos).
+         */
+        CompanySnapshotsBatchOut: {
+            /** Missing */
+            missing?: string[];
+            /** Snapshots */
+            snapshots: {
+                [key: string]: components["schemas"]["CompanySnapshotOut"];
+            };
+        };
         /** ContradictionScanRequest */
         ContradictionScanRequest: {
             /**
@@ -6097,6 +6140,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompanyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_snapshots_batch_api_companies_snapshots_get: {
+        parameters: {
+            query: {
+                tickers: string;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanySnapshotsBatchOut"];
                 };
             };
             /** @description Validation Error */

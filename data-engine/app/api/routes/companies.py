@@ -25,6 +25,7 @@ from app.schemas import (
     CompanyOut,
     CompanyKPIOut,
     CompanySnapshotOut,
+    CompanySnapshotsBatchOut,
     FinancialFactOut,
     FinancialRefreshResponse,
 )
@@ -60,6 +61,54 @@ from app.services.company_resolver import resolve_company
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+MAX_SNAPSHOT_BATCH_TICKERS = 50
+
+
+@router.get("/snapshots", response_model=CompanySnapshotsBatchOut)
+def company_snapshots_batch(
+    tickers: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+) -> CompanySnapshotsBatchOut:
+    """Snapshots de varias empresas en UNA llamada (indice de research).
+
+    Sustituye el fan-out de ~40 GET /{ticker}/snapshot por visita del
+    indice: las queries van agregadas por IN(company_ids) (~13 para todo
+    el lote, no 5 por empresa). Limites honestos: maximo
+    MAX_SNAPSHOT_BATCH_TICKERS tickers por llamada (400 por encima); los
+    tickers sin company en el registro vuelven en ``missing`` y NUNCA se
+    fabrican snapshots vacios para ellos.
+    """
+    requested: list[str] = []
+    seen: set[str] = set()
+    for raw in tickers.split(","):
+        normalized = raw.strip().upper()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            requested.append(normalized)
+    if len(requested) > MAX_SNAPSHOT_BATCH_TICKERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximo {MAX_SNAPSHOT_BATCH_TICKERS} tickers por llamada",
+        )
+    companies: list[Company] = []
+    resolved_ids: set[int] = set()
+    missing: list[str] = []
+    for normalized in requested:
+        company = resolve_company(db, normalized)
+        if company is None:
+            missing.append(normalized)
+            continue
+        if company.id in resolved_ids:
+            continue
+        resolved_ids.add(company.id)
+        companies.append(company)
+    snapshots = CompanySnapshotService().build_many(db, companies)
+    return CompanySnapshotsBatchOut(
+        snapshots={company.ticker: snapshots[company.id] for company in companies},
+        missing=missing,
+    )
 
 
 @router.get("/{ticker}/kpi-registry", response_model=list[CompanyKPIOut])

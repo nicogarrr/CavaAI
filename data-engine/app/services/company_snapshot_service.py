@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from sqlalchemy import desc, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import desc, func, inspect as sa_inspect, select
+from sqlalchemy.orm import Session, aliased
 
 from app.models import (
     CalculatedMetric,
@@ -55,6 +55,158 @@ class CompanySnapshotService:
             ).all()
         )
         counts = self._counts(db, company.id)
+        return self._assemble(company, thesis, model, valuation_model, recent_changes, counts)
+
+    def build_many(
+        self, db: Session, companies: list[Company]
+    ) -> dict[int, CompanySnapshotOut]:
+        """Snapshots de N empresas con queries agregadas (anti fan-out del indice).
+
+        El indice de research pedia un snapshot por empresa: 5 round trips x
+        40 empresas = ~200 queries contra Postgres y 40 llamadas HTTP por
+        visita. Aqui el ultimo thesis/modelo/valoracion por empresa sale con
+        row_number() particionado por company_id, los ultimos 10 cambios por
+        empresa con la misma ventana, y los 8 conteos agrupados con GROUP BY:
+        ~13 queries para TODO el lote, independientemente de N. El caller
+        acota el lote (MAX_SNAPSHOT_BATCH_TICKERS en la ruta); no hay
+        proyeccion parcial de columnas, se leen las filas completas igual
+        que en build().
+        """
+        if not companies:
+            return {}
+        # inspect().identity da la PK SIN consulta aunque la instancia venga
+        # expirada (leer .id re-SELECTaria una por una); las filas se
+        # refrescan en UNA query por IN.
+        company_ids = [
+            int(identity[0])
+            for company in companies
+            if (identity := sa_inspect(company).identity) is not None
+        ]
+        if not company_ids:
+            return {}
+        companies = db.scalars(
+            select(Company).where(Company.id.in_(company_ids))
+        ).all()
+        theses = self._latest_by_company(
+            db, ThesisVersion, company_ids, desc(ThesisVersion.version)
+        )
+        models = self._latest_by_company(
+            db, FundamentalModelVersion, company_ids, desc(FundamentalModelVersion.version)
+        )
+        valuations = self._latest_by_company(
+            db,
+            ValuationModel,
+            company_ids,
+            desc(ValuationModel.version),
+            desc(ValuationModel.created_at),
+        )
+        changes = self._recent_changes_many(db, company_ids)
+        counts = self._counts_many(db, company_ids)
+        return {
+            company.id: self._assemble(
+                company,
+                theses.get(company.id),
+                models.get(company.id),
+                valuations.get(company.id),
+                changes.get(company.id, []),
+                counts[company.id],
+            )
+            for company in companies
+        }
+
+    @staticmethod
+    def _latest_by_company(
+        db: Session, entity: type, company_ids: list[int], *order_by
+    ) -> dict[int, object]:
+        """La fila mas reciente por company_id en UNA query (window function)."""
+        ranked = (
+            select(
+                entity,
+                func.row_number()
+                .over(partition_by=entity.company_id, order_by=[*order_by])
+                .label("rank_"),
+            )
+            .where(entity.company_id.in_(company_ids))
+            .subquery()
+        )
+        aliased_entity = aliased(entity, ranked)
+        rows = db.scalars(select(aliased_entity).where(ranked.c.rank_ == 1)).all()
+        return {row.company_id: row for row in rows}
+
+    @staticmethod
+    def _recent_changes_many(
+        db: Session, company_ids: list[int], per_company: int = 10
+    ) -> dict[int, list[ThesisChange]]:
+        """Los ultimos ``per_company`` cambios de cada empresa en UNA query."""
+        ranked = (
+            select(
+                ThesisChange,
+                func.row_number()
+                .over(
+                    partition_by=ThesisChange.company_id,
+                    order_by=[desc(ThesisChange.created_at)],
+                )
+                .label("rank_"),
+            )
+            .where(ThesisChange.company_id.in_(company_ids))
+            .subquery()
+        )
+        aliased_change = aliased(ThesisChange, ranked)
+        rows = db.scalars(
+            select(aliased_change).where(ranked.c.rank_ <= per_company)
+        ).all()
+        grouped: dict[int, list[ThesisChange]] = {}
+        for row in rows:
+            grouped.setdefault(row.company_id, []).append(row)
+        return grouped
+
+    @staticmethod
+    def _counts_many(db: Session, company_ids: list[int]) -> dict[int, dict[str, int]]:
+        """Los 8 conteos por empresa: una query GROUP BY por tabla, no por empresa."""
+
+        def grouped(entity: type, *extra_where) -> dict[int, int]:
+            stmt = (
+                select(entity.company_id, func.count())
+                .where(entity.company_id.in_(company_ids), *extra_where)
+                .group_by(entity.company_id)
+            )
+            return {int(cid): int(n) for cid, n in db.execute(stmt).all()}
+
+        facts = grouped(FinancialFact)
+        calculated_metrics = grouped(CalculatedMetric)
+        documents = grouped(Document)
+        claims = grouped(Claim)
+        thesis_versions = grouped(ThesisVersion)
+        model_versions = grouped(FundamentalModelVersion)
+        open_reviews = grouped(
+            ResearchReview, ResearchReview.status.in_(["open", "in_progress"])
+        )
+        open_alerts = grouped(
+            ResearchAlert, ResearchAlert.status.in_(["open", "snoozed"])
+        )
+        return {
+            company_id: {
+                "facts": facts.get(company_id, 0),
+                "calculated_metrics": calculated_metrics.get(company_id, 0),
+                "documents": documents.get(company_id, 0),
+                "claims": claims.get(company_id, 0),
+                "thesis_versions": thesis_versions.get(company_id, 0),
+                "model_versions": model_versions.get(company_id, 0),
+                "open_reviews": open_reviews.get(company_id, 0),
+                "open_alerts": open_alerts.get(company_id, 0),
+            }
+            for company_id in company_ids
+        }
+
+    def _assemble(
+        self,
+        company: Company,
+        thesis: ThesisVersion | None,
+        model: FundamentalModelVersion | None,
+        valuation_model: ValuationModel | None,
+        recent_changes: list[ThesisChange],
+        counts: dict[str, int],
+    ) -> CompanySnapshotOut:
         missing: list[str] = []
         if counts["documents"] == 0:
             missing.append("documents")
