@@ -6,7 +6,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 import main
 from app.core import auth as auth_module
@@ -355,7 +355,24 @@ def test_financial_replacement_delete_is_tenant_scoped():
     scoped.info["user_id"] = f"user-a-{suffix}"
     company = scoped.get(Company, company_id)
     assert company is not None
-    FinancialIngestionService()._replace_sec_data(scoped, company)
+    # _replace_sec_data only deletes the facts of the document it is replacing,
+    # so the test needs one: the probe rows carry no source_id.
+    probe_doc = Document(
+        company_id=company_id, title=f"probe {suffix}", source_type="SEC"
+    )
+    scoped.add(probe_doc)
+    scoped.commit()
+    for tenant_id in (tenant_a_id, tenant_b_id):
+        scoped.execute(
+            update(FinancialFact)
+            .where(
+                FinancialFact.metric == f"tenant_delete_probe_{suffix}",
+                FinancialFact.tenant_id == tenant_id,
+            )
+            .values(source_id=probe_doc.id)
+        )
+    scoped.commit()
+    FinancialIngestionService()._replace_sec_data(scoped, company, probe_doc)
     scoped.commit()
     scoped.close()
 
