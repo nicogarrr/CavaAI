@@ -1,6 +1,7 @@
 import httpx
 
 from app.core.config import get_settings
+from app.services.connectors.base import get_with_retry
 
 
 class FMPClient:
@@ -11,6 +12,15 @@ class FMPClient:
     /stable API with ?symbol= query parameters. Provider/entitlement errors
     (e.g. 402 on endpoints outside the current plan) surface as exceptions so
     callers mark coverage unavailable instead of fabricating data.
+
+    429 y 5xx se reintentan con backoff y respetando Retry-After: el plan FREE
+    de FMP es 250 llamadas/DIA
+    (fuente: site.financialmodelingprep.com/developer/docs/pricing, consultada
+    2026-09-26) y una ingesta de un universo de 100 emisores con 4 endpoints
+    cada uno (400 llamadas) lo agota con facilidad; un 429 por cuota diaria no
+    se recupera dentro de la corrida y sale como UpstreamRateLimited. Antes un
+    429 era un fallo definitivo y el llamante marcaba la cobertura como no
+    disponible.
     """
 
     base_url = "https://financialmodelingprep.com/stable"
@@ -25,9 +35,9 @@ class FMPClient:
         if not self.configured():
             raise RuntimeError("FMP no está configurado en este despliegue (FMP_API_KEY vacía)")
         merged = {**(params or {}), "apikey": self.settings.fmp_api_key}
+        url = f"{self.base_url}{path}"
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(f"{self.base_url}{path}", params=merged)
-            response.raise_for_status()
+            response = await get_with_retry(lambda: client.get(url, params=merged))
             return response.json()
 
     async def company_profile(self, ticker: str) -> list | dict:

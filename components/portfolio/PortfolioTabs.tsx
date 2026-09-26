@@ -1,6 +1,7 @@
 'use client';
 
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatMoney, formatPercent } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -38,7 +39,7 @@ type Transaction = {
 type Props = {
     summary: PortfolioSummaryType;
     transactions: Transaction[];
-    scores: { quality: number; growth: number; value: number; dividend: number; cagr3y: number; history?: PortfolioPerformanceHistory };
+    scores: { quality: number | null; growth: number | null; value: number | null; dividend: number | null; cagr3y: number | null; history?: PortfolioPerformanceHistory };
     tearsheet: PortfolioTearsheetType | null;
     userId: string;
     partialMessage?: string | null;
@@ -54,7 +55,10 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
             const yearStart = new Date(latestDate.getFullYear(), 0, 1);
             const ytdPoints = Math.max(1, scores.history.dates.filter((date) => new Date(`${date}T00:00:00`) >= yearStart).length);
             const rows = scores.history.dates.map((date, index) => ({
-                date: new Date(`${date}T00:00:00`).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
+                // "YYYY-MM-DD" es un día de calendario: formatDate lo parsea en
+                // hora local y lo formatea en la zona del proceso, así que el
+                // eje sale igual en el servidor (UTC) y en el navegador.
+                date: formatDate(date, { day: '2-digit', month: 'short' }),
                 value: scores.history?.nav[index] ?? 0,
             }));
             const maxPoints: Record<string, number> = {
@@ -72,7 +76,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
         return [];
     }, [chartPeriod, scores.history]);
     return (
-        <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col overflow-x-clip p-4 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24">
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full max-w-[1600px] flex-col overflow-x-clip p-4 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24">
                 {/* Header */}
                 <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
@@ -87,7 +91,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                     </div>
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
                         <Link className="inline-flex min-h-[44px] col-span-2 items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2.5 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300 sm:col-span-1 sm:min-h-0 sm:h-9 sm:w-auto" href="/portfolio/intelligence">
-                            <Activity className="h-4 w-4" /> Intelligence
+                            <Activity className="h-4 w-4" /> {t('portfolio.tabs.intelligence')}
                         </Link>
                         <RefreshPortfolioButton userId={userId} />
                                             <ImportIBKRButton userId={userId} />
@@ -183,9 +187,9 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                                 ) : (
                                 <p className={`text-sm flex items-center gap-1 ${summary.totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                     {summary.totalGain >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                                    {summary.totalGain >= 0 ? '+' : ''}{summary.totalGainPercent.toFixed(2)}%
+                                    {formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                                     <span className="text-gray-500">
-                                        ({summary.totalGain >= 0 ? '+' : ''}{formatMoney(summary.totalGain, summary.baseCurrency)})
+                                        ({formatMoney(summary.totalGain, summary.baseCurrency, { signDisplay: 'auto' })})
                                     </span>
                                 </p>
                                 )}
@@ -240,6 +244,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
             </Tabs>
 
             <PortfolioChat userId={userId} />
-        </div>
+        </main>
     );
 }
+

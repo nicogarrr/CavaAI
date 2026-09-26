@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { searchResearchLibrary } from '@/lib/actions/research-tools.actions';
+import { formatDate, formatNumber, formatPercent } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -39,14 +41,14 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
   const searched = Boolean(query.q?.trim());
 
   return (
-    <main className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-6 overflow-x-clip">
+    <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-6 overflow-x-clip">
       <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase text-teal-300">Recuperación de research</p>
           <h1 className="mt-1 text-3xl font-bold text-gray-100">Búsqueda universal</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">Busca evidencia de empresas, hechos, afirmaciones, secciones de tesis, decisiones, lecciones y la biblioteca de inversión en un único conjunto de resultados ordenado.</p>
         </div>
-        <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge"><BookOpen className="h-4 w-4" />Biblioteca de conocimiento</Link></Button>
+        <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge"><BookOpen className="h-4 w-4" />{t('knowledge.library')}</Link></Button>
       </header>
 
       <form className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5" method="get">
@@ -72,7 +74,7 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
       {searched ? (
         <section className="grid min-w-0 grid-cols-1 gap-4">
           <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-gray-800 bg-[#101010] p-4 md:flex-row md:items-center">
-            <div><div className="text-sm font-semibold text-gray-100">{response.total} resultados para “{response.query}”</div><div className="mt-1 text-xs text-gray-500">Ordenado con fusión léxica/vectorial, jerarquía de fuentes y señales de estado canónico.</div></div>
+            <div><div className="text-sm font-semibold text-gray-100">{formatNumber(response.total, { maximumFractionDigits: 0 })} resultados para “{response.query}”</div><div className="mt-1 text-xs text-gray-500">Ordenado con fusión léxica/vectorial, jerarquía de fuentes y señales de estado canónico.</div></div>
             <div className="flex flex-wrap gap-2 md:ml-auto">
               {Object.entries(response.retrieval).filter(([, value]) => typeof value === 'string').map(([key, value]) => <Badge key={key} variant="outline">{key}: {String(value)}</Badge>)}
             </div>
@@ -86,7 +88,7 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
                   <div className="flex flex-wrap items-center gap-2"><Badge>{result.entity_type}</Badge>{result.ticker ? <Badge variant="outline">{result.ticker}</Badge> : null}<Badge variant="outline">{result.source_tier}</Badge><Badge variant="outline">{result.status}</Badge></div>
                   <h2 className="mt-3 break-words text-lg font-semibold text-gray-100">{result.title}</h2>
                   <p className="mt-2 line-clamp-5 whitespace-pre-wrap text-sm leading-6 text-gray-300">{result.text}</p>
-                  <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500"><span>{result.citation}</span><span>{result.collection ?? result.source_type}</span><span>{result.as_of ?? 'fecha no disponible'}</span><span>confianza {(result.source_trust * 100).toFixed(0)}%</span><span>posición {result.scores.reranker.toFixed(4)}</span></div>
+                  <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500"><span>{result.citation}</span><span>{result.collection ?? result.source_type}</span><span>{formatDate(result.as_of, undefined, t('research.notAvailable'))}</span><span>confianza {formatPercent(result.source_trust, { digits: 0 })}</span><span>posición {formatNumber(result.scores.reranker, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</span></div>
                 </div>
               </div>
             </article>

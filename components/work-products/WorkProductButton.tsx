@@ -57,7 +57,7 @@ export default function WorkProductButton() {
                 years: Math.min(50, Math.max(1, Number(years) || 10)),
             });
             setResult(generated);
-            toast.success('Work product generado');
+            toast.success('Entregable generado');
         } catch (error) {
             showErrorToast(error);
         } finally {

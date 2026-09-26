@@ -9,6 +9,7 @@ from app.workers.dramatiq_app import (
     consolidate_memory,
     dispatch_insider_alerts,
     evaluate_alert_rules,
+    reconcile_alert_deliveries,
     refresh_ir_pages,
     refresh_market_pipeline,
     refresh_news,
@@ -132,6 +133,15 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         job_id="contradiction_scan",
         hour="*",
         minute=20,
+    )
+    # Outbox de alertas: reconcilia claims expirados (sending/unknown/
+    # throttled) que nadie volvio a despachar.
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, reconcile_alert_deliveries),
+        "interval",
+        job_id="alert_delivery_reconcile",
+        minutes=10,
     )
     _register(
         scheduler,

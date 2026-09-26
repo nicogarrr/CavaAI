@@ -1101,6 +1101,34 @@ class ResearchAlert(TenantOwnedMixin, Base, TimestampMixin):
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 
+class AlertDelivery(TenantOwnedMixin, Base, TimestampMixin):
+    """Outbox de entrega por canal con claim atomico.
+
+    Una fila por (alerta, canal). El claim es un unico UPDATE ... WHERE
+    status elegible RETURNING: dos workers no pueden reclamar la misma
+    fila a la vez. Un commit fallido tras el envio deja la fila en
+    'sending' y un retry inmediato NO la reclama (no hay reenvio); solo
+    un claim expirado (> STALE_CLAIM_SECONDS) vuelve a ser elegible.
+    Resultados ambiguos ('unknown': timeout/5xx, el proveedor pudo
+    entregar) tampoco se reclaman de inmediato; los inequivocos
+    ('failed': conexion no establecida o rechazo 4xx) si.
+    """
+
+    __tablename__ = "alert_deliveries"
+    __table_args__ = (
+        UniqueConstraint("alert_id", "channel", name="uq_alert_delivery_channel"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alert_id: Mapped[int] = mapped_column(
+        ForeignKey("research_alerts.id", ondelete="CASCADE"), index=True
+    )
+    channel: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
 class AlertRule(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "alert_rules"
     __table_args__ = (
@@ -1872,7 +1900,9 @@ class DividendRecord(TenantOwnedMixin, Base, TimestampMixin):
 
     __tablename__ = "dividend_records"
     __table_args__ = (
-        UniqueConstraint("company_id", "ex_date", "amount", name="uq_dividend_record"),
+        UniqueConstraint(
+            "tenant_id", "company_id", "ex_date", "amount", name="uq_dividend_record_tenant"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -1893,7 +1923,7 @@ class FundManager(TenantOwnedMixin, Base, TimestampMixin):
     """
 
     __tablename__ = "fund_managers"
-    __table_args__ = (UniqueConstraint("cik", name="uq_fund_manager_cik"),)
+    __table_args__ = (UniqueConstraint("tenant_id", "cik", name="uq_fund_manager_tenant_cik"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     cik: Mapped[str] = mapped_column(String(10), index=True)

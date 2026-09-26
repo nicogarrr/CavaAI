@@ -15,14 +15,16 @@ import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
 import { MoatPanel } from '@/components/research/MoatPanel';
-import CollapsiblePanel from '@/components/research/CollapsiblePanel';
 import {
   DecisionAndRealityPanel,
   LongTermModelPanel,
 } from '@/components/research/FundamentalModelPanels';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { Panel } from '@/components/ui/panel';
+import { Stat } from '@/components/ui/stat';
 import { Textarea } from '@/components/ui/textarea';
 import {
   askResearchCompanyChat,
@@ -171,52 +173,6 @@ function metricValue(value: number | string | null | undefined, unit: string) {
   return formatCompact(parsed);
 }
 
-function Panel({ title, children, collapsibleOnMobile = false }: { title: string; children: React.ReactNode; collapsibleOnMobile?: boolean }) {
-  if (collapsibleOnMobile) {
-    return <CollapsiblePanel title={title}>{children}</CollapsiblePanel>;
-  }
-  return (
-    <section className="rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
-      <h2 className="text-lg font-semibold text-gray-100">{title}</h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
-/**
- * Estado vacío honesto con CTA: el usuario siempre tiene un primer paso
- * concreto (importar fuentes, generar el modelo, crear la tesis).
- */
-function Empty({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
-      <p>{children}</p>
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  );
-}
-
-/** Enlace-CTA estándar de los estados vacíos ("primer paso") */
-function EmptyLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      className="inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 transition hover:border-teal-600 hover:text-teal-200"
-      href={href}
-    >
-      {children}
-    </Link>
-  );
-}
-
-function Stat({ label: statLabel, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-gray-800 bg-[#101010] p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{statLabel}</div>
-      <div className="mt-2 text-2xl font-semibold text-gray-100">{value}</div>
-    </div>
-  );
-}
-
 function FactCard({ fact }: { fact: ResearchFact }) {
   return (
     <div className="rounded-lg border border-gray-800 p-3">
@@ -239,9 +195,10 @@ const FACTS_MOBILE_PAGE = 10;
 function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string }) {
   if (!facts.length) {
     return (
-      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa una fuente primaria</EmptyLink>}>
-        Todavía no hay hechos financieros persistidos.
-      </Empty>
+      <EmptyState
+        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa una fuente primaria</EmptyLink>}
+        title="Todavía no hay hechos financieros persistidos."
+      />
     );
   }
   return (
@@ -294,9 +251,10 @@ function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string })
 function MetricsGrid({ metrics, ticker }: { metrics: ResearchCalculatedMetric[]; ticker: string }) {
   if (!metrics.length) {
     return (
-      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade documentos y recalcula</EmptyLink>}>
-        Las métricas calculadas aún no se han refrescado.
-      </Empty>
+      <EmptyState
+        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade documentos y recalcula</EmptyLink>}
+        title="Las métricas calculadas aún no se han refrescado."
+      />
     );
   }
   return (
@@ -319,9 +277,10 @@ function MetricsGrid({ metrics, ticker }: { metrics: ResearchCalculatedMetric[];
 function ValuationView({ valuation, currency, ticker }: { valuation: ResearchValuation | null; currency: string; ticker: string }) {
   if (!valuation) {
     return (
-      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera primero el modelo a largo plazo</EmptyLink>}>
-        No hay ninguna valoración persistida.
-      </Empty>
+      <EmptyState
+        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera primero el modelo a largo plazo</EmptyLink>}
+        title="No hay ninguna valoración persistida."
+      />
     );
   }
   if (valuation.status === 'insufficient_data') {
@@ -359,9 +318,10 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
 function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel | null; ticker: string }) {
   if (!model || model.status === 'not_generated') {
     return (
-      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo a largo plazo</EmptyLink>}>
-        Genera el modelo a largo plazo antes de valorar la oportunidad de mercado.
-      </Empty>
+      <EmptyState
+        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo a largo plazo</EmptyLink>}
+        title="Genera el modelo a largo plazo antes de valorar la oportunidad de mercado."
+      />
     );
   }
   const opportunity = model.market_opportunity;
@@ -449,22 +409,17 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       throw error;
     }
     return (
-      <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
+      <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px] space-y-6">
           <Link className="inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Análisis</Link>
           <CompanyMarketPanel snapshot={market} />
-          <section className="rounded-xl border border-dashed border-gray-700 bg-[#111111] p-6 text-center">
-            <FileText className="mx-auto h-8 w-8 text-gray-600" />
-            <h1 className="mt-3 text-lg font-semibold text-gray-100">Research aún no generado</h1>
-            <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-gray-400">
-              Esta empresa todavía no tiene research generado. Puedes lanzarlo ahora: el motor
-              recopila evidencia con fuentes trazables y construye la tesis paso a paso
-              (puede tardar unos minutos).
-            </p>
-            <div className="mt-4 flex justify-center">
-              <ThesisGenerateButton ticker={ticker} />
-            </div>
-          </section>
+          <EmptyState
+            action={<ThesisGenerateButton ticker={ticker} />}
+            description="Esta empresa todavía no tiene research generado. Puedes lanzarlo ahora: el motor recopila evidencia con fuentes trazables y construye la tesis paso a paso (puede tardar unos minutos)."
+            icon={FileText}
+            title="Research aún no generado"
+            titleAs="h1"
+          />
         </div>
       </main>
     );
@@ -535,9 +490,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 </div>
               </>
             ) : (
-              <Empty action={<ThesisGenerateButton ticker={ticker} label="Genera la primera tesis" />}>
-                Aún no se ha generado ninguna tesis. Se genera en segundo plano y la página se actualiza sola al terminar.
-              </Empty>
+              <EmptyState
+                action={<ThesisGenerateButton ticker={ticker} label="Genera la primera tesis" />}
+                title="Aún no se ha generado ninguna tesis. Se genera en segundo plano y la página se actualiza sola al terminar."
+              />
             )}
           </Panel>
           <Panel title="Modelo fundamental a largo plazo">
@@ -551,9 +507,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 <p>{snapshot.model_summary.engine_version} · {snapshot.model_summary.horizon_years} años</p>
               </div>
             ) : (
-              <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo</EmptyLink>}>
-                Sin modelo persistido. Genéralo de forma explícita desde la pestaña de modelo.
-              </Empty>
+              <EmptyState
+                action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo</EmptyLink>}
+                title="Sin modelo persistido. Genéralo de forma explícita desde la pestaña de modelo."
+              />
             )}
           </Panel>
         </div>
@@ -563,7 +520,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           </Panel>
         ) : null}
         {thesisWorkspace?.thesis ? (
-          <Panel title="Tesis completa" collapsibleOnMobile>
+          <Panel title="Tesis completa" collapsible="mobile">
             <ThesisMemo
               thesis={thesisWorkspace.thesis}
               ticker={ticker}
@@ -607,9 +564,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <Badge variant="outline">{data.history.length} versiones</Badge>
           <Badge variant="outline">{data.claims.length} afirmaciones</Badge>
         </div>
-        <Panel title="Historial de versiones y aprobaciones" collapsibleOnMobile>
+        <Panel title="Historial de versiones y aprobaciones" collapsible="mobile">
           {data.historyDetail.history.length === 0 ? (
-            <Empty>Aún no hay historial de versiones.</Empty>
+            <EmptyState title="Aún no hay historial de versiones." />
           ) : (
             <div className="space-y-3">
               {data.historyDetail.history.map((entry) => (
@@ -650,12 +607,13 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               }
             />
           ) : (
-            <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa fuentes antes de generar</EmptyLink>}>
-              Aún no existe ninguna tesis.
-            </Empty>
+            <EmptyState
+              action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa fuentes antes de generar</EmptyLink>}
+              title="Aún no existe ninguna tesis."
+            />
           )}
         </Panel>
-        <Panel title="Secciones de tesis específicas de la empresa" collapsibleOnMobile>
+        <Panel title="Secciones de tesis específicas de la empresa" collapsible="mobile">
           {data.sections.length ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {data.sections.map((section) => (
@@ -666,9 +624,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               ))}
             </div>
           ) : (
-            <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade la primera fuente</EmptyLink>}>
-              Sin secciones específicas todavía.
-            </Empty>
+            <EmptyState
+              action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade la primera fuente</EmptyLink>}
+              title="Sin secciones específicas todavía."
+            />
           )}
         </Panel>
         <Panel title="Afirmaciones y evidencia">
@@ -684,13 +643,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 <p className="mt-3 text-sm text-gray-300">{claim.statement}</p>
               </div>
             )) : (
-              <Empty action={<EmptyLink href="#statement">Escribe la primera afirmación</EmptyLink>}>
-                Sin afirmaciones registradas.
-              </Empty>
+              <EmptyState
+                action={<EmptyLink href="#statement">Escribe la primera afirmación</EmptyLink>}
+                title="Sin afirmaciones registradas."
+              />
             )}
           </div>
         </Panel>
-        <Panel title="Grafo de dependencias y red team" collapsibleOnMobile>
+        <Panel title="Grafo de dependencias y red team" collapsible="mobile">
           <p className="text-sm text-gray-300">{data.graph ? `${data.graph.nodes.length} nodos · ${data.graph.edges.length} dependencias` : 'Sin grafo persistido.'}</p>
           <p className="mt-2 text-sm text-gray-400">{data.redTeam?.strongest_bear_case ?? 'Sin ejecución de red team persistida.'}</p>
         </Panel>
@@ -708,15 +668,16 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 <p className="mt-3 text-sm text-gray-300">{change.summary}</p>
               </div>
             )) : (
-              <Empty action={<EmptyLink href="/research/news">Analiza la última noticia</EmptyLink>}>
-                Sin cambios materiales registrados.
-              </Empty>
+              <EmptyState
+                action={<EmptyLink href="/research/news">Analiza la última noticia</EmptyLink>}
+                title="Sin cambios materiales registrados."
+              />
             )}
           </div>
         </Panel>
         <div className="grid gap-6 xl:grid-cols-2">
-          <Panel title="Revisiones abiertas"><div className="space-y-2">{data.reviews.length ? data.reviews.map((review) => <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-300" key={review.id}>{review.title}</div>) : <Empty>Sin revisiones abiertas.</Empty>}</div></Panel>
-          <Panel title="Alertas"><div className="space-y-2">{data.alerts.length ? data.alerts.map((alert) => <div className="rounded-lg border border-gray-800 p-3 text-sm" key={alert.id}><Badge variant="outline">{label(alert.severity)}</Badge><p className="mt-2 text-gray-300">{alert.message}</p></div>) : <Empty>Sin alertas.</Empty>}</div></Panel>
+          <Panel title="Revisiones abiertas"><div className="space-y-2">{data.reviews.length ? data.reviews.map((review) => <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-300" key={review.id}>{review.title}</div>) : <EmptyState title="Sin revisiones abiertas." />}</div></Panel>
+          <Panel title="Alertas"><div className="space-y-2">{data.alerts.length ? data.alerts.map((alert) => <div className="rounded-lg border border-gray-800 p-3 text-sm" key={alert.id}><Badge variant="outline">{label(alert.severity)}</Badge><p className="mt-2 text-gray-300">{alert.message}</p></div>) : <EmptyState title="Sin alertas." />}</div></Panel>
         </div>
         <DecisionAndRealityPanel ticker={ticker} decisions={data.decisions} reviews={data.expectations} />
       </div>
@@ -761,7 +722,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           {moat?.moats.length ? moat.moats.map((item) => {
             const definition = moatDefinition(item.type);
             return (
-              <div className="rounded-xl border border-gray-800 bg-[#101010] p-4" key={item.type}>
+              <div className="rounded-xl border border-gray-800 bg-surface-1 p-4" key={item.type}>
                 <div className="flex justify-between gap-3"><MoatTerm type={item.type} /><Badge>{item.strength}/100</Badge></div>
                 <p className="mt-3 text-sm text-gray-400">{label(item.status)} · {label(item.trend)} · persistencia {item.persistence}</p>
                 {definition ? <p className="mt-2 text-xs leading-5 text-gray-500">{definition}</p> : null}
@@ -769,9 +730,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               </div>
             );
           }) : (
-            <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera el modelo y reevalúa el foso</EmptyLink>}>
-              Sin evaluación de foso persistida.
-            </Empty>
+            <EmptyState
+              action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera el modelo y reevalúa el foso</EmptyLink>}
+              title="Sin evaluación de foso persistida."
+            />
           )}
         </div>
       </div>
@@ -799,9 +761,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           {documents.length ? (
             <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
           ) : (
-            <Empty action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}>
-              Sin documentos ingeridos.
-            </Empty>
+            <EmptyState
+              action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}
+              title="Sin documentos ingeridos."
+            />
           )}
         </Panel>
       </div>
@@ -813,9 +776,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         {audits.length ? (
           <div className="space-y-3">{audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'superada' : 'fallida'}</Badge><Badge variant="outline">cobertura {audit.source_coverage_score}/100</Badge><Badge variant="outline">tesis {audit.thesis_version_id ?? 'desconocida'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>)}</div>
         ) : (
-          <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera una tesis para auditar fuentes</EmptyLink>}>
-            Sin auditorías de fuentes persistidas.
-          </Empty>
+          <EmptyState
+            action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera una tesis para auditar fuentes</EmptyLink>}
+            title="Sin auditorías de fuentes persistidas."
+          />
         )}
       </Panel>
     );
@@ -844,16 +808,16 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <CitationsList citations={[]} sources={response.sources} />
           </Panel>
         ) : chatFailed ? (
-          <Empty>Sin datos para responder ahora mismo. Reintenta en unos segundos o haz otra pregunta.</Empty>
+          <EmptyState title="Sin datos para responder ahora mismo. Reintenta en unos segundos o haz otra pregunta." />
         ) : (
-          <Empty>Haz una pregunta para recuperar el contrato de evidencia determinista y la síntesis con fuentes.</Empty>
+          <EmptyState title="Haz una pregunta para recuperar el contrato de evidencia determinista y la síntesis con fuentes." />
         )}
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
+    <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px]">
         <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Análisis</Link>
         <header className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-6">

@@ -10,6 +10,7 @@ import {
   importResearchDocumentUrl,
   importResearchSource,
 } from '@/lib/actions/research.actions';
+import { formatDate, formatNumber, NA } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -18,7 +19,7 @@ export default async function ResearchSourcesPage() {
   const { documents, audits } = await getResearchSources();
 
   return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6">
+    <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Button asChild className="mb-4" size="sm" variant="ghost">
@@ -34,7 +35,8 @@ export default async function ResearchSourcesPage() {
           </p>
         </div>
         <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
-          {documents.length} documentos · {audits.length} auditorías
+          {formatNumber(documents.length, { maximumFractionDigits: 0 })} documentos ·{' '}
+          {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías
         </div>
       </header>
 
@@ -154,10 +156,10 @@ export default async function ResearchSourcesPage() {
                   <span className={audit.passed ? 'font-semibold text-teal-300' : 'font-semibold text-amber-300'}>
                     {audit.passed ? 'superada' : 'bloqueada'}
                   </span>
-                  <span className="text-sm text-gray-500">cobertura {audit.source_coverage_score}</span>
+                  <span className="text-sm text-gray-500">cobertura {formatNumber(audit.source_coverage_score, { maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="mt-2 text-sm text-gray-400">
-                  Tesis #{audit.thesis_version_id ?? 's/d'}
+                  Tesis #{audit.thesis_version_id ?? NA}
                 </div>
                 {audit.required_fixes.length ? (
                   <div className="mt-2 text-xs text-amber-200">{audit.required_fixes.join('; ')}</div>
@@ -200,14 +202,14 @@ export default async function ResearchSourcesPage() {
                   <td className="py-3 text-gray-300">{document.title}</td>
                   <td className="py-3 text-gray-400">{document.source_type}</td>
                   <td className="py-3 text-gray-400">{document.source_tier}</td>
-                  <td className="py-3 text-gray-500">{document.published_at ?? 's/d'}</td>
+                  <td className="py-3 text-gray-500">{formatDate(document.published_at, undefined, NA)}</td>
                   <td className="py-3 text-gray-500">
                     {document.source_url ? (
                       <a className="text-teal-300 hover:text-teal-200" href={document.source_url} rel="noreferrer" target="_blank">
                         abrir
                       </a>
                     ) : (
-                      's/d'
+                      NA
                     )}
                   </td>
                 </tr>
