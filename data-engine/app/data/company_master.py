@@ -147,7 +147,7 @@ COMPANY_MASTER = [
         "valuation_model": "sotp+buyback_adjusted_dcf",
         "special_sources": ["SEC", "IR", "GDELT"],
         "special_risks": ["china_policy", "adr", "cloud_competition", "capital_allocation"],
-        "factor_tags": ["china", "adr", "ecommerce", "cloud"],
+        "factor_tags": ["china", "adr:8", "ecommerce", "cloud"],
     },
     {
         "ticker": "ONDS",
