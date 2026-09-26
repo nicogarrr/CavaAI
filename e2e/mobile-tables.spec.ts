@@ -1,6 +1,12 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const runUiE2E = process.env.E2E_UI_RUN === "1";
+
+function source(...parts: string[]): string {
+  return readFileSync(resolve(process.cwd(), ...parts), "utf8");
+}
 
 // iPhone 14 viewport: 390x844 con táctil.
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -59,6 +65,19 @@ const TABLE_ROUTES = [
   { path: "/watchlist", heading: "Watchlist" },
   { path: "/portfolio", heading: undefined },
   { path: "/research/MSFT", heading: "MSFT" },
+  { path: "/risk", heading: undefined },
+  { path: "/plan", heading: undefined },
+  { path: "/taxes", heading: undefined },
+  { path: "/corporate-actions", heading: undefined },
+  { path: "/ownership", heading: undefined },
+  { path: "/screeners", heading: undefined },
+  { path: "/movers", heading: "Movers" },
+  { path: "/screener", heading: "Screener" },
+  { path: "/research/news", heading: "Eventos de noticias" },
+  { path: "/research/sources", heading: "Fuentes" },
+  { path: "/research/AAPL/financial-terminal", heading: "Terminal financiero" },
+  { path: "/research/AAPL/driver-assumptions", heading: "Supuestos de drivers" },
+  { path: "/portfolio/intelligence", heading: "Inteligencia de cartera" },
 ];
 
 test.describe("mobile tablas con scroll interno", () => {
@@ -79,4 +98,142 @@ test.describe("mobile tablas con scroll interno", () => {
       await expectTablesScrollInside(page, route.path);
     });
   }
+});
+
+/**
+ * Comprobaciones estáticas: corren sin backend ni navegador, así que son la
+ * única red de seguridad cuando la app no levanta (CI sin data-engine).
+ */
+test.describe("tablas: semántica y fallback móvil (estático)", () => {
+  test("TableHead emite scope por defecto y acepta override", () => {
+    const table = source("components", "ui", "table.tsx");
+
+    // Sin `scope` un lector de pantalla no anuncia la cabecera de columna.
+    expect(table).toContain('scope = "col"');
+    expect(table).toContain("scope={scope}");
+    // El caption se queda en el DOM (es lo que nombra la tabla).
+    expect(table).toContain("TableCaption");
+    // Densidades: la de shadcn por defecto y la compacta `py-2 px-3`.
+    expect(table).toContain("h-12 px-4");
+    expect(table).toContain("px-3 py-2");
+  });
+
+  test("RecordViews limita columnas y ofrece cards en móvil", () => {
+    const recordViews = source("components", "data", "RecordViews.tsx");
+
+    // Sin tope, 6 columnas + "Acciones" no caben y el contenedor scrollea.
+    expect(recordViews).toContain("function pickColumns(records: DataRecord[], preferred?: string[], max:");
+    expect(recordViews).not.toContain("matchMedia");
+    // Tabla solo desde md; cards equivalentes por debajo.
+    expect(recordViews).toContain("hidden overflow-x-auto md:block");
+    expect(recordViews).toContain("md:hidden");
+    expect(recordViews).toContain("TableCaption");
+  });
+
+  test("RiskDashboardView ofrece cards en móvil además de la tabla", () => {
+    const risk = source("components", "risk", "RiskDashboardView.tsx");
+
+    expect(risk).toContain("hidden overflow-x-auto md:block");
+    expect(risk).toContain("md:hidden");
+    expect(risk).toContain("TableCaption");
+  });
+
+  test("las tablas nativas llevan caption y scope en cada columna", () => {
+    const nativeTables = [
+      ["app", "(root)", "ownership", "page.tsx"],
+      ["app", "(root)", "screeners", "page.tsx"],
+      ["app", "(root)", "knowledge", "page.tsx"],
+      ["app", "(root)", "knowledge-graph", "page.tsx"],
+      ["app", "(root)", "research", "news", "page.tsx"],
+      ["app", "(root)", "research", "sources", "page.tsx"],
+      ["app", "(root)", "research", "[ticker]", "page.tsx"],
+      ["app", "(root)", "research", "[ticker]", "financial-terminal", "page.tsx"],
+      ["app", "(root)", "research", "[ticker]", "driver-assumptions", "page.tsx"],
+      ["app", "(root)", "portfolio", "intelligence", "page.tsx"],
+      ["app", "(root)", "screener", "page.tsx"],
+      ["app", "(root)", "movers", "page.tsx"],
+      ["components", "proPicks", "WalkForwardResults.tsx"],
+      ["components", "research", "FundamentalModelPanels.tsx"],
+    ] as const;
+
+    const problems: string[] = [];
+    for (const parts of nativeTables) {
+      const file = parts.join("/");
+      const text = source(...parts);
+      const tables = text.match(/<table[\s>]/g)?.length ?? 0;
+      if (tables === 0) {
+        problems.push(`${file}: sin <table>`);
+        continue;
+      }
+      if (!text.includes("<caption")) problems.push(`${file}: sin <caption>`);
+      // Cada <th> de cabecera necesita scope; los <th> de fila, scope="row".
+      const heads = text.match(/<th\b[^>]*>/g) ?? [];
+      for (const head of heads) {
+        if (!/\bscope=/.test(head)) problems.push(`${file}: <th> sin scope -> ${head.slice(0, 60)}`);
+      }
+      if (!/\bscope="row"/.test(text) && file !== "app/(root)/screener/page.tsx") {
+        // /screener mantiene <td> en la primera celda: e2e/investor-screener la localiza por etiqueta.
+        problems.push(`${file}: sin scope="row"`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  test("cada contenedor con scroll horizontal de tabla es alcanzable por teclado", () => {
+    // Solo <div> nativos: en las tablas de shadcn el contenedor que scrollea es
+    // el wrapper interno de <Table>, que recibe la región (ver test siguiente).
+    const regions = [
+      ["app", "(root)", "ownership", "page.tsx"],
+      ["app", "(root)", "screeners", "page.tsx"],
+      ["app", "(root)", "knowledge", "page.tsx"],
+      ["app", "(root)", "knowledge-graph", "page.tsx"],
+      ["app", "(root)", "research", "news", "page.tsx"],
+      ["app", "(root)", "research", "sources", "page.tsx"],
+      ["app", "(root)", "research", "[ticker]", "page.tsx"],
+      ["app", "(root)", "research", "[ticker]", "financial-terminal", "page.tsx"],
+      ["app", "(root)", "research", "[ticker]", "driver-assumptions", "page.tsx"],
+      ["app", "(root)", "portfolio", "intelligence", "page.tsx"],
+      ["app", "(root)", "screener", "page.tsx"],
+      ["app", "(root)", "movers", "page.tsx"],
+      ["components", "proPicks", "WalkForwardResults.tsx"],
+      ["components", "research", "FundamentalModelPanels.tsx"],
+    ] as const;
+
+    const problems: string[] = [];
+    for (const parts of regions) {
+      const file = parts.join("/");
+      const text = source(...parts);
+      // Todo contenedor con overflow-x-auto debe ser una región enfocable:
+      // con teclado no hay barra de scroll (WCAG 2.1.1).
+      const scrollers = text.match(/<div[^>]*overflow-x-auto[^>]*>/g) ?? [];
+      for (const scroller of scrollers) {
+        if (!/tabIndex=\{0\}/.test(scroller)) problems.push(`${file}: sin tabIndex -> ${scroller.slice(0, 80)}`);
+        if (!/role="region"/.test(scroller)) problems.push(`${file}: sin role="region" -> ${scroller.slice(0, 80)}`);
+        if (!/aria-label=/.test(scroller)) problems.push(`${file}: sin aria-label -> ${scroller.slice(0, 80)}`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  test("las tablas shadcn nombran su región con scroll y se montan en la línea base", () => {
+    const shadcnTables = [
+      ["app", "(root)", "watchlist", "page.tsx"],
+      ["components", "data", "RecordViews.tsx"],
+      ["components", "risk", "RiskDashboardView.tsx"],
+    ] as const;
+
+    const problems: string[] = [];
+    for (const parts of shadcnTables) {
+      const file = parts.join("/");
+      const text = source(...parts);
+      if (!/<Table[^>]*regionLabel=/.test(text)) problems.push(`${file}: <Table> sin regionLabel`);
+      if (!text.includes("TableCaption")) problems.push(`${file}: sin TableCaption`);
+    }
+    // El wrapper de <Table> es el que scrollea: region + tabIndex + aria-label.
+    const table = source("components", "ui", "table.tsx");
+    if (!/role: "region"/.test(table)) problems.push("components/ui/table.tsx: sin role region");
+    if (!/"aria-label": regionLabel/.test(table)) problems.push("components/ui/table.tsx: sin aria-label");
+    if (!/tabIndex: 0/.test(table)) problems.push("components/ui/table.tsx: sin tabIndex");
+    expect(problems).toEqual([]);
+  });
 });

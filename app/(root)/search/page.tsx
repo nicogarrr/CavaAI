@@ -48,16 +48,16 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
           <h1 className="mt-1 text-3xl font-bold text-gray-100">Búsqueda universal</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">Busca evidencia de empresas, hechos, afirmaciones, secciones de tesis, decisiones, lecciones y la biblioteca de inversión en un único conjunto de resultados ordenado.</p>
         </div>
-        <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge"><BookOpen className="h-4 w-4" />{t('knowledge.library')}</Link></Button>
+        <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge"><BookOpen aria-hidden="true" className="h-4 w-4" />{t('knowledge.library')}</Link></Button>
       </header>
 
       <form className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5" method="get">
         <div className="flex flex-col gap-3 sm:flex-row">
           <Input autoFocus className="h-11 w-full text-base" defaultValue={query.q} name="q" placeholder="Busca en todo el research..." required />
-          <Button className="h-11 w-full shrink-0 sm:w-auto" type="submit"><SearchIcon className="h-4 w-4" />Buscar</Button>
+          <Button className="h-11 w-full shrink-0 sm:w-auto" type="submit"><SearchIcon aria-hidden="true" className="h-4 w-4" />Buscar</Button>
         </div>
         <details className="mt-4">
-          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-gray-400"><Filter className="h-4 w-4" />Filtros avanzados</summary>
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-gray-400"><Filter aria-hidden="true" className="h-4 w-4" />Filtros avanzados</summary>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Input className="h-11 w-full" defaultValue={query.ticker} name="ticker" placeholder="Ticker" />
             <Input className="h-11 w-full" defaultValue={query.entity_types} name="entity_types" placeholder="Tipos de entidad, separados por comas" />
@@ -96,7 +96,7 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
           {!response.results.length ? <div className="rounded-xl border border-dashed border-gray-800 p-8 text-center text-sm text-gray-500">Ninguna evidencia coincide con la consulta y los filtros.</div> : null}
         </section>
       ) : (
-        <section className="rounded-xl border border-dashed border-gray-800 p-10 text-center"><SearchIcon className="mx-auto h-8 w-8 text-gray-600" /><h2 className="mt-3 font-semibold text-gray-300">Empieza por una empresa, concepto, KPI o decisión previa</h2><p className="mt-2 text-sm text-gray-500">Ejemplos: riesgo de dilución, ROIC incremental, promesas de la directiva, vender demasiado pronto.</p></section>
+        <section className="rounded-xl border border-dashed border-gray-800 p-10 text-center"><SearchIcon aria-hidden="true" className="mx-auto h-8 w-8 text-gray-500" /><h2 className="mt-3 font-semibold text-gray-300">Empieza por una empresa, concepto, KPI o decisión previa</h2><p className="mt-2 text-sm text-gray-500">Ejemplos: riesgo de dilución, ROIC incremental, promesas de la directiva, vender demasiado pronto.</p></section>
       )}
     </main>
   );

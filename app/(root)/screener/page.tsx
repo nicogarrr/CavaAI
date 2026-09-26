@@ -129,21 +129,22 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
               </div>
               )
             ) : (
-              <div className="overflow-x-auto">
+              <div aria-label="Oportunidades por sector" className="overflow-x-auto" role="region" tabIndex={0}>
                 {/*
                   Misma <table> en el DOM en todos los viewports (accesibilidad y
                   tests): en <md las filas se muestran como cards apiladas
                   (display block + etiquetas por celda) y desde md como tabla.
                 */}
                 <table className="w-full text-sm">
+                  <caption className="sr-only">Oportunidades del screener por sector: ticker, nombre, precio, cambio de sesión, market cap y acción de seguir</caption>
                   <thead className="hidden md:table-header-group">
                     <tr className="border-b border-gray-800 text-left text-gray-400">
-                      <th className="pb-3 pr-4">Ticker</th>
-                      <th className="pb-3 pr-4">Nombre</th>
-                      <th className="pb-3 pr-4 text-right">Precio</th>
-                      <th className="pb-3 pr-4 text-right">Cambio sesión</th>
-                      <th className="pb-3 pr-4 text-right">Market Cap</th>
-                      <th className="pb-3 text-right">Seguir</th>
+                      <th className="pb-3 pr-4" scope="col">Ticker</th>
+                      <th className="pb-3 pr-4" scope="col">Nombre</th>
+                      <th className="pb-3 pr-4 text-right" scope="col">Precio</th>
+                      <th className="pb-3 pr-4 text-right" scope="col">Cambio sesión</th>
+                      <th className="pb-3 pr-4 text-right" scope="col">Market Cap</th>
+                      <th className="pb-3 text-right" scope="col">Seguir</th>
                     </tr>
                   </thead>
                   <tbody className="block space-y-3 md:table-row-group md:space-y-0">
