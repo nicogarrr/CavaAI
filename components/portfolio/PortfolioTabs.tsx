@@ -144,8 +144,8 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                 {/* Tab: Resumen */}
                 <TabsContent value="resumen" className="mt-0">
                     {/* Salida cruzada a las otras dos páginas de riesgo: el
-                        resumen es pesos y precio, no riesgo medido (eso está en
-                        Inteligencia) ni simulación (esta misma pestaña). */}
+                        resumen es pesos y precio; el riesgo medido está en
+                        Inteligencia y las concentraciones en Exposiciones. */}
                     <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-gray-700/50 bg-surface-1 p-4">
                         <p className="min-w-0 flex-1 text-sm text-gray-400">
                             El riesgo medido (TWR, XIRR, caída máxima, Sharpe, VaR y correlaciones) y las
