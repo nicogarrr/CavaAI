@@ -534,6 +534,22 @@ def test_safe_detail_redacts_vendor_keys_in_server_log(caplog):
     assert "token=REDACTED" in caplog.text
 
 
+def test_rag_status_error_redacts_vendor_keys(monkeypatch):
+    # El campo error del status de RAG acaba en respuestas de API: tampoco
+    # puede llevar la URL del proveedor con la key del servidor.
+    from app.services.rag import RAGIndex
+
+    class _Boom:
+        def get_collections(self):
+            raise RuntimeError("GET https://finnhub.io/api/v1/quote?token=secrettoken123 failed")
+
+    monkeypatch.setattr(RAGIndex, "client", lambda self: _Boom())
+    out = RAGIndex().status()
+    assert out["configured"] is False
+    assert "secrettoken123" not in out["error"]
+    assert "token=REDACTED" in out["error"]
+
+
 # ---------------------------------------------------------------------------
 # P2-7 — sin fallback NEXT_PUBLIC_FINNHUB_API_KEY en server actions
 # ---------------------------------------------------------------------------
