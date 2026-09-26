@@ -188,14 +188,15 @@ def _scale_fact(value, source_type, unit="USD"):
         ("200000000000", "300000000", "yfinance", "SEC", False),
         # Sin deuda: comparable con cualquier escala.
         ("10000", "0", "yfinance", "ESEF", False),
-        # Misma fuente y unidad (dos hechos del mismo filing ESEF):
-        # consistentes entre si.
-        ("200000000", "300", "ESEF", "ESEF", False),
-        # Provenance mixta con fuente no absoluta y magnitud absurda:
-        # conflicto (el caso original: cap absoluto + debt escalado).
+        # ESEF es fail-closed SIEMPRE: el pipeline pierde ix:nonFraction
+        # scale, asi que ni mismo tipo+unidad ni magnitud razonable lo
+        # verifican (dos documentos pueden escalar distinto: 666.667x).
+        ("200000000", "300", "ESEF", "ESEF", True),
+        ("200000000", "30000000", "ESEF", "ESEF", True),
+        # Provenance mixta con ESEF: conflicto a cualquier magnitud
+        # (el caso original: cap absoluto + debt escalado).
         ("200000000", "300", "yfinance", "ESEF", True),
-        # Provenance mixta pero magnitud razonable: se acepta (no detectable).
-        ("200000000", "30000000", "yfinance", "ESEF", False),
+        ("200000000", "30000000", "yfinance", "ESEF", True),
     ],
 )
 def test_capital_scale_guard(equity, debt, equity_src, debt_src, expected):

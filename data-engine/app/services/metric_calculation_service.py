@@ -187,9 +187,18 @@ _CAPITAL_SCALE_RATIO_LIMIT = Decimal("100")
 # Fuentes cuyos importes monetarios llegan en unidades absolutas: market data
 # (yfinance, Finnhub) y hechos SEC/FMP. Entre ellas un ratio extremo entre
 # capitalizacion y deuda es estructura de capital real (una mega-cap casi sin
-# deuda), NO un error de unidades. ESEF queda fuera: ix:nonFraction scale no
-# se conserva en el pipeline y un hecho puede llegar en miles o millones.
+# deuda), NO un error de unidades.
 _ABSOLUTE_AMOUNT_SOURCES = frozenset({"yfinance", "Finnhub", "SEC", "FMP"})
+
+# Fuentes cuya escala NO se conserva en el pipeline: el conector ESEF lee
+# entry.val pero pierde el atributo ix:nonFraction scale, asi que un hecho
+# puede llegar en miles o en millones sin que FinancialFact lo registre.
+# Mismo source_type + misma unit NO garantiza misma escala (dos documentos
+# distintos - o dos hechos del mismo documento - pueden escalar distinto).
+# Como la escala no es verificable desde lo almacenado, cualquier par con
+# participacion ESEF queda fail-closed. Si algun dia se persiste la escala,
+# podra relajarse para pares del mismo documento con escala comprobada.
+_UNVERIFIABLE_SCALE_SOURCES = frozenset({"ESEF"})
 
 
 def _capital_scale_conflict(equity_fact: FinancialFact, debt_fact: FinancialFact) -> bool:
@@ -197,10 +206,11 @@ def _capital_scale_conflict(equity_fact: FinancialFact, debt_fact: FinancialFact
 
     La provenance manda, no la magnitud pura:
     - Las dos fuentes absolutas: comparables siempre, a cualquier ratio.
-    - Misma fuente y misma unidad declarada (p.ej. dos hechos del mismo
-      filing ESEF): consistentes entre si, comparables.
-    - Provenance mixta con alguna fuente no absoluta: la escala no se puede
-      verificar; solo entonces la magnitud decide con el limite de 100x.
+    - Cualquier fuente de escala no verificable (ESEF): conflicto siempre,
+      venga acompanada de lo que venga y con el ratio que sea. Fail-closed:
+      el WACC queda unavailable antes que arriesgar una mezcla de escalas.
+    - Resto de provenance no absoluta: la escala no se puede verificar;
+      solo entonces la magnitud decide con el limite de 100x.
 
     Nunca se deduce un factor de escala: si no son comparables, el metodo
     queda unavailable en vez de publicar un WACC inventado.
@@ -213,10 +223,10 @@ def _capital_scale_conflict(equity_fact: FinancialFact, debt_fact: FinancialFact
     ):
         return False
     if (
-        equity_fact.source_type == debt_fact.source_type
-        and equity_fact.unit == debt_fact.unit
+        equity_fact.source_type in _UNVERIFIABLE_SCALE_SOURCES
+        or debt_fact.source_type in _UNVERIFIABLE_SCALE_SOURCES
     ):
-        return False
+        return True
     larger = max(abs(equity_fact.value), abs(debt_fact.value))
     smaller = min(abs(equity_fact.value), abs(debt_fact.value))
     if smaller <= 0:
