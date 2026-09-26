@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from decimal import Decimal
 
 from datetime import datetime
@@ -29,6 +30,9 @@ from app.valuation.engines.base import MODEL_VERSION
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
 from app.valuation.moat_framework import empty_moat_framework
 from app.services.company_resolver import resolve_company
+from app.services.claim_scope import supersede_claims_of
+
+logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "thesis-render-v2"
 
@@ -142,8 +146,22 @@ class ThesisService:
             thesis = self._generate_atomic(
                 db, ticker, force_new_version, phase_callback, savepoint=savepoint
             )
-        except Exception:
-            savepoint.rollback()
+        except Exception as exc:
+            # Guard the savepoint: the phase callback and _generate_atomic both
+            # commit, which closes the nested transaction. A blind
+            # savepoint.rollback() then raised ResourceClosedError and MASKED the
+            # real failure, so the job reported "ResourceClosedError" and could
+            # not classify it as retryable. The writes already committed by
+            # those callbacks stay either way, so surfacing the cause is what
+            # makes the failure diagnosable.
+            try:
+                if savepoint.is_active:
+                    savepoint.rollback()
+            except Exception:  # noqa: BLE001 - never mask the original error
+                logger.warning(
+                    "No se pudo revertir el savepoint de la generacion de tesis: %s",
+                    type(exc).__name__,
+                )
             raise
         return thesis
 
@@ -295,6 +313,14 @@ class ThesisService:
         )
         db.add(thesis)
         db.flush()
+        # Close the claims of the version this one replaces. Without this the
+        # previous version's claims stay indistinguishable from the new ones:
+        # every consumer that read claims by company_id saw both, so
+        # red_team_score fell with each regeneration and the graph accumulated
+        # nodes from superseded versions.
+        superseded_claims = 0
+        if previous is not None and previous.id != thesis.id:
+            superseded_claims = supersede_claims_of(db, company.id, previous.id)
         self._persist_claims(db, company, thesis, claims)
         db.add(
             SourceAudit(
