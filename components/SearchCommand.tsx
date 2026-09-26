@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { CornerDownLeft, Loader2, Search, TrendingUp } from "lucide-react";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
+import { loadPopularStocks } from "@/lib/popular-stocks-loader";
 import { showErrorToast } from "@/lib/toast";
 import { isNextRedirectError } from "@/lib/types/errors";
 import { flattenNavItems, NAV_SECTIONS } from "@/lib/constants";
@@ -16,11 +17,12 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
     const [loading, setLoading] = useState(false)
     const [searchError, setSearchError] = useState(false)
     // Populares: si no llegan por props (el shell ya no las bloquea en el
-    // primer byte), se cargan perezosamente la PRIMERA vez que se abre el
-    // buscador y se reutilizan el resto de la sesion. Quien nunca abre la
-    // busqueda nunca dispara esta llamada.
+    // primer byte), se cargan perezosamente al abrir el buscador. La cache
+    // es COMPARTIDA a nivel de modulo (loadPopularStocks): las instancias
+    // de desktop, icono movil y drawer no repiten la rafaga Finnhub entre
+    // si, y un fallo o un cierre a mitad de carga se reintenta en la
+    // siguiente apertura (la lista vacia tras fallo nunca es permanente).
     const [popular, setPopular] = useState<StockWithWatchlistStatus[]>(initialStocks ?? []);
-    const popularFetchedRef = useRef(initialStocks !== undefined);
     const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks ?? []);
     const [mounted, setMounted] = useState(false);
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -151,35 +153,37 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             }
             return;
         }
-        // Carga perezosa de las populares al abrir por primera vez.
-        if (popularFetchedRef.current) return;
-        popularFetchedRef.current = true;
-        let cancelled = false;
+        // Carga perezosa de las populares. Si ya hay lista (props o cache
+        // compartida resuelta antes), no hace falta pedir nada; si no, se
+        // pide a la cache compartida (gratis si otra instancia ya la tiene)
+        // y cualquier fallo se reintenta en la proxima apertura.
+        if (popular.length > 0) return;
+        let active = true;
         setLoading(true);
-        searchStocks()
-            .then((results) => {
-                if (cancelled) return;
-                const list = results || [];
+        loadPopularStocks(searchStocks)
+            .then((list) => {
+                if (!active) return;
                 setPopular(list);
                 setStocks((current) => (searchTerm.trim() ? current : list));
             })
             .catch((error: unknown) => {
                 // Sin populares el buscador sigue funcionando por query; se
-                // deja la lista vacia (estado honesto, sin fabricar).
-                if (!cancelled && !isNextRedirectError(error)) {
+                // deja la lista vacia (estado honesto, sin fabricar) y la
+                // proxima apertura reintenta (la cache no guarda fallos).
+                if (active && !isNextRedirectError(error)) {
                     showErrorToast(error, {});
                 }
             })
             .finally(() => {
-                if (!cancelled) setLoading(false);
+                if (active) setLoading(false);
             });
         return () => {
-            cancelled = true;
+            active = false;
         };
-        // popular/searchTerm leidos por ref/estado fresco en el cierre: no
-        // queremos relanzar el fetch al teclear.
+        // popular/searchTerm leidos del cierre actual: popular.length ya esta
+        // en deps; searchTerm fresco solo decide si volcar la lista cargada.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open]);
+    }, [open, popular.length]);
 
     const go = useCallback((href: string) => {
         setOpen(false);
