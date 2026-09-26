@@ -12,6 +12,13 @@ import { cn } from "@/lib/utils"
  * importan server components (app/(root)/watchlist/page.tsx, RecordViews...) y
  * en el runtime de RSC `React.createContext` no existe, lo que rompia
  * `next build` con "createContext is not a function".
+ *
+ * La densidad es una propiedad de la tabla ENTERA: no existe override por fila
+ * o celda. Las utilidades directas (`p-4`) y las de grupo (`group-data:p-2`)
+ * tienen la misma especificidad y colisionan por orden de la hoja generada, no
+ * por la prop pasada, asi que un `dense={false}` local no ganaria al `dense`
+ * del contenedor. Si una tabla necesita mezclar densidades, la celda concreta
+ * lleva su propio `className` explicito en el punto de uso.
  */
 type DensityProps = { dense?: boolean }
 
@@ -87,19 +94,13 @@ TableFooter.displayName = "TableFooter"
 
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
-  React.HTMLAttributes<HTMLTableRowElement> & DensityProps
->(({ className, dense, ...props }, ref) => (
+  React.HTMLAttributes<HTMLTableRowElement>
+>(({ className, ...props }, ref) => (
   <tr
     ref={ref}
-    data-dense={dense ? "" : undefined}
     className={cn(
       "border-b border-gray-700/50 transition-all duration-150 hover:bg-gray-700/30 data-[state=selected]:bg-gray-700/50",
-      // `dense` explicito en la fila manda sobre el del contenedor.
-      dense === true
-        ? "[&>th]:px-3 [&>th]:py-2 [&>th]:h-auto [&>td]:p-2"
-        : dense === false
-          ? "[&>th]:px-4 [&>th]:py-3 [&>th]:h-12 [&>td]:p-4"
-          : "group-data-[dense]/table:[&>th]:px-3 group-data-[dense]/table:[&>th]:py-2 group-data-[dense]/table:[&>th]:h-auto group-data-[dense]/table:[&>td]:p-2",
+      "group-data-[dense]/table:[&>th]:px-3 group-data-[dense]/table:[&>th]:py-2 group-data-[dense]/table:[&>th]:h-auto group-data-[dense]/table:[&>td]:p-2",
       className
     )}
     {...props}
@@ -109,21 +110,19 @@ TableRow.displayName = "TableRow"
 
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
-  React.ThHTMLAttributes<HTMLTableCellElement> &
-    DensityProps & {
-      /** `col` por defecto: sin esto ningun lector de pantalla anuncia las
-       *  cabeceras. Se puede pasar `row` si el `th` rotula la fila. */
-      scope?: React.ThHTMLAttributes<HTMLTableCellElement>["scope"]
-    }
->(({ className, dense, scope = "col", ...props }, ref) => (
+  React.ThHTMLAttributes<HTMLTableCellElement> & {
+    /** `col` por defecto: sin esto ningun lector de pantalla anuncia las
+     *  cabeceras. Se puede pasar `row` si el `th` rotula la fila. */
+    scope?: React.ThHTMLAttributes<HTMLTableCellElement>["scope"]
+  }
+>(({ className, scope = "col", ...props }, ref) => (
   <th
     ref={ref}
     scope={scope}
     className={cn(
       "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
-      // Se hereda la densidad del contenedor por CSS; una fila puede forzarla.
+      // La densidad se hereda del contenedor por CSS (ver docblock del modulo).
       "group-data-[dense]/table:h-auto group-data-[dense]/table:px-3 group-data-[dense]/table:py-2",
-      dense === true ? "h-auto px-3 py-2" : dense === false ? "h-12 px-4" : undefined,
       className
     )}
     {...props}
@@ -133,14 +132,13 @@ TableHead.displayName = "TableHead"
 
 const TableCell = React.forwardRef<
   HTMLTableCellElement,
-  React.TdHTMLAttributes<HTMLTableCellElement> & DensityProps
->(({ className, dense, ...props }, ref) => (
+  React.TdHTMLAttributes<HTMLTableCellElement>
+>(({ className, ...props }, ref) => (
   <td
     ref={ref}
     className={cn(
       "p-4 align-middle [&:has([role=checkbox])]:pr-0",
       "group-data-[dense]/table:p-2",
-      dense === true ? "p-2" : dense === false ? "p-4" : undefined,
       className
     )}
     {...props}
