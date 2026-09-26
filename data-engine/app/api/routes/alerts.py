@@ -106,6 +106,26 @@ def deactivate_alert_rule(
     return rule
 
 
+def _snooze_expired(snoozed_until: datetime | None, now: datetime) -> bool:
+    """¿Caducó el snooze?
+
+    `snoozed_until` llega del cliente como `datetime` (Pydantic no le impone
+    zona) y la base lo devuelve naive: SQLite no guarda el offset, asi que al
+    releerlo se pierde el tz y `naive <= aware` lanza
+    `TypeError: can't compare offset-naive and offset-aware datetimes`. Se
+    normaliza a UTC asumiendo que un valor naive ya esta en UTC, que es como se
+    escribe en el resto de la app.
+    """
+    if snoozed_until is None:
+        return False
+    value = (
+        snoozed_until
+        if snoozed_until.tzinfo is not None
+        else snoozed_until.replace(tzinfo=UTC)
+    )
+    return value <= now
+
+
 @router.get("", response_model=list[ResearchAlertOut])
 def list_alerts(
     ticker: str | None = None,
@@ -126,9 +146,21 @@ def list_alerts(
     if status:
         statement = statement.where(ResearchAlert.status == status)
     elif not include_snoozed:
+        # Solo se ocultan las alertas que siguen EFFECTIVAMENTE snoozadas: las
+        # que no tienen fecha de caducidad, y las cuya fecha sigue en el
+        # futuro. Un snooze ya caducado significa que la alerta vuelve a ser
+        # accionable, asi que se muestra (y el bucle de mas abajo la devuelve
+        # con status derivado "open").
+        #
+        # La formula anterior era `status != 'snoozed' OR snoozed_until <= now`,
+        # que tiene dos fallos: con snoozed_until NULL (snooze sin fecha) la
+        # comparacion es NULL y `FALSE OR NULL` = NULL, de modo que la alerta
+        # se escondia para siempre; y las ya caducadas, que deberian reaparecer,
+        # tambien quedaban fuera.
         statement = statement.where(
             or_(
                 ResearchAlert.status != "snoozed",
+                ResearchAlert.snoozed_until.is_(None),
                 ResearchAlert.snoozed_until <= now,
             )
         )
@@ -139,15 +171,16 @@ def list_alerts(
             ).limit(limit)
         ).all()
     )
+    # Un GET no escribe. Antes el handler reabria las alertas cuyo snooze habia
+    # caducado y hacia commit, lo que hacia la operacion no idempotente (dos
+    # GET seguidos no dan el mismo resultado), rompia cualquier cache HTTP de la
+    # ruta, y podia devolver 500 en un camino de lectura. Aqui solo se refleja
+    # el estado derivado en la respuesta, sin tocar la fila; la transicion
+    # persistente la hace el worker que evalua las reglas de alerta.
     for alert in alerts:
-        if (
-            alert.status == "snoozed"
-            and alert.snoozed_until
-            and alert.snoozed_until <= now
-        ):
+        if alert.status == "snoozed" and _snooze_expired(alert.snoozed_until, now):
             alert.status = "open"
             alert.snoozed_until = None
-    db.commit()
     return alerts
 
 

@@ -15,15 +15,29 @@ router = APIRouter()
 @router.get("/report/{fiscal_year}")
 def tax_report(
     fiscal_year: int,
-    regenerate: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> dict:
-    if fiscal_year < 2000 or fiscal_year > 2200:
-        raise HTTPException(status_code=400, detail="fiscal_year must be between 2000 and 2200")
+    """Informe fiscal de un ejercicio. Solo lectura.
+
+    Antes aceptaba `?regenerate=true`, que ademas de persistir un TaxReport
+    (una escritura) hacia que un GET tuviera efectos de estado: no idempotente,
+    imposible de cachear y capaz de devolver 500 en un camino de lectura. El
+    calculo forzado vive en POST /report/{fiscal_year}/regenerate, que ya
+    existe; este handler delega en el servicio sin `regenerate`, que devuelve el
+    informe persistido o lo calcula sin escribir.
+    """
+    _validate_year(fiscal_year)
     try:
-        return TaxReportService().get_or_compute(db, fiscal_year, regenerate=regenerate)
+        return TaxReportService().get_or_compute(db, fiscal_year)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _validate_year(fiscal_year: int) -> None:
+    if fiscal_year < 2000 or fiscal_year > 2200:
+        raise HTTPException(
+            status_code=400, detail="fiscal_year must be between 2000 and 2200"
+        )
 
 
 @router.get("/holdings")
@@ -31,14 +45,9 @@ def tax_holdings(db: Session = Depends(get_db)) -> list[dict]:
     return build_tax_summary_rows(db)
 
 
-class TaxReportInput(BaseModel):
-    fiscal_year: int = Field(ge=2000, le=2200)
-
-
 @router.post("/report/{fiscal_year}/regenerate")
 def regenerate_tax_report(fiscal_year: int, db: Session = Depends(get_db)) -> dict:
-    if fiscal_year < 2000 or fiscal_year > 2200:
-        raise HTTPException(status_code=400, detail="fiscal_year must be between 2000 and 2200")
+    _validate_year(fiscal_year)
     try:
         return TaxReportService().get_or_compute(db, fiscal_year, regenerate=True)
     except ValueError as exc:
