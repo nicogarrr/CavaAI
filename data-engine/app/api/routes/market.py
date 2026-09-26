@@ -351,7 +351,9 @@ def market_movers(
             "sector": sector,
             "currency": currency,
             "price": float(close or 0),
-            "volume": int(volume or 0),
+            # Volumen desconocido = None (la UI muestra "-"), nunca un 0
+            # fabricado que corona al ticker como el menos activo.
+            "volume": int(volume) if volume is not None else None,
             "date": day.isoformat() if day else None,
         }
         if company_id not in latest:
@@ -373,7 +375,10 @@ def market_movers(
     with_change = [m for m in movers if m["change_pct"] is not None]
     gainers = sorted(with_change, key=lambda m: m["change_pct"], reverse=True)[:limit]
     losers = sorted(with_change, key=lambda m: m["change_pct"])[:limit]
-    most_active = sorted(movers, key=lambda m: m["volume"], reverse=True)[:limit]
+    # "Mas activas" ordena por volumen REAL: las filas sin dato de volumen
+    # no pueden coronarse ni hundirse en el ranking por un 0 inventado.
+    with_volume = [m for m in movers if m["volume"] is not None]
+    most_active = sorted(with_volume, key=lambda m: m["volume"], reverse=True)[:limit]
     return {
         "as_of": as_of,
         "universe": len(movers),

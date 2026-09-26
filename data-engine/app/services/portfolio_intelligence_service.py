@@ -847,9 +847,13 @@ class PortfolioIntelligenceService:
                     )
         for position, company in rows:
             prices = price_series.get(company.id, [])
+            # El ratio exige AMBOS extremos ajustados: con historica ajustada
+            # al inicio y una fila spot (adj_close NULL) al final, dividir
+            # lanzaba TypeError al abrir /portfolio/intelligence. Los huecos
+            # intermedios no afectan: el ratio solo usa los extremos.
             total_return = (
                 float(prices[-1].adj_close / prices[0].adj_close - 1)
-                if len(prices) >= 2 and prices[0].adj_close
+                if len(prices) >= 2 and prices[0].adj_close and prices[-1].adj_close
                 else None
             )
             by_metric = all_facts.get(company.id, {})
