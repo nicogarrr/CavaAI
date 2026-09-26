@@ -70,6 +70,30 @@ def _add_facts(db, company, facts, *, confidence="0.90"):
     db.commit()
 
 
+def _add_traceable_wacc(db, company, value=0.09):
+    """A dated, sourced WACC.
+
+    Without one the DCF falls back to the tag default and is labelled
+    ``status="partial"``: a valuation whose discount rate is an assumption
+    nobody can trace is not a final valuation. Tests that assert engine
+    coherence need a fully sourced company, not a publishable one.
+    """
+    db.add(
+        CalculatedMetric(
+            company_id=company.id,
+            metric="wacc",
+            value=Decimal(str(value)),
+            unit="decimal",
+            period=f"{FY}-12-31:FY",
+            fiscal_year=FY,
+            status="ok",
+            definition_version="WACC_STANDARD_V1",
+            formula="ke*E/(D+E) + kd*(1-t)*D/(D+E)",
+        )
+    )
+    db.commit()
+
+
 def _add_price(db, company, price):
     db.add(
         MarketPrice(
@@ -205,6 +229,7 @@ def test_all_engines_expose_bear_base_bull_and_sensitivity():
             company = _make_company(db, ticker, **routing)
             _add_facts(db, company, facts)
             _add_price(db, company, price)
+            _add_traceable_wacc(db, company)
         for ticker, _, _, _ in _engine_cases():
             company = db.scalar(select(Company).where(Company.ticker == ticker))
             result = ValuationService().value_company(db, company)
@@ -252,6 +277,7 @@ def test_cross_engine_coherence_same_company():
             },
         )
         _add_price(db, company, 15)
+        _add_traceable_wacc(db, company)
         service = ValuationService()
         results = {}
         # DCF estándar con los facts base.
@@ -349,6 +375,8 @@ def test_edge_net_cash_increases_equity_value():
             db, "NETCASHP", company_type="standard", valuation_model="standard_dcf"
         )
         _add_facts(db, company_p, {**facts, "net_debt": 300})
+        _add_traceable_wacc(db, company_n)
+        _add_traceable_wacc(db, company_p)
         service = ValuationService()
         result_n = service.value_company(
             db, db.scalar(select(Company).where(Company.ticker == "NETCASHN"))
