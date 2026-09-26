@@ -2720,7 +2720,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tax Report */
+        /**
+         * Tax Report
+         * @description Informe fiscal de un ejercicio. Solo lectura.
+         *
+         *     Antes aceptaba `?regenerate=true`, que ademas de persistir un TaxReport
+         *     (una escritura) hacia que un GET tuviera efectos de estado: no idempotente,
+         *     imposible de cachear y capaz de devolver 500 en un camino de lectura. El
+         *     calculo forzado vive en POST /report/{fiscal_year}/regenerate, que ya
+         *     existe; este handler usa `get_report`, que devuelve el informe persistido
+         *     o lo calcula EN MEMORIA sin escribir (`persisted=False`).
+         */
         get: operations["tax_report_api_taxes_report__fiscal_year__get"];
         put?: never;
         post?: never;
@@ -5418,6 +5428,11 @@ export interface components {
             };
             /** Model Type */
             model_type: string;
+            /**
+             * Publication Blockers
+             * @default []
+             */
+            publication_blockers: string[];
             /**
              * Publishable
              * @default true
@@ -12567,9 +12582,7 @@ export interface operations {
     };
     tax_report_api_taxes_report__fiscal_year__get: {
         parameters: {
-            query?: {
-                regenerate?: boolean;
-            };
+            query?: never;
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
