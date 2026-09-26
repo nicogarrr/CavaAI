@@ -384,21 +384,30 @@ describe('F49: la fecha de ProPicks es la del run real, no la de carga', () => {
         assert.ok(content.includes('setLastGenerated(result.runAsOf)'), 'los refetch fijan la fecha del run');
     });
 
-    it('el estado vacío distingue "sin run" de "run sin candidatos que cumplan filtros"', () => {
+    it('el estado vacío distingue "sin run", "run sin candidatos aptos" y "filtros descartan"', () => {
         const content = readSource('components/proPicks/EnhancedProPicksContent.tsx');
         assert.ok(
             content.includes('El embudo todavía no ha publicado un run completado'),
             'sin run completado el estado vacío debe decirlo',
         );
         assert.ok(
+            content.includes('no produjo candidatos aptos'),
+            'run con passedCount=0: la culpa no es de los filtros',
+        );
+        assert.ok(
             content.includes('cumple los filtros actuales'),
-            'con run, el estado vacío debe remitir a los filtros actuales',
+            'con candidatos aptos, el estado vacío remite a los filtros actuales',
+        );
+        assert.ok(
+            content.includes('passedCount === 0'),
+            'la distinción debe venir de passedCount del run, no de suposiciones',
         );
     });
 
     it('generateEnhancedProPicksWithRun expone runAsOf y la variante simple lo reutiliza', () => {
         const actions = readSource('lib/actions/proPicks.actions.ts');
         assert.ok(actions.includes('runAsOf: funnel?.runAsOf ?? null'), 'el resultado debe exponer el runAsOf del embudo');
+        assert.ok(actions.includes('passedCount: funnel?.passedCount ?? null'), 'el resultado debe exponer passedCount del embudo');
         assert.ok(
             actions.includes('const { picks } = await generateEnhancedProPicksWithRun(filters);'),
             'generateEnhancedProPicks debe delegar en la variante con run para no duplicar la lectura',

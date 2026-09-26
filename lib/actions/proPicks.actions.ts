@@ -474,6 +474,10 @@ export interface EnhancedProPicksResult {
    *  todavía no hay ninguno. La página lo muestra como fecha del dato: la
    *  hora de carga de la página no es la fecha del run (F49). */
   runAsOf: string | null;
+  /** Candidatos aptos (passed) del run antes de filtrar por score/sector:
+   *  0 con run existente significa que el embudo no produjo candidatos, no
+   *  que los filtros descartaran picks (estado vacío honesto, F49). */
+  passedCount: number | null;
 }
 
 export async function generateEnhancedProPicksWithRun(filters: EnhancedProPicksFilters = {}): Promise<EnhancedProPicksResult> {
@@ -495,7 +499,11 @@ export async function generateEnhancedProPicksWithRun(filters: EnhancedProPicksF
   };
   const finalists = picks.sort((left, right) => scoreFor(right) - scoreFor(left)).slice(0, Math.max(1, Math.min(limit, 100)));
   // Overlays externos SOLO sobre finalistas (máx 20); [] si el módulo aún no existe.
-  return { picks: await attachSignalOverlays(finalists, funnel?.runAsOf), runAsOf: funnel?.runAsOf ?? null };
+  return {
+    picks: await attachSignalOverlays(finalists, funnel?.runAsOf),
+    runAsOf: funnel?.runAsOf ?? null,
+    passedCount: funnel?.passedCount ?? null,
+  };
 }
 
 export async function generateEnhancedProPicks(filters: EnhancedProPicksFilters = {}): Promise<ProPick[]> {

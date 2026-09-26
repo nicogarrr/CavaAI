@@ -72,7 +72,7 @@ export default async function ProPicksPage() {
             </div>
 
             {/* Picks IA + Backtesting por estrategia */}
-            <ProPicksTabs strategies={strategies} initialPicks={initialResult.picks} generatedAt={generatedAt} />
+            <ProPicksTabs strategies={strategies} initialPicks={initialResult.picks} generatedAt={generatedAt} passedCount={initialResult.passedCount} />
         </main>
     );
 }

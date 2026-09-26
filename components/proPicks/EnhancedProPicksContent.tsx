@@ -17,13 +17,15 @@ import { toast } from 'sonner';
 interface EnhancedProPicksContentProps {
     initialPicks: ProPick[];
     generatedAt?: string;
+    initialPassedCount?: number | null;
 }
 
-export default function EnhancedProPicksContent({ initialPicks, generatedAt }: EnhancedProPicksContentProps) {
+export default function EnhancedProPicksContent({ initialPicks, generatedAt, initialPassedCount = null }: EnhancedProPicksContentProps) {
     const [picks, setPicks] = useState<ProPick[]>(initialPicks);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastGenerated, setLastGenerated] = useState<string | null>(generatedAt || null);
+    const [passedCount, setPassedCount] = useState<number | null>(initialPassedCount);
     const [filters, setFilters] = useState<ProPicksFilters>({
         timePeriod: 'month',
         limit: 20,
@@ -61,6 +63,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
             const result = await generateEnhancedProPicksWithRun(filters);
             setPicks(result.picks);
             setLastGenerated(result.runAsOf);
+            setPassedCount(result.passedCount);
         } catch (error) {
             console.error('Error applying filters:', error);
             setError('Error al aplicar los filtros. Por favor, intenta de nuevo.');
@@ -76,6 +79,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
             const result = await generateEnhancedProPicksWithRun(filters);
             setPicks(result.picks);
             setLastGenerated(result.runAsOf);
+            setPassedCount(result.passedCount);
         } catch (error) {
             console.error('Error refreshing picks:', error);
             setError('Error al regenerar. Por favor, intenta de nuevo.');
@@ -225,9 +229,12 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                             {t('propicks.noResults')}
                         </p>
                         <p className="text-sm text-gray-500 mt-2">
-                            {lastGenerated
-                                ? `Ningún pick del último run (datos del ${formatLastGenerated(lastGenerated)}) cumple los filtros actuales (score ≥ ${filters.minScore}${filters.sector !== 'all' ? `, sector ${filters.sector}` : ''}). Prueba a bajar el score mínimo o cambiar de sector.`
-                                : 'El embudo todavía no ha publicado un run completado. Pulsa «Reintentar» para volver a intentarlo.'}
+                            {!lastGenerated &&
+                                'El embudo todavía no ha publicado un run completado. Pulsa «Reintentar» para volver a intentarlo.'}
+                            {lastGenerated && passedCount === 0 &&
+                                `El último run (datos del ${formatLastGenerated(lastGenerated)}) no produjo candidatos aptos en el embudo. No es cuestión de filtros: el motor no encontró oportunidades que superaran sus propios criterios.`}
+                            {lastGenerated && passedCount !== 0 &&
+                                `Ningún pick del último run (datos del ${formatLastGenerated(lastGenerated)}) cumple los filtros actuales (score ≥ ${filters.minScore}${filters.sector !== 'all' ? `, sector ${filters.sector}` : ''}). Prueba a bajar el score mínimo o cambiar de sector.`}
                         </p>
                         <Button
                             onClick={handleRefresh}
