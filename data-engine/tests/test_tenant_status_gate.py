@@ -1,14 +1,13 @@
 from uuid import uuid4
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 
 import main
 from app.core import auth as auth_module
 from app.core.database import SessionLocal, init_db
 from app.models import Tenant
-
 from tests.auth_helpers import auth_settings, bound_headers
 
 SECRET = "tenant-status-test-secret-at-least-32-characters"

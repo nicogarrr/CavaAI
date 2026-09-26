@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from datetime import UTC, date, datetime
-from typing import Any, Callable
+from typing import Any
 
 from app.core.config import get_settings
+from app.core.errors import redact_secrets
 from app.services.connectors import form4 as form4_connector
 from app.services.provenance import Coverage, SourceKind, provenance
 
@@ -371,11 +373,32 @@ def get_signals_for_ticker(
         return result
     except Exception as exc:  # noqa: BLE001 — el endpoint nunca debe romper
         return {"ticker": wanted, "status": "degraded",
-                "reason": f"{type(exc).__name__}: {exc}", "signals": []}
+                "reason": redact_secrets(f"{type(exc).__name__}: {exc}"), "signals": []}
 
 
-def _cik_for_ticker(ticker: str, client=None) -> str | None:
-    """Resuelve el CIK via company_tickers.json (inyectable en tests)."""
+# company_tickers.json son ~2 MB y se descarga una vez por ticker resuelto.
+# resolve_ciks lo llama en bucle sobre la watchlist, asi que una watchlist de 40
+# tickers son 40 descargas de 2 MB a sec.gov en una pasada: ademas de lento, es
+# exactamente el patron que hace que la SEC limite o banee la IP de salida
+# (fair-access). El mapeo se cachea por proceso; solo se invalida al reiniciar
+# el worker, y para CIK de emisores es un dato estable.
+_CIK_MAP_CACHE: dict[str, str] | None = None
+_CIK_MAP_TTL_SECONDS = 6 * 60 * 60
+_CIK_MAP_LOADED_AT: float = 0.0
+
+
+def _load_cik_map(client=None) -> dict[str, str]:
+    """ticker en MAYUSCULAS -> CIK de 10 digitos, cacheado por proceso."""
+    global _CIK_MAP_CACHE, _CIK_MAP_LOADED_AT
+    import time
+
+    now = time.monotonic()
+    if (
+        _CIK_MAP_CACHE is not None
+        and now - _CIK_MAP_LOADED_AT < _CIK_MAP_TTL_SECONDS
+    ):
+        return _CIK_MAP_CACHE
+
     import httpx as _httpx
 
     url = "https://www.sec.gov/files/company_tickers.json"
@@ -386,10 +409,22 @@ def _cik_for_ticker(ticker: str, client=None) -> str | None:
         with _httpx.Client(timeout=30, headers=headers) as owned:
             response = owned.get(url)
     response.raise_for_status()
+
+    mapping: dict[str, str] = {}
     for entry in response.json().values():
-        if isinstance(entry, dict) and str(entry.get("ticker", "")).upper() == ticker:
-            return str(entry["cik_str"]).zfill(10)
-    return None
+        if isinstance(entry, dict):
+            symbol = str(entry.get("ticker", "")).upper()
+            cik = entry.get("cik_str")
+            if symbol and cik is not None:
+                mapping.setdefault(symbol, str(cik).zfill(10))
+    _CIK_MAP_CACHE = mapping
+    _CIK_MAP_LOADED_AT = now
+    return mapping
+
+
+def _cik_for_ticker(ticker: str, client=None) -> str | None:
+    """Resuelve el CIK via company_tickers.json (inyectable en tests)."""
+    return _load_cik_map(client=client).get(ticker.strip().upper())
 
 
 # ---------------- Enganche minimo Telegram (nunca rompe) ----------------
@@ -436,4 +471,4 @@ def maybe_notify_insider_buy(
 
         return dict(NotificationService()._dispatch_telegram(settings, payload))
     except Exception as exc:  # noqa: BLE001 — notificar jamas rompe el flujo
-        return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}"}
+        return {"status": "skipped", "reason": redact_secrets(f"{type(exc).__name__}: {exc}")}

@@ -16,17 +16,13 @@ Run from data-engine/:
 
 from __future__ import annotations
 
-import time
-
 from fastapi.testclient import TestClient
 
 import main
 from app.api.routes import screeners as screeners_module
 from app.core import auth as auth_module
 from app.seed import seed
-
 from tests.auth_helpers import auth_settings, bound_headers
-
 
 SECRET = "flow-e2e-test-secret-at-least-32-chars"
 
@@ -85,8 +81,7 @@ def test_flow_end_to_end(monkeypatch):
     monkeypatch.setattr(
         screeners_module, "_refetch_real_items", lambda **kwargs: list(FAKE_VENDOR_ITEMS)
     )
-    screeners_module._real_items_cache["at"] = 0.0
-    screeners_module._real_items_cache["items"] = []
+    screeners_module._real_items_cache.clear()
 
     client = TestClient(main.app)
 

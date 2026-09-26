@@ -4,14 +4,13 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import WorkflowRun
-from app.models.entities import Base, Company, ThesisVersion
+from app.models.entities import Base, Company, ThesisVersion, WorkflowRun
+from app.services.thesis_job_service import THESIS_PHASES
 from app.services.thesis_shadow_service import (
     PHASE_TO_NODE,
-    ThesisShadowService,
     WORKFLOW_NAME,
+    ThesisShadowService,
 )
-from app.services.thesis_job_service import THESIS_PHASES
 from app.workflows.thesis_graph import THESIS_GRAPH_NODES
 
 

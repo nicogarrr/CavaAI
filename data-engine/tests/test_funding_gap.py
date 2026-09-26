@@ -10,8 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.valuation.dilution_model import run_dilution
-from app.valuation.dilution_model import DilutionInput
+from app.valuation.dilution_model import DilutionInput, run_dilution
 from app.valuation.financial_snapshot import FinancialSnapshot
 from app.valuation.funding_gap import FundingGapResult, estimate_funding_gap
 

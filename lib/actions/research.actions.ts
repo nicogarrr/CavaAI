@@ -698,6 +698,28 @@ export async function getResearchCompanySnapshot(
   }
 }
 
+type ResearchCompanySnapshotsBatch = components['schemas']['CompanySnapshotsBatchOut'];
+
+/**
+ * Snapshots de varias empresas en UNA llamada (indice de research).
+ *
+ * Sustituye al fan-out de ~40 GET /{ticker}/snapshot por visita: el
+ * backend agrega las queries por IN(company_ids). Los tickers sin
+ * company en el registro vuelven en `missing` (nunca snapshots
+ * fabricados); ante un fallo de la llamada el indice degrada todas las
+ * tarjetas a "no legible", nunca a datos inventados.
+ */
+export async function getResearchCompanySnapshots(
+  tickers: string[],
+): Promise<ResearchCompanySnapshotsBatch> {
+  const normalized = tickers.map((ticker) => ticker.trim().toUpperCase()).filter(Boolean);
+  const query = encodeURIComponent(normalized.join(','));
+  return researchRequest<ResearchCompanySnapshotsBatch>(
+    `/api/companies/snapshots?tickers=${query}`,
+    { fast: true, cache: 'no-store' },
+  );
+}
+
 type CalculatedMetricsResponse = components['schemas']['CalculatedMetricsResponse'];
 export type MoatScoreMetric = components['schemas']['CalculatedMetricOut'];
 

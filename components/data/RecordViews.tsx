@@ -4,7 +4,8 @@ import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Inbox, Loader2, RefreshCw } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
 
@@ -33,10 +34,23 @@ export function toRecords(data: unknown[]): DataRecord[] {
     ));
 }
 
-/** Selecciona columnas legibles: claves planas (sin objetos anidados), máx 6, con preferencia explícita */
-export function pickColumns(records: DataRecord[], preferred?: string[]): string[] {
+/**
+ * Nº máximo de columnas de la tabla. El ancho lo resuelve CSS: por debajo de
+ * `md` la tabla no se muestra y solo se ven las cards, así que medir el viewport
+ * en JS solo añadiría un reflow después de hidratar. El tope protege el caso de
+ * `md` con 6 columnas + "Acciones", que es lo que hace scrollear el contenedor.
+ */
+const COLUMNS_WIDE = 6;
+
+/**
+ * Selecciona columnas legibles: claves planas (sin objetos anidados), con
+ * preferencia explícita. `max` acota solo las columnas *inferidas* — si quien
+ * llama pasa `preferred`, esas son las que quiere ver y no se recortan.
+ */
+export function pickColumns(records: DataRecord[], preferred?: string[], max: number = COLUMNS_WIDE): string[] {
     if (preferred && preferred.length > 0) return preferred;
     const keys: string[] = [];
+    const limit = Math.max(1, max);
     for (const record of records.slice(0, 3)) {
         for (const key of Object.keys(record)) {
             if (keys.includes(key)) continue;
@@ -44,7 +58,7 @@ export function pickColumns(records: DataRecord[], preferred?: string[]): string
             if (value !== null && typeof value === 'object') continue;
             keys.push(key);
         }
-        if (keys.length >= 6) break;
+        if (keys.length >= limit) break;
     }
     return keys;
 }
@@ -105,9 +119,12 @@ export function RecordList({
     };
 
     const visibleColumns = pickColumns(records, columns);
+    const cellText = (record: DataRecord, column: string) => formatRecordValue(record[column]);
+    const cellHref = (record: DataRecord, index: number, column: string) =>
+        linkColumns?.[column]?.(record, index) ?? null;
 
     return (
-        <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
+        <Card className="rounded-lg border border-gray-700">
             <CardHeader className="flex flex-col gap-3 border-b border-gray-700/50 pb-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div className="flex items-center gap-3">
                     {icon}
@@ -123,70 +140,106 @@ export function RecordList({
                     disabled={loading}
                     className="gap-2 text-gray-400 hover:text-teal-400"
                 >
-                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
                     Refrescar
                 </Button>
             </CardHeader>
             <CardContent className="pt-4">
                 {loading && records.length === 0 ? (
                     <div className="flex items-center justify-center py-10 text-gray-500">
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Cargando...
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden="true" /> Cargando...
                     </div>
                 ) : records.length === 0 ? (
-                    <div className="py-10 text-center text-gray-500">
-                        <Inbox className="mx-auto mb-3 h-10 w-10 text-gray-600" />
-                        <p className="text-sm">{emptyMessage}</p>
-                        {emptyAction ? <div className="mt-4 flex justify-center">{emptyAction}</div> : null}
-                    </div>
+                    <EmptyState action={emptyAction} icon={Inbox} title={emptyMessage} />
                 ) : visibleColumns.length === 0 ? (
                     <div className="space-y-2">
                         {records.map((record, index) => (
-                            <pre key={index} className="overflow-x-auto rounded border border-gray-700/50 bg-gray-900/50 p-3 text-xs text-gray-400">
+                            <pre key={index} className="overflow-x-auto rounded border border-gray-700/50 bg-surface-0/50 p-3 text-xs text-gray-400">
                                 {JSON.stringify(record, null, 2)}
                             </pre>
                         ))}
                     </div>
                 ) : (
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="border-gray-700 hover:bg-transparent">
-                                {visibleColumns.map((column) => (
-                                    <TableHead key={column} className="text-xs font-semibold uppercase text-gray-500">
-                                        {column}
-                                    </TableHead>
-                                ))}
-                                {rowActions && <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Acciones</TableHead>}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
+                    <>
+                        {/* Escritorio: tabla completa, con la region de scroll enfocada por teclado */}
+                        <div className="hidden overflow-x-auto md:block">
+                            <Table regionLabel={title}>
+                                <TableCaption className="sr-only">{title}</TableCaption>
+                                <TableHeader>
+                                    <TableRow className="border-gray-700 hover:bg-transparent">
+                                        {visibleColumns.map((column) => (
+                                            <TableHead key={column} className="text-xs font-semibold uppercase text-gray-500">
+                                                {column}
+                                            </TableHead>
+                                        ))}
+                                        {rowActions && <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Acciones</TableHead>}
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {records.map((record, index) => (
+                                        <TableRow key={index} className="border-gray-700/50">
+                                            {visibleColumns.map((column) => {
+                                                const href = cellHref(record, index, column);
+                                                return (
+                                                    <TableCell key={column} className="text-sm text-gray-300">
+                                                        {href ? (
+                                                            <Link
+                                                                href={href}
+                                                                className="font-mono font-semibold text-teal-300 hover:text-teal-200 hover:underline"
+                                                            >
+                                                                {cellText(record, column)}
+                                                            </Link>
+                                                        ) : (
+                                                            <span className="line-clamp-3">{cellText(record, column)}</span>
+                                                        )}
+                                                    </TableCell>
+                                                );
+                                            })}
+                                            {rowActions && (
+                                                <TableCell className="text-right">
+                                                    {rowActions(record, index)}
+                                                </TableCell>
+                                            )}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                        {/* Móvil: cards equivalentes, sin scroll horizontal */}
+                        <ul className="space-y-3 md:hidden">
                             {records.map((record, index) => (
-                                <TableRow key={index} className="border-gray-700/50">
-                                    {visibleColumns.map((column) => {
-                                        const href = linkColumns?.[column]?.(record, index);
-                                        return (
-                                            <TableCell key={column} className="text-sm text-gray-300">
-                                                {href ? (
-                                                    <Link
-                                                        href={href}
-                                                        className="font-mono font-semibold text-teal-300 hover:text-teal-200 hover:underline"
-                                                    >
-                                                        {formatRecordValue(record[column])}
-                                                    </Link>
-                                                ) : (
-                                                    <span className="line-clamp-3">{formatRecordValue(record[column])}</span>
-                                                )}
-                                            </TableCell>
-                                        );
-                                    })}
-                                    {rowActions && (
-                                        <TableCell className="text-right">
+                                <li className="min-w-0 rounded-xl border border-gray-700/50 bg-gray-800/40 p-4" key={index}>
+                                    <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
+                                        {visibleColumns.map((column) => {
+                                            const href = cellHref(record, index, column);
+                                            return (
+                                                <div className="min-w-0" key={column}>
+                                                    <dt className="text-[11px] uppercase tracking-wide text-gray-500">{column}</dt>
+                                                    <dd className="break-words text-sm text-gray-200">
+                                                        {href ? (
+                                                            <Link
+                                                                href={href}
+                                                                className="font-mono font-semibold text-teal-300 hover:text-teal-200 hover:underline"
+                                                            >
+                                                                {cellText(record, column)}
+                                                            </Link>
+                                                        ) : (
+                                                            cellText(record, column)
+                                                        )}
+                                                    </dd>
+                                                </div>
+                                            );
+                                        })}
+                                    </dl>
+                                    {rowActions ? (
+                                        <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-gray-700/50 pt-3">
                                             {rowActions(record, index)}
-                                        </TableCell>
-                                    )}
-                                </TableRow>
+                                        </div>
+                                    ) : null}
+                                </li>
                             ))}
-                        </TableBody>
-                    </Table>
+                        </ul>
+                    </>
                 )}
                 {footer && <div className="mt-4">{footer}</div>}
             </CardContent>
@@ -249,7 +302,7 @@ export function RecordDetail({
         : [];
 
     return (
-        <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
+        <Card className="rounded-lg border border-gray-700">
             <CardHeader className="flex flex-col gap-3 border-b border-gray-700/50 pb-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div className="flex items-center gap-3">
                     {icon}
@@ -266,7 +319,7 @@ export function RecordDetail({
                             onClick={refresh}
                             className="gap-2 text-gray-400 hover:text-teal-400"
                         >
-                            <RefreshCw className="h-4 w-4" />
+                            <RefreshCw className="h-4 w-4" aria-hidden="true" />
                             Refrescar
                         </Button>
                     )}
@@ -275,15 +328,11 @@ export function RecordDetail({
             </CardHeader>
             <CardContent className="pt-4">
                 {!data || entries.length === 0 ? (
-                    <div className="py-10 text-center text-gray-500">
-                        <Inbox className="mx-auto mb-3 h-10 w-10 text-gray-600" />
-                        <p className="text-sm">{emptyMessage}</p>
-                        {emptyAction ? <div className="mt-4 flex justify-center">{emptyAction}</div> : null}
-                    </div>
+                    <EmptyState action={emptyAction} icon={Inbox} title={emptyMessage} />
                 ) : (
                     <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-gray-700/50 bg-gray-700/40 sm:grid-cols-2">
                         {entries.map(([key, value]) => (
-                            <div key={key} className="flex flex-col gap-1 bg-gray-900/60 p-3">
+                            <div key={key} className="flex flex-col gap-1 bg-surface-0/60 p-3">
                                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{key}</span>
                                 <span className="break-words text-sm text-gray-200">
                                     <span className="line-clamp-4">{formatRecordValue(value)}</span>

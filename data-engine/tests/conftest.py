@@ -8,9 +8,10 @@ tests override the dependency and verify signed, tenant-scoped requests.
 from __future__ import annotations
 
 import os
+from pathlib import Path
+from uuid import uuid4
 
 import pytest
-
 
 os.environ.setdefault("APP_ENV", "test")
 os.environ["RESEARCH_AUTH_REQUIRED"] = "false"
@@ -19,7 +20,40 @@ os.environ["WORKERS_ENABLED"] = "false"
 # Hermetic tests: never inherit the local Postgres stack. Environment
 # variables take precedence over the .env file in pydantic-settings, so this
 # forces a disposable SQLite file for every test process.
-os.environ["DATABASE_URL"] = "sqlite:///./cavaai_test.db"
+#
+# Fichero UNICO por sesion, no un `./cavaai_test.db` fijo. Con el nombre fijo
+# el esquema y las filas de una corrida se나무aban a la siguiente: 19 tests de
+# test_calculated_metrics.py fallaban en la segunda ejecucion en la misma
+# maquina y pasaban en un checkout limpio, porque sus fixtures de limpieza
+# borran por ticker y no el resto. Un fichero por sesion hace la suite
+# idempotente sin cambiar nada mas (sigue siendo un fichero real en disco, que
+# es lo que necesitan los tests que usan SessionLocal() en lugar de :memory:,
+# ya que cada conexion a :memory: abriria su propia base).
+_TEST_DB_PATH = Path(
+    os.environ.get("CAVAAI_TEST_DB")
+    or f"cavaai_test_{os.getpid()}_{uuid4().hex[:8]}.db"
+)
+os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH.as_posix()}"
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+    """Borra la base de datos de la sesion al terminar.
+
+    Hay que cerrar el engine antes: en Windows no se puede borrar un fichero
+    con una conexion abierta, y el engine mantiene el pool vivo.
+    """
+    try:
+        from app.core.database import engine
+
+        engine.dispose()
+    except Exception:  # pragma: no cover - best effort
+        pass
+    for suffix in ("", "-wal", "-shm"):
+        candidate = Path(f"{_TEST_DB_PATH}{suffix}")
+        try:
+            candidate.unlink(missing_ok=True)
+        except OSError:  # pragma: no cover - best effort
+            pass
 
 # Importing main no debe filtrar secretos locales al proceso de test. La API
 # legacy (routers/) fue retirada, pero los módulos de servicio (modules/) que

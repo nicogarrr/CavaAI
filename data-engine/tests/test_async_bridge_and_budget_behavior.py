@@ -7,7 +7,6 @@ entre dos tenants.
 
 import asyncio
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal

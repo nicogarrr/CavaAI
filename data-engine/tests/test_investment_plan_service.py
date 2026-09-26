@@ -82,7 +82,7 @@ def test_plan_metrics_track_expected_vs_actual(db):
     assert metrics["expected_contributions_base"] == pytest.approx(300 * months)
     assert metrics["actual_contributions_base"] == 600.0
     assert metrics["gap_base"] == pytest.approx(300 * months - 600)
-    assert metrics["on_track"] == (600 >= 300 * months)
+    assert metrics["on_track"] == (300 * months <= 600)
 
 
 def test_drift_suggestions_follow_target_bands(db):

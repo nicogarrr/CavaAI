@@ -23,7 +23,6 @@ from app.services.alert_rule_service import _OPERATORS, AlertRuleService
 from app.services.insider_service import _is_c_suite, _is_ceo, _is_cfo
 from app.services.market_refresh_service import _provider_date
 
-
 # --------------------------------------------------------------------------
 # a quote without a date is not a quote for today
 # --------------------------------------------------------------------------

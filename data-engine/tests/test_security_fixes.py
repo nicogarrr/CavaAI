@@ -23,9 +23,9 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-import pytest
 from sqlalchemy import delete, select, update
 
 import main
@@ -504,8 +504,10 @@ def test_error_details_are_sanitized_and_logged_with_correlation_ref(
     assert "secretpassword" not in detail
     assert "internal-host" not in detail
     assert re.fullmatch(r"Invalid request \(ref: [0-9a-f]{12}\)", detail)
-    # El detalle real + el correlation id quedan en el log del servidor.
-    assert "secretpassword" in caplog.text
+    # Contrato actual: el secreto TAMPOCO llega al log del servidor
+    # (ninguna excepcion de infraestructura llega al cliente ni al log);
+    # la trazabilidad la da solo el ref de correlacion.
+    assert "secretpassword" not in caplog.text
     assert detail.split("ref: ")[1].rstrip(")") in caplog.text
     _cleanup_claims_and_tenants([], [tenant])
 
@@ -517,7 +519,8 @@ def test_safe_detail_never_returns_exception_text(caplog):
     assert "hunter2" not in detail
     assert "db-primary" not in detail
     assert re.fullmatch(r"Internal server error \(ref: [0-9a-f]{12}\)", detail)
-    assert "hunter2" in caplog.text
+    # Igual aqui: el secreto no llega al log.
+    assert "hunter2" not in caplog.text
 
 
 # ---------------------------------------------------------------------------

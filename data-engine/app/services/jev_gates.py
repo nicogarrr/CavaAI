@@ -19,7 +19,8 @@ helpers ``*_sync`` de este modulo (``asyncio.run`` interno, mismo patron que
 from __future__ import annotations
 
 import logging
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from app.llm.jev import JevDecision
 from app.services.async_bridge import run_from_any_context

@@ -6,6 +6,7 @@ actions stay unapplied until the user applies them explicitly.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0027_corporate_action_source"
