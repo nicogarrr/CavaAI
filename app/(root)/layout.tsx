@@ -3,7 +3,6 @@ import Header from "@/components/Header";
 import Sidebar, { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/Sidebar";
 import OnlineBanner from "@/components/OnlineBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { requireAuthenticatedUser } from "@/lib/auth/require-user";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -25,26 +24,16 @@ async function getLayoutUser(): Promise<User> {
     }
 }
 
-/**
- * La lista inicial del buscador (Ctrl+K) llega por streaming y no debe bloquear
- * el primer pintado. Antes se envolvia en <Suspense> con un segundo <Header>
- * de fallback: eso montaba el arbol del header dos veces y hacia que el
- * buscador cambiase de contenido al resolver. Ahora se resuelve antes del
- * primer byte y el header se monta una sola vez; si la busqueda de acciones
- * populares falla, se entrega vacia y el buscador funciona equally por query.
- */
-async function getInitialStocks(): Promise<StockWithWatchlistStatus[]> {
-    return searchStocks().catch(() => []);
-}
-
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const user = await getLayoutUser();
-    const [initialStocks, collapsed] = await Promise.all([
-        getInitialStocks(),
-        // Leido en servidor para que el sidebar plegado no de un flash de ancho
-        // en la primera pintura (antes se leia en useEffect y salia expandido).
-        cookies().then((jar) => jar.get(SIDEBAR_COLLAPSED_COOKIE)?.value === '1'),
-    ]);
+    // Las populares del buscador NO se esperan aqui: resolverlas antes del
+    // primer byte retrasaba el TTFB de CADA pagina autenticada (llamada
+    // Finnhub/DB) aunque el usuario nunca abriese el buscador. SearchCommand
+    // las carga perezosamente al abrirse por primera vez y las reutiliza el
+    // resto de la sesion; el header se monta una sola vez igualmente.
+    const collapsed = await cookies().then(
+        (jar) => jar.get(SIDEBAR_COLLAPSED_COOKIE)?.value === '1',
+    );
 
     return (
         <div className="flex min-h-dvh flex-col text-gray-300">
@@ -56,7 +45,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                 DOM en vez de medido por JS. */}
             <div className="sticky top-0 z-50">
                 <OnlineBanner />
-                <Header user={user} initialStocks={initialStocks} />
+                <Header user={user} />
             </div>
 
             <div className="flex flex-1 items-start">

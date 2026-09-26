@@ -15,7 +15,7 @@ import SearchCommand from '@/components/SearchCommand';
  * `sm:hidden` y el sidebar `md:flex`, asi que entre 640px y 767px no existia
  * ninguna navegacion por secciones: solo logo, buscador y avatar.
  */
-export default function MobileNav({ initialStocks }: { initialStocks: StockWithWatchlistStatus[] }) {
+export default function MobileNav({ initialStocks }: { initialStocks?: StockWithWatchlistStatus[] }) {
     const [open, setOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const drawerRef = useRef<HTMLDivElement>(null);
