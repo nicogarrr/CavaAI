@@ -124,3 +124,47 @@ def test_build_many_empty_and_missing_layers(db: Session):
     assert snapshot.research_health.status == "empty"
     assert snapshot.counts.facts == 0
     assert snapshot.latest_thesis is None
+
+
+def test_recent_changes_many_returns_deterministic_order(db: Session):
+    """Sin ORDER BY externo la subquery con window devolvia orden arbitrario."""
+    from datetime import datetime, timedelta
+
+    company = _company(db, "ORD")
+    base = datetime(2026, 1, 1, 12, 0, 0)
+    for index in range(5):
+        db.add(ThesisChange(
+            company_id=company.id,
+            summary=f"c{index}",
+            created_at=base + timedelta(minutes=index),
+        ))
+    db.commit()
+
+    # El ORDER BY va en la consulta EXTERNA: sin el, la window numera cada
+    # particion pero las filas salen en orden arbitrario (Postgres no
+    # garantiza el orden de la subquery).
+    from sqlalchemy import event
+
+    engine = db.get_bind()
+    statements: list[str] = []
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    service = CompanySnapshotService()
+    batch = service.build_many(db, [company])
+    changes_queries = [
+        s for s in statements
+        if "FROM thesis_changes" in s and "row_number()" in s
+    ]
+    assert len(changes_queries) == 1
+    assert changes_queries[0].rstrip().endswith(
+        "ORDER BY anon_1.company_id, anon_1.created_at DESC"
+    )
+
+    ordered = [change.summary for change in batch[company.id].recent_changes]
+    assert ordered == ["c4", "c3", "c2", "c1", "c0"]  # created_at DESC
+    assert ordered == [
+        change.summary for change in service.build(db, company).recent_changes
+    ]

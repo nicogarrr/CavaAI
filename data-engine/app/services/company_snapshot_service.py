@@ -152,8 +152,12 @@ class CompanySnapshotService:
             .subquery()
         )
         aliased_change = aliased(ThesisChange, ranked)
+        # ORDER BY externo: la window numera cada particion, pero sin orden
+        # de la consulta exterior las filas salen en orden arbitrario.
         rows = db.scalars(
-            select(aliased_change).where(ranked.c.rank_ <= per_company)
+            select(aliased_change)
+            .where(ranked.c.rank_ <= per_company)
+            .order_by(ranked.c.company_id, desc(ranked.c.created_at))
         ).all()
         grouped: dict[int, list[ThesisChange]] = {}
         for row in rows:

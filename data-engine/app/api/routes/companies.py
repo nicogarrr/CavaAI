@@ -56,7 +56,7 @@ from app.services.decision_learning_service import (
 )
 from app.services.financial_terminal_service import FinancialTerminalService
 from app.services.management_credibility_service import ManagementCredibilityService
-from app.services.company_resolver import resolve_company
+from app.services.company_resolver import resolve_companies, resolve_company
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +74,12 @@ def company_snapshots_batch(
     """Snapshots de varias empresas en UNA llamada (indice de research).
 
     Sustituye el fan-out de ~40 GET /{ticker}/snapshot por visita del
-    indice: las queries van agregadas por IN(company_ids) (~13 para todo
-    el lote, no 5 por empresa). Limites honestos: maximo
-    MAX_SNAPSHOT_BATCH_TICKERS tickers por llamada (400 por encima); los
-    tickers sin company en el registro vuelven en ``missing`` y NUNCA se
-    fabrican snapshots vacios para ellos.
+    indice: la resolucion de tickers va en 1-2 queries IN (politica de
+    alias de sufijos de resolve_company) y las del snapshot agregadas por
+    IN(company_ids) (~13 para todo el lote, no 5 por empresa). Limites
+    honestos: maximo MAX_SNAPSHOT_BATCH_TICKERS tickers por llamada (400
+    por encima); los tickers sin company en el registro vuelven en
+    ``missing`` y NUNCA se fabrican snapshots vacios para ellos.
     """
     requested: list[str] = []
     seen: set[str] = set()
@@ -92,18 +93,7 @@ def company_snapshots_batch(
             status_code=400,
             detail=f"Maximo {MAX_SNAPSHOT_BATCH_TICKERS} tickers por llamada",
         )
-    companies: list[Company] = []
-    resolved_ids: set[int] = set()
-    missing: list[str] = []
-    for normalized in requested:
-        company = resolve_company(db, normalized)
-        if company is None:
-            missing.append(normalized)
-            continue
-        if company.id in resolved_ids:
-            continue
-        resolved_ids.add(company.id)
-        companies.append(company)
+    companies, missing = resolve_companies(db, requested)
     snapshots = CompanySnapshotService().build_many(db, companies)
     return CompanySnapshotsBatchOut(
         snapshots={company.ticker: snapshots[company.id] for company in companies},
