@@ -19,7 +19,13 @@
 #   ./scripts/backup.sh [--stop-storage]
 set -euo pipefail
 
-COMPOSE="docker compose -f docker-compose.prod.yml"
+COMPOSE="${COMPOSE_CMD:-docker compose -f docker-compose.prod.yml}"
+# Knobs para el drill de verificacion en proyecto aislado (ver
+# scripts/verify-backup-restore.sh); en produccion no hace falta definirlos.
+QDRANT_API_URL="${QDRANT_API_URL:-http://127.0.0.1:6333}"
+QDRANT_VOLUME="${QDRANT_VOLUME:-cavaai-prod-qdrant}"
+MINIO_VOLUME="${MINIO_VOLUME:-cavaai-prod-minio}"
+DUCKDB_VOLUME="${DUCKDB_VOLUME:-cavaai-prod-duckdb}"
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
 DEST="backups/${STAMP}"
 STOP_STORAGE=0
@@ -37,17 +43,17 @@ ${COMPOSE} exec -T postgres pg_dump -U "${POSTGRES_USER:-portfolio}" -Fc "${POST
 #    volumen; un snapshot full-storage exigiria copiar el fichero dentro del
 #    volumen a mano y por eso se evita.
 echo "[backup] qdrant…"
-if COLLECTIONS_JSON=$(curl -fsS "http://127.0.0.1:6333/collections"); then
+if COLLECTIONS_JSON=$(curl -fsS "${QDRANT_API_URL}/collections"); then
   mapfile -t QDRANT_COLLECTIONS < <(printf '%s' "${COLLECTIONS_JSON}" | python3 -c 'import json,sys; [print(c["name"]) for c in json.load(sys.stdin)["result"]["collections"]]')
   mkdir -p "${DEST}/qdrant-snapshots"
   for COLL in "${QDRANT_COLLECTIONS[@]}"; do
     echo "[backup] qdrant: snapshot de ${COLL}…"
-    SNAP_NAME=$(curl -fsS -X POST "http://127.0.0.1:6333/collections/${COLL}/snapshots" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["name"])')
-    curl -fsS "http://127.0.0.1:6333/collections/${COLL}/snapshots/${SNAP_NAME}" -o "${DEST}/qdrant-snapshots/${COLL}.snapshot"
+    SNAP_NAME=$(curl -fsS -X POST "${QDRANT_API_URL}/collections/${COLL}/snapshots" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["name"])')
+    curl -fsS "${QDRANT_API_URL}/collections/${COLL}/snapshots/${SNAP_NAME}" -o "${DEST}/qdrant-snapshots/${COLL}.snapshot"
   done
 else
   echo "[backup] aviso: API de qdrant no disponible; se copiara el volumen en crudo"
-  docker run --rm -v cavaai-prod-qdrant:/data:ro -v "$(pwd)/${DEST}":/out alpine tar czf /out/qdrant-raw.tar.gz -C /data .
+  docker run --rm -v "${QDRANT_VOLUME}":/data:ro -v "$(pwd)/${DEST}":/out alpine tar czf /out/qdrant-raw.tar.gz -C /data .
 fi
 
 if [ "${STOP_STORAGE}" = "1" ]; then
@@ -57,11 +63,11 @@ fi
 
 # 3) MinIO: tar del volumen (datos en reposo, consistencia garantizada si parado).
 echo "[backup] minio…"
-docker run --rm -v cavaai-prod-minio:/data:ro -v "$(pwd)/${DEST}":/out alpine tar czf /out/minio.tar.gz -C /data .
+docker run --rm -v "${MINIO_VOLUME}":/data:ro -v "$(pwd)/${DEST}":/out alpine tar czf /out/minio.tar.gz -C /data .
 
 # 4) DuckDB: fichero unico.
 echo "[backup] duckdb…"
-docker run --rm -v cavaai-prod-duckdb:/data:ro -v "$(pwd)/${DEST}":/out alpine sh -c 'cd /data && tar czf /out/duckdb.tar.gz . || true'
+docker run --rm -v "${DUCKDB_VOLUME}":/data:ro -v "$(pwd)/${DEST}":/out alpine sh -c 'cd /data && tar czf /out/duckdb.tar.gz . || true'
 
 if [ "${STOP_STORAGE}" = "1" ]; then
   ${COMPOSE} start minio backend worker scheduler

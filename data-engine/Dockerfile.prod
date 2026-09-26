@@ -44,6 +44,11 @@ EXPOSE 8000
 # monta docker-compose, que puede fijar el ownership con `user:`.
 RUN groupadd --system cavaai && useradd --system --gid cavaai --no-create-home cavaai \
     && chown -R cavaai:cavaai /app
+# /data es el punto de montaje de duckdb_data en produccion. Un volumen named
+# nuevo se inicializa copiando contenido Y propietario de esta ruta desde la
+# imagen; sin el chown nace root-owned y el backend (USER cavaai) no puede
+# escribir analytics.duckdb.
+RUN mkdir -p /data && chown cavaai:cavaai /data
 USER cavaai
 
 # Las migraciones son idempotentes (alembic upgrade head es seguro al
