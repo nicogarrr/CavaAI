@@ -112,7 +112,9 @@ async function signedCall(
  * via extraHTTPHeaders.
  */
 export const test = base.extend({
-  request: async ({ request }, use) => {
+  // El callback se llama `provide` y no `use` para que la regla
+  // react-hooks/rules-of-hooks no lo confunda con un hook de React.
+  request: async ({ request }, provide) => {
     const verbs = ["get", "post", "put", "delete", "patch", "head", "fetch"];
     const wrapper = new Proxy(request, {
       get(target, prop, receiver) {
@@ -124,7 +126,7 @@ export const test = base.extend({
         return Reflect.get(target, prop, receiver);
       },
     });
-    await use(wrapper);
+    await provide(wrapper);
   },
 });
 
