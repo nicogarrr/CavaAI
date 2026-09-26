@@ -14,12 +14,14 @@ Tests herméticos: proveedores inyectables por constructor, sin red.
 
 import asyncio
 import inspect
+from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, EvidenceSuggestion, ExternalClaim, FinancialFact
+from app.models.entities import Base, Company, EvidenceSuggestion, ExternalClaim, FinancialFact, MarketPrice
 from app.services.claim_intelligence_service import (
     ClaimIntelligenceService,
     _rule_scores,
@@ -154,8 +156,22 @@ class OkFMP:
             }
         ]
 
+    async def quote(self, ticker: str):
+        # Viernes de mercado: una ingesta en fin de semana debe fechar la
+        # barra con el timestamp del proveedor, no con el dia de la ingesta.
+        friday = datetime(2026, 9, 25, 20, 0, tzinfo=UTC)
+        return [{"price": 21.5, "timestamp": int(friday.timestamp()), "volume": 4321}]
+
+
+class QuoteNoTimestampFMP(OkFMP):
+    async def quote(self, ticker: str):
+        return [{"price": 21.5}]
+
 
 class BrokenFMP:
+    async def quote(self, ticker: str):
+        raise RuntimeError("FMP down")
+
     async def income_statement(self, ticker: str, limit: int = 10):
         raise RuntimeError("FMP down")
 
@@ -186,6 +202,28 @@ def test_chain_fmp_etiquetas_reales_y_readiness(db):
     assert {"revenue", "free_cash_flow", "shares_diluted"} <= metrics
     # revenue + FCF + shares presentes: el input de valuation esta listo.
     assert result["valuation_input_ready"] is True
+
+    # La barra spot se fecha con el timestamp REAL de la quote (viernes),
+    # nunca con el dia de la ingesta, y guarda el volumen del proveedor.
+    bars = db.scalars(select(MarketPrice)).all()
+    assert len(bars) == 1
+    assert bars[0].date == datetime(2026, 9, 25, tzinfo=UTC).date()
+    assert bars[0].volume == 4321
+    assert bars[0].close == Decimal("21.5")
+
+
+def test_chain_fmp_quote_sin_timestamp_no_fabrica_barra(db):
+    """Adversarial: el codigo viejo fechaba profile.price con el dia de la
+    ingesta y fabricaba barras de fin de semana. Sin timestamp no hay barra."""
+    company = _company(db)
+    result = asyncio.run(
+        FinancialIngestionService().refresh_from_fmp(
+            db, company, client=QuoteNoTimestampFMP()
+        )
+    )
+    assert result["provider"] == "FMP"
+    assert result["facts_imported"] > 0
+    assert db.scalars(select(MarketPrice)).all() == []
 
 
 def test_chain_fmp_caido_no_fabrica_ingesta(db):

@@ -23,7 +23,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Los NULL no caben de vuelta: reescribirlos a 0 fabricaria el dato que
-    # esta migracion elimina, asi que el downgrade exige limpiarlos antes.
-    op.execute("DELETE FROM market_prices WHERE volume IS NULL")
+    # Cerrado en fallo: los NULL no caben de vuelta en NOT NULL y borrarlos en
+    # silencio destruiria barras legitimas (volumen desconocido no es fila
+    # defectuosa). El downgrade exige una decision humana previa.
+    bind = op.get_bind()
+    null_rows = bind.execute(
+        sa.text("SELECT count(*) FROM market_prices WHERE volume IS NULL")
+    ).scalar()
+    if null_rows:
+        raise RuntimeError(
+            f"Downgrade 0034 abortado: {null_rows} filas de market_prices tienen "
+            "volume NULL. Restaurar NOT NULL implicaria borrarlas; rellena o "
+            "elimina esas filas a mano antes de revertir."
+        )
     op.alter_column("market_prices", "volume", existing_type=sa.Integer(), nullable=False)

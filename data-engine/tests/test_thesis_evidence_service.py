@@ -118,9 +118,10 @@ def _stub_market(service, quote=None, profile=None, quote_exc=None):
 def test_ingest_market_persists_dated_sourced_price_and_market_cap(db):
     company = _company(db, name="AAPL")
     service = ThesisEvidenceService()
+    friday = datetime(2026, 9, 25, 20, 0, tzinfo=UTC)  # viernes de mercado
     _stub_market(
         service,
-        quote={"c": 190.5},
+        quote={"c": 190.5, "t": int(friday.timestamp()), "v": 12345},
         profile={"name": "Apple Inc.", "marketCapitalization": 2900.0, "exchange": "NASDAQ"},
     )
     result = service._ingest_market(db, company)
@@ -128,15 +129,23 @@ def test_ingest_market_persists_dated_sourced_price_and_market_cap(db):
 
     assert result["status"] == "ok"
     assert result["price"] == 190.5
-    today = datetime.now(UTC).date()
+    assert result["price_as_of"] == "2026-09-25"
+    # La barra se fecha con el timestamp del proveedor, no con el dia de la
+    # ingesta: una ingesta de domingo escribe la barra del viernes.
     price_row = db.scalar(
         select(MarketPrice).where(
-            MarketPrice.company_id == company.id, MarketPrice.date == today
+            MarketPrice.company_id == company.id, MarketPrice.date == friday.date()
         )
     )
     assert price_row is not None
     assert price_row.close == Decimal("190.5")
+    assert price_row.volume == 12345
     assert price_row.source == "Finnhub"
+    assert db.scalar(
+        select(func.count()).select_from(MarketPrice).where(
+            MarketPrice.company_id == company.id
+        )
+    ) == 1
 
     cap = db.scalar(
         select(FinancialFact).where(
@@ -174,13 +183,14 @@ def test_ingest_market_without_quote_keeps_honest_pending_state(db):
 def test_ingest_market_is_idempotent_within_a_day(db):
     company = _company(db)
     service = ThesisEvidenceService()
+    friday = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
     _stub_market(
         service,
-        quote={"c": 190.5},
+        quote={"c": 190.5, "t": friday},
         profile={"name": "Apple Inc.", "marketCapitalization": 2900.0, "exchange": "NASDAQ"},
     )
     service._ingest_market(db, company)
-    _stub_market(service, quote={"c": 191.0}, profile={"marketCapitalization": 2900.0})
+    _stub_market(service, quote={"c": 191.0, "t": friday}, profile={"marketCapitalization": 2900.0})
     service._ingest_market(db, company)
     db.commit()
 
@@ -188,6 +198,8 @@ def test_ingest_market_is_idempotent_within_a_day(db):
         select(MarketPrice).where(MarketPrice.company_id == company.id)
     ).all()
     assert len(rows) == 1
+    assert rows[0].close == Decimal("191.0")
+    assert rows[0].date == datetime(2026, 9, 25, 20, 0, tzinfo=UTC).date()
     assert rows[0].close == Decimal("191.0")
     assert db.scalar(
         select(func.count())
@@ -300,3 +312,54 @@ def test_ingest_fundamentals_preserva_historico_sec(db, monkeypatch):
         )
     }
     assert periods == {"2023-12-31:FY", "2024-12-31:FY", "2025-12-31:FY"}
+
+
+def test_ingest_market_quote_sin_timestamp_no_fabrica_barra(db):
+    """Sin timestamp del proveedor no hay fecha honesta: no se escribe nada.
+
+    Adversarial: con el codigo viejo la quote se fechaba con el dia de la
+    ingesta y aparecia una barra de hoy (domingo si hoy es domingo).
+    """
+    company = _company(db)
+    service = ThesisEvidenceService()
+    _stub_market(service, quote={"c": 190.5}, profile={"marketCapitalization": 2900.0})
+    result = service._ingest_market(db, company)
+    db.commit()
+
+    assert result["status"] == "pending"
+    assert "timestamp" in result["detail"]
+    assert db.scalar(
+        select(func.count()).select_from(MarketPrice).where(
+            MarketPrice.company_id == company.id
+        )
+    ) == 0
+
+
+def test_ingest_market_quote_fecha_futura_rechazada(db):
+    company = _company(db)
+    service = ThesisEvidenceService()
+    future = datetime.now(UTC).timestamp() + 3 * 86400
+    _stub_market(service, quote={"c": 190.5, "t": int(future)}, profile=None)
+    result = service._ingest_market(db, company)
+    db.commit()
+
+    assert result["status"] == "pending"
+    assert "futura" in result["detail"]
+    assert db.scalar(
+        select(func.count()).select_from(MarketPrice).where(
+            MarketPrice.company_id == company.id
+        )
+    ) == 0
+
+
+def test_ingest_market_quote_sin_volumen_deja_null_no_cero(db):
+    friday = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
+    company = _company(db)
+    service = ThesisEvidenceService()
+    _stub_market(service, quote={"c": 190.5, "t": friday}, profile=None)
+    service._ingest_market(db, company)
+    db.commit()
+
+    row = db.scalar(select(MarketPrice).where(MarketPrice.company_id == company.id))
+    assert row is not None
+    assert row.volume is None

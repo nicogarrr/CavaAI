@@ -593,7 +593,7 @@ class FinancialIngestionService:
         db.flush()
         facts += self._add_derived_facts(db, company, document)
         facts += self._add_profile_facts(db, company, document, profile)
-        self._add_profile_price(db, company, profile)
+        await self._add_spot_price(db, company, fmp, ticker)
 
         document.metadata_ = {
             **(document.metadata_ or {}),
@@ -1507,35 +1507,56 @@ class FinancialIngestionService:
         )
         return 1
 
-    def _add_profile_price(
+    async def _add_spot_price(
         self,
         db: Session,
         company: Company,
-        profile: list[dict[str, Any]],
+        fmp: FMPClient,
+        ticker: str,
     ) -> None:
-        if not profile:
+        # Barra diaria desde /quote: fecha y volumen REALES de la cotizacion.
+        # Antes se tomaba profile[0].price fechado con el dia de la ingesta:
+        # un refresh financiero en fin de semana fabricaba una barra del
+        # sabado/domingo con el ultimo cierre conocido. Sin timestamp del
+        # proveedor no hay fecha honesta, asi que no se escribe nada.
+        try:
+            payload = await fmp.quote(ticker)
+        except Exception:  # noqa: BLE001 - best-effort: la quote no bloquea la ingesta financiera
             return
-        price = _decimal(profile[0].get("price"))
+        item = payload[0] if isinstance(payload, list) and payload else None
+        if not isinstance(item, dict):
+            return
+        price = _decimal(item.get("price"))
         if price is None or price <= 0:
             return
-        today = datetime.now(UTC).date()
+        timestamp = int(item.get("timestamp") or 0)
+        if timestamp <= 0:
+            return
+        quote_date = datetime.fromtimestamp(timestamp, tz=UTC).date()
+        if quote_date > datetime.now(UTC).date():
+            return
+        raw_volume = item.get("volume")
+        volume = int(raw_volume) if raw_volume is not None else None
         existing = db.scalar(
-            select(MarketPrice).where(MarketPrice.company_id == company.id, MarketPrice.date == today)
+            select(MarketPrice).where(MarketPrice.company_id == company.id, MarketPrice.date == quote_date)
         )
         if existing:
             existing.close = price
             existing.adj_close = price
+            if volume is not None:
+                existing.volume = volume
             existing.source = "FMP"
             return
         db.add(
             MarketPrice(
                 company_id=company.id,
-                date=today,
+                date=quote_date,
                 open=price,
                 high=price,
                 low=price,
                 close=price,
                 adj_close=price,
+                volume=volume,
                 source="FMP",
             )
         )
