@@ -3,12 +3,14 @@ Yahoo Finance utilities for free financial data.
 Uses yfinance library which is already installed for the GARP strategy.
 """
 
-import yfinance as yf
-import pandas as pd
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-def fetch_yf_dividends(symbol: str, limit: int = 50) -> List[Dict[str, Any]]:
+import pandas as pd
+import yfinance as yf
+
+
+def fetch_yf_dividends(symbol: str, limit: int = 50) -> list[dict[str, Any]]:
     """
     Fetch dividend history from Yahoo Finance.
     
@@ -87,7 +89,7 @@ def _estimate_frequency(dividends) -> str:
     except:
         return "Quarterly"  # Default assumption
 
-def fetch_yf_stock_info(symbol: str) -> Optional[Dict[str, Any]]:
+def fetch_yf_stock_info(symbol: str) -> dict[str, Any] | None:
     """
     Fetch basic stock info from Yahoo Finance.
     Useful for getting current dividend yield.
@@ -108,7 +110,7 @@ def fetch_yf_stock_info(symbol: str) -> Optional[Dict[str, Any]]:
         print(f"Error fetching Yahoo Finance info for {symbol}: {e}")
         return None
 
-def fetch_yf_insider_trading(symbol: str, limit: int = 50) -> List[Dict[str, Any]]:
+def fetch_yf_insider_trading(symbol: str, limit: int = 50) -> list[dict[str, Any]]:
     """
     Fetch insider trading data from Yahoo Finance.
     Returns list of transactions formatted for the frontend.
@@ -177,7 +179,7 @@ def fetch_yf_insider_trading(symbol: str, limit: int = 50) -> List[Dict[str, Any
         print(f"Error fetching Yahoo Finance insider trading for {symbol}: {e}")
         return []
 
-def fetch_yf_batch_quotes(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+def fetch_yf_batch_quotes(symbols: list[str]) -> dict[str, dict[str, Any]]:
     """
     Fetch quotes for multiple symbols at once using yfinance.
     Returns dict with symbol as key and quote data as value.
@@ -232,7 +234,7 @@ def fetch_yf_batch_quotes(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         return result
 
 
-def fetch_yf_single_quote(symbol: str) -> Optional[Dict[str, Any]]:
+def fetch_yf_single_quote(symbol: str) -> dict[str, Any] | None:
     """
     Fetch a single stock quote from Yahoo Finance.
     Returns quote data in Finnhub-compatible format.
@@ -258,7 +260,7 @@ def fetch_yf_single_quote(symbol: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def fetch_yf_news(symbol: str, limit: int = 15) -> List[Dict[str, Any]]:
+def fetch_yf_news(symbol: str, limit: int = 15) -> list[dict[str, Any]]:
     """
     Fetch company news from Yahoo Finance.
     Returns list of news articles formatted for the frontend.

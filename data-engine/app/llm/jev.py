@@ -9,9 +9,10 @@ Coste: $0.042 / millón de tokens de entrada, salida gratis.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from time import monotonic
-from typing import Any, Mapping
+from typing import Any
 
 import httpx
 

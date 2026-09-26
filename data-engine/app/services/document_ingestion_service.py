@@ -1,4 +1,3 @@
-from app.core.errors import redact_secrets
 import hashlib
 import os
 import re
@@ -14,11 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models import Company, Document, DocumentChunk
+from app.core.errors import redact_secrets
+from app.models import Document, DocumentChunk
+from app.services.company_resolver import resolve_company
 from app.services.document_store import DocumentStore
 from app.services.public_fetch import fetch_public_url
-from app.services.company_resolver import resolve_company
-
 
 MAX_DOCUMENT_BYTES = 15 * 1024 * 1024
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".csv", ".tsv"}

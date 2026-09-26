@@ -4,11 +4,21 @@ GET /api/health — sin firma (público): reporta estado de la BD, del
 scheduler de workers y la versión del código. Pensado para orquestación
 (load balancers, cron de monitoreo, deploy checks) que no tiene identidad
 Research OS.
+
+Como es público y lo consulta la orquestación, cada pieza cara va cacheada y
+la sonda de BD corre en un hilo. Antes el handler era ``async def`` y hacía las
+tres cosas en el event loop: un ``subprocess.run(git)`` por request (fork con
+timeout de 2 s), un ``build_scheduler()`` completo (APScheduler con 18 jobs) y
+un ``db.execute`` síncrono. Un barrido de sondas o un bucle contra este
+endpoint serializaba el proceso entero.
 """
 
 from __future__ import annotations
 
+import asyncio
+import os
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -22,8 +32,17 @@ router = APIRouter(tags=["health"])
 _REPO_ROOT = Path(__file__).resolve().parents[4]  # CavaAI/ (raíz del repo)
 
 
+@lru_cache(maxsize=1)
 def _git_version() -> str:
-    """Versión corta 'main-<sha>' del commit desplegado; 'main-unknown' si git no responde."""
+    """Versión corta 'main-<sha>' del commit desplegado; 'main-unknown' si git no responde.
+
+    Cacheado por proceso: el commit no cambia mientras el contenedor vive, y
+    en la imagen de producción no hay git (el valor sale siempre de
+    APP_VERSION, o 'main-unknown'), así que el fork se paga una sola vez.
+    """
+    pinned = (os.environ.get("APP_VERSION") or "").strip()
+    if pinned:
+        return pinned
     try:
         sha = (
             subprocess.run(
@@ -38,6 +57,21 @@ def _git_version() -> str:
         return f"main-{sha}" if sha else "main-unknown"
     except Exception:  # noqa: BLE001 — el health nunca debe romperse por git
         return "main-unknown"
+
+
+@lru_cache(maxsize=1)
+def _scheduler_job_count() -> int:
+    """Cuántos trabajos registraría el scheduler. Cacheado: solo depende del código.
+
+    La construcción del APScheduler no se puede observar desde fuera, asi que
+    se construye una vez y se cuenta. Antes se reconstruia en cada request.
+    """
+    from app.workers.scheduler import build_scheduler
+
+    probe = build_scheduler(background=True)
+    # Sin start() el probe no lanza hilos; no llamar shutdown() porque
+    # APScheduler lanza SchedulerNotRunningError con un scheduler parado.
+    return len(probe.get_jobs())
 
 
 def _scheduler_status() -> dict:
@@ -58,16 +92,10 @@ def _scheduler_status() -> dict:
             "last_run_at": None,
         }
     try:
-        from app.workers.scheduler import build_scheduler
-
-        probe = build_scheduler(background=True)
-        jobs = len(probe.get_jobs())
-        # Sin start() el probe no lanza hilos; no llamar shutdown() porque
-        # APScheduler lanza SchedulerNotRunningError con un scheduler parado.
         return {
             "enabled": True,
             "running": True,
-            "jobs": jobs,
+            "jobs": _scheduler_job_count(),
             "last_run_at": None,
         }
     except Exception as exc:  # noqa: BLE001 — reportar y seguir
@@ -76,25 +104,35 @@ def _scheduler_status() -> dict:
             "running": False,
             "jobs": 0,
             "last_run_at": None,
-            "error": f"{type(exc).__name__}: {exc}",
+            # Solo el tipo de excepcion: este endpoint es publico y el texto
+            # de un error de import/config puede traer rutas del host.
+            "error": type(exc).__name__,
         }
+
+
+def _probe_database() -> str:
+    """SELECT 1 fuera del event loop; devuelve 'ok' o 'error:<Clase>'."""
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        return "ok"
+    except Exception as exc:  # noqa: BLE001 — surface dependency status
+        return f"error:{type(exc).__name__}"
 
 
 @router.get("/health")
 async def health() -> dict:
     """Readiness: BD (SELECT 1), scheduler y versión."""
-    settings = get_settings()
-
-    try:
-        with SessionLocal() as db:
-            db.execute(text("SELECT 1"))
-        database = "ok"
-    except Exception as exc:  # noqa: BLE001 — surface dependency status
-        database = f"error:{type(exc).__name__}"
-
+    database = await asyncio.to_thread(_probe_database)
+    # El conteo de jobs y la versión ya vienen cacheados por proceso; aun
+    # asi se resuelven en hilo para no hacer trabajo síncrono en el loop.
+    scheduler, version = await asyncio.gather(
+        asyncio.to_thread(_scheduler_status),
+        asyncio.to_thread(_git_version),
+    )
     return {
         "status": "ok" if database == "ok" else "degraded",
         "database": database,
-        "scheduler": _scheduler_status(),
-        "version": _git_version(),
+        "scheduler": scheduler,
+        "version": version,
     }

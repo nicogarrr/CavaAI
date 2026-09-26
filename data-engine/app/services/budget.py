@@ -7,6 +7,32 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models import BudgetUsage
 
+# Planning rates in EUR per million tokens, keyed by the EXACT model id.
+# These are internal planning estimates, not provider tariffs: OpenCode Go bills
+# by subscription and several aliases carry cost_basis="unknown".
+PLANNING_RATES_EUR_PER_MTOK: dict[str, tuple[float, float]] = {
+    "deepseek-v4-flash": (0.10, 0.40),
+    "qwen3.7-plus": (0.60, 1.80),
+    "glm-5.2": (0.80, 2.40),
+}
+# One rate for any model not in the table, so an unrecognised or newly added
+# model cannot be priced 10x too high and exhaust the daily cap.
+DEFAULT_PLANNING_RATES = (0.10, 0.40)
+
+
+def _rates_for(model: str) -> tuple[float, float]:
+    """Resolve (input, output) EUR-per-Mtok for a model id.
+
+    Registry first, so a list price recorded in the database wins; then the
+    exact-match table; then the single planning default.
+    """
+    from app.llm.model_aliases import MODEL_ALIASES
+
+    alias = MODEL_ALIASES.get(model)
+    if alias is not None and alias.has_known_costs:
+        return float(alias.input_cost), float(alias.output_cost)
+    return PLANNING_RATES_EUR_PER_MTOK.get(model, DEFAULT_PLANNING_RATES)
+
 
 class BudgetExceededError(RuntimeError):
     pass
@@ -72,16 +98,23 @@ class BudgetController:
 
     @staticmethod
     def estimate_cost_eur(model: str, input_tokens: int, output_tokens: int) -> float:
-        """Conservative internal estimates; provider invoices remain authoritative."""
-        lowered = model.lower()
-        if "flash" in lowered:
-            input_rate, output_rate = 0.10, 0.40
-        elif "qwen3.7-plus" in lowered:
-            input_rate, output_rate = 0.60, 1.80
-        elif "glm-5.2" in lowered:
-            input_rate, output_rate = 0.80, 2.40
-        else:
-            input_rate, output_rate = 1.00, 3.00
+        """Conservative internal estimates; provider invoices remain authoritative.
+
+        Rates come from the model alias registry when the registry knows them,
+        and otherwise from an exact-match table plus ONE documented planning
+        rate.
+
+        The previous substring matching ("flash" in model) missed the actual
+        default model entirely, so every call was priced at 1.00/3.00 instead of
+        the cheap-model tier: a 9.7x overcharge that exhausted the daily cap
+        roughly ten times early and turned BudgetExceededError into a silent
+        deterministic fallback the operator could not explain.
+
+        A single planning rate for unknown models is deliberate: a wide spread
+        between "cheapest known" and "most expensive known" is not conservatism,
+        it is a pricing error that blocks the feature it is supposed to protect.
+        """
+        input_rate, output_rate = _rates_for(model)
         return round(
             input_tokens / 1_000_000 * input_rate
             + output_tokens / 1_000_000 * output_rate,

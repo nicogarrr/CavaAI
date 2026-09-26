@@ -5,19 +5,17 @@ Cache en memoria de 60s para no golpear Yahoo en cada carga de la home.
 """
 from __future__ import annotations
 
-from typing import Literal
-
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import Company, MarketPrice
 from app.services.provenance import SourceKind, coverage_for_age, provenance
@@ -258,7 +256,6 @@ def market_candles(
 
 @router.get("/indices")
 def market_indices() -> dict:
-    settings = get_settings()
     now = time.monotonic()
     with _cache_lock:
         cache_hit = now - _cache["at"] < _CACHE_TTL and bool(_cache["items"])
@@ -268,18 +265,17 @@ def market_indices() -> dict:
         items = []
         headers = dict(_HEADERS)
         # Yahoo respeta mejor el UA completo; el proxy/rate limit es suave a 5 tickers.
-        with httpx.Client(headers=headers) as client:
-            with ThreadPoolExecutor(
-                max_workers=min(_FETCH_MAX_WORKERS, len(_INDEXES))
-            ) as pool:
-                futures = {
-                    pool.submit(_fetch_index, client, index["symbol"]): index
-                    for index in _INDEXES
-                }
-                for future, index in futures.items():
-                    quote = future.result()
-                    if quote:
-                        items.append({**index, **quote})
+        with httpx.Client(headers=headers) as client, ThreadPoolExecutor(
+            max_workers=min(_FETCH_MAX_WORKERS, len(_INDEXES))
+        ) as pool:
+            futures = {
+                pool.submit(_fetch_index, client, index["symbol"]): index
+                for index in _INDEXES
+            }
+            for future, index in futures.items():
+                quote = future.result()
+                if quote:
+                    items.append({**index, **quote})
         fetched_at = datetime.now(UTC)
         with _cache_lock:
             _cache["at"] = time.monotonic()

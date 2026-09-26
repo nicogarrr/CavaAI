@@ -9,7 +9,6 @@ import httpx
 
 from app.services.connectors.base import ConnectorItem, ConnectorResult
 
-
 PRESS_PAGE_RE = re.compile(
     r"(?:news(?:room|-and-events|-events)?|press(?:-releases)?|media|releases)",
     re.IGNORECASE,

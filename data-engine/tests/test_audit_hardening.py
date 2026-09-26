@@ -404,11 +404,10 @@ def test_export_none_is_not_zero_and_csv_escapes_formulas():
 
 
 def test_settings_contract_is_opaque():
+    from fastapi.testclient import TestClient
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
-
-    from fastapi.testclient import TestClient
 
     import main
     from app.core.database import get_db
@@ -480,7 +479,6 @@ def test_no_premium_route_in_contract():
 
 
 def test_universal_search_labels_lexical_only_without_vector(db):
-    from sqlalchemy import select
 
     from app.models.entities import Document, DocumentChunk
     from app.services.universal_search_service import UniversalSearchService
@@ -597,7 +595,14 @@ def test_insider_counts_parse_errors_in_provenance(monkeypatch):
         raise ValueError("bad xml")
 
     result = insider_service.get_signals_for_ticker("AAPL", fetcher=_broken)
-    assert result["status"] == "ok"
+    # Every filing failed to parse. Reporting "ok" with an empty signal list
+    # reads as "no insider activity", which is a false all-clear on the exact
+    # case where nothing could be read.
+    assert result["status"] == "degraded"
+    assert result["filings_parsed"] == 0
+    assert result["filings_failed"] == 1
+    assert result["coverage_ratio"] == 0.0
+    assert result["provenance"]["coverage"] == "partial"
     assert result["parse_error_count"] == 1
     assert "1 filing(s) con error" in result["provenance"]["note"]
     assert result["provenance"]["coverage"] == "partial"
@@ -605,7 +610,6 @@ def test_insider_counts_parse_errors_in_provenance(monkeypatch):
 
 def test_insider_filing_xml_cached_per_accession(monkeypatch):
     from app.services import insider_service
-    from app.services.connectors import form4 as form4_connector
 
     insider_service.clear_filing_xml_cache()
     calls: list[str] = []

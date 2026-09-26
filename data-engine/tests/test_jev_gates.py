@@ -30,7 +30,6 @@ from app.services.kpi_extraction_service import KPIExtractionService
 from app.services.news_service import NewsService
 from app.services.thesis_debate_service import debate_thesis
 
-
 # ---------------------------------------------------------------- stubs Jev
 
 
@@ -440,21 +439,71 @@ def test_5_juez_jev_falla_degrada_a_juez_llm(monkeypatch):
 
 _CLAIM_TEXT = "Revenue grew 10 percent year over year in the third quarter."
 _CANDIDATE_WEAK = "The company announced a new office opening in Berlin next spring."
+_CANDIDATE_RELATED = "Third-quarter revenue was up 10% compared with the same quarter a year earlier."
 
 
 def _claim() -> Claim:
     return Claim(company_id=1, statement=_CLAIM_TEXT)
 
 
-def test_6_uncertain_jev_resuelve(monkeypatch):
-    stub = _stub_jev(monkeypatch, {"claim_relation": ("supported", 0.82)})
+def test_6_uncertain_jev_escala_la_duda(monkeypatch):
+    """Jev puede resolver un par hacia una relacion NEGATIVA si el veredicto es fuerte.
+
+    No puede fabricar confirmacion: promoting to ``supported`` still requires the
+    deterministic similarity gate, because ``supported`` is the only status that
+    takes a claim out of the "UNVERIFIED CLAIM" section of the chat.
+    """
+    stub = _stub_jev(monkeypatch, {"claim_relation": ("contradicted", 0.92)})
+    result = ClaimIntelligenceService().classify_relation(
+        claim=_claim(), candidate=_CANDIDATE_RELATED, similarity=0.52
+    )
+    assert result.relation == "contradicted"
+    assert result.confidence == 0.92
+    assert "Jev" in result.rationale
+    assert stub.calls == ["claim_relation"]  # 1 llamada Jev
+
+
+def test_6_jev_no_promueve_un_par_no_relacionado(monkeypatch):
+    """Un par sin relacion no se vuelve `supported` porque lo diga el LLM.
+
+    "Revenue grew 10 percent year over year" frente a "the company announced a
+    new office opening in Berlin" no comparten ninguna afirmacion. Este test
+    exigia que un veredicto Jev de 0,82 los uniera y marcara el claim como
+    `supported`, que es como un claim no verificado salia de la seccion
+    UNVERIFIED CLAIM del chat.
+    """
+    _stub_jev(monkeypatch, {"claim_relation": ("supported", 0.99)})
     result = ClaimIntelligenceService().classify_relation(
         claim=_claim(), candidate=_CANDIDATE_WEAK, similarity=0.25
     )
-    assert result.relation == "supported"
-    assert result.confidence == 0.82
-    assert "Jev" in result.rationale
-    assert stub.calls == ["claim_relation"]  # 1 llamada Jev
+    assert result.relation == "uncertain"
+
+
+def test_6_jev_no_promueve_a_supported_por_encima_del_umbral_de_similitud(monkeypatch):
+    """Aunque este seguro, Jev no confirma un par por debajo del umbral."""
+    _stub_jev(monkeypatch, {"claim_relation": ("supported", 0.99)})
+    result = ClaimIntelligenceService().classify_relation(
+        claim=_claim(), candidate=_CANDIDATE_RELATED, similarity=0.52
+    )
+    assert result.relation == "uncertain"
+
+
+def test_6_jev_con_confianza_no_finita_se_ignora(monkeypatch):
+    """`NaN` no puede convertirse en confianza 1.0."""
+    _stub_jev(monkeypatch, {"claim_relation": ("contradicted", float("nan"))})
+    result = ClaimIntelligenceService().classify_relation(
+        claim=_claim(), candidate=_CANDIDATE_RELATED, similarity=0.52
+    )
+    assert result.relation == "uncertain"
+
+
+def test_6_jev_con_veredicto_debil_se_ignora(monkeypatch):
+    """Por debajo del umbral, el veredicto LLM no se adopta."""
+    _stub_jev(monkeypatch, {"claim_relation": ("contradicted", 0.60)})
+    result = ClaimIntelligenceService().classify_relation(
+        claim=_claim(), candidate=_CANDIDATE_RELATED, similarity=0.52
+    )
+    assert result.relation == "uncertain"
 
 
 def test_6_uncertain_sin_key_sigue_uncertain():

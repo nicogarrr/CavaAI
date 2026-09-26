@@ -3,16 +3,14 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import uuid4
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 import main
 from app.core import auth as auth_module
 from app.core.config import Settings
-
-from tests.auth_helpers import auth_settings, bound_headers, signed_request
 from app.core.database import SessionLocal, init_db
 from app.models import (
     Claim,
@@ -28,7 +26,7 @@ from app.models import (
 from app.seed import seed
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.workers import dramatiq_app
-
+from tests.auth_helpers import auth_settings, bound_headers, signed_request
 
 SECRET = "research-security-test-secret-at-least-32-chars"
 
@@ -355,7 +353,24 @@ def test_financial_replacement_delete_is_tenant_scoped():
     scoped.info["user_id"] = f"user-a-{suffix}"
     company = scoped.get(Company, company_id)
     assert company is not None
-    FinancialIngestionService()._replace_sec_data(scoped, company)
+    # _replace_sec_data only deletes the facts of the document it is replacing,
+    # so the test needs one: the probe rows carry no source_id.
+    probe_doc = Document(
+        company_id=company_id, title=f"probe {suffix}", source_type="SEC"
+    )
+    scoped.add(probe_doc)
+    scoped.commit()
+    for tenant_id in (tenant_a_id, tenant_b_id):
+        scoped.execute(
+            update(FinancialFact)
+            .where(
+                FinancialFact.metric == f"tenant_delete_probe_{suffix}",
+                FinancialFact.tenant_id == tenant_id,
+            )
+            .values(source_id=probe_doc.id)
+        )
+    scoped.commit()
+    FinancialIngestionService()._replace_sec_data(scoped, company, probe_doc)
     scoped.commit()
     scoped.close()
 

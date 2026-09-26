@@ -41,8 +41,8 @@ export default function ThesisDebatePanel({ ticker, initialVerdict }: ThesisDeba
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
-                <Button type="button" variant="outline" onClick={run} disabled={running}>
-                    <Scale className="mr-2 h-4 w-4" />
+                <Button type="button" variant="outline" onClick={run} disabled={running} aria-busy={running}>
+                    <Scale aria-hidden="true" className="mr-2 h-4 w-4" />
                     {running ? 'Debatiendo…' : debate ? 'Reintentar debate' : 'Generar debate bull/bear'}
                 </Button>
                 {debate?.degraded ? (

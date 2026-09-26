@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.errors import redact_secrets
 from app.models import ThesisSection, ThesisVersion
 
 APPROVAL_SECTION_KEY = "approval"
@@ -193,10 +194,10 @@ def apply_approval_decision(
     decision: str,
     via: str = "telegram",
 ) -> ThesisVersion:
-    """Aplica approve→published / reject→changes_requested. Idempotente.
+    """Aplica approve��'published / reject��'changes_requested. Idempotente.
 
-    Lanza ValueError con decisión desconocida o tesis inexistente (el poller
-    lo convierte en "skipped", la API podría mapearlo a 404/400).
+    Lanza ValueError con decisi��n desconocida o tesis inexistente (el poller
+    lo convierte en "skipped", la API podr��a mapearlo a 404/400).
     """
     if decision not in DECISIONS:
         raise ValueError(f"Unknown approval decision: {decision!r}")
@@ -204,6 +205,7 @@ def apply_approval_decision(
     if thesis is None:
         raise ValueError(f"Unknown thesis id: {thesis_id}")
     if decision == DECISION_APPROVE:
+        _assert_approvable(db, thesis)
         thesis.status = STATUS_PUBLISHED
         upsert_approval_section(
             db, thesis, "approved", via=via, note="Tesis publicada."
@@ -211,11 +213,47 @@ def apply_approval_decision(
     else:
         thesis.status = STATUS_CHANGES_REQUESTED
         upsert_approval_section(
-            db, thesis, STATUS_CHANGES_REQUESTED, via=via, note="Pendiente de revisión."
+            db, thesis, STATUS_CHANGES_REQUESTED, via=via, note="Pendiente de revisi��n."
         )
     db.commit()
     db.refresh(thesis)
     return thesis
+
+
+# States that can never be published: there is nothing to approve.
+NON_APPROVABLE_STATUSES = frozenset({"insufficient_data", "draft_failed_audit"})
+APPROVABLE_STATUSES = frozenset({"draft", "final", STATUS_CHANGES_REQUESTED, STATUS_PUBLISHED})
+
+
+def _assert_approvable(db: Session, thesis: ThesisVersion) -> None:
+    """Refuse to publish a thesis that says it must not be published.
+
+    The REST route assigned ``thesis.status = payload.decision`` with no check
+    at all, so a version generated as ``insufficient_data`` (or one that failed
+    the source audit) could be marked approved while its own memo still read
+    "NO VALUATION - insufficient data". The two write paths also used
+    different vocabularies ("approved" vs "published"), so neither could
+    constrain the other.
+    """
+    if thesis.status in NON_APPROVABLE_STATUSES:
+        raise ValueError(
+            f"thesis v{thesis.version} is {thesis.status}: there is nothing to publish"
+        )
+    if thesis.status not in APPROVABLE_STATUSES:
+        raise ValueError(
+            f"thesis v{thesis.version} is {thesis.status!r}, which is not an approvable state"
+        )
+    latest = db.scalar(
+        select(ThesisVersion.version)
+        .where(ThesisVersion.company_id == thesis.company_id)
+        .order_by(ThesisVersion.version.desc())
+        .limit(1)
+    )
+    if latest is not None and thesis.version != latest:
+        raise ValueError(
+            f"thesis v{thesis.version} is stale: v{latest} exists. "
+            "Approve the current version."
+        )
 
 
 def send_thesis_approval_request(
@@ -252,7 +290,7 @@ def send_thesis_approval_request(
             )
             response.raise_for_status()
     except Exception as exc:
-        return {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}
+        return {"status": "failed", "error": redact_secrets(f"{type(exc).__name__}: {exc}")}
     upsert_approval_section(db, thesis, SECTION_PENDING, note="Mensaje enviado.")
     db.commit()
     return {"status": "delivered", "thesis_id": thesis.id}
@@ -413,5 +451,5 @@ def poll_telegram_approvals_once(
                 result["last_update_id"] = max_update_id
     except Exception as exc:
         result["status"] = "failed"
-        result["error"] = f"{type(exc).__name__}: {exc}"
+        result["error"] = redact_secrets(f"{type(exc).__name__}: {exc}")
     return result

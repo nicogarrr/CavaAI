@@ -10,6 +10,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.errors import safe_detail
 from app.models import (
     CalculatedMetric,
     Company,
@@ -22,44 +23,83 @@ from app.models import (
 from app.schemas import (
     CalculatedMetricOut,
     CalculatedMetricsResponse,
-    CompanyOut,
     CompanyKPIOut,
+    CompanyOut,
     CompanySnapshotOut,
+    CompanySnapshotsBatchOut,
     FinancialFactOut,
     FinancialRefreshResponse,
 )
 from app.services.company_enrichment_service import CompanyEnrichmentService
-from app.services.connectors.fmp import FMPClient
-from app.services.financial_ingestion_service import FinancialIngestionService
-from app.services.fundamental_review_service import (
-    DecisionJournalService,
-    ExpectationRealityService,
-)
-from app.services.fundamental_model_repository import FundamentalModelRepository
-from app.services.metric_calculation_service import MetricCalculationService
-from app.services.moat_service import MoatService
-from app.services.long_term_model_service import LongTermModelService
-from app.services.peer_analysis_service import PeerAnalysisService
-from app.services.peer_comparison_service import DEFAULT_PEER_METRICS, PeerComparisonService
-from app.services.red_team_service import RedTeamService
-from app.services.wacc_input_service import WaccInputService
+from app.services.company_resolver import resolve_companies, resolve_company
 from app.services.company_snapshot_service import CompanySnapshotService
-from app.services.kpi_extraction_service import CompanyKPIRegistryService
-from app.services.driver_assumption_service import (
-    DriverAssumptionService,
-    driver_assumption_payload,
-)
+from app.services.connectors.fmp import FMPClient
 from app.services.decision_learning_service import (
     DECISION_ERROR_TAXONOMY,
     DecisionLearningService,
 )
+from app.services.driver_assumption_service import (
+    DriverAssumptionService,
+    driver_assumption_payload,
+)
+from app.services.financial_ingestion_service import FinancialIngestionService
 from app.services.financial_terminal_service import FinancialTerminalService
+from app.services.fundamental_model_repository import FundamentalModelRepository
+from app.services.fundamental_review_service import (
+    DecisionJournalService,
+    ExpectationRealityService,
+)
+from app.services.kpi_extraction_service import CompanyKPIRegistryService
+from app.services.long_term_model_service import LongTermModelService
 from app.services.management_credibility_service import ManagementCredibilityService
-from app.services.company_resolver import resolve_company
+from app.services.metric_calculation_service import MetricCalculationService
+from app.services.moat_service import MoatService
+from app.services.peer_analysis_service import PeerAnalysisService
+from app.services.peer_comparison_service import DEFAULT_PEER_METRICS, PeerComparisonService
+from app.services.red_team_service import RedTeamService
+from app.services.wacc_input_service import WaccInputService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+MAX_SNAPSHOT_BATCH_TICKERS = 50
+
+
+@router.get("/snapshots", response_model=CompanySnapshotsBatchOut)
+def company_snapshots_batch(
+    tickers: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+) -> CompanySnapshotsBatchOut:
+    """Snapshots de varias empresas en UNA llamada (indice de research).
+
+    Sustituye el fan-out de ~40 GET /{ticker}/snapshot por visita del
+    indice: la resolucion de tickers va en 1-2 queries IN (politica de
+    alias de sufijos de resolve_company) y las del snapshot agregadas por
+    IN(company_ids) (~13 para todo el lote, no 5 por empresa). Limites
+    honestos: maximo MAX_SNAPSHOT_BATCH_TICKERS tickers por llamada (400
+    por encima); los tickers sin company en el registro vuelven en
+    ``missing`` y NUNCA se fabrican snapshots vacios para ellos.
+    """
+    requested: list[str] = []
+    seen: set[str] = set()
+    for raw in tickers.split(","):
+        normalized = raw.strip().upper()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            requested.append(normalized)
+    if len(requested) > MAX_SNAPSHOT_BATCH_TICKERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximo {MAX_SNAPSHOT_BATCH_TICKERS} tickers por llamada",
+        )
+    companies, missing = resolve_companies(db, requested)
+    snapshots = CompanySnapshotService().build_many(db, companies)
+    return CompanySnapshotsBatchOut(
+        snapshots={company.ticker: snapshots[company.id] for company in companies},
+        missing=missing,
+    )
 
 
 @router.get("/{ticker}/kpi-registry", response_model=list[CompanyKPIOut])
@@ -801,7 +841,9 @@ async def refresh_fmp_financials(ticker: str, db: Session = Depends(get_db)) -> 
             client=FMPClient(),
         )
     except RuntimeError as exc:
-        raise HTTPException(status_code=424, detail=str(exc)) from exc
+        # El RuntimeError envuelve el texto del error de httpx, que lleva la
+        # URL completa con la api key del proveedor en la query.
+        raise HTTPException(status_code=424, detail=safe_detail(exc, 424)) from exc
     except httpx.HTTPStatusError as exc:
         # Sanitize: httpx exception text embeds the full request URL,
         # which carries the FMP api key - never log or return it.
@@ -832,7 +874,9 @@ async def refresh_sec_financials(ticker: str, db: Session = Depends(get_db)) -> 
         service = FinancialIngestionService()
         result = await service.refresh_from_sec(db=db, company=company)
     except RuntimeError as exc:
-        raise HTTPException(status_code=424, detail=str(exc)) from exc
+        # El RuntimeError envuelve el texto del error de httpx, que lleva la
+        # URL completa con la api key del proveedor en la query.
+        raise HTTPException(status_code=424, detail=safe_detail(exc, 424)) from exc
     # Completa el contrato FinancialRefreshResponse (la via SEC solo importa
     # hechos, no statements; el resumen se calcula aqui para no meter queries
     # extra en el servicio).
@@ -852,7 +896,9 @@ async def refresh_esef_financials(ticker: str, db: Session = Depends(get_db)) ->
         service = FinancialIngestionService()
         result = await service.refresh_from_esef(db=db, company=company)
     except RuntimeError as exc:
-        raise HTTPException(status_code=424, detail=str(exc)) from exc
+        # El RuntimeError envuelve el texto del error de httpx, que lleva la
+        # URL completa con la api key del proveedor en la query.
+        raise HTTPException(status_code=424, detail=safe_detail(exc, 424)) from exc
     result["statements_imported"] = 0
     return result
 
@@ -867,4 +913,6 @@ async def refresh_wacc_inputs(
     try:
         return await WaccInputService().refresh(db, company)
     except RuntimeError as exc:
-        raise HTTPException(status_code=424, detail=str(exc)) from exc
+        # El RuntimeError envuelve el texto del error de httpx, que lleva la
+        # URL completa con la api key del proveedor en la query.
+        raise HTTPException(status_code=424, detail=safe_detail(exc, 424)) from exc

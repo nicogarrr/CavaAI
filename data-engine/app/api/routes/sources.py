@@ -4,6 +4,8 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.errors import safe_detail
+from app.llm.errors import LLMError
 from app.models import (
     Claim,
     Company,
@@ -20,16 +22,14 @@ from app.schemas import (
     KPIExtractionAction,
     KPIExtractionCandidateOut,
 )
-from app.llm.errors import LLMError
-from app.services.claim_intelligence_service import ClaimIntelligenceService
-from app.services.document_ingestion_service import DocumentIngestionService
-from app.services.kpi_extraction_service import KPIExtractionService
 from app.services.budget import BudgetExceededError
-from app.services.manual_transcript_import_service import ManualTranscriptImportService
-from app.services.source_hierarchy_service import SOURCE_TIERS, classify_source
-from app.services.rag import RAGIndex
-from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
+from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.company_resolver import resolve_company
+from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES, DocumentIngestionService
+from app.services.kpi_extraction_service import KPIExtractionService
+from app.services.manual_transcript_import_service import ManualTranscriptImportService
+from app.services.rag import RAGIndex
+from app.services.source_hierarchy_service import SOURCE_TIERS, classify_source
 
 router = APIRouter()
 
@@ -56,7 +56,7 @@ def rebuild_document_index(db: Session = Depends(get_db)) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Vector index rebuild failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=safe_detail(exc, 502)) from exc
 
 
 @router.get("/tiers")

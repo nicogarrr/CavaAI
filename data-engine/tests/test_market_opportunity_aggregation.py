@@ -19,8 +19,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base
 from app.models import Company, FinancialFact
+from app.models.entities import Base
 from app.services.company_framework import resolve_company_framework
 from app.services.market_opportunity_service import MarketOpportunityEngine, _combine_of
 

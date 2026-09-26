@@ -13,7 +13,6 @@ from fastapi.testclient import TestClient
 
 from app.core.raw_body import RawBodyMiddleware
 
-
 DEFAULT_LIMIT = 10 * 1024 * 1024
 
 

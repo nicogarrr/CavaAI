@@ -1,23 +1,56 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Gauge } from 'lucide-react';
 import RiskDashboardView from '@/components/risk/RiskDashboardView';
-import { getRiskDashboard } from '@/lib/actions/risk.actions';
+import BackendOffline from '@/components/system/BackendOffline';
+import { getRiskDashboard, type RiskDashboardRecord } from '@/lib/actions/risk.actions';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+export const metadata: Metadata = {
+    title: 'Exposiciones de cartera',
+    description:
+        'Pesos, concentración (top 1 y top 5) y exposición por sector y posición de tu cartera, con las alertas de concentración y sus umbrales.',
+};
+
 export default async function RiskPage() {
-    const dashboard = await getRiskDashboard().catch(() => null);
+    let dashboard: RiskDashboardRecord;
+    try {
+        dashboard = await getRiskDashboard();
+    } catch (error) {
+        // `catch(() => null)` dejaba a RiskDashboardView sin datos: el mismo
+        // texto salía para "cartera vacía" y para "motor apagado".
+        if (isBackendUnavailableError(error)) {
+            return <BackendOffline feature="Exposiciones de cartera" retryHref="/risk" />;
+        }
+        throw error;
+    }
 
     return (
-        <main className="mx-auto flex max-w-6xl flex-col gap-6">
+        <main id="content" tabIndex={-1} className="mx-auto flex max-w-6xl flex-col gap-6">
             <header className="flex flex-col gap-3 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <p className="text-sm font-semibold uppercase text-teal-300">Cartera · Exposiciones</p>
                     <h1 className="mt-1 text-3xl font-bold text-gray-100">Exposiciones de cartera</h1>
+                    {/*
+                        El triángulo portfolio / intelligence / risk tenía tres
+                        nombres para "riesgo" y las concentraciones en dos sitios.
+                        Aquí vive la concentración (pesos, top 1 y top 5, sector,
+                        posición y sus alertas) y solo ella: el riesgo y el
+                        rendimiento históricos están en Inteligencia de cartera y
+                        la simulación Monte Carlo en la pestaña Simulación.
+                    */}
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
-                        Pesos, concentración (top 1 y top 5) y exposición por sector y posición.
-                        No calcula volatilidad, drawdown ni VaR: hace falta historia de precios
-                        que el motor aún no usa. Para el detalle por posición, ver cartera.
+                        Pesos, concentración (top 1 y top 5) y exposición por sector y posición, con las
+                        alertas y el umbral que las dispara. No calcula volatilidad, drawdown ni VaR: hace
+                        falta historia de precios que el motor aún no usa.
+                    </p>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
+                        Para el detalle por posición, ver la cartera. Para el riesgo y el rendimiento
+                        medidos, <Link className="text-teal-300 hover:text-teal-200" href="/portfolio/intelligence">Inteligencia de cartera</Link>;
+                        para el riesgo simulado, la pestaña Simulación.
                     </p>
                 </div>
                 <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
