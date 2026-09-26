@@ -12,7 +12,11 @@ from typing import Any
 # acota el tiempo total en el peor caso.
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_RETRY_BASE_SECONDS = 0.5
-DEFAULT_RETRY_CAP_SECONDS = 30.0
+# Las ventanas de Retry-After de cuotas por minuto caben con margen en 120s.
+# Por encima se TRUNCA y no se afirma cumplimiento del header: una cuota
+# diaria agotada (FMP free: 250 llamadas/dia) debe salir como
+# UpstreamRateLimited, no quemar reintentos dentro de la misma corrida.
+DEFAULT_RETRY_CAP_SECONDS = 120.0
 
 
 class UpstreamRateLimited(RuntimeError):
@@ -20,11 +24,14 @@ class UpstreamRateLimited(RuntimeError):
 
 
 def retry_after_seconds(response: Any, cap: float = DEFAULT_RETRY_CAP_SECONDS) -> float:
-    """Respeta la cabecera Retry-After del proveedor, acotada.
+    """Respeta la cabecera Retry-After del proveedor hasta ``cap`` segundos.
 
     Ignorarla y reintentar con backoff propio es lo que convierte un 429 en un
     baneo de la clave: el proveedor dice explicitamente cuando puede volver a
-    intentarse.
+    intentarse. Valores por encima del cap se truncan: el default (120s)
+    cubre las ventanas de cuotas por minuto con margen; una cuota diaria
+    agotada devuelve ventanas de horas, que NUNCA se esperan inline - el
+    caller recibe UpstreamRateLimited tras el presupuesto de reintentos.
     """
     header = None
     try:
@@ -48,8 +55,10 @@ async def get_with_retry(
 ) -> Any:
     """Ejecuta ``fetch()`` reintentando 429 y 5xx con backoff y presupuesto.
 
-Los tres proveedores con clave (FMP, Finnhub, FRED) clasifican sus planes por
-llamadas por minuto. Antes sus clients hacian ``raise_for_status()`` y nada
+Finnhub free son 60 llamadas/minuto (fuente: finnhub.io/pricing, consultada
+2026-09-26) y FMP free 250 llamadas/DIA
+(fuente: site.financialmodelingprep.com/developer/docs/pricing, consultada
+2026-09-26). Antes sus clients hacian ``raise_for_status()`` y nada
 mas: un 429 era un fallo definitivo, el llamante lo tragaba como
 ``status="unavailable"`` y el barrido de precios perdia la cobertura sin
 reintentar nunca. Con 6 peticiones concurrentes sobre un tier de 60/min, un

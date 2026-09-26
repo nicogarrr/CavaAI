@@ -12,7 +12,8 @@ class FinnhubClient:
     """Finnhub connector.
 
     429 y 5xx se reintentan con backoff y respetando Retry-After. El plan FREE
-    de Finnhub son 60 llamadas/min y el consumo normal ya lo ronda: el
+    de Finnhub son 60 llamadas/minuto (fuente: finnhub.io/pricing, consultada
+    2026-09-26) y el consumo normal ya lo ronda: el
     refresco de precios hace fan-out sobre todo el universo de empresas del
     tenant con 6 conexiones simultaneas, y la lectura de multiples paginas de
     IR suma mas. Antes un 429 era un fallo definitivo y el llamante lo
