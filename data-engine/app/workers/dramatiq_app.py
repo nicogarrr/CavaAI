@@ -263,20 +263,35 @@ def acquire_job_lease(
     return token
 
 
+# Compare-and-del atomico: un GET+DEL separados dejaba una ventana en la
+# que, si el TTL vencia entre ambas operaciones y otro worker adquiria el
+# lease, el DEL borraba el lease AJENO recien adquirido.
+_RELEASE_LEASE_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+
+
 def release_job_lease(
     job_name: str, token: str, *, redis_url: str | None = None
 ) -> None:
-    """Libera el lease solo si sigue siendo nuestro (best-effort)."""
+    """Libera el lease solo si sigue siendo nuestro (best-effort).
+
+    Redis: compare-and-del atomico via Lua (sin ventana GET/DEL). Fallback
+    local: exclusion solo dentro de este proceso - con Redis caido dos
+    procesos pueden solapar el mismo job (riesgo operativo aceptado y
+    documentado: monitorizar la disponibilidad de Redis).
+    """
     if redis_url:
         try:
             import redis as redis_sync
 
             client = redis_sync.Redis.from_url(redis_url, socket_connect_timeout=0.25)
             try:
-                current = client.get(f"cavaai:job-lease:{job_name}")
-                if current is not None and current.decode() == token:
-                    client.delete(f"cavaai:job-lease:{job_name}")
-                    return
+                client.eval(_RELEASE_LEASE_LUA, 1, f"cavaai:job-lease:{job_name}", token)
+                return
             finally:
                 client.close()
         except Exception:  # noqa: BLE001 — best-effort
