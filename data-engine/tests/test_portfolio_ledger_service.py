@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Position, Transaction
+from app.models.entities import Base, Position
 from app.services.portfolio_ledger_service import PortfolioLedgerService
 
 

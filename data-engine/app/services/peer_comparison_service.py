@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.models import Company, FinancialFact, PeerRelationship
 from app.services.metric_calculation_service import METRIC_DEFINITIONS, MetricCalculationService, MetricResult
 
-
 DEFAULT_PEER_METRICS = [
     "gross_margin",
     "operating_margin",

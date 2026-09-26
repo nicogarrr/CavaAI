@@ -30,7 +30,7 @@ def _parse_date(value) -> pd.Timestamp:
     return pd.Timestamp(value).tz_localize(None)
 
 
-def _fetch_prices(symbols: list[str], start: pd.Timestamp, end: Optional[pd.Timestamp] = None) -> pd.DataFrame:
+def _fetch_prices(symbols: list[str], start: pd.Timestamp, end: pd.Timestamp | None = None) -> pd.DataFrame:
     if not symbols:
         return pd.DataFrame()
     end = end or pd.Timestamp.utcnow().normalize().tz_localize(None) + pd.Timedelta(days=1)
@@ -54,8 +54,8 @@ def _fetch_prices(symbols: list[str], start: pd.Timestamp, end: Optional[pd.Time
 
 
 def compute_portfolio_returns(
-    transactions: Optional[list[dict]] = None,
-    symbols: Optional[list[str]] = None,
+    transactions: list[dict] | None = None,
+    symbols: list[str] | None = None,
     period: str = "2y",
 ) -> dict:
     transactions = transactions or []
@@ -85,7 +85,7 @@ def compute_portfolio_returns(
         tx_frame["price"] = pd.to_numeric(tx_frame["price"], errors="coerce").fillna(0.0)
 
     cash = 0.0
-    shares = {symbol: 0.0 for symbol in symbols}
+    shares = dict.fromkeys(symbols, 0.0)
     nav_values: list[float] = []
     flow_values: list[float] = []
 

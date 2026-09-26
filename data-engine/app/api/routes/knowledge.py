@@ -1,13 +1,12 @@
+import logging
 from datetime import date
 from typing import Annotated, Literal
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, ValidationError
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
-
-import logging
-from uuid import uuid4
 
 from app.core.database import get_db
 from app.models import (
@@ -17,12 +16,11 @@ from app.models import (
     KnowledgeDocument,
     ProcessingJob,
 )
+from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
 from app.services.knowledge_library_service import (
     KNOWLEDGE_DOCUMENT_TYPES,
     KnowledgeLibraryService,
 )
-from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
-
 
 router = APIRouter()
 

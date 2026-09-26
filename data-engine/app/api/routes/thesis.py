@@ -1,16 +1,23 @@
+import logging
+from typing import Literal
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
-from typing import Literal
-
-import logging
-from uuid import uuid4
 
 from app.core.database import get_db
-from app.models import Claim, ClaimEvidence, Company, ThesisDiff, ThesisSection, ThesisVersion
+from app.models import Claim, ClaimEvidence, ThesisDiff, ThesisSection, ThesisVersion
 from app.schemas import ThesisGenerateRequest, ThesisGraphOut, ThesisOut
+from app.services.company_resolver import resolve_company
+from app.services.provenance import Coverage, SourceKind, provenance
+from app.services.thesis_approval_service import (
+    DECISION_APPROVE,
+    DECISION_REJECT,
+    apply_approval_decision,
+)
 from app.services.thesis_epub_service import (
     EpubSection,
     ThesisEpubData,
@@ -19,13 +26,6 @@ from app.services.thesis_epub_service import (
 from app.services.thesis_graph_service import ThesisGraphService
 from app.services.thesis_memo import build_memo_markdown
 from app.services.thesis_service import ThesisService
-from app.services.provenance import Coverage, SourceKind, provenance
-from app.services.company_resolver import resolve_company
-from app.services.thesis_approval_service import (
-    DECISION_APPROVE,
-    DECISION_REJECT,
-    apply_approval_decision,
-)
 
 router = APIRouter()
 

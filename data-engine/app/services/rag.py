@@ -27,11 +27,12 @@ class RAGIndex:
             )
 
     def ingest_document(self, db, document) -> dict:
-        from sqlalchemy.orm import Session
-        from app.models import DocumentChunk
-        from sqlalchemy import select
-        from qdrant_client.models import PointStruct
         import uuid
+
+        from qdrant_client.models import PointStruct
+        from sqlalchemy import select
+
+        from app.models import DocumentChunk
 
         tenant_id = db.info.get("tenant_id")
         if tenant_id is None or document.tenant_id != tenant_id:
@@ -156,6 +157,7 @@ class RAGIndex:
             MatchValue,
         )
         from sqlalchemy import select
+
         from app.models import Document, KnowledgeDocument
 
         tenant_id = db.info.get("tenant_id")
@@ -223,7 +225,7 @@ class RAGIndex:
         limit: int = 5,
         tenant_id: int | None = None,
     ) -> list[dict]:
-        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
         if tenant_id is None:
             return []
         try:

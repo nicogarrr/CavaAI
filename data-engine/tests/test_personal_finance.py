@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.core.database import Base
-from app.models import Company, CorporateAction, Position, Transaction
+from app.models import Company, Position, Transaction
 from app.services.corporate_actions_service import CorporateActionService
 from app.services.investment_plan_service import InvestmentPlanService
 from app.services.portfolio_ledger_service import PortfolioLedgerService

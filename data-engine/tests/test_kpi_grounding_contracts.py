@@ -32,7 +32,6 @@ from app.models.entities import (
 from app.services.kpi_extraction_service import KPIExtractionService
 from app.services.number_parsing import find_number_tokens, parse_localized_number
 
-
 LOCALE_TOKENS = [
     ("3.456,7", Decimal("3456.7")),
     ("0,24", Decimal("0.24")),

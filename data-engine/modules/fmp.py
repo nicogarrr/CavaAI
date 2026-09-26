@@ -1,6 +1,8 @@
-import requests
 import os
+
+import requests
 from dotenv import load_dotenv
+
 from .storage import get_cached_data, save_to_cache
 
 load_dotenv()

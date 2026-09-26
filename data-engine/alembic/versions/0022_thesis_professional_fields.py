@@ -8,6 +8,7 @@ fills them from already-collected data where possible.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0022_thesis_professional_fields"

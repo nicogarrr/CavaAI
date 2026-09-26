@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.models import Company, Position, Transaction
 from app.services.portfolio_fx_service import PortfolioFXService
 
-
 _UNSET = object()
 
 #: Acciones válidas del ledger (enum cerrado: buy/sell mueven posición,

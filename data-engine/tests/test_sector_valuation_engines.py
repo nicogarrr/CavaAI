@@ -6,7 +6,6 @@ from app.core.database import SessionLocal, init_db
 from app.models import Company, FinancialFact
 from app.services.valuation_service import ValuationService
 
-
 CASES = {
     "BKNTE": (
         "bank",

@@ -7,10 +7,10 @@ import pytest
 
 from app.core.config import Settings
 from app.llm import (
+    MODEL_ALIASES,
     DisabledProvider,
     LLMRequest,
     Message,
-    MODEL_ALIASES,
     OpenAICompatibleProvider,
     ProviderDisabledError,
     ProviderHTTPError,
@@ -20,7 +20,7 @@ from app.llm import (
     parse_json_response,
 )
 from app.llm.model_aliases import ModelAlias, ModelAliasRegistry
-from app.services.llm_router import ModelRoute, ROUTES, route_model, route_table
+from app.services.llm_router import ROUTES, ModelRoute, route_model, route_table
 
 
 def run(coroutine):

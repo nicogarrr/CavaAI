@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models import (
     AlertRule,
     Company,
@@ -18,7 +19,11 @@ from app.models import (
 )
 from app.services.notification_service import NotificationService
 from app.services.review_alert_service import ReviewAlertService
-from app.core.config import get_settings
+
+# Operators the evaluator understands. `create()` did not validate the operator,
+# so a rule created with "!=" (which the screener's comparator table does accept)
+# could never fire and always reported `matched: false`.
+_OPERATORS = frozenset({">", "<", ">=", "<=", "==", "!="})
 
 
 # Operators the evaluator understands. `create()` did not validate the operator,

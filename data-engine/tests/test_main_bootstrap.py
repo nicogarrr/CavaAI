@@ -15,7 +15,6 @@ from app.models import (
 )
 from app.seed import seed
 
-
 DATA_ENGINE_ROOT = Path(__file__).resolve().parents[1]
 
 

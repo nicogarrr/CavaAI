@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from app.models import CalculatedMetric, Company, Document, FinancialFact
 from app.services.metric_calculation_service import METRIC_DEFINITIONS
 
-
 DEFAULT_TERMINAL_METRICS = (
     "revenue",
     "eps",

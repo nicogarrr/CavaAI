@@ -51,6 +51,10 @@ jobs:
         run: node --experimental-strip-types --test scripts/error-cause.test.ts
       - name: Transaction form validation (F1, no silent submits)
         run: node --experimental-strip-types --test scripts/transaction-validation.test.ts
+      - name: Server action guards (SSRF, secret redaction, use server exports)
+        run: npm run test:guards
+      - name: UI format guards (es-ES, scroll movil)
+        run: node --experimental-strip-types --test scripts/ui-format-guard.test.ts
       - name: Market date guard (YYYY-MM-DD no pierde un dia)
         # TZ negativa a posta: las fechas YYYY-MM-DD no deben moverse de dia.
         run: TZ=America/New_York node --experimental-strip-types --test scripts/market-date-guard.test.ts
@@ -187,6 +191,10 @@ jobs:
         # downgrade solo cubre revisiones ANTERIORES; aqui se verifica que
         # 0032 rechaza el downgrade sin dejar DDL parcial.
         run: |
+          # Con 0033 en head, primero baja 0033 (downgrade limpio y verificado);
+          # si no, el raise de 0032 revertiria en la misma transaccion tambien
+          # el downgrade de 0033 y `current` quedaria en 0033.
+          python -m alembic downgrade 0032_tenant_uniques_fk_actions
           if python -m alembic downgrade 0031_propick_runs; then
             echo "0032 downgrade should have raised (forward-only)" >&2
             exit 1

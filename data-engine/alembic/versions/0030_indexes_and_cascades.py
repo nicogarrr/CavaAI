@@ -28,7 +28,6 @@ ix_insider_transactions_filing (0023): no se duplica.
 
 from alembic import op
 
-
 revision = "0030_indexes_and_cascades"
 down_revision = "0029_manager_holding_filing_date"
 branch_labels = None

@@ -1,7 +1,7 @@
 """T1: resilience — external failures become explicit degraded states,
 never fabricated data. Hermetic: mocked transports, no network."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 import httpx
 import pytest

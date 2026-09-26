@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from app.llm.jev import JevDecision
 from app.services.jev_triage_service import build_client

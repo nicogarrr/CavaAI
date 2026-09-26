@@ -21,7 +21,6 @@ from app.services.financial_ingestion_service import (
     SEC_INTANGIBLE_COMPONENTS,
     SEC_METRIC_MAP,
     SOURCE_PRIORITY,
-    SUMMED_COMPONENT_METRICS,
     _collect_by_concept,
     _decimal,
     _merge_esef_periods,

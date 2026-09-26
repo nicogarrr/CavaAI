@@ -1,9 +1,8 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Company, Document, DocumentChunk, Transcript
+from app.models import Document, DocumentChunk, Transcript
 from app.services.company_resolver import resolve_company
 
 

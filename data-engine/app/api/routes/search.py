@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.services.universal_search_service import UniversalSearchService
 
-
 router = APIRouter()
 
 

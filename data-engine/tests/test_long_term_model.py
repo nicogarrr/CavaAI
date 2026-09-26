@@ -7,7 +7,6 @@ import main
 from app.core.database import SessionLocal, init_db
 from app.models import CalculatedMetric, Company, FinancialFact, Position
 
-
 TICKER = "TLM"
 
 

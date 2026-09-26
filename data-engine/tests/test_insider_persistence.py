@@ -6,7 +6,6 @@ from app.core.database import SessionLocal, init_db
 from app.models.entities import InsiderFiling, InsiderTransaction
 from app.services import insider_persistence
 from app.services.connectors import form4 as form4_connector
-
 from tests.test_insider_signals import CEO_BUY_XML
 
 FILING = {

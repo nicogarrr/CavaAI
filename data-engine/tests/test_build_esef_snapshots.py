@@ -7,12 +7,11 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 from build_esef_snapshots import build, latest_filing_per_lei  # noqa: E402
-from app.services.connectors.esef import EsefFiling, EsefError  # noqa: E402
+
+from app.services.connectors.esef import EsefError, EsefFiling  # noqa: E402
 
 
 def _filing(lei: str, period_end: str, with_json: bool = True) -> EsefFiling:
@@ -163,6 +162,7 @@ def test_filings_per_lei_picks_newest_distinct_periods_up_to_max():
 
 def test_merge_facts_dedupes_and_newest_filing_wins_restatements():
     from build_esef_snapshots import merge_facts
+
     from app.services.connectors.esef import normalize_xbrl_json
 
     newest = normalize_xbrl_json(_doc("1100", "2024-01-01", "2025-01-01"))

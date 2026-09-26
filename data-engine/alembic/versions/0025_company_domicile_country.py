@@ -6,6 +6,7 @@ listing-exchange map and then to "Unknown".
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0025_company_domicile_country"

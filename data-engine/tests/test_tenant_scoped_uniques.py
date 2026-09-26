@@ -15,13 +15,10 @@ solo sobre la columna compartida:
 
 from __future__ import annotations
 
-import ast
 import pathlib
 
 import pytest
-from sqlalchemy import inspect
 
-from app.core.database import init_db
 from app.models import DividendRecord, FundManager, ManagerHolding
 
 MODELS = pathlib.Path(__file__).resolve().parents[1] / "app" / "models" / "entities.py"

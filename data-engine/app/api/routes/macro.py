@@ -4,7 +4,6 @@ las series cambian como mucho a diario (tipos) o mensual/trimestral."""
 from __future__ import annotations
 
 import time
-from decimal import Decimal
 
 from fastapi import APIRouter
 

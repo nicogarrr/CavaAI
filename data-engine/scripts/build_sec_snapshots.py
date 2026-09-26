@@ -20,7 +20,6 @@ import sys
 from pathlib import Path
 
 import polars as pl
-
 from sec_snapshot_values import entry_value
 
 CONCEPTS = [

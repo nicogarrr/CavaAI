@@ -11,7 +11,6 @@ from app.models.entities import (
 )
 from app.services import insider_alerts, insider_persistence
 from app.services.connectors import form4 as form4_connector
-
 from tests.test_insider_signals import CEO_BUY_XML
 
 FILING = {

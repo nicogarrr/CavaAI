@@ -18,7 +18,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import models  # noqa: F401
 from app.core.database import Base
 
-
 TABLE_GROUPS = {
     "tenant": {"tenants"},
     "initial": {

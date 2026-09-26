@@ -1,6 +1,6 @@
+import re
 from datetime import UTC, datetime
 from decimal import Decimal
-import re
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -18,7 +18,6 @@ from app.models import (
 )
 from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.review_alert_service import ReviewAlertService
-
 
 METRIC_PATTERNS = {
     "revenue": r"\b(?:revenue|sales)\b[^.$]{0,80}\$?\s*([0-9]+(?:\.[0-9]+)?)\s*(billion|million|bn|m)?",
