@@ -14,9 +14,13 @@ class FMPClient:
     callers mark coverage unavailable instead of fabricating data.
 
     429 y 5xx se reintentan con backoff y respetando Retry-After: el plan FREE
-    de FMP es 250 llamadas/min y una ingesta de un universo de 100 emisores con
-    4 endpoints cada uno lo agota con facilidad. Antes un 429 era un fallo
-    definitivo y el llamante marcaba la cobertura como no disponible.
+    de FMP es 250 llamadas/DIA
+    (fuente: site.financialmodelingprep.com/developer/docs/pricing, consultada
+    2026-09-26) y una ingesta de un universo de 100 emisores con 4 endpoints
+    cada uno (400 llamadas) lo agota con facilidad; un 429 por cuota diaria no
+    se recupera dentro de la corrida y sale como UpstreamRateLimited. Antes un
+    429 era un fallo definitivo y el llamante marcaba la cobertura como no
+    disponible.
     """
 
     base_url = "https://financialmodelingprep.com/stable"

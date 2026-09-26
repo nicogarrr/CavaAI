@@ -66,6 +66,36 @@ def _client(monkeypatch) -> FMPClient:
 # --------------------------------------------------------------------------
 
 
+def test_429_retry_after_beyond_cap_postpones_without_inline_retry():
+    calls = {"n": 0}
+
+    async def fetch():
+        calls["n"] += 1
+        return _Response(429, {"retry-after": "3600"})
+
+    with pytest.raises(UpstreamRateLimited, match="pospuesto sin reintento"):
+        asyncio.run(get_with_retry(fetch))
+    # Sin reintento inline: una sola llamada, no se espera ni se quema cuota.
+    assert calls["n"] == 1
+
+
+def test_429_retry_after_within_cap_still_retries_inline():
+    calls = {"n": 0}
+
+    async def fetch():
+        calls["n"] += 1
+        return _Response(429 if calls["n"] == 1 else 200, {"retry-after": "1"})
+
+    result = asyncio.run(get_with_retry(fetch))
+    assert result.status_code == 200
+    assert calls["n"] == 2
+
+
+def test_retry_after_seconds_truncates_but_never_exceeds_cap():
+    response = _Response(429, {"retry-after": "3600"})
+    assert retry_after_seconds(response) == 120.0
+
+
 def test_429_is_retried_and_can_succeed():
     calls = {"n": 0}
 
