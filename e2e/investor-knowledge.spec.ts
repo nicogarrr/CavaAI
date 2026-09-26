@@ -31,6 +31,8 @@ test.describe("investor knowledge flow", () => {
       return;
     }
 
+    // El listado vive en la pestaña Biblioteca.
+    await page.goto("/knowledge");
     // Listed documents expose chunk browsing and principle extraction per row.
     const chunksLinks = page.getByRole("link", { name: "Fragmentos" });
     expect(await chunksLinks.count()).toBeGreaterThan(0);
