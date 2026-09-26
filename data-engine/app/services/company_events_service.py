@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.models import Company, Document
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.sec import SECClient
@@ -89,7 +90,7 @@ class CompanyEventsService:
                 "/calendar/earnings", {"from": from_date, "to": to_date}
             )
         except Exception as exc:  # red, 4xx/5xx, timeout: degradación honesta
-            logger.warning("finnhub calendar/earnings %s→%s falló: %s", from_date, to_date, exc)
+            logger.warning("finnhub calendar/earnings %s→%s falló: %s", from_date, to_date, redact_secrets(str(exc)))
             return None
         return payload if isinstance(payload, dict) else None
 
@@ -99,7 +100,7 @@ class CompanyEventsService:
         try:
             payload = await self._finnhub._get("/stock/earnings", {"symbol": symbol})
         except Exception as exc:
-            logger.warning("finnhub stock/earnings %s falló: %s", symbol, exc)
+            logger.warning("finnhub stock/earnings %s falló: %s", symbol, redact_secrets(str(exc)))
             return None
         return payload if isinstance(payload, list) else None
 

@@ -20,6 +20,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from app.core.config import get_settings
+from app.core.errors import redact_secrets
 from app.services.connectors import form4 as form4_connector
 from app.services.provenance import Coverage, SourceKind, provenance
 
@@ -372,7 +373,7 @@ def get_signals_for_ticker(
         return result
     except Exception as exc:  # noqa: BLE001 — el endpoint nunca debe romper
         return {"ticker": wanted, "status": "degraded",
-                "reason": f"{type(exc).__name__}: {exc}", "signals": []}
+                "reason": redact_secrets(f"{type(exc).__name__}: {exc}"), "signals": []}
 
 
 # company_tickers.json son ~2 MB y se descarga una vez por ticker resuelto.
@@ -470,4 +471,4 @@ def maybe_notify_insider_buy(
 
         return dict(NotificationService()._dispatch_telegram(settings, payload))
     except Exception as exc:  # noqa: BLE001 — notificar jamas rompe el flujo
-        return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}"}
+        return {"status": "skipped", "reason": redact_secrets(f"{type(exc).__name__}: {exc}")}
