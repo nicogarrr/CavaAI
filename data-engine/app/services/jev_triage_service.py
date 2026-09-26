@@ -14,6 +14,7 @@ import logging
 from dataclasses import dataclass
 
 from app.core.config import get_settings
+from app.services.async_bridge import run_from_any_context
 
 logger = logging.getLogger("cavaai.jev_triage")
 
@@ -74,10 +75,9 @@ def classify_urgency_sync(text: str) -> JevTriageResult | None:
     client = build_client()
     if client is None:
         return None
-    import asyncio
 
     try:
-        decision = asyncio.run(
+        decision = run_from_any_context(
             client.classify(
                 text[:2000],
                 name="urgency",
@@ -108,10 +108,9 @@ def classify_doc_type_sync(text: str) -> JevTriageResult | None:
     client = build_client()
     if client is None:
         return None
-    import asyncio
 
     try:
-        decision = asyncio.run(
+        decision = run_from_any_context(
             client.classify(
                 text[:2000],
                 name="doc_type",
