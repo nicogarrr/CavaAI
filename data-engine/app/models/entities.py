@@ -575,7 +575,9 @@ class MarketPrice(Base, TimestampMixin):
     low: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     close: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     adj_close: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
-    volume: Mapped[int] = mapped_column(Integer, default=0)
+    # NULL = la fuente no da el volumen (spot sin dato); un 0 fabricado
+    # coronaba al ticker como el menos activo con un dato inexistente.
+    volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(80), default="seed")
 
 

@@ -20,7 +20,7 @@ export type MarketMover = {
   price: number;
   /** null = sin cierre anterior registrado (cambio no medible, nunca 0 inventado) */
   change_pct: number | null;
-  volume: number;
+  volume: number | null;
   date: string | null;
 };
 
