@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { GitBranch, RefreshCcw } from 'lucide-react';
 
@@ -11,6 +12,12 @@ import { getKnowledgeGraph, getKnowledgeNeighborhood, syncKnowledgeGraph } from 
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+export const metadata: Metadata = {
+  title: 'Grafo de conocimiento',
+  description:
+    'Enlaces deterministas entre autores, principios, empresas, KPIs, riesgos, decisiones, lecciones y conceptos, con su procedencia.',
+};
 
 const colors: Record<string, string> = { company: '#14b8a6', principle: '#8b5cf6', author: '#a78bfa', decision: '#3b82f6', decision_lesson: '#22c55e', kpi: '#f59e0b', risk: '#ef4444', concept: '#ec4899', case_study: '#06b6d4' };
 

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { formatCompact, formatNumber, formatPercent, formatPrice, NA } from '@/lib/format';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getStockFinancialData } from '@/lib/actions/finnhub.actions';
@@ -18,6 +19,12 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+export const metadata: Metadata = {
+    title: 'Watchlist',
+    description:
+        'Seguimiento detallado de los símbolos que sigues: precio, cambio de sesión, market cap y PER (TTM) de cada uno.',
+};
 
 interface WatchlistStock {
     symbol: string;
@@ -116,13 +123,14 @@ export default async function WatchlistPage() {
                         <Eye className="mb-4 h-12 w-12 text-gray-600 sm:h-16 sm:w-16" aria-hidden="true" />
                         <h2 className="mb-2 text-lg font-semibold text-gray-300 sm:text-xl">Tu Watchlist está vacía</h2>
                         <p className="mb-6 max-w-md text-sm text-gray-500 sm:text-base">
-                            Busca acciones y haz click en &ldquo;Añadir a Watchlist&rdquo; para monitorizarlas aquí.
+                            Busca la empresa en la búsqueda universal (o con Ctrl+K desde cualquier pantalla) y
+                            pulsa &ldquo;Añadir a Watchlist&rdquo; para monitorizarla aquí.
                         </p>
                         <Link
-                            href="/"
+                            href="/search"
                             className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-teal-400/20 px-5 text-sm text-teal-400 transition-colors hover:text-teal-300"
                         >
-                            ← Ir a buscar acciones
+                            Ir a buscar acciones
                         </Link>
                     </CardContent>
                 </Card>
