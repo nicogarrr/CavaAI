@@ -8,9 +8,11 @@
  */
 export const SECTORES: Record<string, string> = {
   Technology: 'Tecnología',
+  'Information Technology': 'Tecnología',
   Healthcare: 'Salud',
   'Health Care': 'Salud',
   'Financial Services': 'Servicios financieros',
+  Financials: 'Servicios financieros',
   'Consumer Discretionary': 'Consumo cíclico',
   'Consumer Cyclical': 'Consumo cíclico',
   Industrials: 'Industriales',
@@ -20,6 +22,7 @@ export const SECTORES: Record<string, string> = {
   'Real Estate': 'Inmobiliario',
   Materials: 'Materiales',
   'Communication Services': 'Servicios de comunicación',
+  Media: 'Medios',
 };
 
 /** Etiqueta ES de un sector; si el backend manda uno desconocido, se muestra tal cual. */

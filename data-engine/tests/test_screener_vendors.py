@@ -63,6 +63,31 @@ def test_registry_has_both_vendors_and_finnhub_default():
     assert SCREEN_VENDORS["yahoo"].source_label == "yahoo_finance"
 
 
+def test_profile_vendor_falls_back_to_finnhub_when_quotes_have_no_profiles(monkeypatch):
+    """F63/F97: con SCREENER_QUOTE_VENDOR=yahoo los market caps salían 0 para
+    siempre (Yahoo no tiene profile). El perfil debe pedirse a Finnhub cuando
+    hay key; sin key se conserva el fallback honesto anterior."""
+    from app.api.routes.screeners import resolve_profile_vendor
+
+    class _Settings:
+        finnhub_api_key = "k" * 8
+
+    monkeypatch.setattr(screeners, "get_settings", lambda: _Settings())
+    yahoo = resolve_screener_vendor("yahoo")
+    assert yahoo.supports_profiles is False
+    assert resolve_profile_vendor(yahoo).name == "finnhub"
+
+    finnhub = resolve_screener_vendor("finnhub")
+    assert finnhub.supports_profiles is True
+    assert resolve_profile_vendor(finnhub).name == "finnhub"
+
+    class _NoKey:
+        finnhub_api_key = ""
+
+    monkeypatch.setattr(screeners, "get_settings", lambda: _NoKey())
+    assert resolve_profile_vendor(yahoo).name == "yahoo"
+
+
 def test_resolve_vendor_falls_back_to_finnhub():
     assert resolve_screener_vendor(None).name == "finnhub"
     assert resolve_screener_vendor("").name == "finnhub"

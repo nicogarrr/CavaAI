@@ -313,6 +313,8 @@ class ScreenQuoteVendor(Protocol):
 
     name: str
     source_label: str
+    #: False si el vendor no puede dar perfil real (p. ej. Yahoo: solo quotes).
+    supports_profiles: bool
 
     def fetch_quote(self, client: httpx.Client, symbol: str) -> dict | None: ...
     def fetch_profile(self, client: httpx.Client, symbol: str) -> dict | None: ...
@@ -362,6 +364,7 @@ class FinnhubScreenVendor:
 
     name = "finnhub"
     source_label = "finnhub_free"
+    supports_profiles = True
 
     def fetch_quote(self, client: httpx.Client, symbol: str) -> dict | None:
         """Precio real del día vía Finnhub /quote (plan gratuito).
@@ -424,6 +427,7 @@ class YahooScreenVendor:
 
     name = "yahoo"
     source_label = "yahoo_finance"
+    supports_profiles = False
 
     def fetch_quote(self, client: httpx.Client, symbol: str) -> dict | None:
         try:
@@ -474,11 +478,28 @@ class YahooScreenVendor:
         return None
 
 
+
 SCREEN_VENDORS: dict[str, ScreenQuoteVendor] = {
     FinnhubScreenVendor.name: FinnhubScreenVendor(),
     YahooScreenVendor.name: YahooScreenVendor(),
 }
 DEFAULT_SCREENER_VENDOR = "finnhub"
+
+
+def resolve_profile_vendor(active: ScreenQuoteVendor) -> ScreenQuoteVendor:
+    """Vendor para perfiles (nombre/market cap/sector/exchange).
+
+    Si el vendor de quotes no puede dar perfil real (Yahoo), el perfil se
+    pide a Finnhub: 35 llamadas cacheadas 6h, muy por debajo del free tier.
+    Sin key de Finnhub configurada se conserva el comportamiento anterior
+    (fallbacks del universo/DB y marketCap 0 honesto → "sin datos" en UI).
+    """
+    if active.supports_profiles:
+        return active
+    finnhub = SCREEN_VENDORS.get("finnhub")
+    if finnhub is not None and get_settings().finnhub_api_key:
+        return finnhub
+    return active
 
 
 def resolve_screener_vendor(name: str | None) -> ScreenQuoteVendor:
@@ -771,8 +792,9 @@ def _refetch_real_items(
 
     quotes: dict[str, dict] = {}
     with httpx.Client(headers=headers, timeout=15) as client:
+        profile_vendor = resolve_profile_vendor(active)
         fn_key = settings.finnhub_api_key
-        client.params = {"token": fn_key} if fn_key and active.name == "finnhub" else {}
+        client.params = {"token": fn_key} if fn_key and profile_vendor.name == "finnhub" else {}
         with ThreadPoolExecutor(max_workers=QUOTE_MAX_WORKERS) as pool:
             futures = {
                 pool.submit(_safe_fetch_quote, client, symbol, active.name): symbol
@@ -803,13 +825,14 @@ def _refetch_real_items(
     profiles: dict[str, dict] = {}
     profile_symbols = [symbol for symbol, _, _ in _REAL_UNIVERSE if symbol in quotes]
     with httpx.Client(headers=headers, timeout=15) as client:
+        profile_vendor = resolve_profile_vendor(active)
         fn_key = settings.finnhub_api_key
-        client.params = {"token": fn_key} if fn_key and active.name == "finnhub" else {}
+        client.params = {"token": fn_key} if fn_key and profile_vendor.name == "finnhub" else {}
         now = time.monotonic()
         with _real_cache_lock:
             cached_profiles = {}
             for symbol in profile_symbols:
-                cached = _real_profile_cache.get(f"{active.name}:{symbol}")
+                cached = _real_profile_cache.get(f"{profile_vendor.name}:{symbol}")
                 if cached and now - float(cached.get("at", 0.0)) < _PROFILE_TTL:
                     cached_profiles[symbol] = cached["data"]
         missing_profiles = [
@@ -822,7 +845,7 @@ def _refetch_real_items(
             ) as pool:
                 futures = {
                     pool.submit(
-                        _safe_fetch_profile, client, symbol, active.name
+                        _safe_fetch_profile, client, symbol, profile_vendor.name
                     ): symbol
                     for symbol in missing_profiles
                 }
