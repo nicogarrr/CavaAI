@@ -6330,6 +6330,14 @@
             "title": "Model Type",
             "type": "string"
           },
+          "publication_blockers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Publication Blockers",
+            "type": "array"
+          },
           "publishable": {
             "default": true,
             "title": "Publishable",
