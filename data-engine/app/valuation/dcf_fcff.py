@@ -29,6 +29,10 @@ def run_dcf(inputs: DCFInputs) -> DCFResult:
         raise ValueError("wacc must be greater than terminal_growth")
     if inputs.years < 1:
         raise ValueError("years must be at least 1")
+    if 1 + inputs.wacc <= 0:
+        # (1 + wacc) ** year alternaria de signo con un WACC <= -1: los
+        # factores de descuento darian negativos y el valor presente, inventado.
+        raise ValueError("wacc must be greater than -1")
 
     forecast = []
     present_value = 0.0
@@ -57,6 +61,15 @@ def run_dcf(inputs: DCFInputs) -> DCFResult:
     equity_value = enterprise_value - inputs.net_debt
     value_per_share = equity_value / inputs.shares_outstanding
 
+    # El valor terminal se lleva la mayor parte del EV en casi cualquier DCF de
+    # 5 años, y su peso crece sin límite al acercarse el WACC al g. Con un
+    # spread de 1 pp, el mismo modelo da 96x más de valor. Se expone el peso
+    # y el spread para que quien lee el resultado vea de cuanto depende.
+    terminal_share = (
+        pv_terminal_value / enterprise_value if enterprise_value > 0 else None
+    )
+    spread = inputs.wacc - inputs.terminal_growth
+
     return DCFResult(
         enterprise_value=enterprise_value,
         equity_value=equity_value,
@@ -69,6 +82,8 @@ def run_dcf(inputs: DCFInputs) -> DCFResult:
             "terminal_value": terminal_value,
             "pv_terminal_value": pv_terminal_value,
             "pv_explicit_fcf": present_value,
+            "wacc_minus_growth": spread,
+            "pv_terminal_share_of_ev": terminal_share,
         },
     )
 
