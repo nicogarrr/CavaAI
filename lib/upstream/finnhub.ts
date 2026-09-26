@@ -16,7 +16,7 @@
 import { TIMEOUTS } from '@/lib/constants';
 import { ExternalAPIError, RateLimitError, toAppError } from '@/lib/types/errors';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
-import { redactUrl } from '@/lib/upstream/redact';
+import { redactUrl, sanitizeCause } from '@/lib/upstream/redact';
 
 export { redactUrl };
 
@@ -87,21 +87,25 @@ export async function fetchJSON<T>(url: string, revalidateSeconds?: number): Pro
             throw error;
         }
 
-        // Manejar otros errores
+        // Manejar otros errores. La causa NUNCA es el error crudo: fetch
+        // rechaza con la URL completa (?token=...) en el mensaje, y esa
+        // cadena acababa en originalError/cause del error de frontera, en
+        // los console.error de los actions y en una posible serializacion.
         const appError = toAppError(error);
         const safeUrl = redactUrl(url);
+        const safeCause = sanitizeCause(error);
         if (appError.message.includes('AbortError') || appError.message.includes('aborted')) {
             throw new ExternalAPIError(
                 `Request timeout for ${safeUrl}`,
                 'finnhub',
-                appError
+                safeCause
             );
         }
 
         throw new ExternalAPIError(
             `Unexpected error fetching ${safeUrl}`,
             'finnhub',
-            appError
+            safeCause
         );
     }
 }
