@@ -107,9 +107,14 @@ class PublicPriceProvider:
                 payload = await self.finnhub.quote(company.ticker)
                 value = Decimal(str(payload.get("c") or 0))
                 timestamp = int(payload.get("t") or 0)
-                observed_date = datetime.fromtimestamp(timestamp, tz=UTC).date() if timestamp > 0 else as_of
                 if value > 0:
-                    return company, PriceObservation(company.ticker, value, observed_date, "Finnhub"), None
+                    if timestamp <= 0:
+                        # Sin timestamp no podemos fechar la quote con honestidad:
+                        # publicarla como de hoy fabricaria el observed_date.
+                        errors.append("Finnhub:quote_missing_timestamp")
+                    else:
+                        observed_date = datetime.fromtimestamp(timestamp, tz=UTC).date()
+                        return company, PriceObservation(company.ticker, value, observed_date, "Finnhub"), None
             except Exception as exc:
                 errors.append(f"Finnhub:{type(exc).__name__}")
         reason = ",".join(errors) if errors else "no_price_provider_configured"

@@ -6,8 +6,9 @@ batched), and every stage reports its honest status instead of hiding gaps.
 """
 
 import asyncio
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine, event, select
@@ -15,7 +16,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.entities import Base, Company, MarketPrice, Portfolio, Position
 from app.services.connectors.ecb import ECBRates
-from app.services.market_refresh_service import MarketRefreshService, PriceObservation
+from app.services.market_refresh_service import (
+    MarketRefreshService,
+    PriceObservation,
+    PublicPriceProvider,
+)
 
 
 @pytest.fixture
@@ -138,3 +143,43 @@ def test_refresh_writes_prices_and_reports_stages(db):
         # FX came from the stage-2 upsert (1.1) through the batched table.
         assert position.fx_rate == Decimal("1.1")
         assert position.market_value_base == Decimal("1100")
+
+
+def test_finnhub_quote_without_timestamp_is_not_dated_today():
+    """Quote de Finnhub sin timestamp: no se publica con la fecha de hoy."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+    provider.fmp = SimpleNamespace(configured=lambda: False)
+
+    async def quote(_ticker):
+        return {"c": 210.5, "t": 0}
+
+    provider.finnhub = SimpleNamespace(configured=lambda: True, quote=quote)
+    company = SimpleNamespace(ticker="AAPL")
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert observation is None
+    assert error is not None
+    assert "quote_missing_timestamp" in error["reason"]
+
+
+def test_finnhub_quote_uses_provider_timestamp_date():
+    """Con timestamp, observed_date es la fecha del proveedor (UTC), no hoy."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+    provider.fmp = SimpleNamespace(configured=lambda: False)
+    provider_ts = 1_758_220_800  # 2025-09-18, claramente distinto del as_of
+
+    async def quote(_ticker):
+        return {"c": 210.5, "t": provider_ts}
+
+    provider.finnhub = SimpleNamespace(configured=lambda: True, quote=quote)
+    company = SimpleNamespace(ticker="AAPL")
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    expected = datetime.fromtimestamp(provider_ts, tz=UTC).date()
+
+    assert error is None
+    assert observation is not None
+    assert observation.price_date == expected
+    assert observation.price_date != date(2026, 9, 26)

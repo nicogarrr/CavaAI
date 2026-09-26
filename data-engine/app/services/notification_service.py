@@ -28,44 +28,51 @@ class NotificationService:
             "jev_urgency": jev_urgency,
         }
         for channel in alert.channels:
+            # Dedup por canal: un retry nunca reenvia un canal ya entregado.
+            if deliveries.get(channel, {}).get("status") == "delivered":
+                continue
+            # Outbox: el intento queda persistido ANTES de enviar, y el
+            # resultado DESPUES de cada canal. Si el proceso muere a mitad,
+            # el retry ve lo ya entregado y no lo repite (at-least-once: un
+            # commit fallido justo tras un envio puede repetir ESE canal;
+            # sin idempotency keys del proveedor no se puede acotar mas).
+            deliveries[channel] = self._result("pending")
+            alert.metadata_ = {**(alert.metadata_ or {}), "deliveries": deliveries}
+            db.commit()
             if channel == "in_app":
                 deliveries[channel] = self._result("delivered")
-                continue
-            if channel == "telegram":
+            elif channel == "telegram":
                 deliveries[channel] = self._dispatch_telegram(settings, payload)
-                continue
-            endpoint = (
-                getattr(settings, "alert_email_webhook_url", None)
-                if channel == "email"
-                else getattr(settings, "alert_push_webhook_url", None)
-                if channel == "push"
-                else None
-            )
-            if not endpoint:
-                deliveries[channel] = self._result(
-                    "not_configured",
-                    error=f"No webhook configured for {channel}",
+            else:
+                endpoint = (
+                    getattr(settings, "alert_email_webhook_url", None)
+                    if channel == "email"
+                    else getattr(settings, "alert_push_webhook_url", None)
+                    if channel == "push"
+                    else None
                 )
-                continue
-            try:
-                with httpx.Client(timeout=10) as client:
-                    response = client.post(
-                        endpoint,
-                        json={**payload, "channel": channel},
+                if not endpoint:
+                    deliveries[channel] = self._result(
+                        "not_configured",
+                        error=f"No webhook configured for {channel}",
                     )
-                    response.raise_for_status()
-                deliveries[channel] = self._result("delivered")
-            except Exception as exc:
-                # Webhook errors can contain signed URLs, request bodies and
-                # provider paths. Persist only the exception class.
-                deliveries[channel] = self._result(
-                    "failed", error=type(exc).__name__
-                )
-        alert.metadata_ = {
-            **(alert.metadata_ or {}),
-            "deliveries": deliveries,
-        }
-        db.commit()
+                else:
+                    try:
+                        with httpx.Client(timeout=10) as client:
+                            response = client.post(
+                                endpoint,
+                                json={**payload, "channel": channel},
+                            )
+                            response.raise_for_status()
+                        deliveries[channel] = self._result("delivered")
+                    except Exception as exc:
+                        # Webhook errors can contain signed URLs, request bodies and
+                        # provider paths. Persist only the exception class.
+                        deliveries[channel] = self._result(
+                            "failed", error=type(exc).__name__
+                        )
+            alert.metadata_ = {**(alert.metadata_ or {}), "deliveries": deliveries}
+            db.commit()
         db.refresh(alert)
         return deliveries
 

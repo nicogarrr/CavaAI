@@ -155,3 +155,95 @@ def test_telegram_text_format_and_jev_line():
     # Telegram plain-text cap.
     payload["message"] = "x" * 9000
     assert len(NotificationService._telegram_text(payload)) <= 4090
+
+
+def _webhook_settings():
+    return SimpleNamespace(
+        telegram_enabled=False,
+        telegram_bot_token=None,
+        telegram_chat_id=None,
+        telegram_api_base_url="https://api.telegram.org",
+        telegram_timeout_seconds=10,
+        alert_email_webhook_url="https://hooks.example/email",
+        alert_push_webhook_url="https://hooks.example/push",
+    )
+
+
+class _CountingClient:
+    """httpx.Client stub that counts POSTs per URL and always succeeds."""
+
+    calls: list[str] = []
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def post(self, url, json):
+        type(self).calls.append(url)
+        return SimpleNamespace(raise_for_status=lambda: None)
+
+
+def test_dispatch_persists_pending_state_before_sending(monkeypatch, db):
+    """Outbox: cuando el envio sale, el intento ya consta persistido."""
+    _CountingClient.calls = []
+    observed_states: list[str] = []
+
+    class _InspectingClient(_CountingClient):
+        def post(self, url, json):
+            db.expire_all()
+            alert = db.get(ResearchAlert, json["alert_id"])
+            observed_states.append(
+                alert.metadata_["deliveries"][json["channel"]]["status"]
+            )
+            return super().post(url, json)
+
+    monkeypatch.setattr(notification_service.httpx, "Client", _InspectingClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    deliveries = NotificationService().dispatch(db, _alert(db, ["email", "push"]))
+
+    assert observed_states == ["pending", "pending"]
+    assert deliveries["email"]["status"] == "delivered"
+    assert deliveries["push"]["status"] == "delivered"
+
+
+def test_retry_after_failed_commit_does_not_resend_delivered_channels(monkeypatch, db):
+    """Commit que falla tras un envio: el retry salta canales ya delivered."""
+    _CountingClient.calls = []
+    monkeypatch.setattr(notification_service.httpx, "Client", _CountingClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    alert = _alert(db, ["email", "push"])
+    real_commit = db.commit
+    commits = {"n": 0}
+
+    def flaky_commit():
+        commits["n"] += 1
+        if commits["n"] == 4:
+            # Falla el commit del resultado 'delivered' de push (post-envio).
+            raise RuntimeError("db connection lost mid-dispatch")
+        return real_commit()
+
+    monkeypatch.setattr(db, "commit", flaky_commit)
+
+    with pytest.raises(RuntimeError, match="db connection lost"):
+        NotificationService().dispatch(db, alert)
+    db.rollback()
+    monkeypatch.setattr(db, "commit", real_commit)
+
+    db.refresh(alert)
+    assert alert.metadata_["deliveries"]["email"]["status"] == "delivered"
+    assert alert.metadata_["deliveries"]["push"]["status"] == "pending"
+
+    deliveries = NotificationService().dispatch(db, alert)
+
+    assert deliveries["email"]["status"] == "delivered"
+    assert deliveries["push"]["status"] == "delivered"
+    # email no se reenvia (ya delivered); push si (at-least-once documentado).
+    assert _CountingClient.calls.count("https://hooks.example/email") == 1
+    assert _CountingClient.calls.count("https://hooks.example/push") == 2
