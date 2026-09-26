@@ -1,11 +1,14 @@
 import { AlertTriangle, ArrowLeft, Minus, TrendingDown, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
+import { Stat } from '@/components/ui/stat';
 import { Textarea } from '@/components/ui/textarea';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
-import { formatPercent } from '@/lib/format';
+import { formatPercent, NA } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -20,33 +23,19 @@ async function submitIngestFeed(formData: FormData): Promise<void> {
   await ingestResearchNewsFeed(formData);
 }
 
-function Stat({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string;
-  value: string;
-  tone?: 'default' | 'good' | 'warn' | 'bad';
-}) {
-  const toneClass = {
-    default: 'text-gray-100',
-    good: 'text-teal-300',
-    warn: 'text-amber-300',
-    bad: 'text-red-300',
-  }[tone];
-
-  return (
-    <div className="rounded-lg border border-gray-800 bg-[#111111] p-4">
-      <div className="text-xs font-semibold uppercase text-gray-500">{label}</div>
-      <div className={`mt-2 text-2xl font-semibold ${toneClass}`}>{value}</div>
-    </div>
-  );
-}
-
 function pct(value: number | null | undefined) {
-  return formatPercent(value ?? null, { digits: 1 }, 'N/D');
+  return formatPercent(value ?? null, { digits: 1 }, NA);
 }
+
+/** El icono de impacto es el único dato de la celda: se oculta y se deja el
+ *  nombre en texto para que un lector de pantalla no lea un glifo suelto. */
+const IMPACT_LABELS: Record<string, string> = {
+  up: 'alcista',
+  positive: 'alcista',
+  down: 'bajista',
+  negative: 'bajista',
+  neutral: 'neutro',
+};
 
 export default async function ResearchNewsPage() {
   const events = await getResearchNews();
@@ -54,25 +43,25 @@ export default async function ResearchNewsPage() {
   const highMateriality = events.filter((e) => e.materiality_score >= 7).length;
 
   return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6">
-      <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <Button asChild className="mb-4" size="sm" variant="ghost">
+    <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
+      <PageHeader
+        actions={
+          <div className="rounded-lg border border-gray-800 bg-surface-1 px-4 py-3 text-sm text-gray-300">
+            {events.length} eventos
+          </div>
+        }
+        back={
+          <Button asChild size="sm" variant="ghost">
             <Link href="/research">
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Research
             </Link>
           </Button>
-          <p className="text-sm font-semibold uppercase text-teal-300">Inteligencia de mercado</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-100">Eventos de noticias</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            Eventos de noticias clasificados por materialidad e impacto sobre posiciones de cartera.
-          </p>
-        </div>
-        <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
-          {events.length} eventos
-        </div>
-      </header>
+        }
+        description="Eventos de noticias clasificados por materialidad e impacto sobre posiciones de cartera."
+        kicker="Inteligencia de mercado"
+        title="Eventos de noticias"
+      />
 
       <section className="grid gap-4 md:grid-cols-3">
         <Stat label="Eventos totales" value={String(events.length)} />
@@ -80,24 +69,25 @@ export default async function ResearchNewsPage() {
         <Stat label="Alta materialidad" value={String(highMateriality)} tone={highMateriality > 0 ? 'warn' : 'good'} />
       </section>
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-teal-300" />
+          <AlertTriangle aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Flujo de eventos</h2>
         </div>
-        <div className="overflow-x-auto">
+        <div aria-label="Flujo de eventos de noticias" className="overflow-x-auto" role="region" tabIndex={0}>
           <table className="w-full min-w-[1080px] text-left text-sm">
+            <caption className="sr-only">Eventos de noticias clasificados por materialidad, con impacto sobre la cartera y si exigen actualización</caption>
             <thead className="text-xs uppercase text-gray-500">
               <tr>
-                <th className="border-b border-gray-800 py-2">Ticker</th>
-                <th className="border-b border-gray-800 py-2">Fecha</th>
-                <th className="border-b border-gray-800 py-2">Titular</th>
-                <th className="border-b border-gray-800 py-2">Fuente</th>
-                <th className="border-b border-gray-800 py-2">Tipo</th>
-                <th className="border-b border-gray-800 py-2 text-right">Peso</th>
-                <th className="border-b border-gray-800 py-2 text-center">Materialidad</th>
-                <th className="border-b border-gray-800 py-2 text-center">Impacto</th>
-                <th className="border-b border-gray-800 py-2 text-center">¿Actualizar?</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Ticker</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Fecha</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Titular</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Fuente</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Tipo</th>
+                <th className="border-b border-gray-800 py-2 text-right" scope="col">Peso</th>
+                <th className="border-b border-gray-800 py-2 text-center" scope="col">Materialidad</th>
+                <th className="border-b border-gray-800 py-2 text-center" scope="col">Impacto</th>
+                <th className="border-b border-gray-800 py-2 text-center" scope="col">¿Actualizar?</th>
               </tr>
             </thead>
             <tbody>
@@ -119,7 +109,7 @@ export default async function ResearchNewsPage() {
 
                 return (
                   <tr key={event.id} className="border-b border-gray-900 last:border-0">
-                    <td className="py-3 font-semibold">
+                    <th className="py-3 text-left text-sm font-semibold" scope="row">
                       {event.ticker ? (
                         <Link
                           className="text-teal-300 hover:text-teal-200"
@@ -130,7 +120,7 @@ export default async function ResearchNewsPage() {
                       ) : (
                         <span className="text-gray-500">—</span>
                       )}
-                    </td>
+                    </th>
                     <td className="py-3 text-gray-400">{event.date.split('T')[0]}</td>
                     <td className="max-w-[360px] py-3 text-gray-300">
                       <div className="truncate">
@@ -143,14 +133,14 @@ export default async function ResearchNewsPage() {
                         )}
                       </div>
                       {event.materiality_reasons?.length ? (
-                        <div className="mt-1 truncate text-xs text-gray-600">
+                        <div className="mt-1 truncate text-xs text-gray-500">
                           {event.materiality_reasons.slice(0, 3).join(' | ')}
                         </div>
                       ) : null}
                     </td>
                     <td className="py-3 text-gray-400">
                       <div>{event.source}</div>
-                      <div className="mt-1 text-xs text-gray-600">{event.source_tier ?? 'tier desconocido'}</div>
+                      <div className="mt-1 text-xs text-gray-500">{event.source_tier ?? 'tier desconocido'}</div>
                     </td>
                     <td className="py-3 text-gray-400">{event.event_type}</td>
                     <td className="py-3 text-right text-gray-400">{pct(event.portfolio_weight)}</td>
@@ -160,7 +150,8 @@ export default async function ResearchNewsPage() {
                       </span>
                     </td>
                     <td className="py-3 text-center">
-                      <DirectionIcon className="inline-block h-4 w-4 text-gray-400" />
+                      <DirectionIcon aria-hidden="true" className="inline-block h-4 w-4 text-gray-400" />
+                      <span className="sr-only">{IMPACT_LABELS[dir] ?? dir}</span>
                     </td>
                     <td className="py-3 text-center">
                       {event.requires_update ? (
@@ -178,11 +169,12 @@ export default async function ResearchNewsPage() {
               })}
               {!events.length ? (
                 <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={9}>
-                    <p>Sin eventos de noticias todavía.</p>
-                    <Link className="mt-3 inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 hover:border-teal-600 hover:text-teal-200" href="/research/sources">
-                      Importa una fuente o analiza una noticia manual
-                    </Link>
+                  <td className="p-0" colSpan={9}>
+                    <EmptyState
+                      action={<EmptyLink href="/research/sources">Importa una fuente o analiza una noticia manual</EmptyLink>}
+                      className="rounded-none border-0 p-6"
+                      title="Sin eventos de noticias todavía."
+                    />
                   </td>
                 </tr>
               ) : null}
@@ -191,9 +183,9 @@ export default async function ResearchNewsPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-teal-300" />
+          <AlertTriangle aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Analizar noticia manual</h2>
         </div>
         <MutationForm action={submitAnalyzeNews} className="grid gap-3" resetOnSuccess successMessage="Noticia analizada">
@@ -227,9 +219,9 @@ export default async function ResearchNewsPage() {
         </MutationForm>
       </section>
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-teal-300" />
+          <AlertTriangle aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Ingerir lote de feed</h2>
         </div>
         <MutationForm action={submitIngestFeed} className="grid gap-3" resetOnSuccess successMessage="Feed importado">

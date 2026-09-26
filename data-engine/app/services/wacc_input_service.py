@@ -9,7 +9,6 @@ from app.core.config import get_settings
 from app.models import Company, Document, FinancialFact
 from app.services.connectors.fred import FREDClient
 
-
 # Sufijos Yahoo por bolsa (free tier): solo mercados confirmados en prod.
 _YAHOO_SUFFIX_BY_EXCHANGE = {
     "BME": ".MC",
@@ -167,6 +166,7 @@ class WaccInputService:
                         source=market_document,
                         source_type="yfinance",
                         confidence=Decimal("0.75"),
+                        unit=unit,
                     )
                 )
         db.commit()
@@ -231,6 +231,7 @@ class WaccInputService:
         source: Document,
         source_type: str,
         confidence: Decimal,
+        unit: str = "decimal",
     ) -> FinancialFact:
         fact = db.scalar(
             select(FinancialFact).where(
@@ -245,7 +246,7 @@ class WaccInputService:
                 company_id=company.id,
                 metric=metric,
                 value=value,
-                unit="decimal",
+                unit=unit,
                 period=period,
                 source_id=source.id,
                 source_type=source_type,

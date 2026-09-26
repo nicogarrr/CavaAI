@@ -8,7 +8,6 @@ from app.core.database import SessionLocal, init_db
 from app.models import Company, ExternalClaim, NewsEvent, Position, ThesisChange
 from app.services.source_hierarchy_service import classify_source
 
-
 TARGET_TICKER = "MATBIG"
 OTHER_TICKER = "MATOTH"
 

@@ -4,19 +4,20 @@ Scrapes top performing investment funds from finect.com for Spanish investors.
 Uses Selenium with headless Chrome for JavaScript execution.
 Caches results for 30 days.
 """
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-import sqlite3
-import os
 import datetime
 import json
+import os
 import re
+import sqlite3
 import time
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
 
 CACHE_FILE = "funds_cache.json"
 DB_FILE = "funds.db"
@@ -485,7 +486,7 @@ def get_all_funds_cached() -> list:
     # Load cache
     if os.path.exists(CACHE_FILE):
         try:
-            with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+            with open(CACHE_FILE, encoding='utf-8') as f:
                 cache = json.load(f)
                 cached_data = cache.get(cache_key)
                 if cached_data:

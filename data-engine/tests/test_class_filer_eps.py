@@ -221,6 +221,6 @@ def test_read_response_decompresses_gzip():
         def read(self) -> bytes:
             return self._data
 
-    payload = '{"ok": true}'.encode()
+    payload = b'{"ok": true}'
     assert _read_response(_Resp(_gzip.compress(payload), "gzip")) == payload
     assert _read_response(_Resp(payload, None)) == payload

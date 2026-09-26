@@ -4,7 +4,6 @@ import json
 import sys
 from pathlib import Path
 
-
 DATA_ENGINE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DATA_ENGINE_ROOT))
 

@@ -1,29 +1,40 @@
+import type { Metadata } from 'next';
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { getSavedScreenerEngines, getScreenerStocksReal } from '@/lib/actions/screener.actions';
+import { formatCompact, formatPercent, formatPrice } from '@/lib/format';
+import { etiquetaSector } from '@/lib/labels';
+import { t } from '@/lib/i18n/t';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import { RefreshCcw } from 'lucide-react';
 import FollowButton from '@/components/screener/FollowButton';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-/** Etiqueta ES visible + valor EN para la query (el backend espera el sector en inglés) */
+export const metadata: Metadata = {
+  title: 'Screener',
+  description:
+    'Large caps líquidos con precio y market cap reales, filtros guardados del motor de análisis y lectura offline con Finnhub.',
+};
+
+/** Sectores que el Screener ofrece: etiqueta ES de lib/labels.ts + valor EN
+ *  que espera el backend. */
 const SECTORES = [
-  { es: 'Tecnología', en: 'Technology' },
-  { es: 'Salud', en: 'Health Care' },
-  { es: 'Servicios financieros', en: 'Financial Services' },
-  { es: 'Consumo cíclico', en: 'Consumer Cyclical' },
-  { es: 'Energía', en: 'Energy' },
-  { es: 'Servicios públicos', en: 'Utilities' },
+  { en: 'Technology' },
+  { en: 'Health Care' },
+  { en: 'Financial Services' },
+  { en: 'Consumer Cyclical' },
+  { en: 'Energy' },
+  { en: 'Utilities' },
 ];
 
 const sectorEn = (value: string) =>
   SECTORES.some((s) => s.en === value) ? value : 'Technology';
 
-const sectorEs = (value: string) =>
-  SECTORES.find((s) => s.en === value)?.es ?? value;
+const sectorEs = (value: string) => etiquetaSector(value);
 
 export default async function ScreenerPage({ searchParams }: { searchParams?: Promise<{ sector?: string }> }) {
   const sector = sectorEn((await searchParams)?.sector ?? 'Technology');
@@ -44,18 +55,20 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
     ),
   ]);
   const { rows, backendDown } = screenerResult;
+  // Un indice sin precio real (fallo del proveedor) no se pinta como $0.00.
+  const validIndices = indices.filter((i) => i.price > 0);
 
   return (
-    <div className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
+    <main id="content" tabIndex={-1} className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold break-words text-gray-100">Screener</h1>
+        <h1 className="text-2xl font-semibold break-words text-gray-100">{t('nav.screener')}</h1>
         <p className="mt-1 text-sm text-gray-400">Large caps líquidos con precio y market cap reales (motor de análisis, caché 60s)</p>
       </div>
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por sector">
         {SECTORES.map((s) => (
           <Button key={s.en} asChild variant={sector === s.en ? 'default' : 'outline'} size="sm" className="min-h-[44px] min-w-[44px] rounded-md px-4">
-            <Link href={`/screener?sector=${encodeURIComponent(s.en)}`}>{s.es}</Link>
+            <Link href={`/screener?sector=${encodeURIComponent(s.en)}`}>{etiquetaSector(s.en)}</Link>
           </Button>
         ))}
       </div>
@@ -110,15 +123,33 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
           <CardContent className="min-w-0 px-3 sm:px-6">
             {rows.length === 0 ? (
               backendDown ? (
+              /* Mismo aspecto y mismo reintento que components/system/BackendOffline.tsx
+               * (distintivo ámbar + explicación + botón Reintentar), pero en línea:
+               * aquí la página sigue teniendo contenido útil (filtros de sector,
+               * índices) y sustituir la tabla por un error a pantalla completa
+               * tiraría el H1 y el panel del motor. */
               <div className="px-4 py-10 text-center">
-                <p className="text-sm text-gray-500 sm:text-base">
-                  No hay datos ahora mismo — el backend puede estar arrancando. Reintenta en 30s.
+                <span className="inline-block rounded-full border border-amber-900/60 bg-amber-950/40 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
+                  Motor de análisis desconectado
+                </span>
+                <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-gray-400 sm:text-base">
+                  No hay datos ahora mismo: el motor no responde y puede estar arrancando. Tus datos
+                  están a salvo, reintenta en unos segundos.
                 </p>
-                <Button asChild variant="outline" className="mt-4 min-h-[44px] px-5">
-                  <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>Reintentar</Link>
+                <Button asChild className="mt-4 min-h-[44px] px-6">
+                  <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>
+                    <RefreshCcw aria-hidden="true" className="h-4 w-4" />
+                    Reintentar
+                  </Link>
                 </Button>
+                <p className="mt-4 text-xs text-gray-500">
+                  Si el problema persiste, el backend local no está en marcha.
+                </p>
               </div>
               ) : (
+              /* Distinto del anterior: aquí el motor responde y el filtro no tiene
+               * coincidencias. No se ofrece "Reintentar" porque repetir la misma
+               * consulta daría el mismo vacío: la acción es cambiar de sector. */
               <div className="px-4 py-10 text-center">
                 <p className="text-sm text-gray-500 sm:text-base">
                   Sin resultados para {sectorEs(sector)} con este filtro. Prueba con otro sector.
@@ -126,21 +157,22 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
               </div>
               )
             ) : (
-              <div className="overflow-x-auto">
+              <div aria-label="Oportunidades por sector" className="overflow-x-auto" role="region" tabIndex={0}>
                 {/*
                   Misma <table> en el DOM en todos los viewports (accesibilidad y
                   tests): en <md las filas se muestran como cards apiladas
                   (display block + etiquetas por celda) y desde md como tabla.
                 */}
                 <table className="w-full text-sm">
+                  <caption className="sr-only">Oportunidades del screener por sector: ticker, nombre, precio, cambio de sesión, market cap y acción de seguir</caption>
                   <thead className="hidden md:table-header-group">
                     <tr className="border-b border-gray-800 text-left text-gray-400">
-                      <th className="pb-3 pr-4">Ticker</th>
-                      <th className="pb-3 pr-4">Nombre</th>
-                      <th className="pb-3 pr-4 text-right">Precio</th>
-                      <th className="pb-3 pr-4 text-right">Cambio sesión</th>
-                      <th className="pb-3 pr-4 text-right">Market Cap</th>
-                      <th className="pb-3 text-right">Seguir</th>
+                      <th className="pb-3 pr-4" scope="col">Ticker</th>
+                      <th className="pb-3 pr-4" scope="col">Nombre</th>
+                      <th className="pb-3 pr-4 text-right" scope="col">Precio</th>
+                      <th className="pb-3 pr-4 text-right" scope="col">Cambio sesión</th>
+                      <th className="pb-3 pr-4 text-right" scope="col">Market Cap</th>
+                      <th className="pb-3 text-right" scope="col">Seguir</th>
                     </tr>
                   </thead>
                   <tbody className="block space-y-3 md:table-row-group md:space-y-0">
@@ -162,17 +194,19 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                         </td>
                         <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Precio</span>
-                          <span className="font-semibold text-gray-200">${r.price.toFixed(2)}</span>
+                          <span className="font-semibold text-gray-200">{formatPrice(r.price, 'USD')}</span>
                         </td>
                         <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Cambio sesión</span>
                           <span className={`font-mono ${r.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {r.changePercent >= 0 ? '+' : ''}{r.changePercent.toFixed(2)}%
+                            {formatPercent(r.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                           </span>
                         </td>
                         <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Market Cap</span>
-                          <span className="font-mono text-gray-300">${(r.marketCap / 1e9).toFixed(1)}B</span>
+                          <span className="font-mono text-gray-300">
+                            {formatCompact(r.marketCap, { maximumFractionDigits: 1 })}
+                          </span>
                         </td>
                         <td className="mt-2 flex items-center justify-between gap-3 border-t border-gray-800/60 pt-3 md:table-cell md:mt-0 md:border-0 md:py-3 md:pt-3 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Seguir</span>
@@ -193,18 +227,19 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {indices.map((i) => (
+              {validIndices.map((i) => (
                 <div key={i.symbol} className="flex min-w-0 items-center justify-between gap-3">
                   <span className="min-w-0 flex-1 truncate text-gray-300">{i.name}</span>
-                  <span className="shrink-0 font-semibold text-gray-100">${i.price.toFixed(2)}</span>
+                  <span className="shrink-0 font-semibold text-gray-100">{formatPrice(i.price, 'USD')}</span>
                 </div>
               ))}
-              {indices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}
+              {validIndices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}
             </div>
             <p className="mt-4 text-xs text-gray-500">S&amp;P 500, Nasdaq, Bitcoin, Oro, Plata — valores reales.</p>
           </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   );
 }
+

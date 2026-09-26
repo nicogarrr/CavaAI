@@ -8,16 +8,15 @@ contract becomes a reinvestment-runway review.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from math import isfinite
-from typing import Any, Callable
+from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Company, FinancialFact
 from app.services.company_framework import CompanyFramework
-
 
 MARKET_METRICS = (
     "tam",
@@ -80,6 +79,15 @@ class FormulaDefinition:
     input_metrics: tuple[str, ...]
     calculate: Callable[[dict[str, float]], float]
     note: str
+    # How this formula combines with the others of the same framework.
+    #   "sum"     -> an ADDITIVE revenue line: distinct streams that must be
+    #                added (launch services + space systems; payments + mobility).
+    #   "ceiling" -> an independent upper bound on the SAME revenue, measured
+    #                from a different side (demand vs physical capacity; seats
+    #                vs ARR), so the binding one is the minimum.
+    # Mixing the two and taking a flat min() was the bug: the additive case
+    # produced a ceiling BELOW the revenue the driver model itself projected.
+    combine: str = "ceiling"
 
 
 def _finite(value: Any) -> float | None:
@@ -88,6 +96,14 @@ def _finite(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return parsed if isfinite(parsed) else None
+
+
+def _combine_of(item: dict[str, Any], definitions: list[FormulaDefinition]) -> str:
+    """How a computed formula must be combined with its siblings."""
+    for definition in definitions:
+        if definition.key == item.get("key"):
+            return definition.combine
+    return "ceiling"
 
 
 def _unique_ids(*facts: FinancialFact | None, ids: list[int] | None = None) -> list[int]:
@@ -181,7 +197,9 @@ class MarketOpportunityEngine:
             )
         else:
             status = "ok" if top_down["status"] in {"partial", "ok"} or bottom_up["status"] == "ok" else "insufficient_data"
-            conclusion = verdict["conclusion"]
+            # `verdict` ya aporta el conclusión en su propio payload; esta
+            # variable intermedia no se consume y por eso ruff la marca.
+            conclusion = verdict["conclusion"]  # noqa: F841
 
         return {
             "status": status,
@@ -227,9 +245,19 @@ class MarketOpportunityEngine:
         return selected
 
     def _latest(self, facts: dict[int, FinancialFact], year: int | None = None) -> FinancialFact | None:
-        if year is not None and year in facts:
-            return facts[year]
-        return facts[max(facts)] if facts else None
+        """Return the fact for ``year`` exactly, never a different year's.
+
+        The silent fallback to ``max(facts)`` paired a 2023 revenue with a 2021
+        sector fact and still labelled the result
+        "revenue_divided_by_aligned_market_fact", then compared it against a
+        prior share computed with the same frozen 2021 denominator, so the
+        conclusion came out as "gaining share" whenever revenue grew.
+        """
+        if not facts:
+            return None
+        if year is not None:
+            return facts.get(year)
+        return facts[max(facts)]
 
     def _top_down(
         self,
@@ -315,11 +343,55 @@ class MarketOpportunityEngine:
             formulas.append({"key": definition.key, "label": definition.label, "status": "calculated", "value": value, "inputs": inputs, "source_fact_ids": _unique_ids(ids=[fact.id for fact in input_facts]), "formula": " × ".join(definition.input_metrics), "note": definition.note})
 
         available = [item for item in formulas if item["value"] is not None]
+        # A negative or non-finite estimate is not a small market, it is a
+        # broken input: it used to win the flat min() and drive the verdict to
+        # "reasonable" with a negative binding capacity.
+        rejected = [
+            {"key": item["key"], "value": item["value"], "reason": "non_positive_or_non_finite"}
+            for item in available
+            if not (isfinite(item["value"]) and item["value"] > 0)
+        ]
+        usable = [item for item in available if item not in rejected]
+
+        # Additive revenue lines are summed; only independent upper bounds on
+        # the SAME revenue (demand vs capacity, seats vs ARR) are minimised.
+        additive_total = sum(
+            item["value"] for item in usable if _combine_of(item, definitions) == "sum"
+        )
+        ceiling_values = [
+            item["value"] for item in usable if _combine_of(item, definitions) == "ceiling"
+        ]
+        additive_keys = [
+            item["key"] for item in usable if _combine_of(item, definitions) == "sum"
+        ]
+        ceiling_keys = [
+            item["key"] for item in usable if _combine_of(item, definitions) == "ceiling"
+        ]
+        components: list[float] = []
+        if additive_keys:
+            components.append(additive_total)
+        components.extend(ceiling_values)
+        value = min(components) if components else None
+
+        if additive_keys and ceiling_keys:
+            binding_basis = (
+                "sum of the additive revenue lines, capped by the tightest "
+                "independent ceiling"
+            )
+        elif additive_keys:
+            binding_basis = "sum of the additive revenue lines"
+        else:
+            binding_basis = "tightest independent ceiling"
+
         return {
-            "status": "ok" if available else "insufficient_data",
+            "status": "ok" if value is not None else "insufficient_data",
             "formulas": formulas,
-            "value": min(item["value"] for item in available) if available else None,
-            "binding_basis": "minimum available bottom-up capacity/opportunity estimate",
+            "value": value,
+            "additive_total": additive_total if additive_keys else None,
+            "additive_keys": additive_keys,
+            "ceiling_keys": ceiling_keys,
+            "binding_basis": binding_basis,
+            "rejected_estimates": rejected,
             "source_fact_ids": _unique_ids(ids=[fact_id for item in formulas for fact_id in item.get("source_fact_ids", [])]),
             "missing_inputs": sorted(set(all_missing)),
         }
@@ -341,12 +413,37 @@ class MarketOpportunityEngine:
         current_market_share = top_down["current_market_share"]
         prior_market_share = None
         common_years = sorted(set(revenue_history) & set(market["tam"]).union(market["sector"]))
+        current_basis = top_down.get("current_market_share_basis")
         if len(common_years) >= 2:
             prior_year = common_years[-2]
-            prior_market = self._latest(market["sector"], prior_year) or self._latest(market["tam"], prior_year)
-            prior_revenue = revenue_history[prior_year]
-            if prior_market and _finite(prior_market.value) not in (None, 0):
-                prior_market_share = (_finite(prior_revenue.value) or 0) / (_finite(prior_market.value) or 1)
+            # The prior share must be measured the SAME way as the current one.
+            # A reported company_market_share for the current year was being
+            # compared against revenue/market for the prior year, so a company
+            # whose reported share had just been restated (or which simply
+            # changed reporting basis) came out as "pierde cuota" or "gana
+            # cuota" with no change in the business at all.
+            if current_basis == "reported_company_market_share":
+                prior_reported = self._latest(market["share"], prior_year)
+                if prior_reported is not None and _finite(prior_reported.value) is not None:
+                    prior_market_share = _finite(prior_reported.value)
+                    prior_share_basis = "reported_company_market_share"
+                else:
+                    prior_market_share = None
+                    prior_share_basis = "unavailable_reported_basis"
+            else:
+                prior_market = self._latest(market["sector"], prior_year) or self._latest(
+                    market["tam"], prior_year
+                )
+                prior_revenue = revenue_history[prior_year]
+                if prior_market and _finite(prior_market.value) not in (None, 0):
+                    prior_market_share = (_finite(prior_revenue.value) or 0) / (
+                        _finite(prior_market.value) or 1
+                    )
+                    prior_share_basis = current_basis
+                else:
+                    prior_share_basis = "unavailable_calculated_basis"
+        else:
+            prior_share_basis = "insufficient_common_years"
 
         future_market = top_down["future_market"]["value"]
         base_revenue = base_scenario.get("terminal_year", {}).get("revenue") if base_scenario else None
@@ -372,8 +469,18 @@ class MarketOpportunityEngine:
         if base_future_share is None:
             missing.append("future_market_or_base_revenue")
         conclusion = "unknown"
+        # Without an explicit tolerance, exact float equality essentially never
+        # holds, so "mantiene cuota" was unreachable and any real tie was
+        # reported as "pierde cuota".
+        share_tolerance = 0.005
         if prior_market_share is not None and current_market_share is not None:
-            conclusion = "gana cuota" if current_market_share > prior_market_share else "pierde cuota" if current_market_share < prior_market_share else "mantiene cuota"
+            delta = current_market_share - prior_market_share
+            if abs(delta) <= share_tolerance:
+                conclusion = "mantiene cuota"
+            elif delta > 0:
+                conclusion = "gana cuota"
+            else:
+                conclusion = "pierde cuota"
         elif base_future_share is not None:
             conclusion = "cuota futura calculada"
         return {
@@ -382,6 +489,12 @@ class MarketOpportunityEngine:
             "confidence": "medium" if source_fact_ids and base_future_share is not None else "low",
             "current_market_share": current_market_share,
             "prior_market_share": prior_market_share,
+        "prior_market_share_basis": prior_share_basis,
+        "share_basis_consistent": (
+            current_basis is not None
+            and prior_share_basis is not None
+            and current_basis == prior_share_basis
+        ),
             "base_future_market_share": base_future_share,
             "valuation_implied_market_share": valuation_share,
             "base_future_revenue": base_revenue,
@@ -432,7 +545,14 @@ class MarketOpportunityEngine:
 
     def _verdict(self, top_down: dict[str, Any], bottom_up: dict[str, Any], implied: dict[str, Any], base_scenario: dict[str, Any] | None) -> dict[str, Any]:
         base_revenue = base_scenario.get("terminal_year", {}).get("revenue") if base_scenario else None
-        limits = [value for value in (top_down["future_market"]["value"], bottom_up["value"]) if value is not None]
+        # A negative or non-finite market/capacity estimate is a broken input,
+        # not a constraint: it used to win the min() and drive the verdict to
+        # "reasonable" while the binding capacity was negative.
+        limits = [
+            value
+            for value in (top_down["future_market"]["value"], bottom_up["value"])
+            if value is not None and isfinite(value) and value > 0
+        ]
         if base_revenue is None or not limits:
             return {"label": "unknown", "confidence": "low", "conclusion": "No hay evidencia suficiente para juzgar si el crecimiento cabe en el mercado y la capacidad."}
         binding_capacity = min(limits)
@@ -471,12 +591,12 @@ class MarketOpportunityEngine:
                 FormulaDefinition("satellite_capacity", "Satellites × capacity × utilization × price", ("satellites", "capacity_per_satellite", "utilization", "price_per_gb"), lambda v: v["satellites"] * v["capacity_per_satellite"] * v["utilization"] * v["price_per_gb"], "Physical capacity proxy; units must be compatible."),
             ],
             "space_defense": [
-                FormulaDefinition("launch_opportunity", "Launches × price per launch", ("launches", "price_per_launch"), lambda v: v["launches"] * v["price_per_launch"], "Annual launch revenue capacity."),
-                FormulaDefinition("backlog_conversion", "Backlog × conversion", ("backlog", "backlog_conversion"), lambda v: v["backlog"] * v["backlog_conversion"], "Backlog conversion is a sourced assumption, not a forecast default."),
+                FormulaDefinition("launch_opportunity", "Launches × price per launch", ("launches", "price_per_launch"), lambda v: v["launches"] * v["price_per_launch"], "Annual launch revenue capacity.", combine="sum"),
+                FormulaDefinition("backlog_conversion", "Backlog × conversion", ("backlog", "backlog_conversion"), lambda v: v["backlog"] * v["backlog_conversion"], "Backlog conversion is a sourced assumption, not a forecast default.", combine="sum"),
             ],
             "platform": [
-                FormulaDefinition("payments_opportunity", "TPV × take rate", ("tpv", "take_rate"), lambda v: v["tpv"] * v["take_rate"], "Platform monetization capacity."),
-                FormulaDefinition("mobility_opportunity", "Trips × revenue per trip", ("trips", "revenue_per_trip"), lambda v: v["trips"] * v["revenue_per_trip"], "Mobility monetization capacity."),
+                FormulaDefinition("payments_opportunity", "TPV × take rate", ("tpv", "take_rate"), lambda v: v["tpv"] * v["take_rate"], "Platform monetization capacity.", combine="sum"),
+                FormulaDefinition("mobility_opportunity", "Trips × revenue per trip", ("trips", "revenue_per_trip"), lambda v: v["trips"] * v["revenue_per_trip"], "Mobility monetization capacity.", combine="sum"),
             ],
             "subscriber": [
                 FormulaDefinition("subscriber_opportunity", "Subscribers × monthly ARPU × 12", ("subscribers", "monthly_arpu"), lambda v: v["subscribers"] * monthly(v), "Annualized recurring revenue capacity."),

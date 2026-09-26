@@ -7,13 +7,12 @@ from sqlalchemy import delete, or_, select
 
 import main
 from app.core.database import SessionLocal, init_db
-from app.models import Company, ExternalClaim, FinancialFact, MemoryItem, NewsEvent, ThesisChange
 from app.data.company_master import COMPANY_MASTER
+from app.models import Company, ExternalClaim, FinancialFact, MemoryItem, NewsEvent, ThesisChange
 from app.seed import seed
 from app.services.manual_transcript_import_service import ManualTranscriptImportService
 from app.services.source_auditor import SourceAuditor
 from app.valuation import DCFInputs, ReverseDCFInputs, run_dcf, solve_required_growth
-
 
 TEST_NEWS_SOURCES = {"manual_test", "test_feed", "workflow_test_feed"}
 TEST_NEWS_PATTERNS = [
@@ -582,8 +581,12 @@ def test_fmp_refresh_normalizes_facts_and_valuation_uses_them(monkeypatch):
     assert valuation.status_code == 200
     payload = valuation.json()
     trace = payload["trace"]
-    assert payload["status"] == "ok"
-    assert payload["publishable"] is True
+    # An FMP refresh gives the fundamentals, not the discount rate: with no
+    # dated WACC persisted, the DCF is an orientation and says so, instead of
+    # being published as final on the strength of a tag default.
+    assert payload["status"] == "partial"
+    assert payload["publishable"] is False
+    assert "traceable_wacc" in payload["publication_blockers"]
     assert payload["expected_value"] is not None
     assert trace["input_source"] == "financial_facts"
     assert trace["fact_ids"]["revenue"] == revenue_facts[0]["id"]

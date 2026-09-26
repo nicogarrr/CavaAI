@@ -23,9 +23,9 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-import pytest
 from sqlalchemy import delete, select, update
 
 import main
@@ -545,6 +545,7 @@ def test_production_settings_reject_weak_database_and_storage_defaults():
     common = dict(
         _env_file=None,
         app_env="production",
+        research_auth_required=True,
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
         minio_access_key="production-minio-access-not-a-default",

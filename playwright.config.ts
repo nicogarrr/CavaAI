@@ -1,5 +1,4 @@
 import { defineConfig } from "@playwright/test";
-import { createHmac } from "node:crypto";
 
 const runE2E = process.env.E2E_RUN === "1";
 const runUiE2E = process.env.E2E_UI_RUN === "1";
@@ -10,15 +9,13 @@ const apiPort = new URL(apiBaseURL).port || "8101";
 const uiBackendURL = process.env.E2E_UI_BACKEND_URL ?? "http://127.0.0.1:8100";
 const e2eResearchSecret = process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
 const pythonBin = process.env.PYTHON_BIN ?? "python";
-const apiTimestamp = Math.floor(Date.now() / 1000).toString();
-const apiTenant = "e2e-api-tenant";
-const apiUser = "e2e-api-user";
-const apiSignature = createHmac("sha256", e2eResearchSecret)
-  .update(`${apiTenant}:${apiUser}:${apiTimestamp}`)
-  .digest("hex");
-
 export default defineConfig({
   testDir: "./e2e",
+  // El repo arrastra GB de historial (snapshots versionados): el
+  // gitCommitInfo por defecto de Playwright hace `git fetch origin <sha>`
+  // acumulando stdout en memoria y el runner muere con
+  // "RangeError: Invalid string length" antes de correr un solo test.
+  captureGitInfo: { commit: false, diff: false },
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
@@ -31,14 +28,8 @@ export default defineConfig({
   use: {
     baseURL: runUiE2E ? uiBaseURL : apiBaseURL,
     trace: "retain-on-failure",
-    extraHTTPHeaders: runE2E
-      ? {
-          "X-CavaAI-Tenant": apiTenant,
-          "X-CavaAI-User": apiUser,
-          "X-CavaAI-Timestamp": apiTimestamp,
-          "X-CavaAI-Signature": apiSignature,
-        }
-      : undefined,
+    // Las pruebas API firman por request (nonce unico, metodo/ruta/hash del
+    // cuerpo) desde e2e/fixtures/research-api.ts; ya no hay HMAC global.
   },
   webServer: runUiE2E
     ? [

@@ -17,10 +17,11 @@ resolución para código que no pasa por Settings.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol
+from typing import Protocol
 
 
 @dataclass(frozen=True, slots=True)

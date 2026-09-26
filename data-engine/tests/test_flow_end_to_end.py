@@ -16,16 +16,13 @@ Run from data-engine/:
 
 from __future__ import annotations
 
-import time
-
 from fastapi.testclient import TestClient
 
 import main
 from app.api.routes import screeners as screeners_module
 from app.core import auth as auth_module
-from app.core.auth import sign_research_identity
 from app.seed import seed
-
+from tests.auth_helpers import auth_settings, bound_headers
 
 SECRET = "flow-e2e-test-secret-at-least-32-chars"
 
@@ -66,22 +63,6 @@ FAKE_VENDOR_ITEMS = [
         "beta": None,
     },
 ]
-
-
-def _headers(tenant_external_id: str, user_id: str) -> dict[str, str]:
-    """Patron de firma HMAC de test_security_boundaries.py (sin tocarlo)."""
-    timestamp = str(int(time.time()))
-    return {
-        "X-CavaAI-Tenant": tenant_external_id,
-        "X-CavaAI-User": user_id,
-        "X-CavaAI-Timestamp": timestamp,
-        "X-CavaAI-Signature": sign_research_identity(
-            SECRET,
-            tenant_id=tenant_external_id,
-            user_id=user_id,
-            timestamp=timestamp,
-        ),
-    }
 
 
 def test_flow_end_to_end(monkeypatch):
@@ -190,21 +171,19 @@ def test_flow_end_to_end(monkeypatch):
     client.delete(f"/api/alerts/rules/{rule_id}")
 
     # 8. Auth firmada: con auth requerida, sin firma -> 401, con firma -> 2xx.
-    from types import SimpleNamespace
-
     monkeypatch.setattr(
         auth_module,
         "get_settings",
-        lambda: SimpleNamespace(
-            app_env="test",
-            research_auth_required=True,
-            research_auth_secret=SECRET,
-            research_auth_max_age_seconds=300,
-        ),
+        lambda: auth_settings(strict=True, secret=SECRET),
     )
     unsigned = client.get("/api/watchlist")
     assert unsigned.status_code == 401, f"sin firma debio ser 401: {unsigned.status_code}"
-    signed = client.get("/api/watchlist", headers=_headers("flow-tenant", "flow-user"))
+    signed = client.get(
+        "/api/watchlist",
+        headers=bound_headers(
+            SECRET, "flow-tenant", "flow-user", method="GET", path="/api/watchlist"
+        ),
+    )
     assert signed.status_code == 200, f"con firma debio ser 200: {signed.status_code}"
     ok("auth firmada HMAC", "401 sin firma / 200 con firma")
 

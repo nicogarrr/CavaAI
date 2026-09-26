@@ -17,11 +17,11 @@ Legacy (unbound) payloads are still accepted outside production so existing
 local/test callers keep working; production requires bound signatures.
 """
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
 import hashlib
 import hmac
 import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from fastapi import Header, HTTPException, Request, status
 
@@ -50,7 +50,7 @@ def signature_payload(
     bound = (nonce, method, path, body_hash)
     if all(part is None for part in bound):
         # Legacy payload: kept for local/test callers only.
-        return f"{tenant_id}:{user_id}:{timestamp}".encode("utf-8")
+        return f"{tenant_id}:{user_id}:{timestamp}".encode()
     if any(part is None for part in bound):
         raise ValueError(
             "nonce, method, path and body_hash must be provided together"
@@ -58,7 +58,7 @@ def signature_payload(
     return (
         f"{tenant_id}:{user_id}:{timestamp}:{nonce}:"
         f"{(method or '').upper()}:{path}:{body_hash}"
-    ).encode("utf-8")
+    ).encode()
 
 
 def sign_research_identity(
@@ -93,7 +93,14 @@ def body_digest(body: bytes) -> str:
 
 
 def _strict_binding(settings) -> bool:
-    """Bound signatures are mandatory in production (and when forced)."""
+    """Bound signatures are mandatory in production (and when forced).
+
+    ``research_auth_strict_binding`` es ahora un campo real de Settings: antes
+    solo se leia por getattr sobre un objeto que no lo tenia, y como
+    ``model_config`` es ``extra="ignore"`` la variable de entorno se descartaba
+    en silencio, asi que el getattr devolvia False para siempre y el unico
+    disparador era ``is_production``.
+    """
     return bool(getattr(settings, "is_production", False)) or bool(
         getattr(settings, "research_auth_strict_binding", False)
     )
@@ -191,7 +198,7 @@ async def get_research_principal(
         # Consume the nonce only once the signature is fully verified so an
         # attacker cannot burn nonces with forged requests.
         nonce_key = "cavaai:nonce:" + hashlib.sha256(
-            f"{x_cavaai_tenant}:{x_cavaai_user}:{x_cavaai_nonce}".encode("utf-8")
+            f"{x_cavaai_tenant}:{x_cavaai_user}:{x_cavaai_nonce}".encode()
         ).hexdigest()
         app_env = getattr(settings, "app_env", "local").lower()
         local_only = app_env in {"local", "test"}

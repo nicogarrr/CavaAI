@@ -18,11 +18,14 @@ from app.valuation.engines.base import (
     MODEL_VERSION,
     ValuationContext,
     ValuationEngine,
+    adr_ratio,
+    apply_publication_blockers,
     clamp_fcf_margin,
     default_growth,
     default_terminal_growth,
     default_wacc,
     insufficient_result,
+    is_adr_without_ratio,
     margin_of_safety,
     traceable_wacc,
 )
@@ -74,6 +77,28 @@ class StandardDCFEngine(ValuationEngine):
         revenue = snapshot.value("revenue")
         shares = snapshot.value("shares_diluted")
         assert revenue is not None and shares is not None
+
+        if is_adr_without_ratio(company):
+            # The filing reports ordinary shares and the quote is an ADR price.
+            # Without the ratio, value per share is off by a factor of N, so
+            # the engine refuses rather than publishing an 8x error.
+            result = insufficient_result(
+                ticker=company.ticker,
+                model_type=company.valuation_model,
+                engine_key=self.key,
+                current_price=current_price,
+                missing_inputs=["adr_ratio"],
+                reason=(
+                    f"{company.ticker} is quoted as an ADR but the ordinary-shares-per-ADR "
+                    "ratio is unknown, so shares_diluted and the quoted price are not "
+                    "on the same basis."
+                ),
+                snapshot=snapshot,
+            )
+            result["moat"] = empty_moat_framework(
+                company.company_type, company.factor_tags or [], company.special_risks or []
+            )
+            return result
 
         margin = snapshot.value("fcf_margin")
         if margin is None:
@@ -271,8 +296,17 @@ class StandardDCFEngine(ValuationEngine):
         publication_blockers: list[str] = []
         if wacc_source != "calculated_metric":
             publication_blockers.append("traceable_wacc")
+        if terminal_share is not None and terminal_share > 0.95:
+            publication_blockers.append("forecast_is_not_the_driver")
 
-        return {
+        # The DCF runs in the filing's share basis (ordinary shares), so the
+        # quote has to be converted into that basis before margin of safety is
+        # compared against it.
+        ratio = adr_ratio(company)
+        comparable_price = current_price / ratio if (ratio and current_price) else current_price
+
+        return apply_publication_blockers(
+            {
             "ticker": company.ticker,
             "model_type": company.valuation_model,
             "status": "ok",
@@ -282,9 +316,11 @@ class StandardDCFEngine(ValuationEngine):
             "base_value": base,
             "bull_value": bull,
             "expected_value": expected,
-            "margin_of_safety": margin_of_safety(expected, current_price),
+            "margin_of_safety": margin_of_safety(expected, comparable_price),
             "missing_inputs": [],
             "publication_blockers": publication_blockers,
+            "adr_ratio": ratio,
+            "comparable_price_basis": "ordinary_share" if ratio else "listed_share",
             "reverse_dcf": reverse,
             "sensitivity": sensitivity,
             "moat": empty_moat_framework(
@@ -304,6 +340,8 @@ class StandardDCFEngine(ValuationEngine):
                 "wacc_source": wacc_source,
                 "wacc": wacc,
                 "net_debt": net_debt,
+                "adr_ratio": ratio,
+                "comparable_price": comparable_price,
                 "terminal_value_share": terminal_share,
                 "clamp_notes": clamp_notes,
                 "publication_blockers": publication_blockers,
@@ -324,4 +362,5 @@ class StandardDCFEngine(ValuationEngine):
                 "weighted": weighted["trace"],
                 "reverse_dcf": reverse.get("trace") if reverse else None,
             },
-        }
+            }
+        )

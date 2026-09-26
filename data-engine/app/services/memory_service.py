@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, MemoryItem
 
-
 TOKEN_RE = re.compile(r"[a-zA-Z0-9_]{3,}")
 MEMORY_TRIGGERS = (
     "remember",

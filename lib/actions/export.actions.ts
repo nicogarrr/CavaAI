@@ -35,10 +35,12 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
     if (!Number.isInteger(year) || year < 2000 || year > 2100) {
         throw new AppError('Año de exportación inválido', 'VALIDATION_ERROR', 400);
     }
+
     // `format` es una union de TypeScript: no valida nada en runtime.
     if (format !== 'csv' && format !== 'json') {
         throw new AppError('Formato de exportación inválido', 'VALIDATION_ERROR', 400);
     }
+
     // La peticion sale hacia el backend configurado y nada mas: la ruta sale
     // del mapa de constantes (year solo actua de clave), se fija el origen al
     // de BACKEND_URL y format entra como literal revalidado.
@@ -49,6 +51,7 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
     }
     const safeFormat = format === 'csv' ? 'csv' : 'json';
     exportUrl.searchParams.set('format', safeFormat);
+
     const identityHeaders = await researchIdentityHeaders({
         method: 'GET',
         path: exportPath,
@@ -59,13 +62,13 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
     });
 
     if (!response.ok) {
-        // El cuerpo del engine puede traer un traceback del backend (rutas,
-        // SQL, hostnames internos) o eco de la peticion con credenciales
-        // (apikey en la URL): NUNCA se registra - ni entero ni truncado.
-        // Al log solo van el status y la referencia del endpoint; al
-        // cliente, el mensaje publico generico.
+        // El cuerpo del engine puede traer trazas internas (rutas, SQL,
+        // hostnames) o eco de la peticion con credenciales (apikey en la
+        // URL): NUNCA se registra - ni entero ni truncado. Al log solo van
+        // el status y la referencia fija del endpoint; al cliente, el
+        // mensaje publico generico.
         console.error(
-            `[exportJournal] research engine respondió ${response.status} para /api/export/${year}`,
+            `[exportJournal] research engine respondió ${response.status} para ${exportPath}`,
         );
         throw new AppError(
             `Exportación falló (${response.status})`,
@@ -76,7 +79,7 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
 
     const contentType = response.headers.get('content-type') ?? 'text/plain';
     const content = await response.text();
-    const extension = safeFormat === 'csv' ? 'csv' : 'json';
+    const extension = format === 'csv' ? 'csv' : 'json';
     return {
         filename: `journal-${year}.${extension}`,
         contentType,
