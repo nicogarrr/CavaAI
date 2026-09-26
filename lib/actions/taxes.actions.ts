@@ -2,6 +2,7 @@
 
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchRequest } from '@/lib/research/client';
+import { assertYear } from '@/lib/validation/pathParams';
 
 export type TaxRecord = Record<string, unknown>;
 
@@ -14,13 +15,13 @@ export async function getTaxHoldings(): Promise<TaxRecord[]> {
 /** GET /api/taxes/report/{fiscal_year} — reporte fiscal anual */
 export async function getTaxReport(fiscalYear: number): Promise<TaxRecord> {
     await requireAuthenticatedUser();
-    return researchRequest<TaxRecord>(`/api/taxes/report/${fiscalYear}`);
+    return researchRequest<TaxRecord>(`/api/taxes/report/${assertYear(fiscalYear, 'fiscalYear')}`);
 }
 
 /** POST /api/taxes/report/{fiscal_year}/regenerate — regenera el reporte fiscal */
 export async function regenerateTaxReport(fiscalYear: number): Promise<TaxRecord> {
     await requireAuthenticatedUser();
-    return researchRequest<TaxRecord>(`/api/taxes/report/${fiscalYear}/regenerate`, {
+    return researchRequest<TaxRecord>(`/api/taxes/report/${assertYear(fiscalYear, 'fiscalYear')}/regenerate`, {
         method: 'POST',
     });
 }
