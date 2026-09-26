@@ -40,10 +40,15 @@ export DUCKDB_VOLUME="cavaai-verify-duckdb"
 # para verificar datos y su arranque tocaria colas reales.
 export RESTORE_UP_SERVICES="postgres redis qdrant minio backend"
 
+VERIFY_DATA_VOLUMES="cavaai-verify-postgres cavaai-verify-redis cavaai-verify-qdrant cavaai-verify-minio cavaai-verify-duckdb"
+
 cleanup() {
   echo "[verify] limpieza: bajando el proyecto aislado y borrando sus volumenes…"
   ${COMPOSE_CMD} down -v --remove-orphans >/dev/null 2>&1 || true
-  docker volume rm cavaai-verify-freshduck >/dev/null 2>&1 || true
+  # Los volumenes con name: explicito son externos para compose: down -v NO
+  # los borra. Sin esto, el drill siguiente hereda la base restaurada (WAL
+  # recovery larga) y postgres no responde dentro de la espera del restore.
+  docker volume rm ${VERIFY_DATA_VOLUMES} cavaai-verify-freshduck >/dev/null 2>&1 || true
   rm -f "${VERIFY_COMPOSE}"
 }
 trap cleanup EXIT
@@ -60,6 +65,9 @@ echo "[verify] volumen nuevo escribible por el usuario de la app: OK"
 
 # ---------------------------------------------------------------- 2/5 ----
 echo "[verify] 2/5 proyecto compose aislado (nombres, puertos y volumenes propios)…"
+# Arranque siempre desde volumenes vacios: los name: explicitos sobreviven
+# a down -v y un drill anterior dejaria la base restaurada a medias.
+docker volume rm ${VERIFY_DATA_VOLUMES} >/dev/null 2>&1 || true
 # Copia del compose de prod con identidad propia. sed deterministico, sin
 # depender de la semantica de merge de overrides de compose.
 sed -e 's/container_name: cavaai-/container_name: cavaai-verify-/' \
