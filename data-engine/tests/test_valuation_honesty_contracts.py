@@ -13,8 +13,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base
 from app.models import CalculatedMetric, Company, FinancialFact
+from app.models.entities import Base
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import (
     apply_publication_blockers,

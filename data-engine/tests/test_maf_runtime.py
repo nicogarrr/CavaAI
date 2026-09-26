@@ -117,12 +117,12 @@ def test_estado_de_pasos_previos_es_visible_en_los_siguientes():
 
 
 def test_solo_se_permiten_workflows_agenticos_declarados():
-    assert MAF_WORKFLOWS == {
+    assert {
         "DeepResearchWorkflow",
         "EarningsWorkflow",
         "ThesisReviewWorkflow",
         "RedTeamWorkflow",
-    }
+    } == MAF_WORKFLOWS
     with pytest.raises(ValueError, match="may not run through MAF"):
         NativeMAFWorkflowRunner("ScreenerWorkflow", [NativeMAFStep("a", _step_a)])
     with pytest.raises(ValueError, match="may not run through MAF"):

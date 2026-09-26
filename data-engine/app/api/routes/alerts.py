@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
 from app.core.config import get_settings
+from app.core.database import get_db
 from app.models import AlertRule, Company, ResearchAlert
 from app.schemas import (
     AlertRuleOut,
@@ -15,10 +15,10 @@ from app.schemas import (
     ResearchAlertChannels,
     ResearchAlertOut,
 )
-from app.services.review_alert_service import ReviewAlertService
 from app.services.alert_rule_service import AlertRuleService
-from app.services.notification_service import NotificationService
 from app.services.company_resolver import resolve_company
+from app.services.notification_service import NotificationService
+from app.services.review_alert_service import ReviewAlertService
 
 router = APIRouter()
 

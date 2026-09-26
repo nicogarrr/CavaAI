@@ -29,7 +29,6 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 
-
 # A single comma followed by one or two digits: a decimal separator.
 _DECIMAL_COMMA = re.compile(r"^[-+]?\d+,\d{1,2}$")
 # A numeric token, optionally signed, with digits and separators only.

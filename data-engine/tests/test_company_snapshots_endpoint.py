@@ -5,14 +5,13 @@ resolve_company) y el servicio agrega el resto: con 40 empresas NO puede
 haber ~40+ queries (ese era el fan-out que se elimina).
 """
 
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-import pytest
-
 from app.api.routes.companies import MAX_SNAPSHOT_BATCH_TICKERS, company_snapshots_batch
 from app.models.entities import Base, Company
-from fastapi import HTTPException
 
 
 @pytest.fixture

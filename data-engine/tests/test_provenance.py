@@ -115,8 +115,9 @@ def test_market_indices_carry_unofficial_provenance(monkeypatch):
 
 def test_thesis_history_carries_computed_provenance():
     """Contract: thesis history exposes internal-computation provenance + data_as_of."""
-    import main
     from fastapi.testclient import TestClient
+
+    import main
     from app.seed import seed
     from tests.test_thesis_history_memo import TICKER, _clean, _seed_two_versions
 
@@ -140,8 +141,8 @@ def test_risk_dashboard_carries_computed_provenance(perf_db=None):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    from app.core.database import Base
     import app.models  # noqa: F401
+    from app.core.database import Base
     from app.models import Company, Portfolio, Position
     from app.services.risk_service import RiskService
 

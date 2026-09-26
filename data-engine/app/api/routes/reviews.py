@@ -15,8 +15,8 @@ from app.schemas import (
     ResearchReviewUpdate,
 )
 from app.services.claim_intelligence_service import ClaimIntelligenceService
-from app.services.review_alert_service import ReviewAlertService
 from app.services.company_resolver import resolve_company
+from app.services.review_alert_service import ReviewAlertService
 
 router = APIRouter()
 

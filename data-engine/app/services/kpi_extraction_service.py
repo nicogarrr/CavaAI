@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, select
@@ -22,13 +22,11 @@ from app.models import (
     FinancialFact,
     KPIExtractionCandidate,
 )
-from app.services.company_framework import resolve_company_framework
 from app.services.budget import BudgetController, BudgetExceededError
+from app.services.company_framework import resolve_company_framework
 from app.services.langfuse_client import LangfuseTracer
-
-
-from app.services.prompt_registry import get_prompt
 from app.services.number_parsing import find_number_tokens, parse_localized_number
+from app.services.prompt_registry import get_prompt
 
 PROMPT_VERSION = get_prompt("company_kpi_extraction", allow_remote=False).version
 

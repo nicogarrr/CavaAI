@@ -3,7 +3,7 @@ import re
 from decimal import Decimal
 
 from sqlalchemy import desc, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.llm.base import LLMProvider
 from app.llm.factory import create_llm_provider
@@ -14,19 +14,17 @@ from app.models import (
     DocumentChunk,
     EvidenceSuggestion,
     FinancialFact,
-    MemoryItem,
     NewsEvent,
     ResearchSession,
     ThesisSection,
     ThesisVersion,
 )
 from app.schemas import ChatResponse
-from app.services.memory_service import MemoryService
 from app.services.chat_synthesis_service import ChatSynthesisService
-from app.services.source_hierarchy_service import source_tier_key
-from app.services.company_resolver import resolve_company
 from app.services.claim_scope import live_claims
-
+from app.services.company_resolver import resolve_company
+from app.services.memory_service import MemoryService
+from app.services.source_hierarchy_service import source_tier_key
 
 KEY_FACT_METRICS = [
     "revenue",

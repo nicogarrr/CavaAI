@@ -11,6 +11,11 @@ const e2eResearchSecret = process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-resear
 const pythonBin = process.env.PYTHON_BIN ?? "python";
 export default defineConfig({
   testDir: "./e2e",
+  // El repo arrastra GB de historial (snapshots versionados): el
+  // gitCommitInfo por defecto de Playwright hace `git fetch origin <sha>`
+  // acumulando stdout en memoria y el runner muere con
+  // "RangeError: Invalid string length" antes de correr un solo test.
+  captureGitInfo: { commit: false, diff: false },
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

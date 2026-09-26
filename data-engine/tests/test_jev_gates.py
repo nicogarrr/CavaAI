@@ -30,7 +30,6 @@ from app.services.kpi_extraction_service import KPIExtractionService
 from app.services.news_service import NewsService
 from app.services.thesis_debate_service import debate_thesis
 
-
 # ---------------------------------------------------------------- stubs Jev
 
 
