@@ -1,4 +1,4 @@
-import { formatNumber as formatNumberEs } from '@/lib/format';
+import { formatCompact, formatNumber, formatPercent, formatPrice, NA } from '@/lib/format';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getStockFinancialData } from '@/lib/actions/finnhub.actions';
 import { Eye, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
@@ -42,7 +42,7 @@ export default async function WatchlistPage() {
                 // Extract metrics (Finnhub stock/metric)
                 const metrics = financialData?.metrics?.metric ?? {};
                 const marketCapM = typeof metrics.marketCapitalization === 'number' ? metrics.marketCapitalization : null;
-                // peRatio puede venir ausente/null: se guarda null y se pinta '—' (nunca se interpola sin guarda).
+                // peRatio puede venir ausente/null: se guarda null y se pinta NA ('N/D'), nunca se interpola sin guarda.
                 const peRatio = typeof metrics.peTTM === 'number' && Number.isFinite(metrics.peTTM) ? metrics.peTTM : null;
 
                 // Sin cotización válida no hay precio: null (no 0, que se confundiría con un precio real).
@@ -62,7 +62,7 @@ export default async function WatchlistPage() {
                     addedAt: item.addedAt
                 };
             } catch {
-                // Fallo de red/proveedor: todo a null para pintar 's/d' + badge «sin datos».
+                // Fallo de red/proveedor: todo a null para pintar NA ('N/D') + badge «sin datos».
                 return {
                     symbol: item.symbol,
                     name: item.symbol,
@@ -80,29 +80,20 @@ export default async function WatchlistPage() {
     // Sin datos al final: las filas sin precio quedan excluidas de cualquier ordenación por métricas.
     const sortedStocks = [...watchlistStocks].sort((a, b) => Number(a.price === null) - Number(b.price === null));
 
-    const formatNumber = (num: number | null) => {
-        if (num === null || num === undefined) return '—';
-        return formatNumberEs(num, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    };
-
-    const formatBillions = (num: number | null) => {
-        if (num === null || num === undefined || !Number.isFinite(num)) return '—';
-        if (num >= 1e12) return `$${(num / 1e12).toFixed(2)}T`;
-        if (num >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
-        if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
-        return `$${formatNumberEs(num, { maximumFractionDigits: 0 })}`;
-    };
-
-    // Mismo formateador para móvil y desktop: null → '—', nunca toFixed sin guarda.
+    // Un único formateador para móvil y desktop: sin dato -> NA ('N/D'),
+    // nunca un número interpolado sin guarda.
     const formatPeRatio = (peRatio: number | null) => {
-        if (peRatio === null || peRatio === undefined || !Number.isFinite(peRatio)) return '—';
-        return `${peRatio.toFixed(1)}x`;
+        if (peRatio === null || peRatio === undefined || !Number.isFinite(peRatio)) return NA;
+        return `${formatNumber(peRatio, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}x`;
     };
 
     const formatChangePercent = (changePercent: number | null) => {
-        if (changePercent === null || changePercent === undefined || !Number.isFinite(changePercent)) return 's/d';
-        return `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
+        if (changePercent === null || changePercent === undefined || !Number.isFinite(changePercent)) return NA;
+        // Finnhub ya manda puntos porcentuales (dp), no ratio.
+        return formatPercent(changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' });
     };
+
+    const formatPriceCell = (price: number | null) => (price === null ? NA : formatPrice(price, 'USD'));
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex w-full max-w-full min-w-0 flex-col space-y-6 overflow-x-clip p-4 sm:p-6">
@@ -171,11 +162,13 @@ export default async function WatchlistPage() {
                                 <dl className="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-gray-800/50 px-2 py-3 text-center">
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">Precio</dt>
-                                        <dd className="truncate font-mono text-sm font-medium text-gray-200">{stock.price === null ? 's/d' : `$${formatNumber(stock.price)}`}</dd>
+                                        <dd className="truncate font-mono text-sm font-medium text-gray-200">{formatPriceCell(stock.price)}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">Market Cap</dt>
-                                        <dd className="truncate font-mono text-sm text-gray-400">{formatBillions(stock.marketCap)}</dd>
+                                        <dd className="truncate font-mono text-sm text-gray-400">
+                                            {formatCompact(stock.marketCap, { maximumFractionDigits: 2 })}
+                                        </dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">PER (TTM)</dt>
@@ -235,11 +228,11 @@ export default async function WatchlistPage() {
                                             </Link>
                                         </TableCell>
                                         <TableCell className="text-right font-mono font-medium text-gray-200">
-                                            {stock.price === null ? 's/d' : `$${formatNumber(stock.price)}`}
+                                            {formatPriceCell(stock.price)}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {stock.changePercent === null ? (
-                                                <span className="font-mono text-gray-500">s/d</span>
+                                                <span className="font-mono text-gray-500">{NA}</span>
                                             ) : (
                                                 <div className={`flex items-center justify-end gap-1 ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                                     {stock.changePercent >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
@@ -250,7 +243,7 @@ export default async function WatchlistPage() {
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right font-mono text-gray-400">
-                                            {formatBillions(stock.marketCap)}
+                                            {formatCompact(stock.marketCap, { maximumFractionDigits: 2 })}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {stock.peRatio !== null && stock.peRatio !== undefined && Number.isFinite(stock.peRatio) ? (
@@ -260,7 +253,7 @@ export default async function WatchlistPage() {
                                                     {formatPeRatio(stock.peRatio)}
                                                 </Badge>
                                             ) : (
-                                                <span className="text-gray-600">—</span>
+                                                <span className="text-gray-600">{NA}</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right">

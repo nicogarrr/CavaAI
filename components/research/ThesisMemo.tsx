@@ -1,4 +1,4 @@
-import { formatMoney, formatPercent } from '@/lib/format';
+import { formatMoney, formatPercent, NA } from '@/lib/format';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
 import ThesisDebatePanel from '@/components/research/ThesisDebatePanel';
@@ -8,13 +8,13 @@ import type { GlossaryKey } from '@/lib/glossary';
 
 function money(value: number | string | null | undefined): string {
   const parsed = typeof value === 'string' ? Number(value) : value;
-  if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return 'N/A';
+  if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return NA;
   return formatMoney(parsed, 'USD', { maximumFractionDigits: 2 });
 }
 
 function pct(value: number | string | null | undefined): string {
   const parsed = typeof value === 'string' ? Number(value) : value;
-  if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return 'N/A';
+  if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return NA;
   return formatPercent(parsed);
 }
 

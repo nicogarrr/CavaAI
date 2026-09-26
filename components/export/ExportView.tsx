@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, FileDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,19 +19,32 @@ import { toast } from 'sonner';
 const YEAR_RANGE = 10;
 
 export default function ExportView() {
-    const currentYear = new Date().getFullYear();
-    const [year, setYear] = useState(currentYear);
+    // El año civil depende del reloj del navegador: leerlo en el render hace
+    // que el HTML del servidor y la hidratación difieran en la frontera de
+    // año. Se arranca con un estado fijo (0 = todavía sin montar) y se fija
+    // el año real en el primer efecto.
+    const [currentYear, setCurrentYear] = useState(0);
+    const [year, setYear] = useState(0);
     const [format, setFormat] = useState<ExportFormat>('csv');
     const [loading, setLoading] = useState(false);
     const [preview, setPreview] = useState<string | null>(null);
 
-    const years = Array.from({ length: YEAR_RANGE + 1 }, (_, index) => currentYear - index);
+    useEffect(() => {
+        const real = new Date().getFullYear();
+        setCurrentYear(real);
+        setYear((prev) => (prev === 0 ? real : prev));
+    }, []);
+
+    const selectedYear = year || currentYear;
+    const years = currentYear === 0
+        ? []
+        : Array.from({ length: YEAR_RANGE + 1 }, (_, index) => currentYear - index);
 
     const handleExport = async () => {
         setLoading(true);
         setPreview(null);
         try {
-            const result = await exportJournal(year, format);
+            const result = await exportJournal(selectedYear, format);
             const blob = new Blob([result.content], { type: result.contentType });
             const url = URL.createObjectURL(blob);
             const anchor = document.createElement('a');
@@ -68,7 +81,7 @@ export default function ExportView() {
                 <div className="grid gap-4 sm:grid-cols-2 lg:max-w-2xl">
                     <div className="space-y-2">
                         <Label htmlFor="export-year" className="text-gray-300">Año</Label>
-                        <Select value={String(year)} onValueChange={(value) => setYear(Number(value))}>
+                        <Select value={String(selectedYear)} onValueChange={(value) => setYear(Number(value))}>
                             <SelectTrigger id="export-year" className="bg-gray-900 border-gray-600 text-gray-100">
                                 <SelectValue />
                             </SelectTrigger>

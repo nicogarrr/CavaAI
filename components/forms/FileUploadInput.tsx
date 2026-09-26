@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ComponentPropsWithoutRef } from 'react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
+import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 // Límite real de subida: next.config.ts → experimental.serverActions.bodySizeLimit = 4mb.
@@ -31,7 +32,10 @@ export function FileUploadInput({ maxMB = MAX_UPLOAD_MB, className, id, name, ..
     }
     const limitBytes = maxMB * 1024 * 1024;
     if (file.size > limitBytes) {
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      const sizeMb = formatNumber(file.size / (1024 * 1024), {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      });
       const message = `"${file.name}" pesa ${sizeMb} MB y el límite de subida es ${maxMB} MB: elige un archivo más pequeño o súbelo comprimido.`;
       setWarning(message);
       event.target.setCustomValidity(message);

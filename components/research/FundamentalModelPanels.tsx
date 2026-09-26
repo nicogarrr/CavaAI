@@ -1,4 +1,4 @@
-import { formatCompact, formatPercent } from '@/lib/format';
+import { formatCompact, formatPercent, NA } from '@/lib/format';
 import { BarChart3, BrainCircuit, CheckCircle2, GitBranch } from 'lucide-react';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
@@ -15,12 +15,12 @@ import {
 } from '@/lib/actions/research.actions';
 
 function compactNumber(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return 'N/A';
+  if (value == null || !Number.isFinite(value)) return NA;
   return formatCompact(value, { maximumFractionDigits: 1 });
 }
 
 function percentage(value: number | null | undefined) {
-  return value == null || !Number.isFinite(value) ? 'N/A' : formatPercent(value);
+  return value == null || !Number.isFinite(value) ? NA : formatPercent(value);
 }
 
 /** Frases «what must be true» en español (F24). El backend las genera en
