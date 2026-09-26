@@ -28,7 +28,7 @@ correspondia al modelo que la documentacion del modulo describe.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from decimal import Decimal
 
@@ -57,25 +57,48 @@ def _series(values: list[float]) -> list[_Price]:
     return [_Price(start + timedelta(days=i), v) for i, v in enumerate(values)]
 
 
+def _now(hour: int, day: date | None = None) -> datetime:
+    return datetime((day or date(2026, 9, 25)).year, (day or date(2026, 9, 25)).month,
+                    (day or date(2026, 9, 25)).day, hour, tzinfo=UTC)
+
+
 def test_partial_day_flag_marks_intraday_price_bar():
-    today = date.today()
+    day = date(2026, 9, 25)
+    now = _now(15, day)  # 15:00 UTC: mercados abiertos, la barra de hoy es parcial
     series = {
-        1: [SimpleNamespace(date=today - timedelta(days=2)),
-            SimpleNamespace(date=today)]
+        1: [SimpleNamespace(date=day - timedelta(days=2)),
+            SimpleNamespace(date=day)]
     }
-    assert PortfolioIntelligenceService._partial_trading_day(series, [], today) is True
+    assert PortfolioIntelligenceService._partial_trading_day(series, [], now) is True
     # Sin la barra de hoy no hay marca.
-    closed = {1: [SimpleNamespace(date=today - timedelta(days=2)),
-                  SimpleNamespace(date=today - timedelta(days=1))]}
-    assert PortfolioIntelligenceService._partial_trading_day(closed, [], today) is False
+    closed = {1: [SimpleNamespace(date=day - timedelta(days=2)),
+                  SimpleNamespace(date=day - timedelta(days=1))]}
+    assert PortfolioIntelligenceService._partial_trading_day(closed, [], now) is False
 
 
 def test_partial_day_flag_marks_today_snapshot():
-    today = date.today()
-    snapshots = [SimpleNamespace(snapshot_date=today)]
-    assert PortfolioIntelligenceService._partial_trading_day({}, snapshots, today) is True
-    older = [SimpleNamespace(snapshot_date=today - timedelta(days=1))]
-    assert PortfolioIntelligenceService._partial_trading_day({}, older, today) is False
+    day = date(2026, 9, 25)
+    now = _now(15, day)
+    snapshots = [SimpleNamespace(snapshot_date=day)]
+    assert PortfolioIntelligenceService._partial_trading_day({}, snapshots, now) is True
+    older = [SimpleNamespace(snapshot_date=day - timedelta(days=1))]
+    assert PortfolioIntelligenceService._partial_trading_day({}, older, now) is False
+
+
+def test_partial_day_flag_respects_the_22_utc_close_cutoff():
+    day = date(2026, 9, 25)
+    series = {1: [SimpleNamespace(date=day)]}
+    # 21:59 UTC: la barra de hoy puede seguir abierta -> parcial.
+    assert PortfolioIntelligenceService._partial_trading_day(series, [], _now(21, day)) is True
+    # 22:00 UTC en adelante: cierres US/EU ya consumados -> no se marca.
+    assert PortfolioIntelligenceService._partial_trading_day(series, [], _now(22, day)) is False
+
+
+def test_partial_day_flag_treats_naive_now_as_utc():
+    day = date(2026, 9, 25)
+    series = {1: [SimpleNamespace(date=day)]}
+    naive = datetime(day.year, day.month, day.day, 15)
+    assert PortfolioIntelligenceService._partial_trading_day(series, [], naive) is True
 
 
 def test_returns_ignores_a_zero_interior_price():

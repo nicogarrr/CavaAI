@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from statistics import fmean, mean, pstdev
 from typing import Any
@@ -115,7 +115,7 @@ class PortfolioIntelligenceService:
         }
         snapshot_exact = self._snapshot_history_is_exact(snapshots)
         portfolio_returns = snapshot_returns if snapshot_exact else indicative_returns
-        partial_day = self._partial_trading_day(price_series, snapshots, date.today())
+        partial_day = self._partial_trading_day(price_series, snapshots, datetime.now(UTC))
         twr = self._compound(list(portfolio_returns.values()))
         annualized_return = (
             (1 + twr) ** (252 / len(portfolio_returns)) - 1
@@ -262,7 +262,7 @@ class PortfolioIntelligenceService:
 
     @staticmethod
     def _partial_trading_day(
-        price_series: dict[int, list[Any]], snapshots: list[Any], today: date
+        price_series: dict[int, list[Any]], snapshots: list[Any], now_utc: datetime
     ) -> bool:
         """True si alguna serie incluye la barra del dia en curso (parcial).
 
@@ -271,7 +271,20 @@ class PortfolioIntelligenceService:
         diario contra una barra abierta distorsiona TWR, volatilidad,
         drawdown y VaR de ese dia. No se excluye (es el mejor dato
         disponible) pero la cobertura lo MARCA.
+
+        Zona y cierre: no hay calendario de mercado por instrumento en el
+        backend, asi que se usa una aproximacion honesta documentada: fecha
+        UTC de ``now_utc`` y corte a las 22:00 UTC. Antes del corte, una
+        barra con fecha de hoy puede seguir abierta (los cierres US son
+        20:00-21:00 UTC y los europeos 15:30-17:30 UTC); a partir del corte
+        la barra del dia se da por completa y no se marca.
         """
+        if now_utc.tzinfo is None:
+            now_utc = now_utc.replace(tzinfo=UTC)
+        cutoff = now_utc.replace(hour=22, minute=0, second=0, microsecond=0)
+        if now_utc >= cutoff:
+            return False
+        today = now_utc.date()
         if any(
             series and series[-1].date >= today for series in price_series.values()
         ):
