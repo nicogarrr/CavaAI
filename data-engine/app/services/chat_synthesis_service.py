@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 from pydantic import ValidationError
@@ -38,6 +39,79 @@ SECTION_LABELS = {
     "contradictions": "CONTRADICTIONS",
     "insufficient_data": "INSUFFICIENT DATA",
     "conclusion": "CONCLUSION",
+}
+# Confidence ceiling when the answer is not backed by sourced facts.
+MAX_CONFIDENCE_WITHOUT_FACTS = 0.35
+# Phrases a model uses to say "I found nothing", in the languages the prompt
+# asks for. Matched against the FACT section only, which is the section that is
+# supposed to carry the numbers.
+_NO_DATA_PHRASES = (
+    "no se han encontrado",
+    "no se ha encontrado",
+    "no encontramos",
+    "no hay datos",
+    "no existen datos",
+    "insufficient data",
+    "no data available",
+    "not enough data",
+    "no financial data",
+    "sin datos",
+    "no consta",
+    "no hay informacion",
+    "no hay información",
+)
+_FACT_BULLET = re.compile(r"(?m)^\s*(?:[-*\u2022]|\d+[.)])\s+\S")
+
+
+def _section_is_empty(section: SynthesisSection | None) -> bool:
+    if section is None:
+        return True
+    return not (section.body or "").strip()
+
+
+def _section_states_no_data(section: SynthesisSection | None) -> bool:
+    """True when the FACT section says, in effect, "I found nothing".
+
+    A section that contains the phrase AND still lists items is reporting
+    partial data, not none, so it does not count.
+    """
+    if section is None:
+        return True
+    body = (section.body or "").strip().lower()
+    if not body:
+        return True
+    if not any(phrase in body for phrase in _NO_DATA_PHRASES):
+        return False
+    return not _FACT_BULLET.search(body)
+
+
+# Sections that must rest on retrieved evidence. The five-way classification
+# only holds if a FACT cannot be a user hypothesis and a CONCLUSION cannot be
+# a memory item.
+GROUNDED_SECTIONS = frozenset({"facts", "calculations", "inferences", "conclusion"})
+# Source types each grounded section may legitimately rest on.
+SECTION_SOURCE_TYPES: dict[str, set[str]] = {
+    "facts": {"financial_fact", "document_chunk", "claim_evidence"},
+    "calculations": {"financial_fact", "document_chunk", "claim_evidence"},
+    "inferences": {
+        "financial_fact",
+        "document_chunk",
+        "claim_evidence",
+        "thesis_version",
+        "rag_chunk",
+        "memory_item",
+        "memory_writeback",
+    },
+    "conclusion": {
+        "financial_fact",
+        "document_chunk",
+        "claim_evidence",
+        "claim",
+        "news_event",
+        "thesis_version",
+        "memory_item",
+        "memory_writeback",
+    },
 }
 RESPONSE_SCHEMA = {
     "type": "object",
@@ -150,14 +224,36 @@ class ChatSynthesisService:
                     )
                 payload = parse_json_response(response.text)
                 sections = self._verified_sections(payload, baseline, set(retrieval_ids))
-                confidence = max(0.0, min(1.0, float(payload["confidence"])))
-                insufficient = bool(payload["insufficient_data"])
+                declared_confidence = max(0.0, min(1.0, float(payload["confidence"])))
+                declared_insufficient = bool(payload["insufficient_data"])
                 has_financial_facts = any(
                     source.get("type") == "financial_fact" for source in baseline.sources
                 )
-                if not has_financial_facts:
-                    confidence = min(confidence, 0.35)
-                    insufficient = True
+                # `insufficient_data` is a SAFETY state, so it is re-derived
+                # from the verified output instead of taken from the model. The
+                # model could otherwise declare sufficiency with confidence
+                # 0.99 while its own FACT section read "no se han encontrado
+                # datos financieros suficientes", and that combination was
+                # accepted verbatim: the clamp only looked at the CONTEXT, never
+                # at what the model actually produced.
+                produced_nothing = _section_is_empty(
+                    next((s for s in sections if s.key == "facts"), None)
+                )
+                states_no_data = _section_states_no_data(
+                    next((s for s in sections if s.key == "facts"), None)
+                )
+                insufficient = (
+                    declared_insufficient
+                    or not has_financial_facts
+                    or produced_nothing
+                    or states_no_data
+                )
+                confidence = declared_confidence
+                if insufficient:
+                    # No evidence, or the model itself said there is none: a
+                    # confident answer would be the most misleading output the
+                    # system can produce.
+                    confidence = min(confidence, MAX_CONFIDENCE_WITHOUT_FACTS)
 
                 baseline.sections = sections
                 baseline.answer = self._render(sections)
@@ -229,13 +325,35 @@ class ChatSynthesisService:
         for section in parsed:
             if any(citation not in allowed for citation in section.citations):
                 raise ValueError("Unsupported citation returned by model")
-            if (
-                section.key in {"facts", "calculations", "inferences", "conclusion"}
-                and baseline_by_key.get(section.key)
-                and baseline_by_key[section.key].citations
-                and not section.citations
-            ):
+            if section.key not in GROUNDED_SECTIONS:
+                continue
+            baseline_section = baseline_by_key.get(section.key)
+            if not baseline_section or not baseline_section.citations:
+                continue
+            if not section.citations:
                 raise ValueError("Grounded section omitted required citations")
+            # A citation must be BOTH in the global allowed set AND in the
+            # baseline set of ITS OWN section. Checking only the global set let
+            # a `memory_item:*` citation render a user's own hypothesis under the
+            # FACT heading with citation_verification: true, which is exactly
+            # the five-way classification (fact / calculation / user assumption
+            # / inference / unverified) the product sells.
+            baseline_citations = set(baseline_section.citations)
+            outside = [c for c in section.citations if c not in baseline_citations]
+            if outside:
+                raise ValueError(
+                    f"Citation not sourced from this section's baseline: {outside}"
+                )
+            # And the source TYPE has to be one a section may legitimately
+            # rest on, so a memory or a news item can never pose as a fact.
+            for citation in section.citations:
+                source_type = citation.split(":", 1)[0]
+                permitted = SECTION_SOURCE_TYPES.get(section.key, set())
+                if permitted and source_type not in permitted:
+                    raise ValueError(
+                        f"Citation type {source_type!r} is not permitted in section "
+                        f"{section.key!r}"
+                    )
         return [by_key[key] for key in SECTION_ORDER]
 
     @staticmethod

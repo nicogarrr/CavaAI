@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+import logging
 import math
 import re
 
@@ -19,6 +20,18 @@ from app.models import (
 from app.services.review_alert_service import ReviewAlertService
 from app.services.thesis_change_types import claim_change_type
 from app.services.source_hierarchy_service import classify_source
+
+
+logger = logging.getLogger(__name__)
+
+# Minimum confidence for an LLM relation verdict to be adopted. Every other
+# gate in this codebase carries one; the Jev branch carried none.
+MIN_JEV_RELATION_CONFIDENCE = 0.85
+# One threshold for the whole classifier. ``scan_document`` used 0.78 and
+# ``scan_text`` 0.80 for the SAME classification and the SAME apply path, so the
+# same evidence auto-applied from a document but not from a text scan.
+AUTO_APPLY_MIN_CONFIDENCE = 0.80
+AUTO_APPLY_MIN_SOURCE_TRUST = 0.68
 
 
 STOPWORDS = {
@@ -348,15 +361,48 @@ class ClaimIntelligenceService:
                 "superseded",
                 "stale",
             }:
-                return RelationClassification(
-                    relation=decision.label,
-                    confidence=max(0.0, min(1.0, decision.confidence)),
-                    rationale=(
-                        f"Jev claim_relation: {decision.label} "
-                        f"(confianza {decision.confidence:.2f}) sobre un par "
-                        "que el analisis determinista dejo en uncertain."
-                    ),
-                )
+                # The label is NOT adopted on the strength of the label alone.
+                # Every other gate in this codebase carries a minimum
+                # confidence; this one carried none, and
+                # ``min(1.0, nan)`` evaluates to 1.0 in Python, so a
+                # ``"confidence": "NaN"`` from the provider became full
+                # confidence and auto-applied a claim as ``supported`` with no
+                # human review. A weak or non-finite verdict falls through to
+                # the deterministic "uncertain" branch below.
+                #
+                # Jev may escalate doubt but not manufacture confirmation: a
+                # "supported" verdict still has to clear the deterministic
+                # similarity gate that the model-less path uses.
+                confidence = decision.confidence
+                if not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+                    logger.warning(
+                        "Jev claim_relation devolvio una confianza no finita o fuera "
+                        "de rango (%r) para el veredicto %r; se ignora.",
+                        confidence,
+                        decision.label,
+                    )
+                elif decision.label == "supported" and similarity < 0.58:
+                    # Jev may escalate DOUBT (contradicted / superseded / stale)
+                    # but it may never manufacture CONFIRMATION. A pair the
+                    # deterministic analysis scored below the support threshold
+                    # stays uncertain no matter how sure the model is: the only
+                    # way a claim becomes "supported" is evidence that actually
+                    # matches it.
+                    logger.info(
+                        "Jev propuso supported con similitud %.2f, por debajo del "
+                        "umbral determinista 0.58; se mantiene uncertain.",
+                        similarity,
+                    )
+                elif confidence >= MIN_JEV_RELATION_CONFIDENCE:
+                    return RelationClassification(
+                        relation=decision.label,
+                        confidence=confidence,
+                        rationale=(
+                            f"Jev claim_relation: {decision.label} "
+                            f"(confianza {confidence:.2f}) sobre un par "
+                            "que el analisis determinista dejo en uncertain."
+                        ),
+                    )
         return RelationClassification(
             relation="uncertain",
             confidence=max(0.45, min(0.74, 0.35 + similarity)),
@@ -457,8 +503,8 @@ class ClaimIntelligenceService:
                 should_apply = (
                     auto_apply
                     and match is not None
-                    and classification.confidence >= 0.78
-                    and source_tier.trust_score >= 0.68
+                    and classification.confidence >= AUTO_APPLY_MIN_CONFIDENCE
+                    and source_tier.trust_score >= AUTO_APPLY_MIN_SOURCE_TRUST
                 )
                 if should_apply:
                     applied_claim = self.apply_suggestion(
@@ -561,8 +607,8 @@ class ClaimIntelligenceService:
             if (
                 auto_apply
                 and match
-                and classification.confidence >= 0.80
-                and source_tier.trust_score >= 0.68
+                and classification.confidence >= AUTO_APPLY_MIN_CONFIDENCE
+                and source_tier.trust_score >= AUTO_APPLY_MIN_SOURCE_TRUST
             ):
                 self.apply_suggestion(
                     db, suggestion, claim=match.claim, automatic=True
@@ -661,6 +707,24 @@ class ClaimIntelligenceService:
             "stale": "stale",
             "uncertain": "uncertain",
         }.get(suggestion.relation, claim.status)
+        # Hard invariant: a claim may only be marked "supported" when the
+        # evidence has provenance. ``scan_text`` builds suggestions with
+        # document_id=None and document_chunk_id=None (the source reference
+        # lives only in metadata_), so the evidence row existed with no
+        # document and no chunk, and the status flip made the claim leave the
+        # "UNVERIFIED CLAIM" section of the chat, breaking the
+        # Source -> Document -> Chunk -> Fact -> Claim chain at its middle.
+        if status == "supported" and (
+            suggestion.document_id is None or suggestion.document_chunk_id is None
+        ):
+            logger.warning(
+                "Evidencia sin documento ni chunk: el claim %s se queda en %s en "
+                "lugar de promoverse a supported.",
+                claim.id,
+                claim.status,
+            )
+            suggestion.status = "pending"
+            return claim
         claim.status = status
         claim.last_reviewed_at = datetime.now(UTC)
         suggestion.status = "auto_applied" if automatic else "accepted"

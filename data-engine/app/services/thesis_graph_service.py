@@ -14,6 +14,7 @@ from app.models import (
     ThesisVersion,
 )
 from app.services.claim_intelligence_service import ClaimIntelligenceService, _similarity
+from app.services.claim_scope import live_claims
 
 
 NODE_RULES: dict[str, tuple[str, ...]] = {
@@ -114,11 +115,10 @@ class ThesisGraphService:
             .where(ThesisSection.thesis_version_id == thesis.id)
             .order_by(ThesisSection.order_index)
         ).all()
-        claims = db.scalars(
-            select(Claim)
-            .where(Claim.company_id == company.id)
-            .order_by(desc(Claim.materiality_score))
-        ).all()
+        # Only this version's claims. Reading every claim of the company put a
+        # node per superseded claim into the CURRENT graph, so regenerating the
+        # thesis accumulated dead nodes instead of replacing them.
+        claims = live_claims(db, company, thesis=thesis)
 
         structural_nodes: dict[str, ThesisNode] = {}
         corpus = " ".join(
