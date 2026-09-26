@@ -5386,6 +5386,11 @@ export interface components {
             /** Model Type */
             model_type: string;
             /**
+             * Publication Blockers
+             * @default []
+             */
+            publication_blockers: string[];
+            /**
              * Publishable
              * @default true
              */
