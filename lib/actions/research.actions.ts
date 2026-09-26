@@ -22,6 +22,8 @@ type ResearchCompany = {
 type ResearchPortfolioSummary = {
   total_value: number;
   equity_value: number;
+  /** Moneda base de la cartera; ausente si el backend no respondió. */
+  base_currency?: string;
   cash: Record<string, number>;
   top_1_weight: number;
   top_5_weight: number;
@@ -1025,6 +1027,8 @@ type ResearchNewsEvent = {
   materiality_score: number;
   impact_direction: string;
   requires_update: boolean;
+  /** 'source' = fecha de la fuente; 'ingested_at_fallback' = la fuente no da fecha. */
+  date_source?: string | null;
   source_tier?: string;
   source_trust_score?: number;
   portfolio_weight?: number;
