@@ -196,14 +196,30 @@ export function formatDate(
   return new Intl.DateTimeFormat(FORMAT_LOCALE, options).format(date);
 }
 
+/** Cadena de solo fecha `YYYY-MM-DD`: dia de calendario, no instante. */
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 /**
  * Fecha en la zona del mercado (cierre de una vela, fecha de cotización).
+ *
+ * Un string `YYYY-MM-DD` YA es el dia de calendario del mercado: se renderiza
+ * literal (UTC fijo). Parsearlo como medianoche local y aplicar
+ * America/New_York le RESTA UN DIA (medianoche en Madrid/UTC = tarde del dia
+ * anterior en NY). Los instantes (ISO con hora, timestamps, Date) si se
+ * convierten a la zona del mercado.
  */
 export function formatMarketDate(
   value: string | number | Date | null | undefined,
   options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' },
   fallback: string = NA,
 ): string {
+  const dateOnly = typeof value === 'string' ? DATE_ONLY_RE.exec(value) : null;
+  if (dateOnly) {
+    const literal = new Date(
+      Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])),
+    );
+    return new Intl.DateTimeFormat(FORMAT_LOCALE, { ...options, timeZone: 'UTC' }).format(literal);
+  }
   return formatDate(value, { ...options, timeZone: MARKET_TZ }, fallback);
 }
 
@@ -215,6 +231,16 @@ export function formatUserDate(
   options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' },
   fallback: string = NA,
 ): string {
+  // Un string YYYY-MM-DD ya ES el dia de calendario (asOf de una tesis,
+  // fecha de transaccion): renderizarlo literal, sin pasar por ninguna zona
+  // (medianoche local parseada + USER_TZ puede desplazar el dia).
+  const dateOnly = typeof value === 'string' ? DATE_ONLY_RE.exec(value) : null;
+  if (dateOnly) {
+    const literal = new Date(
+      Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])),
+    );
+    return new Intl.DateTimeFormat(FORMAT_LOCALE, { ...options, timeZone: 'UTC' }).format(literal);
+  }
   return formatDate(value, { ...options, timeZone: USER_TZ }, fallback);
 }
 
@@ -274,11 +300,16 @@ export function formatUserDateTime(
  * del servidor y la hidratación.
  */
 export function todayLocal(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  // "Hoy" en la zona del USUARIO, no en la del proceso: con el servidor en
+  // UTC y el navegador en Europe/Madrid, getFullYear()/getDate() daban dias
+  // distintos entre el HTML del servidor y la hidratacion. `en-CA` rinde
+  // YYYY-MM-DD directamente.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: USER_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 /**
