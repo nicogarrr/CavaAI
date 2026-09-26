@@ -4,6 +4,8 @@ import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import WorkProductButton from '@/components/work-products/WorkProductButton';
 import { formatMoney, formatPercent } from '@/lib/format';
+import { PageHeader } from '@/components/ui/page-header';
+import { Stat } from '@/components/ui/stat';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -14,30 +16,6 @@ function money(value: number) {
 
 function pct(value: number) {
   return formatPercent(value, { fromRatio: true, digits: 1 });
-}
-
-function Stat({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string;
-  value: string;
-  tone?: 'default' | 'good' | 'warn' | 'bad';
-}) {
-  const toneClass = {
-    default: 'text-gray-100',
-    good: 'text-teal-300',
-    warn: 'text-amber-300',
-    bad: 'text-red-300',
-  }[tone];
-
-  return (
-    <div className="rounded-lg border border-gray-800 bg-[#111111] p-4">
-      <div className="text-xs font-semibold uppercase text-gray-500">{label}</div>
-      <div className={`mt-2 text-2xl font-semibold ${toneClass}`}>{value}</div>
-    </div>
-  );
 }
 
 export default async function ResearchPage() {
@@ -54,18 +32,12 @@ export default async function ResearchPage() {
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
-      <header className="flex flex-col gap-3 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-sm font-semibold uppercase text-teal-300">Research OS</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-100">Mesa de research de cartera</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            Tesis versionadas, auditoría de fuentes, valoración determinista, riesgo y workflows conectados al backend Python.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <WorkProductButton />
-        </div>
-      </header>
+      <PageHeader
+        actions={<WorkProductButton />}
+        description="Tesis versionadas, auditoría de fuentes, valoración determinista, riesgo y workflows conectados al backend Python."
+        kicker="Research OS"
+        title="Mesa de research de cartera"
+      />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Stat label="Valor total" value={money(portfolio.total_value)} />
@@ -74,7 +46,7 @@ export default async function ResearchPage() {
         <Stat label="Alertas" value={String(portfolio.alerts.length)} tone={portfolio.alerts.length ? 'bad' : 'good'} />
       </section>
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
           <FileText className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Alertas de cartera</h2>

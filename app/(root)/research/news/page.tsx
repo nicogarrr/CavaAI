@@ -1,7 +1,10 @@
 import { AlertTriangle, ArrowLeft, Minus, TrendingDown, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
+import { Stat } from '@/components/ui/stat';
 import { Textarea } from '@/components/ui/textarea';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
@@ -20,30 +23,6 @@ async function submitIngestFeed(formData: FormData): Promise<void> {
   await ingestResearchNewsFeed(formData);
 }
 
-function Stat({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string;
-  value: string;
-  tone?: 'default' | 'good' | 'warn' | 'bad';
-}) {
-  const toneClass = {
-    default: 'text-gray-100',
-    good: 'text-teal-300',
-    warn: 'text-amber-300',
-    bad: 'text-red-300',
-  }[tone];
-
-  return (
-    <div className="rounded-lg border border-gray-800 bg-[#111111] p-4">
-      <div className="text-xs font-semibold uppercase text-gray-500">{label}</div>
-      <div className={`mt-2 text-2xl font-semibold ${toneClass}`}>{value}</div>
-    </div>
-  );
-}
-
 function pct(value: number | null | undefined) {
   return formatPercent(value ?? null, { digits: 1 }, 'N/D');
 }
@@ -55,24 +34,24 @@ export default async function ResearchNewsPage() {
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
-      <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <Button asChild className="mb-4" size="sm" variant="ghost">
+      <PageHeader
+        actions={
+          <div className="rounded-lg border border-gray-800 bg-surface-1 px-4 py-3 text-sm text-gray-300">
+            {events.length} eventos
+          </div>
+        }
+        back={
+          <Button asChild size="sm" variant="ghost">
             <Link href="/research">
               <ArrowLeft className="h-4 w-4" />
               Research
             </Link>
           </Button>
-          <p className="text-sm font-semibold uppercase text-teal-300">Inteligencia de mercado</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-100">Eventos de noticias</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            Eventos de noticias clasificados por materialidad e impacto sobre posiciones de cartera.
-          </p>
-        </div>
-        <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
-          {events.length} eventos
-        </div>
-      </header>
+        }
+        description="Eventos de noticias clasificados por materialidad e impacto sobre posiciones de cartera."
+        kicker="Inteligencia de mercado"
+        title="Eventos de noticias"
+      />
 
       <section className="grid gap-4 md:grid-cols-3">
         <Stat label="Eventos totales" value={String(events.length)} />
@@ -80,7 +59,7 @@ export default async function ResearchNewsPage() {
         <Stat label="Alta materialidad" value={String(highMateriality)} tone={highMateriality > 0 ? 'warn' : 'good'} />
       </section>
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Flujo de eventos</h2>
@@ -178,11 +157,12 @@ export default async function ResearchNewsPage() {
               })}
               {!events.length ? (
                 <tr>
-                  <td className="py-6 text-center text-gray-500" colSpan={9}>
-                    <p>Sin eventos de noticias todavía.</p>
-                    <Link className="mt-3 inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 hover:border-teal-600 hover:text-teal-200" href="/research/sources">
-                      Importa una fuente o analiza una noticia manual
-                    </Link>
+                  <td className="p-0" colSpan={9}>
+                    <EmptyState
+                      action={<EmptyLink href="/research/sources">Importa una fuente o analiza una noticia manual</EmptyLink>}
+                      className="rounded-none border-0 p-6"
+                      title="Sin eventos de noticias todavía."
+                    />
                   </td>
                 </tr>
               ) : null}
@@ -191,7 +171,7 @@ export default async function ResearchNewsPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Analizar noticia manual</h2>
@@ -227,7 +207,7 @@ export default async function ResearchNewsPage() {
         </MutationForm>
       </section>
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Ingerir lote de feed</h2>
