@@ -245,7 +245,7 @@ class PortfolioIntelligenceService:
                 ]
                 + (
                     [
-                        "Price/snapshot series include the current, still-open trading day (partial bar): daily metrics (TWR, volatility, drawdown, VaR) use it as-is."
+                        "Price/snapshot series may include the current trading day before the 22:00 UTC close cutoff (possible partial bar; conservative approximation, not a confirmed close): daily metrics (TWR, volatility, drawdown, VaR) use it as-is."
                     ]
                     if partial_day
                     else []
