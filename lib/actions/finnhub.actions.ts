@@ -596,9 +596,8 @@ function exchangeFromDisplaySymbol(displaySymbol?: string): string | undefined {
     return EXCHANGE_LABEL_BY_SUFFIX[suffix] ?? suffix;
 }
 
-export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
-    await requireAuthenticatedUser();
-    try {
+const searchStocksOrThrow = async (query?: string): Promise<StockWithWatchlistStatus[]> => {    await requireAuthenticatedUser();
+    {
         const token = env.FINNHUB_API_KEY;
         if (!token) {
             // Finnhub is optional; the search command renders an explicit empty state.
@@ -610,41 +609,13 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
         let results: FinnhubSearchResult[] = [];
 
         if (!trimmed) {
-            // Fetch top 10 popular symbols' profiles
-            const top = POPULAR_STOCK_SYMBOLS.slice(0, 10);
-            const profiles = await Promise.all(
-                top.map(async (sym) => {
-                    try {
-                        const url = `${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(sym)}&token=${token}`;
-                        // Revalidate every hour
-                        const profile = await fetchJSON<any>(url, 3600);
-                        return { sym, profile } as { sym: string; profile: any };
-                    } catch {
-                        // Silently handle Finnhub timeouts - expected with rate limits
-                        return { sym, profile: null } as { sym: string; profile: any };
-                    }
-                })
-            );
-
-            results = profiles
-                .map(({ sym, profile }) => {
-                    const symbol = sym.toUpperCase();
-                    const name: string | undefined = profile?.name || profile?.ticker || undefined;
-                    const exchange: string | undefined = profile?.exchange || undefined;
-                    if (!name) return undefined;
-                    const r: FinnhubSearchResult = {
-                        symbol,
-                        description: name,
-                        displaySymbol: symbol,
-                        type: 'Common Stock',
-                    };
-                    // We don't include exchange in FinnhubSearchResult type, so carry via mapping later using profile
-                    // To keep pipeline simple, attach exchange via closure map stage
-                    // We'll reconstruct exchange when mapping to final type
-                    (r as any).__exchange = exchange; // internal only
-                    return r;
-                })
-                .filter((x): x is FinnhubSearchResult => Boolean(x));
+            // Populares con estado honesto: 0/10 perfiles con clave
+            // configurada es un fallo del proveedor, no "no hay acciones".
+            const popular = await getPopularStocks();
+            if (popular.status === 'error') {
+                throw new Error('finnhub popular profiles unavailable');
+            }
+            return popular.stocks;
         } else {
             const url = `${FINNHUB_BASE_URL}/search?q=${encodeURIComponent(trimmed)}&token=${token}`;
             const data = await fetchJSON<FinnhubSearchResponse>(url, 1800);
@@ -699,10 +670,29 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
             .slice(0, 15);
 
         return mapped;
+    }
+};
+
+export type SearchStocksResult =
+    | { status: 'ok'; stocks: StockWithWatchlistStatus[] }
+    | { status: 'error'; stocks: [] };
+
+/** Búsqueda con ESTADO explícito (F215): con la cuota de Finnhub agotada el
+ *  buscador global afirmaba "Sin resultados" para AAPL porque el error se
+ *  tragaba y volvía como []. Aquí el fallo de proveedor/red es `error` y la
+ *  UI lo dice en vez de mentir. */
+export const searchStocksWithStatus = cache(async (query?: string): Promise<SearchStocksResult> => {
+    try {
+        return { status: 'ok', stocks: await searchStocksOrThrow(query) };
     } catch (err) {
         console.error('Error in stock search:', err);
-        return [];
+        return { status: 'error', stocks: [] };
     }
+});
+
+export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
+    const result = await searchStocksWithStatus(query);
+    return result.stocks;
 });
 
 /**

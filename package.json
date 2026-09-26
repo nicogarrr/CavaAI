@@ -15,7 +15,7 @@
     "test:auth": "node scripts/test-auth-signup.mjs",
     "repair:auth": "node scripts/repair-auth-store.mjs",
     "test:routes": "node scripts/check-routes.mjs",
-    "test:guards": "node --experimental-strip-types --test scripts/secret-redaction.test.ts scripts/server-action-guard.test.ts scripts/research-identity-guard.test.ts scripts/research-client-contract.test.ts scripts/e2e-auth-bypass-guard.test.ts scripts/ui-format-guard.test.ts scripts/popular-stocks-loader.test.ts scripts/portfolio-insight.test.ts scripts/ssr-datetime-guard.test.ts scripts/backend-proxy-guard.test.ts scripts/research-portfolio-currency-guard.test.ts",
+    "test:guards": "node --experimental-strip-types --test scripts/backend-proxy-guard.test.ts scripts/e2e-auth-bypass-guard.test.ts scripts/popular-stocks-loader.test.ts scripts/portfolio-insight.test.ts scripts/research-client-contract.test.ts scripts/research-identity-guard.test.ts scripts/research-portfolio-currency-guard.test.ts scripts/search-status-guard.test.ts scripts/secret-redaction.test.ts scripts/server-action-guard.test.ts scripts/ssr-datetime-guard.test.ts scripts/ui-format-guard.test.ts",
     "check:i18n": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
