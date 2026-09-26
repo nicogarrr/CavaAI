@@ -93,7 +93,16 @@ def get_db(
 ) -> Generator[Session, None, None]:
     # Fail-closed: with research auth required there is never an anonymous
     # session. Writes without a tenant must be impossible, not just unscoped.
-    if principal is None and settings.research_auth_required:
+    #
+    # La condicion incluye is_production a proposito. get_research_principal ya
+    # es fail-closed en produccion, pero get_db decide por su cuenta y antes
+    # solo miraba research_auth_required: con el flag a false, produccion
+    # abria sesiones anonimas -> sin db.info["tenant_id"] -> los guards de
+    # _scope_tenant_queries/_scope_tenant_dml/_assign_tenant_to_new_rows no
+    # inyectan nada y TODAS las consultas quedan sin scope de tenant.
+    if principal is None and (
+        settings.research_auth_required or settings.is_production
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="A signed Research OS identity is required",
@@ -137,6 +146,7 @@ def get_db(
             db.info["user_id"] = principal.user_id
         yield db
     finally:
+        db.rollback()
         db.close()
 
 

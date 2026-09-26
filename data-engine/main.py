@@ -54,7 +54,22 @@ async def lifespan(_: FastAPI):
         scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title="CavaAI Research Engine", version="1.0.0", lifespan=lifespan)
+_app_env = get_settings().app_env.strip().lower()
+_EXPOSE_SCHEMA = _app_env in {"local", "test", "ci", "dev", "development"}
+
+# /docs, /redoc y /openapi.json se montan SIN firma porque cuelgan de app, no
+# del research router. Publicar el esquema completo de las 188 rutas firmadas es
+# un plano gratis para quien intente reutilizar una firma capturada. Solo se
+# exponen en entornos locales; data-engine/scripts/export_openapi.py sigue
+# generando el JSON via app.openapi() sin necesidad de HTTP.
+app = FastAPI(
+    title="CavaAI Research Engine",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if _EXPOSE_SCHEMA else None,
+    redoc_url="/redoc" if _EXPOSE_SCHEMA else None,
+    openapi_url="/openapi.json" if _EXPOSE_SCHEMA else None,
+)
 
 app.add_middleware(
     RawBodyMiddleware,
