@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Search, TrendingUp, Loader2 } from 'lucide-react';
 import { addTransaction } from '@/lib/actions/portfolio.actions';
 import { searchStocksWithStatus } from '@/lib/actions/finnhub.actions';
+import { createLatestRequestGate } from '@/lib/latest-request';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
@@ -59,6 +60,7 @@ export default function AddTransactionButton({ userId }: Props) {
   const [searchResults, setSearchResults] = useState<StockResult[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [searchError, setSearchError] = useState(false);
+  const searchGateRef = useRef(createLatestRequestGate());
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [formData, setFormData] = useState({
@@ -74,15 +76,20 @@ export default function AddTransactionButton({ userId }: Props) {
 
   // Búsqueda inteligente con debounce
   const handleSearch = useCallback(async (query: string) => {
+    // Sello de petición más reciente: una respuesta tardía de una query
+    // vieja no pisa resultados ni errores de la nueva (race F215).
+    const ticket = searchGateRef.current.begin();
     if (query.length < 1) {
       setSearchResults([]);
       setShowResults(false);
+      setSearchError(false);
       return;
     }
 
     setSearchLoading(true);
     try {
       const result = await searchStocksWithStatus(query);
+      if (!searchGateRef.current.isLatest(ticket)) return;
       if (result.status === 'error') {
         // Fallo del proveedor: no fingir "sin resultados" (F215).
         setSearchError(true);
@@ -93,6 +100,7 @@ export default function AddTransactionButton({ userId }: Props) {
         setShowResults(true);
       }
     } catch (error) {
+      if (!searchGateRef.current.isLatest(ticket)) return;
       console.error('Error searching stocks:', error);
       setSearchError(true);
       setShowResults(false);
@@ -112,6 +120,7 @@ export default function AddTransactionButton({ userId }: Props) {
     } else {
       setSearchResults([]);
       setShowResults(false);
+      setSearchError(false);
     }
 
     return () => {
