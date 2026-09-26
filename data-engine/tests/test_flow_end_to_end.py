@@ -16,17 +16,13 @@ Run from data-engine/:
 
 from __future__ import annotations
 
-import time
-
 from fastapi.testclient import TestClient
 
 import main
 from app.api.routes import screeners as screeners_module
 from app.core import auth as auth_module
 from app.seed import seed
-
 from tests.auth_helpers import auth_settings, bound_headers
-
 
 SECRET = "flow-e2e-test-secret-at-least-32-chars"
 

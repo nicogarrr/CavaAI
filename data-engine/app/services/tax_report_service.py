@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import UTC, date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import select
@@ -39,7 +39,6 @@ from app.core.config import get_settings
 from app.models import (
     Company,
     Position,
-    Portfolio,
     TaxReport,
     Transaction,
 )

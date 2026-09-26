@@ -12,8 +12,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base
 from app.models import CalculatedMetric, Company, FinancialFact
+from app.models.entities import Base
 from app.valuation.engines.base import clamp_fcf_margin, traceable_wacc
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
 from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth

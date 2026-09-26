@@ -11,6 +11,8 @@ Escenarios bear/base/bull: descuento +15pp (techo 45%) / base / −8pp con NAV
 
 from __future__ import annotations
 
+from sqlalchemy import desc, select
+
 from app.models import FinancialFact
 from app.valuation.engines.base import (
     MODEL_VERSION,
@@ -23,7 +25,6 @@ from app.valuation.moat_framework import empty_moat_framework
 from app.valuation.scenario_definitions import holding_company_scenarios
 from app.valuation.scenario_model import Scenario, probability_weighted_value
 from app.valuation.sotp import run_sotp
-from sqlalchemy import desc, select
 
 
 def sotp_discount_sensitivity(*, nav_per_share: float, base_discount: float) -> dict:

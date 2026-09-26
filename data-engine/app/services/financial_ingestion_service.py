@@ -9,13 +9,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import Company, Document, FinancialFact, FinancialStatement, MarketPrice
+from app.services.connectors import esef as esef_connector
 from app.services.connectors import fred as fred_connector
 from app.services.connectors import sec_edgar as sec_edgar_connector
-from app.services.connectors import esef as esef_connector
-from app.services.fact_chunk_service import sync_company_fact_chunks
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.sec import SECClient
-
+from app.services.fact_chunk_service import sync_company_fact_chunks
 
 MetricSpec = tuple[str, str, str]
 

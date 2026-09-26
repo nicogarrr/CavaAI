@@ -22,11 +22,9 @@ from app.models import (
     FinancialFact,
     KPIExtractionCandidate,
 )
-from app.services.company_framework import resolve_company_framework
 from app.services.budget import BudgetController, BudgetExceededError
+from app.services.company_framework import resolve_company_framework
 from app.services.langfuse_client import LangfuseTracer
-
-
 from app.services.prompt_registry import get_prompt
 
 PROMPT_VERSION = get_prompt("company_kpi_extraction", allow_remote=False).version

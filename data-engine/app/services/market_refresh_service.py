@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Callable, Protocol
+from typing import Protocol
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -18,8 +19,8 @@ from app.services.connectors.ecb import ECBClient, ECBRates
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.fmp import FMPClient
 from app.services.portfolio_fx_service import PortfolioFXService
-from app.services.propicks_price_service import yahoo_symbol
 from app.services.portfolio_ledger_service import PortfolioLedgerService
+from app.services.propicks_price_service import yahoo_symbol
 from app.services.risk_service import RiskService
 from app.services.screener_service import ScreenerService
 
@@ -82,7 +83,7 @@ class PublicPriceProvider:
                     self._one(company, as_of),
                     timeout=self.PER_TICKER_TIMEOUT_SECONDS,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return company, None, {
                     "ticker": company.ticker,
                     "reason": "per_ticker_timeout",

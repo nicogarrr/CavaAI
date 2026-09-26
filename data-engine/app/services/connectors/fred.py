@@ -17,7 +17,6 @@ import httpx
 
 from app.core.config import get_settings
 
-
 _BROWSER_HEADERS: dict[str, str] = {
     "User-Agent": (
         "Mozilla/5.0 (compatible; CavaAI/0.1; +mailto:contact@example.com)"

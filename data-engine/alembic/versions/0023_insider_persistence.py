@@ -7,6 +7,7 @@ the watchlist monitor and the durable alert outbox.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0023_insider_persistence"

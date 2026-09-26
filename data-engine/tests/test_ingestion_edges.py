@@ -18,18 +18,23 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import main
 from app.core.database import SessionLocal, init_db
 from app.models.entities import (
-    Base, Company, Document, DocumentChunk, Transaction,
+    Base,
+    Company,
+    Document,
+    DocumentChunk,
+    Transaction,
 )
 from app.schemas.api import NewsFeedItem
 from app.services import document_ingestion_service as doc_module
 from app.services.document_ingestion_service import (
-    DocumentIngestionService, MAX_DOCUMENT_BYTES,
+    MAX_DOCUMENT_BYTES,
+    DocumentIngestionService,
 )
 from app.services.news_service import NewsService
 from app.services.portfolio_ledger_service import PortfolioLedgerService
@@ -61,7 +66,7 @@ def _text(marker: str) -> bytes:
         f"Azure AI demand and operating margin discipline support durable "
         f"cloud revenue growth for the thesis evidence set {marker}. "
         f"Capital expenditure remains disciplined across regions {marker}."
-    ).encode("utf-8")
+    ).encode()
 
 
 def test_document_retry_returns_duplicate_without_new_rows(db):

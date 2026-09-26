@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models import (
     AlertRule,
     Company,
@@ -17,7 +18,6 @@ from app.models import (
     Position,
 )
 from app.services.review_alert_service import ReviewAlertService
-from app.core.config import get_settings
 
 
 class AlertRuleService:

@@ -22,40 +22,40 @@ from app.models import (
 from app.schemas import (
     CalculatedMetricOut,
     CalculatedMetricsResponse,
-    CompanyOut,
     CompanyKPIOut,
+    CompanyOut,
     CompanySnapshotOut,
     FinancialFactOut,
     FinancialRefreshResponse,
 )
 from app.services.company_enrichment_service import CompanyEnrichmentService
-from app.services.connectors.fmp import FMPClient
-from app.services.financial_ingestion_service import FinancialIngestionService
-from app.services.fundamental_review_service import (
-    DecisionJournalService,
-    ExpectationRealityService,
-)
-from app.services.fundamental_model_repository import FundamentalModelRepository
-from app.services.metric_calculation_service import MetricCalculationService
-from app.services.moat_service import MoatService
-from app.services.long_term_model_service import LongTermModelService
-from app.services.peer_analysis_service import PeerAnalysisService
-from app.services.peer_comparison_service import DEFAULT_PEER_METRICS, PeerComparisonService
-from app.services.red_team_service import RedTeamService
-from app.services.wacc_input_service import WaccInputService
+from app.services.company_resolver import resolve_company
 from app.services.company_snapshot_service import CompanySnapshotService
-from app.services.kpi_extraction_service import CompanyKPIRegistryService
-from app.services.driver_assumption_service import (
-    DriverAssumptionService,
-    driver_assumption_payload,
-)
+from app.services.connectors.fmp import FMPClient
 from app.services.decision_learning_service import (
     DECISION_ERROR_TAXONOMY,
     DecisionLearningService,
 )
+from app.services.driver_assumption_service import (
+    DriverAssumptionService,
+    driver_assumption_payload,
+)
+from app.services.financial_ingestion_service import FinancialIngestionService
 from app.services.financial_terminal_service import FinancialTerminalService
+from app.services.fundamental_model_repository import FundamentalModelRepository
+from app.services.fundamental_review_service import (
+    DecisionJournalService,
+    ExpectationRealityService,
+)
+from app.services.kpi_extraction_service import CompanyKPIRegistryService
+from app.services.long_term_model_service import LongTermModelService
 from app.services.management_credibility_service import ManagementCredibilityService
-from app.services.company_resolver import resolve_company
+from app.services.metric_calculation_service import MetricCalculationService
+from app.services.moat_service import MoatService
+from app.services.peer_analysis_service import PeerAnalysisService
+from app.services.peer_comparison_service import DEFAULT_PEER_METRICS, PeerComparisonService
+from app.services.red_team_service import RedTeamService
+from app.services.wacc_input_service import WaccInputService
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ unconfigured channels say so explicitly, failures are recorded without
 leaking URLs or bodies, and every attempt is persisted on the alert.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest

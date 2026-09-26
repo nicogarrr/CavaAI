@@ -9,21 +9,21 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import CashBalance, Company, FXRate, Position, Transaction
+from app.services.company_resolver import resolve_company
 from app.services.connectors.ibkr import IBKRFlexClient
+from app.services.dividend_ingestion_service import DividendIngestionService
 from app.services.ibkr_import_service import IBKRImportError, IBKRImportService
-from app.services.risk_service import RiskService
+from app.services.market_refresh_service import MarketRefreshService
+from app.services.portfolio_fx_service import PortfolioFXService
+from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 from app.services.portfolio_ledger_service import (
     PortfolioLedgerService,
     PortfolioMixedCurrencyError,
     PortfolioOversellError,
 )
-from app.services.portfolio_fx_service import PortfolioFXService
-from app.services.market_refresh_service import MarketRefreshService
-from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
-from app.services.dividend_ingestion_service import DividendIngestionService
+from app.services.risk_service import RiskService
 from app.services.tearsheet_service import TearsheetService
-from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 

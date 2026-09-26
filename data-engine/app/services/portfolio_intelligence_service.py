@@ -13,10 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import CashBalance, Company, FinancialFact, MarketPrice, Position, Transaction
-from app.services.portfolio_ledger_service import BUY_ACTIONS, SELL_ACTIONS
 from app.services.portfolio_fx_service import PortfolioFXService
+from app.services.portfolio_ledger_service import BUY_ACTIONS, SELL_ACTIONS
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
-
 
 # Exchange -> listing-market country. Best-effort fallback only: the owning
 # fact is issuer domicile, and positions without a known exchange are grouped

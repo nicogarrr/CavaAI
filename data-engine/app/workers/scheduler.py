@@ -7,22 +7,21 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.workers.dramatiq_app import (
     consolidate_memory,
+    dispatch_insider_alerts,
     evaluate_alert_rules,
+    refresh_ir_pages,
     refresh_market_pipeline,
+    refresh_news,
     refresh_portfolio_prices_intraday,
     refresh_propicks_prices,
-    refresh_ir_pages,
-    refresh_news,
     refresh_rss_feeds,
     refresh_sec_filings,
     review_theses,
     run_daily_research,
-    dispatch_insider_alerts,
     scan_contradictions,
     scan_insider_watchlist,
     tenant_contexts,
 )
-
 
 JOB_DEFAULTS = {
     "replace_existing": True,
