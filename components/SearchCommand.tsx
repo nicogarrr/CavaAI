@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { CornerDownLeft, Loader2, Search, TrendingUp } from "lucide-react";
-import { searchStocks, getPopularStocks } from "@/lib/actions/finnhub.actions";
+import { searchStocksWithStatus, getPopularStocks } from "@/lib/actions/finnhub.actions";
 import { loadPopularStocks } from "@/lib/popular-stocks-loader";
 import { showErrorToast } from "@/lib/toast";
 import { isNextRedirectError } from "@/lib/types/errors";
@@ -79,11 +79,17 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         setLoading(true);
         setSearchError(false);
         try {
-            const results = await searchStocks(query.trim());
+            const result = await searchStocksWithStatus(query.trim());
 
-            // Solo actualizar si el request no fue cancelado
+            // Solo actualizar si el request no fue cancelado. Un fallo del
+            // proveedor NO es "sin resultados" (F215): se señala el error y
+            // se conservan los resultados anteriores.
             if (!controller.signal.aborted) {
-                setStocks(results || []);
+                if (result.status === 'error') {
+                    setSearchError(true);
+                } else {
+                    setStocks(result.stocks);
+                }
             }
         } catch (error: unknown) {
             // Ignorar errores de cancelación; ante un fallo real, mostrar el
