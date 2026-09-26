@@ -119,3 +119,49 @@ def test_ingest_without_source_date_falls_back_to_now(db):
     event = db.query(NewsEvent).filter_by(url="https://example.com/1").one()
     age = datetime.now(UTC) - event.date.replace(tzinfo=UTC)
     assert age.total_seconds() < 3600
+
+
+def test_old_filing_is_never_urgent_by_recency(db):
+    """Un filing de 2025 con termino critico no abre cola urgente (F217)."""
+    old_date = datetime(2025, 10, 15, 14, 30, tzinfo=UTC)
+    response = NewsService().ingest_news_items(
+        db,
+        [NewsFeedItem(
+            title="Company files for bankruptcy protection in October 2025",
+            text="bankruptcy filing",
+            url="https://sec.gov/old",
+            published_at=old_date,
+        )],
+    )
+    assert response.created == 1
+    event = db.query(NewsEvent).filter_by(url="https://sec.gov/old").one()
+    assert event.materiality_score >= 7  # el score se conserva
+    assert event.requires_update is False  # la urgencia, no
+
+
+def test_recent_critical_news_stays_urgent(db):
+    """Control: la misma noticia de hoy SI es urgente."""
+    recent = datetime.now(UTC)
+    response = NewsService().ingest_news_items(
+        db,
+        [NewsFeedItem(
+            title="Company files for bankruptcy protection",
+            text="bankruptcy filing",
+            url="https://example.com/new",
+            published_at=recent,
+        )],
+    )
+    assert response.created == 1
+    event = db.query(NewsEvent).filter_by(url="https://example.com/new").one()
+    assert event.requires_update is True
+
+
+def test_item_without_date_marks_ingested_fallback(db):
+    """Fuente sin fecha: metadata lo declara, no se silencia (F217)."""
+    response = NewsService().ingest_news_items(
+        db,
+        [NewsFeedItem(title="Noticia sin fecha de fuente", text="manual", url="https://example.com/2")],
+    )
+    assert response.created == 1
+    event = db.query(NewsEvent).filter_by(url="https://example.com/2").one()
+    assert event.metadata_["date_source"] == "ingested_at_fallback"

@@ -121,7 +121,12 @@ export default async function ResearchNewsPage() {
                         <span className="text-gray-500">—</span>
                       )}
                     </th>
-                    <td className="py-3 text-gray-400">{event.date.split('T')[0]}</td>
+                    <td className="py-3 text-gray-400">
+                      <div>{event.date.split('T')[0]}</div>
+                      {event.date_source === 'ingested_at_fallback' ? (
+                        <div className="mt-1 text-xs text-gray-500">fecha de ingesta · la fuente no da fecha</div>
+                      ) : null}
+                    </td>
                     <td className="max-w-[360px] py-3 text-gray-300">
                       <div className="truncate">
                         {event.url ? (
