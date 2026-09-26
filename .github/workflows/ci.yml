@@ -51,6 +51,9 @@ jobs:
         run: node --experimental-strip-types --test scripts/error-cause.test.ts
       - name: Transaction form validation (F1, no silent submits)
         run: node --experimental-strip-types --test scripts/transaction-validation.test.ts
+      - name: Market date guard (YYYY-MM-DD no pierde un dia)
+        # TZ negativa a posta: las fechas YYYY-MM-DD no deben moverse de dia.
+        run: TZ=America/New_York node --experimental-strip-types --test scripts/market-date-guard.test.ts
       - name: SSRF guard (export actions)
         run: node --experimental-strip-types --test scripts/export-url-guard.test.ts
       - run: npm run build
