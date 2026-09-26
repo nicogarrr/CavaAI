@@ -361,6 +361,9 @@ async function evaluateSymbol(symbol: string, strategyId: string): Promise<ProPi
     const profile = typedFinancialData.profile as Record<string, unknown>;
     const quote = typedFinancialData.quote as Record<string, unknown> | undefined;
     const currentPrice = Number(quote?.c ?? quote?.price ?? 0);
+    // Sin quote real no hay precio: saltar el simbolo en vez de evaluar
+    // con un 0 fabricado que despues se pinta como precio actual.
+    if (!(currentPrice > 0)) return null;
     const sector = String(profile.finnhubIndustry ?? profile.industry ?? 'Desconocido');
     const strategy = getStrategyById(strategyId) ?? PROPICKS_STRATEGIES[0];
 

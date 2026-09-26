@@ -10,6 +10,7 @@ import { Activity, ArrowRight, BellRing, Eye, Gem, TrendingDown, TrendingUp, Wal
 import { getPortfolioSummary, type PortfolioHolding, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getMarketIndices } from '@/lib/actions/market.actions';
+import { sectionError } from '@/lib/section-error';
 import { getStockFinancialData, getStockQuote } from '@/lib/actions/finnhub.actions';
 import { getScreenerStocksReal, getFairValue } from '@/lib/actions/screener.actions';
 import {
@@ -94,13 +95,7 @@ function SectionSkeleton({ rows = 3, className }: { rows?: number; className?: s
     );
 }
 
-function sectionError(error: unknown): string {
-    if (error instanceof Error && error.message) {
-        const message = error.message.replace(/https?:\/\/\S+/g, 'el servicio');
-        return `${message}. Reintenta en unos segundos.`;
-    }
-    return 'No se pudieron cargar los datos. Reintenta en unos segundos.';
-}
+
 
 function InlineSectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
     return (

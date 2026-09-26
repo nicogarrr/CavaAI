@@ -55,6 +55,8 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
     ),
   ]);
   const { rows, backendDown } = screenerResult;
+  // Un indice sin precio real (fallo del proveedor) no se pinta como $0.00.
+  const validIndices = indices.filter((i) => i.price > 0);
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
@@ -225,13 +227,13 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {indices.map((i) => (
+              {validIndices.map((i) => (
                 <div key={i.symbol} className="flex min-w-0 items-center justify-between gap-3">
                   <span className="min-w-0 flex-1 truncate text-gray-300">{i.name}</span>
                   <span className="shrink-0 font-semibold text-gray-100">{formatPrice(i.price, 'USD')}</span>
                 </div>
               ))}
-              {indices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}
+              {validIndices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}
             </div>
             <p className="mt-4 text-xs text-gray-500">S&amp;P 500, Nasdaq, Bitcoin, Oro, Plata — valores reales.</p>
           </CardContent>
