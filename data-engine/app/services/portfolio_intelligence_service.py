@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from statistics import fmean, mean, pstdev
 from typing import Any
@@ -115,6 +115,7 @@ class PortfolioIntelligenceService:
         }
         snapshot_exact = self._snapshot_history_is_exact(snapshots)
         portfolio_returns = snapshot_returns if snapshot_exact else indicative_returns
+        partial_day = self._partial_trading_day(price_series, snapshots, datetime.now(UTC))
         twr = self._compound(list(portfolio_returns.values()))
         annualized_return = (
             (1 + twr) ** (252 / len(portfolio_returns)) - 1
@@ -227,6 +228,7 @@ class PortfolioIntelligenceService:
                     round(100 * complete_price_series / len(rows), 1) if rows else 100
                 ),
                 "portfolio_snapshots": len(snapshots),
+                "partial_trading_day": partial_day,
                 "snapshot_returns": len(snapshot_returns),
                 "snapshot_pricing_complete": sum(
                     snapshot.pricing_coverage == Decimal("1") for snapshot in snapshots
@@ -243,6 +245,13 @@ class PortfolioIntelligenceService:
                 ]
                 + (
                     [
+                        "Price/snapshot series may include the current trading day before the 22:00 UTC close cutoff (possible partial bar; conservative approximation, not a confirmed close): daily metrics (TWR, volatility, drawdown, VaR) use it as-is."
+                    ]
+                    if partial_day
+                    else []
+                )
+                + (
+                    [
                         f"{len(missing_fx)} position(s) excluded from totals, weights and exposures: no base-currency value (missing FX)."
                     ]
                     if missing_fx
@@ -250,6 +259,37 @@ class PortfolioIntelligenceService:
                 ),
             },
         }
+
+    @staticmethod
+    def _partial_trading_day(
+        price_series: dict[int, list[Any]], snapshots: list[Any], now_utc: datetime
+    ) -> bool:
+        """True si alguna serie incluye la barra del dia en curso (parcial).
+
+        refresh_portfolio_prices_intraday escribe MarketPrice del dia antes
+        del cierre, y el snapshot diario tambien puede ser de hoy: un retorno
+        diario contra una barra abierta distorsiona TWR, volatilidad,
+        drawdown y VaR de ese dia. No se excluye (es el mejor dato
+        disponible) pero la cobertura lo MARCA.
+
+        Zona y cierre: no hay calendario de mercado por instrumento en el
+        backend, asi que se usa una aproximacion honesta documentada: fecha
+        UTC de ``now_utc`` y corte a las 22:00 UTC. Antes del corte, una
+        barra con fecha de hoy puede seguir abierta (los cierres US son
+        20:00-21:00 UTC y los europeos 15:30-17:30 UTC); a partir del corte
+        la barra del dia se da por completa y no se marca.
+        """
+        if now_utc.tzinfo is None:
+            now_utc = now_utc.replace(tzinfo=UTC)
+        cutoff = now_utc.replace(hour=22, minute=0, second=0, microsecond=0)
+        if now_utc >= cutoff:
+            return False
+        today = now_utc.date()
+        if any(
+            series and series[-1].date >= today for series in price_series.values()
+        ):
+            return True
+        return any(snapshot.snapshot_date >= today for snapshot in snapshots)
 
     @staticmethod
     def _snapshot_history_is_exact(snapshots: list[Any]) -> bool:
