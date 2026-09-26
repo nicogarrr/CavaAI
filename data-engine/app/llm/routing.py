@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Mapping
 
 from app.llm.contracts import LLMRequest
 from app.llm.model_aliases import MODEL_ALIASES

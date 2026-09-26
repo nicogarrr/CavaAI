@@ -2,8 +2,12 @@ import { Metadata } from 'next';
 import { SUPPORT_EMAIL } from '@/lib/config/brand';
 
 export const metadata: Metadata = {
-  title: 'Términos de Servicio - CavaAI',
+  title: 'Términos de Servicio',
   description: 'Términos de servicio justos - construidos sobre confianza y transparencia',
+  // Página pública (se puede leer sin sesión) pero NO indexada: el texto
+  // legal (fecha Diciembre 2024) está pendiente de validación por el dueño
+  // del producto; hasta entonces no debe salir en buscadores.
+  robots: { index: false, follow: true },
 };
 
 // Forzar renderizado dinámico
@@ -11,7 +15,7 @@ export const dynamic = 'force-dynamic';
 
 export default function TermsPage() {
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
+    <main id="content" tabIndex={-1} className="mx-auto w-full max-w-4xl px-4 py-12">
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-gray-100 mb-4">Términos de Servicio</h1>
         <p className="text-gray-300 mb-4">
@@ -161,6 +165,6 @@ export default function TermsPage() {
           </p>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

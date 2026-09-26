@@ -1,0 +1,144 @@
+{
+  "common": {
+    "actions": {
+      "retry": "Reintentar",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "close": "Cerrar",
+      "delete": "Eliminar",
+      "apply": "Aplicar",
+      "regenerate": "Regenerar",
+      "export": "Exportar",
+      "search": "Buscar"
+    },
+    "states": {
+      "loadingAlerts": "Cargando alertas...",
+      "alertsLoadError": "No se pudieron cargar tus alertas. Reintenta en unos segundos.",
+      "noAlerts": "No tienes alertas configuradas",
+      "noAlertsHint": "Crea tu primera alerta para recibir notificaciones en tiempo real",
+      "neverTriggered": "Todavía no se ha disparado",
+      "loading": "Cargando...",
+      "empty": "Sin datos",
+      "noResults": "Sin resultados",
+      "error": "Se produjo un error inesperado",
+      "errorHint": "Inténtalo de nuevo. Si el problema persiste, revisa tu conexión.",
+      "backendOfflineTitle": "Servicio no disponible"
+    },
+    "labels": {
+      "ticker": "Ticker",
+      "company": "Empresa",
+      "sector": "Sector",
+      "price": "Precio",
+      "date": "Fecha",
+      "score": "Score",
+      "coverage": "Cobertura",
+      "confidence": "Confianza",
+      "missing": "Faltantes",
+      "status": "Estado"
+    }
+  },
+  "nav": {
+    "portfolio": "Cartera",
+    "research": "Research",
+    "screeners": "Screeners",
+    "screener": "Screener",
+    "search": "Buscar"
+  },
+  "ui": {
+    "dialog": {
+      "close": "Cerrar diálogo",
+      "confirm": "Confirmar",
+      "cancel": "Cancelar"
+    },
+    "command": {
+      "placeholder": "Buscar acciones, tesis o documentos...",
+      "error": "No se pudo completar la búsqueda"
+    },
+    "search": {
+      "placeholder": "Buscar por nombre o símbolo",
+      "noResults": "Sin resultados"
+    }
+  },
+  "portfolio": {
+    "scores": {
+      "quality": "Calidad",
+      "growth": "Crecimiento",
+      "value": "Valor",
+      "dividend": "Dividendo"
+    },
+    "tearsheet": {
+      "maxDrawdown": "Caída máxima",
+      "winRate": "Ratio de acierto"
+    },
+    "tabs": {
+      "intelligence": "Inteligencia"
+    },
+    "fxMissingNotice": "Los totales de la cartera excluyen {n} saldo o posición sin tipo de cambio válido."
+  },
+  "screener": {
+    "match": "coincidencia",
+    "noMatch": "sin coincidencia",
+    "newMatch": "nuevo",
+    "missing": "Faltantes",
+    "rank": "Ranking",
+    "coverage": "Cobertura",
+    "confidence": "Confianza"
+  },
+  "propicks": {
+    "follow": "Seguir",
+    "followed": "Siguiendo",
+    "noResults": "Sin resultados con estos filtros",
+    "regenerate": "Regenerar Picks"
+  },
+  "research": {
+    "sources": "Fuentes",
+    "notAvailable": "fecha no disponible"
+  },
+  "signals": {
+    "asOf": "Datos al {date}",
+    "noDate": "fecha no disponible"
+  },
+  "alerts": {
+    "create": "Crear Alerta",
+    "new": "Nueva Alerta",
+    "types": {
+      "priceAbove": "Precio por encima de",
+      "priceBelow": "Precio por debajo de",
+      "priceChange": "Cambio de precio %",
+      "news": "Nueva noticia",
+      "earnings": "Reporte de ganancias"
+    }
+  },
+  "knowledge": {
+    "library": "Biblioteca de conocimiento",
+    "qualityCompounders": "Empresas de calidad compostadora",
+    "documents": "Documentos",
+    "upload": "Subir conocimiento"
+  },
+  "taxes": {
+    "year": "Ejercicio",
+    "regenerate": "Regenerar",
+    "noReport": "Sin reporte fiscal disponible para este año. Pulsa «Regenerar» para generarlo."
+  },
+  "plan": {
+    "title": "Plan de Inversión",
+    "empty": "No hay plan de inversión configurado todavía.",
+    "addTicker": "Añadir ticker"
+  },
+  "ownership": {
+    "title": "Propiedad"
+  },
+  "movers": {
+    "gainers": "Subidas",
+    "losers": "Baixas"
+  },
+  "insider": {
+    "searchPlaceholder": "Ticker",
+    "signal": "Señal",
+    "insider": "Insider",
+    "date": "Fecha",
+    "value": "Valor",
+    "detail": "Detalle",
+    "noSignals": "sin señales de compra insider en los últimos filings"
+  }
+}

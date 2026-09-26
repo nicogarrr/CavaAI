@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 
-import { formatMoney, formatNumber, formatPercent } from '@/lib/format';
+import { formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
 
 import { Badge } from '@/components/ui/badge';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
@@ -22,7 +22,7 @@ function safeCurrency(currency: string | null): string {
 
 function money(value: number | null, currency: string | null) {
     return value == null
-        ? 'N/A'
+        ? NA
         : formatMoney(value, safeCurrency(currency));
 }
 
@@ -44,9 +44,9 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                       <div className="sm:ml-auto sm:text-right">
                           <div className="text-2xl font-bold text-gray-100 sm:text-3xl">{money(snapshot.quote.price, snapshot.currency)}</div>
                         <div className={positive ? 'text-teal-300' : 'text-red-300'}>
-                            {snapshot.quote.change == null ? 'N/A' : formatNumber(snapshot.quote.change, { signDisplay: 'always', maximumFractionDigits: 2 })}
+                            {snapshot.quote.change == null ? NA : formatNumber(snapshot.quote.change, { signDisplay: 'always', maximumFractionDigits: 2 })}
                             {' · '}
-                            {snapshot.quote.changePercent == null ? 'N/A' : formatPercent(snapshot.quote.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                            {snapshot.quote.changePercent == null ? NA : formatPercent(snapshot.quote.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                         </div>
                     </div>
                 </div>

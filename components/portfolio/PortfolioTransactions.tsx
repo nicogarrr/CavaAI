@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatNumber, formatUserDate } from '@/lib/format';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -88,7 +88,7 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          {new Date(tx.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {formatUserDate(tx.date)}
                         </p>
                       </div>
                     </div>
@@ -97,7 +97,8 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
                         {formatMoney(tx.quantity * tx.price, tx.currency ?? 'USD')}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {tx.quantity} acc @ {tx.price.toFixed(2)} {tx.currency ?? 'USD'}
+                        {formatNumber(tx.quantity, { maximumFractionDigits: 4 })} acc @{' '}
+                        {formatNumber(tx.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {tx.currency ?? 'USD'}
                       </p>
                     </div>
                   </div>

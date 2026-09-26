@@ -10,9 +10,20 @@ import asyncio
 import json
 import threading
 import time
+from types import SimpleNamespace
 
 import main
 from app.api.routes import screeners
+
+
+def _fake_tenant_db(tenant_id: int = 1):
+    """Sesion minima con contexto de tenant.
+
+    El handler del screener real recibe `get_db`: los ratios que devuelve se
+    derivan de `financial_facts`, que es TenantOwnedMixin, asi que la
+    respuesta depende del tenant y por tanto de la sesion.
+    """
+    return SimpleNamespace(info={"tenant_id": tenant_id, "user_id": "user-1"})
 
 
 def test_health_ready_times_out_dependencies_without_serial_wait(monkeypatch):
@@ -33,7 +44,12 @@ def test_health_ready_times_out_dependencies_without_serial_wait(monkeypatch):
     response = asyncio.run(main.health_ready())
     elapsed = time.perf_counter() - started
 
-    assert elapsed < 0.15, f"health_ready tardó {elapsed:.3f}s"
+    # El deadline de la sonda es 0,05 s y las tres sondas opcionales duermen
+    # 0,20 s. Una implementacion SECUELA tardaria >=0,20 s; una concurrente,
+    # ~0,05 s. El umbral de 0,15 s solo dejaba 1,33x de margen sobre el deadline
+    # y hacia fallar el test con carga de maquina sin que hubiera una regresion.
+    # 0,18 s sigue fallando una espera serial (0,20 s) y tolera el ruido.
+    assert elapsed < 0.18, f"health_ready tardó {elapsed:.3f}s"
     assert response.status_code == 200
     payload = json.loads(response.body)
     assert payload["checks"] == {
@@ -85,7 +101,7 @@ def test_real_screener_serves_lkg_and_refreshes_in_background(monkeypatch):
     monkeypatch.setattr(
         screeners,
         "_real_items_cache",
-        {"at": 0.0, "items": [old], "vendor": "finnhub"},
+        {1: {"at": 0.0, "items": [old], "vendor": "finnhub"}},
     )
     monkeypatch.setattr(screeners, "_real_response_cache", {})
     monkeypatch.setattr(screeners, "_refetch_real_items", slow_refresh)
@@ -97,7 +113,7 @@ def test_real_screener_serves_lkg_and_refreshes_in_background(monkeypatch):
 
     started_at = time.perf_counter()
     try:
-        payload = screeners.real_time_screener(limit=1)
+        payload = screeners.real_time_screener(limit=1, db=_fake_tenant_db())
     finally:
         elapsed = time.perf_counter() - started_at
 
@@ -109,10 +125,10 @@ def test_real_screener_serves_lkg_and_refreshes_in_background(monkeypatch):
 
     deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline:
-        if screeners._real_items_cache["items"][0]["price"] == 11.0:
+        if screeners._real_items_cache[1]["items"][0]["price"] == 11.0:
             break
         time.sleep(0.01)
-    assert screeners._real_items_cache["items"][0]["price"] == 11.0
+    assert screeners._real_items_cache[1]["items"][0]["price"] == 11.0
 
 
 def test_real_response_cache_is_keyed_by_normalized_parameters(monkeypatch):
@@ -125,7 +141,7 @@ def test_real_response_cache_is_keyed_by_normalized_parameters(monkeypatch):
     monkeypatch.setattr(
         screeners,
         "_real_items_cache",
-        {"at": now, "items": items, "vendor": "finnhub"},
+        {1: {"at": now, "items": items, "vendor": "finnhub"}},
     )
     monkeypatch.setattr(screeners, "_real_response_cache", {})
 
@@ -139,9 +155,9 @@ def test_real_response_cache_is_keyed_by_normalized_parameters(monkeypatch):
         {"finnhub_api_key": "test-key", "screener_quote_vendor": "finnhub"},
     )())
 
-    first = screeners.real_time_screener(limit=1, sector="Technology")
-    repeated = screeners.real_time_screener(limit=1, sector="technology")
-    wider = screeners.real_time_screener(limit=2, sector="Technology")
+    first = screeners.real_time_screener(limit=1, sector="Technology", db=_fake_tenant_db())
+    repeated = screeners.real_time_screener(limit=1, sector="technology", db=_fake_tenant_db())
+    wider = screeners.real_time_screener(limit=2, sector="Technology", db=_fake_tenant_db())
 
     assert [row["symbol"] for row in first["screener"]] == ["AAPL"]
     assert repeated["screener"] == first["screener"]
@@ -284,7 +300,7 @@ def test_real_response_cache_is_bounded(monkeypatch):
     monkeypatch.setattr(
         screeners,
         "_real_items_cache",
-        {"at": now, "items": [item], "vendor": "finnhub"},
+        {1: {"at": now, "items": [item], "vendor": "finnhub"}},
     )
     monkeypatch.setattr(screeners, "_real_response_cache", {})
     monkeypatch.setattr(screeners, "_REAL_RESPONSE_CACHE_MAX", 2)
@@ -296,6 +312,6 @@ def test_real_response_cache_is_bounded(monkeypatch):
     )())
 
     for sector in ("Technology", "Health Care", "Financials", "Industrials"):
-        screeners.real_time_screener(limit=1, sector=sector)
+        screeners.real_time_screener(limit=1, sector=sector, db=_fake_tenant_db())
 
     assert len(screeners._real_response_cache) <= 2

@@ -4,9 +4,9 @@ Revision ID: 0019_watchlist
 Revises: 0018_personal_finance_modules
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0019_watchlist"
 down_revision = "0018_personal_finance_modules"

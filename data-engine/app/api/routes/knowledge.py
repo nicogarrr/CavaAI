@@ -1,15 +1,15 @@
+import logging
 from datetime import date
 from typing import Annotated, Literal
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, ValidationError
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-import logging
-from uuid import uuid4
-
 from app.core.database import get_db
+from app.core.errors import safe_detail
 from app.models import (
     InvestmentPrinciple,
     KnowledgeChunk,
@@ -17,12 +17,11 @@ from app.models import (
     KnowledgeDocument,
     ProcessingJob,
 )
+from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
 from app.services.knowledge_library_service import (
     KNOWLEDGE_DOCUMENT_TYPES,
     KnowledgeLibraryService,
 )
-from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
-
 
 router = APIRouter()
 
@@ -308,7 +307,11 @@ def extract_principles(
         return _job(job)
     except Exception as exc:
         job.status = "failed"
-        job.error = f"Queue dispatch failed: {exc}"
+        # El texto del broker (host, puerto, credenciales de la URL de Redis)
+        # se queda en el log; job.error se persiste y lo devuelve tal cual
+        # GET /api/knowledge/jobs/{id}.
+        safe_detail(exc, 503)
+        job.error = f"Queue dispatch failed: {type(exc).__name__}"
         db.commit()
         raise HTTPException(
             status_code=503,

@@ -24,12 +24,14 @@ evaluacion; el canal por defecto es in-app.
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Company, InsiderTransaction, ResearchAlert
+from app.models.entities import InsiderTransaction, ResearchAlert
+from app.services.company_resolver import resolve_company
 from app.services.insider_service import (
     BIG_BUY_THRESHOLD_USD,
     CLUSTER_MIN_INSIDERS,
@@ -37,7 +39,6 @@ from app.services.insider_service import (
     _is_c_suite,
     _parse_date,
 )
-from app.services.company_resolver import resolve_company
 
 RULE_VERSION = "insider-v1"
 ALERT_TYPE_PREFIX = "insider_"

@@ -18,7 +18,6 @@ from app.models import (
     FundamentalValuationSnapshot,
 )
 
-
 FORECAST_METRICS = (
     "revenue",
     "gross_profit",

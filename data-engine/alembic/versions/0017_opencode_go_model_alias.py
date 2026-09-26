@@ -6,9 +6,9 @@ Revises: 0016_principle_jobs_snapshots
 
 from datetime import UTC, datetime
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0017_opencode_go_model_alias"
 down_revision = "0016_principle_jobs_snapshots"

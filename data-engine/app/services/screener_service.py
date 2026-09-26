@@ -23,7 +23,6 @@ from app.models import (
 )
 from app.services.review_alert_service import ReviewAlertService
 
-
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,159}$")
 COMPARATORS = {
     ">": operator.gt,

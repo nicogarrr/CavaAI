@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, FinancialFact, MarketPrice
 
-
 _METRICS = {"eps_diluted", "total_equity", "shares_diluted", "net_income"}
 _TRUSTED_SOURCES = {"SEC", "ESEF"}
 _PRICE_MAX_AGE_DAYS = 7  # weekends/holidays around the latest trading day

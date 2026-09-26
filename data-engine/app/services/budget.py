@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models import BudgetUsage
 
-
 # Planning rates in EUR per million tokens, keyed by the EXACT model id.
 # These are internal planning estimates, not provider tariffs: OpenCode Go bills
 # by subscription and several aliases carry cost_basis="unknown".

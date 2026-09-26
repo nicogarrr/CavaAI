@@ -16,10 +16,8 @@ from app.models import (
     Company,
     Portfolio,
     PortfolioDailySnapshot,
-    Position,
     PositionDailySnapshot,
     Tenant,
-    Transaction,
 )
 
 RETURNS = [0.01, -0.005, 0.02, -0.015, 0.008]

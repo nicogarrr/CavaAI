@@ -10,7 +10,6 @@ devuelve {"gate", "passed", "details"}.
 from __future__ import annotations
 
 import re
-from typing import Any
 
 REQUIRED_ARTIFACT_KEYS = {
     "ticker": str,

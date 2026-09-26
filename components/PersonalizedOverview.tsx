@@ -1,18 +1,25 @@
 'use client';
 
-import { formatMoney, formatNumber, formatPercent, formatDate } from '@/lib/format';
+import { formatCompact, formatDateTime, formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
 import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { StockCardSkeleton } from '@/components/LoadingState';
-import { TrendingUp, TrendingDown, Wallet, ArrowRight, Eye, Newspaper, Brain, Gem } from 'lucide-react';
-import { getPortfolioSummary, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Activity, ArrowRight, BellRing, Eye, Gem, Minus, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { getPortfolioSummary, type PortfolioHolding, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
 import { getMarketIndices } from '@/lib/actions/market.actions';
-import { getCompanyNews, getStockFinancialData, getStockQuote, getNews } from '@/lib/actions/finnhub.actions';
+import { sectionError } from '@/lib/section-error';
+import { getStockFinancialData, getStockQuote } from '@/lib/actions/finnhub.actions';
 import { getScreenerStocksReal, getFairValue } from '@/lib/actions/screener.actions';
-
+import {
+    getRecentTriggeredAlerts,
+    getUserAlerts,
+    type Alert,
+    type TriggeredAlertDelivery,
+} from '@/lib/actions/alerts.actions';
+import { t } from '@/lib/i18n/t';
 
 interface PersonalizedOverviewProps {
     userId: string;
@@ -21,8 +28,9 @@ interface PersonalizedOverviewProps {
 interface WatchlistItem {
     symbol: string;
     name: string;
-    price: number;
-    changePercent: number;
+    // null = sin cotización disponible: nunca se fabrica un 0.
+    price: number | null;
+    changePercent: number | null;
 }
 
 interface MarketIndex {
@@ -41,13 +49,11 @@ interface UndervaluedStock {
     upside: number;
 }
 
-type NewsArticle = {
-    headline?: string;
-    url?: string;
-    source?: string;
-    datetime?: number;
-    [key: string]: unknown;
-};
+/** El universo de candidatos es todo el que devuelve /api/screeners/real por
+ *  encima de este market cap. Antes se filtraba por `sector: 'Technology'`
+ *  (duplicaba /screener?sector=Technology sin decirlo); ahora el filtro es el
+ *  tamaño y la tarjeta lo dice. */
+const MIN_MARKET_CAP = 10_000_000_000;
 
 // Tarjeta memorizada: la parrilla de índices re-renderiza con cada
 // actualización del dashboard; memo evita reconciliar tarjetas sin cambios.
@@ -71,15 +77,26 @@ const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: Market
     );
 });
 
-
-
-function sectionError(error: unknown): string {
-    if (error instanceof Error && error.message) {
-        const message = error.message.replace(/https?:\/\/\S+/g, 'el servicio');
-        return `${message}. Reintenta en unos segundos.`;
-    }
-    return 'No se pudieron cargar los datos. Reintenta en unos segundos.';
+/**
+ * Estado de carga por sección con el patrón de components/LoadingState.tsx: el
+ * texto vive en un nodo `sr-only` y el esqueleto va `aria-hidden`. Antes cada
+ * sección escribía su propio `role="status"` con `aria-label` (que no se
+ * anuncia) y cuatro variantes distintas de `animate-pulse`.
+ */
+function SectionSkeleton({ rows = 3, className }: { rows?: number; className?: string }) {
+    return (
+        <div className={className}>
+            <span className="sr-only" role="status">Cargando…</span>
+            <div aria-hidden="true" className="space-y-3">
+                {Array.from({ length: rows }).map((_, index) => (
+                    <Skeleton className="h-12 w-full" key={index} />
+                ))}
+            </div>
+        </div>
+    );
 }
+
+
 
 function InlineSectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
     return (
@@ -90,14 +107,46 @@ function InlineSectionError({ message, onRetry }: { message: string; onRetry: ()
     );
 }
 
+/** El backend devuelve la severidad en inglés ("high", "critical"): sin
+ *  traducirla se colaba copy en inglés en la UI. */
+const SEVERITY_LABELS: Record<string, string> = {
+    critical: 'crítica',
+    high: 'alta',
+    medium: 'media',
+    low: 'baja',
+    info: 'informativa',
+};
+
+/** Una regla de alerta en una línea legible: "AAPL: precio por encima de 200". */
+function alertRuleLabel(alert: Alert): string {
+    const labels: Record<Alert['type'], string> = {
+        price_above: t('alerts.types.priceAbove'),
+        price_below: t('alerts.types.priceBelow'),
+        price_change: t('alerts.types.priceChange'),
+        news: t('alerts.types.news'),
+        earnings: t('alerts.types.earnings'),
+    };
+    if (alert.type === 'news' || alert.type === 'earnings') return `${alert.symbol}: ${labels[alert.type]}`;
+    const value = typeof alert.condition.value === 'number'
+        ? formatNumber(alert.condition.value, { maximumFractionDigits: 2 })
+        : String(alert.condition.value);
+    return `${alert.symbol}: ${labels[alert.type]} ${value}`;
+}
+
+/** Envuelve una lectura para que un fallo aislado no tumbe la sección: el
+ *  resultado llega siempre con su mensaje de error al lado. */
+function settle<T>(promise: Promise<T>, fallback: T): Promise<{ data: T; error: string | null }> {
+    return promise
+        .then((data) => ({ data, error: null as string | null }))
+        .catch((error) => ({ data: fallback, error: sectionError(error) }));
+}
+
 export default function PersonalizedOverview({ userId }: PersonalizedOverviewProps) {
     const [reloadToken, setReloadToken] = useState(0);
     const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
-    const [news, setNews] = useState<NewsArticle[]>([]);
-    // Noticias company-specific solo si hay simbolos seguidos; sin ellos la
-    // tarjeta duplicaba a NewsSection (noticias generales del dashboard).
-    const [hasTrackedSymbols, setHasTrackedSymbols] = useState(false);
+    const [alerts, setAlerts] = useState<Alert[]>([]);
+    const [triggeredAlerts, setTriggeredAlerts] = useState<TriggeredAlertDelivery[]>([]);
     const [aiInsight, setAiInsight] = useState('');
     const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
     const [opportunities, setOpportunities] = useState<UndervaluedStock[]>([]);
@@ -105,12 +154,12 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     const [portfolioLoading, setPortfolioLoading] = useState(true);
     const [watchlistLoading, setWatchlistLoading] = useState(true);
     const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
-    const [newsLoading, setNewsLoading] = useState(false);
+    const [alertsLoading, setAlertsLoading] = useState(true);
     const [indicesError, setIndicesError] = useState<string | null>(null);
     const [portfolioError, setPortfolioError] = useState<string | null>(null);
     const [watchlistError, setWatchlistError] = useState<string | null>(null);
     const [opportunitiesError, setOpportunitiesError] = useState<string | null>(null);
-    const [newsError, setNewsError] = useState<string | null>(null);
+    const [alertsError, setAlertsError] = useState<string | null>(null);
 
     useEffect(() => {
         let active = true;
@@ -120,55 +169,36 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             setPortfolioLoading(true);
             setWatchlistLoading(true);
             setOpportunitiesLoading(true);
-            setNewsLoading(false);
+            setAlertsLoading(true);
             setIndicesError(null);
             setPortfolioError(null);
             setWatchlistError(null);
             setOpportunitiesError(null);
-            setNewsError(null);
+            setAlertsError(null);
 
-            // Las cuatro lecturas base no dependen entre sí. Lanzarlas juntas
-            // elimina el waterfall del screener, cartera, watchlist e índices.
-            let baseResults: [
-                { data: Awaited<ReturnType<typeof getMarketIndices>>; error: string | null },
-                { data: PortfolioSummary | null; error: string | null },
-                { data: Awaited<ReturnType<typeof getWatchlist>>; error: string | null },
-                { data: Awaited<ReturnType<typeof getScreenerStocksReal>>; error: string | null },
-            ];
-            try {
-                baseResults = await Promise.all([
-                    getMarketIndices().then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as Awaited<ReturnType<typeof getMarketIndices>>, error: sectionError(error) })),
-                    getPortfolioSummary(userId).then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: null as PortfolioSummary | null, error: sectionError(error) })),
-                    getWatchlist().then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as Awaited<ReturnType<typeof getWatchlist>>, error: sectionError(error) })),
-                    getScreenerStocksReal({
-                        marketCapMoreThan: 10000000000,
-                        sector: 'Technology',
-                        limit: 10,
-                    }).then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as Awaited<ReturnType<typeof getScreenerStocksReal>>, error: sectionError(error) })),
-                ]);
-            } catch (error) {
-                if (!active) return;
-                const message = sectionError(error);
-                setIndicesError(message);
-                setPortfolioError(message);
-                setWatchlistError(message);
-                setOpportunitiesError(message);
-                setIndicesLoading(false);
-                setPortfolioLoading(false);
-                setWatchlistLoading(false);
-                setOpportunitiesLoading(false);
-                return;
-            }
-            const [indicesResult, summaryResult, watchlistResult, screenerResult] = baseResults;
+            // Las lecturas base no dependen entre sí. Lanzarlas juntas elimina el
+            // waterfall de índices, cartera, watchlist, alertas y screener.
+            const [indicesResult, summaryResult, watchlistResult, screenerResult, alertsResult] = await Promise.all([
+                settle(getMarketIndices(), [] as Awaited<ReturnType<typeof getMarketIndices>>),
+                settle(getPortfolioSummary(userId), null as PortfolioSummary | null),
+                settle(getWatchlist(), [] as Awaited<ReturnType<typeof getWatchlist>>),
+                settle(getScreenerStocksReal({ marketCapMoreThan: MIN_MARKET_CAP, limit: 10 }), [] as Awaited<ReturnType<typeof getScreenerStocksReal>>),
+                settle(
+                    Promise.all([getUserAlerts(), getRecentTriggeredAlerts(3)]).then(([rules, triggered]) => ({ rules, triggered })),
+                    { rules: [] as Alert[], triggered: [] as TriggeredAlertDelivery[] },
+                ),
+            ]);
             if (!active) return;
 
-            setMarketIndices(indicesResult.data.map((data) => ({
-                symbol: data.symbol,
-                name: data.name,
-                price: data.price || 0,
-                change: data.change || 0,
-                changePercent: data.changePercent || 0,
-            })).filter((i) => i.price > 0));
+            setMarketIndices(indicesResult.data
+                .map((data) => ({
+                    symbol: data.symbol,
+                    name: data.name,
+                    price: data.price || 0,
+                    change: data.change || 0,
+                    changePercent: data.changePercent || 0,
+                }))
+                .filter((i) => i.price > 0));
             setIndicesLoading(false);
             setIndicesError(indicesResult.error);
 
@@ -176,12 +206,10 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             setPortfolioLoading(false);
             setPortfolioError(summaryResult.error);
 
-            const watchlistItems = watchlistResult.data;
-            setWatchlistError(watchlistResult.error);
-            const portfolioSymbols = summaryResult.data?.holdings.map((h) => h.symbol) ?? [];
-            const watchlistSymbols = watchlistItems.slice(0, 5).map((w) => w.symbol);
-            const allUniqueSymbols = Array.from(new Set([...portfolioSymbols, ...watchlistSymbols]));
-            setHasTrackedSymbols(allUniqueSymbols.length > 0);
+            setAlerts(alertsResult.data.rules);
+            setTriggeredAlerts(alertsResult.data.triggered);
+            setAlertsLoading(false);
+            setAlertsError(alertsResult.error);
 
             // Los candidatos sólo dependen del screener; sus cálculos de DCF y
             // quote sí se lanzan en paralelo por símbolo.
@@ -202,41 +230,28 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 }
             })).then((results) => results.filter((op): op is UndervaluedStock => op !== null).sort((a, b) => b.upside - a.upside).slice(0, 4));
 
+            const watchlistItems = watchlistResult.data;
             const watchlistPromise = Promise.all(watchlistItems.slice(0, 5).map(async (item): Promise<WatchlistItem> => {
                 try {
                     const data = await getStockFinancialData(item.symbol);
+                    const quote = data?.quote?.c;
+                    const change = data?.quote?.dp;
                     return {
                         symbol: item.symbol,
                         name: data?.profile?.name || item.symbol,
-                        price: data?.quote?.c || 0,
-                        changePercent: data?.quote?.dp || 0,
+                        // Un 0 de Finnhub es "sin dato", no un precio.
+                        price: typeof quote === 'number' && quote > 0 ? quote : null,
+                        changePercent: typeof change === 'number' ? change : null,
                     };
                 } catch {
-                    return { symbol: item.symbol, name: item.symbol, price: 0, changePercent: 0 };
+                    return { symbol: item.symbol, name: item.symbol, price: null, changePercent: null };
                 }
             }));
 
-            // Noticias, earnings y las dos Cards de símbolos se resuelven en
-            // paralelo. Sólo el fallback general de noticias conserva su orden.
-            const newsPromise = allUniqueSymbols.length > 0
-                ? Promise.all(allUniqueSymbols.slice(0, 5).map((symbol) => getCompanyNews(symbol, 2).catch(() => []))).then(async (newsResults) => {
-                    const allNews: NewsArticle[] = newsResults.flat();
-                    if (allNews.length < 5) {
-                        try {
-                            allNews.push(...((await getNews()) || []));
-                        } catch {
-                            // La tarjeta muestra un vacío honesto si no hay fallback.
-                        }
-                    }
-                    return allNews.slice(0, 6);
-                }).then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as NewsArticle[], error: sectionError(error) }))
-                : Promise.resolve({ data: [] as NewsArticle[], error: null as string | null });
-            setNewsLoading(allUniqueSymbols.length > 0);
-            const [opportunitiesResult, watchlistWithPrices, newsResult] = await Promise.all([
+            const [opportunitiesResult, watchlistWithPrices] = await Promise.all([
                 opportunitiesPromise.then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as UndervaluedStock[], error: sectionError(error) })),
                 watchlistPromise.then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as WatchlistItem[], error: sectionError(error) })),
-                newsPromise,
-                ]);
+            ]);
             if (!active) return;
 
             setOpportunities(opportunitiesResult.data);
@@ -245,10 +260,6 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             setWatchlist(watchlistWithPrices.data);
             setWatchlistLoading(false);
             setWatchlistError(watchlistWithPrices.error ?? watchlistResult.error);
-            setNews(newsResult.data);
-            setNewsLoading(false);
-            setNewsError(newsResult.error);
-            // Earnings se resuelve para no bloquear el resto; esta tarjeta no lo renderiza.
 
             if (summaryResult.data && summaryResult.data.holdings.length > 0) {
                 const summary = summaryResult.data;
@@ -289,265 +300,325 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             .slice(0, 4);
     }, [portfolioSummary]);
 
-    const visibleNews = useMemo(() => news.slice(0, 4), [news]);
+    /** Posición que más se mueve desde la compra: el destino del enlace
+     *  "¿qué ha cambiado?" del encabezado. Sin base de coste no hay dato. */
+    const topMover = useMemo<PortfolioHolding | null>(() => {
+        const conCoste = (portfolioSummary?.holdings ?? []).filter((h) => h.cost > 0 && !h.fxMissing);
+        if (!conCoste.length) return null;
+        return conCoste.reduce((a, b) => Math.abs(b.gainPercent) > Math.abs(a.gainPercent) ? b : a);
+    }, [portfolioSummary]);
 
     return (
-        <div className="space-y-8">
-            {/* Header Welcome */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-100 break-words">Bienvenido</h1>
-                    <p className="text-gray-400 mt-1">Resumen de mercado y tus inversiones</p>
-                </div>
+        <div className="space-y-6">
+            {/* Encabezado: el h1 es el dato accionable del día, no un saludo. */}
+            <div>
+                <p className="text-sm font-semibold uppercase text-teal-300">Tu research hoy</p>
+                <h1 className="mt-1 text-2xl font-bold break-words text-gray-100 sm:text-3xl">Qué ha cambiado</h1>
+                <p className="mt-1 text-sm text-gray-400 sm:text-base">
+                    Primero lo que ha cambiado en tus posiciones, luego el valor de la cartera, las alertas
+                    disparadas y dónde buscar nuevas ideas.
+                </p>
             </div>
 
-            {/* Market Indices Ticker */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
-                {indicesLoading ? (
-                    [1, 2, 3, 4].map((i) => <StockCardSkeleton key={i} />)
-                ) : marketIndices.length > 0 ? marketIndices.map((index) => (
-                    <MarketIndexCard key={index.symbol} index={index} />
-                )) : indicesError ? (
-                    <div className="md:col-span-3 xl:col-span-5">
-                        <InlineSectionError message={indicesError} onRetry={retry} />
+            {/* 1 · Insight de cartera: qué ha cambiado y dónde leerlo. Si la
+                lectura de cartera falla no se muestra: el error y su reintento
+                los pone la tarjeta siguiente, que es la dueña del dato. */}
+            {!portfolioError && (
+            <Card className="border-teal-800/50 bg-teal-950/20">
+                <CardContent className="p-4 flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-4">
+                    <div className="p-3 bg-teal-500/10 rounded-full shrink-0">
+                        <Activity aria-hidden="true" className="h-6 w-6 text-teal-400" />
                     </div>
-                ) : null}
-            </div>
+                    <div className="min-w-0">
+                        <h2 className="text-sm font-semibold text-teal-300 mb-1">Tu cartera en una línea</h2>
+                        {portfolioLoading ? (
+                            <SectionSkeleton className="max-w-md" rows={1} />
+                        ) : (
+                            <>
+                                <p className="text-gray-200 text-sm leading-relaxed">
+                                    {aiInsight || 'Todavía no tienes posiciones. Añade tu primera inversión para ver aquí qué ha cambiado desde la compra.'}
+                                </p>
+                                <Link
+                                    href={topMover ? `/research/${topMover.symbol}?view=changes` : '/portfolio'}
+                                    className="mt-3 inline-flex min-h-[44px] items-center gap-1 text-sm text-teal-300 hover:text-teal-200"
+                                >
+                                    <span className="whitespace-nowrap">
+                                        {topMover ? `Ver qué ha cambiado en ${topMover.symbol}` : 'Revisar tu cartera'}
+                                    </span>
+                                    <ArrowRight aria-hidden="true" className="w-4 h-4 shrink-0" />
+                                </Link>
+                            </>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+            )}
 
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-                {/* Left Column (2/3): Portfolio & Opportunities */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Insights & Portfolio */}
-                    {aiInsight && (
-                        <Card className="bg-gradient-to-r from-teal-900/40 to-blue-900/40 border-teal-800/50">
-                            <CardContent className="p-4 flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-4">
-                                <div className="p-3 bg-teal-500/10 rounded-full">
-                                    <Brain className="h-6 w-6 text-teal-400" />
+            {/* 2 · Cartera hoy. */}
+            <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
+                    <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
+                        <Wallet aria-hidden="true" className="h-5 w-5 text-blue-400" />
+                        Tu Cartera Hoy
+                    </CardTitle>
+                    <Link href="/portfolio" className="inline-flex min-h-[44px] items-center gap-1 px-2 -mr-2 text-blue-400 hover:text-blue-300 text-sm transition-colors">
+                        <span className="whitespace-nowrap">Ver detalles</span> <ArrowRight aria-hidden="true" className="w-4 h-4 shrink-0" />
+                    </Link>
+                </CardHeader>
+                <CardContent className="pt-4">
+                    {portfolioLoading ? (
+                        <SectionSkeleton rows={2} />
+                    ) : portfolioError ? (
+                        <InlineSectionError message={portfolioError} onRetry={retry} />
+                    ) : portfolioSummary && portfolioSummary.holdings.length > 0 ? (
+                        <div className="space-y-5">
+                            <div className="flex flex-col min-[420px]:flex-row min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
+                                <div className="min-w-0">
+                                    <p className="text-sm text-gray-400">Valor Total Estimado</p>
+                                    <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">{formatMoney(portfolioSummary.totalValue)}</p>
                                 </div>
-                                <div>
-                                    <h3 className="text-sm font-semibold text-teal-300 mb-1">Análisis de Cartera (IA)</h3>
-                                    <p className="text-gray-200 text-sm leading-relaxed">{aiInsight}</p>
+                                <div className="text-right">
+                                    <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>
+                                    <p className={`text-xl font-bold mt-1 ${portfolioSummary.totalGainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        {formatPercent(portfolioSummary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                                    </p>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    <Card className="bg-gray-800/50 border-gray-700">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
-                            <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
-                                <Wallet className="h-5 w-5 text-blue-400" />
-                                Tu Cartera Hoy
-                            </CardTitle>
-                            <Link href="/portfolio" className="inline-flex min-h-[44px] items-center gap-1 px-2 -mr-2 text-blue-400 hover:text-blue-300 text-sm transition-colors">
-                                <span className="whitespace-nowrap">Ver detalles</span> <ArrowRight className="w-4 h-4 shrink-0" />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {sortedHoldings
+                                    .map((h) => (
+                                        <Link
+                                            key={h.symbol}
+                                            href={`/research/${h.symbol}`}
+                                            prefetch
+                                            className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700/30"
+                                        >
+                                            <span className="text-white font-semibold">{h.symbol}</span>
+                                            <span className={`font-mono ${h.cost > 0 ? (h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400') : 'text-gray-500'}`}>
+                                                {h.cost > 0 ? formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }) : NA}
+                                            </span>
+                                        </Link>
+                                    ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-10">
+                            <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Wallet aria-hidden="true" className="h-8 w-8 text-gray-500" />
+                            </div>
+                            <h3 className="text-lg font-medium text-white mb-2">Comienza tu viaje</h3>
+                            <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">Añade tu primera inversión para ver análisis y métricas detalladas.</p>
+                            <Link href="/portfolio" className="inline-flex min-h-[44px] items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full transition-colors font-medium">
+                                Añadir inversión
                             </Link>
-                        </CardHeader>
-                        <CardContent className="pt-4">
-                            {portfolioLoading ? (
-                                <div className="animate-pulse space-y-3" role="status" aria-label="Cargando cartera">
-                                    <div className="h-16 rounded-xl bg-gray-800/60" />
-                                    <div className="h-10 rounded-lg bg-gray-800/40" />
-                                </div>
-                            ) : portfolioError ? (
-                                <InlineSectionError message={portfolioError} onRetry={retry} />
-                            ) : portfolioSummary && portfolioSummary.holdings.length > 0 ? (
-                                <div className="space-y-5">
-                                    <div className="flex flex-col min-[420px]:flex-row min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
-                                        <div className="min-w-0">
-                                            <p className="text-sm text-gray-400">Valor Total Estimado</p>
-                                            <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">{formatMoney(portfolioSummary.totalValue)}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>
-                                            <p className={`text-xl font-bold mt-1 ${portfolioSummary.totalGainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                {formatPercent(portfolioSummary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {sortedHoldings
-                                            .map((h) => (
-                                                <Link
-                                                    key={h.symbol}
-                                                    href={`/research/${h.symbol}`}
-                                                    prefetch
-                                                    className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700/30"
-                                                >
-                                                    <span className="text-white font-semibold">{h.symbol}</span>
-                                                    <span className={`font-mono ${h.cost > 0 ? (h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400') : 'text-gray-500'}`}>
-                                                        {h.cost > 0 ? formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }) : 's/d'}
-                                                    </span>
-                                                </Link>
-                                            ))}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-center py-10">
-                                    <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <Wallet className="h-8 w-8 text-gray-500" />
-                                    </div>
-                                    <h3 className="text-lg font-medium text-white mb-2">Comienza tu viaje</h3>
-                                    <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">Añade tu primera inversión para ver análisis y métricas detalladas.</p>
-                                    <Link href="/portfolio" className="inline-flex min-h-[44px] items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full transition-colors font-medium">
-                                        Añadir inversión
-                                    </Link>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
 
-                    {/* Opportunities Section */}
+            {/* 3 · Alertas: la sección que faltaba en el inicio pese a existir /alerts. */}
+            <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
+                    <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
+                        <BellRing aria-hidden="true" className="h-5 w-5 text-amber-400" />
+                        Alertas
+                    </CardTitle>
+                    <Link href="/alerts" className="inline-flex min-h-[44px] items-center gap-1 px-2 -mr-2 text-amber-400 hover:text-amber-300 text-sm transition-colors">
+                        <span className="whitespace-nowrap">Gestionar</span> <ArrowRight aria-hidden="true" className="w-4 h-4 shrink-0" />
+                    </Link>
+                </CardHeader>
+                <CardContent className="pt-4">
+                    {alertsLoading ? (
+                        <SectionSkeleton rows={2} />
+                    ) : alertsError ? (
+                        <InlineSectionError message={alertsError} onRetry={retry} />
+                    ) : triggeredAlerts.length > 0 ? (
+                        <div className="space-y-3">
+                            {triggeredAlerts.map((item) => (
+                                <article className="min-w-0 rounded-lg border border-gray-700/50 bg-gray-900/50 p-3" key={item.id}>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Badge variant="outline">{SEVERITY_LABELS[item.severity] ?? item.severity}</Badge>
+                                        <span className="text-xs text-gray-500">{formatDateTime(item.createdAt)}</span>
+                                    </div>
+                                    <p className="mt-2 text-sm break-words text-gray-200">{item.title}</p>
+                                    <p className="mt-1 text-xs break-words text-gray-400">{item.message}</p>
+                                </article>
+                            ))}
+                            <p className="text-xs text-gray-500">
+                                {alerts.length === 1 ? '1 regla activa' : `${alerts.length} reglas activas`} · el motor las evalúa cada 5 min.
+                            </p>
+                        </div>
+                    ) : alerts.length > 0 ? (
+                        <div className="space-y-2">
+                            {alerts.slice(0, 3).map((alert) => (
+                                <p className="min-w-0 break-words text-sm text-gray-300" key={alert._id}>
+                                    {alertRuleLabel(alert)}
+                                </p>
+                            ))}
+                            <p className="text-xs text-gray-500">
+                                {alerts.length === 1 ? '1 regla activa' : `${alerts.length} reglas activas`} · ninguna se ha disparado todavía.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="text-center py-6">
+                            <p className="text-gray-400 text-sm">{t('common.states.noAlerts')}</p>
+                            <p className="text-gray-500 text-sm mt-2">{t('common.states.noAlertsHint')}</p>
+                            <Link href="/alerts" className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-lg border border-teal-400/20 px-5 text-sm text-teal-400 transition-colors hover:text-teal-300">
+                                Crear la primera alerta
+                            </Link>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* 4 · Watchlist. */}
+            <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
+                    <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
+                        <Eye aria-hidden="true" className="h-5 w-5 text-yellow-400" />
+                        Watchlist
+                    </CardTitle>
+                    <Link href="/watchlist" aria-label="Ver watchlist completa" className="inline-flex min-h-[44px] min-w-[44px] items-center justify-end px-1 text-yellow-400 hover:text-yellow-300 text-sm transition-colors">
+                        <ArrowRight aria-hidden="true" className="w-4 h-4" />
+                    </Link>
+                </CardHeader>
+                <CardContent className="pt-4">
+                    {watchlistLoading ? (
+                        <SectionSkeleton rows={3} />
+                    ) : watchlistError ? (
+                        <InlineSectionError message={watchlistError} onRetry={retry} />
+                    ) : watchlist.length > 0 ? (
+                        <div className="space-y-1">
+                            {watchlist.map((stock) => (
+                                <Link
+                                    key={stock.symbol}
+                                    href={`/research/${stock.symbol}`}
+                                    prefetch
+                                    className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-900/30 rounded-lg hover:bg-gray-800/80 transition-colors group"
+                                >
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <div className={`shrink-0 p-2 rounded-full ${stock.changePercent == null ? 'bg-gray-500/10 text-gray-500' : stock.changePercent >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                            {stock.changePercent == null ? <Minus aria-hidden="true" className="h-4 w-4" /> : stock.changePercent >= 0 ? <TrendingUp aria-hidden="true" className="h-4 w-4" /> : <TrendingDown aria-hidden="true" className="h-4 w-4" />}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <span className="block truncate text-white font-medium group-hover:text-yellow-400 transition-colors">{stock.symbol}</span>
+                                            <p className="block truncate max-w-[140px] sm:max-w-none text-xs text-gray-500" title={stock.name}>{stock.name}</p>
+                                        </div>
+                                    </div>
+                                    <div className="shrink-0 text-right">
+                                        {stock.price != null ? (
+                                            <>
+                                                <div className="text-white font-mono">{formatMoney(stock.price)}</div>
+                                                {stock.changePercent != null && (
+                                                    <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                        {formatPercent(stock.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                                                    </div>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="font-mono text-gray-500" title="No hay cotización disponible">&mdash;</div>
+                                                <div className="text-[10px] uppercase tracking-wide text-gray-500">sin datos</div>
+                                            </>
+                                        )}
+                                    </div>
+                                </Link>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8">
+                            <p className="text-gray-400 text-sm">Lista vacía.</p>
+                            {/* El buscador vive en el header (Ctrl+K) y en /search: el
+                                inicio ya no es la puerta de entrada, así que el CTA
+                                apunta allí y no a un "volver al inicio" circular. */}
+                            <Link href="/search" className="inline-flex min-h-[44px] items-center justify-center text-yellow-400 text-xs mt-2 hover:underline">
+                                Buscar acciones
+                            </Link>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* 5 · Oportunidades por valor intrínseco. */}
+            <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
+                    <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
+                        <Gem aria-hidden="true" className="h-5 w-5 text-purple-400" />
+                        Oportunidades por valor intrínseco (DCF)
+                    </CardTitle>
+                    <Link href="/screener" className="inline-flex min-h-[44px] items-center gap-1 px-2 -mr-2 text-purple-400 hover:text-purple-300 text-sm transition-colors">
+                        <span className="whitespace-nowrap">Afinar con el Screener</span> <ArrowRight aria-hidden="true" className="w-4 h-4 shrink-0" />
+                    </Link>
+                </CardHeader>
+                <CardContent className="pt-4">
                     {opportunitiesLoading ? (
-                        <Card className="bg-gray-800/50 border-gray-700">
-                            <CardContent className="pt-4"><div className="h-24 animate-pulse rounded-lg bg-gray-800/50" role="status" aria-label="Cargando oportunidades" /></CardContent>
-                        </Card>
+                        <SectionSkeleton rows={2} />
                     ) : opportunitiesError ? (
                         <InlineSectionError message={opportunitiesError} onRetry={retry} />
                     ) : opportunities.length > 0 ? (
-                        <Card className="bg-gray-800/50 border-gray-700">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
-                                <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
-                                    <Gem className="h-5 w-5 text-purple-400" />
-                                    Gemas Infravaloradas (DCF)
-                                </CardTitle>
-                                <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">Basado en Valor Intrínseco</span>
-                            </CardHeader>
-                            <CardContent className="pt-4">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {opportunities.map((op) => (
-                                        <Link key={op.symbol} href={`/research/${op.symbol}`} prefetch>
-                                            <div className="p-4 bg-gray-900/40 rounded-xl border border-gray-700/30 hover:border-purple-500/50 hover:bg-gray-800 transition-all group">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div>
-                                                        <h4 className="font-bold text-white group-hover:text-purple-400 transition-colors">{op.symbol}</h4>
-                                                        <p className="text-xs text-gray-400">Precio: {formatMoney(op.price)}</p>
-                                                    </div>
-                                                    <Badge className="bg-green-900/30 text-green-400 border-green-800">
-                                                        {formatPercent(op.upside, { fromRatio: false, digits: 1, signDisplay: 'always' })} potencial
-                                                    </Badge>
+                        <>
+                            <p className="mb-4 text-xs text-gray-500">
+                                Todo el universo del screener (market cap &gt;{' '}
+                                {formatCompact(MIN_MARKET_CAP, { maximumFractionDigits: 0 })}), sin filtro de sector.
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {opportunities.map((op) => (
+                                    <Link key={op.symbol} href={`/research/${op.symbol}`} prefetch>
+                                        <div className="p-4 bg-gray-900/40 rounded-xl border border-gray-700/30 hover:border-purple-500/50 hover:bg-gray-800 transition-all group">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <h3 className="font-bold text-white group-hover:text-purple-400 transition-colors">{op.symbol}</h3>
+                                                    <p className="text-xs text-gray-400">Precio: {formatMoney(op.price)}</p>
                                                 </div>
-                                                <div className="w-full bg-gray-800 h-1.5 rounded-full mt-2 overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-gradient-to-r from-green-600 to-green-400"
-                                                        style={{ width: `${Math.min(op.upside, 100)}%` }}
-                                                    />
-                                                </div>
-                                                <p className="text-xs text-gray-500 mt-2 text-right">Valor justo: {formatMoney(op.fairValue)}</p>
+                                                <Badge className="bg-green-900/30 text-green-400 border-green-800">
+                                                    {formatPercent(op.upside, { fromRatio: false, digits: 1, signDisplay: 'always' })} potencial
+                                                </Badge>
                                             </div>
-                                        </Link>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                            <div className="w-full bg-gray-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-green-600 to-green-400"
+                                                    style={{ width: `${Math.min(op.upside, 100)}%` }}
+                                                />
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-2 text-right">Valor justo: {formatMoney(op.fairValue)}</p>
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        </>
                     ) : (
-                        <Card className="bg-gray-800/50 border-gray-700">
-                            <CardContent className="pt-4 text-sm text-gray-500">
-                                No hay oportunidades que cumplan el filtro ahora.
-                            </CardContent>
-                        </Card>
+                        <p className="text-sm text-gray-500">
+                            Ninguna empresa del universo supera hoy un 5 % de potencial sobre su valor intrínseco.
+                        </p>
                     )}
-                </div>
+                </CardContent>
+            </Card>
 
-                {/* Right Column (1/3): Watchlist & News */}
-                <div className="space-y-6">
-                    <Card className="bg-gray-800/50 border-gray-700">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
-                            <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
-                                <Eye className="h-5 w-5 text-yellow-400" />
-                                Watchlist
-                            </CardTitle>
-                            <Link href="/watchlist" aria-label="Ver watchlist completa" className="inline-flex min-h-[44px] min-w-[44px] items-center justify-end px-1 text-yellow-400 hover:text-yellow-300 text-sm transition-colors">
-                                <ArrowRight className="w-4 h-4" />
-                            </Link>
-                        </CardHeader>
-                        <CardContent className="pt-4">
-                            {watchlistLoading ? (
-                                <div className="space-y-2 animate-pulse" role="status" aria-label="Cargando watchlist">
-                                    {[1, 2, 3].map((i) => <div key={i} className="h-12 rounded-lg bg-gray-800/50" />)}
-                                </div>
-                            ) : watchlistError ? (
-                                <InlineSectionError message={watchlistError} onRetry={retry} />
-                            ) : watchlist.length > 0 ? (
-                                <div className="space-y-1">
-                                    {watchlist.map((stock) => (
-                                        <Link
-                                            key={stock.symbol}
-                                            href={`/research/${stock.symbol}`}
-                                            prefetch
-                                            className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-900/30 rounded-lg hover:bg-gray-800/80 transition-colors group"
-                                        >
-                                            <div className="flex min-w-0 items-center gap-3">
-                                                <div className={`shrink-0 p-2 rounded-full ${stock.changePercent >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                                                    {stock.changePercent >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <span className="block truncate text-white font-medium group-hover:text-yellow-400 transition-colors">{stock.symbol}</span>
-                                                    <p className="block truncate max-w-[140px] sm:max-w-none text-xs text-gray-500" title={stock.name}>{stock.name}</p>
-                                                </div>
-                                            </div>
-                                            <div className="shrink-0 text-right">
-                                                <div className="text-white font-mono">{formatMoney(stock.price)}</div>
-                                                <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                    {formatPercent(stock.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
-                                                </div>
-                                            </div>
-                                        </Link>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-8">
-                                    <p className="text-gray-400 text-sm">Lista vacía.</p>
-                                    <Link href="/" className="text-yellow-400 text-xs mt-2 inline-block hover:underline">Buscar acciones</Link>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {hasTrackedSymbols && (
-                    <Card className="bg-gray-800/50 border-gray-700">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
-                            <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
-                                <Newspaper className="h-5 w-5 text-gray-400" />
-                                Noticias
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-4">
-                            {newsLoading ? (
-                                <div className="space-y-3 animate-pulse" role="status" aria-label="Cargando noticias">
-                                    {[1, 2, 3].map((i) => <div key={i} className="h-10 rounded-lg bg-gray-800/50" />)}
-                                </div>
-                            ) : newsError ? (
-                                <InlineSectionError message={newsError} onRetry={retry} />
-                            ) : news.length > 0 ? (
-                                <div className="space-y-4">
-                                    {visibleNews.map((article, i) => (
-                                        <a
-                                            key={i}
-                                            href={article.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="block rounded-lg px-1 py-2 group"
-                                        >
-                                            <h4 title={article.headline} className="text-sm text-gray-200 group-hover:text-blue-400 transition-colors line-clamp-2 leading-snug">
-                                                {article.headline}
-                                            </h4>
-                                            <div className="flex justify-between items-center mt-1">
-                                                <span className="text-xs text-gray-500">{article.source}</span>
-                                                <span className="text-xs text-gray-600">{article.datetime ? formatDate(article.datetime * 1000) : 'fecha desconocida'}</span>
-                                            </div>
-                                        </a>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-gray-500 text-center py-4 text-sm">Sin noticias relevantes.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-                    )}
+            {/* 6 · Índices: contexto de mercado, no prioridad. Van al final y
+                lo dicen, porque /screener los vuelve a pintar en "Índices y macro". */}
+            <section>
+                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                    <h2 className="text-lg font-semibold text-gray-100">Contexto de mercado</h2>
+                    <p className="text-xs text-gray-500">Referencia del día, no una sección de decisión.</p>
                 </div>
-            </div>
+                {indicesLoading ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
+                        {[1, 2, 3, 4].map((i) => (
+                            <SectionSkeleton className="rounded-lg border border-gray-700 p-4" key={i} rows={1} />
+                        ))}
+                    </div>
+                ) : indicesError ? (
+                    <InlineSectionError message={indicesError} onRetry={retry} />
+                ) : marketIndices.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
+                        {marketIndices.map((index) => (
+                            <MarketIndexCard key={index.symbol} index={index} />
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-gray-500">Sin datos de índices ahora mismo.</p>
+                )}
+            </section>
         </div>
     );
 }

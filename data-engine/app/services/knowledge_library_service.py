@@ -5,10 +5,10 @@ import logging
 import json
 import os
 import re
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import desc, select
@@ -31,7 +31,6 @@ from app.services.document_ingestion_service import (
     _extension,
 )
 from app.services.document_store import DocumentStore
-
 
 DEFAULT_KNOWLEDGE_COLLECTIONS = (
     "Buffett & Munger",
