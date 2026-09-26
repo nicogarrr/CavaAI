@@ -10,6 +10,7 @@ import logging
 from uuid import uuid4
 
 from app.core.database import get_db
+from app.core.errors import safe_detail
 from app.models import (
     InvestmentPrinciple,
     KnowledgeChunk,
@@ -308,7 +309,11 @@ def extract_principles(
         return _job(job)
     except Exception as exc:
         job.status = "failed"
-        job.error = f"Queue dispatch failed: {exc}"
+        # El texto del broker (host, puerto, credenciales de la URL de Redis)
+        # se queda en el log; job.error se persiste y lo devuelve tal cual
+        # GET /api/knowledge/jobs/{id}.
+        safe_detail(exc, 503)
+        job.error = f"Queue dispatch failed: {type(exc).__name__}"
         db.commit()
         raise HTTPException(
             status_code=503,

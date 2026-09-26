@@ -12,6 +12,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.errors import redact_secrets
 from app.models import Company, MarketPrice, Position, SavedScreen
 from app.services.alert_rule_service import AlertRuleService
 from app.services.connectors.ecb import ECBClient, ECBRates
@@ -174,7 +175,7 @@ class YahooIntradayPriceProvider:
         try:
             latest = await asyncio.to_thread(self.fetcher, sorted(ticker_by_yahoo))
         except Exception as exc:
-            return {}, [{"provider": "yahoo", "reason": f"{type(exc).__name__}:{exc}"}]
+            return {}, [{"provider": "yahoo", "reason": redact_secrets(f"{type(exc).__name__}:{exc}")}]
         observations: dict[str, PriceObservation] = {}
         for symbol, (value, day) in latest.items():
             ticker = ticker_by_yahoo.get(symbol)
@@ -302,7 +303,7 @@ class MarketRefreshService:
             db.commit()
         except Exception as exc:
             db.rollback()
-            fx_errors.append({"provider": "ECB", "reason": f"{type(exc).__name__}:{exc}"})
+            fx_errors.append({"provider": "ECB", "reason": redact_secrets(f"{type(exc).__name__}:{exc}")})
         stages.append(
             {
                 "step": 2,

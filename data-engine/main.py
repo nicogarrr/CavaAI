@@ -4,8 +4,9 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.router import api_router as research_api_router
 from app.api.routes.health import router as health_router
@@ -93,6 +94,23 @@ app.add_middleware(
 )
 
 private_dependencies = [Depends(get_research_principal), Depends(enforce_rate_limit)]
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Cierre de red para excepciones no capturadas.
+
+    Sin esto, cualquier error que se escape de un handler devolvía el
+    ``{"detail": "Internal Server Error"}`` pelado de FastAPI, sin id de
+    correlación: era imposible casar un reporte de usuario con el log.
+    """
+    from app.core.errors import safe_detail
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": safe_detail(exc, 500)},
+    )
+
 
 # /api/health es público (sin firma): lo montamos fuera del research API
 # para que orquestación/monitoreo pueda consultarlo sin identidad.

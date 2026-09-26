@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.errors import redact_secrets
 from app.models import ThesisSection, ThesisVersion
 
 APPROVAL_SECTION_KEY = "approval"
@@ -252,7 +253,7 @@ def send_thesis_approval_request(
             )
             response.raise_for_status()
     except Exception as exc:
-        return {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}
+        return {"status": "failed", "error": redact_secrets(f"{type(exc).__name__}: {exc}")}
     upsert_approval_section(db, thesis, SECTION_PENDING, note="Mensaje enviado.")
     db.commit()
     return {"status": "delivered", "thesis_id": thesis.id}
@@ -413,5 +414,5 @@ def poll_telegram_approvals_once(
                 result["last_update_id"] = max_update_id
     except Exception as exc:
         result["status"] = "failed"
-        result["error"] = f"{type(exc).__name__}: {exc}"
+        result["error"] = redact_secrets(f"{type(exc).__name__}: {exc}")
     return result
