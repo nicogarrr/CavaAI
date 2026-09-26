@@ -48,7 +48,7 @@ const sources = [
     icon: LineChart,
     title: 'Yahoo Finance · chart API',
     text: 'Índices y futuros reales: S&P 500 (^GSPC), Nasdaq (^IXIC), Bitcoin (BTC-USD), oro (GC=F) y plata (SI=F). Sin API key y con caché de 60 s. Nunca un ETF etiquetado como índice.',
-    href: '/dashboard',
+    href: '/',
     cta: 'Ver índices en la home',
   },
   {
@@ -149,7 +149,7 @@ const costs = [
   {
     icon: FlaskConical,
     title: 'Modelos LLM: por uso',
-    text: 'OpenCode Go como único proveedor, con el precio por modelo publicado en model_aliases.py (coste real o "desconocido" explícito, nunca 0 silencioso). Las micro-decisiones van por un cliente ligero de bajo coste, con presupuesto mensual controlado y explícito.',
+    text: 'OpenCode Go como único proveedor, con el precio por modelo publicado en model_aliases.py (coste real o "desconocido" explícito, nunca 0 silencioso). Las micro-decisiones van por el cliente Jev (~0,042 USD/MTok de entrada, salida gratuita) con presupuesto objetivo por debajo de 0,50 USD/mes.',
   },
   {
     icon: BookOpen,

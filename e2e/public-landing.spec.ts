@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const runUiE2E = process.env.E2E_UI_RUN === "1";
 
 // Visitante anónimo: `/` es la landing pública (ya no el panel autenticado),
-// y las rutas legales/ayuda cargan sin sesión. El panel vive en /dashboard.
+// y las rutas legales/ayuda cargan sin sesión. El panel vive en /inicio.
 // En el harness UI el bypass E2E de auth hace que la cabecera muestre
 // "Ir a mi panel" en lugar de "Iniciar sesión"; ambos CTAs son válidos.
 test.describe("landing pública (visitante anónimo)", () => {
@@ -29,7 +29,7 @@ test.describe("landing pública (visitante anónimo)", () => {
     await expect(cta).toBeVisible();
     await cta.click();
     // Con sesión (o bypass E2E) -> panel; sin sesión -> formulario de acceso.
-    await expect(page).toHaveURL(/\/(dashboard|sign-in)/);
+    await expect(page).toHaveURL(/\/(inicio|sign-in)/);
   });
 
   test("metodología, términos y ayuda cargan sin sesión", async ({ page }) => {

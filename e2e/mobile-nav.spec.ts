@@ -25,7 +25,9 @@ async function expectPageLoaded(page: Page) {
 // Toda ruta del nav principal (+ /screener singular, cubierto por los specs
 // investor-*) debe cargar a 390px sin overflow horizontal de página.
 const NAV_ROUTES: { path: string; heading?: string }[] = [
-  { path: "/dashboard" },
+  // `/` es la landing pública; el dashboard autenticado vive en `/inicio`.
+  { path: "/" },
+  { path: "/inicio" },
   { path: "/portfolio" },
   { path: "/research" },
   { path: "/knowledge" },

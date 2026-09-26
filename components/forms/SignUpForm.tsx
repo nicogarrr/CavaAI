@@ -43,7 +43,7 @@ const SignUpForm = ({ signUpOpen }: { signUpOpen: boolean }) => {
         try {
             const result = await signUpWithEmail(data);
             if (result.success) {
-                router.push('/dashboard');
+                router.push('/');
                 return;
             }
             toast.error('No se pudo crear la cuenta', {

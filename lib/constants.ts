@@ -102,7 +102,7 @@ export type NavSection = {
 export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Principal',
-    items: [{ href: '/dashboard', label: 'Inicio', icon: Home }],
+    items: [{ href: '/inicio', label: 'Inicio', icon: Home }],
   },
   {
     title: 'Cartera',
@@ -180,6 +180,7 @@ export function flattenNavItems(sections: NavSection[] = NAV_SECTIONS): NavItem[
  * "Cartera" y "Cartera · Intelligence" a la vez.
  */
 export function isNavItemActive(pathname: string, href: string): boolean {
+  if (href === '/') return pathname === '/';
   if (pathname === href) return true;
   if (!pathname.startsWith(`${href}/`)) return false;
   // Un ancestro no se ilumina si existe un destino mas especifico que tambien
