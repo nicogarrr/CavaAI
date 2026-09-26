@@ -113,9 +113,15 @@ test.describe("tablas: semántica y fallback móvil (estático)", () => {
     expect(table).toContain("scope={scope}");
     // El caption se queda en el DOM (es lo que nombra la tabla).
     expect(table).toContain("TableCaption");
-    // Densidades: la de shadcn por defecto y la compacta `py-2 px-3`.
+    // Densidades: la de shadcn por defecto y la compacta `px-3 py-2`.
     expect(table).toContain("h-12 px-4");
     expect(table).toContain("px-3 py-2");
+    // La densidad se propaga por CSS (`data-dense` + variante group-data), no
+    // por un contexto de React: este modulo lo importan server components y en
+    // el runtime de RSC `createContext` no existe (rompia `next build`).
+    expect(table).toContain('data-dense={dense ? "" : undefined}');
+    expect(table).toContain("group-data-[dense]/table");
+    expect(table).not.toContain("React.createContext(");
   });
 
   test("RecordViews limita columnas y ofrece cards en móvil", () => {
@@ -231,9 +237,9 @@ test.describe("tablas: semántica y fallback móvil (estático)", () => {
     }
     // El wrapper de <Table> es el que scrollea: region + tabIndex + aria-label.
     const table = source("components", "ui", "table.tsx");
-    if (!/role: "region"/.test(table)) problems.push("components/ui/table.tsx: sin role region");
-    if (!/"aria-label": regionLabel/.test(table)) problems.push("components/ui/table.tsx: sin aria-label");
-    if (!/tabIndex: 0/.test(table)) problems.push("components/ui/table.tsx: sin tabIndex");
+    expect(table).toContain('role: "region"');
+    expect(table).toContain('"aria-label": regionLabel');
+    expect(table).toContain("tabIndex: 0");
     expect(problems).toEqual([]);
   });
 });

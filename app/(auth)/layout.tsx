@@ -4,17 +4,12 @@ import {headers} from "next/headers";
 import {redirect} from "next/navigation";
 import {getAuth} from "@/lib/better-auth/auth";
 import {CavaAIWordmark} from "@/components/CavaAIWordmark";
-import {Database, FileSearch, GitBranch, LineChart, Star} from "lucide-react";
+import {LineChart, Star} from "lucide-react";
+import {productChain, productModules} from "@/lib/config/product";
 
 // Forzar renderizado dinámico porque usa headers() para verificar sesión
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const productModules = [
-    { icon: FileSearch, title: 'Evidencia', description: 'Cada hecho y afirmación conserva su fuente.' },
-    { icon: Database, title: 'Modelo a largo plazo', description: 'Motores y supuestos adaptados a cada empresa.' },
-    { icon: GitBranch, title: 'Expectativa frente a realidad', description: 'Cada resultado revisa su previsión.' },
-];
 
 const Layout = async ({ children }: { children : React.ReactNode }) => {
     const browserTestBypass = process.env.E2E_AUTH_BYPASS === '1' && process.env.NODE_ENV !== 'production';
@@ -58,7 +53,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
                     <div className="mb-6 flex items-start justify-between gap-4">
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300">Espacio de trabajo de la empresa</p>
-                            <h2 className="mt-2 text-2xl font-semibold text-white">Evidencia → Modelo → Tesis</h2>
+                            <h2 className="mt-2 text-2xl font-semibold text-white">{productChain}</h2>
                         </div>
                         <LineChart aria-hidden="true" className="h-7 w-7 text-teal-300"/>
                     </div>

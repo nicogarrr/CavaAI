@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import InputField from '@/components/forms/InputField';
 import FooterLink from '@/components/forms/FooterLink';
+import AuthPitch from '@/components/forms/AuthPitch';
 import {signInWithEmail, verifyTwoFactorTotp} from "@/lib/actions/auth.actions";
 import {toast} from "sonner";
 import {useRouter} from "next/navigation";
@@ -123,6 +124,13 @@ const SignIn = () => {
     return (
         <>
             <h1 className="form-title">Bienvenido de nuevo</h1>
+
+            {/* Contexto de producto: qué es CavaAI y qué se obtiene al entrar.
+                Va entre el H1 y el formulario, sin quitar el formulario.
+                El margen de `.form-title` (mb-12) era para separar el título
+                del formulario; con un bloque en medio sobra, así que el bloque
+                lo sube con un margen negativo. */}
+            <AuthPitch className="-mt-8 border-b border-gray-700/50 pb-8" />
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 <InputField
