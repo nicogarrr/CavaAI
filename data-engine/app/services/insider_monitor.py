@@ -150,9 +150,21 @@ def scan(
         if missing:
             stats["errors"].append(f"sin CIK SEC: {', '.join(missing)}")
 
+        # Filtro por el tenant EXPLICITO del argumento, no por
+        # db.info["tenant_id"]: en workers la sesion nace sin scope (None -> el
+        # set salia vacio y se reprocesaban filings ya persistidos) o arrastra
+        # el tenant de una corrida anterior (-> se saltaban los de ESTE
+        # tenant). Un select() de una sola columna tampoco dispara el
+        # with_loader_criteria de database.py (los loader criteria aplican a
+        # la carga de entidades, no a tuplas de columnas), asi que el filtro
+        # tiene que estar aqui y tiene que ser el argumento.
         known_accessions = {
             row[0]
-            for row in db.execute(select(InsiderFiling.accession_number)).all()
+            for row in db.execute(
+                select(InsiderFiling.accession_number).where(
+                    InsiderFiling.tenant_id == tenant_id
+                )
+            ).all()
         }
         budget = max_new_fetches
         for ticker, cik in ciks.items():
