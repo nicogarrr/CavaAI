@@ -10,9 +10,7 @@ const e2eResearchSecret =
   process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
 
 // Las rutas /research/AAPL/* solo renderizan cabecera si la empresa existe:
-// antes dependian del estado que dejaran otros specs (orden alfabetico) y
-// en una corrida limpia el backend respondia "Company not found" y el h1
-// nunca aparecia. El spec asegura su propio dato. Firma ligada al request
+// el spec asegura su propio dato en vez de depender de otros specs. Firma ligada al request
 // (nonce + metodo + ruta + sha256 del cuerpo), la misma que
 // e2e/fixtures/research-api.ts: sirve contra backend leniente y contra
 // research_auth_strict_binding=True (el default).
@@ -153,9 +151,20 @@ test.describe("tablas: semántica y fallback móvil (estático)", () => {
     expect(table).toContain("scope={scope}");
     // El caption se queda en el DOM (es lo que nombra la tabla).
     expect(table).toContain("TableCaption");
-    // Densidades: la de shadcn por defecto y la compacta `py-2 px-3`.
+    // Densidades: la de shadcn por defecto (`h-12 px-4`) y la compacta, que se
+    // expresa con las utilidades de grupo px-3/py-2 sobre la variante de datos.
     expect(table).toContain("h-12 px-4");
-    expect(table).toContain("px-3 py-2");
+    expect(table).toContain("group-data-[dense]/table:px-3");
+    expect(table).toContain("group-data-[dense]/table:py-2");
+    // La densidad es de tabla entera: sin override por fila/celda (las clases
+    // directas y las de grupo colisionarian por orden de la hoja).
+    expect(table).not.toContain("dense === false");
+    // La densidad se propaga por CSS (`data-dense` + variante group-data), no
+    // por un contexto de React: este modulo lo importan server components y en
+    // el runtime de RSC `createContext` no existe (rompia `next build`).
+    expect(table).toContain('data-dense={dense ? "" : undefined}');
+    expect(table).toContain("group-data-[dense]/table");
+    expect(table).not.toContain("React.createContext(");
   });
 
   test("RecordViews limita columnas y ofrece cards en móvil", () => {
@@ -271,9 +280,9 @@ test.describe("tablas: semántica y fallback móvil (estático)", () => {
     }
     // El wrapper de <Table> es el que scrollea: region + tabIndex + aria-label.
     const table = source("components", "ui", "table.tsx");
-    if (!/role: "region"/.test(table)) problems.push("components/ui/table.tsx: sin role region");
-    if (!/"aria-label": regionLabel/.test(table)) problems.push("components/ui/table.tsx: sin aria-label");
-    if (!/tabIndex: 0/.test(table)) problems.push("components/ui/table.tsx: sin tabIndex");
+    expect(table).toContain('role: "region"');
+    expect(table).toContain('"aria-label": regionLabel');
+    expect(table).toContain("tabIndex: 0");
     expect(problems).toEqual([]);
   });
 });
