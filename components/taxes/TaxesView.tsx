@@ -45,6 +45,8 @@ const TAX_LABELS: Record<string, string> = {
     total_blocked_loss_base: 'Minusvalías bloqueadas (regla de los 2 meses)',
     net_taxable_base: 'Base neta estimada',
     wash_sale_rule: 'Regla anti-recompra',
+    wash_sale_basis: 'Criterio anti-recompra',
+    fiscal_disclaimer: 'Aviso fiscal',
     wash_sale_window_open: 'Ventana anti-recompra abierta en',
     dividend_count: 'Dividendos (nº)',
     sell_count: 'Ventas (nº)',
@@ -57,6 +59,10 @@ const TAX_LABELS: Record<string, string> = {
 
 const WASH_RULE_LABELS: Record<string, string> = {
     'es-irpf-2m': 'IRPF español: no recomprar en 2 meses',
+};
+
+const WASH_BASIS_LABELS: Record<string, string> = {
+    'manual-aeat-2025': 'Manual AEAT 2025 (proporcional + FIFO)',
 };
 
 function humanizeKey(key: string): string {
@@ -92,6 +98,8 @@ function humanizeTaxReport(summary: DataRecord): DataRecord {
             display[label] = Array.isArray(value) && value.length > 0 ? value.join(', ') : 'Ninguno';
         } else if (key === 'wash_sale_rule') {
             display[label] = WASH_RULE_LABELS[String(value)] ?? String(value);
+        } else if (key === 'wash_sale_basis') {
+            display[label] = WASH_BASIS_LABELS[String(value)] ?? String(value);
         } else if (key === 'generated_at') {
             display[label] = formatDateTime(value as string);
         } else if (typeof value === 'boolean') {
@@ -199,7 +207,7 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
             <RecordDetail
                 key={reportKey}
                 title={`Reporte Fiscal ${year}`}
-                description="Resumen de impuestos del ejercicio anual"
+                description="Resumen orientativo del ejercicio — no apto para declarar sin la validación de un asesor fiscal"
                 icon={<FileText className="h-5 w-5 text-teal-400" />}
                 hiddenKeys={['trace']}
                 record={toDisplayReport(report)}
