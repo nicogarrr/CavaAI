@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Filter, X } from 'lucide-react';
+import { etiquetaSector } from '@/lib/labels';
 
 export interface ProPicksFilters {
   timePeriod: 'week' | 'month' | 'quarter' | 'year';
@@ -21,6 +22,9 @@ interface Props {
   onApply: () => void;
 }
 
+// Los `value` siguen en inglés: es lo que espera el backend. Lo que se
+// muestra es la etiqueta española de lib/labels.ts (mapa compartido con el
+// Screener, que antes llevaba su propia lista).
 const sectors = [
   'all',
   'Technology',
@@ -139,7 +143,7 @@ export default function EnhancedProPicksFilters({ filters, onFiltersChange, onAp
             <SelectContent>
               {sectors.map(sector => (
                 <SelectItem key={sector} value={sector}>
-                  {sector === 'all' ? 'Todos los Sectores' : sector}
+                  {sector === 'all' ? 'Todos los Sectores' : etiquetaSector(sector)}
                 </SelectItem>
               ))}
             </SelectContent>

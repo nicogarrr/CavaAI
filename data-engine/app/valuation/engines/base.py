@@ -237,3 +237,40 @@ def margin_of_safety(expected_value: float | None, current_price: float | None) 
     if expected_value is None or current_price is None or current_price <= 0:
         return None
     return expected_value / current_price - 1
+
+
+def apply_publication_blockers(result: dict[str, Any]) -> dict[str, Any]:
+    """A valuation with publication blockers is not a publishable valuation.
+
+    The engines already compute their blockers, but until now they only
+    *reported* them: a DCF discounted at a tag-default WACC carried
+    ``traceable_wacc`` in its trace and was still published as a final
+    valuation, so the one input that decides the discount rate was an
+    assumption nobody could trace back to a dated source. The numbers stay in
+    the result, because an orientation with its assumptions named is worth more
+    than a refusal; what changes is the label, which is the part every consumer
+    (thesis, red team, snapshot, persistence) treats as "this is final".
+    """
+    blockers = [
+        str(item).strip()
+        for item in (result.get("publication_blockers") or [])
+        if str(item).strip()
+    ]
+    if not blockers:
+        return result
+    result["publication_blockers"] = blockers
+    if result.get("publishable"):
+        result["publishable"] = False
+        if result.get("status") == "ok":
+            result["status"] = "partial"
+    trace = result.get("trace")
+    if isinstance(trace, dict):
+        trace["publishable"] = result.get("publishable")
+        trace["status"] = result.get("status")
+        trace["publication_blockers"] = blockers
+        trace.setdefault(
+            "notice",
+            "Valuation computed on inputs that are not traceable to a dated "
+            "source; the numbers are an orientation, not a final valuation.",
+        )
+    return result

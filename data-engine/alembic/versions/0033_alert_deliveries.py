@@ -1,4 +1,4 @@
-"""0032 alert deliveries outbox
+"""0033 alert deliveries outbox
 
 Per-channel delivery rows for research alerts with an atomic claim. One row
 per (alert, channel); dispatch claims with a single UPDATE ... WHERE status
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0032_alert_deliveries"
-down_revision = "0031_propick_runs"
+revision = "0033_alert_deliveries"
+down_revision = "0032_tenant_uniques_fk_actions"
 branch_labels = None
 depends_on = None
 

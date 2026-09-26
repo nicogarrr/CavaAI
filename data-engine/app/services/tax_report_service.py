@@ -100,10 +100,10 @@ class TaxReportService:
         self.settings = get_settings()
 
     def compute_report(self, db: Session, fiscal_year: int) -> dict:
+        # SOLO lectura: sin portfolio persistido se usa la divisa por defecto;
+        # crearlo aqui convertia cualquier GET del informe en una escritura.
         portfolio = self.fx.portfolio(db)
-        if portfolio is None:
-            portfolio = self.fx.ensure_portfolio(db)
-        base_currency = portfolio.base_currency or "EUR"
+        base_currency = (portfolio.base_currency if portfolio else "EUR") or "EUR"
 
         start = date(fiscal_year, 1, 1)
         end = date(fiscal_year, 12, 31)
@@ -539,13 +539,20 @@ class TaxReportService:
             "misc": sorted(misc_rows, key=lambda d: d["date"]),
         }
 
-    def get_or_compute(self, db: Session, fiscal_year: int, regenerate: bool = False) -> dict:
+    def get_report(self, db: Session, fiscal_year: int) -> dict:
+        """Informe de un ejercicio. SOLO LECTURA: nunca escribe en la base.
+
+        Si existe un informe persistido lo devuelve; si no, lo calcula en
+        memoria y lo marca con ``persisted=False`` y ``generated_at=None``
+        (honesto: no esta guardado; un GET repetido no cambia el estado).
+        La persistencia vive en ``regenerate_report`` (POST).
+        """
         report = db.scalar(
             select(TaxReport).where(
                 TaxReport.fiscal_year == fiscal_year
             ).order_by(TaxReport.updated_at.desc())
         )
-        if report is not None and not regenerate:
+        if report is not None:
             return {
                 "summary": report.summary,
                 "dividends": report.dividends,
@@ -554,9 +561,15 @@ class TaxReportService:
                 "generated_at": report.generated_at.isoformat() if report.generated_at else None,
                 "persisted": True,
             }
-
         data = self.compute_report(db, fiscal_year)
-        portfolio = self.fx.portfolio(db)
+        data["generated_at"] = None
+        data["persisted"] = False
+        return data
+
+    def regenerate_report(self, db: Session, fiscal_year: int) -> dict:
+        """Recalcula y PERSISTE el informe del ejercicio (camino POST)."""
+        data = self.compute_report(db, fiscal_year)
+        portfolio = self.fx.ensure_portfolio(db)
         report = db.scalar(
             select(TaxReport).where(TaxReport.fiscal_year == fiscal_year)
         )

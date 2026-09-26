@@ -18,6 +18,7 @@ from app.valuation.engines.base import (
     MODEL_VERSION,
     ValuationContext,
     ValuationEngine,
+    apply_publication_blockers,
     insufficient_result,
     margin_of_safety,
 )
@@ -197,7 +198,18 @@ class SOTPEngine(ValuationEngine):
             base_discount=discount,
         )
 
-        return {
+        # A total that is missing one of its parts is not the total. The
+        # segments that DO have facts were summed and divided by shares, which
+        # produces a per-share NAV of a business nobody owns: publishing it as
+        # the SOTP of the company stated a value for segments the model never
+        # looked at, and the margin of safety computed on it inherits the
+        # omission. The number stays as an orientation of the known part.
+        publication_blockers = [
+            f"segment:{metric}" for metric in missing_segments
+        ]
+
+        return apply_publication_blockers(
+            {
             "ticker": company.ticker,
             "model_type": company.valuation_model,
             "status": "ok",
@@ -209,6 +221,7 @@ class SOTPEngine(ValuationEngine):
             "expected_value": expected,
             "margin_of_safety": margin_of_safety(expected, current_price),
             "missing_inputs": missing_segments,
+            "publication_blockers": publication_blockers,
             "reverse_dcf": {},
             "sensitivity": sensitivity,
             "moat": empty_moat_framework(
@@ -259,7 +272,9 @@ class SOTPEngine(ValuationEngine):
                 "probability_method": "source_confidence_plus_holding_discount",
                 "evidence_confidence": evidence_confidence,
                 "missing_optional_segments": missing_segments,
+                "segments_valued": [segment["name"] for segment in segments],
                 "scenarios": scenario_results,
                 "weighted": weighted["trace"],
             },
-        }
+            }
+        )

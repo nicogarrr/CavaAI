@@ -127,7 +127,7 @@ const SignUp = () => {
                     required
                 />
 
-                <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
+                <Button type="submit" disabled={isSubmitting} className="brand-btn w-full mt-5">
                     {isSubmitting ? 'Creando cuenta…' : 'Empieza tu viaje inversor'}
                 </Button>
 

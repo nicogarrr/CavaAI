@@ -1,5 +1,8 @@
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { getSavedScreenerEngines, getScreenerStocksReal } from '@/lib/actions/screener.actions';
+import { formatCompact, formatPercent, formatPrice } from '@/lib/format';
+import { etiquetaSector } from '@/lib/labels';
+import { t } from '@/lib/i18n/t';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,21 +12,21 @@ import FollowButton from '@/components/screener/FollowButton';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-/** Etiqueta ES visible + valor EN para la query (el backend espera el sector en inglés) */
+/** Sectores que el Screener ofrece: etiqueta ES de lib/labels.ts + valor EN
+ *  que espera el backend. */
 const SECTORES = [
-  { es: 'Tecnología', en: 'Technology' },
-  { es: 'Salud', en: 'Health Care' },
-  { es: 'Servicios financieros', en: 'Financial Services' },
-  { es: 'Consumo cíclico', en: 'Consumer Cyclical' },
-  { es: 'Energía', en: 'Energy' },
-  { es: 'Servicios públicos', en: 'Utilities' },
+  { en: 'Technology' },
+  { en: 'Health Care' },
+  { en: 'Financial Services' },
+  { en: 'Consumer Cyclical' },
+  { en: 'Energy' },
+  { en: 'Utilities' },
 ];
 
 const sectorEn = (value: string) =>
   SECTORES.some((s) => s.en === value) ? value : 'Technology';
 
-const sectorEs = (value: string) =>
-  SECTORES.find((s) => s.en === value)?.es ?? value;
+const sectorEs = (value: string) => etiquetaSector(value);
 
 export default async function ScreenerPage({ searchParams }: { searchParams?: Promise<{ sector?: string }> }) {
   const sector = sectorEn((await searchParams)?.sector ?? 'Technology');
@@ -46,16 +49,16 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
   const { rows, backendDown } = screenerResult;
 
   return (
-    <div className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
+    <main id="content" tabIndex={-1} className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold break-words text-gray-100">Screener</h1>
+        <h1 className="text-2xl font-semibold break-words text-gray-100">{t('nav.screener')}</h1>
         <p className="mt-1 text-sm text-gray-400">Large caps líquidos con precio y market cap reales (motor de análisis, caché 60s)</p>
       </div>
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por sector">
         {SECTORES.map((s) => (
           <Button key={s.en} asChild variant={sector === s.en ? 'default' : 'outline'} size="sm" className="min-h-[44px] min-w-[44px] rounded-md px-4">
-            <Link href={`/screener?sector=${encodeURIComponent(s.en)}`}>{s.es}</Link>
+            <Link href={`/screener?sector=${encodeURIComponent(s.en)}`}>{etiquetaSector(s.en)}</Link>
           </Button>
         ))}
       </div>
@@ -162,17 +165,19 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                         </td>
                         <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Precio</span>
-                          <span className="font-semibold text-gray-200">${r.price.toFixed(2)}</span>
+                          <span className="font-semibold text-gray-200">{formatPrice(r.price, 'USD')}</span>
                         </td>
                         <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Cambio sesión</span>
                           <span className={`font-mono ${r.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {r.changePercent >= 0 ? '+' : ''}{r.changePercent.toFixed(2)}%
+                            {formatPercent(r.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                           </span>
                         </td>
                         <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Market Cap</span>
-                          <span className="font-mono text-gray-300">${(r.marketCap / 1e9).toFixed(1)}B</span>
+                          <span className="font-mono text-gray-300">
+                            {formatCompact(r.marketCap, { maximumFractionDigits: 1 })}
+                          </span>
                         </td>
                         <td className="mt-2 flex items-center justify-between gap-3 border-t border-gray-800/60 pt-3 md:table-cell md:mt-0 md:border-0 md:py-3 md:pt-3 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Seguir</span>
@@ -196,7 +201,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
               {indices.map((i) => (
                 <div key={i.symbol} className="flex min-w-0 items-center justify-between gap-3">
                   <span className="min-w-0 flex-1 truncate text-gray-300">{i.name}</span>
-                  <span className="shrink-0 font-semibold text-gray-100">${i.price.toFixed(2)}</span>
+                  <span className="shrink-0 font-semibold text-gray-100">{formatPrice(i.price, 'USD')}</span>
                 </div>
               ))}
               {indices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}
@@ -205,6 +210,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
           </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   );
 }
+
