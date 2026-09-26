@@ -1,11 +1,9 @@
-from typing import Any, Literal, Protocol
-
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Literal, Protocol
 
 import httpx
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -15,7 +13,6 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import CustomMetricDefinition, SavedScreen
 from app.services.screener_service import CustomMetricService, ScreenerService
-
 
 router = APIRouter()
 

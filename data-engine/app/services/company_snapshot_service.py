@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from sqlalchemy import desc, func, inspect as sa_inspect, select
+from sqlalchemy import desc, func, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session, aliased
 
 from app.models import (
@@ -84,9 +85,9 @@ class CompanySnapshotService:
         ]
         if not company_ids:
             return {}
-        companies = db.scalars(
-            select(Company).where(Company.id.in_(company_ids))
-        ).all()
+        companies = list(
+            db.scalars(select(Company).where(Company.id.in_(company_ids))).all()
+        )
         theses = self._latest_by_company(
             db, ThesisVersion, company_ids, desc(ThesisVersion.version)
         )

@@ -30,7 +30,6 @@ from sqlalchemy import select
 import main
 from app.core.database import SessionLocal, init_db
 from app.models import Company, ResearchAlert
-
 from tests.auth_helpers import auth_settings, signed_request
 from tests.conftest import _TEST_ISOLATED_ENV_DEFAULTS  # noqa: F401  (env hermetico)
 

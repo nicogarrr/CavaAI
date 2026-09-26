@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Callable, Protocol
+from typing import Protocol
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -18,8 +19,8 @@ from app.services.connectors.ecb import ECBClient, ECBRates
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.fmp import FMPClient
 from app.services.portfolio_fx_service import PortfolioFXService
-from app.services.propicks_price_service import yahoo_symbol
 from app.services.portfolio_ledger_service import PortfolioLedgerService
+from app.services.propicks_price_service import yahoo_symbol
 from app.services.risk_service import RiskService
 from app.services.screener_service import ScreenerService
 
@@ -82,7 +83,7 @@ class PublicPriceProvider:
                     self._one(company, as_of),
                     timeout=self.PER_TICKER_TIMEOUT_SECONDS,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return company, None, {
                     "ticker": company.ticker,
                     "reason": "per_ticker_timeout",
@@ -123,9 +124,14 @@ class PublicPriceProvider:
                 payload = await self.finnhub.quote(company.ticker)
                 value = Decimal(str(payload.get("c") or 0))
                 timestamp = int(payload.get("t") or 0)
-                observed_date = datetime.fromtimestamp(timestamp, tz=UTC).date() if timestamp > 0 else as_of
                 if value > 0:
-                    return company, PriceObservation(company.ticker, value, observed_date, "Finnhub"), None
+                    if timestamp <= 0:
+                        # Sin timestamp no podemos fechar la quote con honestidad:
+                        # publicarla como de hoy fabricaria el observed_date.
+                        errors.append("Finnhub:quote_missing_timestamp")
+                    else:
+                        observed_date = datetime.fromtimestamp(timestamp, tz=UTC).date()
+                        return company, PriceObservation(company.ticker, value, observed_date, "Finnhub"), None
             except Exception as exc:
                 errors.append(f"Finnhub:{type(exc).__name__}")
         reason = ",".join(errors) if errors else "no_price_provider_configured"
@@ -148,16 +154,28 @@ def _provider_date(item: dict, fallback: date) -> date | None:
                 return datetime.fromtimestamp(int(raw), tz=UTC).date()
             except (OverflowError, OSError, ValueError):
                 continue
-        text = str(raw).strip().replace("Z", "")
-        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y%m%d"):
-            try:
-                return datetime.strptime(text[: len(fmt) + 2].strip(), fmt).date()
-            except ValueError:
-                continue
+        text = str(raw).strip()
+        # ISO primero, con timezone si la trae: la fecha se toma en UTC, no
+        # en la zona del proveedor (una quote a las 23:30 -05:00 ya es el dia
+        # siguiente en UTC). fromisoformat en 3.12 acepta offsets y fraccion.
+        iso = text[:-1] + "+00:00" if text.endswith("Z") else text
         try:
-            return date.fromisoformat(text[:10])
+            parsed = datetime.fromisoformat(iso)
         except ValueError:
-            continue
+            parsed = None
+        if parsed is not None:
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(UTC).date()
+            return parsed.date()
+        # Formatos de fecha sola, sin slices magicos: cadena completa o el
+        # prefijo ISO de 10 chars; nada de text[:len(fmt)+2] (fragil: corta
+        # offsets y basura intermedia y puede casar un prefijo que no es).
+        for candidate in (text, text[:10]):
+            for fmt in ("%Y-%m-%d", "%Y%m%d"):
+                try:
+                    return datetime.strptime(candidate, fmt).date()
+                except ValueError:
+                    continue
     return None
 
 

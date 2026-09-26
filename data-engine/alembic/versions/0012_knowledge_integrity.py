@@ -5,9 +5,9 @@ Revises: 0011_model_aliases
 Create Date: 2026-07-16 00:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0012_knowledge_integrity"
 down_revision = "0011_model_aliases"

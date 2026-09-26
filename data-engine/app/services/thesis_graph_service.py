@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 from decimal import Decimal
-import re
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Claim,
     Company,
     ThesisEdge,
     ThesisNode,
@@ -15,7 +13,6 @@ from app.models import (
 )
 from app.services.claim_intelligence_service import ClaimIntelligenceService, _similarity
 from app.services.claim_scope import live_claims
-
 
 NODE_RULES: dict[str, tuple[str, ...]] = {
     "technology": ("technology", "technical", "product works", "launch", "performance"),

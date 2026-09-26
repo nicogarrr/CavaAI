@@ -20,8 +20,9 @@ consecutive_errors y deja last_error, nunca lanza al caller del actor.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session

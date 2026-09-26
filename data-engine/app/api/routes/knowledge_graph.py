@@ -1,13 +1,10 @@
-from app.core.errors import safe_detail
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Company
-from app.services.knowledge_graph_service import KnowledgeGraphService
+from app.core.errors import safe_detail
 from app.services.company_resolver import resolve_company
-
+from app.services.knowledge_graph_service import KnowledgeGraphService
 
 router = APIRouter()
 
