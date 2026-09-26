@@ -18,7 +18,11 @@ BACKUP_PATH="${1:?Uso: ./scripts/verify-backup-restore.sh backups/YYYYMMDD-HHMMS
 case "${BACKUP_PATH}" in backups/*) ;; *) echo "El backup debe estar dentro de ./backups/"; exit 1;; esac
 [ -f "${BACKUP_PATH}/postgres.dump" ] || { echo "No existe ${BACKUP_PATH}/postgres.dump"; exit 1; }
 
-VERIFY_COMPOSE="backups/.verify-compose.yml"
+# El compose generado va en la RAIZ del repo: las rutas relativas del compose
+# de prod (build ./data-engine, mounts ./data-esef-snapshots, ./infra/...) se
+# resuelven desde el directorio del primer -f. Dentro de backups/ quedarian
+# rotas o apuntando a carpetas equivocadas.
+VERIFY_COMPOSE=".verify-compose.yml"
 export COMPOSE_CMD="docker compose -p cavaai-verify -f ${VERIFY_COMPOSE}"
 export QDRANT_API_URL="http://127.0.0.1:16333"
 export QDRANT_VOLUME="cavaai-verify-qdrant"
@@ -53,7 +57,18 @@ echo "[verify] 2/5 proyecto compose aislado (nombres, puertos y volumenes propio
 sed -e 's/container_name: cavaai-/container_name: cavaai-verify-/' \
     -e 's/"127.0.0.1:6333:6333"/"127.0.0.1:16333:6333"/' \
     -e 's/name: cavaai-prod-/name: cavaai-verify-/' \
+    -e 's/image: cavaai-backend:prod/image: cavaai-backend:verify/' \
     docker-compose.prod.yml > "${VERIFY_COMPOSE}"
+
+# Validacion impresa ANTES de levantar nada: si el render no ensena la imagen
+# aislada (cavaai-backend:verify), los volumenes cavaai-verify-* y los mounts
+# esperados, no se toca Docker. Sin esto, un sed que no case pasa desapercibido
+# y el drill acaba reconstruyendo la imagen o los volumenes de produccion.
+${COMPOSE_CMD} config > /tmp/verify-compose-rendered.yml
+grep -q 'cavaai-backend:verify' /tmp/verify-compose-rendered.yml || { echo "[verify] ERROR: el compose renderizado no usa imagen aislada"; exit 1; }
+grep -q 'cavaai-verify-duckdb' /tmp/verify-compose-rendered.yml || { echo "[verify] ERROR: el compose renderizado no usa volumenes aislados"; exit 1; }
+echo "[verify] compose renderizado validado (imagen y volumenes aislados):"
+${COMPOSE_CMD} config | grep -E 'container_name|image:|name: cavaai-verify|127.0.0.1:16333|source: '
 
 ${COMPOSE_CMD} up -d postgres redis qdrant minio
 echo "[verify] esperando a Qdrant en ${QDRANT_API_URL}…"
