@@ -18,7 +18,7 @@ export default function TermsPage() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-gray-100 mb-4">Términos de Servicio</h1>
         <p className="text-gray-300 mb-4">
-          Última actualización: Diciembre 2024
+          Última actualización: Septiembre 2026
         </p>
         <div className="bg-green-900 border border-green-700 rounded-lg p-4">
           <p className="text-green-200 text-sm">
@@ -160,7 +160,7 @@ export default function TermsPage() {
             Gracias por ser parte de nuestra comunidad. 🚀
           </p>
           <p className="text-gray-500 text-xs mt-4">
-            © 2025 Nicolas Iglesias Garcia. Todos los derechos reservados.
+            © 2026 Nicolas Iglesias Garcia. Todos los derechos reservados.
           </p>
         </div>
       </div>

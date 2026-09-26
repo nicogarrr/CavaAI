@@ -499,7 +499,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                             ) : (
                                 <div className="text-center py-8">
                                     <p className="text-gray-400 text-sm">Lista vacía.</p>
-                                    <Link href="/" className="text-yellow-400 text-xs mt-2 inline-block hover:underline">Buscar acciones</Link>
+                                    <Link href="/dashboard" className="text-yellow-400 text-xs mt-2 inline-block hover:underline">Buscar acciones</Link>
                                 </div>
                             )}
                         </CardContent>

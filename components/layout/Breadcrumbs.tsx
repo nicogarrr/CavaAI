@@ -38,14 +38,14 @@ function buildCrumbs(pathname: string): Crumb[] {
     }
   }
 
-  if (pathname === '/') return [{ href: '/', label: 'Inicio' }];
+  if (pathname === '/dashboard') return [{ href: '/dashboard', label: 'Inicio' }];
 
   // Ancla: el href mas largo que sea prefijo de la ruta.
   const anchor = items
     .filter((item) => item.href !== '/' && (pathname === item.href || pathname.startsWith(`${item.href}/`)))
     .sort((a, b) => b.href.length - a.href.length)[0];
 
-  const crumbs: Crumb[] = [{ href: '/', label: 'Inicio' }];
+  const crumbs: Crumb[] = [{ href: '/dashboard', label: 'Inicio' }];
 
   if (!anchor) return crumbs;
 

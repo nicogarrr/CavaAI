@@ -20,6 +20,7 @@ const DISALLOWED = [
   '/sign-up',
   '/security',
   // Espacio de trabajo autenticado (grupo de rutas `(root)`).
+  '/dashboard',
   '/research',
   '/portfolio',
   '/propicks',

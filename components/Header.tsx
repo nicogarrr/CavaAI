@@ -18,7 +18,7 @@ const Header = ({ user, initialStocks }: { user: User; initialStocks: StockWithW
             <div className="container header-wrapper">
                 <div className="flex min-w-0 shrink-0 items-center gap-1">
                     <MobileNav initialStocks={initialStocks} />
-                    <Link href="/" prefetch={false} className="flex min-h-11 items-center justify-center gap-2">
+                    <Link href="/dashboard" prefetch={false} className="flex min-h-11 items-center justify-center gap-2">
                         <CavaAIWordmark />
                     </Link>
                 </div>
