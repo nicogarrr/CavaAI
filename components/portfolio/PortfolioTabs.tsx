@@ -234,6 +234,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                             holdings={summary.holdings}
                             totalValue={summary.totalValue}
                             cash={summary.cash}
+                            baseCurrency={summary.baseCurrency}
                         />
                     </div>
 

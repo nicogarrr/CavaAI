@@ -85,7 +85,7 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
         </Button>
       </CardHeader>
       <CardContent>
-        {currentHoldings.length === 0 ? (
+        {currentHoldings.length === 0 && !showCash ? (
           <div className="text-center py-8">
             <p className="text-gray-400">No tienes posiciones abiertas</p>
             <p className="text-sm text-gray-500 mt-2">Agrega tu primera transacción para comenzar</p>

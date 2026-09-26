@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { sumCashByCurrency } from '../lib/portfolio-cash.ts';
+// @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
+import { buildAllocationSlices } from '../lib/portfolio-allocation.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -67,19 +69,86 @@ describe('línea Caja en las tablas de posiciones', () => {
     });
 });
 
-describe('donut coherente con la etiqueta "caja incluida" (F104)', () => {
-    it('el donut añade un segmento Caja cuando hay caja', () => {
-        const allocation = source('components/portfolio/PortfolioAllocation.tsx');
-        assert.ok(allocation.includes("symbol: 'Caja'"), 'segmento Caja en los datos del donut');
-        assert.ok(allocation.includes('(cashValue / totalValue) * 100'), 'peso de la caja sobre el total con caja');
-        assert.ok(allocation.includes('caja incluida'), 'etiqueta que declara la base');
+describe('buildAllocationSlices: datos del donut', () => {
+    it('añade el segmento Caja con peso sobre el total con caja', () => {
+        const slices = buildAllocationSlices(
+            [{ symbol: 'AAPL', value: 300, gain: 0, gainPercent: 0 }],
+            400,
+            100,
+        );
+        assert.equal(slices.length, 2);
+        assert.deepEqual(slices[1], { symbol: 'Caja', value: 100, gain: 0, gainPercent: 0, percentage: 25 });
     });
 
-    it('la caja no enlaza a /research/Caja ni muestra G/P inventada', () => {
+    it('cartera solo-caja: el donut es 100% Caja, no desaparece', () => {
+        const slices = buildAllocationSlices([], 100, 100);
+        assert.deepEqual(slices, [{ symbol: 'Caja', value: 100, gain: 0, gainPercent: 0, percentage: 100 }]);
+    });
+
+    it('sin caja no hay segmento Caja', () => {
+        const slices = buildAllocationSlices([{ symbol: 'AAPL', value: 300, gain: 0, gainPercent: 0 }], 300, 0);
+        assert.equal(slices.length, 1);
+        assert.equal(buildAllocationSlices([], 0, null).length, 0);
+    });
+
+    it('la etiqueta declara la base y el panel no se esconde con cartera solo-caja', () => {
         const allocation = source('components/portfolio/PortfolioAllocation.tsx');
-        assert.ok(allocation.includes("item.symbol === 'Caja'"), 'la leyenda no enlaza la caja');
+        assert.ok(allocation.includes('caja incluida'), 'etiqueta que declara la base');
+        assert.ok(allocation.includes('holdings.length === 0 && !hasCash'), 'estado vacío solo cuando tampoco hay caja');
+        assert.ok(allocation.includes('buildAllocationSlices(holdings, totalValue, cash)'), 'datos vía el helper probado');
+    });
+
+    it('la leyenda no enlaza la caja', () => {
+        const allocation = source('components/portfolio/PortfolioAllocation.tsx');
+        assert.ok(allocation.includes('item.symbol === CASH_SLICE_SYMBOL'), 'la leyenda distingue la caja');
+    });
+});
+
+describe('AllocationTooltip montado con react-dom/server', () => {
+    it('la caja en cartera EUR muestra euros, no dólares, y sin enlace ni G/P', async () => {
+        const { renderToStaticMarkup } = await import('react-dom/server');
+        const { createElement } = await import('react');
+        // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
+        const { AllocationTooltip } = await import('../components/portfolio/AllocationTooltip.ts');
+        const html = renderToStaticMarkup(createElement(AllocationTooltip, {
+            active: true,
+            currency: 'EUR',
+            payload: [{ payload: { symbol: 'Caja', value: 100, percentage: 100, gain: 0, gainPercent: 0 } }],
+        }));
+        assert.ok(html.includes('€'), `importe en EUR esperado, obtuvo: ${html}`);
+        assert.ok(!html.includes('US$') && !html.includes('USD'), 'no puede renderizar la cifra en dólares');
+        assert.ok(!html.includes('/research/Caja'), 'la caja no enlaza a una ficha inexistente');
+        assert.ok(!html.includes('G/P'), 'la caja no muestra una G/P inventada');
+    });
+
+    it('una acción enlaza su ficha y muestra G/P con la moneda recibida', async () => {
+        const { renderToStaticMarkup } = await import('react-dom/server');
+        const { createElement } = await import('react');
+        // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
+        const { AllocationTooltip } = await import('../components/portfolio/AllocationTooltip.ts');
+        const html = renderToStaticMarkup(createElement(AllocationTooltip, {
+            active: true,
+            currency: 'EUR',
+            payload: [{ payload: { symbol: 'AAPL', value: 300, percentage: 75, gain: 30, gainPercent: 10 } }],
+        }));
+        assert.ok(html.includes('/research/AAPL'), 'la acción enlaza su ficha');
+        assert.ok(html.includes('G/P'), 'la acción muestra su G/P');
+        assert.ok(html.includes('€'), 'importe en la moneda base recibida');
+    });
+
+    it('la moneda base llega desde el summary hasta el tooltip', () => {
+        const tabs = source('components/portfolio/PortfolioTabs.tsx');
+        assert.ok(tabs.includes('baseCurrency={summary.baseCurrency}'), 'PortfolioTabs pasa la moneda base');
+        const allocation = source('components/portfolio/PortfolioAllocation.tsx');
+        assert.ok(allocation.includes('currency={baseCurrency}'), 'Allocation la pasa al chart');
         const chart = source('components/portfolio/PortfolioAllocationChart.tsx');
-        assert.ok(chart.includes("data.symbol === 'Caja'"), 'el tooltip distingue la caja');
-        assert.ok(chart.includes('!isCash'), 'sin G/P para la caja');
+        assert.ok(chart.includes('currency={currency}'), 'el chart la pasa al tooltip');
+    });
+});
+
+describe('cartera solo-caja en la tabla de posiciones', () => {
+    it('la línea Caja aparece aunque no haya posiciones abiertas', () => {
+        const holdings = source('components/portfolio/PortfolioHoldings.tsx');
+        assert.ok(holdings.includes('currentHoldings.length === 0 && !showCash'), 'estado vacío solo cuando tampoco hay caja');
     });
 });

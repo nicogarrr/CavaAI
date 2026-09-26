@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
 import { PieChart as PieChartIcon } from 'lucide-react';
 import { formatPercent } from '@/lib/format';
-import { COLORS, type AllocationSlice } from './PortfolioAllocationChart';
+import { COLORS, buildAllocationSlices, CASH_SLICE_SYMBOL, type AllocationSlice } from './PortfolioAllocationChart';
 
 const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChart'), {
     ssr: false,
@@ -21,10 +21,13 @@ type Props = {
     /** Caja en divisa base: entra como segmento propio para que el donut
      *  represente de verdad el total con caja que anuncia la etiqueta. */
     cash?: number | null;
+    /** Moneda base para el importe del tooltip (sin ella saldría en USD). */
+    baseCurrency?: string;
 };
 
-export default function PortfolioAllocation({ holdings, totalValue, cash }: Props) {
-    if (holdings.length === 0) {
+export default function PortfolioAllocation({ holdings, totalValue, cash, baseCurrency }: Props) {
+    const hasCash = typeof cash === 'number' && cash > 0;
+    if (holdings.length === 0 && !hasCash) {
         return (
             <Card className="bg-gray-800/50 border-gray-700">
                 <CardHeader className="pb-2">
@@ -42,27 +45,8 @@ export default function PortfolioAllocation({ holdings, totalValue, cash }: Prop
         );
     }
 
-    // Preparar datos para el pie chart
-    const chartData: AllocationSlice[] = holdings
-        .map((holding) => ({
-            symbol: holding.symbol,
-            value: holding.value,
-            percentage: (holding.value / totalValue) * 100,
-            gain: holding.gain,
-            gainPercent: holding.gainPercent,
-        }))
-        .sort((a, b) => b.value - a.value); // Ordenar por valor descendente
-
-    const cashValue = typeof cash === 'number' && cash > 0 ? cash : 0;
-    if (cashValue > 0 && totalValue > 0) {
-        chartData.push({
-            symbol: 'Caja',
-            value: cashValue,
-            percentage: (cashValue / totalValue) * 100,
-            gain: 0,
-            gainPercent: 0,
-        });
-    }
+    // Datos del donut: posiciones + segmento Caja (buildAllocationSlices)
+    const chartData: AllocationSlice[] = buildAllocationSlices(holdings, totalValue, cash);
 
     return (
         <div className="bg-[#111111] border border-gray-800 rounded-2xl p-6 h-full flex flex-col">
@@ -76,7 +60,7 @@ export default function PortfolioAllocation({ holdings, totalValue, cash }: Prop
             <div className="flex-1 flex items-center justify-between">
                 {/* Pie Chart - Más grande */}
                 <div className="relative w-[250px] h-[250px] flex-shrink-0">
-                    <PortfolioAllocationChart chartData={chartData} />
+                    <PortfolioAllocationChart chartData={chartData} currency={baseCurrency} />
 
                     {/* Centro del Donut */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -96,7 +80,7 @@ export default function PortfolioAllocation({ holdings, totalValue, cash }: Prop
                                     className="w-3 h-3 rounded-full"
                                     style={{ backgroundColor: COLORS[index % COLORS.length] }}
                                 />
-                                {item.symbol === 'Caja' ? (
+                                {item.symbol === CASH_SLICE_SYMBOL ? (
                                     <span className="text-sm text-gray-300">Caja</span>
                                 ) : (
                                     <Link
