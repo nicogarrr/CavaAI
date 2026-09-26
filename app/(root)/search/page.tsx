@@ -1,15 +1,24 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BookOpen, Filter, Search as SearchIcon } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import BackendOffline from '@/components/system/BackendOffline';
 import { searchResearchLibrary } from '@/lib/actions/research-tools.actions';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 import { formatDate, formatNumber, formatPercent } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+export const metadata: Metadata = {
+  title: 'Búsqueda universal',
+  description:
+    'Busca evidencia de empresas, hechos, afirmaciones, secciones de tesis, decisiones y lecciones en un único conjunto de resultados.',
+};
 
 type PageProps = {
   searchParams: Promise<{
@@ -27,18 +36,41 @@ type PageProps = {
 
 export default async function UniversalSearchPage({ searchParams }: PageProps) {
   const query = await searchParams;
-  const response = await searchResearchLibrary({
-    query: query.q ?? '',
-    ticker: query.ticker,
-    entityTypes: query.entity_types,
-    sourceTypes: query.source_types,
-    statuses: query.statuses,
-    collectionId: Number(query.collection_id) || undefined,
-    dateFrom: query.date_from,
-    dateTo: query.date_to,
-    includeVector: query.vector !== 'false',
-  });
   const searched = Boolean(query.q?.trim());
+  // El botón «Reintentar» de BackendOffline vuelve a la MISMA consulta: sin
+  // estos parámetros el usuario perdería los filtros al reintentar.
+  const currentParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value) currentParams.set(key, value);
+  }
+  const currentHref = currentParams.toString() ? `/search?${currentParams.toString()}` : '/search';
+
+  // Sin consulta no hay llamada al backend (searchResearchLibrary cortocircuita)
+  // y no puede haber estado de error: la pantalla es el formulario y la ayuda.
+  let response: Awaited<ReturnType<typeof searchResearchLibrary>> | null = null;
+  if (searched) {
+    try {
+      response = await searchResearchLibrary({
+        query: query.q ?? '',
+        ticker: query.ticker,
+        entityTypes: query.entity_types,
+        sourceTypes: query.source_types,
+        statuses: query.statuses,
+        collectionId: Number(query.collection_id) || undefined,
+        dateFrom: query.date_from,
+        dateTo: query.date_to,
+        includeVector: query.vector !== 'false',
+      });
+    } catch (error) {
+      // Antes el error subía al ErrorBoundary global: el usuario veía «Se
+      // produjo un error inesperado» y no podía saber si había escrito mal la
+      // consulta o el motor estaba apagado.
+      if (isBackendUnavailableError(error)) {
+        return <BackendOffline feature="Búsqueda universal" retryHref={currentHref} />;
+      }
+      throw error;
+    }
+  }
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-6 overflow-x-clip">
@@ -71,7 +103,7 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
         </details>
       </form>
 
-      {searched ? (
+      {response ? (
         <section className="grid min-w-0 grid-cols-1 gap-4">
           <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-gray-800 bg-[#101010] p-4 md:flex-row md:items-center">
             <div><div className="text-sm font-semibold text-gray-100">{formatNumber(response.total, { maximumFractionDigits: 0 })} resultados para “{response.query}”</div><div className="mt-1 text-xs text-gray-500">Ordenado con fusión léxica/vectorial, jerarquía de fuentes y señales de estado canónico.</div></div>
