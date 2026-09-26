@@ -551,6 +551,148 @@ def test_rag_status_error_redacts_vendor_keys(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Campos error del flujo de earnings (ruta 422 + serializacion + trace)
+# ---------------------------------------------------------------------------
+
+_EARNINGS_SECRET_URL = (
+    "GET https://financialmodelingprep.com/api/v3/income-statement/AAPL"
+    "?apikey=secrettoken123 failed"
+)
+
+
+def _seed_earnings_company(db, ticker: str):
+    from app.models import Company
+
+    company = Company(
+        ticker=ticker,
+        name=f"{ticker} Co",
+        exchange="TEST",
+        currency="USD",
+        sector="Industrials",
+        industry="Test",
+        company_type="standard",
+        valuation_model="standard_dcf",
+        special_sources=[],
+        special_risks=[],
+        factor_tags=[],
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    return company
+
+
+def test_earnings_run_route_redacts_vendor_key_in_422_and_listing(monkeypatch):
+    # Ruta real: un fallo upstream cuya excepcion lleva la URL del proveedor
+    # (con apikey) no puede salir ni en el 422 del POST /run ni en el GET /runs.
+    from uuid import uuid4
+
+    from fastapi.testclient import TestClient
+
+    import main
+    from app.core import auth as auth_module
+    from app.core.database import SessionLocal, init_db
+    from app.models import Tenant
+    from app.services.earnings_service import EarningsWorkflowService
+    from tests.auth_helpers import auth_settings, signed_request
+
+    secret = "earnings-route-test-secret-at-least-32c"
+    monkeypatch.setattr(
+        auth_module,
+        "get_settings",
+        lambda: auth_settings(strict=True, secret=secret),
+    )
+
+    def _boom_documents(self, db, company, fiscal_year, fiscal_quarter, document_ids):
+        raise RuntimeError(_EARNINGS_SECRET_URL)
+
+    monkeypatch.setattr(EarningsWorkflowService, "_documents", _boom_documents)
+
+    init_db()
+    suffix = uuid4().hex[:6]
+    tenant_ext = f"earnings-redact-{suffix}"
+    ticker = f"RED{suffix[:4].upper()}"
+    db = SessionLocal()
+    tenant = Tenant(external_id=tenant_ext, name="Earnings redact test")
+    db.add(tenant)
+    db.commit()
+    _seed_earnings_company(db, ticker)
+    db.close()
+
+    client = TestClient(main.app)
+    payload = {"fiscal_year": 2025, "fiscal_quarter": "FY"}
+    resp = signed_request(
+        client,
+        secret,
+        tenant_ext,
+        "earnings-test-user",
+        "POST",
+        f"/api/earnings/{ticker}/run",
+        json_body=payload,
+    )
+    assert resp.status_code == 422, resp.text
+    assert "secrettoken123" not in resp.text
+    assert "apikey=REDACTED" in str(resp.json()["detail"])
+
+    listed = signed_request(
+        client, secret, tenant_ext, "earnings-test-user", "GET", f"/api/earnings/{ticker}/runs"
+    )
+    assert listed.status_code == 200, listed.text
+    assert "secrettoken123" not in listed.text
+    assert any("apikey=REDACTED" in (r.get("error") or "") for r in listed.json())
+
+
+def test_earnings_trace_thesis_generation_error_is_redacted(monkeypatch):
+    # El trace persiste thesis_generation_error y se expone en las respuestas:
+    # tampoco puede llevar la URL del proveedor con su key.
+    from uuid import uuid4
+
+    import app.services.thesis_service as thesis_module
+    from app.core.database import SessionLocal, init_db
+    from app.services.claim_intelligence_service import ClaimIntelligenceService
+    from app.services.earnings_service import EarningsWorkflowService
+
+    monkeypatch.setattr(
+        EarningsWorkflowService, "_documents", lambda self, db, c, fy, fq, ids: []
+    )
+    monkeypatch.setattr(
+        EarningsWorkflowService, "_document_text", lambda self, db, docs: {}
+    )
+    monkeypatch.setattr(
+        EarningsWorkflowService, "_extract_metrics", lambda self, full, bydoc: []
+    )
+    monkeypatch.setattr(
+        EarningsWorkflowService, "_comparisons", lambda self, db, c, fy, fq: []
+    )
+    monkeypatch.setattr(EarningsWorkflowService, "_tone", lambda self, text: None)
+    monkeypatch.setattr(
+        EarningsWorkflowService, "_promise_tracking", lambda self, db, c, text: []
+    )
+    monkeypatch.setattr(
+        ClaimIntelligenceService,
+        "extract_statements",
+        lambda self, text, limit=40: [],
+    )
+
+    def _boom_thesis(self, db, ticker, force_new_version=False):
+        raise RuntimeError(_EARNINGS_SECRET_URL)
+
+    monkeypatch.setattr(thesis_module.ThesisService, "generate", _boom_thesis)
+
+    init_db()
+    db = SessionLocal()
+    company = _seed_earnings_company(db, f"TRC{uuid4().hex[:4].upper()}")
+
+    run = EarningsWorkflowService().run(
+        db, company, fiscal_year=2025, fiscal_quarter="FY", force_new_thesis=True
+    )
+    assert run.status == "completed"
+    err = run.trace.get("thesis_generation_error", "")
+    assert "secrettoken123" not in err
+    assert "apikey=REDACTED" in err
+
+
+# ---------------------------------------------------------------------------
 # P2-7 — sin fallback NEXT_PUBLIC_FINNHUB_API_KEY en server actions
 # ---------------------------------------------------------------------------
 

@@ -247,7 +247,7 @@ class EarningsWorkflowService:
                 except Exception as exc:
                     run.trace = {
                         **run.trace,
-                        "thesis_generation_error": str(exc),
+                        "thesis_generation_error": redact_secrets(str(exc)),
                     }
 
             run.status = "completed"
@@ -278,7 +278,7 @@ class EarningsWorkflowService:
             return run
         except Exception as exc:
             run.status = "failed"
-            run.error = str(exc)
+            run.error = redact_secrets(str(exc))
             run.trace = {
                 **(run.trace or {}),
                 "failed_at": datetime.now(UTC).isoformat(),
