@@ -33,12 +33,14 @@ ${COMPOSE} stop backend worker scheduler minio
 echo "[restore] postgres…"
 # El contenedor puede estar recien creado (drill, desastre): sin espera, el
 # createdb choca con "Connection refused" y el restore muere a medias.
-for _ in $(seq 1 30); do
+# 180s: un initdb en volumen fresco bajo carga (drill en paralelo con builds)
+# o una WAL recovery larga superan los 60s sin que nada este roto.
+for _ in $(seq 1 90); do
   ${COMPOSE} exec -T postgres pg_isready -U "${POSTGRES_USER:-portfolio}" >/dev/null 2>&1 && break
   sleep 2
 done
 ${COMPOSE} exec -T postgres pg_isready -U "${POSTGRES_USER:-portfolio}" >/dev/null \
-  || { echo "[restore] ERROR: postgres no responde tras 60s"; exit 1; }
+  || { echo "[restore] ERROR: postgres no responde tras 180s"; exit 1; }
 ${COMPOSE} exec -T postgres dropdb -U "${POSTGRES_USER:-portfolio}" --if-exists "${POSTGRES_DB:-cavaai_research}"
 ${COMPOSE} exec -T postgres createdb -U "${POSTGRES_USER:-portfolio}" "${POSTGRES_DB:-cavaai_research}"
 ${COMPOSE} exec -T postgres pg_restore -U "${POSTGRES_USER:-portfolio}" -d "${POSTGRES_DB:-cavaai_research}" --no-owner < "${BACKUP_PATH}/postgres.dump"
