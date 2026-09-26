@@ -1,26 +1,15 @@
-import hashlib
-import hmac
-import time
 import urllib.error
 import urllib.request
 
-secret = [l.split("=", 1)[1].strip() for l in open(".env", encoding="utf-8") if l.startswith("RESEARCH_AUTH_SECRET=")][0]
-print("secret repr tail:", repr(secret[-6:]))
+from research_auth import load_secret, signed_headers
+
+secret = load_secret()
+TENANT = USER = "e2e-check-user"
 
 
 def call(path: str):
-    tenant = user = "e2e-check-user"
-    ts = str(int(time.time()))
-    sig = hmac.new(secret.encode(), f"{tenant}:{user}:{ts}".encode(), hashlib.sha256).hexdigest()
-    req = urllib.request.Request(
-        "http://127.0.0.1:8000" + path,
-        headers={
-            "X-CavaAI-User": user,
-            "X-CavaAI-Tenant": tenant,
-            "X-CavaAI-Timestamp": ts,
-            "X-CavaAI-Signature": sig,
-        },
-    )
+    headers = signed_headers(secret, TENANT, USER, method="GET", path=path)
+    req = urllib.request.Request("http://127.0.0.1:8000" + path, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.status

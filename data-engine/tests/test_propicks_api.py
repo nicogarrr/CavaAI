@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import time
 from decimal import Decimal
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -13,7 +11,6 @@ from sqlalchemy import delete
 
 import main
 from app.core import auth as auth_module
-from app.core.auth import sign_research_identity
 from app.core.database import SessionLocal, init_db
 from app.models import (
     CalculatedMetric,
@@ -26,20 +23,7 @@ from app.models import (
 
 SECRET = "propicks-api-test-secret-at-least-32-chars"
 
-
-def _headers(tenant_external_id: str, user_id: str) -> dict[str, str]:
-    timestamp = str(int(time.time()))
-    return {
-        "X-CavaAI-Tenant": tenant_external_id,
-        "X-CavaAI-User": user_id,
-        "X-CavaAI-Timestamp": timestamp,
-        "X-CavaAI-Signature": sign_research_identity(
-            SECRET,
-            tenant_id=tenant_external_id,
-            user_id=user_id,
-            timestamp=timestamp,
-        ),
-    }
+from tests.auth_helpers import auth_settings, signed_request
 
 
 @pytest.fixture
@@ -47,13 +31,7 @@ def required_auth(monkeypatch):
     monkeypatch.setattr(
         auth_module,
         "get_settings",
-        lambda: SimpleNamespace(
-            app_env="test",
-            is_production=False,
-            research_auth_required=True,
-            research_auth_secret=SECRET,
-            research_auth_max_age_seconds=300,
-        ),
+        lambda: auth_settings(strict=True, secret=SECRET),
     )
 
 
@@ -140,19 +118,19 @@ def test_propicks_run_endpoints(required_auth):
     db.close()
 
     client = TestClient(main.app)
-    headers = _headers(tenant_ext, "propicks-test-user")
+    user = "propicks-test-user"
 
-    created = client.post("/api/propicks/runs", headers=headers)
+    created = signed_request(client, SECRET, tenant_ext, user, "POST", "/api/propicks/runs")
     assert created.status_code == 201, created.text
     run = created.json()
     # The test app DB is shared: other suites' companies may exist.
     assert run["universe_size"] >= 2
 
-    listed = client.get("/api/propicks/runs", headers=headers)
+    listed = signed_request(client, SECRET, tenant_ext, user, "GET", "/api/propicks/runs")
     assert listed.status_code == 200
     assert any(r["id"] == run["id"] for r in listed.json())
 
-    detail = client.get(f"/api/propicks/runs/{run['id']}", headers=headers)
+    detail = signed_request(client, SECRET, tenant_ext, user, "GET", f"/api/propicks/runs/{run['id']}")
     assert detail.status_code == 200
     body = detail.json()
     ours = [c for c in body["candidates"] if c["company_id"] == good_id]
@@ -162,14 +140,15 @@ def test_propicks_run_endpoints(required_auth):
     assert winner["coverage"]["roic"] == "ok"
     assert all(c["company_id"] != bad_id for c in body["candidates"])
 
-    full = client.get(
-        f"/api/propicks/runs/{run['id']}?only_passed=false", headers=headers
+    full = signed_request(
+        client, SECRET, tenant_ext, user, "GET", f"/api/propicks/runs/{run['id']}",
+        params={"only_passed": "false"},
     )
     assert full.status_code == 200
     full_ids = {c["company_id"] for c in full.json()["candidates"]}
     assert {good_id, bad_id} <= full_ids
 
-    missing = client.get("/api/propicks/runs/999999999", headers=headers)
+    missing = signed_request(client, SECRET, tenant_ext, user, "GET", "/api/propicks/runs/999999999")
     assert missing.status_code == 404
 
     unsigned = TestClient(main.app).get("/api/propicks/runs")
@@ -218,12 +197,12 @@ def test_propicks_run_detail_prices(required_auth):
     db.close()
 
     client = TestClient(main.app)
-    headers = _headers(tenant_ext, "propicks-price-user")
-    created = client.post("/api/propicks/runs", headers=headers)
+    user = "propicks-price-user"
+    created = signed_request(client, SECRET, tenant_ext, user, "POST", "/api/propicks/runs")
     assert created.status_code == 201, created.text
     run_id = created.json()["id"]
 
-    detail = client.get(f"/api/propicks/runs/{run_id}", headers=headers)
+    detail = signed_request(client, SECRET, tenant_ext, user, "GET", f"/api/propicks/runs/{run_id}")
     assert detail.status_code == 200
     by_company = {c["company_id"]: c for c in detail.json()["candidates"]}
     assert by_company[priced_id]["current_price"] == 123.45
