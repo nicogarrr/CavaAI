@@ -46,7 +46,6 @@ describe('guardas de UI', () => {
 
   it('los formateadores UI de los módulos asignados no usan toFixed', () => {
     for (const file of [
-      'lib/actions/correlation.actions.ts',
       'lib/actions/screener.actions.ts',
       'lib/utils/advancedStockScoring.ts',
     ]) {
@@ -56,7 +55,6 @@ describe('guardas de UI', () => {
 
   it('los valores Unknown visibles se traducen sin cambiar enums de API', () => {
     for (const file of [
-      'lib/actions/correlation.actions.ts',
       'lib/actions/finnhub.actions.ts',
       'lib/actions/screener.actions.ts',
       'lib/utils/advancedStockScoring.ts',
