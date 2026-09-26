@@ -14,6 +14,11 @@ from app.models import AlertDelivery, ResearchAlert
 # puede repetir ESE canal una vez pasado el TTL.
 STALE_CLAIM_SECONDS = 600
 
+# Retry-After se honra hasta este cap: valores mayores se truncan (no se
+# afirma cumplimiento del header por encima del cap). Se aplica fijando la
+# elegibilidad del claim (updated_at en el futuro), sin columna dedicada.
+RETRY_AFTER_CAP_SECONDS = 3600
+
 
 class NotificationService:
     """Dispatch alert channels without coupling research logic to one vendor."""
@@ -61,7 +66,14 @@ class NotificationService:
                 self._finish_delivery(db, alert, channel, "failed", "dispatch_error")
                 deliveries[channel] = self._result("failed", error="dispatch_error")
                 continue
-            self._finish_delivery(db, alert, channel, result["status"], result["error"])
+            self._finish_delivery(
+                db,
+                alert,
+                channel,
+                result["status"],
+                result["error"],
+                retry_after=result.get("retry_after"),
+            )
             deliveries[channel] = result
         # Espejo NO autoritativo en metadata_ para lectores antiguos; el
         # estado real vive en alert_deliveries.
@@ -117,6 +129,37 @@ class NotificationService:
         }
 
     @staticmethod
+    def _extract_retry_after(exc: Exception) -> int | None:
+        """Segundos de Retry-After de un 429 (entero o HTTP-date), con cap.
+
+        None si no aplica o no se puede interpretar: el cooldown fijo ya
+        cubre ese caso. Nunca devuelve mas que RETRY_AFTER_CAP_SECONDS.
+        """
+        if not isinstance(exc, httpx.HTTPStatusError):
+            return None
+        if exc.response.status_code != 429:
+            return None
+        raw = exc.response.headers.get("Retry-After")
+        if not raw:
+            return None
+        seconds: int | None = None
+        try:
+            seconds = int(raw)
+        except ValueError:
+            from email.utils import parsedate_to_datetime
+
+            try:
+                retry_at = parsedate_to_datetime(raw)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=UTC)
+                seconds = int((retry_at - datetime.now(UTC)).total_seconds())
+            except (TypeError, ValueError):
+                seconds = None
+        if seconds is None or seconds <= 0:
+            return None
+        return min(seconds, RETRY_AFTER_CAP_SECONDS)
+
+    @staticmethod
     def _classify_send_error(exc: Exception) -> str:
         """Clasifica el resultado de un envio fallido.
 
@@ -127,10 +170,10 @@ class NotificationService:
           cuerpo solo repite el rechazo).
         - 'throttled' (429): el proveedor pidio esperar. No es ambiguo (no se
           entrego), pero el reintento inmediato solo empeora el rate limit:
-          enfria como 'sending' y vuelve via reconciliador. Retry-After no se
-          persiste (sin columna dedicada); el cooldown fijo STALE_CLAIM_SECONDS
-          cubre los valores habituales y, si el proveedor insiste, la
-          reconciliacion vuelve a enfriar (backoff natural acotado por TTL).
+          enfria y vuelve via reconciliador. Retry-After SE respeta hasta
+          RETRY_AFTER_CAP_SECONDS fijando la elegibilidad del claim
+          (updated_at en el futuro); valores por encima del cap se truncan y
+          el reconciliador vuelve a enfriar si el proveedor insiste.
         - 'unknown' (timeout/5xx/otros): ambiguo por definicion - el proveedor
           pudo aceptar y entregar. NUNCA reintento inmediato; reconciliar por
           claim expirado.
@@ -173,7 +216,9 @@ class NotificationService:
             # Webhook errors can contain signed URLs, request bodies and
             # provider paths. Persist only the exception class.
             return self._result(
-                self._classify_send_error(exc), error=type(exc).__name__
+                self._classify_send_error(exc),
+                error=type(exc).__name__,
+                retry_after=self._extract_retry_after(exc),
             )
 
     def _ensure_delivery_row(self, db: Session, alert: ResearchAlert, channel: str) -> None:
@@ -247,14 +292,28 @@ class NotificationService:
         channel: str,
         status: str,
         error: str | None,
+        retry_after: int | None = None,
     ) -> None:
+        values: dict = {"status": status, "last_error": error}
+        if (
+            status == "throttled"
+            and retry_after is not None
+            and retry_after > STALE_CLAIM_SECONDS
+        ):
+            # Retry-After > cooldown: la elegibilidad del claim se fija en el
+            # futuro (updated_at = ahora + retry_after - cooldown), de modo que
+            # el claim expirado solo la reclama pasado Retry-After. Sin esto
+            # el reconciliador reintentaria DENTRO de la ventana del proveedor.
+            values["updated_at"] = datetime.now(UTC) + timedelta(
+                seconds=retry_after - STALE_CLAIM_SECONDS
+            )
         db.execute(
             update(AlertDelivery)
             .where(
                 AlertDelivery.alert_id == alert.id,
                 AlertDelivery.channel == channel,
             )
-            .values(status=status, last_error=error)
+            .values(**values)
         )
         db.commit()
 
@@ -282,7 +341,9 @@ class NotificationService:
             # Never persist upstream exception text: it may contain the bot token,
             # the fully-qualified endpoint, the request body, or a response body.
             return self._result(
-                self._classify_send_error(exc), error=type(exc).__name__
+                self._classify_send_error(exc),
+                error=type(exc).__name__,
+                retry_after=self._extract_retry_after(exc),
             )
 
     @staticmethod
@@ -305,9 +366,17 @@ class NotificationService:
         # Telegram's plain-text sendMessage limit is 4096 characters.
         return text[:4090]
 
-    def _result(self, status: str, error: str | None = None) -> dict:
-        return {
+    def _result(
+        self,
+        status: str,
+        error: str | None = None,
+        retry_after: int | None = None,
+    ) -> dict:
+        result = {
             "status": status,
             "attempted_at": datetime.now(UTC).isoformat(),
             "error": error,
         }
+        if retry_after is not None:
+            result["retry_after"] = retry_after
+        return result

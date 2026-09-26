@@ -1244,9 +1244,15 @@ def reconcile_alert_deliveries(
     'failed' (rechazo 4xx != 429) es permanente y no se toca.
     """
     actor_name = "reconcile_alert_deliveries"
+    db = None
+    lease = None
     try:
         from app.services.notification_service import NotificationService
 
+        # Sesion ANTES del lease: si _session lanza (tenant inactivo), no hay
+        # lease retenido hasta el TTL. El finally libera en cualquier camino
+        # posterior a la adquisicion.
+        db = _session(tenant_id, user_id)
         lease = acquire_job_lease(
             f"reconcile_alert_deliveries:{tenant_id}",
             ttl_seconds=600,
@@ -1254,18 +1260,9 @@ def reconcile_alert_deliveries(
         )
         if lease is None:
             return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
-        db = _session(tenant_id, user_id)
-        try:
-            stats = NotificationService().reconcile_stale_deliveries(
-                db, tenant_id=tenant_id
-            )
-        finally:
-            release_job_lease(
-                f"reconcile_alert_deliveries:{tenant_id}",
-                lease,
-                redis_url=_lease_redis_url(),
-            )
-            db.close()
+        stats = NotificationService().reconcile_stale_deliveries(
+            db, tenant_id=tenant_id
+        )
         return {
             "status": "ok",
             "actor": actor_name,
@@ -1275,6 +1272,15 @@ def reconcile_alert_deliveries(
         }
     except Exception as exc:
         return _handle_actor_error(actor_name, exc, tenant_id=tenant_id)
+    finally:
+        if lease is not None:
+            release_job_lease(
+                f"reconcile_alert_deliveries:{tenant_id}",
+                lease,
+                redis_url=_lease_redis_url(),
+            )
+        if db is not None:
+            db.close()
 
 
 # Short aliases keep operational imports stable while actor names remain descriptive.

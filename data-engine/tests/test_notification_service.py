@@ -573,6 +573,100 @@ def test_429_throttled_cools_down_and_reconciles(monkeypatch, db):
     assert _ThrottledClient.calls.count("https://hooks.example/email") == 2
 
 
+class _LongThrottleClient:
+    """429 con Retry-After superior al cooldown fijo (900 > 600)."""
+
+    calls: list[str] = []
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def post(self, url, json):
+        import httpx as _httpx
+
+        type(self).calls.append(url)
+        request = _httpx.Request("POST", url, json=json)
+        response = _httpx.Response(429, request=request, headers={"Retry-After": "900"})
+        raise _httpx.HTTPStatusError("429 Too Many Requests", request=request, response=response)
+
+
+def test_retry_after_longer_than_cooldown_defers_claim(monkeypatch, db):
+    """Retry-After=900 > STALE_CLAIM_SECONDS: la elegibilidad del claim se
+    fija en el futuro; ni el reconciliador reintenta dentro de la ventana
+    del proveedor (a los ~605s), y si lo hace pasada (a los ~905s)."""
+    _LongThrottleClient.calls = []
+    monkeypatch.setattr(notification_service.httpx, "Client", _LongThrottleClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    alert = _alert(db, ["email"])
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["status"] == "throttled"
+    assert deliveries["email"]["retry_after"] == 900
+
+    row = db.execute(
+        select(AlertDelivery).where(AlertDelivery.alert_id == alert.id)
+    ).scalar_one()
+    stored = row.updated_at
+    if stored.tzinfo is None:
+        stored = stored.replace(tzinfo=UTC)
+    assert stored > datetime.now(UTC)  # elegibilidad empujada al futuro
+
+    # Simula ~605s transcurridos: aun dentro de la ventana Retry-After.
+    db.execute(
+        update(AlertDelivery)
+        .where(AlertDelivery.alert_id == alert.id)
+        .values(updated_at=stored - timedelta(seconds=605))
+    )
+    db.commit()
+    stats = NotificationService().reconcile_stale_deliveries(db)
+    assert stats["candidates"] == 0
+    assert _LongThrottleClient.calls.count("https://hooks.example/email") == 1
+
+    # Simula ~905s transcurridos: ventana respetada, reconciliador reintenta.
+    db.execute(
+        update(AlertDelivery)
+        .where(AlertDelivery.alert_id == alert.id)
+        .values(updated_at=stored - timedelta(seconds=905))
+    )
+    db.commit()
+    stats = NotificationService().reconcile_stale_deliveries(db)
+    assert stats["candidates"] == 1
+    assert _LongThrottleClient.calls.count("https://hooks.example/email") == 2
+
+
+def test_retry_after_is_capped(monkeypatch, db):
+    """Retry-After por encima del cap se trunca: no se afirma cumplimiento
+    del header mas alla de RETRY_AFTER_CAP_SECONDS."""
+
+    class _HugeThrottleClient(_LongThrottleClient):
+        calls: list[str] = []
+
+        def post(self, url, json):
+            import httpx as _httpx
+
+            type(self).calls.append(url)
+            request = _httpx.Request("POST", url, json=json)
+            response = _httpx.Response(
+                429, request=request, headers={"Retry-After": "7200"}
+            )
+            raise _httpx.HTTPStatusError(
+                "429 Too Many Requests", request=request, response=response
+            )
+
+    monkeypatch.setattr(notification_service.httpx, "Client", _HugeThrottleClient)
+    monkeypatch.setattr(notification_service, "get_settings", _webhook_settings)
+
+    alert = _alert(db, ["email"])
+    deliveries = NotificationService().dispatch(db, alert)
+    assert deliveries["email"]["retry_after"] == notification_service.RETRY_AFTER_CAP_SECONDS
+
+
 def test_reconciler_skips_fresh_rows_and_redispatches_stale_unknown(monkeypatch, db):
     """El reconciliador solo toca claims expirados: filas 'unknown' frescas
     (aun enfriando) y entregadas quedan intactas."""

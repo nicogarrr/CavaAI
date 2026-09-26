@@ -49,7 +49,7 @@ def _service_with_stubbed_outbox():
     svc = notification_service.NotificationService()
     svc._ensure_delivery_row = lambda db, alert, channel: None
     svc._claim_delivery = lambda db, alert, channel: True
-    svc._finish_delivery = lambda db, alert, channel, status, error: None
+    svc._finish_delivery = lambda db, alert, channel, status, error, retry_after=None: None
     return svc
 
 def _alert(channels: list[str]):
