@@ -2,6 +2,8 @@
 
 import { Card } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { formatNumber } from '@/lib/format';
+import { etiquetaSector } from '@/lib/labels';
 
 interface SectorComparisonChartProps {
     categoryScores: {
@@ -67,7 +69,8 @@ export default function SectorComparisonChart({
             <div className="mb-6">
                 <h3 className="text-xl font-bold text-gray-100 mb-2">Comparación con Sector</h3>
                 <p className="text-sm text-gray-400">
-                    Comparación de métricas con el promedio del sector <span className="font-semibold text-teal-400">{sector}</span>
+                    Comparación de métricas con el promedio del sector{' '}
+                    <span className="font-semibold text-teal-400">{etiquetaSector(sector)}</span>
                 </p>
             </div>
 
@@ -89,19 +92,19 @@ export default function SectorComparisonChart({
                                 <div className="flex items-center gap-4">
                                     <div className="text-right">
                                         <div className="text-sm font-bold text-gray-100">
-                                            {stockScore.toFixed(0)}
+                                            {formatNumber(stockScore, { maximumFractionDigits: 0 })}
                                         </div>
                                         <div className="text-xs text-gray-500">Acción</div>
                                     </div>
                                     <div className="text-right">
                                         <div className="text-sm font-medium text-gray-400">
-                                            {sectorAvg.toFixed(0)}
+                                            {formatNumber(sectorAvg, { maximumFractionDigits: 0 })}
                                         </div>
                                         <div className="text-xs text-gray-500">Sector</div>
                                     </div>
                                     <div className={`text-right min-w-[60px] ${getVsSectorColor(vs)}`}>
                                         <div className="text-sm font-bold">
-                                            {vs > 0 ? '+' : ''}{vs.toFixed(0)}
+                                            {formatNumber(vs, { maximumFractionDigits: 0, signDisplay: 'auto' })}
                                         </div>
                                         <div className="text-xs">vs Sector</div>
                                     </div>

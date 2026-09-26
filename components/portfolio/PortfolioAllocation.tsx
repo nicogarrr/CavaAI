@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
 import { PieChart as PieChartIcon } from 'lucide-react';
+import { formatPercent } from '@/lib/format';
 import { COLORS, type AllocationSlice } from './PortfolioAllocationChart';
 
 const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChart'), {
@@ -88,7 +89,7 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
                                 </Link>
                             </div>
                             <span className="text-sm text-gray-400 tabular-nums">
-                                {item.percentage.toFixed(1)}%
+                                {formatPercent(item.percentage, { fromRatio: false, digits: 1 })}
                             </span>
                         </div>
                     ))}

@@ -20,6 +20,8 @@ import {
 } from '@/lib/actions/research-tools.actions';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
+import { formatDate, formatNumber, formatPercent, NA } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -52,7 +54,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 function label(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return NA;
   return STATUS_LABELS[value] ?? value.replaceAll('_', ' ');
 }
 
@@ -72,7 +74,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
     data = await fetchAll();
   } catch (error) {
     if (isBackendUnavailableError(error)) {
-      return <BackendOffline feature="Knowledge Library" retryHref="/knowledge" />;
+      return <BackendOffline feature={t('knowledge.library')} retryHref="/knowledge" />;
     }
     throw error;
   }
@@ -96,7 +98,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
       <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase text-teal-300">Conocimiento de inversión</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-100">Biblioteca de conocimiento</h1>
+          <h1 className="mt-1 text-3xl font-bold text-gray-100">{t('knowledge.library')}</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
             Libros, cartas y casos de estudio separados de la evidencia de empresas, con principios aprobados por humanos y trazables.
           </p>
@@ -118,7 +120,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         ].map(([label, value]) => (
           <div className="rounded-xl border border-gray-800 bg-[#101010] p-4" key={label}>
             <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
-            <div className="mt-2 text-2xl font-semibold text-gray-100">{value}</div>
+            <div className="mt-2 text-2xl font-semibold text-gray-100">{formatNumber(Number(value), { maximumFractionDigits: 0 })}</div>
           </div>
         ))}
       </section>
@@ -128,7 +130,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
           <div className="font-semibold">Extracción en segundo plano en curso</div>
           <div className="mt-2 grid gap-1 text-amber-200/80">
             {activeJobs.map((job) => (
-              <div key={job.id}>Tarea #{job.id} · {documentNames.get(job.entity_id ?? -1) ?? `documento ${job.entity_id}`} · {label(job.status)}{job.progress_total ? ` · lote ${job.progress_current}/${job.progress_total}` : ''}</div>
+              <div key={job.id}>Tarea #{formatNumber(job.id, { maximumFractionDigits: 0 })} · {documentNames.get(job.entity_id ?? -1) ?? `documento ${job.entity_id}`} · {label(job.status)}{job.progress_total ? ` · lote ${formatNumber(job.progress_current, { maximumFractionDigits: 0 })}/${formatNumber(job.progress_total, { maximumFractionDigits: 0 })}` : ''}</div>
             ))}
           </div>
         </section>
@@ -138,7 +140,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         <MutationForm action={createKnowledgeCollection} className="rounded-xl border border-gray-800 bg-[#101010] p-5" resetOnSuccess successMessage="Colección creada">
           <div className="mb-4 flex items-center gap-2"><Library className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Nueva colección</h2></div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Input className="h-11 w-full" name="name" placeholder="Compounders de calidad" required />
+            <Input className="h-11 w-full" name="name" placeholder={t('knowledge.qualityCompounders')} required />
             <Input className="h-11 w-full" name="collection_type" defaultValue="custom" placeholder="Tipo de colección" required />
             <Textarea className="min-h-[88px] w-full sm:col-span-2" name="description" placeholder="Ámbito y uso previsto" />
             <Button className="h-11 w-full sm:col-span-2 sm:w-fit" type="submit">Crear colección</Button>
@@ -146,7 +148,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         </MutationForm>
 
         <MutationForm id="upload-knowledge" action={uploadKnowledgeDocument} className="rounded-xl border border-gray-800 bg-[#101010] p-5" resetOnSuccess successMessage="Documento ingerido">
-          <div className="mb-4 flex items-center gap-2"><UploadCloud className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Subir conocimiento</h2></div>
+          <div className="mb-4 flex items-center gap-2"><UploadCloud className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">{t('knowledge.upload')}</h2></div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input className="h-11 w-full" name="title" placeholder="Título del documento" required />
             <select className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" name="collection_id" defaultValue="">
@@ -154,7 +156,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
               {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
             </select>
             <Input className="h-11 w-full" name="author" placeholder="Autor" />
-            <Input className="h-11 w-full" name="document_type" defaultValue="book" placeholder="libro, carta, paper" required />
+            <Input className="h-11 w-full" name="document_type" defaultValue="book" placeholder="libro, carta, artículo" required />
             <Input className="h-11 w-full" name="publication_date" type="date" />
             <Input className="h-11 w-full" name="language" defaultValue="en" placeholder="Idioma" />
             <Input className="h-11 w-full sm:col-span-2" name="source_url" placeholder="URL de la fuente (opcional)" type="url" />
@@ -165,7 +167,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
       </section>
 
       <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
-        <div className="mb-4 flex items-center gap-2"><BookOpen className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">Documentos</h2></div>
+        <div className="mb-4 flex items-center gap-2"><BookOpen className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">{t('knowledge.documents')}</h2></div>
         {!documents.length ? <div className="py-2 text-sm text-gray-500"><p>Aún no hay documentos de conocimiento.</p><a className="mt-2 inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 hover:border-teal-600 hover:text-teal-200" href="#upload-knowledge">Sube tu primer libro, carta o caso de estudio</a></div> : null}
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[640px] text-left text-sm">
@@ -176,7 +178,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
                 const busy = job?.status === 'queued' || job?.status === 'running';
                 return (
                 <tr className="border-b border-gray-900" key={document.id}>
-                  <td className="py-3"><div className="font-medium text-gray-200">{document.title}</div><div className="text-xs text-gray-500">{document.author ?? 'Autor desconocido'} · {document.publication_date ?? 'sin fecha'}</div></td>
+                  <td className="py-3"><div className="font-medium text-gray-200">{document.title}</div><div className="text-xs text-gray-500">{document.author ?? 'Autor desconocido'} · {formatDate(document.publication_date, undefined, NA)}</div></td>
                   <td className="py-3 text-gray-400">{document.collection_id ? collectionNames.get(document.collection_id) : 'Sin colección'}</td>
                   <td className="py-3 text-gray-400">{document.document_type}</td>
                   <td className="py-3 text-gray-500">{String(document.metadata.parser ?? 'desconocido')}</td>
@@ -195,7 +197,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
             return (
               <article className="min-w-0 rounded-lg border border-gray-800 bg-black/30 p-4 break-words" key={document.id}>
                 <div className="min-w-0 font-medium text-gray-200">{document.title}</div>
-                <div className="mt-1 text-xs text-gray-500">{document.author ?? 'Autor desconocido'} · {document.publication_date ?? 'sin fecha'}</div>
+                <div className="mt-1 text-xs text-gray-500">{document.author ?? 'Autor desconocido'} · {formatDate(document.publication_date, undefined, NA)}</div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{document.collection_id ? collectionNames.get(document.collection_id) : 'Sin colección'}</Badge>
                   <Badge variant="outline">{document.document_type}</Badge>
@@ -219,7 +221,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         <section className="min-w-0 rounded-xl border border-teal-900/50 bg-[#101010] p-4 sm:p-5">
           <div className="mb-4 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase text-teal-300">Explorador de fragmentos</p><h2 className="text-lg font-semibold text-gray-100">{selectedDocument.title}</h2></div><Button asChild size="sm" variant="ghost"><Link href="/knowledge">Cerrar</Link></Button></div>
           <div className="grid max-h-[620px] gap-3 overflow-y-auto pr-2">
-            {chunks.map((chunk) => <article className="rounded-lg border border-gray-800 bg-black/30 p-4" key={chunk.id}><div className="mb-2 flex justify-between text-xs text-gray-500"><span>Fragmento {chunk.chunk_index + 1}</span><span>página {chunk.page_number ?? 's/d'} · {chunk.token_count} tokens</span></div><p className="whitespace-pre-wrap text-sm leading-6 text-gray-300">{chunk.content}</p></article>)}
+            {chunks.map((chunk) => <article className="rounded-lg border border-gray-800 bg-black/30 p-4" key={chunk.id}><div className="mb-2 flex justify-between text-xs text-gray-500"><span>Fragmento {formatNumber(Number(chunk.chunk_index) + 1, { maximumFractionDigits: 0 })}</span><span>página {chunk.page_number === null || chunk.page_number === undefined ? NA : formatNumber(chunk.page_number, { maximumFractionDigits: 0 })} · {formatNumber(chunk.token_count, { maximumFractionDigits: 0 })} tokens</span></div><p className="whitespace-pre-wrap text-sm leading-6 text-gray-300">{chunk.content}</p></article>)}
             {!chunks.length ? <p className="text-sm text-gray-500">Este documento no tiene fragmentos.</p> : null}
           </div>
         </section>
@@ -230,10 +232,10 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         <div className="grid gap-4 xl:grid-cols-2">
           {visiblePrinciples.map((principle) => (
             <article className="min-w-0 rounded-lg border border-gray-800 bg-black/30 p-4 break-words" key={principle.id}>
-              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={statusTone(principle.status)}>{label(principle.status)}</Badge><Badge variant="outline">{principle.category}</Badge><span className="text-xs text-gray-500">v{principle.version} · confianza {(Number(principle.confidence) * 100).toFixed(0)}%</span></div>
+              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={statusTone(principle.status)}>{label(principle.status)}</Badge><Badge variant="outline">{principle.category}</Badge><span className="text-xs text-gray-500">v{formatNumber(Number(principle.version), { maximumFractionDigits: 0 })} · confianza {formatPercent(Number(principle.confidence), { digits: 0 })}</span></div>
               <h3 className="mt-3 font-semibold leading-6 text-gray-100">{principle.principle}</h3>
               <blockquote className="mt-3 border-l-2 border-teal-900 pl-3 text-sm italic leading-6 text-gray-400">{principle.exact_fragment}</blockquote>
-              <div className="mt-3 text-xs text-gray-500">{documentNames.get(principle.knowledge_document_id) ?? `Documento #${principle.knowledge_document_id}`} · página {principle.page_number ?? 's/d'}</div>
+              <div className="mt-3 text-xs text-gray-500">{documentNames.get(principle.knowledge_document_id) ?? `Documento #${principle.knowledge_document_id}`} · página {principle.page_number === null || principle.page_number === undefined ? NA : formatNumber(principle.page_number, { maximumFractionDigits: 0 })}</div>
               {principle.application_conditions.length ? <p className="mt-3 text-sm text-gray-300"><span className="font-semibold text-gray-400">Aplicar cuando:</span> {principle.application_conditions.join('; ')}</p> : null}
               {principle.exceptions.length ? <p className="mt-2 text-sm text-amber-200"><span className="font-semibold">Excepciones:</span> {principle.exceptions.join('; ')}</p> : null}
               {principle.semantic_duplicate_of_id ? <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-2 text-xs text-amber-200">Posible duplicado del principio #{principle.semantic_duplicate_of_id}. Revísalo antes de aprobar.</div> : null}

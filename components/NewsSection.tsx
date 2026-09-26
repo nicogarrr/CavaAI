@@ -1,4 +1,5 @@
 import { getNews } from '@/lib/actions/finnhub.actions';
+import { formatMarketDateTime } from '@/lib/format';
 import Image from 'next/image';
 
 interface NewsSectionProps {
@@ -34,17 +35,20 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                                 href={article.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="block min-w-0 p-4 bg-[#141414] hover:bg-[#1a1a1a] rounded-lg border border-gray-800 transition-all duration-200 group"
+                                className="block min-w-0 p-4 bg-surface-2 hover:bg-surface-1 rounded-lg border border-gray-800 transition-all duration-200 group"
                             >
                                 <div className="flex flex-col min-[420px]:flex-row gap-3 sm:gap-4">
                                     {article.image && (
                                         <div className="h-40 w-full min-w-0 shrink-0 relative rounded-lg overflow-hidden min-[420px]:h-24 min-[420px]:w-32">
                                             <Image
                                                 src={article.image}
-                                                alt={article.headline}
+                                                /* El titular ya está en el <h3> de al lado: con alt
+                                                   textual el lector de pantalla lo anuncia dos veces. */
+                                                alt=""
                                                 fill
                                                 className="object-cover"
-                                                unoptimized
+                                                sizes="(min-width: 420px) 128px, 100vw"
+                                                priority={index === 0}
                                             />
                                         </div>
                                     )}
@@ -63,7 +67,7 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                                             )}
                                             {article.datetime && (
                                                 <span>
-                                                    {new Date(article.datetime * 1000).toLocaleDateString('es-ES', {
+                                                    {formatMarketDateTime(new Date(article.datetime * 1000), {
                                                         day: 'numeric',
                                                         month: 'short',
                                                         year: 'numeric',
