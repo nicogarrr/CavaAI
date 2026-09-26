@@ -1,6 +1,33 @@
+import { createHmac } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 const runUiE2E = process.env.E2E_UI_RUN === "1";
+
+const uiBackendURL = process.env.E2E_UI_BACKEND_URL ?? "http://127.0.0.1:8100";
+const e2eResearchSecret =
+  process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
+
+// /research/MSFT solo renderiza el workspace si la empresa existe: el spec
+// asegura su propio dato en vez de depender del estado de otros specs
+// (misma firma que el harness de playwright.config).
+test.beforeAll(async () => {
+  if (!runUiE2E) return;
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const res = await fetch(`${uiBackendURL}/api/companies/ensure`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-CavaAI-Tenant": "e2e-api-tenant",
+      "X-CavaAI-User": "e2e-api-user",
+      "X-CavaAI-Timestamp": timestamp,
+      "X-CavaAI-Signature": createHmac("sha256", e2eResearchSecret)
+        .update(`e2e-api-tenant:e2e-api-user:${timestamp}`)
+        .digest("hex"),
+    },
+    body: JSON.stringify({ ticker: "MSFT", name: "Microsoft Corporation" }),
+  });
+  if (!res.ok) throw new Error(`ensure MSFT fallo: ${res.status} ${await res.text()}`);
+});
 
 test.describe("research thesis workspace", () => {
   test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
