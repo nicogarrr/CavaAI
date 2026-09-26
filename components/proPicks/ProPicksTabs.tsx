@@ -18,9 +18,10 @@ interface ProPicksTabsProps {
     strategies: Array<{ id: string; name: string; description: string }>;
     initialPicks: ProPick[];
     generatedAt?: string;
+    passedCount?: number | null;
 }
 
-export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: ProPicksTabsProps) {
+export default function ProPicksTabs({ strategies, initialPicks, generatedAt, passedCount = null }: ProPicksTabsProps) {
     const merged = mergeStrategies(strategies);
     const [currentStrategy, setCurrentStrategy] = useState<string>(merged[0]?.id ?? 'adaptive');
     const [walkForward, setWalkForward] = useState<WalkForwardBacktestResult | null>(null);
@@ -65,7 +66,15 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
 
     return (
         <Tabs defaultValue="picks" className="mt-6 w-full min-w-0">
-            <TabsList className="flex h-auto w-max min-w-full snap-x gap-1 overflow-x-auto border border-gray-700 bg-gray-800 pb-2 text-gray-400 sm:inline-flex sm:h-9 sm:w-auto sm:overflow-visible sm:pb-[3px]">
+            {/* `overflow-x-auto` en movil: con teclado no hay barra de scroll, asi que
+                el list scrollea necesita ser alcanzable (WCAG 2.1.1). No se le pone
+                `role="region"` porque sobrescribiria el `tablist` de Radix y la
+                navegacion con flechas; `tabIndex` + nombre accesible bastan. */}
+            <TabsList
+                tabIndex={0}
+                aria-label="Secciones de Pro Picks"
+                className="flex h-auto w-max min-w-full snap-x gap-1 overflow-x-auto border border-gray-700 bg-gray-800 pb-2 text-gray-400 sm:inline-flex sm:h-9 sm:w-auto sm:overflow-visible sm:pb-[3px]"
+            >
                 <TabsTrigger value="picks" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Picks IA
                 </TabsTrigger>
@@ -81,7 +90,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
             </TabsList>
 
             <TabsContent value="picks" className="mt-6">
-                <EnhancedProPicksContent initialPicks={initialPicks} generatedAt={generatedAt} />
+                <EnhancedProPicksContent initialPicks={initialPicks} generatedAt={generatedAt} initialPassedCount={passedCount} />
             </TabsContent>
 
             <TabsContent value="estrategias" className="mt-6 space-y-4">
@@ -125,12 +134,13 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                     <Button
                         onClick={() => runBacktest()}
                         disabled={loading}
+                        aria-busy={loading}
                         className="h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 md:w-auto"
                     >
                         {loading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                         ) : (
-                            <Play className="h-4 w-4" />
+                            <Play aria-hidden="true" className="h-4 w-4" />
                         )}
                         {loading ? 'Calculando...' : 'Ejecutar backtest'}
                     </Button>
@@ -145,12 +155,13 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                         <Button
                             onClick={() => runBacktest()}
                             disabled={loading}
+                            aria-busy={loading}
                             className="mt-4 h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 sm:w-auto"
                         >
                             {loading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                             ) : (
-                                <Play className="h-4 w-4" />
+                                <Play aria-hidden="true" className="h-4 w-4" />
                             )}
                             Reintentar
                         </Button>
@@ -158,8 +169,8 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
                 )}
 
                 {loading && !walkForward && (
-                    <Card className="flex items-center justify-center gap-3 rounded-lg border border-gray-700 bg-gray-800/50 p-10 text-gray-400">
-                        <Loader2 className="h-5 w-5 animate-spin text-teal-400" />
+                    <Card aria-busy="true" className="flex items-center justify-center gap-3 rounded-lg border border-gray-700 bg-gray-800/50 p-10 text-gray-400">
+                        <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-teal-400" />
                         <span>Calculando backtest walk-forward con datos históricos... puede tardar unos segundos.</span>
                     </Card>
                 )}
@@ -168,7 +179,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
 
                 {!loading && !error && !walkForward && (
                     <Card className="flex flex-col items-center gap-3 rounded-lg border border-gray-700 bg-gray-800/50 p-10 text-gray-500">
-                        <BarChart3 className="h-10 w-10 text-gray-600" />
+                        <BarChart3 aria-hidden="true" className="h-10 w-10 text-gray-500" />
                         <p className="text-sm">Pulsa «Ejecutar backtest» para lanzar la simulación walk-forward point-in-time.</p>
                     </Card>
                 )}

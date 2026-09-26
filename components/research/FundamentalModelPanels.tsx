@@ -1,4 +1,4 @@
-import { formatCompact, formatPercent } from '@/lib/format';
+import { formatCompact, formatNumber, formatPercent, NA } from '@/lib/format';
 import { BarChart3, BrainCircuit, CheckCircle2, GitBranch } from 'lucide-react';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
@@ -15,12 +15,12 @@ import {
 } from '@/lib/actions/research.actions';
 
 function compactNumber(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return 'N/A';
+  if (value == null || !Number.isFinite(value)) return NA;
   return formatCompact(value, { maximumFractionDigits: 1 });
 }
 
 function percentage(value: number | null | undefined) {
-  return value == null || !Number.isFinite(value) ? 'N/A' : formatPercent(value);
+  return value == null || !Number.isFinite(value) ? NA : formatPercent(value);
 }
 
 /** Frases «what must be true» en español (F24). El backend las genera en
@@ -98,7 +98,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
     return (
       <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="flex items-center gap-2">
-          <BrainCircuit className="h-5 w-5 text-teal-300" />
+          <BrainCircuit aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Modelo fundamental a largo plazo</h2>
         </div>
         <p className="mt-3 text-sm text-gray-500">No se pudo construir el modelo con los datos disponibles.</p>
@@ -116,11 +116,11 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
     <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
         <div className="flex items-center gap-2">
-          <BrainCircuit className="h-5 w-5 text-teal-300" />
+          <BrainCircuit aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Modelo fundamental a largo plazo</h2>
         </div>
         <span className="text-xs uppercase tracking-wide text-gray-500 md:ml-auto">
-          {model.horizon_years} años · {model.status} · cobertura {model.source_coverage.coverage_percent.toFixed(0)}%
+          {model.horizon_years} años · {model.status} · cobertura {formatNumber(model.source_coverage.coverage_percent, { maximumFractionDigits: 0 })} %
         </span>
       </div>
       <p className="mb-4 text-xs leading-5 text-gray-500">
@@ -168,15 +168,16 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
               );
             })}
           </div>
-          <div className="hidden overflow-x-auto md:block">
+          <div aria-label="Escenarios del modelo" className="hidden overflow-x-auto md:block" role="region" tabIndex={0}>
             <table className="w-full min-w-[640px] text-left text-sm">
+              <caption className="sr-only">Escenarios bajista, base y alcista del modelo, con ingresos, FCF, margen FCF y valor por acción</caption>
               <thead className="text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="border-b border-gray-800 py-2">Escenario</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Ingresos</th>
-                  <th className="border-b border-gray-800 py-2 text-right">FCF</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Margen FCF</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Valor/acción</th>
+                  <th className="border-b border-gray-800 py-2" scope="col">Escenario</th>
+                  <th className="border-b border-gray-800 py-2 text-right" scope="col">Ingresos</th>
+                  <th className="border-b border-gray-800 py-2 text-right" scope="col">FCF</th>
+                  <th className="border-b border-gray-800 py-2 text-right" scope="col">Margen FCF</th>
+                  <th className="border-b border-gray-800 py-2 text-right" scope="col">Valor/acción</th>
                 </tr>
               </thead>
               <tbody>
@@ -184,7 +185,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
                   const point = scenario.terminal_year;
                   return (
                     <tr key={name} className="border-b border-gray-900 last:border-0">
-                      <td className="py-3 font-semibold capitalize text-gray-200">{translate(SCENARIO_LABELS, name)}</td>
+                      <th className="py-3 text-left text-sm font-semibold capitalize text-gray-200" scope="row">{translate(SCENARIO_LABELS, name)}</th>
                       <td className="py-3 text-right text-gray-300">{compactNumber(point?.revenue)}</td>
                       <td className="py-3 text-right text-gray-300">{compactNumber(point?.free_cash_flow)}</td>
                       <td className="py-3 text-right text-gray-300">{percentage(point?.fcf_margin)}</td>
@@ -262,7 +263,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
           <ul className="space-y-2 text-sm">
             {model.what_must_be_true.slice(0, 6).map((item) => (
               <li key={item.id} className="flex gap-2 text-gray-300">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
+                <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
                 <span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint)}</span>
               </li>
             ))}
@@ -302,7 +303,7 @@ export function DecisionAndRealityPanel({
     <section className="grid gap-6 lg:grid-cols-2">
       <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
-          <GitBranch className="h-5 w-5 text-teal-300" />
+          <GitBranch aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Diario de decisiones</h2>
         </div>
         <MutationForm
@@ -341,7 +342,7 @@ export function DecisionAndRealityPanel({
 
       <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-teal-300" />
+          <BarChart3 aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Expectativa vs realidad</h2>
           <MutationForm action={reviewResearchExpectations.bind(null, ticker)} className="ml-auto" successMessage="Forecasts comparados con los hechos disponibles">
             <Button size="sm" type="submit" variant="outline">Comparar ahora</Button>
@@ -364,20 +365,21 @@ export function DecisionAndRealityPanel({
                 </div>
               ))}
             </div>
-            <div className="hidden max-h-[560px] overflow-auto md:block">
+            <div aria-label="Revisión de forecasts" className="hidden max-h-[560px] overflow-auto md:block" role="region" tabIndex={0}>
             <table className="w-full text-left text-sm">
+              <caption className="sr-only">Revisión de forecasts: año y KPI, valor esperado, valor real y estado de la comparación</caption>
               <thead className="text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="border-b border-gray-800 py-2">Año / KPI</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Esperado</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Real</th>
-                  <th className="border-b border-gray-800 py-2 text-right">Estado</th>
+                  <th className="border-b border-gray-800 py-2" scope="col">Año / KPI</th>
+                  <th className="border-b border-gray-800 py-2 text-right" scope="col">Esperado</th>
+                  <th className="border-b border-gray-800 py-2 text-right" scope="col">Real</th>
+                  <th className="border-b border-gray-800 py-2 text-right" scope="col">Estado</th>
                 </tr>
               </thead>
               <tbody>
                 {reviews.slice(0, 40).map((review) => (
-                  <tr className="border-b border-gray-900" key={review.id}>
-                    <td className="py-3 text-gray-300">{review.fiscal_year} · {review.metric}</td>
+                  <tr key={review.id} className="border-b border-gray-900">
+                    <th className="py-3 text-left text-sm font-normal text-gray-300" scope="row">{review.fiscal_year} · {review.metric}</th>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.expected_value)}</td>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.actual_value)}</td>
                     <td className="py-3 text-right"><Badge variant="outline">{translate(REVIEW_STATUS_LABELS, review.status, review.status)}</Badge></td>

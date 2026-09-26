@@ -15,12 +15,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Search, TrendingUp, Loader2 } from 'lucide-react';
 import { addTransaction } from '@/lib/actions/portfolio.actions';
-import { searchStocks } from '@/lib/actions/finnhub.actions';
+import { searchStocksWithStatus } from '@/lib/actions/finnhub.actions';
+import { createLatestRequestGate } from '@/lib/latest-request';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
 import { hasTransactionErrors, validateTransactionForm, type TransactionFormErrors } from './transactionValidation';
-import { parseLocalizedNumber } from '@/lib/format';
+import { parseLocalizedNumber, todayLocal } from '@/lib/format';
 
 type Props = {
   userId: string;
@@ -58,6 +59,8 @@ export default function AddTransactionButton({ userId }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<StockResult[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const searchGateRef = useRef(createLatestRequestGate());
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [formData, setFormData] = useState({
@@ -67,31 +70,49 @@ export default function AddTransactionButton({ userId }: Props) {
     currency: 'USD',
     quantity: '',
     price: '',
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocal(),
     notes: '',
   });
 
   // Búsqueda inteligente con debounce
   const handleSearch = useCallback(async (query: string) => {
+    // Sello de petición más reciente: una respuesta tardía de una query
+    // vieja no pisa resultados ni errores de la nueva (race F215).
+    const ticket = searchGateRef.current.begin();
     if (query.length < 1) {
       setSearchResults([]);
       setShowResults(false);
+      setSearchError(false);
       return;
     }
 
     setSearchLoading(true);
     try {
-      const results = await searchStocks(query);
-      setSearchResults(results?.slice(0, 8) || []);
-      setShowResults(true);
+      const result = await searchStocksWithStatus(query);
+      if (!searchGateRef.current.isLatest(ticket)) return;
+      if (result.status === 'error') {
+        // Fallo del proveedor: no fingir "sin resultados" (F215).
+        setSearchError(true);
+        setShowResults(false);
+      } else {
+        setSearchError(false);
+        setSearchResults(result.stocks.slice(0, 8));
+        setShowResults(true);
+      }
     } catch (error) {
+      if (!searchGateRef.current.isLatest(ticket)) return;
       console.error('Error searching stocks:', error);
-      setSearchResults([]);
+      setSearchError(true);
+      setShowResults(false);
     }
     setSearchLoading(false);
   }, []);
 
   useEffect(() => {
+    // La query cambió: invalida YA cualquier búsqueda en vuelo. No esperar
+    // al debounce: una respuesta tardía de la query anterior no puede
+    // pintar resultados ni errores sobre la nueva (ni repintar tras borrar).
+    searchGateRef.current.invalidate();
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -103,6 +124,8 @@ export default function AddTransactionButton({ userId }: Props) {
     } else {
       setSearchResults([]);
       setShowResults(false);
+      setSearchError(false);
+      setSearchLoading(false);
     }
 
     return () => {
@@ -162,7 +185,7 @@ export default function AddTransactionButton({ userId }: Props) {
         currency: 'USD',
         quantity: '',
         price: '',
-        date: new Date().toISOString().split('T')[0],
+        date: todayLocal(),
         notes: '',
       });
       setSearchQuery('');
@@ -217,6 +240,11 @@ export default function AddTransactionButton({ userId }: Props) {
             </div>
 
             {/* Dropdown de resultados */}
+            {searchError && (
+              <p className="mt-1 text-xs text-red-400">
+                No se pudo buscar ahora mismo (fallo del proveedor de datos). Inténtalo de nuevo en unos segundos.
+              </p>
+            )}
             {showResults && searchResults.length > 0 && (
               <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto">
                 {searchResults.map((stock, index) => (

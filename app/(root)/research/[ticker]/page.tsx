@@ -1,9 +1,12 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
+import { cache } from 'react';
 import {
   ArrowLeft,
   Database,
   FileDown,
   FileText,
+  History,
   RefreshCcw,
   Search,
   ShieldCheck,
@@ -15,14 +18,16 @@ import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
 import { MoatPanel } from '@/components/research/MoatPanel';
-import CollapsiblePanel from '@/components/research/CollapsiblePanel';
 import {
   DecisionAndRealityPanel,
   LongTermModelPanel,
 } from '@/components/research/FundamentalModelPanels';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { Panel } from '@/components/ui/panel';
+import { Stat } from '@/components/ui/stat';
 import { Textarea } from '@/components/ui/textarea';
 import {
   askResearchCompanyChat,
@@ -60,36 +65,84 @@ import ThesisApproveButton from '@/components/research/ThesisApproveButton';
 import CitationsList from '@/components/chat/CitationsList';
 import FollowButton from '@/components/screener/FollowButton';
 import ThesisGenerateButton from '@/components/research/ThesisGenerateButton';
-import { formatCompact, formatDate, formatDateTime, formatMoney, formatPercent } from '@/lib/format';
+import { formatCompact, formatDate, formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { glossary, moatGlossaryKey } from '@/lib/glossary';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const views = [
-  ['overview', 'Resumen'],
-  ['thesis', 'Tesis'],
-  ['changes', 'Qué ha cambiado'],
-  ['financials', 'Financieros'],
-  ['model', 'Modelo a largo plazo'],
-  ['market-opportunity', 'Oportunidad de mercado'],
-  ['moat', 'Foso'],
-  ['peers', 'Comparables'],
-  ['valuation', 'Valoración'],
-  ['documents', 'Documentos'],
-  ['sources', 'Fuentes'],
-  ['chat', 'Chat'],
+/**
+ * El snapshot alimenta la página y el título. Sin esta memoización, el
+ * `generateMetadata` y el render de la página abrirían dos veces la misma
+ * llamada (`cache: 'no-store'` no deduplica).
+ */
+const readSnapshot = cache((ticker: string) => getResearchCompanySnapshot(ticker));
+
+/**
+ * La ficha tiene 16 destinos (12 vistas + 4 subrutas). Pintados como 16
+ * píldoras planas no se escanean: el usuario no llegaba a "ver la tesis" en
+ * 5 segundos. Se agrupan en las 6 etapas del flujo inversor (ver → entender →
+ * decidir → registrar) y el selector pasa a ser de grupo, con los módulos de
+ * ese grupo debajo.
+ *
+ * COMPATIBILIDAD: los `?view=` antiguos siguen siendo URLs válidas. Cada
+ * módulo conserva su clave histórica (`overview`, `thesis`, `chat`...) y
+ * `asView` acepta tanto una clave de módulo como una clave de grupo, así que
+ * `/research/AAPL?view=thesis` y `/research/AAPL?view=tesis` abren lo mismo.
+ */
+const GROUPS = [
+  { key: 'resumen', label: 'Resumen', entry: 'overview' },
+  { key: 'tesis', label: 'Tesis', entry: 'thesis' },
+  { key: 'financieros', label: 'Financieros', entry: 'financials' },
+  { key: 'modelo', label: 'Modelo', entry: 'model' },
+  { key: 'evidencia', label: 'Evidencia', entry: 'documents' },
+  { key: 'seguimiento', label: 'Seguimiento', entry: 'changes' },
 ] as const;
 
-type View = (typeof views)[number][0];
+const MODULES = [
+  { key: 'overview', label: 'Vista general', group: 'resumen' },
+  { key: 'moat', label: 'Foso', group: 'resumen' },
+  { key: 'thesis', label: 'Tesis', group: 'tesis' },
+  { key: 'financials', label: 'Financieros', group: 'financieros' },
+  { key: 'terminal', label: 'Terminal financiero', group: 'financieros', path: 'financial-terminal' },
+  { key: 'supuestos', label: 'Supuestos de drivers', group: 'financieros', path: 'driver-assumptions' },
+  { key: 'model', label: 'Modelo a largo plazo', group: 'modelo' },
+  { key: 'market-opportunity', label: 'Oportunidad de mercado', group: 'modelo' },
+  { key: 'valuation', label: 'Valoración', group: 'modelo' },
+  { key: 'peers', label: 'Comparables', group: 'modelo' },
+  { key: 'documents', label: 'Documentos', group: 'evidencia' },
+  { key: 'sources', label: 'Fuentes', group: 'evidencia' },
+  { key: 'chat', label: 'Chat con fuentes', group: 'evidencia' },
+  { key: 'changes', label: 'Cambios y revisiones', group: 'seguimiento' },
+  { key: 'lecciones', label: 'Lecciones de decisiones', group: 'seguimiento', path: 'decision-lessons' },
+  { key: 'directiva', label: 'Credibilidad de la directiva', group: 'seguimiento', path: 'management-credibility' },
+] as const;
+
+type View = (typeof MODULES)[number]['key'];
 
 type PageProps = {
   params: Promise<{ ticker: string }>;
   searchParams: Promise<{ view?: string; chat?: string }>;
 };
 
+/**
+ * Acepta la clave de un módulo (`?view=thesis`) o la de un grupo (`?view=tesis`).
+ * Los módulos de subruta se ignoran: no son `?view=`, son rutas propias, así que
+ * una clave suelta cae en la vista general en vez de abrir un documento que no
+ * existe en este árbol.
+ */
 function asView(value: string | undefined): View {
-  return views.some(([key]) => key === value) ? (value as View) : 'overview';
+  const asModule = MODULES.find((module) => module.key === value && !('path' in module));
+  if (asModule) return asModule.key;
+  const asGroup = GROUPS.find((group) => group.key === value);
+  if (asGroup) return asGroup.entry;
+  return 'overview';
+}
+
+/** `?view=` para un módulo; los de subruta conservan su ruta propia. */
+function moduleHref(ticker: string, module: (typeof MODULES)[number]): string {
+  const base = `/research/${encodeURIComponent(ticker)}`;
+  return 'path' in module ? `${base}/${module.path}` : `${base}?view=${module.key}`;
 }
 
 function number(value: number | string | null | undefined): number | null {
@@ -153,8 +206,32 @@ const PEERS_METHODOLOGY_ES: Record<string, string> = {
     'Las diferencias cuantitativas usan métricas calculadas trazables. Las diferencias cualitativas solo se publican cuando existe evidencia enlazada.',
 };
 
+/**
+ * El título de la ficha. Antes todas las empresas comparten el mismo `<title>`
+ * (solo lo añadía el template "%s | CavaAI"), que es la mayor pérdida de SEO y
+ * de identificación de la app: en la pestaña, en el historial y al compartir
+ * no se distinguía una ficha de otra. El nombre sale del mismo snapshot que
+ * pinta la página; si el backend no responde, se queda el ticker, que ya
+ * identifica la ficha.
+ */
+export async function generateMetadata({ params }: Pick<PageProps, 'params'>): Promise<Metadata> {
+  const { ticker: rawTicker } = await params;
+  const ticker = rawTicker.trim().toUpperCase();
+  let name: string | null = null;
+  try {
+    name = (await readSnapshot(ticker))?.company.name ?? null;
+  } catch {
+    name = null;
+  }
+  const subject = name ? `${ticker} · ${name}` : ticker;
+  return {
+    title: subject,
+    description: `Research de ${name ?? ticker}: tesis versionada, financieros canónicos, modelo a largo plazo, valoración y evidencia con fuentes trazables.`,
+  };
+}
+
 function label(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (value === null || value === undefined || value === '') return NA;
   return STATUS_LABELS[value] ?? RATING_LABELS[value] ?? value.replaceAll('_', ' ');
 }
 
@@ -169,52 +246,6 @@ function metricValue(value: number | string | null | undefined, unit: string) {
   if (parsed === null) return 'desconocido';
   if (unit === 'decimal') return formatPercent(parsed);
   return formatCompact(parsed);
-}
-
-function Panel({ title, children, collapsibleOnMobile = false }: { title: string; children: React.ReactNode; collapsibleOnMobile?: boolean }) {
-  if (collapsibleOnMobile) {
-    return <CollapsiblePanel title={title}>{children}</CollapsiblePanel>;
-  }
-  return (
-    <section className="rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
-      <h2 className="text-lg font-semibold text-gray-100">{title}</h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
-/**
- * Estado vacío honesto con CTA: el usuario siempre tiene un primer paso
- * concreto (importar fuentes, generar el modelo, crear la tesis).
- */
-function Empty({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
-      <p>{children}</p>
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  );
-}
-
-/** Enlace-CTA estándar de los estados vacíos ("primer paso") */
-function EmptyLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      className="inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 transition hover:border-teal-600 hover:text-teal-200"
-      href={href}
-    >
-      {children}
-    </Link>
-  );
-}
-
-function Stat({ label: statLabel, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-gray-800 bg-[#101010] p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{statLabel}</div>
-      <div className="mt-2 text-2xl font-semibold text-gray-100">{value}</div>
-    </div>
-  );
 }
 
 function FactCard({ fact }: { fact: ResearchFact }) {
@@ -239,9 +270,10 @@ const FACTS_MOBILE_PAGE = 10;
 function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string }) {
   if (!facts.length) {
     return (
-      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa una fuente primaria</EmptyLink>}>
-        Todavía no hay hechos financieros persistidos.
-      </Empty>
+      <EmptyState
+        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa una fuente primaria</EmptyLink>}
+        title="Todavía no hay hechos financieros persistidos."
+      />
     );
   }
   return (
@@ -265,20 +297,21 @@ function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string })
         ) : null}
       </div>
       {/* Escritorio: tabla completa */}
-      <div className="hidden overflow-x-auto md:block">
+      <div aria-label="Hechos reportados" className="hidden overflow-x-auto md:block" role="region" tabIndex={0}>
       <table className="w-full text-left text-sm">
+        <caption className="sr-only">Hechos reportados de la empresa: métrica, periodo, valor y tipo de fuente</caption>
         <thead className="text-xs uppercase text-gray-500">
           <tr>
-            <th className="border-b border-gray-800 py-2">Métrica</th>
-            <th className="border-b border-gray-800 py-2">Periodo</th>
-            <th className="border-b border-gray-800 py-2 text-right">Valor</th>
-            <th className="border-b border-gray-800 py-2 text-right">Fuente</th>
+            <th className="border-b border-gray-800 py-2" scope="col">Métrica</th>
+            <th className="border-b border-gray-800 py-2" scope="col">Periodo</th>
+            <th className="border-b border-gray-800 py-2 text-right" scope="col">Valor</th>
+            <th className="border-b border-gray-800 py-2 text-right" scope="col">Fuente</th>
           </tr>
         </thead>
         <tbody>
           {facts.map((fact) => (
             <tr key={fact.id} className="text-gray-300">
-              <td className="border-b border-gray-900 py-2 font-medium">{fact.metric}</td>
+              <th className="border-b border-gray-900 py-2 text-left text-sm font-medium" scope="row">{fact.metric}</th>
               <td className="border-b border-gray-900 py-2">{fact.period}</td>
               <td className="border-b border-gray-900 py-2 text-right">{metricValue(fact.value, fact.unit)}</td>
               <td className="border-b border-gray-900 py-2 text-right text-xs text-gray-500">{label(fact.source_type)}</td>
@@ -294,9 +327,10 @@ function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string })
 function MetricsGrid({ metrics, ticker }: { metrics: ResearchCalculatedMetric[]; ticker: string }) {
   if (!metrics.length) {
     return (
-      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade documentos y recalcula</EmptyLink>}>
-        Las métricas calculadas aún no se han refrescado.
-      </Empty>
+      <EmptyState
+        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade documentos y recalcula</EmptyLink>}
+        title="Las métricas calculadas aún no se han refrescado."
+      />
     );
   }
   return (
@@ -319,9 +353,10 @@ function MetricsGrid({ metrics, ticker }: { metrics: ResearchCalculatedMetric[];
 function ValuationView({ valuation, currency, ticker }: { valuation: ResearchValuation | null; currency: string; ticker: string }) {
   if (!valuation) {
     return (
-      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera primero el modelo a largo plazo</EmptyLink>}>
-        No hay ninguna valoración persistida.
-      </Empty>
+      <EmptyState
+        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera primero el modelo a largo plazo</EmptyLink>}
+        title="No hay ninguna valoración persistida."
+      />
     );
   }
   if (valuation.status === 'insufficient_data') {
@@ -350,7 +385,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
         Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
         No es comparable 1:1 con el «Value/share» del Modelo a largo plazo: ese es un cálculo interno
         del escenario (otra versión/fecha/motor). Antes de fiarte, comprueba versión y fecha en ambas vistas.
-        Fuente de datos: {inputSource ?? 's/d'}{periods ? ` · periodos ${periods}` : ' · periodos s/d'}.
+        Fuente de datos: {inputSource ?? NA}{periods ? ` · periodos ${periods}` : ` · periodos ${NA}`}.
       </p>
     </div>
   );
@@ -359,9 +394,10 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
 function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel | null; ticker: string }) {
   if (!model || model.status === 'not_generated') {
     return (
-      <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo a largo plazo</EmptyLink>}>
-        Genera el modelo a largo plazo antes de valorar la oportunidad de mercado.
-      </Empty>
+      <EmptyState
+        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo a largo plazo</EmptyLink>}
+        title="Genera el modelo a largo plazo antes de valorar la oportunidad de mercado."
+      />
     );
   }
   const opportunity = model.market_opportunity;
@@ -418,11 +454,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // independientes: se lanzan juntos y el coste pasa de suma a máximo.
   // market solo se consume en 'overview'; en el resto de vistas la promesa
   // ni se crea.
-  const snapshotPromise = getResearchCompanySnapshot(ticker);
+  const snapshotPromise = readSnapshot(ticker);
   const marketPromise = activeView === 'overview' ? getCompanyMarketSnapshot(ticker) : undefined;
-  // La tesis completa también se consume inline en 'overview' (todo en la
-  // misma página); se lanza en paralelo y su fallo degrada a solo tarjeta.
-  const thesisPromise = activeView === 'overview' ? getResearchThesisWorkspace(ticker) : undefined;
   // MOAT V2: solo lectura del score persistido; su fallo degrada a omitir el panel.
   const moatPromise = activeView === 'overview' ? getMoatQualityScore(ticker) : undefined;
   let snapshot: Awaited<typeof snapshotPromise>;
@@ -449,22 +482,17 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       throw error;
     }
     return (
-      <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
+      <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px] space-y-6">
-          <Link className="inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Análisis</Link>
+          <Link className="inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
           <CompanyMarketPanel snapshot={market} />
-          <section className="rounded-xl border border-dashed border-gray-700 bg-[#111111] p-6 text-center">
-            <FileText className="mx-auto h-8 w-8 text-gray-600" />
-            <h1 className="mt-3 text-lg font-semibold text-gray-100">Research aún no generado</h1>
-            <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-gray-400">
-              Esta empresa todavía no tiene research generado. Puedes lanzarlo ahora: el motor
-              recopila evidencia con fuentes trazables y construye la tesis paso a paso
-              (puede tardar unos minutos).
-            </p>
-            <div className="mt-4 flex justify-center">
-              <ThesisGenerateButton ticker={ticker} />
-            </div>
-          </section>
+          <EmptyState
+            action={<ThesisGenerateButton ticker={ticker} />}
+            description="Esta empresa todavía no tiene research generado. Puedes lanzarlo ahora: el motor recopila evidencia con fuentes trazables y construye la tesis paso a paso (puede tardar unos minutos)."
+            icon={FileText}
+            title="Research aún no generado"
+            titleAs="h1"
+          />
         </div>
       </main>
     );
@@ -487,20 +515,17 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       }
       throw error;
     }
-    // El memo inline es un extra: si su fetch falla, la tarjeta-resumen
-    // sigue mostrando el executive_summary y el enlace a la pestaña Tesis.
-    let thesisWorkspace: Awaited<ReturnType<typeof getResearchThesisWorkspace>> | null = null;
-    try {
-      thesisWorkspace = await (thesisPromise ?? getResearchThesisWorkspace(ticker));
-    } catch {
-      thesisWorkspace = null;
-    }
     let moatScore: Awaited<ReturnType<typeof getMoatQualityScore>> = null;
     try {
       moatScore = await (moatPromise ?? getMoatQualityScore(ticker));
     } catch {
       moatScore = null;
     }
+    // El resumen NO vuelve a pintar el memo de la tesis: ese documento (con su
+    // debate interactivo, historial y afirmaciones) vive en `?view=thesis`.
+    // Aquí solo la versión vigente, en versión corta, con salida explícita al
+    // documento entero. Dos copias del mismo memo en dos URLs era lo que hacía
+    // que las dos pestañas parecieran la misma.
     content = (
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -525,19 +550,24 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 </div>
                 <p className="mt-3 text-sm leading-6 text-gray-300">{snapshot.latest_thesis.executive_summary}</p>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
+                  {/*
+                      Leer la tesis es la acción principal de una ficha (por eso
+                      es el único destino de primer nivel con grupo propio);
+                      regenerarla es la secundaria.
+                  */}
+                  <Button asChild variant="outline">
+                    <Link href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>
+                      <FileText className="mr-2 h-4 w-4" />Leer tesis completa
+                    </Link>
+                  </Button>
                   <ThesisGenerateButton ticker={ticker} label="Regenerar tesis" />
-                  <Link
-                    className="inline-flex items-center text-sm text-teal-300 hover:text-teal-200"
-                    href={`/research/${encodeURIComponent(ticker)}?view=thesis`}
-                  >
-                    Leer tesis completa
-                  </Link>
                 </div>
               </>
             ) : (
-              <Empty action={<ThesisGenerateButton ticker={ticker} label="Genera la primera tesis" />}>
-                Aún no se ha generado ninguna tesis. Se genera en segundo plano y la página se actualiza sola al terminar.
-              </Empty>
+              <EmptyState
+                action={<ThesisGenerateButton ticker={ticker} label="Genera la primera tesis" />}
+                title="Aún no se ha generado ninguna tesis. Se genera en segundo plano y la página se actualiza sola al terminar."
+              />
             )}
           </Panel>
           <Panel title="Modelo fundamental a largo plazo">
@@ -551,28 +581,61 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 <p>{snapshot.model_summary.engine_version} · {snapshot.model_summary.horizon_years} años</p>
               </div>
             ) : (
-              <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo</EmptyLink>}>
-                Sin modelo persistido. Genéralo de forma explícita desde la pestaña de modelo.
-              </Empty>
+              <EmptyState
+                action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Generar el modelo</EmptyLink>}
+                title="Sin modelo persistido. Genéralo de forma explícita desde el grupo Modelo."
+              />
             )}
           </Panel>
         </div>
         {moatScore ? (
-          <Panel title="Marco de calidad (MOAT)">
+          <Panel
+            actions={
+              <Link
+                className="text-sm text-teal-300 hover:text-teal-200"
+                href={`/research/${encodeURIComponent(ticker)}?view=moat`}
+              >
+                Ver la evaluación del foso
+              </Link>
+            }
+            title="Marco de calidad (MOAT)"
+          >
             <MoatPanel metric={moatScore} />
           </Panel>
         ) : null}
-        {thesisWorkspace?.thesis ? (
-          <Panel title="Tesis completa" collapsibleOnMobile>
-            <ThesisMemo
-              thesis={thesisWorkspace.thesis}
-              ticker={ticker}
-              debateBody={
-                thesisWorkspace.sections.find((section) => section.section_key === 'thesis_debate')?.body ?? null
-              }
-            />
-          </Panel>
-        ) : null}
+        {/*
+            Los cambios recientes vienen en el snapshot y no se pintaban en
+            ninguna vista: son la respuesta a "¿esto sigue valiendo lo que
+            valía la última vez?".
+        */}
+        <Panel
+          actions={
+            <Link
+              className="text-sm text-teal-300 hover:text-teal-200"
+              href={`/research/${encodeURIComponent(ticker)}?view=changes`}
+            >
+              Ver todos los cambios
+            </Link>
+          }
+          density="compact"
+          title="Últimos cambios"
+        >
+          {snapshot.recent_changes?.length ? (
+            <ul className="space-y-2">
+              {snapshot.recent_changes.slice(0, 3).map((change) => (
+                <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-gray-300" key={change.id}>
+                  <Badge variant="outline">{label(change.impact_direction)}</Badge>
+                  <span className="min-w-0 flex-1">{change.summary}</span>
+                  <span className="text-xs text-gray-500">
+                    materialidad {change.materiality_score} · {formatDate(change.created_at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-gray-500">Sin cambios registrados desde la última revisión.</p>
+          )}
+        </Panel>
         {snapshot.research_health.missing?.length ? (
           <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-sm text-amber-200">
             Capas de research que faltan: {snapshot.research_health.missing.join(', ')}.
@@ -581,6 +644,33 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             </Link>
           </div>
         ) : null}
+        {/*
+            Los cuatro saltos que se piden antes que nada al abrir una ficha.
+            Están aquí, en el resumen, y no repartidos por las 16 píldoras
+            planas que había antes.
+        */}
+        <Panel
+          description="Dónde está el resto del análisis de esta empresa."
+          density="compact"
+          title="Por dónde seguir"
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ['Modelo a largo plazo', 'model'],
+              ['Oportunidad de mercado', 'market-opportunity'],
+              ['Comparables', 'peers'],
+              ['Documentos y fuentes', 'documents'],
+            ].map(([nextLabel, nextView]) => (
+              <Link
+                className="rounded-lg border border-gray-800 p-3 text-sm text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
+                href={`/research/${encodeURIComponent(ticker)}?view=${nextView}`}
+                key={nextView}
+              >
+                {nextLabel}
+              </Link>
+            ))}
+          </div>
+        </Panel>
         <CompanyMarketPanel snapshot={market} />
       </div>
     );
@@ -607,9 +697,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <Badge variant="outline">{data.history.length} versiones</Badge>
           <Badge variant="outline">{data.claims.length} afirmaciones</Badge>
         </div>
-        <Panel title="Historial de versiones y aprobaciones" collapsibleOnMobile>
+        <Panel title="Historial de versiones y aprobaciones" collapsible="mobile">
           {data.historyDetail.history.length === 0 ? (
-            <Empty>Aún no hay historial de versiones.</Empty>
+            <EmptyState title="Aún no hay historial de versiones." />
           ) : (
             <div className="space-y-3">
               {data.historyDetail.history.map((entry) => (
@@ -620,13 +710,13 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                     <Badge variant="outline">{label(entry.rating)}</Badge>
                     {entry.diff?.rating_changed ? <Badge>rating cambiado</Badge> : null}
                     <span className="ml-auto text-xs text-gray-500">
-                      {formatDateTime(entry.updated_at)}
+                      {formatUserDateTime(entry.updated_at)}
                     </span>
                   </div>
                   {entry.diff ? (
                     <p className="mt-2 text-sm leading-6 text-gray-400">{entry.diff.change_summary}</p>
                   ) : (
-                    <p className="mt-2 text-xs text-gray-600">Primera versión registrada o sin diff persistido.</p>
+                    <p className="mt-2 text-xs text-gray-500">Primera versión registrada o sin diff persistido.</p>
                   )}
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                     <span>red-team {entry.red_team_score}/100</span>
@@ -636,7 +726,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               ))}
             </div>
           )}
-          <p className="mt-3 text-xs text-gray-600">
+          <p className="mt-3 text-xs text-gray-500">
             El historial muestra estado, fecha y resumen del cambio tal como están persistidos; el sistema no registra quién aprobó cada versión.
           </p>
         </Panel>
@@ -650,12 +740,13 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               }
             />
           ) : (
-            <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa fuentes antes de generar</EmptyLink>}>
-              Aún no existe ninguna tesis.
-            </Empty>
+            <EmptyState
+              action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa fuentes antes de generar</EmptyLink>}
+              title="Aún no existe ninguna tesis."
+            />
           )}
         </Panel>
-        <Panel title="Secciones de tesis específicas de la empresa" collapsibleOnMobile>
+        <Panel title="Secciones de tesis específicas de la empresa" collapsible="mobile">
           {data.sections.length ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {data.sections.map((section) => (
@@ -666,9 +757,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               ))}
             </div>
           ) : (
-            <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade la primera fuente</EmptyLink>}>
-              Sin secciones específicas todavía.
-            </Empty>
+            <EmptyState
+              action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade la primera fuente</EmptyLink>}
+              title="Sin secciones específicas todavía."
+            />
           )}
         </Panel>
         <Panel title="Afirmaciones y evidencia">
@@ -684,13 +776,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 <p className="mt-3 text-sm text-gray-300">{claim.statement}</p>
               </div>
             )) : (
-              <Empty action={<EmptyLink href="#statement">Escribe la primera afirmación</EmptyLink>}>
-                Sin afirmaciones registradas.
-              </Empty>
+              <EmptyState
+                action={<EmptyLink href="#statement">Escribe la primera afirmación</EmptyLink>}
+                title="Sin afirmaciones registradas."
+              />
             )}
           </div>
         </Panel>
-        <Panel title="Grafo de dependencias y red team" collapsibleOnMobile>
+        <Panel title="Grafo de dependencias y red team" collapsible="mobile">
           <p className="text-sm text-gray-300">{data.graph ? `${data.graph.nodes.length} nodos · ${data.graph.edges.length} dependencias` : 'Sin grafo persistido.'}</p>
           <p className="mt-2 text-sm text-gray-400">{data.redTeam?.strongest_bear_case ?? 'Sin ejecución de red team persistida.'}</p>
         </Panel>
@@ -708,15 +801,16 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 <p className="mt-3 text-sm text-gray-300">{change.summary}</p>
               </div>
             )) : (
-              <Empty action={<EmptyLink href="/research/news">Analiza la última noticia</EmptyLink>}>
-                Sin cambios materiales registrados.
-              </Empty>
+              <EmptyState
+                action={<EmptyLink href="/research/news">Analiza la última noticia</EmptyLink>}
+                title="Sin cambios materiales registrados."
+              />
             )}
           </div>
         </Panel>
         <div className="grid gap-6 xl:grid-cols-2">
-          <Panel title="Revisiones abiertas"><div className="space-y-2">{data.reviews.length ? data.reviews.map((review) => <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-300" key={review.id}>{review.title}</div>) : <Empty>Sin revisiones abiertas.</Empty>}</div></Panel>
-          <Panel title="Alertas"><div className="space-y-2">{data.alerts.length ? data.alerts.map((alert) => <div className="rounded-lg border border-gray-800 p-3 text-sm" key={alert.id}><Badge variant="outline">{label(alert.severity)}</Badge><p className="mt-2 text-gray-300">{alert.message}</p></div>) : <Empty>Sin alertas.</Empty>}</div></Panel>
+          <Panel title="Revisiones abiertas"><div className="space-y-2">{data.reviews.length ? data.reviews.map((review) => <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-300" key={review.id}>{review.title}</div>) : <EmptyState title="Sin revisiones abiertas." />}</div></Panel>
+          <Panel title="Alertas"><div className="space-y-2">{data.alerts.length ? data.alerts.map((alert) => <div className="rounded-lg border border-gray-800 p-3 text-sm" key={alert.id}><Badge variant="outline">{label(alert.severity)}</Badge><p className="mt-2 text-gray-300">{alert.message}</p></div>) : <EmptyState title="Sin alertas." />}</div></Panel>
         </div>
         <DecisionAndRealityPanel ticker={ticker} decisions={data.decisions} reviews={data.expectations} />
       </div>
@@ -761,17 +855,18 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           {moat?.moats.length ? moat.moats.map((item) => {
             const definition = moatDefinition(item.type);
             return (
-              <div className="rounded-xl border border-gray-800 bg-[#101010] p-4" key={item.type}>
+              <div className="rounded-xl border border-gray-800 bg-surface-1 p-4" key={item.type}>
                 <div className="flex justify-between gap-3"><MoatTerm type={item.type} /><Badge>{item.strength}/100</Badge></div>
                 <p className="mt-3 text-sm text-gray-400">{label(item.status)} · {label(item.trend)} · persistencia {item.persistence}</p>
                 {definition ? <p className="mt-2 text-xs leading-5 text-gray-500">{definition}</p> : null}
-                <p className="mt-2 text-xs text-gray-600">{item.supporting_claim_ids.length} afirmaciones a favor · {item.contradicting_claim_ids.length} en contra</p>
+                <p className="mt-2 text-xs text-gray-500">{item.supporting_claim_ids.length} afirmaciones a favor · {item.contradicting_claim_ids.length} en contra</p>
               </div>
             );
           }) : (
-            <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera el modelo y reevalúa el foso</EmptyLink>}>
-              Sin evaluación de foso persistida.
-            </Empty>
+            <EmptyState
+              action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=model`}>Genera el modelo y reevalúa el foso</EmptyLink>}
+              title="Sin evaluación de foso persistida."
+            />
           )}
         </div>
       </div>
@@ -799,9 +894,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           {documents.length ? (
             <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
           ) : (
-            <Empty action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}>
-              Sin documentos ingeridos.
-            </Empty>
+            <EmptyState
+              action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}
+              title="Sin documentos ingeridos."
+            />
           )}
         </Panel>
       </div>
@@ -813,9 +909,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         {audits.length ? (
           <div className="space-y-3">{audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'superada' : 'fallida'}</Badge><Badge variant="outline">cobertura {audit.source_coverage_score}/100</Badge><Badge variant="outline">tesis {audit.thesis_version_id ?? 'desconocida'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>)}</div>
         ) : (
-          <Empty action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera una tesis para auditar fuentes</EmptyLink>}>
-            Sin auditorías de fuentes persistidas.
-          </Empty>
+          <EmptyState
+            action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera una tesis para auditar fuentes</EmptyLink>}
+            title="Sin auditorías de fuentes persistidas."
+          />
         )}
       </Panel>
     );
@@ -844,42 +941,64 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <CitationsList citations={[]} sources={response.sources} />
           </Panel>
         ) : chatFailed ? (
-          <Empty>Sin datos para responder ahora mismo. Reintenta en unos segundos o haz otra pregunta.</Empty>
+          <EmptyState title="Sin datos para responder ahora mismo. Reintenta en unos segundos o haz otra pregunta." />
         ) : (
-          <Empty>Haz una pregunta para recuperar el contrato de evidencia determinista y la síntesis con fuentes.</Empty>
+          <EmptyState title="Haz una pregunta para recuperar el contrato de evidencia determinista y la síntesis con fuentes." />
         )}
       </div>
     );
   }
 
+  const activeModule = MODULES.find((module) => module.key === activeView) ?? MODULES[0];
+  const activeGroupLabel = GROUPS.find((group) => group.key === activeModule.group)?.label ?? '';
+  const groupModules = MODULES.filter((module) => module.group === activeModule.group);
+  const recentChangeCount = snapshot.recent_changes?.length ?? 0;
+
   return (
-    <main className="min-h-screen bg-[#080808] px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
+    <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px]">
-        <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Análisis</Link>
+        <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
         <header className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-6">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3"><h1 className="text-2xl font-bold sm:text-3xl">{ticker}</h1><Badge variant="outline">{company.exchange}</Badge><Badge variant="outline">{company.currency}</Badge></div>
             <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {company.sector} · {company.industry}</p>
           </div>
           <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
-            <div className="flex flex-wrap gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{label(company.company_type)}</span></div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{label(company.company_type)}</span><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} currency={company.currency} /></div>
               <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} />
             </div>
           </div>
         </header>
-        <nav aria-label="Módulos de research" className="-mx-4 mb-7 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
-          {views.map(([key, viewLabel]) => (
-            <Link className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border px-4 py-2.5 text-sm transition sm:min-h-0 sm:px-3 sm:py-2 ${activeView === key ? 'border-teal-600 bg-teal-950/40 text-teal-200' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'}`} href={`/research/${encodeURIComponent(ticker)}?view=${key}`} key={key}>{viewLabel}</Link>
+        {/*
+            Selector de grupo (6 etapas del flujo inversor) y, debajo, solo los
+            módulos de ese grupo. Antes eran 16 píldoras planas en una fila: no
+            se escaneaban y el usuario no encontraba la tesis. Los dos `nav`
+            llevan su propia etiqueta porque cada uno es un nivel distinto.
+        */}
+        <nav aria-label="Etapas del research" className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+          {GROUPS.map((group) => (
+            <Link
+              aria-current={activeModule.group === group.key ? 'true' : undefined}
+              className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border px-4 py-2.5 text-sm font-semibold transition sm:min-h-0 sm:px-3 sm:py-2 ${activeModule.group === group.key ? 'border-teal-600 bg-teal-950/40 text-teal-200' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}
+              href={`/research/${encodeURIComponent(ticker)}?view=${group.key}`}
+              key={group.key}
+            >
+              {group.label}
+            </Link>
           ))}
-          {[
-            ['financial-terminal', 'Terminal financiero'],
-            ['driver-assumptions', 'Supuestos'],
-            ['decision-lessons', 'Lecciones'],
-            ['management-credibility', 'Directiva'],
-          ].map(([path, moduleLabel]) => (
-            <Link className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border border-teal-900/60 px-4 py-2.5 text-sm text-teal-300 transition hover:border-teal-700 hover:text-teal-200 sm:min-h-0 sm:px-3 sm:py-2" href={`/research/${encodeURIComponent(ticker)}/${path}`} key={path}>{moduleLabel}</Link>
+        </nav>
+        <nav aria-label={`Módulos de ${activeGroupLabel}`} className="-mx-4 mb-7 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+          {groupModules.map((module) => (
+            <Link
+              aria-current={activeView === module.key ? 'page' : undefined}
+              className={`inline-flex min-h-[44px] items-center whitespace-nowrap rounded-lg border px-4 py-2.5 text-sm transition sm:min-h-0 sm:px-3 sm:py-2 ${activeView === module.key ? 'border-teal-600 bg-teal-950/40 text-teal-200' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'}`}
+              href={moduleHref(ticker, module)}
+              key={module.key}
+            >
+              {module.label}
+            </Link>
           ))}
         </nav>
         {content}

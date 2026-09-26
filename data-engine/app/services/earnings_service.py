@@ -1,10 +1,11 @@
+import re
 from datetime import UTC, datetime
 from decimal import Decimal
-import re
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.models import (
     CallClaim,
     Company,
@@ -18,7 +19,6 @@ from app.models import (
 )
 from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.review_alert_service import ReviewAlertService
-
 
 METRIC_PATTERNS = {
     "revenue": r"\b(?:revenue|sales)\b[^.$]{0,80}\$?\s*([0-9]+(?:\.[0-9]+)?)\s*(billion|million|bn|m)?",
@@ -231,7 +231,7 @@ class EarningsWorkflowService:
             except Exception as exc:
                 valuation_trace = {
                     "status": "failed",
-                    "error": str(exc),
+                    "error": redact_secrets(str(exc)),
                 }
 
             new_thesis_id = None
@@ -247,7 +247,7 @@ class EarningsWorkflowService:
                 except Exception as exc:
                     run.trace = {
                         **run.trace,
-                        "thesis_generation_error": str(exc),
+                        "thesis_generation_error": redact_secrets(str(exc)),
                     }
 
             run.status = "completed"
@@ -278,7 +278,7 @@ class EarningsWorkflowService:
             return run
         except Exception as exc:
             run.status = "failed"
-            run.error = str(exc)
+            run.error = redact_secrets(str(exc))
             run.trace = {
                 **(run.trace or {}),
                 "failed_at": datetime.now(UTC).isoformat(),

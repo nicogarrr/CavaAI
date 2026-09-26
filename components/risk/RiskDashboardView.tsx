@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { Briefcase, Gauge } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RecordDetail, formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
-import { formatDateTime, formatMoney, formatPercent } from '@/lib/format';
+import { formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { getRiskDashboard } from '@/lib/actions/risk.actions';
 
 interface RiskDashboardViewProps {
@@ -96,7 +96,7 @@ function isRecord(value: unknown): value is DataRecord {
 
 /** Mapa divisa -> importe ("EUR: 0") como texto "0 € · 12,50 US$". */
 function currencyRecord(value: unknown): string {
-    if (!isRecord(value)) return 's/d';
+    if (!isRecord(value)) return NA;
     const entries = Object.entries(value);
     if (!entries.length) return 'Sin saldos';
     return entries
@@ -106,18 +106,18 @@ function currencyRecord(value: unknown): string {
 
 /** Mapa etiqueta -> peso (ratio) como "Tecnología 45,0 % · Salud 20,0 %". */
 function exposureRecord(value: unknown): string {
-    if (!isRecord(value)) return 's/d';
+    if (!isRecord(value)) return NA;
     const entries = Object.entries(value);
     if (!entries.length) return 'Sin datos';
     return entries
         .map(([name, weight]) =>
-            `${name} ${typeof weight === 'number' ? formatPercent(weight, { fromRatio: true, digits: 1 }) : 's/d'}`,
+            `${name} ${typeof weight === 'number' ? formatPercent(weight, { fromRatio: true, digits: 1 }) : NA}`,
         )
         .join(' · ');
 }
 
 /** F41: el resumen llega con claves internas y JSON crudo; se presenta con
- *  etiquetas en español y valores formateados. Nunca se inventa: null -> s/d,
+ *  etiquetas en español y valores formateados. Nunca se inventa: null -> NA,
  *  vacios -> estado honesto, claves desconocidas -> humanizadas tal cual. */
 function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null {
     if (!dashboard) return null;
@@ -129,10 +129,10 @@ function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null 
         const label = humanizeRiskKey(key);
         if (key === 'total_value' || key === 'equity_value') {
             display[label] = value === null || value === undefined
-                ? 's/d (faltan tipos de cambio)'
+                ? `${NA} (faltan tipos de cambio)`
                 : formatMoney(value as number | string, baseCurrency);
         } else if (key === 'top_1_weight' || key === 'top_5_weight') {
-            display[label] = typeof value === 'number' ? formatPercent(value, { fromRatio: true, digits: 1 }) : 's/d';
+            display[label] = typeof value === 'number' ? formatPercent(value, { fromRatio: true, digits: 1 }) : NA;
         } else if (key === 'cash' || key === 'cash_native') {
             display[label] = currencyRecord(value);
         } else if (key === 'sector_exposure' || key === 'factor_exposure') {
@@ -144,16 +144,16 @@ function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null 
                 ? value.map((item) => (isRecord(item) ? String(item.ticker ?? item.currency ?? '?') : String(item))).join(', ')
                 : 'Ninguno';
         } else if (key === 'data_as_of') {
-            display[label] = typeof value === 'string' && value ? formatDateTime(value) : 's/d';
+            display[label] = typeof value === 'string' && value ? formatUserDateTime(value) : NA;
         } else if (key === 'provenance') {
             if (isRecord(value)) {
                 const source = typeof value.source === 'string' ? value.source : 'Fuente interna';
                 const fetched = typeof value.fetched_at === 'string' && value.fetched_at
-                    ? ` · ${formatDateTime(value.fetched_at)}`
+                    ? ` · ${formatUserDateTime(value.fetched_at)}`
                     : '';
                 display[label] = `${source}${fetched}`;
             } else {
-                display[label] = 's/d';
+                display[label] = NA;
             }
         } else if (typeof value === 'boolean') {
             display[label] = value ? 'Sí' : 'No';
@@ -169,7 +169,25 @@ function weightText(position: DataRecord): string {
     if (typeof weight === 'number' && Number.isFinite(weight)) {
         return formatPercent(weight, { fromRatio: true, digits: 2 });
     }
-    return '—';
+    return NA;
+}
+
+/** Ticker de la posición, enlazado a su ficha de research si se puede resolver. */
+function positionLink(position: DataRecord) {
+    const ticker = position.ticker;
+    const label = formatRecordValue(ticker);
+    if (typeof ticker === 'string' && ticker.trim()) {
+        const href = `/research/${encodeURIComponent(ticker.trim().toUpperCase())}`;
+        return (
+            <Link
+                href={href}
+                className="font-mono font-bold text-teal-300 hover:text-teal-200 hover:underline"
+            >
+                {label}
+            </Link>
+        );
+    }
+    return <span className="font-mono text-gray-300">{label}</span>;
 }
 
 export default function RiskDashboardView({ initialDashboard }: RiskDashboardViewProps) {
@@ -179,9 +197,9 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
     return (
         <div className="grid gap-6">
             <RecordDetail
-                title="Dashboard de Riesgo"
+                title="Exposiciones de cartera"
                 description="Estructura de la cartera: pesos, concentración (top 1 y top 5) y exposición por sector y factor. No calcula VaR, drawdown ni volatilidad: hace falta historia de precios que el motor aún no usa."
-                icon={<Gauge className="h-5 w-5 text-teal-400" />}
+                icon={<Gauge className="h-5 w-5 text-teal-400" aria-hidden="true" />}
                 record={humanizeRiskDashboard(headlineRecord(initialDashboard))}
                 fetchRecord={async () => humanizeRiskDashboard(headlineRecord(await getRiskDashboard()))}
                 maxKeys={32}
@@ -192,7 +210,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
             <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
                 <CardHeader className="border-b border-gray-700/50 pb-4">
                     <div className="flex items-center gap-3">
-                        <Gauge className="h-5 w-5 text-teal-400" />
+                        <Gauge className="h-5 w-5 text-teal-400" aria-hidden="true" />
                         <div>
                             <CardTitle className="text-lg font-semibold text-gray-100">
                                 Alertas de concentración y liquidez
@@ -228,7 +246,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
             <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-gray-700/50 pb-4">
                     <div className="flex items-center gap-3">
-                        <Briefcase className="h-5 w-5 text-teal-400" />
+                        <Briefcase className="h-5 w-5 text-teal-400" aria-hidden="true" />
                         <div>
                             <CardTitle className="text-lg font-semibold text-gray-100">
                                 Exposición por posición
@@ -251,56 +269,68 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                             Sin posiciones con exposición calculada.
                         </p>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="border-gray-700 hover:bg-transparent">
-                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">Ticker</TableHead>
-                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">Nombre</TableHead>
-                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">Sector</TableHead>
-                                    <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Valor</TableHead>
-                                    <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Peso</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {positions.map((position, index) => {
-                                    const ticker = position.ticker;
-                                    const href =
-                                        typeof ticker === 'string' && ticker.trim()
-                                            ? `/research/${encodeURIComponent(ticker.trim().toUpperCase())}`
-                                            : null;
-                                    return (
-                                        <TableRow key={index} className="border-gray-700/50">
-                                            <TableCell>
-                                                {href ? (
-                                                    <Link
-                                                        href={href}
-                                                        className="font-mono font-bold text-teal-300 hover:text-teal-200 hover:underline"
-                                                    >
-                                                        {formatRecordValue(ticker)}
-                                                    </Link>
-                                                ) : (
-                                                    <span className="font-mono text-gray-300">
-                                                        {formatRecordValue(ticker)}
-                                                    </span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-sm text-gray-300">
-                                                {formatRecordValue(position.name)}
-                                            </TableCell>
-                                            <TableCell className="text-sm text-gray-400">
-                                                {formatRecordValue(position.sector)}
-                                            </TableCell>
-                                            <TableCell className="text-right text-sm text-gray-200">
-                                                {formatRecordValue(position.market_value)}
-                                            </TableCell>
-                                            <TableCell className="text-right text-sm font-semibold text-gray-100">
-                                                {weightText(position)}
-                                            </TableCell>
+                        <>
+                            {/* Escritorio: tabla completa, con la región de scroll enfocada por teclado */}
+                            <div className="hidden overflow-x-auto md:block">
+                                <Table regionLabel="Exposición por posición">
+                                    <TableCaption className="sr-only">Exposición por posición: valor de mercado y peso de cada holding</TableCaption>
+                                    <TableHeader>
+                                        <TableRow className="border-gray-700 hover:bg-transparent">
+                                            <TableHead className="text-xs font-semibold uppercase text-gray-500">Ticker</TableHead>
+                                            <TableHead className="text-xs font-semibold uppercase text-gray-500">Nombre</TableHead>
+                                            <TableHead className="text-xs font-semibold uppercase text-gray-500">Sector</TableHead>
+                                            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Valor</TableHead>
+                                            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Peso</TableHead>
                                         </TableRow>
-                                    );
-                                })}
-                            </TableBody>
-                        </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {positions.map((position, index) => (
+                                            <TableRow key={index} className="border-gray-700/50">
+                                                <TableCell>{positionLink(position)}</TableCell>
+                                                <TableCell className="text-sm text-gray-300">
+                                                    {formatRecordValue(position.name)}
+                                                </TableCell>
+                                                <TableCell className="text-sm text-gray-400">
+                                                    {formatRecordValue(position.sector)}
+                                                </TableCell>
+                                                <TableCell className="text-right text-sm text-gray-200">
+                                                    {formatRecordValue(position.market_value)}
+                                                </TableCell>
+                                                <TableCell className="text-right text-sm font-semibold text-gray-100">
+                                                    {weightText(position)}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                            {/* Móvil: cards equivalentes, sin scroll horizontal */}
+                            <ul className="space-y-3 md:hidden">
+                                {positions.map((position, index) => (
+                                    <li className="min-w-0 rounded-xl border border-gray-700/50 bg-gray-800/40 p-4" key={index}>
+                                        {positionLink(position)}
+                                        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
+                                            <div className="min-w-0">
+                                                <dt className="text-[11px] uppercase tracking-wide text-gray-500">Nombre</dt>
+                                                <dd className="break-words text-sm text-gray-300">{formatRecordValue(position.name)}</dd>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <dt className="text-[11px] uppercase tracking-wide text-gray-500">Sector</dt>
+                                                <dd className="break-words text-sm text-gray-400">{formatRecordValue(position.sector)}</dd>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <dt className="text-[11px] uppercase tracking-wide text-gray-500">Valor</dt>
+                                                <dd className="break-words text-right text-sm text-gray-200">{formatRecordValue(position.market_value)}</dd>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <dt className="text-[11px] uppercase tracking-wide text-gray-500">Peso</dt>
+                                                <dd className="break-words text-right text-sm font-semibold text-gray-100">{weightText(position)}</dd>
+                                            </div>
+                                        </dl>
+                                    </li>
+                                ))}
+                            </ul>
+                        </>
                     )}
                 </CardContent>
             </Card>

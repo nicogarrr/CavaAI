@@ -1,6 +1,7 @@
 'use client';
 
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatMoney, formatPercent } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -22,7 +23,7 @@ import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
 import ImportIBKRButton from '@/components/portfolio/ImportIBKRButton';
 import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
-import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, ShieldAlert, Activity } from 'lucide-react';
+import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, Gauge, ShieldAlert, Activity } from 'lucide-react';
 import type { PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType, PortfolioTearsheet as PortfolioTearsheetType } from '@/lib/actions/portfolio.actions';
 
 type Transaction = {
@@ -38,7 +39,7 @@ type Transaction = {
 type Props = {
     summary: PortfolioSummaryType;
     transactions: Transaction[];
-    scores: { quality: number; growth: number; value: number; dividend: number; cagr3y: number; history?: PortfolioPerformanceHistory };
+    scores: { quality: number | null; growth: number | null; value: number | null; dividend: number | null; cagr3y: number | null; history?: PortfolioPerformanceHistory };
     tearsheet: PortfolioTearsheetType | null;
     userId: string;
     partialMessage?: string | null;
@@ -54,7 +55,10 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
             const yearStart = new Date(latestDate.getFullYear(), 0, 1);
             const ytdPoints = Math.max(1, scores.history.dates.filter((date) => new Date(`${date}T00:00:00`) >= yearStart).length);
             const rows = scores.history.dates.map((date, index) => ({
-                date: new Date(`${date}T00:00:00`).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
+                // "YYYY-MM-DD" es un día de calendario: formatDate lo parsea en
+                // hora local y lo formatea en la zona del proceso, así que el
+                // eje sale igual en el servidor (UTC) y en el navegador.
+                date: formatDate(date, { day: '2-digit', month: 'short' }),
                 value: scores.history?.nav[index] ?? 0,
             }));
             const maxPoints: Record<string, number> = {
@@ -72,22 +76,22 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
         return [];
     }, [chartPeriod, scores.history]);
     return (
-        <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col overflow-x-clip p-4 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24">
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full max-w-[1600px] flex-col overflow-x-clip p-4 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24">
                 {/* Header */}
                 <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
                         <div className="h-10 w-10 shrink-0 rounded-xl bg-gradient-to-br from-teal-500 to-blue-600 flex items-center justify-center">
-                            <Wallet className="h-5 w-5 text-white" />
+                            <Wallet aria-hidden="true" className="h-5 w-5 text-white" />
                         </div>
                         <div className="min-w-0">
                             <h1 className="text-xl font-bold text-gray-100 sm:text-2xl">Mi Cartera</h1>
                             <p className="text-sm text-gray-500">Seguimiento de tus inversiones</p>
-                            <p className="mt-0.5 text-xs text-gray-600">Precios con ~15 min de retardo durante el horario de mercado (Yahoo Finance)</p>
+                            <p className="mt-0.5 text-xs text-gray-500">Precios con ~15 min de retardo durante el horario de mercado (Yahoo Finance)</p>
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
                         <Link className="inline-flex min-h-[44px] col-span-2 items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2.5 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300 sm:col-span-1 sm:min-h-0 sm:h-9 sm:w-auto" href="/portfolio/intelligence">
-                            <Activity className="h-4 w-4" /> Intelligence
+                            <Activity aria-hidden="true" className="h-4 w-4" /> {t('portfolio.tabs.intelligence')}
                         </Link>
                         <RefreshPortfolioButton userId={userId} />
                                             <ImportIBKRButton userId={userId} />
@@ -103,48 +107,70 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
 
                 {/* Tabs Navigation */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+                {/* Con teclado no hay barra de scroll: la region enfocable deja las
+                    pestañas alcanzables con las flechas (WCAG 2.1.1). */}
+                <div role="region" aria-label="Secciones de la cartera" tabIndex={0} className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
                     <TabsList className="bg-[#0a0a0a] border border-gray-800 p-1 rounded-xl mb-6 flex w-max max-w-none gap-1">
                     <TabsTrigger
                         value="resumen"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <LayoutDashboard className="h-4 w-4" />
+                        <LayoutDashboard aria-hidden="true" className="h-4 w-4" />
                         Resumen
                     </TabsTrigger>
                     <TabsTrigger
                         value="posiciones"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <Briefcase className="h-4 w-4" />
+                        <Briefcase aria-hidden="true" className="h-4 w-4" />
                         Posiciones
                     </TabsTrigger>
                     <TabsTrigger
                         value="movimientos"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <History className="h-4 w-4" />
+                        <History aria-hidden="true" className="h-4 w-4" />
                         Movimientos
                     </TabsTrigger>
                     <TabsTrigger
                         value="estrategia"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <Brain className="h-4 w-4" />
+                        <Brain aria-hidden="true" className="h-4 w-4" />
                         Factores
                     </TabsTrigger>
                     <TabsTrigger
-                        value="riesgo"
+                        value="simulacion"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
-                        <ShieldAlert className="h-4 w-4" />
-                        Riesgo
+                        {/* "Riesgo" colisionaba con /risk (concentraciones) y con
+                            Inteligencia (volatilidad, VaR, drawdown). Esto es un
+                            Monte Carlo: se llama Simulación. */}
+                        <ShieldAlert aria-hidden="true" className="h-4 w-4" />
+                        Simulación
                     </TabsTrigger>
                 </TabsList>
                 </div>
 
                 {/* Tab: Resumen */}
                 <TabsContent value="resumen" className="mt-0">
+                    {/* Salida cruzada a las otras dos páginas de riesgo: el
+                        resumen es pesos y precio, no riesgo medido (eso está en
+                        Inteligencia) ni simulación (esta misma pestaña). */}
+                    <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-gray-700/50 bg-surface-1 p-4">
+                        <p className="min-w-0 flex-1 text-sm text-gray-400">
+                            El riesgo medido (TWR, XIRR, caída máxima, Sharpe, VaR y correlaciones) y las
+                            concentraciones por sector, país y divisa están fuera de la cartera: en su propia
+                            página, con su propia metodología.
+                        </p>
+                        <Link className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300 sm:min-h-0 sm:py-1.5" href="/portfolio/intelligence">
+                            <Activity aria-hidden="true" className="h-4 w-4" /> Riesgo y rendimiento
+                        </Link>
+                        <Link className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300 sm:min-h-0 sm:py-1.5" href="/risk">
+                            <Gauge aria-hidden="true" className="h-4 w-4" /> Exposiciones
+                        </Link>
+                    </div>
+
                     {/* Métricas en fila */}
                     <div className="mb-6">
                         <PortfolioSummary summary={summary} />
@@ -182,10 +208,10 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                                     </p>
                                 ) : (
                                 <p className={`text-sm flex items-center gap-1 ${summary.totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {summary.totalGain >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                                    {summary.totalGain >= 0 ? '+' : ''}{summary.totalGainPercent.toFixed(2)}%
+                                    {summary.totalGain >= 0 ? <TrendingUp aria-hidden="true" className="h-4 w-4" /> : <TrendingDown aria-hidden="true" className="h-4 w-4" />}
+                                    {formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                                     <span className="text-gray-500">
-                                        ({summary.totalGain >= 0 ? '+' : ''}{formatMoney(summary.totalGain, summary.baseCurrency)})
+                                        ({formatMoney(summary.totalGain, summary.baseCurrency, { signDisplay: 'auto' })})
                                     </span>
                                 </p>
                                 )}
@@ -233,13 +259,14 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                     <PortfolioScores scores={scores} />
                 </TabsContent>
 
-                {/* Tab: Riesgo Monte Carlo */}
-                <TabsContent value="riesgo" className="mt-0">
+                {/* Tab: Simulación Monte Carlo */}
+                <TabsContent value="simulacion" className="mt-0">
                     <PortfolioRiskSimulator userId={userId} />
                 </TabsContent>
             </Tabs>
 
             <PortfolioChat userId={userId} />
-        </div>
+        </main>
     );
 }
+

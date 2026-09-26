@@ -2,19 +2,28 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { CommandDialog, CommandEmpty, CommandInput, CommandList } from "@/components/ui/command"
-import { Loader2, TrendingUp, Search } from "lucide-react";
-import { searchStocks } from "@/lib/actions/finnhub.actions";
+import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { CornerDownLeft, Loader2, Search, TrendingUp } from "lucide-react";
+import { searchStocksWithStatus, getPopularStocks } from "@/lib/actions/finnhub.actions";
+import { loadPopularStocks } from "@/lib/popular-stocks-loader";
 import { showErrorToast } from "@/lib/toast";
 import { isNextRedirectError } from "@/lib/types/errors";
+import { flattenNavItems, NAV_SECTIONS } from "@/lib/constants";
 
 export default function SearchCommand({ renderAs = 'button', label = 'Añadir acción', initialStocks }: SearchCommandProps) {
-    const router = useRouter();
+    const router = useRouter()
     const [open, setOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState("")
     const [loading, setLoading] = useState(false)
     const [searchError, setSearchError] = useState(false)
-    const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks);
+    // Populares: si no llegan por props (el shell ya no las bloquea en el
+    // primer byte), se cargan perezosamente al abrir el buscador. La cache
+    // es COMPARTIDA a nivel de modulo (loadPopularStocks): las instancias
+    // de desktop, icono movil y drawer no repiten la rafaga Finnhub entre
+    // si, y un fallo o un cierre a mitad de carga se reintenta en la
+    // siguiente apertura (la lista vacia tras fallo nunca es permanente).
+    const [popular, setPopular] = useState<StockWithWatchlistStatus[]>(initialStocks ?? []);
+    const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks ?? []);
     const [mounted, setMounted] = useState(false);
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -25,20 +34,30 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         return isSearchMode ? stocks : (stocks?.slice(0, 10) || []);
     }, [isSearchMode, stocks]);
 
-    useEffect(() => {
-        setMounted(true);
-    }, []);
-
+    // Atajos: Ctrl/Cmd+K y "/". "/" solo cuando el foco no esta en un campo de
+    // texto, para no secuestrar la escritura.
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
                 e.preventDefault()
                 setOpen(v => !v)
+                return
+            }
+            if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                const target = e.target as HTMLElement | null
+                const tag = target?.tagName
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+                e.preventDefault()
+                setOpen(true)
             }
         }
         window.addEventListener("keydown", onKeyDown)
         return () => window.removeEventListener("keydown", onKeyDown)
     }, [])
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     const handleSearch = useCallback(async (query: string) => {
         // Cancelar búsqueda anterior si existe
@@ -47,7 +66,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         }
 
         if (!query.trim()) {
-            setStocks(initialStocks);
+            setStocks(popular);
             setSearchError(false);
             setLoading(false);
             return;
@@ -60,11 +79,17 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         setLoading(true);
         setSearchError(false);
         try {
-            const results = await searchStocks(query.trim());
+            const result = await searchStocksWithStatus(query.trim());
 
-            // Solo actualizar si el request no fue cancelado
+            // Solo actualizar si el request no fue cancelado. Un fallo del
+            // proveedor NO es "sin resultados" (F215): se señala el error y
+            // se conservan los resultados anteriores.
             if (!controller.signal.aborted) {
-                setStocks(results || []);
+                if (result.status === 'error') {
+                    setSearchError(true);
+                } else {
+                    setStocks(result.stocks);
+                }
             }
         } catch (error: unknown) {
             // Ignorar errores de cancelación; ante un fallo real, mostrar el
@@ -81,7 +106,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 setLoading(false);
             }
         }
-    }, [initialStocks]);
+    }, [popular]);
 
     // Debounce efectivo
     useEffect(() => {
@@ -98,7 +123,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         const trimmedQuery = searchTerm.trim();
 
         if (!trimmedQuery) {
-            setStocks(initialStocks);
+            setStocks(popular);
             setSearchError(false);
             setLoading(false);
             return;
@@ -118,13 +143,13 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 abortControllerRef.current.abort();
             }
         };
-    }, [searchTerm, handleSearch, initialStocks]);
+    }, [searchTerm, handleSearch, popular]);
 
     // Limpiar cuando se cierra el diálogo
     useEffect(() => {
         if (!open) {
             setSearchTerm("");
-            setStocks(initialStocks);
+            setStocks(popular);
             setSearchError(false);
             if (searchTimeoutRef.current) {
                 clearTimeout(searchTimeoutRef.current);
@@ -132,24 +157,58 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
+            return;
         }
-    }, [open, initialStocks]);
+        // Carga perezosa de las populares. Si ya hay lista (props o cache
+        // compartida resuelta antes), no hace falta pedir nada; si no, se
+        // pide a la cache compartida (gratis si otra instancia ya la tiene)
+        // y cualquier fallo se reintenta en la proxima apertura.
+        if (popular.length > 0) return;
+        let active = true;
+        setLoading(true);
+        loadPopularStocks(getPopularStocks)
+            .then((list) => {
+                if (!active) return;
+                setPopular(list);
+                setSearchError(false);
+                setStocks((current) => (searchTerm.trim() ? current : list));
+            })
+            .catch((error: unknown) => {
+                // Fallo de proveedor/red: indicador explicito (no confundir
+                // con "no hay acciones") y la proxima apertura reintenta —
+                // la cache compartida nunca guarda fallos.
+                if (active && !isNextRedirectError(error)) {
+                    setSearchError(true);
+                    showErrorToast(error, {});
+                }
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+        // popular/searchTerm leidos del cierre actual: popular.length ya esta
+        // en deps; searchTerm fresco solo decide si volcar la lista cargada.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, popular.length]);
 
-    const handleSelectStock = useCallback((symbol: string) => {
-        // Close dialog and navigate immediately
+    const go = useCallback((href: string) => {
         setOpen(false);
         setSearchTerm("");
-        setStocks(initialStocks);
-        // Use router.push for faster navigation
-        router.push(`/research/${symbol.toUpperCase()}`);
-    }, [initialStocks, router]);
+        router.push(href);
+    }, [router]);
+
+    const handleSelectStock = useCallback((symbol: string) => {
+        go(`/research/${symbol.toUpperCase()}`);
+    }, [go]);
 
     // Prefetch de la ficha al pasar el cursor o enfocar: navegación instantánea
     const handlePrefetchStock = useCallback((symbol: string) => {
         router.prefetch(`/research/${symbol.toUpperCase()}`);
     }, [router]);
 
-    // Evitar hydration mismatch: el fallback pre-hidrato debe ser
+    // Evitar hydration mismatch: el fallback pre-hidratado debe ser
     // visualmente IDENTICO al boton hidratado (input sutil), no una pildora
     // primaria con el label crudo. Sin onClick hasta montar.
     if (!mounted) {
@@ -158,11 +217,11 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 type="button"
                 tabIndex={-1}
                 aria-hidden="true"
-                className="flex min-h-[44px] items-center gap-2 w-full px-4 py-2.5 text-sm text-gray-400 bg-gray-800/60 border border-gray-700 rounded-lg backdrop-blur-sm"
+                className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-4 py-2.5 text-sm text-gray-400 backdrop-blur-sm"
             >
-                <Search className="w-4 h-4 text-gray-500" />
+                <Search aria-hidden="true" className="h-4 w-4 text-gray-500" />
                 <span className="flex-1 text-left">Buscar acciones...</span>
-                <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 bg-gray-900/50 border border-gray-600 rounded">
+                <kbd className="hidden items-center gap-1 rounded border border-gray-600 bg-gray-900/50 px-2 py-0.5 text-xs text-gray-500 sm:inline-flex">
                     Ctrl+K
                 </kbd>
             </button>
@@ -180,23 +239,45 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 >
                     {label}
                 </button>
+            ) : renderAs === 'icon' ? (
+                <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    aria-label="Abrir buscador"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white"
+                >
+                    <Search aria-hidden="true" className="h-5 w-5" />
+                </button>
             ) : (
                 <button
+                    type="button"
                     onClick={() => setOpen(true)}
-                    className="flex min-h-[44px] items-center gap-2 w-full px-4 py-2.5 text-sm text-gray-400 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700 rounded-lg transition-all duration-200 backdrop-blur-sm"
+                    className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-4 py-2.5 text-sm text-gray-400 backdrop-blur-sm transition-all duration-200 hover:bg-gray-700/60"
                     aria-label="Abrir buscador"
                 >
-                    <Search className="w-4 h-4 text-gray-500" />
+                    <Search aria-hidden="true" className="h-4 w-4 text-gray-500" />
                     <span className="flex-1 text-left">Buscar acciones...</span>
-                    <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 bg-gray-900/50 border border-gray-600 rounded">
+                    <kbd className="hidden items-center gap-1 rounded border border-gray-600 bg-gray-900/50 px-2 py-0.5 text-xs text-gray-500 sm:inline-flex">
                         Ctrl+K
                     </kbd>
                 </button>
             )}
-            <CommandDialog open={open} onOpenChange={setOpen} className="search-dialog">
+            <CommandDialog
+                open={open}
+                onOpenChange={setOpen}
+                className="search-dialog"
+                title="Buscar acciones"
+                description="Busca por símbolo o empresa, o salta a una sección de CavaAI"
+            >
                 <div className="search-field">
-                    <CommandInput value={searchTerm} onValueChange={setSearchTerm} placeholder="Buscar acciones..." className="search-input" />
-                    {loading && <Loader2 className="search-loader" />}
+                    <CommandInput
+                        value={searchTerm}
+                        onValueChange={setSearchTerm}
+                        placeholder="Buscar acciones..."
+                        aria-label="Buscar acciones o secciones"
+                        className="search-input"
+                    />
+                    {loading && <Loader2 aria-hidden="true" className="search-loader" />}
                 </div>
                 <CommandList className="search-list">
                     {loading ? (
@@ -205,38 +286,70 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                         <div role="alert" className="search-list-indicator">
                             No se pudo completar la búsqueda. Inténtalo de nuevo.
                         </div>
-                    ) : displayStocks?.length === 0 ? (
-                        <div className="search-list-indicator">
-                            {isSearchMode ? 'Sin resultados' : 'No hay acciones disponibles'}
-                        </div>
                     ) : (
-                        <ul>
-                            <div className="search-count">
-                                {isSearchMode ? 'Resultados de búsqueda' : 'Acciones populares'}
-                                {` `}({displayStocks?.length || 0})
-                            </div>
-                            {displayStocks?.map((stock, index) => (
-                                <li key={`${stock.symbol}-${index}`} className="search-item">
-                                    <button
-                                        onClick={() => handleSelectStock(stock.symbol)}
-                                        onMouseEnter={() => handlePrefetchStock(stock.symbol)}
-                                        onFocus={() => handlePrefetchStock(stock.symbol)}
-                                        title={`${stock.name} (${stock.symbol})`}
-                                        className="search-item-link w-full text-left"
-                                    >
-                                        <TrendingUp className="h-4 w-4 text-gray-500" />
-                                        <div className="flex-1 min-w-0">
-                                            <div className="search-item-name truncate" title={stock.name}>
-                                                {stock.name}
-                                            </div>
-                                            <div className="text-sm text-gray-500">
-                                                {stock.symbol} | {stock.exchange} | {stock.type}
-                                            </div>
-                                        </div>
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
+                        <>
+                            {/* Secciones navegables: el buscador deja de ser solo
+                                un buscador de tickers y cubre los destinos que no
+                                caben en el menu. */}
+                            {!isSearchMode && (
+                                <>
+                                    {NAV_SECTIONS.filter((section) => section.items.length > 1).map((section) => (
+                                        <CommandGroup
+                                            key={section.title}
+                                            heading={section.title}
+                                            className="[&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-gray-500"
+                                        >
+                                            {flattenNavItems([section]).map((item) => (
+                                                <CommandItem
+                                                    key={item.href}
+                                                    value={`ir ${item.label}`}
+                                                    onSelect={() => go(item.href)}
+                                                    className="flex min-h-11 items-center gap-2 px-4"
+                                                >
+                                                    {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 text-gray-500" />}
+                                                    <span className="flex-1 truncate">{item.label}</span>
+                                                    <CornerDownLeft aria-hidden="true" className="h-3.5 w-3.5 text-gray-600" />
+                                                </CommandItem>
+                                            ))}
+                                        </CommandGroup>
+                                    ))}
+                                </>
+                            )}
+
+                            {displayStocks?.length === 0 ? (
+                                <div className="search-list-indicator">
+                                    {isSearchMode ? 'Sin resultados' : 'No hay acciones disponibles'}
+                                </div>
+                            ) : (
+                                <ul className="search-results">
+                                    <li className="search-count">
+                                        {isSearchMode ? 'Resultados de búsqueda' : 'Acciones populares'}
+                                        {` `}({displayStocks?.length || 0})
+                                    </li>
+                                    {displayStocks?.map((stock, index) => (
+                                        <li key={`${stock.symbol}-${index}`} className="search-item">
+                                            <button
+                                                onClick={() => handleSelectStock(stock.symbol)}
+                                                onMouseEnter={() => handlePrefetchStock(stock.symbol)}
+                                                onFocus={() => handlePrefetchStock(stock.symbol)}
+                                                title={`${stock.name} (${stock.symbol})`}
+                                                className="search-item-link w-full text-left"
+                                            >
+                                                <TrendingUp aria-hidden="true" className="h-4 w-4 text-gray-500" />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="search-item-name truncate" title={stock.name}>
+                                                        {stock.name}
+                                                    </div>
+                                                    <div className="text-sm text-gray-500">
+                                                        {stock.symbol} | {stock.exchange} | {stock.type}
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </>
                     )}
                 </CommandList>
             </CommandDialog>

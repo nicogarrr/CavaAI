@@ -1,9 +1,9 @@
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from decimal import Decimal
 import logging
 import math
 import re
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -18,9 +18,8 @@ from app.models import (
     ThesisChange,
 )
 from app.services.review_alert_service import ReviewAlertService
-from app.services.thesis_change_types import claim_change_type
 from app.services.source_hierarchy_service import classify_source
-
+from app.services.thesis_change_types import claim_change_type
 
 logger = logging.getLogger(__name__)
 

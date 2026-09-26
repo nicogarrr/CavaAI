@@ -28,15 +28,16 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
 import { isNextRedirectError } from '@/lib/types/errors';
-import { formatDate, formatDateTime } from '@/lib/format';
+import { formatDate, formatUserDateTime } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 import { reviewResearchExpectations } from '@/lib/actions/research.actions';
 
 const ALERT_TYPE_LABELS: Record<AlertType, string> = {
-    price_above: 'Precio por encima de',
-    price_below: 'Precio por debajo de',
-    price_change: 'Cambio de precio %',
-    news: 'Nueva noticia',
-    earnings: 'Reporte de ganancias',
+    price_above: t('alerts.types.priceAbove'),
+    price_below: t('alerts.types.priceBelow'),
+    price_change: t('alerts.types.priceChange'),
+    news: t('alerts.types.news'),
+    earnings: t('alerts.types.earnings'),
 };
 
 const isAlertType = (value: string | null | undefined): value is AlertType =>
@@ -49,6 +50,8 @@ function AlertsManager() {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [open, setOpen] = useState(false);
     const [reviewing, setReviewing] = useState<string | null>(null);
+    /** Borrado en curso: sin esto el boton se puede pulsar dos veces. */
+    const [deleting, setDeleting] = useState<string | null>(null);
     /** Estado de entrega del motor (evaluacion cada 5 min + Telegram). */
     const [telegram, setTelegram] = useState<TelegramStatus | null>(null);
     const [triggered, setTriggered] = useState<TriggeredAlertDelivery[]>([]);
@@ -95,7 +98,7 @@ function AlertsManager() {
             setTriggered(recent);
         } catch (error) {
             if (isNextRedirectError(error)) throw error;
-            setLoadError('No se pudieron cargar tus alertas. Reintenta en unos segundos.');
+            setLoadError(t('common.states.alertsLoadError'));
             showErrorToast(error, { onRetry: loadAlerts });
         } finally {
             setLoading(false);
@@ -147,6 +150,7 @@ function AlertsManager() {
     };
 
     const handleDeleteAlert = async (alertId: string) => {
+        setDeleting(alertId);
         try {
             await deleteAlert(alertId);
             await loadAlerts();
@@ -156,6 +160,8 @@ function AlertsManager() {
             showErrorToast(error, {
                 onRetry: () => handleDeleteAlert(alertId),
             });
+        } finally {
+            setDeleting(null);
         }
     };
 
@@ -187,19 +193,19 @@ function AlertsManager() {
         const value = alert.condition.value;
 
         if (type === 'price_above') {
-            return `${symbol}: Precio por encima de $${value}`;
+            return `${symbol}: ${ALERT_TYPE_LABELS.price_above} $${value}`;
         }
         if (type === 'price_below') {
-            return `${symbol}: Precio por debajo de $${value}`;
+            return `${symbol}: ${ALERT_TYPE_LABELS.price_below} $${value}`;
         }
         if (type === 'price_change') {
-            return `${symbol}: Cambio de precio ${operator === '>' ? 'mayor' : 'menor'} a ${value}%`;
+            return `${symbol}: ${ALERT_TYPE_LABELS.price_change} ${operator === '>' ? 'mayor' : 'menor'} a ${value}%`;
         }
         if (type === 'news') {
-            return `${symbol}: Nueva noticia`;
+            return `${symbol}: ${ALERT_TYPE_LABELS.news}`;
         }
         if (type === 'earnings') {
-            return `${symbol}: Reporte de ganancias`;
+            return `${symbol}: ${ALERT_TYPE_LABELS.earnings}`;
         }
         return `${symbol}: Alerta`;
     };
@@ -208,19 +214,19 @@ function AlertsManager() {
         <Card className="p-4 sm:p-6 rounded-lg border border-gray-700 bg-gray-800/50">
             <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                    <Bell className="h-5 w-5 shrink-0 text-teal-400" />
+                    <Bell aria-hidden="true" className="h-5 w-5 shrink-0 text-teal-400" />
                     <h2 className="text-lg sm:text-xl font-semibold text-gray-200">Alertas en Tiempo Real</h2>
                 </div>
                 <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
                         <Button size="sm" className="gap-2 min-h-[44px] px-4 text-sm sm:min-h-0 sm:text-xs">
-                            <Plus className="h-4 w-4" />
-                            Nueva Alerta
+                            <Plus aria-hidden="true" className="h-4 w-4" />
+                            {t('alerts.new')}
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="bg-gray-800 border-gray-700 max-h-[90dvh] overflow-y-auto w-[calc(100vw-2rem)] sm:max-w-md">
                         <DialogHeader>
-                            <DialogTitle className="text-gray-100">Crear Nueva Alerta</DialogTitle>
+                            <DialogTitle className="text-gray-100">{t('alerts.create')}</DialogTitle>
                             <DialogDescription className="text-gray-400">
                                 Configura alertas para recibir notificaciones en tiempo real sobre cambios en tus acciones.
                             </DialogDescription>
@@ -298,7 +304,7 @@ function AlertsManager() {
                                 </>
                             )}
                             <Button onClick={handleCreateAlert} className="w-full min-h-[44px] text-sm sm:text-xs">
-                                Crear Alerta
+                                {t('alerts.create')}
                             </Button>
                         </div>
                     </DialogContent>
@@ -308,7 +314,7 @@ function AlertsManager() {
             {telegram && !telegram.configured ? (
                 <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/20 p-4" role="note">
                     <p className="flex items-center gap-2 text-sm font-semibold text-amber-200">
-                        <Send className="h-4 w-4" />
+                        <Send aria-hidden="true" className="h-4 w-4" />
                         Telegram sin configurar: las alertas solo llegan en la app
                     </p>
                     <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-5 text-amber-100/80">
@@ -325,29 +331,33 @@ function AlertsManager() {
             ) : null}
 
             {loading ? (
-                <div className="space-y-3 py-8" role="status" aria-live="polite">
-                    <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-gray-700 border-t-teal-300" />
-                    <div className="text-center text-sm text-gray-500">Cargando alertas...</div>
+                <div className="space-y-3 py-8">
+                    {/* Una region live presente en el primer render no se anuncia y
+                        desaparece con el esqueleto: el texto va en sr-only y el spinner
+                        queda como decoracion aria-hidden. */}
+                    <span className="sr-only">Cargando alertas…</span>
+                    <div aria-hidden="true" className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-gray-700 border-t-teal-300" />
+                    <div className="text-center text-sm text-gray-500">{t('common.states.loadingAlerts')}</div>
                 </div>
             ) : loadError ? (
                 <div className="rounded-lg border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200" role="alert">
                     <p>{loadError}</p>
                     <Button type="button" variant="outline" size="sm" className="mt-3 min-h-[44px]" onClick={() => void loadAlerts()}>
-                        <RefreshCcw className="mr-2 h-4 w-4" />Reintentar
+                        <RefreshCcw aria-hidden="true" className="mr-2 h-4 w-4" />{t('common.actions.retry')}
                     </Button>
                 </div>
             ) : alerts.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                    <Bell className="h-12 w-12 mx-auto mb-3 text-gray-600" />
-                    <p>No tienes alertas configuradas</p>
-                    <p className="text-sm mt-2">Crea tu primera alerta para recibir notificaciones en tiempo real</p>
+                    <Bell aria-hidden="true" className="h-12 w-12 mx-auto mb-3 text-gray-500" />
+                    <p>{t('common.states.noAlerts')}</p>
+                    <p className="text-sm mt-2">{t('common.states.noAlertsHint')}</p>
                     <Button
                         size="sm"
                         variant="outline"
                         className="mt-4 min-h-[44px] px-4 sm:min-h-0"
                         onClick={() => setOpen(true)}
                     >
-                        <Plus className="h-4 w-4" />
+                        <Plus aria-hidden="true" className="h-4 w-4" />
                         Crear la primera alerta
                     </Button>
                 </div>
@@ -366,16 +376,16 @@ function AlertsManager() {
                                     <p className="text-xs text-gray-500">
                                         Creada: {formatDate(alert.createdAt)}
                                     </p>
-                                    <p className={`inline-flex items-center gap-1 text-xs ${alert.lastTriggered ? 'text-amber-300' : 'text-gray-600'}`}>
-                                        <History className="h-3.5 w-3.5" />
+                                    <p className={`inline-flex items-center gap-1 text-xs ${alert.lastTriggered ? 'text-amber-300' : 'text-gray-500'}`}>
+                                        <History aria-hidden="true" className="h-3.5 w-3.5" />
                                         {alert.lastTriggered
-                                            ? `Disparada por última vez: ${formatDateTime(alert.lastTriggered)}`
-                                            : 'Todavía no se ha disparado'}
+                                            ? `Disparada por última vez: ${formatUserDateTime(alert.lastTriggered)}`
+                                            : t('common.states.neverTriggered')}
                                     </p>
-                                    <p className="inline-flex items-center gap-1 text-xs text-gray-600" title={`Canales: ${alert.channels.join(', ') || 'in_app'} · disparos: ${alert.triggerCount}`}>
-                                        <Send className="h-3.5 w-3.5" />
+                                    <p className="inline-flex items-center gap-1 text-xs text-gray-500" title={`Canales: ${alert.channels.join(', ') || 'in_app'} · disparos: ${alert.triggerCount}`}>
+                                        <Send aria-hidden="true" className="h-3.5 w-3.5" />
                                         {alert.lastEvaluatedAt
-                                            ? `Motor: evaluada ${formatDateTime(alert.lastEvaluatedAt)} · ${alert.triggerCount} disparos · ${alert.channels.join(', ') || 'in_app'}`
+                                            ? `Motor: evaluada ${formatUserDateTime(alert.lastEvaluatedAt)} · ${alert.triggerCount} disparos · ${alert.channels.join(', ') || 'in_app'}`
                                             : 'Motor: pendiente de primera evaluación (cada 5 min)'}
                                         {alert.lastResultStatus === 'skipped_stale_observation' ? ' · dato desactualizado' : null}
                                     </p>
@@ -396,10 +406,11 @@ function AlertsManager() {
                                         size="sm"
                                         onClick={() => handleReview(alert)}
                                         disabled={reviewing === alert._id}
+                                        aria-busy={reviewing === alert._id}
                                         aria-label={`Revisar expectativas de ${alert.symbol}`}
                                         className="min-h-[44px] gap-1.5 px-3 text-xs sm:min-h-0"
                                     >
-                                        <RefreshCcw className={`h-3.5 w-3.5 ${reviewing === alert._id ? 'animate-spin' : ''}`} />
+                                        <RefreshCcw aria-hidden="true" className={`h-3.5 w-3.5 ${reviewing === alert._id ? 'animate-spin' : ''}`} />
                                         Revisar
                                     </Button>
                                 ) : null}
@@ -407,10 +418,12 @@ function AlertsManager() {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleDeleteAlert(alert._id)}
-                                    aria-label="Eliminar alerta"
+                                    disabled={deleting === alert._id}
+                                    aria-busy={deleting === alert._id}
+                                    aria-label={`Eliminar alerta de ${alert.symbol ?? 'símbolo'}`}
                                     className="min-h-[44px] min-w-[44px] text-gray-400 hover:text-red-400"
                                 >
-                                    <Trash2 className="h-4 w-4" />
+                                    <Trash2 aria-hidden="true" className="h-4 w-4" />
                                 </Button>
                             </div>
                         </div>
@@ -433,7 +446,7 @@ function AlertsManager() {
                                 <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{item.message}</p>
                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                     {item.channels.length === 0 ? (
-                                        <span className="text-xs text-gray-600">sin canales</span>
+                                        <span className="text-xs text-gray-500">sin canales</span>
                                     ) : (
                                         item.channels.map((channel) => {
                                             const delivery = item.deliveries[channel];
@@ -471,7 +484,7 @@ function AlertsManager() {
  */
 export default function AlertsManagerWithSuspense() {
     return (
-        <Suspense fallback={<div className="py-8 text-center text-gray-500">Cargando alertas...</div>}>
+        <Suspense fallback={<div className="py-8 text-center text-gray-500">{t('common.states.loadingAlerts')}</div>}>
             <AlertsManager />
         </Suspense>
     );

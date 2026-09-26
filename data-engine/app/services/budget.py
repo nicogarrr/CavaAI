@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models import BudgetUsage
 
-
 # Planning rates in EUR per million tokens, keyed by the EXACT model id.
 # These are internal planning estimates, not provider tariffs: OpenCode Go bills
 # by subscription and several aliases carry cost_basis="unknown".
@@ -43,11 +42,31 @@ class BudgetController:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    def current_usage(self, db: Session) -> dict:
+    def current_usage(self, db: Session, *, admin: bool = False) -> dict:
         today = date.today()
+        # BudgetUsage es TenantOwnedMixin, asi que el agregado tiene que
+        # filtrar por tenant. Sin el predicado, `db.scalar(select(sum(...)))`
+        # con una sola columna no dispara el with_loader_criteria de
+        # app/core/database.py y el total era GLOBAL: un solo tenant podia
+        # agotar el tope diario de todos los demas, y ningun tenant podia
+        # ver su propio consumo. La columna existia precisely para esto.
+        tenant_id = db.info.get("tenant_id")
+        if tenant_id is None and not admin:
+            # Falla cerrado: sin tenant el agregado seria GLOBAL y can_spend
+            # dejaria que un tenant sin contexto consumiera el tope de todos.
+            # Solo una vista de operacion consciente pide admin=True.
+            raise RuntimeError(
+                "BudgetController.current_usage requiere contexto de tenant "
+                "(db.info['tenant_id']); pasa admin=True solo desde vistas de "
+                "operacion conscientes de que el agregado es global"
+            )
+        tenant_filter = (
+            [] if tenant_id is None else [BudgetUsage.tenant_id == tenant_id]
+        )
         daily = db.scalar(
             select(func.coalesce(func.sum(BudgetUsage.cost_eur), 0)).where(
-                BudgetUsage.usage_date == today
+                BudgetUsage.usage_date == today,
+                *tenant_filter,
             )
         )
         month_start = today.replace(day=1)
@@ -59,6 +78,7 @@ class BudgetController:
             select(func.coalesce(func.sum(BudgetUsage.cost_eur), 0)).where(
                 BudgetUsage.usage_date >= month_start,
                 BudgetUsage.usage_date < next_month,
+                *tenant_filter,
             )
         )
         return {
@@ -66,10 +86,16 @@ class BudgetController:
             "monthly_cost_eur": float(monthly or 0),
             "daily_cap_eur": self.settings.llm_daily_cap_eur,
             "monthly_cap_eur": self.settings.llm_monthly_cap_eur,
+            "tenant_scoped": tenant_id is not None,
         }
 
     def can_spend(self, db: Session, estimated_cost_eur: float) -> bool:
-        usage = self.current_usage(db)
+        # Decision consciente de contexto: con tenant, el tope es por tenant
+        # (un tenant no puede agotar el de los demas). Sin contexto de tenant
+        # (sesiones anonimas, scripts admin, tests de servicio), el tope actua
+        # como cortacircuitos GLOBAL del despliegue: es el contexto admin y se
+        # pide explicitamente.
+        usage = self.current_usage(db, admin=db.info.get("tenant_id") is None)
         return (
             usage["daily_cost_eur"] + estimated_cost_eur <= self.settings.llm_daily_cap_eur
             and usage["monthly_cost_eur"] + estimated_cost_eur <= self.settings.llm_monthly_cap_eur

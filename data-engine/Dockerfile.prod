@@ -58,4 +58,13 @@ USER cavaai
 # hijo, de modo que `docker stop` envia SIGTERM a sh, que no lo reenvia, y a los
 # 10 s llega SIGKILL: sin teardown del lifespan, sin scheduler.shutdown() y con
 # las peticiones en vuelo cortadas. El `exec` delega la senal.
-CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"]
+
+# --proxy-headers + --forwarded-allow-ips: todo el trafico externo entra por
+# Caddy (misma red docker), asi que la IP del socket siempre es la de Caddy.
+# Sin confiar en X-Forwarded-For el rate limiter (app/core/rate_limit.py)
+# agrupa a TODOS los clientes del mismo tenant en un solo bucket
+# (tenant:user@<ip-de-caddy>) y unas pocas pestanas abiertas agotan los
+# 300 req/min: tormenta de 429 con el backend sano (F53/F54/F55/F203).
+# Se confia solo en proxies del rango de redes docker (172.16.0.0/12);
+# configurable con FORWARDED_ALLOW_IPS.
+CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-172.16.0.0/12}\""]

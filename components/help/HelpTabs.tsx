@@ -22,7 +22,7 @@ const modules = [
   },
   {
     href: '/risk',
-    title: 'Riesgo',
+    title: 'Exposiciones',
     text: 'Pesos, concentración (top 1 y top 5) y exposición por sector y factor. No calcula VaR, drawdown ni volatilidad: son métricas de estructura de cartera.',
   },
   {
@@ -89,7 +89,7 @@ export default function HelpTabs() {
   const [activeTab, setActiveTab] = useState<'faq' | 'api' | 'community'>('faq');
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
+    <main id="content" tabIndex={-1} className="mx-auto w-full max-w-4xl px-4 py-12">
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold text-gray-100 mb-4">Centro de Ayuda</h1>
         <p className="text-xl text-gray-200 mb-4">
@@ -100,6 +100,19 @@ export default function HelpTabs() {
           <Link href="/metodologia" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">
             Metodología y fuentes
           </Link>
+        </p>
+        {/* Esta página es pública, pero casi todos los módulos que documenta
+            viven dentro de la app. Se avisa aquí para que nadie pulse un enlace
+            y se encuentre de golpe con el formulario de acceso. */}
+        <p className="mx-auto mt-6 max-w-2xl rounded-lg border border-gray-700/50 bg-gray-800/60 p-4 text-left text-sm text-gray-300">
+          Los enlaces a <span className="text-gray-100">research</span>,{' '}
+          <span className="text-gray-100">cartera</span>, <span className="text-gray-100">riesgo</span>,{' '}
+          <span className="text-gray-100">ProPicks</span>, <span className="text-gray-100">alertas</span>,{' '}
+          <span className="text-gray-100">insiders</span>, <span className="text-gray-100">watchlist</span> y{' '}
+          <span className="text-gray-100">exportación</span>{' '}
+          describen módulos del espacio de trabajo y{' '}
+          <strong className="text-gray-100">requieren iniciar sesión</strong>. Esta página de ayuda, la
+          metodología y los términos se leen sin cuenta.
         </p>
       </div>
 
@@ -264,6 +277,7 @@ export default function HelpTabs() {
           </div>
         </section>
       )}
-    </div>
+    </main>
   );
 }
+

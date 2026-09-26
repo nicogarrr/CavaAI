@@ -1,4 +1,5 @@
 from app.models.entities import (
+    AlertDelivery,
     AlertRule,
     BudgetUsage,
     CalculatedMetric,
@@ -35,6 +36,8 @@ from app.models.entities import (
     FundamentalValuationSnapshot,
     FundManager,
     FXRate,
+    InsiderFiling,
+    InsiderTransaction,
     InvestmentCaseStudy,
     InvestmentPlan,
     InvestmentPrinciple,
@@ -84,9 +87,15 @@ from app.models.entities import (
     ValuationModel,
     ValuationOutput,
     WatchItem,
+    WorkflowRun,
+    WorkflowStepRun,
 )
 
 __all__ = [
+    "WorkflowStepRun",
+    "WorkflowRun",
+    "InsiderTransaction",
+    "InsiderFiling",
     "ManagerHolding",
     "FundManager",
     "DividendRecord",
@@ -149,6 +158,7 @@ __all__ = [
     "PortfolioDailySnapshot",
     "ProcessingJob",
     "RedTeamRun",
+    "AlertDelivery",
     "ResearchAlert",
     "SavedScreen",
     "SavedScreenMatch",

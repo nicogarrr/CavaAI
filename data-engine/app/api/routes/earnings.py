@@ -3,10 +3,10 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Company, EarningsRun
+from app.models import EarningsRun
 from app.schemas import EarningsRunOut, EarningsWorkflowRequest
-from app.services.earnings_service import EarningsWorkflowService
 from app.services.company_resolver import resolve_company
+from app.services.earnings_service import EarningsWorkflowService
 
 router = APIRouter()
 

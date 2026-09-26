@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowDownToLine, ArrowRightLeft, Upload } from 'lucide-react';
 import type { ProPick } from '@/lib/actions/proPicks.actions';
+import { formatNumber } from '@/lib/format';
 import {
     buildMonthlySnapshot,
     diffSnapshots,
@@ -123,7 +124,7 @@ export default function MonthlyRebalanceView({
                         </h3>
                     </div>
                     <p className="mt-1 text-sm text-gray-400">
-                        {strategyName} · {currentPicks.length} valores vigentes ·{' '}
+                        {strategyName} · {formatNumber(currentPicks.length, { maximumFractionDigits: 0 })} valores vigentes ·{' '}
                         {diff.hasPrevious && previous
                             ? `comparado con ${monthLabelEs(previous.month)}`
                             : 'aún sin snapshot del mes anterior'}
@@ -173,7 +174,7 @@ export default function MonthlyRebalanceView({
                     <div className="mb-3 flex items-center gap-2">
                         <h4 className="text-sm font-semibold text-gray-200">Entran</h4>
                         <Badge variant="outline" className="border-green-500/50 text-green-300">
-                            {diff.entered.length}
+                            {formatNumber(diff.entered.length, { maximumFractionDigits: 0 })}
                         </Badge>
                     </div>
                     <MoveList moves={diff.entered} tone="in" />
@@ -182,7 +183,7 @@ export default function MonthlyRebalanceView({
                     <div className="mb-3 flex items-center gap-2">
                         <h4 className="text-sm font-semibold text-gray-200">Salen</h4>
                         <Badge variant="outline" className="border-red-500/50 text-red-300">
-                            {diff.exited.length}
+                            {formatNumber(diff.exited.length, { maximumFractionDigits: 0 })}
                         </Badge>
                     </div>
                     <MoveList moves={diff.exited} tone="out" />
@@ -192,7 +193,7 @@ export default function MonthlyRebalanceView({
             {diff.hasPrevious && (
                 <Card className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
                     <p className="text-sm text-gray-400">
-                        Se mantienen {diff.kept.length} valores
+                        Se mantienen {formatNumber(diff.kept.length, { maximumFractionDigits: 0 })} valores
                         {diff.kept.length > 0 && (
                             <>: <span className="text-gray-300">{diff.kept.join(', ')}</span></>
                         )}

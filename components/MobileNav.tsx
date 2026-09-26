@@ -5,29 +5,31 @@ import { createPortal } from 'react-dom';
 import { Menu, X } from 'lucide-react';
 import { CavaAIWordmark } from '@/components/CavaAIWordmark';
 import NavItems from '@/components/NavItems';
+import SearchCommand from '@/components/SearchCommand';
 
 /**
- * Navegación móvil: botón hamburger (≥44px) que abre un drawer lateral
- * con acceso a TODAS las secciones. En desktop no se renderiza el botón
- * (la navegación completa vive en el sidebar, visible desde `md`).
- * Unificado a md (768px) para no dejar el hueco 640-767px sin nav.
+ * Navegacion movil: boton hamburger (>=44px) que abre un drawer con el MISMO
+ * arbol que el sidebar de escritorio.
+ *
+ * El breakpoint es `md` en los dos lados a proposito. Antes el trigger era
+ * `sm:hidden` y el sidebar `md:flex`, asi que entre 640px y 767px no existia
+ * ninguna navegacion por secciones: solo logo, buscador y avatar.
  */
-export default function MobileNav({ initialStocks }: { initialStocks: StockWithWatchlistStatus[] }) {
+export default function MobileNav({ initialStocks }: { initialStocks?: StockWithWatchlistStatus[] }) {
     const [open, setOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const drawerRef = useRef<HTMLDivElement>(null);
     const closeButtonRef = useRef<HTMLButtonElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
-    void initialStocks;
-
-    // Cerrar con Escape y bloquear el scroll del body mientras está abierto.
-    // Accesibilidad: al abrir, el foco va al botón de cerrar; al cerrar,
-    // vuelve al disparador que abrió el drawer.
+    // Escape cierra, Tab circula dentro del drawer y el scroll del body se
+    // bloquea mientras esta abierto. El foco entra por el boton de cerrar y
+    // vuelve al disparador al cerrar.
     useEffect(() => {
         if (!open) return;
         const trigger = triggerRef.current;
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
+                e.preventDefault();
                 setOpen(false);
                 return;
             }
@@ -56,47 +58,16 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
         };
         document.addEventListener('keydown', onKey);
         closeButtonRef.current?.focus();
-        const prev = document.body.style.overflow;
+        const prevOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         return () => {
             document.removeEventListener('keydown', onKey);
-            document.body.style.overflow = prev;
+            document.body.style.overflow = prevOverflow;
             trigger?.focus();
         };
     }, [open]);
 
-    // Al abrir: foco al botón de cerrar. Al cerrar: retorno al trigger.
-    // (wasOpen evita robar el foco en el montaje inicial)
-    const wasOpen = useRef(false);
-    useEffect(() => {
-        if (open) {
-            wasOpen.current = true;
-            drawerRef.current
-                ?.querySelector<HTMLButtonElement>('button[aria-label="Cerrar menú de navegación"]')
-                ?.focus();
-        } else if (wasOpen.current) {
-            wasOpen.current = false;
-            triggerRef.current?.focus();
-        }
-    }, [open ]);
-
-    // Trampa de foco dentro del drawer mientras está abierto
-    const onDrawerKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key !== 'Tab' || !drawerRef.current) return;
-        const focusables = drawerRef.current.querySelectorAll<HTMLElement>(
-            'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        );
-        if (!focusables.length) return;
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-        }
-    };
+    const close = () => setOpen(false);
 
     return (
         <>
@@ -107,7 +78,7 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
                 aria-label="Abrir menú de navegación"
                 aria-expanded={open}
                 aria-controls="mobile-nav-drawer"
-                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white md:hidden"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white md:hidden"
             >
                 <Menu className="h-6 w-6" aria-hidden="true" />
             </button>
@@ -115,51 +86,69 @@ export default function MobileNav({ initialStocks }: { initialStocks: StockWithW
             {/* Portal a document.body: el header usa backdrop-blur, que convierte
                 position:fixed de los descendientes en relativo al header y
                 aplastaba el drawer sobre el contenido (capas solapadas). */}
-            {open && createPortal(
-                <div
-                    ref={dialogRef}
-                    tabIndex={-1}
-                    className="fixed inset-0 z-[60] md:hidden"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="mobile-nav-title"
-                >
-                    <h2 id="mobile-nav-title" className="sr-only">Menú de navegación</h2>
-                    <button
-                        type="button"
-                        aria-label="Cerrar menú por fondo"
-                        onClick={() => setOpen(false)}
+            {open &&
+                createPortal(
+                    <div
+                        ref={dialogRef}
                         tabIndex={-1}
-                        className="absolute inset-0 cursor-default bg-black/60 backdrop-blur-sm"
-                    />
-                    <aside
-                        id="mobile-nav-drawer"
-                        ref={drawerRef}
-                        onKeyDown={onDrawerKeyDown}
-                        className="absolute left-0 top-0 flex h-full max-h-dvh w-[85vw] max-w-xs flex-col border-r border-gray-700/50 bg-gray-900 shadow-2xl"
+                        className="fixed inset-0 z-[60] md:hidden"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="mobile-nav-title"
                     >
-                        <div className="flex min-h-[64px] items-center justify-between gap-2 border-b border-gray-700/50 px-4 py-3">
-                            <CavaAIWordmark />
-                            <button
-                                type="button"
-                                ref={closeButtonRef}
-                                onClick={() => setOpen(false)}
-                                aria-label="Cerrar menú de navegación"
-                                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white"
+                        <h2 id="mobile-nav-title" className="sr-only">Menú de navegación</h2>
+                        <button
+                            type="button"
+                            aria-label="Cerrar menú por fondo"
+                            onClick={close}
+                            tabIndex={-1}
+                            className="absolute inset-0 cursor-default bg-black/60 backdrop-blur-sm"
+                        />
+                        <aside
+                            id="mobile-nav-drawer"
+                            ref={drawerRef}
+                            className="absolute left-0 top-0 flex h-full max-h-dvh w-[85vw] max-w-xs flex-col border-r border-gray-700/50 bg-gray-900 shadow-2xl"
+                        >
+                            <div className="flex min-h-16 items-center justify-between gap-2 border-b border-gray-700/50 px-4 py-3">
+                                <CavaAIWordmark />
+                                <button
+                                    type="button"
+                                    ref={closeButtonRef}
+                                    onClick={close}
+                                    aria-label="Cerrar menú de navegación"
+                                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white"
+                                >
+                                    <X className="h-6 w-6" aria-hidden="true" />
+                                </button>
+                            </div>
+
+                            {/* El buscador va dentro del drawer: `initialStocks`
+                                llegaba por toda la cadena layout -> Header ->
+                                MobileNav -> NavItems y se descartaba con
+                                `void initialStocks`. Aqui se usa de verdad. */}
+                            <div className="border-b border-gray-700/50 px-3 py-3">
+                                <SearchCommand
+                                    renderAs="button"
+                                    initialStocks={initialStocks}
+                                />
+                            </div>
+
+                            {/* El cierre va en cada enlace, no en el <nav>: antes
+                                un clic en el titulo de seccion o en el fondo
+                                cerraba el menu. */}
+                            <nav
+                                className="flex-1 overflow-y-auto"
+                                aria-label="Navegación móvil"
+                                onClick={(event) => {
+                                    if ((event.target as HTMLElement).closest('a[href]')) close();
+                                }}
                             >
-                                <X className="h-6 w-6" aria-hidden="true" />
-                            </button>
-                        </div>
-                        <nav className="flex-1 overflow-y-auto p-2" aria-label="Navegación principal" onClick={() => setOpen(false)}>
-                            <NavItems initialStocks={initialStocks} />
-                        </nav>
-                        <p className="border-t border-gray-700/50 px-4 py-3 text-xs text-gray-500">
-                            Usa el buscador para ir a cualquier acción.
-                        </p>
-                    </aside>
-                </div>,
-                document.body,
-            )}
+                                <NavItems />
+                            </nav>
+                        </aside>
+                    </div>,
+                    document.body,
+                )}
         </>
     );
 }

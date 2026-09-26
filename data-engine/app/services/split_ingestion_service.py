@@ -17,11 +17,12 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.models import Company, CorporateAction, Position
+from app.services.company_resolver import resolve_company
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.yahoo import YahooFinanceClient
 from app.services.provenance import Coverage, SourceKind, provenance
-from app.services.company_resolver import resolve_company
 
 
 class SplitIngestionService:
@@ -102,7 +103,7 @@ class SplitIngestionService:
             return {
                 "ticker": company.ticker,
                 "status": "unavailable",
-                "error": f"{type(exc).__name__}: {exc}"[:300],
+                "error": redact_secrets(f"{type(exc).__name__}: {exc}")[:300],
                 "inserted": 0,
                 "existing": 0,
             }

@@ -1,4 +1,5 @@
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -35,7 +36,12 @@ def settings(db: Session = Depends(get_db)) -> dict:
     return {
         "app_env": app_settings.app_env,
         "maf_version": maf_version(),
-        "budget": BudgetController().current_usage(db),
+        # Vista de operacion: con sesion autenticada muestra el consumo del
+        # tenant; sin contexto (sesion anonima), el agregado global es el
+        # contexto admin y se pide explicitamente.
+        "budget": BudgetController().current_usage(
+            db, admin=db.info.get("tenant_id") is None
+        ),
         "routes": route_table(),
         "llm": llm_status,
         "connectors": {

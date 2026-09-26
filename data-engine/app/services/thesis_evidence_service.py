@@ -31,7 +31,6 @@ existente no se vuelve lenta ni flaky por EDGAR/NASDAQ/IR reales.
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -101,12 +100,9 @@ def _await_sync(factory, timeout: float = FETCH_TIMEOUT_S):
     async def _bounded():
         return await asyncio.wait_for(factory(), timeout)
 
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(_bounded())
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(lambda: asyncio.run(_bounded())).result()
+    from app.services.async_bridge import run_from_any_context
+
+    return run_from_any_context(_bounded())
 
 
 def _decimal(value: Any) -> Decimal | None:

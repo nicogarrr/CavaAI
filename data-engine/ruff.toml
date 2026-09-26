@@ -62,7 +62,7 @@ ignore = [
 # Los tests redefinen fixtures y helpers a proposito.
 "tests/*.py" = ["F811", "B011", "SIM117", "C901", "B017", "B905", "B023", "F841"]
 # modules/ es codigo heredado (yfinance/funds/garp) que se mantiene aparte.
-"modules/*.py" = ["F841", "F401", "B008", "E501"]
+"modules/*.py" = ["F841", "F401", "B008", "E501", "UP035"]
 
 [lint.isort]
 known-first-party = ["app", "modules"]

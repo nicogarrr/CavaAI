@@ -26,14 +26,14 @@ export const metadata: Metadata = {
     title: 'CavaAI',
   },
   robots: {
-    index: true,
-    follow: true,
+    // La app es una herramienta privada: el shell autenticado no debe
+    // indexarse. Las unicas paginas publicas (landing, legal, metodologia)
+    // declaran su propio `robots` para permitirlo.
+    index: false,
+    follow: false,
   },
   alternates: {
-    languages: {
-      'es': '/',
-      'en': '/',
-    },
+    canonical: '/',
   },
 };
 
@@ -43,7 +43,10 @@ export const viewport: Viewport = {
   maximumScale: 5,
   // La app dibuja bajo el notch/isla dinámica del iPhone (100dvh + safe-area).
   viewportFit: 'cover',
-  themeColor: '#101010',
+  // Debe coincidir con el fondo real del body (`bg-gray-900` = #0a0a0b en
+  // globals.css). Antes decía #101010 y el chrome del móvil se veía distinto
+  // del contenido.
+  themeColor: '#0a0a0b',
 };
 
 export default function RootLayout({
