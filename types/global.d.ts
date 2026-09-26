@@ -60,7 +60,7 @@ declare global {
     type SearchCommandProps = {
         renderAs?: 'button' | 'text' | 'icon';
         label?: string;
-        initialStocks: StockWithWatchlistStatus[];
+        initialStocks?: StockWithWatchlistStatus[];
     };
 
     type WelcomeEmailData = {
