@@ -25,11 +25,28 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
         throw new AppError('Año de exportación inválido', 'VALIDATION_ERROR', 400);
     }
 
+    // `format` es una union de TypeScript: no valida nada en runtime.
+    if (format !== 'csv' && format !== 'json') {
+        throw new AppError('Formato de exportación inválido', 'VALIDATION_ERROR', 400);
+    }
+
+    // La peticion sale hacia el backend configurado y nada mas: la URL se
+    // construye con el constructor URL, se fija el origen al de BACKEND_URL y
+    // los valores que vienen del cliente entran como constantes revalidadas
+    // (year acotado arriba; format mapeado a literal). Asi ningun valor
+    // remoto puede desviar el fetch a otro host ni inyectar en la query.
+    const exportUrl = new URL(`/api/export/${year}`, BACKEND_URL);
+    if (exportUrl.origin !== new URL(BACKEND_URL).origin) {
+        throw new AppError('Backend de exportación mal configurado', 'CONFIG_ERROR', 500);
+    }
+    const safeFormat = format === 'csv' ? 'csv' : 'json';
+    exportUrl.searchParams.set('format', safeFormat);
+
     const identityHeaders = await researchIdentityHeaders({
         method: 'GET',
         path: `/api/export/${year}`,
     });
-    const response = await fetch(`${BACKEND_URL}/api/export/${year}?format=${format}`, {
+    const response = await fetch(exportUrl, {
         headers: { ...identityHeaders },
         cache: 'no-store',
     });
