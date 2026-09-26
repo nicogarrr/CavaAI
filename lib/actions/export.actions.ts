@@ -24,20 +24,31 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
     if (!Number.isInteger(year) || year < 2000 || year > 2100) {
         throw new AppError('Año de exportación inválido', 'VALIDATION_ERROR', 400);
     }
-
+    // `format` es una union de TypeScript: no valida nada en runtime, y se
+    // interpola en la query del engine firmado.
+    if (format !== 'csv' && format !== 'json') {
+        throw new AppError('Formato de exportación inválido', 'VALIDATION_ERROR', 400);
+    }
+    const safeFormat = encodeURIComponent(format);
     const identityHeaders = await researchIdentityHeaders({
         method: 'GET',
         path: `/api/export/${year}`,
     });
-    const response = await fetch(`${BACKEND_URL}/api/export/${year}?format=${format}`, {
+    const response = await fetch(`${BACKEND_URL}/api/export/${year}?format=${safeFormat}`, {
         headers: { ...identityHeaders },
         cache: 'no-store',
     });
 
     if (!response.ok) {
+        // El cuerpo del engine puede traer un traceback del backend (rutas,
+        // SQL, hostnames internos). Se registra en el servidor y al cliente
+        // solo se le da el status. Ver ERROR_MESSAGES.EXTERNAL_API_ERROR.
         const detail = await response.text().catch(() => response.statusText);
+        console.error(
+            `[exportJournal] research engine respondió ${response.status}: ${detail.slice(0, 500)}`,
+        );
         throw new AppError(
-            `Exportación falló (${response.status}): ${detail.slice(0, 300)}`,
+            `Exportación falló (${response.status})`,
             'RESEARCH_API_ERROR',
             response.status,
         );
@@ -45,7 +56,7 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
 
     const contentType = response.headers.get('content-type') ?? 'text/plain';
     const content = await response.text();
-    const extension = format === 'csv' ? 'csv' : 'json';
+    const extension = safeFormat === 'csv' ? 'csv' : 'json';
     return {
         filename: `journal-${year}.${extension}`,
         contentType,
