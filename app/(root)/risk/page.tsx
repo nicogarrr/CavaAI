@@ -39,18 +39,17 @@ export default async function RiskPage() {
                         nombres para "riesgo" y las concentraciones en dos sitios.
                         Aquí vive la concentración (pesos, top 1 y top 5, sector,
                         posición y sus alertas) y solo ella: el riesgo y el
-                        rendimiento históricos están en Inteligencia de cartera y
-                        la simulación Monte Carlo en la pestaña Simulación.
+                        rendimiento medidos (volatilidad, drawdown, VaR, TWR,
+                        Sharpe) están en Inteligencia de cartera.
                     */}
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
                         Pesos, concentración (top 1 y top 5) y exposición por sector y posición, con las
-                        alertas y el umbral que las dispara. No calcula volatilidad, drawdown ni VaR: hace
-                        falta historia de precios que el motor aún no usa.
+                        alertas y el umbral que las dispara. Esta página no calcula volatilidad, drawdown
+                        ni VaR: esas medidas están en Inteligencia de cartera.
                     </p>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
-                        Para el detalle por posición, ver la cartera. Para el riesgo y el rendimiento
-                        medidos, <Link className="text-teal-300 hover:text-teal-200" href="/portfolio/intelligence">Inteligencia de cartera</Link>;
-                        para el riesgo simulado, la pestaña Simulación.
+                        Para el detalle por posición, ver la cartera. Para volatilidad, drawdown, VaR y
+                        rendimiento medidos, <Link className="text-teal-300 hover:text-teal-200" href="/portfolio/intelligence">Inteligencia de cartera</Link>.
                     </p>
                 </div>
                 <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
