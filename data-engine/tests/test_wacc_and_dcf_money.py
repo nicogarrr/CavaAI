@@ -19,8 +19,8 @@ from decimal import Decimal
 import pytest
 
 from app.services.metric_calculation_service import (
-    _capital_scale_conflict,
     MetricCalculationService,
+    _capital_scale_conflict,
 )
 from app.valuation.dcf_fcff import DCFInputs, run_dcf
 
@@ -103,9 +103,8 @@ def _cleanup() -> None:
 
 @pytest.fixture
 def company_factory():
-    from tests.test_calculated_metrics import create_test_company
-
     from app.core.database import SessionLocal
+    from tests.test_calculated_metrics import create_test_company
 
     _cleanup()
     db = SessionLocal()
