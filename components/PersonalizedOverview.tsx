@@ -1,6 +1,6 @@
 'use client';
 
-import { formatCompact, formatDateTime, formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import { formatCompact, formatUserDateTime, formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
 import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -428,7 +428,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 <article className="min-w-0 rounded-lg border border-gray-700/50 bg-gray-900/50 p-3" key={item.id}>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <Badge variant="outline">{SEVERITY_LABELS[item.severity] ?? item.severity}</Badge>
-                                        <span className="text-xs text-gray-500">{formatDateTime(item.createdAt)}</span>
+                                        <span className="text-xs text-gray-500">{formatUserDateTime(item.createdAt)}</span>
                                     </div>
                                     <p className="mt-2 text-sm break-words text-gray-200">{item.title}</p>
                                     <p className="mt-1 text-xs break-words text-gray-400">{item.message}</p>

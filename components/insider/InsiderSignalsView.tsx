@@ -1,6 +1,6 @@
 'use client';
 
-import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format';
+import { formatDate, formatUserDateTime, formatMoney, formatNumber } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -46,7 +46,7 @@ function secLink(sourceUrl: unknown): string | null {
 
 function formatFetchedAt(value: unknown): string {
     if (typeof value !== 'string' || !value) return t('signals.noDate');
-    return formatDateTime(value);
+    return formatUserDateTime(value);
 }
 
 /** Fechas de Form 4: son días del calendario EDGAR (US), no instantes. Se
