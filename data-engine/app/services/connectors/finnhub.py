@@ -5,9 +5,21 @@ from typing import Any
 import httpx
 
 from app.core.config import get_settings
+from app.services.connectors.base import get_with_retry
 
 
 class FinnhubClient:
+    """Finnhub connector.
+
+    429 y 5xx se reintentan con backoff y respetando Retry-After. El plan FREE
+    de Finnhub son 60 llamadas/min y el consumo normal ya lo ronda: el
+    refresco de precios hace fan-out sobre todo el universo de empresas del
+    tenant con 6 conexiones simultaneas, y la lectura de multiples paginas de
+    IR suma mas. Antes un 429 era un fallo definitivo y el llamante lo
+    registraba como proveedor no disponible, con lo que los precios de esa
+    corrida se perdian sin reintento.
+    """
+
     base_url = "https://finnhub.io/api/v1"
 
     def __init__(self) -> None:
@@ -19,12 +31,10 @@ class FinnhubClient:
     async def _get(self, path: str, params: dict[str, Any]) -> Any:
         if not self.configured():
             raise RuntimeError("FINNHUB_API_KEY is not configured")
+        url = f"{self.base_url}{path}"
+        query = {**params, "token": self.settings.finnhub_api_key}
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(
-                f"{self.base_url}{path}",
-                params={**params, "token": self.settings.finnhub_api_key},
-            )
-            response.raise_for_status()
+            response = await get_with_retry(lambda: client.get(url, params=query))
             return response.json()
 
     async def quote(self, ticker: str) -> dict[str, Any]:
