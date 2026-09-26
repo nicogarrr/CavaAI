@@ -149,9 +149,19 @@ def scan(
         if missing:
             stats["errors"].append(f"sin CIK SEC: {', '.join(missing)}")
 
+        # Filtro por tenant explicito. Sin el, el set traia los accessions de
+        # TODOS los tenants: el tenant B veia el accession que el tenant A ya
+        # habia persistido y lo saltaba, asi que nunca recibia esos Form 4.
+        # Un select() de una sola columna no dispara el with_loader_criteria
+        # que inyecta database.py (los loader criteria aplican a la carga de
+        # entidades, no a tuplas de columnas).
         known_accessions = {
             row[0]
-            for row in db.execute(select(InsiderFiling.accession_number)).all()
+            for row in db.execute(
+                select(InsiderFiling.accession_number).where(
+                    InsiderFiling.tenant_id == db.info.get("tenant_id")
+                )
+            ).all()
         }
         budget = max_new_fetches
         for ticker, cik in ciks.items():

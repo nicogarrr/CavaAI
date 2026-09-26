@@ -15,6 +15,8 @@ from app.models.entities import (
     CorporateAction,
     DividendRecord,
     FundManager,
+    InsiderFiling,
+    InsiderTransaction,
     ManagerHolding,
     DailyBrief,
     Document,
@@ -84,9 +86,14 @@ from app.models.entities import (
     ValuationModel,
     ValuationOutput,
     WatchItem,
-)
+    WorkflowRun,
+    WorkflowStepRun,)
 
 __all__ = [
+    "WorkflowStepRun",
+    "WorkflowRun",
+    "InsiderTransaction",
+    "InsiderFiling",
     "BudgetUsage",
     "AlertRule",
     "CallClaim",
