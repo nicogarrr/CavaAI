@@ -17,7 +17,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.alter_column("market_prices", "adj_close", existing_type=sa.Numeric(20, 6), nullable=True)
+    # batch_alter_table: sqlite (tests de migracion) no soporta ALTER COLUMN
+    # directo; en Postgres emite el mismo ALTER COLUMN de siempre.
+    with op.batch_alter_table("market_prices") as batch_op:
+        batch_op.alter_column("adj_close", existing_type=sa.Numeric(20, 6), nullable=True)
 
 
 def downgrade() -> None:
@@ -33,4 +36,5 @@ def downgrade() -> None:
             "adj_close NULL. Restaurar NOT NULL implicaria borrarlas o fabricar "
             "un ajuste; rellena o elimina esas filas a mano antes de revertir."
         )
-    op.alter_column("market_prices", "adj_close", existing_type=sa.Numeric(20, 6), nullable=False)
+    with op.batch_alter_table("market_prices") as batch_op:
+        batch_op.alter_column("adj_close", existing_type=sa.Numeric(20, 6), nullable=False)

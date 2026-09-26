@@ -19,7 +19,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.alter_column("market_prices", "volume", existing_type=sa.Integer(), nullable=True)
+    # batch_alter_table: sqlite (tests de migracion) no soporta ALTER COLUMN
+    # directo; en Postgres emite el mismo ALTER COLUMN de siempre.
+    with op.batch_alter_table("market_prices") as batch_op:
+        batch_op.alter_column("volume", existing_type=sa.Integer(), nullable=True)
 
 
 def downgrade() -> None:
@@ -36,4 +39,5 @@ def downgrade() -> None:
             "volume NULL. Restaurar NOT NULL implicaria borrarlas; rellena o "
             "elimina esas filas a mano antes de revertir."
         )
-    op.alter_column("market_prices", "volume", existing_type=sa.Integer(), nullable=False)
+    with op.batch_alter_table("market_prices") as batch_op:
+        batch_op.alter_column("volume", existing_type=sa.Integer(), nullable=False)
