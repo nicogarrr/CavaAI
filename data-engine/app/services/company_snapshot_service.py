@@ -85,9 +85,9 @@ class CompanySnapshotService:
         ]
         if not company_ids:
             return {}
-        companies = db.scalars(
-            select(Company).where(Company.id.in_(company_ids))
-        ).all()
+        companies = list(
+            db.scalars(select(Company).where(Company.id.in_(company_ids))).all()
+        )
         theses = self._latest_by_company(
             db, ThesisVersion, company_ids, desc(ThesisVersion.version)
         )
