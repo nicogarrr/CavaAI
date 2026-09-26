@@ -18,9 +18,10 @@ interface ProPicksTabsProps {
     strategies: Array<{ id: string; name: string; description: string }>;
     initialPicks: ProPick[];
     generatedAt?: string;
+    passedCount?: number | null;
 }
 
-export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: ProPicksTabsProps) {
+export default function ProPicksTabs({ strategies, initialPicks, generatedAt, passedCount = null }: ProPicksTabsProps) {
     const merged = mergeStrategies(strategies);
     const [currentStrategy, setCurrentStrategy] = useState<string>(merged[0]?.id ?? 'adaptive');
     const [walkForward, setWalkForward] = useState<WalkForwardBacktestResult | null>(null);
@@ -89,7 +90,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
             </TabsList>
 
             <TabsContent value="picks" className="mt-6">
-                <EnhancedProPicksContent initialPicks={initialPicks} generatedAt={generatedAt} />
+                <EnhancedProPicksContent initialPicks={initialPicks} generatedAt={generatedAt} initialPassedCount={passedCount} />
             </TabsContent>
 
             <TabsContent value="estrategias" className="mt-6 space-y-4">
