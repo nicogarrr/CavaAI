@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session
 
 from app.models.entities import Base
 from app.models import Company, FXRate, Portfolio, Transaction
-from app.services.ibkr_import_service import _decimal, _is_number, _parse_amount
+from app.services.ibkr_import_service import _decimal, _is_number
+from app.services.number_parsing import parse_localized_number
 from app.services.portfolio_ledger_service import (
     BUY_ACTIONS,
     SELL_ACTIONS,
@@ -63,7 +64,9 @@ def db():
     ],
 )
 def test_parse_amount_handles_both_locales(raw, expected):
-    assert _parse_amount(raw) == expected
+    parsed = parse_localized_number(raw)
+    assert parsed is not None, raw
+    assert parsed[0] == expected
 
 
 @pytest.mark.parametrize("raw", ["1.234,56", "0,24", "1,234.56", "-45,75"])
