@@ -1,37 +1,30 @@
-import hashlib
-import hmac
 import io
 import json
 import time
 import urllib.error
 import urllib.request
 
+from research_auth import load_secret, signed_headers
+
 BASE = "http://127.0.0.1:8000"
-secret = [l.split("=", 1)[1].strip() for l in open(".env", encoding="utf-8") if l.startswith("RESEARCH_AUTH_SECRET=")][0]
+secret = load_secret()
 TENANT = USER = "e2e-full-stack"
 
 
-def headers():
-    ts = str(int(time.time()))
-    sig = hmac.new(secret.encode(), f"{TENANT}:{USER}:{ts}".encode(), hashlib.sha256).hexdigest()
-    return {
-        "X-CavaAI-User": USER,
-        "X-CavaAI-Tenant": TENANT,
-        "X-CavaAI-Timestamp": ts,
-        "X-CavaAI-Signature": sig,
-    }
-
-
 def request(path, method="GET", body=None, raw=None, content_type=None, timeout=120):
-    h = headers()
     data = None
+    extra = {}
     if raw is not None:
         data = raw
-        h["Content-Type"] = content_type
+        extra["Content-Type"] = content_type
     elif body is not None:
         data = json.dumps(body).encode()
-        h["Content-Type"] = "application/json"
-    req = urllib.request.Request(BASE + path, data=data, headers=h, method=method)
+        extra["Content-Type"] = "application/json"
+    headers = signed_headers(
+        secret, TENANT, USER, method=method, path=path.split("?", 1)[0], body=data or b""
+    )
+    headers.update(extra)
+    req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             payload = r.read().decode("utf-8", "replace")

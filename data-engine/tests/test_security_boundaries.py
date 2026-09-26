@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from types import SimpleNamespace
-import time
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 import main
 from app.core import auth as auth_module
-from app.core.auth import sign_research_identity
 from app.core.config import Settings
+
+from tests.auth_helpers import auth_settings, bound_headers, signed_request
 from app.core.database import SessionLocal, init_db
 from app.models import (
     Claim,
@@ -34,33 +33,12 @@ from app.workers import dramatiq_app
 SECRET = "research-security-test-secret-at-least-32-chars"
 
 
-def _headers(tenant_external_id: str, user_id: str) -> dict[str, str]:
-    timestamp = str(int(time.time()))
-    return {
-        "X-CavaAI-Tenant": tenant_external_id,
-        "X-CavaAI-User": user_id,
-        "X-CavaAI-Timestamp": timestamp,
-        "X-CavaAI-Signature": sign_research_identity(
-            SECRET,
-            tenant_id=tenant_external_id,
-            user_id=user_id,
-            timestamp=timestamp,
-        ),
-    }
-
-
 @pytest.fixture
 def required_auth(monkeypatch):
     monkeypatch.setattr(
         auth_module,
         "get_settings",
-        lambda: SimpleNamespace(
-            app_env="test",
-            is_production=False,
-            research_auth_required=True,
-            research_auth_secret=SECRET,
-            research_auth_max_age_seconds=300,
-        ),
+        lambda: auth_settings(strict=True, secret=SECRET),
     )
 
 
@@ -82,13 +60,16 @@ def test_research_auth_settings_are_real_and_private_by_default(monkeypatch):
 
 
 def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
+    # research_auth_required explicito: el suite lo apaga por defecto
+    # (tests/conftest.py) y estos asserts son sobre garantias de produccion.
     with pytest.raises(ValidationError, match="RESEARCH_AUTH_SECRET"):
-        Settings(_env_file=None, app_env="production")
+        Settings(_env_file=None, app_env="production", research_auth_required=True)
 
     with pytest.raises(ValidationError, match="MINIO_SECRET_KEY"):
         Settings(
             _env_file=None,
             app_env="production",
+            research_auth_required=True,
             research_auth_secret=SECRET,
             minio_access_key="production-minio-access-not-a-default",
         )
@@ -96,6 +77,7 @@ def test_production_settings_fail_fast_on_insecure_storage_or_missing_auth():
     configured = Settings(
         _env_file=None,
         app_env="production",
+        research_auth_required=True,
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
         minio_access_key="production-minio-access-not-a-default",
@@ -110,13 +92,7 @@ def test_production_aliases_force_signed_identity_even_without_flag(monkeypatch,
     monkeypatch.setattr(
         auth_module,
         "get_settings",
-        lambda: SimpleNamespace(
-            app_env=alias,
-            is_production=True,
-            research_auth_required=False,
-            research_auth_secret=SECRET,
-            research_auth_max_age_seconds=300,
-        ),
+        lambda: auth_settings(strict=True, secret=SECRET, app_env=alias, required=False),
     )
     client = TestClient(main.app)
     unsigned = client.get("/api/news")
@@ -127,6 +103,7 @@ def test_is_production_accepts_both_aliases():
     prod = Settings(
         _env_file=None,
         app_env="prod",
+        research_auth_required=True,
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
         minio_access_key="production-minio-access-not-a-default",
@@ -134,6 +111,7 @@ def test_is_production_accepts_both_aliases():
     production = Settings(
         _env_file=None,
         app_env="production",
+        research_auth_required=True,
         research_auth_secret=SECRET,
         minio_secret_key="production-minio-secret-not-a-default",
         minio_access_key="production-minio-access-not-a-default",
@@ -144,6 +122,85 @@ def test_is_production_accepts_both_aliases():
     assert local.is_production is False
 
 
+def test_is_production_is_a_denylist_not_an_allowlist():
+    # Regresion: con una allowlist {'production','prod'}, cualquier otro
+    # APP_ENV (staging, preprod, prod-eu, o el default 'local' por typo)
+    # degradaba en silencio la firma ligada al request, el nonce en Redis y el
+    # rate limit. Ahora todo lo que no sea un entorno local conocido es
+    # produccion.
+    for value, expected in [
+        ("production", True),
+        ("prod", True),
+        ("PRODUCTION", True),
+        ("  prod  ", True),
+        ("staging", True),
+        ("stage", True),
+        ("preprod", True),
+        ("prod-eu", True),
+        ("typo", True),
+        ("local", False),
+        ("test", False),
+        ("ci", False),
+        ("dev", False),
+        ("development", False),
+    ]:
+        # Con app_env de produccion hay que aportar las garantias que
+        # validate_production_security exige; si no, el Settings ni siquiera
+        # se construye y la asercion que importa no llega a ejecutarse.
+        kwargs = (
+            {
+                "research_auth_required": True,
+                "research_auth_secret": SECRET,
+                "minio_secret_key": "production-minio-secret-not-a-default",
+                "minio_access_key": "production-minio-access-not-a-default",
+            }
+            if expected
+            else {}
+        )
+        settings = Settings(_env_file=None, app_env=value, **kwargs)
+        assert settings.is_production is expected, value
+        assert settings.is_local_environment is (not expected), value
+
+
+def test_production_rejects_disabling_signed_auth():
+    # Desactivar la auth firmada no solo abre la API: deja la sesion sin
+    # tenant_id y con el tenant ausente los guards de aislamiento no inyectan
+    # scope, asi que se leerian/escribirian datos de otros tenants.
+    with pytest.raises(ValidationError, match="tenant isolation"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            research_auth_required=False,
+            research_auth_secret=SECRET,
+            minio_secret_key="production-minio-secret-not-a-default",
+            minio_access_key="production-minio-access-not-a-default",
+        )
+
+
+def test_production_rejects_wildcard_cors_origin():
+    # CORS se monta con allow_credentials=True: un origin '*' hace que
+    # Starlette refleje el Origin del atacante y sirva respuestas autenticadas.
+    with pytest.raises(ValidationError, match=r"CORS_ORIGINS"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            research_auth_required=True,
+            research_auth_secret=SECRET,
+            minio_secret_key="production-minio-secret-not-a-default",
+            minio_access_key="production-minio-access-not-a-default",
+            cors_origins=["*"],
+        )
+
+
+def test_strict_binding_flag_exists_and_defaults_on():
+    # El flag se leia por getattr sobre un Settings que no lo tenia, y como
+    # model_config es extra="ignore" la variable de entorno se descartaba en
+    # silencio: getattr devolvia False para siempre.
+    settings = Settings(_env_file=None, app_env="test")
+    assert settings.research_auth_strict_binding is True
+    assert auth_module._strict_binding(settings) is True
+
+
 def test_private_routers_reject_missing_and_invalid_signed_identity(required_auth):
     client = TestClient(main.app)
 
@@ -151,7 +208,10 @@ def test_private_routers_reject_missing_and_invalid_signed_identity(required_aut
     assert unsigned.status_code == 401
     assert unsigned.json()["detail"] == "A signed Research OS identity is required"
 
-    invalid_headers = _headers("tenant-security", "user-security")
+    invalid_headers = bound_headers(
+        SECRET, "tenant-security", "user-security",
+        method="GET", path="/api/companies",
+    )
     invalid_headers["X-CavaAI-Signature"] = "0" * 64
     invalid = client.get("/api/companies", headers=invalid_headers)
     assert invalid.status_code == 401
@@ -295,7 +355,24 @@ def test_financial_replacement_delete_is_tenant_scoped():
     scoped.info["user_id"] = f"user-a-{suffix}"
     company = scoped.get(Company, company_id)
     assert company is not None
-    FinancialIngestionService()._replace_sec_data(scoped, company)
+    # _replace_sec_data only deletes the facts of the document it is replacing,
+    # so the test needs one: the probe rows carry no source_id.
+    probe_doc = Document(
+        company_id=company_id, title=f"probe {suffix}", source_type="SEC"
+    )
+    scoped.add(probe_doc)
+    scoped.commit()
+    for tenant_id in (tenant_a_id, tenant_b_id):
+        scoped.execute(
+            update(FinancialFact)
+            .where(
+                FinancialFact.metric == f"tenant_delete_probe_{suffix}",
+                FinancialFact.tenant_id == tenant_id,
+            )
+            .values(source_id=probe_doc.id)
+        )
+    scoped.commit()
+    FinancialIngestionService()._replace_sec_data(scoped, company, probe_doc)
     scoped.commit()
     scoped.close()
 
@@ -324,19 +401,17 @@ def test_cross_tenant_document_chunk_cannot_be_linked_as_evidence(required_auth)
     user_b = f"user-b-{suffix}"
     client = TestClient(main.app)
 
-    claim_response = client.post(
-        "/api/memory/claims",
-        headers=_headers(tenant_a_external, user_a),
-        json={"ticker": "MSFT", "statement": f"Private claim {suffix}"},
+    claim_response = signed_request(
+        client, SECRET, tenant_a_external, user_a, "POST", "/api/memory/claims",
+        json_body={"ticker": "MSFT", "statement": f"Private claim {suffix}"},
     )
     assert claim_response.status_code == 200
     claim_id = claim_response.json()["id"]
 
     # Create tenant B through the real signed bridge, then attach a private chunk.
-    tenant_b_claim = client.post(
-        "/api/memory/claims",
-        headers=_headers(tenant_b_external, user_b),
-        json={"ticker": "MSFT", "statement": f"Tenant B bootstrap {suffix}"},
+    tenant_b_claim = signed_request(
+        client, SECRET, tenant_b_external, user_b, "POST", "/api/memory/claims",
+        json_body={"ticker": "MSFT", "statement": f"Tenant B bootstrap {suffix}"},
     )
     assert tenant_b_claim.status_code == 200
 
@@ -370,10 +445,10 @@ def test_cross_tenant_document_chunk_cannot_be_linked_as_evidence(required_auth)
     ).all()
     db.close()
 
-    response = client.post(
+    response = signed_request(
+        client, SECRET, tenant_a_external, user_a, "POST",
         f"/api/memory/claims/{claim_id}/evidence",
-        headers=_headers(tenant_a_external, user_a),
-        json={
+        json_body={
             "document_chunk_id": chunk_id,
             "evidence_type": "supports",
             "summary": "Attempted cross-tenant evidence",
@@ -406,35 +481,32 @@ def test_postgres_portfolio_crud_is_tenant_scoped(required_auth):
         "notes": "canonical postgres transaction",
     }
 
-    created = client.post(
-        "/api/portfolio/transactions",
-        headers=_headers(tenant_a, f"user-a-{suffix}"),
-        json=payload,
+    created = signed_request(
+        client, SECRET, tenant_a, f"user-a-{suffix}", "POST",
+        "/api/portfolio/transactions", json_body=payload,
     )
     assert created.status_code == 201
     transaction_id = created.json()["id"]
 
-    own = client.get(
-        "/api/portfolio/transactions",
-        headers=_headers(tenant_a, f"user-a-{suffix}"),
+    own = signed_request(
+        client, SECRET, tenant_a, f"user-a-{suffix}", "GET", "/api/portfolio/transactions"
     )
-    other = client.get(
-        "/api/portfolio/transactions",
-        headers=_headers(tenant_b, f"user-b-{suffix}"),
+    other = signed_request(
+        client, SECRET, tenant_b, f"user-b-{suffix}", "GET", "/api/portfolio/transactions"
     )
     assert [row["id"] for row in own.json()] == [transaction_id]
     assert other.json() == []
 
-    forbidden_update = client.put(
+    forbidden_update = signed_request(
+        client, SECRET, tenant_b, f"user-b-{suffix}", "PUT",
         f"/api/portfolio/transactions/{transaction_id}",
-        headers=_headers(tenant_b, f"user-b-{suffix}"),
-        json={**payload, "quantity": 9},
+        json_body={**payload, "quantity": 9},
     )
     assert forbidden_update.status_code == 404
 
-    deleted = client.delete(
+    deleted = signed_request(
+        client, SECRET, tenant_a, f"user-a-{suffix}", "DELETE",
         f"/api/portfolio/transactions/{transaction_id}",
-        headers=_headers(tenant_a, f"user-a-{suffix}"),
     )
     assert deleted.status_code == 204
 

@@ -93,7 +93,14 @@ def body_digest(body: bytes) -> str:
 
 
 def _strict_binding(settings) -> bool:
-    """Bound signatures are mandatory in production (and when forced)."""
+    """Bound signatures are mandatory in production (and when forced).
+
+    ``research_auth_strict_binding`` es ahora un campo real de Settings: antes
+    solo se leia por getattr sobre un objeto que no lo tenia, y como
+    ``model_config`` es ``extra="ignore"`` la variable de entorno se descartaba
+    en silencio, asi que el getattr devolvia False para siempre y el unico
+    disparador era ``is_production``.
+    """
     return bool(getattr(settings, "is_production", False)) or bool(
         getattr(settings, "research_auth_strict_binding", False)
     )

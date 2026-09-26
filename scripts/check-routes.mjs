@@ -21,11 +21,22 @@ const failures = [];
 const constantsSrc = readFileSync(join(root, 'lib/constants.ts'), 'utf8');
 const navHrefs = [...constantsSrc.matchAll(/href:\s*'([^']+)'/g)].map((m) => m[1]);
 
+// Los route groups no son solo (root): la landing publica vive en (public).
+// Una ruta existe si su page.tsx esta en CUALQUIER grupo o sin grupo.
+const routeGroups = readdirSync(join(root, 'app')).filter(
+  (entry) => entry.startsWith('(') && entry.endsWith(')'),
+);
+
 function routeExists(href) {
   const segment = href.replace(/^\//, '');
+  if (href === '/') {
+    return (
+      routeGroups.some((group) => existsSync(join(root, 'app', group, 'page.tsx'))) ||
+      existsSync(join(root, 'app', 'page.tsx'))
+    );
+  }
   return (
-    existsSync(join(root, 'app/(root)', segment, 'page.tsx')) ||
-    existsSync(join(root, 'app/(public)', segment, 'page.tsx')) ||
+    routeGroups.some((group) => existsSync(join(root, 'app', group, segment, 'page.tsx'))) ||
     existsSync(join(root, 'app', segment, 'page.tsx'))
   );
 }
@@ -35,7 +46,7 @@ for (const href of navHrefs) {
 }
 
 // --- 2. Non-nav routes must be discoverable --------------------------------
-const OFF_NAV_ROUTES = ['/metodologia', '/terms'];
+const OFF_NAV_ROUTES = ['/metodologia'];
 
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
@@ -52,11 +63,14 @@ const sources = [
 ].map((file) => [file, readFileSync(file, 'utf8')]);
 
 for (const route of OFF_NAV_ROUTES) {
-  const ownPages = [
-  join(root, 'app/(root)', route.replace(/^\//, ''), 'page.tsx'),
-  join(root, 'app/(public)', route.replace(/^\//, ''), 'page.tsx'),
-];
-const inbound = sources.filter(([file, content]) => !ownPages.includes(file) && content.includes(`href="${route}"`));
+  // La propia pagina puede vivir en cualquier route group ((root), (public)...):
+  // un enlace a si misma no cuenta como inbound en ninguna de ellas.
+  const ownPages = new Set(
+    routeGroups
+      .map((group) => join(root, 'app', group, route.replace(/^\//, ''), 'page.tsx'))
+      .concat([join(root, 'app', route.replace(/^\//, ''), 'page.tsx')]),
+  );
+  const inbound = sources.filter(([file, content]) => !ownPages.has(file) && content.includes(`href="${route}"`));
   if (inbound.length === 0) {
     failures.push(`${route} has no inbound links — it is unreachable in the UI (add a contextual link or remove the route)`);
   }

@@ -1,8 +1,46 @@
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const runUiE2E = process.env.E2E_UI_RUN === "1";
+
+const uiBackendURL = process.env.E2E_UI_BACKEND_URL ?? "http://127.0.0.1:8100";
+const e2eResearchSecret =
+  process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
+
+// Las rutas /research/AAPL/* solo renderizan cabecera si la empresa existe:
+// el spec asegura su propio dato en vez de depender de otros specs. Firma ligada al request
+// (nonce + metodo + ruta + sha256 del cuerpo), la misma que
+// e2e/fixtures/research-api.ts: sirve contra backend leniente y contra
+// research_auth_strict_binding=True (el default).
+test.beforeAll(async () => {
+  if (!runUiE2E) return;
+  const path = "/api/companies/ensure";
+  const body = JSON.stringify({ ticker: "AAPL", name: "Apple Inc." });
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = randomUUID().replaceAll("-", "");
+  const bodyHash = createHash("sha256").update(body).digest("hex");
+  const signature = createHmac("sha256", e2eResearchSecret)
+    .update(`e2e-api-tenant:e2e-api-user:${timestamp}:${nonce}:POST:${path}:${bodyHash}`)
+    .digest("hex");
+  const res = await fetch(`${uiBackendURL}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-CavaAI-Tenant": "e2e-api-tenant",
+      "X-CavaAI-User": "e2e-api-user",
+      "X-CavaAI-Timestamp": timestamp,
+      "X-CavaAI-Nonce": nonce,
+      "X-CavaAI-Method": "POST",
+      "X-CavaAI-Path": path,
+      "X-CavaAI-Body-Hash": bodyHash,
+      "X-CavaAI-Signature": signature,
+    },
+    body,
+  });
+  if (!res.ok) throw new Error(`ensure AAPL fallo: ${res.status} ${await res.text()}`);
+});
 
 function source(...parts: string[]): string {
   return readFileSync(resolve(process.cwd(), ...parts), "utf8");
@@ -113,9 +151,14 @@ test.describe("tablas: semántica y fallback móvil (estático)", () => {
     expect(table).toContain("scope={scope}");
     // El caption se queda en el DOM (es lo que nombra la tabla).
     expect(table).toContain("TableCaption");
-    // Densidades: la de shadcn por defecto y la compacta `px-3 py-2`.
+    // Densidades: la de shadcn por defecto (`h-12 px-4`) y la compacta, que se
+    // expresa con las utilidades de grupo px-3/py-2 sobre la variante de datos.
     expect(table).toContain("h-12 px-4");
-    expect(table).toContain("px-3 py-2");
+    expect(table).toContain("group-data-[dense]/table:px-3");
+    expect(table).toContain("group-data-[dense]/table:py-2");
+    // La densidad es de tabla entera: sin override por fila/celda (las clases
+    // directas y las de grupo colisionarian por orden de la hoja).
+    expect(table).not.toContain("dense === false");
     // La densidad se propaga por CSS (`data-dense` + variante group-data), no
     // por un contexto de React: este modulo lo importan server components y en
     // el runtime de RSC `createContext` no existe (rompia `next build`).

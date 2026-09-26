@@ -80,7 +80,7 @@ function validateEnv() {
       return buildSchema.parse(process.env);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        console.warn('⚠️ Algunas variables de entorno faltan durante el build:', error.errors.map(e => e.path.join('.')).join(', '));
+        console.warn('⚠️ Algunas variables de entorno faltan durante el build:', error.issues.map(e => e.path.join('.')).join(', '));
       }
       return buildSchema.parse(process.env);
     }
@@ -91,7 +91,7 @@ function validateEnv() {
     return envSchema.parse(process.env);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const missingVars = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('\n');
+      const missingVars = error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join('\n');
       throw new Error(
         `❌ Error de validación de variables de entorno:\n${missingVars}\n\n` +
         `Por favor, revisa tu archivo .env y asegúrate de que todas las variables requeridas estén configuradas.`

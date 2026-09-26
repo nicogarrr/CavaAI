@@ -70,7 +70,14 @@ def merge_facts(normalized_docs: list[dict]) -> dict:
     start/end. Si la clave no lo incluye, TODOS los instantes de un concepto
     colapsan en uno solo y el balance queda con un unico ejercicio (bug
     detectado 2026-09-25: total_assets/total_equity con 1 solo ano en BD
-    pese a tener 6 anos de filings)."""
+    pese a tener 6 anos de filings).
+
+    La clave incluye las dimensiones (dims). Un desglose por miembro
+    (ifrs-full:SegmentAxis) comparte concepto, unidad y periodo con el
+    consolidado, asi que sin `dims` en la clave un miembro podia ocupar el
+    sitio del consolidado segun el orden del JSON. `refresh_from_esef` descarta
+    las entradas con dims, de modo que el consolidado se perdia y el ejercicio
+    desaparecia entero de la serie, sin aviso."""
     merged: dict = {}
     seen: set = set()
     for facts in normalized_docs:
@@ -83,6 +90,7 @@ def merge_facts(normalized_docs: list[dict]) -> dict:
                         unit,
                         entry.get("start"),
                         entry.get("end") or entry.get("instant"),
+                        tuple(entry.get("dims") or ()),
                     )
                     if key in seen:
                         continue

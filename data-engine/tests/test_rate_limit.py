@@ -25,10 +25,16 @@ DEAD_REDIS = "redis://127.0.0.1:6399/15"
 def _settings(**overrides) -> Settings:
     base = dict(
         _env_file=None,
-        app_env="staging",
+        # app_env de test explicito: con la denylist de Settings.is_production
+        # 'staging' cuenta como produccion, y el suite pone
+        # RESEARCH_AUTH_REQUIRED=false por defecto (tests/conftest.py), con lo
+        # queSettings() reventaria en validate_production_security.
+        app_env="test",
         rate_limit_enabled=True,
         rate_limit_requests_per_minute=10,
         rate_limit_expensive_requests_per_minute=2,
+        # Sin el suelo, estos tests ejercitarian el limite configurado.
+        rate_limit_local_request_floor=0,
         redis_url=DEAD_REDIS,
     )
     base.update(overrides)
@@ -134,6 +140,9 @@ def test_production_store_unavailable_returns_honest_503(monkeypatch):
         "get_settings",
         lambda: _settings(
             app_env="production",
+            # El suite apaga la auth por defecto; un test que afirma
+            # "esto es produccion" tiene que decirlo explicitamente.
+            research_auth_required=True,
             research_auth_secret=SECRET,
             minio_secret_key="production-minio-secret-not-a-default",
             minio_access_key="production-minio-access-not-a-default",

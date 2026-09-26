@@ -4,9 +4,10 @@ import { SUPPORT_EMAIL } from '@/lib/config/brand';
 export const metadata: Metadata = {
   title: 'Términos de Servicio',
   description: 'Términos de servicio justos - construidos sobre confianza y transparencia',
-  // Página pública: puede leerse sin iniciar sesión. El noindex de
-  // `app/layout.tsx` lo sobrescribe `app/(public)/layout.tsx`.
-  robots: { index: true, follow: true },
+  // Página pública (se puede leer sin sesión) pero NO indexada: el texto
+  // legal (fecha Diciembre 2024) está pendiente de validación por el dueño
+  // del producto; hasta entonces no debe salir en buscadores.
+  robots: { index: false, follow: true },
 };
 
 // Forzar renderizado dinámico
@@ -18,7 +19,7 @@ export default function TermsPage() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-gray-100 mb-4">Términos de Servicio</h1>
         <p className="text-gray-300 mb-4">
-          Última actualización: Septiembre 2026
+          Última actualización: Diciembre 2024
         </p>
         <div className="bg-green-900 border border-green-700 rounded-lg p-4">
           <p className="text-green-200 text-sm">
@@ -160,7 +161,7 @@ export default function TermsPage() {
             Gracias por ser parte de nuestra comunidad. 🚀
           </p>
           <p className="text-gray-500 text-xs mt-4">
-            © 2026 Nicolas Iglesias Garcia. Todos los derechos reservados.
+            © 2025 Nicolas Iglesias Garcia. Todos los derechos reservados.
           </p>
         </div>
       </div>

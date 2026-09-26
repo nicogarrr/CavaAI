@@ -75,7 +75,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                     <div className="flex items-center gap-2">
                         {signedIn ? (
                             <Button asChild className="h-11" size="sm">
-                                <Link href="/dashboard">Ir a mi panel</Link>
+                                <Link href="/inicio">Ir a mi panel</Link>
                             </Button>
                         ) : (
                             <>

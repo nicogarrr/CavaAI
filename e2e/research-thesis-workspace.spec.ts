@@ -1,6 +1,44 @@
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 const runUiE2E = process.env.E2E_UI_RUN === "1";
+
+const uiBackendURL = process.env.E2E_UI_BACKEND_URL ?? "http://127.0.0.1:8100";
+const e2eResearchSecret =
+  process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
+
+// /research/MSFT solo renderiza el workspace si la empresa existe: el spec
+// asegura su propio dato en vez de depender del estado de otros specs. Firma ligada al request
+// (nonce + metodo + ruta + sha256 del cuerpo), la misma que
+// e2e/fixtures/research-api.ts: sirve contra backend leniente y contra
+// research_auth_strict_binding=True (el default).
+test.beforeAll(async () => {
+  if (!runUiE2E) return;
+  const path = "/api/companies/ensure";
+  const body = JSON.stringify({ ticker: "MSFT", name: "Microsoft Corporation" });
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = randomUUID().replaceAll("-", "");
+  const bodyHash = createHash("sha256").update(body).digest("hex");
+  const signature = createHmac("sha256", e2eResearchSecret)
+    .update(`e2e-api-tenant:e2e-api-user:${timestamp}:${nonce}:POST:${path}:${bodyHash}`)
+    .digest("hex");
+  const res = await fetch(`${uiBackendURL}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-CavaAI-Tenant": "e2e-api-tenant",
+      "X-CavaAI-User": "e2e-api-user",
+      "X-CavaAI-Timestamp": timestamp,
+      "X-CavaAI-Nonce": nonce,
+      "X-CavaAI-Method": "POST",
+      "X-CavaAI-Path": path,
+      "X-CavaAI-Body-Hash": bodyHash,
+      "X-CavaAI-Signature": signature,
+    },
+    body,
+  });
+  if (!res.ok) throw new Error(`ensure MSFT fallo: ${res.status} ${await res.text()}`);
+});
 
 test.describe("research thesis workspace", () => {
   test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
@@ -47,10 +85,13 @@ test.describe("research thesis workspace", () => {
     const emptyHistory = page.getByText("Aún no hay historial de versiones.");
     await expect(emptyHistory).toBeHidden();
 
-    // The tap target expands the panel on demand.
-    await page
-      .locator("summary", { hasText: "Historial de versiones y aprobaciones" })
-      .click();
+    // The tap target expands the panel on demand (button + aria-expanded).
+    const historyToggle = page.getByRole("button", {
+      name: "Historial de versiones y aprobaciones",
+    });
+    await expect(historyToggle).toHaveAttribute("aria-expanded", "false");
+    await historyToggle.click();
+    await expect(historyToggle).toHaveAttribute("aria-expanded", "true");
     await expect(emptyHistory).toBeVisible();
   });
 });

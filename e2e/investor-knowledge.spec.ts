@@ -22,6 +22,11 @@ test.describe("investor knowledge flow", () => {
     await expect(page.locator('input[type="file"]').first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Subir", exact: true })).toBeVisible();
 
+    // El listado (y su estado vacío) vive en la pestaña Biblioteca: en una
+    // página con pestañas server-rendered solo el contenido de la pestaña
+    // activa está en el DOM, así que el chequeo de vacío va tras navegar.
+    await page.goto("/knowledge");
+
     if (await page.getByText("Aún no hay documentos de conocimiento.").isVisible()) {
       return;
     }
