@@ -12,8 +12,26 @@ env
 # Database/Cache
 *.db
 *.sqlite
+*.sqlite3
 cache.db
 funds_cache.json
+*.duckdb
+*.duckdb.wal
+
+# Snapshots SEC/ESEF: 2.008 ficheros, ~870 MB. Ambas imagenes del engine
+# hacen `COPY . .`, asi que sin esto el contexto de build (y por tanto la
+# capa) arrastraba casi un gigabyte de datos de mercado que ademas se montan
+# como volumen en produccion.
+data/
+storage/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Secretos: nunca dentro de la imagen. En local los lee el compose; en
+# produccion llegan por el entorno del contenedor.
+.env
+.env.*
 
 # IDE
 .idea

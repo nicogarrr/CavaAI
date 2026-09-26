@@ -27,4 +27,12 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python -m alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
+# Sin shell ni root: el compose de desarrollo monta el arbol de fuentes y el
+# volumen duckdb_data en /app.
+RUN groupadd --system cavaai && useradd --system --gid cavaai --no-create-home cavaai \
+    && chown -R cavaai:cavaai /app
+USER cavaai
+
+# `exec` para que uvicorn sea PID 1 y reciba el SIGTERM de `docker stop`;
+# con `sh -c` a secas la senal se queda en sh y a los 10 s llega SIGKILL.
+CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"]

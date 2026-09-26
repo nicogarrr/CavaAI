@@ -63,6 +63,18 @@ data-engine/.pytest_cache/
 data-engine/storage/.pytest_cache/
 data-engine/storage/raw/
 
+# Snapshots de mercado/reguladores. Son datos, no fuente: 2.008 ficheros y
+# ~870 MB, con blobs de un solo ESEF de 59 MB (el 59% del limite de push de
+# GitHub). Se regeneran con data-engine/scripts/build_sec_snapshots.py y
+# build_esef_snapshots.py, y en produccion viajan como volumen montado.
+/data-engine/data/
+/data-esef-snapshots/
+*.duckdb
+*.duckdb.wal
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
 # IDE
 .idea/
 

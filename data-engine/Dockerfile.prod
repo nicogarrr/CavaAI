@@ -37,6 +37,20 @@ COPY . .
 
 EXPOSE 8000
 
+# El compose de produccion monta `duckdb_data` y `./data-esef-snapshots` en
+# /data con modo lectura-escritura, asi que root en este contenedor significa
+# root sobre esos volumenes para cualquier RCE de la app. Se crea un usuario
+# sin shell y se le entrega la propiedad de /app; los volumenes ya los
+# monta docker-compose, que puede fijar el ownership con `user:`.
+RUN groupadd --system cavaai && useradd --system --gid cavaai --no-create-home cavaai \
+    && chown -R cavaai:cavaai /app
+USER cavaai
+
 # Las migraciones son idempotentes (alembic upgrade head es seguro al
 # arrancar; con una sola replica no hay carreras).
-CMD ["sh", "-c", "python -m alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
+#
+# `sh -c` no hace exec del ultimo comando: sh queda como PID 1 y uvicorn como
+# hijo, de modo que `docker stop` envia SIGTERM a sh, que no lo reenvia, y a los
+# 10 s llega SIGKILL: sin teardown del lifespan, sin scheduler.shutdown() y con
+# las peticiones en vuelo cortadas. El `exec` delega la senal.
+CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"]

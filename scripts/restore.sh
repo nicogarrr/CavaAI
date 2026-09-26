@@ -21,13 +21,33 @@ ${COMPOSE} exec -T postgres dropdb -U "${POSTGRES_USER:-portfolio}" --if-exists 
 ${COMPOSE} exec -T postgres createdb -U "${POSTGRES_USER:-portfolio}" "${POSTGRES_DB:-cavaai_research}"
 ${COMPOSE} exec -T postgres pg_restore -U "${POSTGRES_USER:-portfolio}" -d "${POSTGRES_DB:-cavaai_research}" --no-owner < "${BACKUP_PATH}/postgres.dump"
 
-# 2) MinIO.
+# 2) Qdrant (indice vectorial). backup.sh produce una de estas dos formas:
+#    - qdrant-snapshots/  (snapshot por API,Preferred)
+#    - qdrant-raw.tar.gz   (copia del volumen, si la API no respondio)
+#    Sin este paso el restore terminaba sin error y sin indice vectorial: el
+#    RAG de los tenants volvia vacio.
+if [ -d "${BACKUP_PATH}/qdrant-snapshots" ]; then
+  echo "[restore] qdrant (snapshot)…"
+  ${COMPOSE} stop qdrant
+  docker run --rm -v cavaai-prod-qdrant:/data:ro -v "$(pwd)/${BACKUP_PATH}/qdrant-snapshots":/in:ro alpine sh -c 'rm -rf /data/snapshots && mkdir -p /data/snapshots && cp -a /in/. /data/snapshots/'
+  ${COMPOSE} start qdrant
+  echo "[restore] qdrant: sube el ultimo snapshot con POST /collections/{name}/snapshots/recover"
+elif [ -f "${BACKUP_PATH}/qdrant-raw.tar.gz" ]; then
+  echo "[restore] qdrant (volumen en crudo)…"
+  ${COMPOSE} stop qdrant
+  docker run --rm -v cavaai-prod-qdrant:/data -v "$(pwd)/${BACKUP_PATH}":/in:ro alpine sh -c 'rm -rf /data/* && tar xzf /in/qdrant-raw.tar.gz -C /data'
+  ${COMPOSE} start qdrant
+else
+  echo "[restore] AVISO: el backup no contiene qdrant; el indice vectorial quedara vacio"
+fi
+
+# 3) MinIO.
 if [ -f "${BACKUP_PATH}/minio.tar.gz" ]; then
   echo "[restore] minio…"
   docker run --rm -v cavaai-prod-minio:/data -v "$(pwd)/${BACKUP_PATH}":/in:ro alpine sh -c 'rm -rf /data/* && tar xzf /in/minio.tar.gz -C /data'
 fi
 
-# 3) DuckDB.
+# 4) DuckDB.
 if [ -f "${BACKUP_PATH}/duckdb.tar.gz" ]; then
   echo "[restore] duckdb…"
   docker run --rm -v cavaai-prod-duckdb:/data -v "$(pwd)/${BACKUP_PATH}":/in:ro alpine sh -c 'rm -rf /data/* && tar xzf /in/duckdb.tar.gz -C /data'
@@ -37,4 +57,6 @@ echo "[restore] arrancando servicios…"
 ${COMPOSE} up -d
 echo "[restore] aplicando migraciones por si el backup es de otra version…"
 ${COMPOSE} exec -T backend python -m alembic upgrade head
-echo "[restore] listo. Verifica: curl -fsS http://localhost:8000/health/ready"
+# El compose de produccion no publica el puerto del backend, asi que el
+# healthcheck va por Caddy.
+echo "[restore] listo. Verifica: curl -fsS https://${BACKEND_DOMAIN:-localhost}/health/ready"
