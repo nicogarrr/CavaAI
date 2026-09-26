@@ -10,6 +10,7 @@ from decimal import Decimal
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.models import Company, MarketPrice, Position, ValuationModel, ValuationOutput
 from app.valuation.engines import resolve, resolve_engine_key
 from app.valuation.engines.base import MODEL_VERSION, apply_publication_blockers
@@ -160,7 +161,7 @@ class ValuationService:
             result["moat"] = {
                 "status": "unavailable",
                 "moats": [],
-                "error": str(exc),
+                "error": redact_secrets(str(exc)),
             }
         result["trace"] = result.get("trace") or {}
         result["trace"].setdefault("engine", resolve_engine_key(company))
