@@ -36088,6 +36088,7 @@
     },
     "/api/taxes/report/{fiscal_year}": {
       "get": {
+        "description": "Informe fiscal de un ejercicio. Solo lectura.\n\nAntes aceptaba `?regenerate=true`, que ademas de persistir un TaxReport\n(una escritura) hacia que un GET tuviera efectos de estado: no idempotente,\nimposible de cachear y capaz de devolver 500 en un camino de lectura. El\ncalculo forzado vive en POST /report/{fiscal_year}/regenerate, que ya\nexiste; este handler usa `get_report`, que devuelve el informe persistido\no lo calcula EN MEMORIA sin escribir (`persisted=False`).",
         "operationId": "tax_report_api_taxes_report__fiscal_year__get",
         "parameters": [
           {
@@ -36097,16 +36098,6 @@
             "schema": {
               "title": "Fiscal Year",
               "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "regenerate",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Regenerate",
-              "type": "boolean"
             }
           },
           {

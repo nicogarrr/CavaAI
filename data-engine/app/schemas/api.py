@@ -723,6 +723,7 @@ class ValuationResponse(BaseModel):
     expected_value: float | None = None
     margin_of_safety: float | None = None
     missing_inputs: list[str] = []
+    publication_blockers: list[str] = []
     reverse_dcf: dict = {}
     sensitivity: dict = {}
     moat: dict = {}

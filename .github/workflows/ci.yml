@@ -56,6 +56,8 @@ jobs:
         run: TZ=America/New_York node --experimental-strip-types --test scripts/market-date-guard.test.ts
       - name: SSRF guard (export actions)
         run: node --experimental-strip-types --test scripts/export-url-guard.test.ts
+      - name: Portfolio score honesty (ausente != 0)
+        run: node --experimental-strip-types --test scripts/portfolio-score-honesty.test.ts
       - run: npm run build
       - name: Bundle budget
         run: node scripts/check-bundle-budget.mjs
