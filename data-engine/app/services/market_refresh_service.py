@@ -32,6 +32,9 @@ class PriceObservation:
     price: Decimal
     price_date: date
     source: str
+    # Volumen del dia SOLO si el proveedor lo da: None es honesto, un 0
+    # inventado corona al ticker como "menos activo" con un dato falso.
+    volume: int | None = None
 
 
 class PriceProvider(Protocol):
@@ -96,28 +99,32 @@ class PublicPriceProvider:
         errors = []
         if self.fmp.configured():
             try:
-                payload = await self.fmp.company_profile(company.ticker)
+                payload = await self.fmp.quote(company.ticker)
                 item = payload[0] if isinstance(payload, list) and payload else None
                 value = Decimal(str(item.get("price"))) if isinstance(item, dict) else None
+                timestamp = int(item.get("timestamp") or 0) if isinstance(item, dict) else 0
                 if value and value > 0:
-                    # Stamp the quote with the provider's own date, never with
-                    # `as_of`. The FMP profile endpoint returns the LAST traded
-                    # close, so a Sunday refresh wrote a Sunday bar holding
-                    # Friday's close: market_movers then reported a 0.00% move
-                    # that never happened, and `age_days` came out as 0, which
-                    # silently disabled the staleness guard for every alert on
-                    # that symbol. Finnhub already derived its date from the
-                    # payload timestamp; FMP did not, so the two providers had
-                    # different semantics for the same column.
-                    quote_date = _provider_date(item, as_of)
-                    if quote_date is None or quote_date > as_of:
-                        errors.append("FMP:quote_date_unknown")
+                    if timestamp <= 0:
+                        # Igual que Finnhub: sin timestamp del proveedor no hay
+                        # fecha de quote honesta. Antes se fechaba con campos
+                        # del profile (metadatos tipo ipoDate/lastUpdated) y un
+                        # refresh en fin de semana escribia una barra del
+                        # sabado/domingo con el cierre del viernes: movers
+                        # planos al 0.00% y cabecera "Datos del" de un dia
+                        # sin mercado.
+                        errors.append("FMP:quote_missing_timestamp")
                     else:
-                        return (
-                            company,
-                            PriceObservation(company.ticker, value, quote_date, "FMP"),
-                            None,
-                        )
+                        quote_date = datetime.fromtimestamp(timestamp, tz=UTC).date()
+                        if quote_date > as_of:
+                            errors.append("FMP:quote_date_in_future")
+                        else:
+                            raw_volume = item.get("volume")
+                            volume = int(raw_volume) if raw_volume is not None else None
+                            return (
+                                company,
+                                PriceObservation(company.ticker, value, quote_date, "FMP", volume=volume),
+                                None,
+                            )
             except Exception as exc:
                 errors.append(f"FMP:{type(exc).__name__}")
         if self.finnhub.configured():
@@ -137,47 +144,6 @@ class PublicPriceProvider:
                 errors.append(f"Finnhub:{type(exc).__name__}")
         reason = ",".join(errors) if errors else "no_price_provider_configured"
         return company, None, {"ticker": company.ticker, "reason": reason}
-
-
-def _provider_date(item: dict, fallback: date) -> date | None:
-    """The provider's own observation date, or None when it does not give one.
-
-    A quote without a date is not a quote for "today": writing it under
-    `fallback` is what produced Sunday bars with Friday's close. Returning None
-    lets the caller skip the observation instead of mis-dating it.
-    """
-    for key in ("date", "datetime", "timestamp", "lastUpdated"):
-        raw = item.get(key)
-        if raw in (None, ""):
-            continue
-        if isinstance(raw, (int, float)) and raw > 0:
-            try:
-                return datetime.fromtimestamp(int(raw), tz=UTC).date()
-            except (OverflowError, OSError, ValueError):
-                continue
-        text = str(raw).strip()
-        # ISO primero, con timezone si la trae: la fecha se toma en UTC, no
-        # en la zona del proveedor (una quote a las 23:30 -05:00 ya es el dia
-        # siguiente en UTC). fromisoformat en 3.12 acepta offsets y fraccion.
-        iso = text[:-1] + "+00:00" if text.endswith("Z") else text
-        try:
-            parsed = datetime.fromisoformat(iso)
-        except ValueError:
-            parsed = None
-        if parsed is not None:
-            if parsed.tzinfo is not None:
-                return parsed.astimezone(UTC).date()
-            return parsed.date()
-        # Formatos de fecha sola, sin slices magicos: cadena completa o el
-        # prefijo ISO de 10 chars; nada de text[:len(fmt)+2] (fragil: corta
-        # offsets y basura intermedia y puede casar un prefijo que no es).
-        for candidate in (text, text[:10]):
-            for fmt in ("%Y-%m-%d", "%Y%m%d"):
-                try:
-                    return datetime.strptime(candidate, fmt).date()
-                except ValueError:
-                    continue
-    return None
 
 
 YahooIntradayFetcher = Callable[[list[str]], dict[str, "tuple[Decimal, date]"]]
@@ -334,7 +300,7 @@ class MarketRefreshService:
                     low=observation.price,
                     close=observation.price,
                     adj_close=None,
-                    volume=0,
+                    volume=observation.volume,
                     source=observation.source,
                 )
                 db.add(market)
@@ -343,6 +309,10 @@ class MarketRefreshService:
                 # only the close, never the session's open/high/low.
                 market.close = observation.price
                 market.source = observation.source
+                # El volumen solo se toca cuando el proveedor trae uno nuevo:
+                # un None intradia nunca pisa el volumen real de la barra.
+                if observation.volume is not None:
+                    market.volume = observation.volume
         db.commit()
         stages.append(
             {

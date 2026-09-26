@@ -37,7 +37,7 @@ def _company(db: Session, ticker: str) -> Company:
     return company
 
 
-def _price(db: Session, company: Company, day: date, close: str, volume: int = 100) -> None:
+def _price(db: Session, company: Company, day: date, close: str, volume: int | None = 100) -> None:
     db.add(MarketPrice(
         company_id=company.id, date=day, open=Decimal(close),
         high=Decimal(close), low=Decimal(close), close=Decimal(close),
@@ -94,3 +94,30 @@ def test_limit_slices_lists(db: Session):
     out = market_movers(db, 2)
     assert len(out["gainers"]) == 2 and len(out["losers"]) == 2 and len(out["most_active"]) == 2
     assert out["universe"] == 5
+
+
+def test_unknown_volume_is_null_and_out_of_most_active(db: Session):
+    """Volumen desconocido: null honesto, fuera del ranking de "mas activas".
+
+    Un 0 fabricado coronaba al ticker como el MENOS activo con un dato que
+    no existe y ensuciaba la tabla de "Mas activas" con ceros.
+    """
+    known = _company(db, "KVOL")
+    unknown = _company(db, "UVOL")
+    day = date(2026, 9, 25)
+    prev = date(2026, 9, 24)
+    # Dos cierres por empresa para que el cambio sea medible y ambas entren
+    # en gainers/losers; el volumen desconocido no las expulsa de esas tablas.
+    _price(db, known, prev, "90", volume=4_000_000)
+    _price(db, known, day, "100", volume=5_000_000)
+    _price(db, unknown, prev, "90", volume=None)
+    _price(db, unknown, day, "100", volume=None)
+
+    out = market_movers(db, 10)
+
+    rows = {row["ticker"]: row for section in ("gainers", "losers") for row in out[section]}
+    assert rows["UVOL"]["volume"] is None
+    assert rows["KVOL"]["volume"] == 5_000_000
+    most_active_tickers = [row["ticker"] for row in out["most_active"]]
+    assert "KVOL" in most_active_tickers
+    assert "UVOL" not in most_active_tickers
