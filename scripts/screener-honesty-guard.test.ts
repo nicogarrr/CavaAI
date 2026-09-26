@@ -33,6 +33,14 @@ void test('un marketCap ausente (0) se muestra como N/D, no formateado', () => {
     assert.ok(page.includes('r.marketCap > 0'), 'guarda de marketCap positivo antes de formatear');
 });
 
+void test('el backend normaliza alias historicos a los sectores GICS servidos antes de filtrar', () => {
+    const backend = source('data-engine/app/api/routes/screeners.py');
+    assert.ok(backend.includes('_gics_sector'), 'helper de normalizacion GICS presente');
+    assert.ok(backend.includes('"technology": "Information Technology"'), 'alias Technology normalizado');
+    assert.ok(backend.includes('_cs(_gics_sector(item.get("sector")))'), 'el filtro normaliza el sector del item');
+    assert.ok(!backend.includes(', "Technology"),'), 'el universo de respaldo ya usa nombres GICS');
+});
+
 void test('el backend resuelve un vendor de perfil cuando el de cotizaciones no lo tiene', () => {
     const backend = source('data-engine/app/api/routes/screeners.py');
     assert.ok(backend.includes('resolve_profile_vendor'), 'helper de vendor de perfil presente');

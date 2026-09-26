@@ -167,11 +167,11 @@ def run_ad_hoc_screen(payload: AdHocScreen, db: Session = Depends(get_db)) -> di
 
 # (symbol, nombre de respaldo, sector de respaldo)
 _REAL_UNIVERSE: list[tuple[str, str, str]] = [
-    ("AAPL", "Apple", "Technology"),
-    ("MSFT", "Microsoft", "Technology"),
+    ("AAPL", "Apple", "Information Technology"),
+    ("MSFT", "Microsoft", "Information Technology"),
     ("GOOGL", "Alphabet", "Communication Services"),
     ("AMZN", "Amazon", "Consumer Discretionary"),
-    ("NVDA", "NVIDIA", "Technology"),
+    ("NVDA", "NVIDIA", "Information Technology"),
     ("TSLA", "Tesla", "Consumer Discretionary"),
     ("META", "Meta Platforms", "Communication Services"),
     ("BRK.B", "Berkshire Hathaway", "Financials"),
@@ -184,19 +184,19 @@ _REAL_UNIVERSE: list[tuple[str, str, str]] = [
     ("HD", "Home Depot", "Consumer Discretionary"),
     ("DIS", "Disney", "Communication Services"),
     ("NFLX", "Netflix", "Communication Services"),
-    ("ADBE", "Adobe", "Technology"),
-    ("CRM", "Salesforce", "Technology"),
-    ("CSCO", "Cisco", "Technology"),
+    ("ADBE", "Adobe", "Information Technology"),
+    ("CRM", "Salesforce", "Information Technology"),
+    ("CSCO", "Cisco", "Information Technology"),
     ("PFE", "Pfizer", "Health Care"),
-    ("INTC", "Intel", "Technology"),
+    ("INTC", "Intel", "Information Technology"),
     ("KO", "Coca-Cola", "Consumer Staples"),
     ("PEP", "PepsiCo", "Consumer Staples"),
     ("MRK", "Merck", "Health Care"),
     ("ABT", "Abbott", "Health Care"),
     ("BAC", "Bank of America", "Financials"),
-    ("AMD", "Advanced Micro Devices", "Technology"),
-    ("ORCL", "Oracle", "Technology"),
-    ("AVGO", "Broadcom", "Technology"),
+    ("AMD", "Advanced Micro Devices", "Information Technology"),
+    ("ORCL", "Oracle", "Information Technology"),
+    ("AVGO", "Broadcom", "Information Technology"),
     ("XOM", "Exxon Mobil", "Energy"),
     ("CVX", "Chevron", "Energy"),
     ("JNJ", "Johnson & Johnson", "Health Care"),
@@ -256,6 +256,27 @@ _real_refresh_executor = ThreadPoolExecutor(
 
 def _cs(_str: str | None) -> str:
     return (_str or "").strip().lower()
+
+
+# Los sectores canonicos son los nombres GICS que sirve la tabla companies y
+# filtra la UI. Vendors y datos historicos usan alias (Technology,
+# Financial Services, Healthcare, ...): sin normalizacion, filtrar por el
+# nombre GICS devolvia 0 filas aunque los datos fueran reales (F223).
+_SECTOR_ALIASES: dict[str, str] = {
+    "technology": "Information Technology",
+    "financial services": "Financials",
+    "healthcare": "Health Care",
+    "consumer cyclical": "Consumer Discretionary",
+    "consumer defensive": "Consumer Staples",
+    "basic materials": "Materials",
+}
+
+
+def _gics_sector(value: str | None) -> str | None:
+    """Normaliza un sector al nombre GICS servido; lo desconocido pasa tal cual."""
+    if value is None:
+        return None
+    return _SECTOR_ALIASES.get(_cs(value), value)
 
 
 def _load_universe_from_db() -> dict[str, tuple[str, str]]:
@@ -568,7 +589,7 @@ def _real_response_key(
     # sobre financial_facts, que es TenantOwnedMixin, asi que la respuesta
     # depende del tenant. Con una clave global, el tenant B recibia ratios
     # derivados de los hechos ingeridos por el tenant A.
-    return (vendor, market_cap, _cs(sector), max(1, min(limit, 200)), tenant_id)
+    return (vendor, market_cap, _cs(_gics_sector(sector)), max(1, min(limit, 200)), tenant_id)
 
 
 def _real_response_payload(
@@ -585,7 +606,7 @@ def _real_response_payload(
             market_cap is None
             or (item.get("marketCap") or 0.0) >= market_cap
         )
-        and (not sector or _cs(item.get("sector")) == _cs(sector))
+        and (not sector or _cs(_gics_sector(item.get("sector"))) == _cs(_gics_sector(sector)))
     ]
     filtered.sort(key=lambda item: (item.get("marketCap") or 0.0), reverse=True)
     limited = [dict(item) for item in filtered[: max(1, min(limit, 200))]]
@@ -864,7 +885,7 @@ def _refetch_real_items(
         name = (db_row[0] if db_row else None) or (
             profile["name"] if profile else name_fb
         )
-        sector_value = (
+        sector_value = _gics_sector(
             db_row[1]
             if db_row
             else (profile["sector"] if profile and profile["sector"] else sector_fb)
