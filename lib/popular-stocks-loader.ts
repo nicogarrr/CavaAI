@@ -13,7 +13,16 @@
  *   buscador muerto hasta remount).
  */
 
-type Fetcher = () => Promise<StockWithWatchlistStatus[] | null>;
+/**
+ * Resultado tipado del fetch: `ok` incluye la lista vacia VALIDA (sin clave
+ * Finnhub configurada, universo vacio); `error` es fallo de proveedor/red y
+ * NUNCA se cachea: la proxima apertura reintenta y la UI puede avisar.
+ */
+export type PopularStocksResult =
+    | { status: "ok"; stocks: StockWithWatchlistStatus[] }
+    | { status: "error" };
+
+type Fetcher = () => Promise<PopularStocksResult>;
 
 let cached: StockWithWatchlistStatus[] | null = null;
 let inflight: Promise<StockWithWatchlistStatus[]> | null = null;
@@ -24,8 +33,14 @@ export function loadPopularStocks(
     if (cached !== null) return Promise.resolve(cached);
     if (!inflight) {
         inflight = fetcher()
-            .then((results) => {
-                cached = results ?? [];
+            .then((result) => {
+                if (result.status !== "ok") {
+                    // Fallo de proveedor: no cachear; la proxima apertura
+                    // reintenta (nunca queda como lista vacia permanente).
+                    inflight = null;
+                    throw new Error("popular_stocks_fetch_failed");
+                }
+                cached = result.stocks;
                 inflight = null;
                 return cached;
             })

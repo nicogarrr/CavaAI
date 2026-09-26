@@ -2,6 +2,7 @@
 
 import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
+import type { PopularStocksResult } from '@/lib/popular-stocks-loader';
 import { cache } from 'react';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
 
@@ -784,6 +785,52 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
         console.error('Error in stock search:', err);
         return [];
     }
+});
+
+/**
+ * Populares del buscador con ESTADO explicito: `searchStocks()` atrapa todos
+ * los errores y devuelve [], indistinguible de "no hay nada que mostrar".
+ * Aqui un fallo total de proveedor/red devuelve `error` (el caller reintenta
+ * y avisa); la lista vacia valida (sin clave Finnhub) es `ok` con [].
+ */
+export const getPopularStocks = cache(async (): Promise<PopularStocksResult> => {
+    await requireAuthenticatedUser();
+    const token = env.FINNHUB_API_KEY;
+    if (!token) {
+        // Finnhub es opcional: lista vacia valida, no un fallo.
+        return { status: 'ok', stocks: [] };
+    }
+    const top = POPULAR_STOCK_SYMBOLS.slice(0, 10);
+    const profiles = await Promise.all(
+        top.map(async (sym) => {
+            try {
+                const url = `${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(sym)}&token=${token}`;
+                const profile = await fetchJSON<any>(url, 3600);
+                return { sym, profile } as { sym: string; profile: any };
+            } catch {
+                return { sym, profile: null } as { sym: string; profile: any };
+            }
+        })
+    );
+    const successful = profiles.filter(({ profile }) => profile?.name || profile?.ticker);
+    if (successful.length === 0) {
+        // 0/10 con clave configurada: proveedor o red caidos. NO se cachea
+        // como exito: el buscador reintentara y mostrara indicador.
+        return { status: 'error' };
+    }
+    const stocks: StockWithWatchlistStatus[] = successful
+        .map(({ sym, profile }) => {
+            const symbol = sym.toUpperCase();
+            return {
+                symbol,
+                name: (profile.name || profile.ticker) as string,
+                exchange: (profile.exchange as string | undefined) || 'US',
+                type: 'Common Stock',
+                isInWatchlist: false,
+            };
+        })
+        .slice(0, 10);
+    return { status: 'ok', stocks };
 });
 
 // Helper para obtener solo la cotización (más ligero que getStockFinancialData)

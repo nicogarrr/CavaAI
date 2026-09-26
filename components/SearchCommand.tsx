@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { CornerDownLeft, Loader2, Search, TrendingUp } from "lucide-react";
-import { searchStocks } from "@/lib/actions/finnhub.actions";
+import { searchStocks, getPopularStocks } from "@/lib/actions/finnhub.actions";
 import { loadPopularStocks } from "@/lib/popular-stocks-loader";
 import { showErrorToast } from "@/lib/toast";
 import { isNextRedirectError } from "@/lib/types/errors";
@@ -160,17 +160,19 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         if (popular.length > 0) return;
         let active = true;
         setLoading(true);
-        loadPopularStocks(searchStocks)
+        loadPopularStocks(getPopularStocks)
             .then((list) => {
                 if (!active) return;
                 setPopular(list);
+                setSearchError(false);
                 setStocks((current) => (searchTerm.trim() ? current : list));
             })
             .catch((error: unknown) => {
-                // Sin populares el buscador sigue funcionando por query; se
-                // deja la lista vacia (estado honesto, sin fabricar) y la
-                // proxima apertura reintenta (la cache no guarda fallos).
+                // Fallo de proveedor/red: indicador explicito (no confundir
+                // con "no hay acciones") y la proxima apertura reintenta —
+                // la cache compartida nunca guarda fallos.
                 if (active && !isNextRedirectError(error)) {
+                    setSearchError(true);
                     showErrorToast(error, {});
                 }
             })
