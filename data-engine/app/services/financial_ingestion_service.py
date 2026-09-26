@@ -19,6 +19,31 @@ from app.services.connectors.sec import SECClient
 
 MetricSpec = tuple[str, str, str]
 
+# Concepts that are DISJOINT PARTS of one total, not alternative tags for it.
+# Treating them as aliases meant whichever happened to be filed last won, so an
+# issuer with 5.000 of finite-lived and 8.000 of indefinite-lived intangibles
+# stored only one of the two and the metric silently changed meaning between
+# years. These are summed per period instead.
+SEC_INTANGIBLE_COMPONENTS = [
+    "FiniteLivedIntangibleAssetsNet",
+    "IndefiniteLivedIntangibleAssetsExcludingGoodwill",
+]
+# Metrics whose concepts are disjoint parts to be summed, not alternative tags.
+SUMMED_COMPONENT_METRICS: frozenset[str] = frozenset({"intangible_assets"})
+
+# Which provider wins when the same (metric, fiscal year) exists more than once.
+# A regulator filing the number itself beats a vendor's restatement of it, and
+# a vendor beats a manually typed value, which beats an unattributed row.
+# Without this, `created_at` decided ownership and the DCF could be anchored on
+# whichever provider happened to be ingested last.
+SOURCE_PRIORITY: dict[str, int] = {
+    "SEC": 0,
+    "ESEF": 0,
+    "CNMV": 0,
+    "FMP": 10,
+    "FMP_profile": 20,
+}
+
 
 INCOME_METRICS: list[MetricSpec] = [
     ("revenue", "revenue", "USD"),
@@ -78,12 +103,21 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue",
                               "CashCashEquivalentsAndShortTermInvestments",
                               "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"], "USD"),
-    ("total_debt",        ["LongTermDebt", "LongTermDebtNoncurrent", "DebtLongtermAndShorttermCombinedAmount"],     "USD"),
+    # Orden por alcance, NO por antiguedad: el tag combinado (largo + corto) es
+    # el que representa "deuda total", y se coloco antes detras de
+    # LongTermDebt, asi que la deuda neta salia sin la parte corriente. El
+    # ganador lo decide el `filed` mas reciente del MISMO periodo, de modo que el
+    # orden solo desempata cuando el emisor nunca presenta el tag combinado.
+    ("total_debt",        ["DebtLongtermAndShorttermCombinedAmount", "LongTermDebt", "LongTermDebtNoncurrent"], "USD"),
     ("total_assets",      ["Assets"],                                                                               "USD"),
     ("total_liabilities", ["Liabilities"],                                                                          "USD"),
+    # StockholdersEquity = patrimonio atribuible a la matriz; la variante
+    # "IncludingPortionAttributableToNoncontrollingInterest" consolida los
+    # intereses minoritarios. Son MAGNITUDES DISTINTAS: mezclarlas hacia que el
+    # balance cuadre por la diferencia de NCI. Se usa la de la matriz.
     ("total_equity",      ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], "USD"),
     ("goodwill",          ["Goodwill"],                                                                              "USD"),
-    ("intangible_assets", ["FiniteLivedIntangibleAssetsNet", "IndefiniteLivedIntangibleAssetsExcludingGoodwill"],    "USD"),
+    ("intangible_assets", SEC_INTANGIBLE_COMPONENTS,                                                                "USD"),
     ("operating_lease_liabilities", ["OperatingLeaseLiability", "OperatingLeaseLiabilityNoncurrent"],                "USD"),
     ("operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities"],                                         "USD"),
     ("capital_expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],          "USD"),
@@ -141,6 +175,53 @@ def _decimal(value: Any) -> Decimal | None:
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+
+
+def is_summed_component(metric: str) -> bool:
+    """True when a metric's concepts are disjoint PARTS of one total."""
+    return metric in SUMMED_COMPONENT_METRICS
+
+
+def _sum_disjoint_components(by_end: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Add up per-period values of concepts that are parts of the same total.
+
+    The merged row keeps the most recent ``filed`` for provenance and records
+    every contributing concept in ``_components``, so the total stays auditable
+    back to its parts instead of becoming an opaque number.
+    """
+    by_concept: dict[str, dict[str, dict[str, Any]]] = {}
+    for entry in by_end.values():
+        by_concept.setdefault(str(entry.get("_concept") or ""), {})[
+            str(entry.get("end") or "")
+        ] = entry
+
+    totals: dict[str, dict[str, Any]] = {}
+    for concept_entries in by_concept.values():
+        for end, entry in concept_entries.items():
+            bucket = totals.setdefault(
+                end,
+                {
+                    "val": Decimal("0"),
+                    "filed": "",
+                    "end": end,
+                    "_components": {},
+                },
+            )
+            value = _decimal(entry.get("val"))
+            if value is None:
+                continue
+            bucket["val"] = bucket["val"] + value
+            bucket["_components"][str(entry.get("_concept") or "")] = str(value)
+            filed = str(entry.get("filed") or "")
+            if filed > str(bucket["filed"]):
+                bucket["filed"] = filed
+    for bucket in totals.values():
+        if len(bucket["_components"]) == 1:
+            bucket["_concept"] = next(iter(bucket["_components"]))
+        else:
+            bucket["_concept"] = "+".join(sorted(bucket["_components"]))
+        bucket["val"] = float(bucket["val"])
+    return totals
 
 
 def _period(row: dict[str, Any]) -> tuple[str, int | None, str | None]:
@@ -334,10 +415,11 @@ class FinancialIngestionService:
         us_gaap = facts_data.get("facts", {}).get("us-gaap", {})
 
         document = self._source_document_sec(db, company, ticker)
-        self._replace_sec_data(db, company)
+        self._replace_sec_data(db, company, document)
 
         facts_imported = 0
         cash_restricted_years: set[int] = set()
+        concept_usage: dict[str, dict[str, Any]] = {}
         modal_fy_month = _modal_fiscal_end_month(us_gaap)
 
         for metric, concepts, unit in SEC_METRIC_MAP:
@@ -461,6 +543,8 @@ class FinancialIngestionService:
                         current.get("filed", "")
                     ):
                         by_end[end] = {**entry, "_concept": concept}
+            if is_summed_component(metric):
+                by_end = _sum_disjoint_components(by_end)
             if by_end:
                 annual_sorted = sorted(
                     by_end.values(), key=lambda e: str(e["end"]), reverse=True
@@ -492,7 +576,21 @@ class FinancialIngestionService:
                             confidence=Decimal("0.95"),
                         )
                     )
+                    # Record which XBRL concept produced the value. Several
+                    # metrics accept alternative tags with different scopes, so
+                    # without this the definition of a series can change between
+                    # years with nothing in the database saying so. The map is
+                    # written to the document below (FinancialFact has no
+                    # free-form column, and this is per-run provenance).
+                    concept_usage.setdefault(metric, {})[str(entry["end"])] = entry.get(
+                        "_concept"
+                    )
                     facts_imported += 1
+
+        if concept_usage:
+            existing_meta = dict(document.metadata_ or {})
+            existing_meta["xbrl_concept_by_metric_period"] = concept_usage
+            document.metadata_ = existing_meta
 
         db.flush()
 
@@ -582,7 +680,7 @@ class FinancialIngestionService:
 
         facts_data = snapshot.get("facts", {})
         document = self._source_document_esef(db, company, ticker, snapshot)
-        self._replace_esef_data(db, company)
+        self._replace_esef_data(db, company, document)
         facts_imported = 0
 
         for metric, concepts, unit in ESEF_METRIC_MAP:
@@ -675,14 +773,32 @@ class FinancialIngestionService:
         )
 
     def latest_fact(self, db: Session, company: Company, metric: str) -> FinancialFact | None:
-        return db.scalar(
-            select(FinancialFact)
-            .where(FinancialFact.company_id == company.id, FinancialFact.metric == metric)
-            .order_by(
-                FinancialFact.fiscal_year.desc().nullslast(),
-                FinancialFact.created_at.desc(),
-            )
-            .limit(1)
+        """Latest fact for a metric, preferring the authoritative source.
+
+        Ordering by ``created_at`` alone meant whichever provider was ingested
+        last owned the metric: after a ``refresh_from_fmp`` on top of SEC, the
+        DCF anchor could be the vendor's revenue while the primary filing sat
+        ignored, with nothing in the trace saying so. The priority makes the
+        choice deterministic and the provenance auditable.
+        """
+        rows = list(
+            db.scalars(
+                select(FinancialFact)
+                .where(FinancialFact.company_id == company.id, FinancialFact.metric == metric)
+                .order_by(
+                    FinancialFact.fiscal_year.desc().nullslast(),
+                    FinancialFact.created_at.desc(),
+                    FinancialFact.id.desc(),
+                )
+            ).all()
+        )
+        if not rows:
+            return None
+        latest_year = rows[0].fiscal_year
+        candidates = [row for row in rows if row.fiscal_year == latest_year]
+        return min(
+            candidates,
+            key=lambda row: (SOURCE_PRIORITY.get(row.source_type or "", 50), row.id),
         )
 
     def _source_document(self, db: Session, company: Company) -> Document:
@@ -1039,7 +1155,8 @@ class FinancialIngestionService:
         db.flush()
         return document
 
-    def _replace_esef_data(self, db: Session, company: Company) -> None:
+    def _replace_esef_data(self, db: Session, company: Company, document: Document) -> None:
+        """Delete only the facts THIS document wrote (see ``_replace_sec_data``)."""
         tenant_id = db.info.get("tenant_id")
         tenant_filter = (
             FinancialFact.tenant_id == tenant_id
@@ -1049,12 +1166,22 @@ class FinancialIngestionService:
         db.execute(
             delete(FinancialFact).where(
                 FinancialFact.company_id == company.id,
-                FinancialFact.source_type == "ESEF",
+                FinancialFact.source_id == document.id,
                 tenant_filter,
             )
         )
 
-    def _replace_sec_data(self, db: Session, company: Company) -> None:
+    def _replace_sec_data(self, db: Session, company: Company, document: Document) -> None:
+        """Delete only the facts THIS document wrote.
+
+        The filter used to be ``source_type == "SEC"``, which is not an
+        ownership boundary: ``kpi_extraction_service.approve()`` writes
+        human-approved canonical facts carrying the ingested document's
+        ``source_type``, and ``thesis_evidence_service`` writes evidence facts
+        with its own document. A fundamentals refresh therefore deleted
+        reviewer-approved values with no trace, and left the two services
+        fighting over the same rows.
+        """
         tenant_id = db.info.get("tenant_id")
         tenant_filter = (
             FinancialFact.tenant_id == tenant_id
@@ -1064,7 +1191,7 @@ class FinancialIngestionService:
         db.execute(
             delete(FinancialFact).where(
                 FinancialFact.company_id == company.id,
-                FinancialFact.source_type == "SEC",
+                FinancialFact.source_id == document.id,
                 tenant_filter,
             )
         )

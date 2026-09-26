@@ -50,13 +50,28 @@ class GDELTClient:
         )
 
     async def _throttle(self) -> None:
-        with GDELTClient._rate_lock:
-            now = time.monotonic()
-            start = max(now, GDELTClient._next_allowed_at)
-            GDELTClient._next_allowed_at = start + self.min_interval
-            delay = start - now
-        if delay > 0:
-            await asyncio.sleep(delay)
+        """Guarantee at least ``min_interval`` between two real requests.
+
+        The reservation used to be claimed BEFORE sleeping, from a slot
+        computed off the previous reservation. A slow wake-up then consumed the
+        slot without having waited, and the next call found ``_next_allowed_at``
+        already in the past and went out immediately: the spacing collapsed
+        exactly under load, which is when GDELT starts answering 429.
+
+        The slot is now claimed only once it is genuinely available, and the
+        next slot is measured from the real current time, so an overrun pushes
+        the following request out instead of letting it through.
+        """
+        if self.min_interval <= 0:
+            return
+        while True:
+            with GDELTClient._rate_lock:
+                now = time.monotonic()
+                wait = GDELTClient._next_allowed_at - now
+                if wait <= 0:
+                    GDELTClient._next_allowed_at = now + self.min_interval
+                    return
+            await asyncio.sleep(wait)
 
     @classmethod
     def _retry_after_seconds(cls, response: httpx.Response) -> float:
