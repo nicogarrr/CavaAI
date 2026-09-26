@@ -583,6 +583,39 @@ class PortfolioIntelligenceService:
         with_contribution = 0
         for position, company in rows:
             ledger = by_company.get(company.id, [])
+            # Reconciliación: los legs buy/sell deben reconstruir la cantidad
+            # actual. Sin legs (solo dividendos) o con ledger parcial (compra
+            # de 1 acción sobre una posición de 10), la fórmula contribution =
+            # end_value - start - buys + sells + income pinta el valor íntegro
+            # de la posición como ganancia inventada. Nulo honesto.
+            buy_legs = sum(
+                float(t.quantity) for t in ledger if t.action == "buy"
+            )
+            sell_legs = sum(
+                float(t.quantity) for t in ledger if t.action == "sell"
+            )
+            current_qty = float(position.quantity)
+            reconciliation: str | None = None
+            if buy_legs == 0 and sell_legs == 0:
+                reconciliation = "missing_ledger"
+            elif abs((buy_legs - sell_legs) - current_qty) > max(
+                1e-6, abs(current_qty) * 1e-6
+            ):
+                reconciliation = "incomplete_ledger"
+            if reconciliation is not None:
+                reasons[reconciliation] += 1
+                positions_out.append(
+                    {
+                        "ticker": company.ticker,
+                        "contribution_pnl": None,
+                        "end_value": float(position.market_value_base or 0),
+                        "start_value": None,
+                        "net_invested": None,
+                        "income": None,
+                        "reason": reconciliation,
+                    }
+                )
+                continue
             qty_at_cutoff = 0.0
             buys = 0.0
             sells = 0.0
