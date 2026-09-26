@@ -31,6 +31,31 @@ export const metadata: Metadata = {
  */
 const THESIS_DETAIL_LIMIT = 40;
 
+// Cada snapshot toca varias tablas del motor: pedir 40 a la vez en un solo
+// Promise.all es una estampida contra el backend (y contra el pool de
+// conexiones). 6 concurrentes mantiene el indice agil sin ahogarlo.
+const SNAPSHOT_CONCURRENCY = 6;
+
+async function mapWithConcurrency<T, R>(
+    items: T[],
+    limit: number,
+    fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+    const results: R[] = new Array(items.length) as R[];
+    let next = 0;
+    async function worker() {
+        while (next < items.length) {
+            const index = next;
+            next += 1;
+            results[index] = await fn(items[index], index);
+        }
+    }
+    await Promise.all(
+        Array.from({ length: Math.min(limit, items.length) }, () => worker()),
+    );
+    return results;
+}
+
 /** Ratings persistidos por el backend, en español (mismo mapa que la ficha). */
 const RATING_LABELS: Record<string, string> = {
     buy: 'compra',
@@ -180,8 +205,10 @@ export default async function ResearchPage() {
 
     // Orden estable por ticker: el índice no debe reordenar solo entre renders.
     const ordered = [...companies].sort((left, right) => left.ticker.localeCompare(right.ticker, 'es'));
-    const rows: CompanyRow[] = await Promise.all(
-        ordered.map(async (company, index): Promise<CompanyRow> => {
+    const rows: CompanyRow[] = await mapWithConcurrency(
+        ordered,
+        SNAPSHOT_CONCURRENCY,
+        async (company, index): Promise<CompanyRow> => {
             if (index >= THESIS_DETAIL_LIMIT) {
                 // Se listan todas las empresas del registro; pasado el tope, la
                 // ficha se abre sin pedir su snapshot en esta visita.
@@ -194,7 +221,7 @@ export default async function ResearchPage() {
                 // empresa se lista igual y se marca como no leída.
                 return { company, snapshot: null, unreadable: true, pendiente: false };
             }
-        }),
+        },
     );
     const pendingCount = rows.filter((row) => row.pendiente).length;
 
