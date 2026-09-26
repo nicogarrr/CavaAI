@@ -151,9 +151,14 @@ test.describe("tablas: semántica y fallback móvil (estático)", () => {
     expect(table).toContain("scope={scope}");
     // El caption se queda en el DOM (es lo que nombra la tabla).
     expect(table).toContain("TableCaption");
-    // Densidades: la de shadcn por defecto y la compacta `px-3 py-2`.
+    // Densidades: la de shadcn por defecto (`h-12 px-4`) y la compacta, que se
+    // expresa con las utilidades de grupo px-3/py-2 sobre la variante de datos.
     expect(table).toContain("h-12 px-4");
-    expect(table).toContain("px-3 py-2");
+    expect(table).toContain("group-data-[dense]/table:px-3");
+    expect(table).toContain("group-data-[dense]/table:py-2");
+    // La densidad es de tabla entera: sin override por fila/celda (las clases
+    // directas y las de grupo colisionarian por orden de la hoja).
+    expect(table).not.toContain("dense === false");
     // La densidad se propaga por CSS (`data-dense` + variante group-data), no
     // por un contexto de React: este modulo lo importan server components y en
     // el runtime de RSC `createContext` no existe (rompia `next build`).
