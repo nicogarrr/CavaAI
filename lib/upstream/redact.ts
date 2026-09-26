@@ -55,12 +55,22 @@ export function redactUrl(rawUrl: string): string {
         // credenciales (una URL truncada conserva su ?token=...).
         return '[invalid URL]';
     }
+    // Entrada por entrada, case-insensitive y SIN colapsar duplicados:
+    // searchParams.has/set distingue mayusculas (?TOKEN= pasaba intacto) y
+    // set() aplana repeticiones (?token=A&token=B dejaba B). entries()
+    // conserva orden, capitalizacion y duplicados.
+    const rebuilt = new URLSearchParams();
     let changed = false;
-    for (const key of SECRET_QUERY_KEYS) {
-        if (url.searchParams.has(key)) {
-            url.searchParams.set(key, 'REDACTED');
+    for (const [key, value] of url.searchParams.entries()) {
+        if ((SECRET_QUERY_KEYS as readonly string[]).includes(key.toLowerCase())) {
+            rebuilt.append(key, 'REDACTED');
             changed = true;
+        } else {
+            rebuilt.append(key, value);
         }
+    }
+    if (changed) {
+        url.search = rebuilt.toString();
     }
     if (url.password) {
         url.password = 'REDACTED';

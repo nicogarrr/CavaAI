@@ -38,6 +38,20 @@ describe('redactUrl', () => {
         assert.ok(safe.includes('REDACTED'), safe);
     });
 
+    it('redacta con mayusculas y conserva duplicados', () => {
+        // searchParams.has() distingue mayusculas y set() aplana repeticiones:
+        // ?TOKEN= pasaba intacto y ?token=A&token=B dejaba B sin redactar.
+        const upper = redactUrl(`https://x/?TOKEN=${SECRET}`);
+        assert.ok(!upper.includes(SECRET), upper);
+        assert.ok(upper.includes('TOKEN=REDACTED'), upper);
+        const dup = redactUrl(`https://x/?token=${SECRET}&token=AGAINSECRET&symbol=AAPL`);
+        assert.ok(!dup.includes(SECRET), dup);
+        assert.ok(!dup.includes('AGAINSECRET'), dup);
+        assert.equal(dup, 'https://x/?token=REDACTED&token=REDACTED&symbol=AAPL', dup);
+        const mixed = redactUrl(`https://x/?ApiKey=${SECRET}&a=1`);
+        assert.ok(!mixed.includes(SECRET), mixed);
+    });
+
     it('una entrada que no es URL nunca vuelve intacta', () => {
         const safe = redactUrl(`no-es-url?token=${SECRET}`);
         assert.equal(safe, '[invalid URL]');
