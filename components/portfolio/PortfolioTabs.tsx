@@ -222,6 +222,8 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                         <PortfolioAllocation
                             holdings={summary.holdings}
                             totalValue={summary.totalValue}
+                            cash={summary.cash}
+                            baseCurrency={summary.baseCurrency}
                         />
                     </div>
 
@@ -233,7 +235,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
 
                 {/* Tab: Posiciones */}
                 <TabsContent value="posiciones" className="mt-0">
-                    <PortfolioHoldings holdings={summary.holdings} userId={userId} />
+                    <PortfolioHoldings holdings={summary.holdings} userId={userId} cash={summary.cash} baseCurrency={summary.baseCurrency} />
                 </TabsContent>
 
                 {/* Tab: Movimientos */}
