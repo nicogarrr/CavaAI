@@ -22,16 +22,31 @@ ${COMPOSE} exec -T postgres createdb -U "${POSTGRES_USER:-portfolio}" "${POSTGRE
 ${COMPOSE} exec -T postgres pg_restore -U "${POSTGRES_USER:-portfolio}" -d "${POSTGRES_DB:-cavaai_research}" --no-owner < "${BACKUP_PATH}/postgres.dump"
 
 # 2) Qdrant (indice vectorial). backup.sh produce una de estas dos formas:
-#    - qdrant-snapshots/  (snapshot por API,Preferred)
-#    - qdrant-raw.tar.gz   (copia del volumen, si la API no respondio)
+#    - qdrant-snapshots/*.snapshot  (uno por coleccion, via API)
+#    - qdrant-raw.tar.gz            (copia del volumen, si la API no respondio)
 #    Sin este paso el restore terminaba sin error y sin indice vectorial: el
 #    RAG de los tenants volvia vacio.
+#
+#    El restore por snapshots usa SOLO la API de Qdrant (upload por coleccion,
+#    puerto solo-loopback): nada de montar el volumen, asi que qdrant debe
+#    estar ARRIBA. El intento anterior montaba el volumen :ro y luego hacia
+#    rm/mkdir/cp dentro: imposible, el paso moria siempre.
 if [ -d "${BACKUP_PATH}/qdrant-snapshots" ]; then
-  echo "[restore] qdrant (snapshot)…"
-  ${COMPOSE} stop qdrant
-  docker run --rm -v cavaai-prod-qdrant:/data:ro -v "$(pwd)/${BACKUP_PATH}/qdrant-snapshots":/in:ro alpine sh -c 'rm -rf /data/snapshots && mkdir -p /data/snapshots && cp -a /in/. /data/snapshots/'
-  ${COMPOSE} start qdrant
-  echo "[restore] qdrant: sube el ultimo snapshot con POST /collections/{name}/snapshots/recover"
+  echo "[restore] qdrant (snapshots por API)…"
+  shopt -s nullglob
+  QDRANT_SNAPS=("${BACKUP_PATH}"/qdrant-snapshots/*.snapshot)
+  if [ "${#QDRANT_SNAPS[@]}" -eq 0 ]; then
+    echo "[restore] AVISO: qdrant-snapshots/ esta vacio; el indice vectorial quedara vacio"
+  fi
+  for SNAP in "${QDRANT_SNAPS[@]}"; do
+    COLL="$(basename "${SNAP}" .snapshot)"
+    echo "[restore] qdrant: recuperando coleccion ${COLL}…"
+    # Restore destructivo (ya confirmado con --confirm-restore): la coleccion
+    # se borra y se recrea desde el snapshot.
+    curl -fsS -X DELETE "http://127.0.0.1:6333/collections/${COLL}" -o /dev/null || true
+    curl -fsS -X PUT "http://127.0.0.1:6333/collections/${COLL}/snapshots/upload?priority=snapshot" \
+      -H "Content-Type: multipart/form-data" -F "snapshot=@${SNAP}" -o /dev/null
+  done
 elif [ -f "${BACKUP_PATH}/qdrant-raw.tar.gz" ]; then
   echo "[restore] qdrant (volumen en crudo)…"
   ${COMPOSE} stop qdrant

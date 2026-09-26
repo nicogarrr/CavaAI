@@ -3,7 +3,7 @@
 #
 # Genera backups/YYYYMMDD-HHMMSS/ con:
 #   - postgres.dump      (pg_dump -Fc, canonico: research/evidence/thesis)
-#   - qdrant.snapshot    (snapshot via API de Qdrant)
+#   - qdrant-snapshots/  (un .snapshot por coleccion, via API de Qdrant)
 #   - minio.tar.gz       (documentos crudos; volumen parado si --stop-storage)
 #   - duckdb.tar.gz      (analytics local)
 #   - manifest.txt       (fecha, versiones, conteos basicos)
@@ -32,12 +32,21 @@ echo "[backup] destino: ${DEST}"
 echo "[backup] postgres…"
 ${COMPOSE} exec -T postgres pg_dump -U "${POSTGRES_USER:-portfolio}" -Fc "${POSTGRES_DB:-cavaai_research}" > "${DEST}/postgres.dump"
 
-# 2) Qdrant: snapshot consistente via API (puerto solo-loopback del compose).
+# 2) Qdrant: snapshot POR COLECCION via API (puerto solo-loopback del compose).
+#    Los snapshots por coleccion se restauran con la API de upload sin tocar el
+#    volumen; un snapshot full-storage exigiria copiar el fichero dentro del
+#    volumen a mano y por eso se evita.
 echo "[backup] qdrant…"
-if curl -fsS -X POST "http://127.0.0.1:6333/snapshots" -o /dev/null; then
-  docker cp "cavaai-qdrant:/qdrant/snapshots" "${DEST}/qdrant-snapshots"
+if COLLECTIONS_JSON=$(curl -fsS "http://127.0.0.1:6333/collections"); then
+  mapfile -t QDRANT_COLLECTIONS < <(printf '%s' "${COLLECTIONS_JSON}" | python3 -c 'import json,sys; [print(c["name"]) for c in json.load(sys.stdin)["result"]["collections"]]')
+  mkdir -p "${DEST}/qdrant-snapshots"
+  for COLL in "${QDRANT_COLLECTIONS[@]}"; do
+    echo "[backup] qdrant: snapshot de ${COLL}…"
+    SNAP_NAME=$(curl -fsS -X POST "http://127.0.0.1:6333/collections/${COLL}/snapshots" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["name"])')
+    curl -fsS "http://127.0.0.1:6333/collections/${COLL}/snapshots/${SNAP_NAME}" -o "${DEST}/qdrant-snapshots/${COLL}.snapshot"
+  done
 else
-  echo "[backup] aviso: snapshot de qdrant no disponible; se copiara el volumen en crudo"
+  echo "[backup] aviso: API de qdrant no disponible; se copiara el volumen en crudo"
   docker run --rm -v cavaai-prod-qdrant:/data:ro -v "$(pwd)/${DEST}":/out alpine tar czf /out/qdrant-raw.tar.gz -C /data .
 fi
 

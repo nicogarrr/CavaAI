@@ -31,6 +31,11 @@ EXPOSE 8000
 # volumen duckdb_data en /app.
 RUN groupadd --system cavaai && useradd --system --gid cavaai --no-create-home cavaai \
     && chown -R cavaai:cavaai /app
+# /data es el punto de montaje del volumen duckdb_data en produccion. Un
+# volumen nuevo se inicializa copiando contenido Y PROPIETARIO de esta ruta
+# de la imagen; sin el chown quedaria root-owned y el backend (USER cavaai)
+# no podria escribir analytics.duckdb.
+RUN mkdir -p /data && chown cavaai:cavaai /data
 USER cavaai
 
 # `exec` para que uvicorn sea PID 1 y reciba el SIGTERM de `docker stop`;
