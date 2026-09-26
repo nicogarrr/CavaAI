@@ -597,7 +597,14 @@ def test_insider_counts_parse_errors_in_provenance(monkeypatch):
         raise ValueError("bad xml")
 
     result = insider_service.get_signals_for_ticker("AAPL", fetcher=_broken)
-    assert result["status"] == "ok"
+    # Every filing failed to parse. Reporting "ok" with an empty signal list
+    # reads as "no insider activity", which is a false all-clear on the exact
+    # case where nothing could be read.
+    assert result["status"] == "degraded"
+    assert result["filings_parsed"] == 0
+    assert result["filings_failed"] == 1
+    assert result["coverage_ratio"] == 0.0
+    assert result["provenance"]["coverage"] == "partial"
     assert result["parse_error_count"] == 1
     assert "1 filing(s) con error" in result["provenance"]["note"]
     assert result["provenance"]["coverage"] == "partial"
