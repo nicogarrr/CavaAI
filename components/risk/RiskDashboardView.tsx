@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RecordDetail, formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
-import { formatDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
+import { formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { getRiskDashboard } from '@/lib/actions/risk.actions';
 
 interface RiskDashboardViewProps {
@@ -144,12 +144,12 @@ function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null 
                 ? value.map((item) => (isRecord(item) ? String(item.ticker ?? item.currency ?? '?') : String(item))).join(', ')
                 : 'Ninguno';
         } else if (key === 'data_as_of') {
-            display[label] = typeof value === 'string' && value ? formatDateTime(value) : NA;
+            display[label] = typeof value === 'string' && value ? formatUserDateTime(value) : NA;
         } else if (key === 'provenance') {
             if (isRecord(value)) {
                 const source = typeof value.source === 'string' ? value.source : 'Fuente interna';
                 const fetched = typeof value.fetched_at === 'string' && value.fetched_at
-                    ? ` · ${formatDateTime(value.fetched_at)}`
+                    ? ` · ${formatUserDateTime(value.fetched_at)}`
                     : '';
                 display[label] = `${source}${fetched}`;
             } else {
