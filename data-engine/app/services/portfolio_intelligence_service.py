@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import CashBalance, Company, FinancialFact, MarketPrice, Position, Transaction
+from app.services.portfolio_ledger_service import BUY_ACTIONS, SELL_ACTIONS
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
@@ -329,12 +330,26 @@ class PortfolioIntelligenceService:
             )
             if rate is None:
                 continue
-            amount = float(
-                (transaction.quantity * transaction.price + transaction.fees) * rate
-            )
-            sign = -1 if transaction.action == "buy" else 1
-            if transaction.action in {"dividend", "interest"}:
-                sign = 1
+            # Sign convention: a buy is an outflow, a sell an inflow, a
+            # dividend/interest an inflow, and a fee or a withholding tax an
+            # OUTFLOW. Fees used to be added to the proceeds of a sale and
+            # fee/cash_misc rows were signed as inflows, so a EUR 50 commission
+            # turned a 20,00% money-weighted return into 25,00% with status
+            # "calculated". Costs must reduce the return they are charged on.
+            action = (transaction.action or "").lower()
+            gross = float(transaction.quantity) * float(transaction.price)
+            fees = float(transaction.fees or 0)
+            if action in BUY_ACTIONS:
+                net, sign = gross + fees, -1
+            elif action in SELL_ACTIONS:
+                net, sign = gross - fees, 1
+            elif action in {"dividend", "interest"}:
+                net, sign = gross, 1
+            elif action in {"fee", "withholding", "cash_misc"}:
+                net, sign = gross, -1
+            else:
+                net, sign = gross, 1
+            amount = net * float(rate)
             cashflows.append((transaction.trade_date, sign * amount))
         ending_value = sum(float(position.market_value_base or 0) for position, _ in positions)
         cash_rows = list(db.scalars(select(CashBalance)).all())

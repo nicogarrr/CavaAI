@@ -15,7 +15,11 @@ _UNSET = object()
 
 #: Acciones válidas del ledger (enum cerrado: buy/sell mueven posición,
 #: el resto son movimientos de caja/ajuste que no tocan cantidad).
-LEDGER_ACTIONS = frozenset({"buy", "sell", "dividend", "interest", "fee", "cash_misc"})
+LEDGER_ACTIONS = frozenset(
+    {"buy", "sell", "dividend", "interest", "fee", "cash_misc", "withholding"}
+)
+BUY_ACTIONS = frozenset({"buy", "bot", "b"})
+SELL_ACTIONS = frozenset({"sell", "sold"})
 
 
 class PortfolioOversellError(ValueError):
@@ -90,6 +94,20 @@ class PortfolioLedgerService:
             raise ValueError("Transaction trade_date cannot be in the future")
         company = self.ensure_company(db, ticker)
         portfolio = self.fx.ensure_portfolio(db)
+
+        if normalized_action == "sell":
+            # Validate BEFORE writing anything. The oversell was previously
+            # detected by rebuild_position AFTER the row had been added and
+            # flushed, so the caller that swallowed the PortfolioOversellError
+            # (the CSV importer) kept the impossible sale in the session and
+            # committed it: a phantom gain entered the tax report.
+            held = self._held_quantity(db, company.id)
+            if Decimal(quantity) > held:
+                raise PortfolioOversellError(
+                    f"Cannot sell {quantity} {ticker.upper()}: only {held} shares are "
+                    "available on the ledger."
+                )
+
         row = Transaction(
             portfolio_id=portfolio.id,
             company_id=company.id,
@@ -106,6 +124,20 @@ class PortfolioLedgerService:
         db.flush()
         self.rebuild_position(db, company.id)
         return row
+
+    @staticmethod
+    def _held_quantity(db: Session, company_id: int) -> Decimal:
+        """Shares currently on the ledger, from the buy/sell legs only."""
+        total = Decimal("0")
+        for action, quantity in db.execute(
+            select(Transaction.action, Transaction.quantity).where(
+                Transaction.company_id == company_id,
+                Transaction.action.in_(BUY_ACTIONS | SELL_ACTIONS),
+            )
+        ).all():
+            amount = Decimal(quantity or 0)
+            total += amount if str(action).lower() in BUY_ACTIONS else -amount
+        return total
 
     def rebuild_position(
         self, db: Session, company_id: int, *, as_of: date | None = None

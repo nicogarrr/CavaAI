@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree
@@ -17,14 +18,48 @@ class IBKRImportError(ValueError):
     """Fichero IBKR inválido: mensaje accionable en español."""
 
 
+def _parse_amount(value: str | None) -> Decimal | None:
+    """Parse a money amount written in either en-US or es-ES notation.
+
+    IBKR Flex exports follow the statement currency's locale, so the same
+    importer receives ``1,234.56`` and ``1.234,56``. Stripping every comma
+    turned the Spanish form into ``1.23456`` (a 1000x error) and ``0,24`` into
+    ``24`` (100x), and ``_is_number`` agreed the Spanish form was valid, so the
+    corruption passed validation and was persisted.
+
+    The last separator is the decimal one when both are present, and a lone
+    separator is decimal only when it is followed by 1-2 digits (so
+    ``1,234`` stays one thousand two hundred thirty-four).
+    """
+    if value in (None, ""):
+        return None
+    raw = str(value).strip().replace("\u00a0", "").replace(" ", "")
+    if not raw:
+        return None
+    negative = False
+    if raw.startswith("(") and raw.endswith(")"):
+        negative, raw = True, raw[1:-1]
+    if not re.fullmatch(r"[-+]?\d[\d.,]*", raw):
+        return None
+    sign = ""
+    if raw[0] in "+-":
+        sign, raw = raw[0], raw[1:]
+    if "," in raw and "." in raw:
+        raw = raw.replace(",", "") if raw.rindex(".") > raw.rindex(",") else raw.replace(".", "").replace(",", ".")
+    elif "," in raw:
+        tail = raw.rsplit(",", 1)[1]
+        raw = raw.replace(",", "") if len(tail) == 3 else raw.replace(",", ".")
+    try:
+        parsed = Decimal(f"{sign}{raw}")
+    except (InvalidOperation, ValueError):
+        return None
+    return -parsed if negative else parsed
+
+
 def _is_number(value: str | None) -> bool:
     if value in (None, ""):
         return False
-    try:
-        Decimal(str(value).replace(",", ""))
-    except (InvalidOperation, ValueError):
-        return False
-    return True
+    return _parse_amount(value) is not None
 
 
 def _is_date(value: str | None) -> bool:
@@ -256,11 +291,17 @@ def _tag_name(element: ElementTree.Element) -> str:
 
 def _decimal(value: str | None, default: str = "0") -> Decimal:
     if value in (None, ""):
-        value = default
-    try:
-        return Decimal(str(value).replace(",", ""))
-    except (InvalidOperation, ValueError):
         return Decimal(default)
+    parsed = _parse_amount(value)
+    if parsed is None:
+        # An unparseable amount must not become a silent 0: a zero cash flow is
+        # a real fact, and coercing a corrupt one to zero writes a false entry
+        # into the ledger and the tax report.
+        raise IBKRImportError(
+            f"Importe no interpretable: {value!r}. Usa notacion en-US (1,234.56) "
+            "o es-ES (1.234,56)."
+        )
+    return parsed
 
 
 def _date(value: str | None) -> date:
@@ -331,6 +372,7 @@ class IBKRImportService:
         fees_imported = 0
         cash_transactions_imported = 0
         rows_skipped = 0
+        unattributed = 0
 
         for element in root.iter():
             tag = _tag_name(element)
@@ -462,7 +504,13 @@ class IBKRImportService:
                     rows_skipped += 1
                     continue
                 type_attr = (_attr(element, "type", "transactionType", "activityType") or "").lower()
-                if "dividend" in type_attr:
+                if "withholding" in type_attr or "tax" in type_attr:
+                    # Withheld tax arrives as its own CashTransaction with the
+                    # gross dividend. Mapping it to cash_misc erased the
+                    # discriminator, so the tax report declared the gross and
+                    # never credited the retention.
+                    action = "withholding"
+                elif "dividend" in type_attr:
                     action = "dividend"
                 elif "interest" in type_attr:
                     action = "interest"
@@ -474,9 +522,19 @@ class IBKRImportService:
                 if external_id and external_id in existing_ids:
                     continue
                 amount = _decimal(_attr(element, "amount", "netCash", "proceeds"))
+                # CashTransaction carries the symbol in most Flex exports. The
+                # row used to be written with company_id=None, and the tax
+                # report INNER JOINs Company, so every imported dividend and
+                # every retention vanished from the filing.
+                cash_symbol = _attr(
+                    element, "symbol", "underlyingSymbol", "description"
+                )
+                cash_company = self._company_by_symbol(db, cash_symbol)
+                if cash_company is None and cash_symbol:
+                    unattributed += 1
                 transaction = Transaction(
                     portfolio_id=portfolio.id,
-                    company_id=None,
+                    company_id=cash_company.id if cash_company is not None else None,
                     trade_date=_date(_attr(element, "dateTime", "date", "tradeDate")),
                     action=action,
                     quantity=Decimal("1"),
@@ -547,9 +605,33 @@ class IBKRImportService:
             "fees_imported": fees_imported,
             "cash_transactions_imported": cash_transactions_imported,
             "rows_skipped": rows_skipped,
+            "unattributed_cash_rows": unattributed,
             "row_errors": row_errors,
             "portfolio_snapshot_id": snapshot.id,
         }
+
+    @staticmethod
+    def _company_by_symbol(db: Session, symbol: str | None) -> Company | None:
+        """Resolve a Flex symbol to a Company, tolerating broker suffixes.
+
+        Flex reports ``AAPL``, ``AAPL.US``, ``SAN.MC`` or a free-text
+        ``description``; only the bare local ticker is a Company.ticker.
+        """
+        if not symbol:
+            return None
+        text = str(symbol).strip()
+        if not text:
+            return None
+        candidates = [text]
+        for separator in (".", " ", "/"):
+            if separator in text:
+                candidates.append(text.split(separator, 1)[0])
+        upper = {candidate.upper() for candidate in candidates if candidate}
+        if not upper:
+            return None
+        return db.scalar(
+            select(Company).where(Company.ticker.in_(sorted(upper))).limit(1)
+        )
 
     def import_ibkr_csv(self, db: Session, csv_text: str) -> dict:
         """Importa operaciones desde un CSV de actividad de IBKR.
