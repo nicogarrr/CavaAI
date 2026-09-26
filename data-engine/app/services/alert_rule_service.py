@@ -20,7 +20,6 @@ from app.models import (
 from app.services.notification_service import NotificationService
 from app.services.review_alert_service import ReviewAlertService
 
-
 # Operators the evaluator understands. `create()` did not validate the operator,
 # so a rule created with "!=" (which the screener's comparator table does accept)
 # could never fire and always reported `matched: false`.
