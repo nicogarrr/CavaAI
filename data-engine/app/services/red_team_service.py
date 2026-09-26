@@ -16,6 +16,7 @@ from app.services.moat_service import MoatService
 from app.services.peer_analysis_service import PeerAnalysisService
 from app.services.review_alert_service import ReviewAlertService
 from app.services.valuation_service import ValuationService
+from app.services.claim_scope import live_claims
 
 
 SEVERITY_PENALTY = {
@@ -53,14 +54,7 @@ class RedTeamService:
         db.add(run)
         db.flush()
 
-        claims = list(
-            db.scalars(
-                select(Claim)
-                .options(selectinload(Claim.evidence))
-                .where(Claim.company_id == company.id)
-                .order_by(desc(Claim.materiality_score))
-            ).all()
-        )
+        claims = live_claims(db, company, thesis=thesis)
         findings: list[dict] = []
         for claim in claims:
             if claim.materiality_score >= 7 and not claim.evidence:

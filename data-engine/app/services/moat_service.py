@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models import Claim, Company, MoatAssessment
 from app.services.source_hierarchy_service import SOURCE_TIERS
+from app.services.claim_scope import live_claims
 
 
 MOAT_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -65,13 +66,10 @@ class MoatService:
         persist: bool = True,
         commit: bool = True,
     ) -> dict:
-        claims = list(
-            db.scalars(
-                select(Claim)
-                .options(selectinload(Claim.evidence))
-                .where(Claim.company_id == company.id)
-            ).all()
-        )
+        # Only the claims of the thesis being assessed. Reading every claim of
+        # the company let each regeneration's orphans count towards the moat
+        # evidence breadth.
+        claims = live_claims(db, company)
         results = []
         for moat_type, keywords in MOAT_KEYWORDS.items():
             relevant = [
