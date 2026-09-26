@@ -22,6 +22,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.models import FundManager, ManagerHolding
 from app.services.connectors import form13f
 from app.services.provenance import Coverage, SourceKind, provenance
@@ -93,7 +94,7 @@ class ManagerHoldingIngestionService:
                 "cik": cik,
                 "manager": manager.name,
                 "status": "unavailable",
-                "reason": f"{type(exc).__name__}: {exc}",
+                "reason": redact_secrets(f"{type(exc).__name__}: {exc}"),
                 "provenance": provenance(SOURCE, SourceKind.OFFICIAL, coverage=Coverage.UNAVAILABLE),
             }
 
@@ -130,7 +131,7 @@ class ManagerHoldingIngestionService:
                     continue
                 rows = form13f.fetch_information_table(url, client=self.client)
             except Exception as exc:  # noqa: BLE001 - partial coverage, keep going
-                errors.append({"accession": accession, "error": f"{type(exc).__name__}: {exc}"})
+                errors.append({"accession": accession, "error": redact_secrets(f"{type(exc).__name__}: {exc}")})
                 continue
             existing = {
                 (row.cusip, row.title_of_class, row.put_call)

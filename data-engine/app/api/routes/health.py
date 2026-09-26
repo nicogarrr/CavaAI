@@ -104,6 +104,8 @@ def _scheduler_status() -> dict:
             "running": False,
             "jobs": 0,
             "last_run_at": None,
+            # Solo el tipo de excepcion: este endpoint es publico y el texto
+            # de un error de import/config puede traer rutas del host.
             "error": type(exc).__name__,
         }
 
