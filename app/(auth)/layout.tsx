@@ -16,7 +16,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
     if (!browserTestBypass) {
         const auth = await getAuth();
         const session = await auth.api.getSession({headers: await headers()});
-        if (session?.user) redirect('/');
+        if (session?.user) redirect('/inicio');
     }
     return (
         <main className="auth-layout">
