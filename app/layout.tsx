@@ -32,9 +32,9 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
-  // Sin `alternates.canonical` aquí a propósito: la raíz se aplicaría a
-  // TODAS las rutas por herencia y declararía canónica la home (/terms,
-  // /metodologia, /help...). Cada página, si lo necesita, declara la suya.
+  alternates: {
+    canonical: '/',
+  },
 };
 
 export const viewport: Viewport = {
