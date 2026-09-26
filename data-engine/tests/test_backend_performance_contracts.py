@@ -96,7 +96,7 @@ def test_real_screener_serves_lkg_and_refreshes_in_background(monkeypatch):
     monkeypatch.setattr(
         screeners,
         "_real_items_cache",
-        {"at": 0.0, "items": [old], "vendor": "finnhub"},
+        {1: {"at": 0.0, "items": [old], "vendor": "finnhub"}},
     )
     monkeypatch.setattr(screeners, "_real_response_cache", {})
     monkeypatch.setattr(screeners, "_refetch_real_items", slow_refresh)
@@ -120,10 +120,10 @@ def test_real_screener_serves_lkg_and_refreshes_in_background(monkeypatch):
 
     deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline:
-        if screeners._real_items_cache["items"][0]["price"] == 11.0:
+        if screeners._real_items_cache[1]["items"][0]["price"] == 11.0:
             break
         time.sleep(0.01)
-    assert screeners._real_items_cache["items"][0]["price"] == 11.0
+    assert screeners._real_items_cache[1]["items"][0]["price"] == 11.0
 
 
 def test_real_response_cache_is_keyed_by_normalized_parameters(monkeypatch):
@@ -136,7 +136,7 @@ def test_real_response_cache_is_keyed_by_normalized_parameters(monkeypatch):
     monkeypatch.setattr(
         screeners,
         "_real_items_cache",
-        {"at": now, "items": items, "vendor": "finnhub"},
+        {1: {"at": now, "items": items, "vendor": "finnhub"}},
     )
     monkeypatch.setattr(screeners, "_real_response_cache", {})
 
@@ -295,7 +295,7 @@ def test_real_response_cache_is_bounded(monkeypatch):
     monkeypatch.setattr(
         screeners,
         "_real_items_cache",
-        {"at": now, "items": [item], "vendor": "finnhub"},
+        {1: {"at": now, "items": [item], "vendor": "finnhub"}},
     )
     monkeypatch.setattr(screeners, "_real_response_cache", {})
     monkeypatch.setattr(screeners, "_REAL_RESPONSE_CACHE_MAX", 2)

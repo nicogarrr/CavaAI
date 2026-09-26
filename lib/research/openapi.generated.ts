@@ -2335,6 +2335,11 @@ export interface paths {
          *     instante y actualiza en segundo plano. En cold start espera como máximo
          *     50 ms para un primer resultado útil; después devuelve LKG al instante y
          *     deja el trabajo largo en background.
+         *
+         *     El `get_db` no es decorativo: los ratios salen de `financial_facts`, que es
+         *     TenantOwnedMixin, así que la respuesta depende del tenant. Sin esta
+         *     dependencia el handler no conocía su tenant, la clave de caché era global
+         *     y un tenant recibía ratios derivados de los hechos ingeridos por otro.
          */
         get: operations["real_time_screener_api_screeners_real_get"];
         put?: never;

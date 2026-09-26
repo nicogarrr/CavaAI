@@ -232,9 +232,18 @@ _real_quote_cache: dict[str, dict] = {}
 _profile_singleflight: dict[str, threading.Event] = {}
 # Items crudos (todo el universo, sin filtrar) — los filtros se aplican por
 # request sobre los datos cacheados, así cada combinación de filtros funciona
-# sin golpear Finnhub de nuevo. Se conserva el shape histórico para los tests y
-# para reversión/operaciones; "vendor" impide mezclar fuentes.
-_real_items_cache: dict = {"at": 0.0, "items": [], "vendor": None}
+# sin golpear Finnhub de nuevo. POR TENANT: los items llevan ratios
+# (PE/PB/ROE) calculados sobre financial_facts (TenantOwnedMixin); un bucket
+# global dejaba al tenant B leer los ratios del A aunque la clave de la
+# respuesta final sí incluyera tenant. "vendor" impide mezclar fuentes.
+_real_items_cache: dict[int | None, dict] = {}
+
+
+def _real_items_bucket(tenant_id: int | None) -> dict:
+    """Bucket LKG del tenant; lo crea vacío si no existe."""
+    return _real_items_cache.setdefault(
+        tenant_id, {"at": 0.0, "items": [], "vendor": None}
+    )
 # Respuesta completa por parámetros: evita incluso el filtrado O(n) en cada
 # petición repetida y hace que el last-known-good sea realmente instantáneo.
 _real_response_cache: dict[tuple, dict] = {}
@@ -570,25 +579,33 @@ def _real_response_payload(
     }
 
 
-def _real_items_are_fresh(vendor: str, now: float) -> bool:
+def _real_items_are_fresh(vendor: str, now: float, tenant_id: int | None) -> bool:
     with _real_cache_lock:
-        cache_vendor = _real_items_cache.get("vendor")
+        bucket = _real_items_cache.get(tenant_id) or {}
+        cache_vendor = bucket.get("vendor")
         return bool(
-            _real_items_cache.get("items")
+            bucket.get("items")
             and (cache_vendor is None or cache_vendor == vendor)
-            and now - float(_real_items_cache.get("at", 0.0)) < _QUOTE_TTL
+            and now - float(bucket.get("at", 0.0)) < _QUOTE_TTL
         )
 
 
-def _store_real_items(items: list[dict], vendor: str) -> None:
-    """Publica un refresco sin perder LKG cuando el proveedor devuelve parcial."""
+def _store_real_items(
+    items: list[dict], vendor: str, tenant_id: int | None = None
+) -> None:
+    """Publica un refresco sin perder LKG cuando el proveedor devuelve parcial.
+
+    Todo ocurre dentro del bucket del tenant: los items llevan ratios
+    calculados con SUS financial_facts y jamás se mezclan con los de otro.
+    """
     with _real_cache_lock:
+        bucket = _real_items_bucket(tenant_id)
         previous = {
             item.get("symbol"): item
-            for item in _real_items_cache.get("items", [])
+            for item in bucket.get("items", [])
             if item.get("symbol")
         }
-        previous_vendor = _real_items_cache.get("vendor")
+        previous_vendor = bucket.get("vendor")
         fresh = {item.get("symbol"): item for item in items if item.get("symbol")}
         if previous_vendor in (None, vendor):
             merged = [
@@ -598,13 +615,13 @@ def _store_real_items(items: list[dict], vendor: str) -> None:
             ]
         else:
             merged = list(items)
-        _real_items_cache.update(
+        bucket.update(
             {"at": time.monotonic(), "items": merged, "vendor": vendor}
         )
-        # Las respuestas cacheadas se invalidan para recomputar con el nuevo
-        # universo; durante el intervalo entre refresh y request se conserva LKG.
+        # Las respuestas cacheadas DE ESTE TENANT se invalidan para recomputar
+        # con el nuevo universo; el resto conserva su LKG intacto.
         for key in tuple(_real_response_cache):
-            if key[0] == vendor:
+            if key[0] == vendor and key[4] == tenant_id:
                 _real_response_cache.pop(key, None)
 
 
@@ -616,7 +633,7 @@ def _refresh_real_items_background(
         with _real_refresh_state_lock:
             stale_generation = generation != _real_refresh_generation
         if items and not stale_generation:
-            _store_real_items(items, vendor)
+            _store_real_items(items, vendor, tenant_id)
     except Exception:  # noqa: BLE001 — SWR nunca convierte un fallo upstream en 500
         # El próximo request conserva el last-known-good y vuelve a programar.
         return
@@ -672,8 +689,9 @@ def real_time_screener(
     now = time.monotonic()
     with _real_cache_lock:
         cached = _real_response_cache.get(key)
-        cached_items = _real_items_cache.get("items", [])
-        cached_vendor = _real_items_cache.get("vendor")
+        bucket = _real_items_cache.get(tenant_id) or {}
+        cached_items = bucket.get("items", [])
+        cached_vendor = bucket.get("vendor")
         has_lkg = bool(cached_items) and (
             cached_vendor is None or cached_vendor == vendor.name
         )
@@ -683,12 +701,12 @@ def real_time_screener(
             "screener": [dict(item) for item in cached["payload"]["screener"]],
             "as_of": time.time(),
         }
-        if not _real_items_are_fresh(vendor.name, now):
+        if not _real_items_are_fresh(vendor.name, now, tenant_id):
             _schedule_real_refresh(vendor.name, tenant_id)
         return payload
 
     items = list(cached_items) if has_lkg else []
-    if not _real_items_are_fresh(vendor.name, now):
+    if not _real_items_are_fresh(vendor.name, now, tenant_id):
         future = _schedule_real_refresh(vendor.name, tenant_id)
         if not has_lkg and not items and (
             active_vendor_allows_cold_wait(vendor.name, settings)
@@ -701,7 +719,7 @@ def real_time_screener(
             except Exception:  # noqa: BLE001 — el background seguirá intentando
                 pass
             with _real_cache_lock:
-                items = list(_real_items_cache.get("items", []))
+                items = list((_real_items_cache.get(tenant_id) or {}).get("items", []))
 
     payload = _real_response_payload(
         items, vendor.name, marketCapMoreThan, sector, limit
