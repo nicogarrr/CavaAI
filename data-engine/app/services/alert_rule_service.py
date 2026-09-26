@@ -26,6 +26,12 @@ from app.services.review_alert_service import ReviewAlertService
 _OPERATORS = frozenset({">", "<", ">=", "<=", "==", "!="})
 
 
+# Operators the evaluator understands. `create()` did not validate the operator,
+# so a rule created with "!=" (which the screener's comparator table does accept)
+# could never fire and always reported `matched: false`.
+_OPERATORS = frozenset({">", "<", ">=", "<=", "==", "!="})
+
+
 class AlertRuleService:
     def create(
         self,

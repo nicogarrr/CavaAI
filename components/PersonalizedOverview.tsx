@@ -509,7 +509,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     <Card className="bg-gray-800/50 border-gray-700">
                         <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
                             <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
-                                <Newspaper className="h-5 w-5 text-gray-400" />
+                                <Newspaper aria-hidden="true" className="h-5 w-5 text-gray-400" />
                                 Noticias
                             </CardTitle>
                         </CardHeader>
@@ -535,7 +535,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             </h4>
                                             <div className="flex justify-between items-center mt-1">
                                                 <span className="text-xs text-gray-500">{article.source}</span>
-                                                <span className="text-xs text-gray-600">{article.datetime ? formatDate(article.datetime * 1000) : 'fecha desconocida'}</span>
+                                                <span className="text-xs text-gray-500">{article.datetime ? formatDate(article.datetime * 1000) : 'fecha desconocida'}</span>
                                             </div>
                                         </a>
                                     ))}

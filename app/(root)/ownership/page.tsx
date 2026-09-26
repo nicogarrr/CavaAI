@@ -88,7 +88,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
-                        <Building2 className="h-4 w-4 text-teal-300" />
+                        <Building2 aria-hidden="true" className="h-4 w-4 text-teal-300" />
                         SEC 13F
                     </div>
                     <SyncButton />
@@ -135,28 +135,29 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                                 cobertura {holdings.coverage}
                             </Badge>
                         </div>
-                        <div className="mt-4 overflow-x-auto">
+                        <div aria-label="Posiciones 13F declaradas" className="mt-4 overflow-x-auto" role="region" tabIndex={0}>
                             <table className="w-full min-w-[820px] text-left text-sm">
+                                <caption className="sr-only">Posiciones declaradas en el último informe 13F del gestor, tal como constan en EDGAR</caption>
                                 <thead className="text-xs uppercase text-gray-500">
                                     <tr>
-                                        <th className="border-b border-gray-800 py-2">Emisor (tal como se declaro)</th>
-                                        <th className="border-b border-gray-800 py-2">Clase</th>
-                                        <th className="border-b border-gray-800 py-2">CUSIP</th>
-                                        <th className="border-b border-gray-800 py-2 text-right">Valor</th>
-                                        <th className="border-b border-gray-800 py-2 text-right">Acciones</th>
-                                        <th className="border-b border-gray-800 py-2">Tipo</th>
-                                        <th className="border-b border-gray-800 py-2">Filing</th>
+                                        <th className="border-b border-gray-800 py-2" scope="col">Emisor (tal como se declaro)</th>
+                                        <th className="border-b border-gray-800 py-2" scope="col">Clase</th>
+                                        <th className="border-b border-gray-800 py-2" scope="col">CUSIP</th>
+                                        <th className="border-b border-gray-800 py-2 text-right" scope="col">Valor</th>
+                                        <th className="border-b border-gray-800 py-2 text-right" scope="col">Acciones</th>
+                                        <th className="border-b border-gray-800 py-2" scope="col">Tipo</th>
+                                        <th className="border-b border-gray-800 py-2" scope="col">Filing</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {holdings.holdings.map((row) => (
                                         <tr className="border-b border-gray-900" key={`${row.accession_number}-${row.cusip}-${row.title_of_class}-${row.put_call ?? ''}`}>
-                                            <td className="py-3 text-gray-200">
+                                            <th className="py-3 text-left text-sm font-normal text-gray-200" scope="row">
                                                 {row.name_of_issuer}
                                                 {row.is_amendment ? (
                                                     <Badge className="ml-2" variant="outline">enmienda</Badge>
                                                 ) : null}
-                                            </td>
+                                            </th>
                                             <td className="py-3 text-gray-400">{row.title_of_class || NA}</td>
                                             <td className="py-3 font-mono text-xs text-gray-400">{row.cusip}</td>
                                             <td className="py-3 text-right text-gray-200">{formatValueUsd(row.value_usd_thousands)}</td>
@@ -169,9 +170,9 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                                                     rel="noreferrer"
                                                     target="_blank"
                                                 >
-                                                    <FileText className="h-3.5 w-3.5" />
+                                                    <FileText aria-hidden="true" className="h-3.5 w-3.5" />
                                                     XML
-                                                    <ExternalLink className="h-3 w-3" />
+                                                    <ExternalLink aria-hidden="true" className="h-3 w-3" />
                                                 </a>
                                             </td>
                                         </tr>
@@ -208,23 +209,24 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                             </Badge>
                         </div>
                         <p className="mt-2 text-xs text-gray-500">{changes.compared_accessions?.rule}</p>
-                        <div className="mt-4 overflow-x-auto">
+                        <div aria-label="Cambios 13F trimestre a trimestre" className="mt-4 overflow-x-auto" role="region" tabIndex={0}>
                             <table className="w-full min-w-[720px] text-left text-sm">
+                                <caption className="sr-only">Cambios de cada emisor entre los dos últimos informes 13F, con acciones y valor antes y ahora</caption>
                                 <thead className="text-xs uppercase text-gray-500">
                                     <tr>
-                                        <th className="border-b border-gray-800 py-2">Emisor</th>
-                                        <th className="border-b border-gray-800 py-2">CUSIP</th>
-                                        <th className="border-b border-gray-800 py-2">Cambio</th>
-                                        <th className="border-b border-gray-800 py-2 text-right">Acciones antes</th>
-                                        <th className="border-b border-gray-800 py-2 text-right">Acciones ahora</th>
-                                        <th className="border-b border-gray-800 py-2 text-right">Valor antes</th>
-                                        <th className="border-b border-gray-800 py-2 text-right">Valor ahora</th>
+                                        <th className="border-b border-gray-800 py-2" scope="col">Emisor</th>
+                                        <th className="border-b border-gray-800 py-2" scope="col">CUSIP</th>
+                                        <th className="border-b border-gray-800 py-2" scope="col">Cambio</th>
+                                        <th className="border-b border-gray-800 py-2 text-right" scope="col">Acciones antes</th>
+                                        <th className="border-b border-gray-800 py-2 text-right" scope="col">Acciones ahora</th>
+                                        <th className="border-b border-gray-800 py-2 text-right" scope="col">Valor antes</th>
+                                        <th className="border-b border-gray-800 py-2 text-right" scope="col">Valor ahora</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {changes.changes.filter((row) => row.change !== 'unchanged').map((row) => (
                                         <tr className="border-b border-gray-900" key={`${row.cusip}-${row.title_of_class}-${row.put_call ?? ''}`}>
-                                            <td className="py-3 text-gray-200">{row.name_of_issuer}</td>
+                                            <th className="py-3 text-left text-sm font-normal text-gray-200" scope="row">{row.name_of_issuer}</th>
                                             <td className="py-3 font-mono text-xs text-gray-400">{row.cusip}</td>
                                             <td className="py-3">
                                                 <Badge variant="outline">{CHANGE_LABELS[row.change]}</Badge>
