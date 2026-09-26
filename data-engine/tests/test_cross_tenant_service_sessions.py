@@ -208,3 +208,141 @@ def test_financial_facts_are_tenant_owned():
     from app.models.entities import TenantOwnedMixin
 
     assert issubclass(FinancialFact, TenantOwnedMixin)
+
+
+def test_screener_items_cache_does_not_leak_ratios_between_tenants(monkeypatch):
+    """Un tenant no lee del items-LKG los ratios calculados para otro.
+
+    Ruta real: peticion firmada a /api/screeners/real con el refresh mockeado
+    marcando cada item con el tenant que lo calculo. Con el bucket global, el
+    tenant B recibia los items (y sus ratios PE/PB/ROE) del tenant A aunque la
+    clave de la respuesta final si incluyera tenant.
+    """
+    init_db()
+    seed()
+    _enabled_auth(monkeypatch)
+
+    from app.api.routes import screeners
+
+    universe_symbol = screeners._REAL_UNIVERSE[0][0]
+
+    def _refetch(vendor=None, tenant_id=None):
+        # El store publica solo simbolos del universo real (merge LKG).
+        return [
+            {
+                "symbol": universe_symbol,
+                "price": 1.0,
+                "marketCap": 1.0,
+                "sector": "S",
+                "ratiosForTenant": tenant_id,
+            }
+        ]
+
+    monkeypatch.setattr(screeners, "_refetch_real_items", _refetch)
+    monkeypatch.setattr(
+        screeners,
+        "get_settings",
+        lambda: SimpleNamespace(
+            finnhub_api_key=None, screener_quote_vendor="yahoo"
+        ),
+    )
+    screeners._real_items_cache.clear()
+    screeners._real_response_cache.clear()
+
+    client = TestClient(main.app)
+    suffix = uuid4().hex[:8]
+
+    def _real_as(tenant: str, user: str) -> list[dict]:
+        # Primera peticion: cold start programa el refresh. Se drena el
+        # future (el budget de 50ms del endpoint es para no bloquear, no
+        # para garantizar el dato) y la segunda ya lee el bucket LKG.
+        signed_request(
+            client, SECRET, tenant, user,
+            "GET", "/api/screeners/real", params={"limit": 1},
+        )
+        future = screeners._real_refresh_future
+        if future is not None:
+            future.result(timeout=5)
+        response = signed_request(
+            client, SECRET, tenant, user,
+            "GET", "/api/screeners/real", params={"limit": 1},
+        )
+        assert response.status_code == 200
+        return response.json()["screener"]
+
+    items_a = _real_as(f"tenant-a-{suffix}", f"user-a-{suffix}")
+    items_b = _real_as(f"tenant-b-{suffix}", f"user-b-{suffix}")
+    assert items_a and items_b, "el refresh propio debe poblar el bucket"
+    assert items_a[0]["ratiosForTenant"] != items_b[0]["ratiosForTenant"], (
+        "el tenant B leyo del items-LKG los ratios calculados para el tenant A"
+    )
+
+
+def test_insider_scan_uses_the_explicit_tenant_even_without_session_scope(monkeypatch):
+    """scan filtra known_accessions por su tenant_id explicito.
+
+    Ruta real: scan() completo sobre sqlite con un Form 4 YA persistido para
+    el tenant 4242 y una sesion de worker SIN db.info["tenant_id"] (y luego
+    con el tenant arrastrado de otra corrida, 9999). Si el filtro leyera
+    db.info, el filing propio pareceria nuevo y se volveria a descargar.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.models.entities import Base
+    from app.services import insider_monitor
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    suffix = uuid4().hex[:8]
+    accession = f"0008888-26-{suffix}"
+    filing = {
+        "accession_number": accession,
+        "document_url": "https://example.invalid/form4.xml",
+    }
+
+    with Session(engine) as db:
+        db.add(
+            InsiderFiling(
+                tenant_id=4242,
+                accession_number=accession,
+                form="4",
+                issuer_cik="0000888800",
+                issuer_ticker="ZZZZ",
+                filing_date="2026-01-02",
+                parser_version="test-v1",
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            insider_monitor, "watchlist_tickers", lambda db, tenant_id: ["ZZZZ"]
+        )
+        monkeypatch.setattr(
+            insider_monitor,
+            "resolve_ciks",
+            lambda db, tickers, client=None: {"ZZZZ": "0000888800"},
+        )
+        monkeypatch.setattr(
+            insider_monitor.form4_connector,
+            "recent_form4_filings",
+            lambda cik, limit=20, client=None: [filing],
+        )
+
+        fetched: list[dict] = []
+
+        def _fetcher(f):
+            fetched.append(f)
+            return "<xml/>"
+
+        # Sesion de worker sin scope de tenant: con db.info vacio, un filtro
+        # leido de la sesion sale tenant None -> el set de conocidos sale
+        # vacio y el filing propio parece nuevo.
+        # (El escenario de info arrastrada de otra corrida no se ejercita en
+        # escritura: el guard before_flush de database.py ya lo bloquea.)
+        assert db.info.get("tenant_id") is None
+        stats = insider_monitor.scan(
+            db, tenant_id=4242, lookback=1, max_new_fetches=5, fetcher=_fetcher
+        )
+        assert fetched == [], "sin scope en db.info el filing propio parecia nuevo"
+        assert stats["filings_new"] == 0
