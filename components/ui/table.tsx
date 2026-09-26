@@ -1,6 +1,13 @@
+"use client"
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+
+// "use client" es OBLIGATORIA: el contexto de densidad (React.createContext a
+// nivel de modulo) no existe en el grafo de Server Components - sin la
+// directiva, cualquier pagina server que importe Table rompe el build en
+// "collect page data" (createContext is not a function en /watchlist).
 
 /**
  * Densidad de la tabla. Las cabeceras escritas a mano usan `py-2 px-3` y las
