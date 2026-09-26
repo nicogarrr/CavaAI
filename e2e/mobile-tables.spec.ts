@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { createHmac } from "node:crypto";
 
 const runUiE2E = process.env.E2E_UI_RUN === "1";
 
@@ -79,6 +80,34 @@ const TABLE_ROUTES = [
   { path: "/research/AAPL/driver-assumptions", heading: "Supuestos de drivers" },
   { path: "/portfolio/intelligence", heading: "Inteligencia de cartera" },
 ];
+
+const uiBackendURL = process.env.E2E_UI_BACKEND_URL ?? "http://127.0.0.1:8100";
+const e2eResearchSecret =
+  process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
+
+// Las rutas /research/AAPL/* solo renderizan cabecera si la empresa existe:
+// antes dependian del estado que dejaran otros specs (orden alfabetico) y
+// en una corrida limpia el backend respondia "Company not found" y el h1
+// nunca aparecia. El spec asegura su propio dato (misma firma que el
+// harness de playwright.config).
+test.beforeAll(async () => {
+  if (!runUiE2E) return;
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const res = await fetch(`${uiBackendURL}/api/companies/ensure`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-CavaAI-Tenant": "e2e-api-tenant",
+      "X-CavaAI-User": "e2e-api-user",
+      "X-CavaAI-Timestamp": timestamp,
+      "X-CavaAI-Signature": createHmac("sha256", e2eResearchSecret)
+        .update(`e2e-api-tenant:e2e-api-user:${timestamp}`)
+        .digest("hex"),
+    },
+    body: JSON.stringify({ ticker: "AAPL", name: "Apple Inc." }),
+  });
+  if (!res.ok) throw new Error(`ensure AAPL fallo: ${res.status} ${await res.text()}`);
+});
 
 test.describe("mobile tablas con scroll interno", () => {
   test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
