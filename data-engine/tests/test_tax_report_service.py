@@ -316,3 +316,40 @@ def test_build_tax_summary_rows_without_fiscal_year(db: Session):
     assert len(rows) == 1
     assert rows[0]["ticker"] == "AAPL"
     assert rows[0]["quantity"] == 3.0
+
+
+def test_get_report_is_read_only_without_persisted_report(db):
+    """GET path: calcula en memoria y NO escribe (ni TaxReport ni Portfolio)."""
+    from sqlalchemy import func, select
+
+    from app.models.entities import TaxReport
+
+    company = _company(db, "AAPL")
+    _tx(db, company, date(2025, 3, 10), "buy", 10, 100)
+
+    data = TaxReportService().get_report(db, 2025)
+
+    assert data["persisted"] is False
+    assert data["generated_at"] is None
+    assert db.scalar(select(func.count()).select_from(TaxReport)) == 0
+    assert db.scalar(select(func.count()).select_from(Portfolio)) == 0
+
+
+def test_regenerate_report_persists(db):
+    """POST path: recalcula y persiste; un GET posterior devuelve lo guardado."""
+    from sqlalchemy import func, select
+
+    from app.models.entities import TaxReport
+
+    company = _company(db, "AAPL")
+    _tx(db, company, date(2025, 3, 10), "buy", 10, 100)
+
+    service = TaxReportService()
+    data = service.regenerate_report(db, 2025)
+    assert data["persisted"] is True
+    assert data["generated_at"] is not None
+    assert db.scalar(select(func.count()).select_from(TaxReport)) == 1
+
+    again = service.get_report(db, 2025)
+    assert again["persisted"] is True
+    assert again["summary"] == data["summary"]

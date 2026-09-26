@@ -106,6 +106,26 @@ def deactivate_alert_rule(
     return rule
 
 
+def _snooze_expired(snoozed_until: datetime | None, now: datetime) -> bool:
+    """¿Caducó el snooze?
+
+    `snoozed_until` llega del cliente como `datetime` (Pydantic no le impone
+    zona) y la base lo devuelve naive: SQLite no guarda el offset, asi que al
+    releerlo se pierde el tz y `naive <= aware` lanza
+    `TypeError: can't compare offset-naive and offset-aware datetimes`. Se
+    normaliza a UTC asumiendo que un valor naive ya esta en UTC, que es como se
+    escribe en el resto de la app.
+    """
+    if snoozed_until is None:
+        return False
+    value = (
+        snoozed_until
+        if snoozed_until.tzinfo is not None
+        else snoozed_until.replace(tzinfo=UTC)
+    )
+    return value <= now
+
+
 @router.get("", response_model=list[ResearchAlertOut])
 def list_alerts(
     ticker: str | None = None,
@@ -113,7 +133,7 @@ def list_alerts(
     include_snoozed: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-) -> list[ResearchAlert]:
+) -> list[ResearchAlertOut]:
     now = datetime.now(UTC)
     statement = select(ResearchAlert)
     if ticker:
@@ -126,6 +146,11 @@ def list_alerts(
     if status:
         statement = statement.where(ResearchAlert.status == status)
     elif not include_snoozed:
+        # Solo REAPARECEN las alertas cuyo snooze ya caduco: un snooze sin
+        # fecha es indefinido (silenciar = ocultar) y uno con fecha futura
+        # sigue activo; ambos quedan fuera salvo include_snoozed=True.
+        # (`snoozed_until <= now` con NULL evalua a NULL -> excluida, que es
+        # exactamente la semantica de snooze indefinido.)
         statement = statement.where(
             or_(
                 ResearchAlert.status != "snoozed",
@@ -139,16 +164,23 @@ def list_alerts(
             ).limit(limit)
         ).all()
     )
+    # Un GET no escribe. Antes el handler reabria las alertas cuyo snooze habia
+    # caducado y hacia commit, lo que hacia la operacion no idempotente (dos
+    # GET seguidos no dan el mismo resultado), rompia cualquier cache HTTP de la
+    # ruta, y podia devolver 500 en un camino de lectura. Aqui solo se refleja
+    # el estado derivado en la respuesta, sin tocar la fila: la fila queda
+    # 'snoozed' en base y cada respuesta deriva a 'open' sin escritura.
+    # El estado derivado se refleja en DTOs, NUNCA en las entidades ORM:
+    # mutarlas dejaba la sesion sucia y cualquier commit posterior del mismo
+    # request podia flushear una escritura desde un GET.
+    result: list[ResearchAlertOut] = []
     for alert in alerts:
-        if (
-            alert.status == "snoozed"
-            and alert.snoozed_until
-            and alert.snoozed_until <= now
-        ):
-            alert.status = "open"
-            alert.snoozed_until = None
-    db.commit()
-    return alerts
+        out = ResearchAlertOut.model_validate(alert)
+        if alert.status == "snoozed" and _snooze_expired(alert.snoozed_until, now):
+            out.status = "open"
+            out.snoozed_until = None
+        result.append(out)
+    return result
 
 
 @router.post("/{alert_id}/action", response_model=ResearchAlertOut)
