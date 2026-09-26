@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BookOpen, Check, FileSearch, Library, Sparkles, UploadCloud, X } from 'lucide-react';
 
@@ -6,6 +7,7 @@ import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
   createKnowledgeCollection,
@@ -26,7 +28,34 @@ import { t } from '@/lib/i18n/t';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type PageProps = { searchParams: Promise<{ document?: string; status?: string }> };
+export const metadata: Metadata = {
+  title: 'Biblioteca de conocimiento',
+  description:
+    'Libros, cartas y casos de estudio separados de la evidencia de empresas, con principios de inversión aprobados por humanos y trazables.',
+};
+
+type PageProps = { searchParams: Promise<{ document?: string; status?: string; tab?: string }> };
+
+/** Pestañas de la página. El estado vive en la URL (?tab=): los disparadores
+ *  son enlaces, así que la vista se puede compartir, recargar y usar sin
+ *  JavaScript, y sólo se envía al cliente el panel activo. */
+const TABS = {
+  biblioteca: 'biblioteca',
+  principios: 'principios',
+  subir: 'subir',
+} as const;
+
+type TabKey = (typeof TABS)[keyof typeof TABS];
+
+const TAB_LABELS: Record<TabKey, string> = {
+  biblioteca: 'Biblioteca',
+  principios: 'Principios',
+  subir: 'Subir',
+};
+
+function asTab(value: string | undefined): TabKey {
+  return value === TABS.principios || value === TABS.subir ? value : TABS.biblioteca;
+}
 
 const PRINCIPLE_STATUS_LABELS: Record<string, string> = {
   '': 'todos',
@@ -66,6 +95,7 @@ function statusTone(status: string) {
 
 export default async function KnowledgeLibraryPage({ searchParams }: PageProps) {
   const query = await searchParams;
+  const activeTab = asTab(query.tab);
   const selectedDocumentId = Number(query.document) || null;
   const fetchAll = () =>
     Promise.all([getKnowledgeLibrary(), getKnowledgeDocumentChunks(selectedDocumentId)]);
@@ -106,12 +136,34 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
           <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/search"><FileSearch aria-hidden="true" className="h-4 w-4" />Buscar en todo</Link></Button>
           <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge-graph"><Library aria-hidden="true" className="h-4 w-4" />Grafo de conocimiento</Link></Button>
-          <MutationForm action={installKnowledgeDefaults} className="w-full sm:w-auto" successMessage="Colecciones por defecto listas">
-            <Button className="h-11 w-full sm:w-auto" type="submit"><Library aria-hidden="true" className="h-4 w-4" />Instalar por defecto</Button>
-          </MutationForm>
         </div>
       </header>
 
+      {/*
+        Antes eran stats, jobs, dos formularios, tabla, explorador y curación de
+        principios en un solo scroll de 8 secciones. Las pestañas separan las
+        tres tareas (mirar la biblioteca / curar principios / subir) y el estado
+        va en la URL, así que no hace falta JavaScript para cambiar de sección.
+      */}
+      <Tabs className="gap-4" value={activeTab}>
+        <TabsList
+          aria-label="Secciones de la biblioteca de conocimiento"
+          className="flex h-auto w-full max-w-full snap-x gap-1 overflow-x-auto border border-gray-700 bg-gray-800 pb-2 text-gray-400 sm:inline-flex sm:h-9 sm:w-auto sm:overflow-visible sm:pb-[3px]"
+          tabIndex={0}
+        >
+          {(['biblioteca', 'principios', 'subir'] as TabKey[]).map((key) => (
+            <TabsTrigger
+              asChild
+              className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300"
+              key={key}
+              value={key}
+            >
+              <Link href={key === TABS.biblioteca ? '/knowledge' : `/knowledge?tab=${key}`}>{TAB_LABELS[key]}</Link>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent className="mt-2 space-y-6" value={TABS.biblioteca}>
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         {[
           ['Colecciones', collections.length],
@@ -147,28 +199,18 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
           </div>
         </MutationForm>
 
-        <MutationForm id="upload-knowledge" action={uploadKnowledgeDocument} className="rounded-xl border border-gray-800 bg-[#101010] p-5" resetOnSuccess successMessage="Documento ingerido">
-          <div className="mb-4 flex items-center gap-2"><UploadCloud aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">{t('knowledge.upload')}</h2></div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Input className="h-11 w-full" name="title" placeholder="Título del documento" required />
-            <select className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" name="collection_id" defaultValue="">
-              <option value="">Sin colección</option>
-              {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
-            </select>
-            <Input className="h-11 w-full" name="author" placeholder="Autor" />
-            <Input className="h-11 w-full" name="document_type" defaultValue="book" placeholder="libro, carta, artículo" required />
-            <Input className="h-11 w-full" name="publication_date" type="date" />
-            <Input className="h-11 w-full" name="language" defaultValue="en" placeholder="Idioma" />
-            <Input className="h-11 w-full sm:col-span-2" name="source_url" placeholder="URL de la fuente (opcional)" type="url" />
-            <FileUploadInput accept=".pdf,.docx,.txt,.md,.html,.xlsx,.csv" className="h-11 w-full sm:col-span-2" name="file" required />
-            <Button className="h-11 w-full sm:col-span-2 sm:w-fit" type="submit"><UploadCloud aria-hidden="true" className="h-4 w-4" />Subir</Button>
-          </div>
-        </MutationForm>
+        <div className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+          <div className="mb-4 flex items-center gap-2"><Library aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Colecciones por defecto</h2></div>
+          <p className="mb-4 text-sm text-gray-400">Instala las colecciones base (calidad compounders, operaciones, macro) para tener dónde ingestar sin crear nada a mano.</p>
+          <MutationForm action={installKnowledgeDefaults} successMessage="Colecciones por defecto listas">
+            <Button className="h-11 w-full sm:w-fit" type="submit"><Library aria-hidden="true" className="h-4 w-4" />Instalar por defecto</Button>
+          </MutationForm>
+        </div>
       </section>
 
       <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
         <div className="mb-4 flex items-center gap-2">            <BookOpen aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">{t('knowledge.documents')}</h2></div>
-        {!documents.length ? <div className="py-2 text-sm text-gray-500"><p>Aún no hay documentos de conocimiento.</p><a className="mt-2 inline-flex items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 hover:border-teal-600 hover:text-teal-200" href="#upload-knowledge">Sube tu primer libro, carta o caso de estudio</a></div> : null}
+        {!documents.length ? <div className="py-2 text-sm text-gray-500"><p>Aún no hay documentos de conocimiento.</p><Link className="mt-2 inline-flex min-h-[44px] items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 hover:border-teal-600 hover:text-teal-200" href="/knowledge?tab=subir">Sube tu primer libro, carta o caso de estudio</Link></div> : null}
         <div aria-label="Documentos de conocimiento" className="hidden overflow-x-auto md:block" role="region" tabIndex={0}>
           <table className="w-full min-w-[640px] text-left text-sm">
             <caption className="sr-only">Documentos de conocimiento ingeridos, con colección, tipo, extractor, estado y acciones de extracción</caption>
@@ -227,9 +269,31 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
           </div>
         </section>
       ) : null}
+        </TabsContent>
 
+        <TabsContent className="mt-2" value={TABS.subir}>
+          <MutationForm id="upload-knowledge" action={uploadKnowledgeDocument} className="rounded-xl border border-gray-800 bg-[#101010] p-5" resetOnSuccess successMessage="Documento ingerido">
+            <div className="mb-4 flex items-center gap-2"><UploadCloud aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">{t('knowledge.upload')}</h2></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input className="h-11 w-full" name="title" placeholder="Título del documento" required />
+              <select className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" name="collection_id" defaultValue="">
+                <option value="">Sin colección</option>
+                {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
+              </select>
+              <Input className="h-11 w-full" name="author" placeholder="Autor" />
+              <Input className="h-11 w-full" name="document_type" defaultValue="book" placeholder="libro, carta, artículo" required />
+              <Input className="h-11 w-full" name="publication_date" type="date" />
+              <Input className="h-11 w-full" name="language" defaultValue="en" placeholder="Idioma" />
+              <Input className="h-11 w-full sm:col-span-2" name="source_url" placeholder="URL de la fuente (opcional)" type="url" />
+              <FileUploadInput accept=".pdf,.docx,.txt,.md,.html,.xlsx,.csv" className="h-11 w-full sm:col-span-2" name="file" required />
+              <Button className="h-11 w-full sm:col-span-2 sm:w-fit" type="submit"><UploadCloud aria-hidden="true" className="h-4 w-4" />Subir</Button>
+            </div>
+          </MutationForm>
+        </TabsContent>
+
+        <TabsContent className="mt-2" value={TABS.principios}>
       <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center"><div className="flex items-center gap-2"><Sparkles aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">Principios de inversión</h2></div><div className="flex flex-wrap gap-2 md:ml-auto">{['', 'proposed', 'approved', 'rejected', 'merged', 'superseded'].map((status) => <Button asChild className="min-h-[44px]" key={status || 'all'} size="sm" variant={(query.status ?? '') === status ? 'default' : 'outline'}><Link href={status ? `/knowledge?status=${status}` : '/knowledge'}>{PRINCIPLE_STATUS_LABELS[status] ?? status}</Link></Button>)}</div></div>
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center"><div className="flex items-center gap-2"><Sparkles aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">Principios de inversión</h2></div><div className="flex flex-wrap gap-2 md:ml-auto">{['', 'proposed', 'approved', 'rejected', 'merged', 'superseded'].map((status) => <Button asChild className="min-h-[44px]" key={status || 'all'} size="sm" variant={(query.status ?? '') === status ? 'default' : 'outline'}><Link href={status ? `/knowledge?tab=principios&status=${status}` : '/knowledge?tab=principios'}>{PRINCIPLE_STATUS_LABELS[status] ?? status}</Link></Button>)}</div></div>
         <div className="grid gap-4 xl:grid-cols-2">
           {visiblePrinciples.map((principle) => (
             <article className="min-w-0 rounded-lg border border-gray-800 bg-black/30 p-4 break-words" key={principle.id}>
@@ -247,6 +311,8 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
           {!visiblePrinciples.length ? <p className="text-sm text-gray-500">Ningún principio coincide con este filtro.</p> : null}
         </div>
       </section>
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }

@@ -9,7 +9,10 @@ test.describe("investor knowledge flow", () => {
   test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
 
   test("knowledge upload form and document list render", async ({ page }) => {
-    await page.goto("/knowledge");
+    // La página se dividió en pestañas (Biblioteca / Principios / Subir) con el
+    // estado en la URL, así que el formulario de subida ya no está en la vista
+    // por defecto: hay que ir a ?tab=subir.
+    await page.goto("/knowledge?tab=subir");
 
     await expect(
       page.getByRole("heading", { name: "Biblioteca de conocimiento", level: 1 }),
@@ -18,6 +21,11 @@ test.describe("investor knowledge flow", () => {
     await expect(page.getByPlaceholder("Título del documento")).toBeVisible();
     await expect(page.locator('input[type="file"]').first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Subir", exact: true })).toBeVisible();
+
+    // El listado (y su estado vacío) vive en la pestaña Biblioteca: en una
+    // página con pestañas server-rendered solo el contenido de la pestaña
+    // activa está en el DOM, así que el chequeo de vacío va tras navegar.
+    await page.goto("/knowledge");
 
     if (await page.getByText("Aún no hay documentos de conocimiento.").isVisible()) {
       return;
@@ -34,7 +42,7 @@ test.describe("investor knowledge flow", () => {
     const marker = `e2e-knowledge-${Date.now()}`;
     const title = `E2E investing notes ${marker}`;
 
-    await page.goto("/knowledge");
+    await page.goto("/knowledge?tab=subir");
     const uploadForm = page.locator("form", { has: page.getByPlaceholder("Título del documento") });
     await uploadForm.getByPlaceholder("Título del documento").fill(title);
     await uploadForm.locator('input[type="file"]').setInputFiles({

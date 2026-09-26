@@ -1,7 +1,13 @@
+import type { Metadata } from 'next';
 import ExportView from '@/components/export/ExportView';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+export const metadata: Metadata = {
+    title: 'Exportación',
+    description: 'Descarga el journal de decisiones de inversión de un año completo en CSV o JSON.',
+};
 
 export default async function ExportPage() {
     return (
