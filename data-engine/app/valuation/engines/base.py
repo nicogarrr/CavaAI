@@ -64,6 +64,38 @@ def clamp_fcf_margin(margin: float, *, ceiling: float) -> tuple[float, bool]:
     return clamped, clamped != margin
 
 
+# A fact's `shares_diluted` comes from the filing in ORDINARY shares while the
+# quote is an ADR price. Dividing one by the other is an N-times error, so the
+# ratio has to be explicit. It is encoded in factor_tags as "adr:N" (N ordinary
+# shares per ADR) to avoid a schema change; a company tagged "adr" without a
+# ratio is refused instead of being valued at the wrong multiple.
+ADR_TAG_PREFIX = "adr:"
+
+
+def adr_ratio(company: Company) -> float | None:
+    """Ordinary shares represented by one ADR, or ``None`` if not applicable."""
+    for tag in company.factor_tags or []:
+        text = str(tag).strip().lower()
+        if text.startswith(ADR_TAG_PREFIX):
+            try:
+                ratio = float(text[len(ADR_TAG_PREFIX):])
+            except ValueError:
+                return None
+            return ratio if ratio > 0 else None
+    return None
+
+
+def is_adr_without_ratio(company: Company) -> bool:
+    """True for any ADR marker (bare ``adr`` or ``adr:N``) with no usable ratio.
+
+    A malformed ratio must refuse too: falling back to "no ratio" would let an
+    ``adr:0`` slip through as if the company were not an ADR.
+    """
+    tags = {str(tag).strip().lower() for tag in (company.factor_tags or [])}
+    is_adr = "adr" in tags or any(tag.startswith(ADR_TAG_PREFIX) for tag in tags)
+    return is_adr and adr_ratio(company) is None
+
+
 @dataclass
 class ValuationContext:
     db: Session
