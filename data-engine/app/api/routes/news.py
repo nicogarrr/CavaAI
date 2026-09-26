@@ -35,7 +35,13 @@ def news_events(db: Session = Depends(get_db)) -> list[dict]:
         # Solo lectura: sin Jev (evita N llamadas externas; el score
         # persistido en ingesta ya incluye el ajuste Jev).
         assessment = materiality.assess_news(
-            db, company, event.summary or event.title, event.source, event.url, use_jev=False
+            db,
+            company,
+            event.summary or event.title,
+            event.source,
+            event.url,
+            use_jev=False,
+            published_at=event.date,
         )
         events.append(
             {
@@ -49,6 +55,7 @@ def news_events(db: Session = Depends(get_db)) -> list[dict]:
                 "materiality_score": event.materiality_score,
                 "impact_direction": event.impact_direction,
                 "requires_update": event.requires_update,
+                "date_source": (event.metadata_ or {}).get("date_source"),
                 "source_tier": assessment.source_tier,
                 "source_trust_score": assessment.source_trust_score,
                 "portfolio_weight": assessment.portfolio_weight,
