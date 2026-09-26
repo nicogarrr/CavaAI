@@ -149,16 +149,28 @@ def _provider_date(item: dict, fallback: date) -> date | None:
                 return datetime.fromtimestamp(int(raw), tz=UTC).date()
             except (OverflowError, OSError, ValueError):
                 continue
-        text = str(raw).strip().replace("Z", "")
-        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y%m%d"):
-            try:
-                return datetime.strptime(text[: len(fmt) + 2].strip(), fmt).date()
-            except ValueError:
-                continue
+        text = str(raw).strip()
+        # ISO primero, con timezone si la trae: la fecha se toma en UTC, no
+        # en la zona del proveedor (una quote a las 23:30 -05:00 ya es el dia
+        # siguiente en UTC). fromisoformat en 3.12 acepta offsets y fraccion.
+        iso = text[:-1] + "+00:00" if text.endswith("Z") else text
         try:
-            return date.fromisoformat(text[:10])
+            parsed = datetime.fromisoformat(iso)
         except ValueError:
-            continue
+            parsed = None
+        if parsed is not None:
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(UTC).date()
+            return parsed.date()
+        # Formatos de fecha sola, sin slices magicos: cadena completa o el
+        # prefijo ISO de 10 chars; nada de text[:len(fmt)+2] (fragil: corta
+        # offsets y basura intermedia y puede casar un prefijo que no es).
+        for candidate in (text, text[:10]):
+            for fmt in ("%Y-%m-%d", "%Y%m%d"):
+                try:
+                    return datetime.strptime(candidate, fmt).date()
+                except ValueError:
+                    continue
     return None
 
 

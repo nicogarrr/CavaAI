@@ -6,7 +6,7 @@ batched), and every stage reports its honest status instead of hiding gaps.
 """
 
 import asyncio
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -15,7 +15,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.entities import Base, Company, MarketPrice, Portfolio, Position
 from app.services.connectors.ecb import ECBRates
-from app.services.market_refresh_service import MarketRefreshService, PriceObservation
+from app.services.market_refresh_service import (
+    MarketRefreshService,
+    PriceObservation,
+    _provider_date,
+)
 
 
 @pytest.fixture
@@ -138,3 +142,40 @@ def test_refresh_writes_prices_and_reports_stages(db):
         # FX came from the stage-2 upsert (1.1) through the batched table.
         assert position.fx_rate == Decimal("1.1")
         assert position.market_value_base == Decimal("1100")
+
+
+class TestProviderDate:
+    """_provider_date: ISO/timezone honesto, sin slices magicos de strptime."""
+
+    def test_iso_with_negative_offset_uses_utc_date(self):
+        # 23:30 a -05:00 ya es el dia siguiente en UTC: la fecha de la quote
+        # es la UTC, no la del huso del proveedor.
+        assert _provider_date(
+            {"date": "2026-09-26T23:30:00-05:00"}, date(2026, 9, 27)
+        ) == date(2026, 9, 27)
+
+    def test_iso_with_positive_offset_uses_utc_date(self):
+        assert _provider_date(
+            {"date": "2026-09-26T00:30:00+02:00"}, date(2026, 9, 26)
+        ) == date(2026, 9, 25)
+
+    def test_iso_z_and_fractional_seconds(self):
+        assert _provider_date(
+            {"datetime": "2026-09-26T15:30:00Z"}, date(2026, 9, 27)
+        ) == date(2026, 9, 26)
+        assert _provider_date(
+            {"datetime": "2026-09-26T15:30:00.123456"}, date(2026, 9, 27)
+        ) == date(2026, 9, 26)
+
+    def test_date_only_and_compact(self):
+        assert _provider_date({"date": "2026-09-26"}, date(2026, 9, 27)) == date(2026, 9, 26)
+        assert _provider_date({"date": "20260926"}, date(2026, 9, 27)) == date(2026, 9, 26)
+
+    def test_epoch_timestamp(self):
+        expected = datetime.fromtimestamp(1_758_900_000, tz=UTC).date()
+        assert _provider_date({"timestamp": 1_758_900_000}, date(2026, 9, 27)) == expected
+
+    def test_garbage_or_missing_is_none_never_fallback(self):
+        assert _provider_date({"date": "not a date"}, date(2026, 9, 26)) is None
+        assert _provider_date({"date": ""}, date(2026, 9, 26)) is None
+        assert _provider_date({}, date(2026, 9, 26)) is None
