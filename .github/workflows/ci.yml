@@ -191,7 +191,7 @@ jobs:
 
           engine = sa.create_engine(os.environ['DATABASE_URL'])
           with engine.connect() as conn:
-              names = set(sa.inspect(conn).get_unique_constraints('fund_managers'))
+              names = sa.inspect(conn).get_unique_constraints('fund_managers')
           assert any(c['name'] == 'uq_fund_manager_tenant_cik' for c in names), names
           print('0032 schema intacto tras el raise: uq_fund_manager_tenant_cik existe')
           "
