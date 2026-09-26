@@ -31,11 +31,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.5,
     },
-    {
-      url: `${base}/terms`,
-      lastModified: new Date(),
-      changeFrequency: 'yearly',
-      priority: 0.3,
-    },
   ];
+  // /terms queda fuera del sitemap a propósito: la página es pública pero
+  // noindex hasta que el texto legal (Dic 2024) se valide; incluirla aquí
+  // empujaría a indexarla.
 }
