@@ -55,7 +55,44 @@ def _is_transient(exc: Exception) -> bool:
         return True
     response = getattr(exc, "response", None)
     status = getattr(response, "status_code", None)
-    return isinstance(status, int) and (status == 429 or status >= 500)
+    if not isinstance(status, int):
+        # Los connectors envuelven el error de httpx en un RuntimeError con el
+        # status dentro del mensaje ("SEC EDGAR request failed (503 ...)",
+        # "SEC fetch failed: <httpx error>"), asi que la comprobacion por
+        # atributo nunca veía el 429 ni el 5xx y clasificaba como permanente
+        # justo lo que Dramatiq deberia reintentar. max_retries quedaba muerto
+        # para los unicos fallos para los que existe.
+        status = _status_from_message(str(exc))
+    return status is not None and (status == 429 or status >= 500)
+
+
+_STATUS_IN_TEXT = re.compile(r"\b(4\d\d|5\d\d)\b")
+
+
+def _status_from_message(text: str) -> int | None:
+    """Extrae un status HTTP del texto de una excepcion envuelta.
+
+    Cubre las tres formas en que los connectors dejan el codigo: entre
+    parentesis ("request failed (503 Service Unavailable)"), detras de
+    "status" ("status 502") y entrecomillado como lo formatea httpx
+    ("Client error '429 Too Many Requests'"). No acepta cualquier numero:
+    un anio, un id o un importe no son un codigo de estado.
+    """
+    patterns = (
+        # "(503 Service Unavailable)" y "(500)" al final de la cadena
+        r"\((\d{3})(?:\s|\)|$)",
+        r"status(?:_code)?[= ]\s*(\d{3})\b",
+        # httpx formatea "Client error '429 Too Many Requests' for url"
+        r"['\"](\d{3})\s+[A-Z]",
+        r"\bHTTP/[\d.]+\s+(\d{3})\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            candidate = int(match.group(1))
+            if 400 <= candidate <= 599:
+                return candidate
+    return None
 
 
 def _handle_actor_error(actor: str, exc: Exception, **context: Any) -> dict[str, Any]:
@@ -226,20 +263,35 @@ def acquire_job_lease(
     return token
 
 
+# Compare-and-del atomico: un GET+DEL separados dejaba una ventana en la
+# que, si el TTL vencia entre ambas operaciones y otro worker adquiria el
+# lease, el DEL borraba el lease AJENO recien adquirido.
+_RELEASE_LEASE_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+
+
 def release_job_lease(
     job_name: str, token: str, *, redis_url: str | None = None
 ) -> None:
-    """Libera el lease solo si sigue siendo nuestro (best-effort)."""
+    """Libera el lease solo si sigue siendo nuestro (best-effort).
+
+    Redis: compare-and-del atomico via Lua (sin ventana GET/DEL). Fallback
+    local: exclusion solo dentro de este proceso - con Redis caido dos
+    procesos pueden solapar el mismo job (riesgo operativo aceptado y
+    documentado: monitorizar la disponibilidad de Redis).
+    """
     if redis_url:
         try:
             import redis as redis_sync
 
             client = redis_sync.Redis.from_url(redis_url, socket_connect_timeout=0.25)
             try:
-                current = client.get(f"cavaai:job-lease:{job_name}")
-                if current is not None and current.decode() == token:
-                    client.delete(f"cavaai:job-lease:{job_name}")
-                    return
+                client.eval(_RELEASE_LEASE_LUA, 1, f"cavaai:job-lease:{job_name}", token)
+                return
             finally:
                 client.close()
         except Exception:  # noqa: BLE001 — best-effort
@@ -379,18 +431,29 @@ def refresh_market_pipeline(
 ) -> dict[str, Any]:
     from app.services.market_refresh_service import MarketRefreshService
 
-    lease = acquire_job_lease(
-        f"refresh_market_pipeline:{tenant_id}",
-        ttl_seconds=3000,
-        redis_url=_lease_redis_url(),
-    )
+    db = _session(tenant_id, user_id)
+        # La sesion se abre ANTES de tomar el lease: _session() lanza
+        # ValueError si el tenant no esta activo, y esa excepcion entre la
+        # toma del lease y el try se escapaba sin pasar por el finally que
+        # lo libera, dejando el lease retenido hasta su TTL.
+    try:
+        lease = acquire_job_lease(
+            f"refresh_market_pipeline:{tenant_id}",
+            ttl_seconds=3000,
+            redis_url=_lease_redis_url(),
+        )
+    except Exception:
+        # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+        # justo arriba no puede quedar sin cerrar.
+        db.close()
+        raise
     if lease is None:
+        db.close()
         return {
             "status": "skipped",
             "actor": "refresh_market_pipeline",
             "reason": "lease_held",
         }
-    db = _session(tenant_id, user_id)
     try:
         result = _run(MarketRefreshService().refresh(db))
         return {"actor": "refresh_market_pipeline", **result}
@@ -423,18 +486,29 @@ def refresh_portfolio_prices_intraday(
         YahooIntradayPriceProvider,
     )
 
-    lease = acquire_job_lease(
-        f"refresh_portfolio_prices_intraday:{tenant_id}",
-        ttl_seconds=900,
-        redis_url=_lease_redis_url(),
-    )
+    db = _session(tenant_id, user_id)
+        # La sesion se abre ANTES de tomar el lease: _session() lanza
+        # ValueError si el tenant no esta activo, y esa excepcion entre la
+        # toma del lease y el try se escapaba sin pasar por el finally que
+        # lo libera, dejando el lease retenido hasta su TTL.
+    try:
+        lease = acquire_job_lease(
+            f"refresh_portfolio_prices_intraday:{tenant_id}",
+            ttl_seconds=900,
+            redis_url=_lease_redis_url(),
+        )
+    except Exception:
+        # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+        # justo arriba no puede quedar sin cerrar.
+        db.close()
+        raise
     if lease is None:
+        db.close()
         return {
             "status": "skipped",
             "actor": "refresh_portfolio_prices_intraday",
             "reason": "lease_held",
         }
-    db = _session(tenant_id, user_id)
     try:
         # DISTINCT sobre la entidad completa rompe en Postgres: las columnas
         # json (special_sources, special_risks, factor_tags) no tienen
@@ -486,18 +560,29 @@ def refresh_propicks_prices(
     """F2: precios diarios yfinance + momentum para el top-N del ultimo run."""
     from app.services.propicks_price_service import refresh_propicks_prices as _refresh
 
-    lease = acquire_job_lease(
-        f"refresh_propicks_prices:{tenant_id}",
-        ttl_seconds=3600,
-        redis_url=_lease_redis_url(),
-    )
+    db = _session(tenant_id, user_id)
+        # La sesion se abre ANTES de tomar el lease: _session() lanza
+        # ValueError si el tenant no esta activo, y esa excepcion entre la
+        # toma del lease y el try se escapaba sin pasar por el finally que
+        # lo libera, dejando el lease retenido hasta su TTL.
+    try:
+        lease = acquire_job_lease(
+            f"refresh_propicks_prices:{tenant_id}",
+            ttl_seconds=3600,
+            redis_url=_lease_redis_url(),
+        )
+    except Exception:
+        # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+        # justo arriba no puede quedar sin cerrar.
+        db.close()
+        raise
     if lease is None:
+        db.close()
         return {
             "status": "skipped",
             "actor": "refresh_propicks_prices",
             "reason": "lease_held",
         }
-    db = _session(tenant_id, user_id)
     try:
         result = _refresh(db)
         return {"actor": "refresh_propicks_prices", **result}
@@ -1155,14 +1240,23 @@ def scan_insider_watchlist(
     try:
         from app.services import insider_monitor
 
-        lease = acquire_job_lease(
-            f"scan_insider_watchlist:{tenant_id}",
-            ttl_seconds=600,
-            redis_url=_lease_redis_url(),
-        )
-        if lease is None:
-            return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
         db = _session(tenant_id, user_id)
+        # Ver refresh_market_pipeline: la sesion se abre antes del lease para
+        # que un ValueError de _session no lo retenga hasta el TTL.
+        try:
+            lease = acquire_job_lease(
+                f"scan_insider_watchlist:{tenant_id}",
+                ttl_seconds=600,
+                redis_url=_lease_redis_url(),
+            )
+        except Exception:
+            # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+            # justo arriba no puede quedar sin cerrar.
+            db.close()
+            raise
+        if lease is None:
+            db.close()
+            return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
         try:
             stats = insider_monitor.scan(
                 db,
@@ -1203,14 +1297,23 @@ def dispatch_insider_alerts(
     try:
         from app.services import insider_alerts
 
-        lease = acquire_job_lease(
-            f"dispatch_insider_alerts:{tenant_id}",
-            ttl_seconds=900,
-            redis_url=_lease_redis_url(),
-        )
-        if lease is None:
-            return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
         db = _session(tenant_id, user_id)
+        # Ver refresh_market_pipeline: la sesion se abre antes del lease para
+        # que un ValueError de _session no lo retenga hasta el TTL.
+        try:
+            lease = acquire_job_lease(
+                f"dispatch_insider_alerts:{tenant_id}",
+                ttl_seconds=900,
+                redis_url=_lease_redis_url(),
+            )
+        except Exception:
+            # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+            # justo arriba no puede quedar sin cerrar.
+            db.close()
+            raise
+        if lease is None:
+            db.close()
+            return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
         try:
             stats = insider_alerts.evaluate(db, tenant_id=tenant_id)
         finally:
