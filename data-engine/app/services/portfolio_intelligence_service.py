@@ -115,6 +115,7 @@ class PortfolioIntelligenceService:
         }
         snapshot_exact = self._snapshot_history_is_exact(snapshots)
         portfolio_returns = snapshot_returns if snapshot_exact else indicative_returns
+        partial_day = self._partial_trading_day(price_series, snapshots, date.today())
         twr = self._compound(list(portfolio_returns.values()))
         annualized_return = (
             (1 + twr) ** (252 / len(portfolio_returns)) - 1
@@ -227,6 +228,7 @@ class PortfolioIntelligenceService:
                     round(100 * complete_price_series / len(rows), 1) if rows else 100
                 ),
                 "portfolio_snapshots": len(snapshots),
+                "partial_trading_day": partial_day,
                 "snapshot_returns": len(snapshot_returns),
                 "snapshot_pricing_complete": sum(
                     snapshot.pricing_coverage == Decimal("1") for snapshot in snapshots
@@ -243,6 +245,13 @@ class PortfolioIntelligenceService:
                 ]
                 + (
                     [
+                        "Price/snapshot series include the current, still-open trading day (partial bar): daily metrics (TWR, volatility, drawdown, VaR) use it as-is."
+                    ]
+                    if partial_day
+                    else []
+                )
+                + (
+                    [
                         f"{len(missing_fx)} position(s) excluded from totals, weights and exposures: no base-currency value (missing FX)."
                     ]
                     if missing_fx
@@ -250,6 +259,24 @@ class PortfolioIntelligenceService:
                 ),
             },
         }
+
+    @staticmethod
+    def _partial_trading_day(
+        price_series: dict[int, list[Any]], snapshots: list[Any], today: date
+    ) -> bool:
+        """True si alguna serie incluye la barra del dia en curso (parcial).
+
+        refresh_portfolio_prices_intraday escribe MarketPrice del dia antes
+        del cierre, y el snapshot diario tambien puede ser de hoy: un retorno
+        diario contra una barra abierta distorsiona TWR, volatilidad,
+        drawdown y VaR de ese dia. No se excluye (es el mejor dato
+        disponible) pero la cobertura lo MARCA.
+        """
+        if any(
+            series and series[-1].date >= today for series in price_series.values()
+        ):
+            return True
+        return any(snapshot.snapshot_date >= today for snapshot in snapshots)
 
     @staticmethod
     def _snapshot_history_is_exact(snapshots: list[Any]) -> bool:

@@ -29,6 +29,7 @@ correspondia al modelo que la documentacion del modulo describe.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from types import SimpleNamespace
 from decimal import Decimal
 
 import numpy as np
@@ -54,6 +55,27 @@ class _Price:
 def _series(values: list[float]) -> list[_Price]:
     start = date(2026, 1, 1)
     return [_Price(start + timedelta(days=i), v) for i, v in enumerate(values)]
+
+
+def test_partial_day_flag_marks_intraday_price_bar():
+    today = date.today()
+    series = {
+        1: [SimpleNamespace(date=today - timedelta(days=2)),
+            SimpleNamespace(date=today)]
+    }
+    assert PortfolioIntelligenceService._partial_trading_day(series, [], today) is True
+    # Sin la barra de hoy no hay marca.
+    closed = {1: [SimpleNamespace(date=today - timedelta(days=2)),
+                  SimpleNamespace(date=today - timedelta(days=1))]}
+    assert PortfolioIntelligenceService._partial_trading_day(closed, [], today) is False
+
+
+def test_partial_day_flag_marks_today_snapshot():
+    today = date.today()
+    snapshots = [SimpleNamespace(snapshot_date=today)]
+    assert PortfolioIntelligenceService._partial_trading_day({}, snapshots, today) is True
+    older = [SimpleNamespace(snapshot_date=today - timedelta(days=1))]
+    assert PortfolioIntelligenceService._partial_trading_day({}, older, today) is False
 
 
 def test_returns_ignores_a_zero_interior_price():
