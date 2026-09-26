@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
 import { PieChart as PieChartIcon } from 'lucide-react';
 import { formatPercent } from '@/lib/format';
-import { COLORS, type AllocationSlice } from './PortfolioAllocationChart';
+import { COLORS, buildAllocationSlices, CASH_SLICE_SYMBOL, type AllocationSlice } from './PortfolioAllocationChart';
 
 const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChart'), {
     ssr: false,
@@ -18,10 +18,16 @@ const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChar
 type Props = {
     holdings: PortfolioHolding[];
     totalValue: number;
+    /** Caja en divisa base: entra como segmento propio para que el donut
+     *  represente de verdad el total con caja que anuncia la etiqueta. */
+    cash?: number | null;
+    /** Moneda base para el importe del tooltip (sin ella saldría en USD). */
+    baseCurrency?: string;
 };
 
-export default function PortfolioAllocation({ holdings, totalValue }: Props) {
-    if (holdings.length === 0) {
+export default function PortfolioAllocation({ holdings, totalValue, cash, baseCurrency }: Props) {
+    const hasCash = typeof cash === 'number' && cash > 0;
+    if (holdings.length === 0 && !hasCash) {
         return (
             <Card className="bg-gray-800/50 border-gray-700">
                 <CardHeader className="pb-2">
@@ -39,29 +45,22 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
         );
     }
 
-    // Preparar datos para el pie chart
-    const chartData: AllocationSlice[] = holdings
-        .map((holding) => ({
-            symbol: holding.symbol,
-            value: holding.value,
-            percentage: (holding.value / totalValue) * 100,
-            gain: holding.gain,
-            gainPercent: holding.gainPercent,
-        }))
-        .sort((a, b) => b.value - a.value); // Ordenar por valor descendente
+    // Datos del donut: posiciones + segmento Caja (buildAllocationSlices)
+    const chartData: AllocationSlice[] = buildAllocationSlices(holdings, totalValue, cash);
 
     return (
         <div className="bg-[#111111] border border-gray-800 rounded-2xl p-6 h-full flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between mb-2">
                 <span className="text-gray-400 text-sm font-medium">Distribución</span>
+                <span className="text-xs text-gray-500">Pesos sobre el valor total (caja incluida)</span>
             </div>
 
             {/* Contenido: Pie Chart + Leyenda */}
             <div className="flex-1 flex items-center justify-between">
                 {/* Pie Chart - Más grande */}
                 <div className="relative w-[250px] h-[250px] flex-shrink-0">
-                    <PortfolioAllocationChart chartData={chartData} />
+                    <PortfolioAllocationChart chartData={chartData} currency={baseCurrency} />
 
                     {/* Centro del Donut */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -81,12 +80,16 @@ export default function PortfolioAllocation({ holdings, totalValue }: Props) {
                                     className="w-3 h-3 rounded-full"
                                     style={{ backgroundColor: COLORS[index % COLORS.length] }}
                                 />
-                                <Link
-                                    href={`/research/${item.symbol}`}
-                                    className="text-sm text-gray-300 hover:text-teal-300 transition-colors"
-                                >
-                                    {item.symbol}
-                                </Link>
+                                {item.symbol === CASH_SLICE_SYMBOL ? (
+                                    <span className="text-sm text-gray-300">Caja</span>
+                                ) : (
+                                    <Link
+                                        href={`/research/${item.symbol}`}
+                                        className="text-sm text-gray-300 hover:text-teal-300 transition-colors"
+                                    >
+                                        {item.symbol}
+                                    </Link>
+                                )}
                             </div>
                             <span className="text-sm text-gray-400 tabular-nums">
                                 {formatPercent(item.percentage, { fromRatio: false, digits: 1 })}
