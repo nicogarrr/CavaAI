@@ -22,10 +22,10 @@ const constantsSrc = readFileSync(join(root, 'lib/constants.ts'), 'utf8');
 const navHrefs = [...constantsSrc.matchAll(/href:\s*'([^']+)'/g)].map((m) => m[1]);
 
 function routeExists(href) {
-  if (href === '/') return existsSync(join(root, 'app/(root)/page.tsx'));
   const segment = href.replace(/^\//, '');
   return (
     existsSync(join(root, 'app/(root)', segment, 'page.tsx')) ||
+    existsSync(join(root, 'app/(public)', segment, 'page.tsx')) ||
     existsSync(join(root, 'app', segment, 'page.tsx'))
   );
 }
@@ -35,7 +35,7 @@ for (const href of navHrefs) {
 }
 
 // --- 2. Non-nav routes must be discoverable --------------------------------
-const OFF_NAV_ROUTES = ['/metodologia'];
+const OFF_NAV_ROUTES = ['/metodologia', '/terms'];
 
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
@@ -52,8 +52,11 @@ const sources = [
 ].map((file) => [file, readFileSync(file, 'utf8')]);
 
 for (const route of OFF_NAV_ROUTES) {
-  const ownPage = join(root, 'app/(root)', route.replace(/^\//, ''), 'page.tsx');
-  const inbound = sources.filter(([file, content]) => file !== ownPage && content.includes(`href="${route}"`));
+  const ownPages = [
+  join(root, 'app/(root)', route.replace(/^\//, ''), 'page.tsx'),
+  join(root, 'app/(public)', route.replace(/^\//, ''), 'page.tsx'),
+];
+const inbound = sources.filter(([file, content]) => !ownPages.includes(file) && content.includes(`href="${route}"`));
   if (inbound.length === 0) {
     failures.push(`${route} has no inbound links — it is unreachable in the UI (add a contextual link or remove the route)`);
   }

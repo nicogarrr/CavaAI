@@ -16,7 +16,7 @@ export default function ScreenerNotFound() {
           Ver screeners
         </Link>
         <Link
-          href="/"
+          href="/dashboard"
           className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-gray-700 px-5 text-sm text-gray-200 transition-colors hover:bg-gray-800"
         >
           Volver al inicio

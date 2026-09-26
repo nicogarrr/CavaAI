@@ -119,7 +119,7 @@ export default async function WatchlistPage() {
                             Busca acciones y haz click en &ldquo;Añadir a Watchlist&rdquo; para monitorizarlas aquí.
                         </p>
                         <Link
-                            href="/"
+                            href="/dashboard"
                             className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-teal-400/20 px-5 text-sm text-teal-400 transition-colors hover:text-teal-300"
                         >
                             ← Ir a buscar acciones

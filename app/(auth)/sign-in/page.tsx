@@ -32,7 +32,7 @@ const SignIn = () => {
         try {
             const result = await signInWithEmail(data);
             if (result.success) {
-                router.push('/');
+                router.push('/dashboard');
                 router.refresh();
                 return;
             }
@@ -61,7 +61,7 @@ const SignIn = () => {
                 totpCode,
             });
             if (result.success) {
-                router.push('/');
+                router.push('/dashboard');
                 router.refresh();
                 return;
             }
