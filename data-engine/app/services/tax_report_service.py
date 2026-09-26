@@ -24,7 +24,8 @@ The report follows Spanish IRPF conventions:
   itself is not a repurchase). The blocked loss is absorbed FIFO onto the
   oldest surviving in-window lots' cost basis, so it surfaces when those
   lots are sold. Forward (posterior) repurchases are also taken into
-  account ("deben tenerse en cuenta las compras posteriores"),   blocking proportionally up to the posterior buy quantity; the Manual gives no
+  account ("deben tenerse en cuenta las compras posteriores"),
+  blocking proportionally up to the posterior buy quantity; the Manual gives no
   explicit posterior prorrata, so this is a documented interpretation.
   Losses whose forward window extends beyond the available data are
   reported as provisionally computable and flagged per sale and in the
