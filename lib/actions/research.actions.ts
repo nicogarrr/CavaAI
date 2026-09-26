@@ -22,6 +22,8 @@ type ResearchCompany = {
 type ResearchPortfolioSummary = {
   total_value: number;
   equity_value: number;
+  /** Moneda base de la cartera; ausente si el backend no respondió. */
+  base_currency?: string;
   cash: Record<string, number>;
   top_1_weight: number;
   top_5_weight: number;
