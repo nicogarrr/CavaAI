@@ -189,6 +189,10 @@ jobs:
         # downgrade solo cubre revisiones ANTERIORES; aqui se verifica que
         # 0032 rechaza el downgrade sin dejar DDL parcial.
         run: |
+          # Con 0033 en head, primero baja 0033 (downgrade limpio y verificado);
+          # si no, el raise de 0032 revertiria en la misma transaccion tambien
+          # el downgrade de 0033 y `current` quedaria en 0033.
+          python -m alembic downgrade 0032_tenant_uniques_fk_actions
           if python -m alembic downgrade 0031_propick_runs; then
             echo "0032 downgrade should have raised (forward-only)" >&2
             exit 1
