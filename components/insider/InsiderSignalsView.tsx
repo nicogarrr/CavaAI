@@ -1,6 +1,7 @@
 'use client';
 
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -44,10 +45,20 @@ function secLink(sourceUrl: unknown): string | null {
 }
 
 function formatFetchedAt(value: unknown): string {
-    if (typeof value !== 'string' || !value) return '';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+    if (typeof value !== 'string' || !value) return t('signals.noDate');
+    return formatDateTime(value);
+}
+
+/** Fechas de Form 4: son días del calendario EDGAR (US), no instantes. Se
+ *  formatean sin timeZone para que el día salga siempre igual (parseo local +
+ *  formato local es invariante de zona). */
+function filingDateText(value: unknown): string {
+    return typeof value === 'string' && value ? formatDate(value) : formatRecordValue(value);
+}
+
+/** Contadores del backend: enteros con separadores es-ES. */
+function countText(value: unknown): string {
+    return typeof value === 'number' ? formatNumber(value, { maximumFractionDigits: 0 }) : formatRecordValue(value);
 }
 
 export default function InsiderSignalsView({ initialTicker, initialResult, initialFilings }: InsiderSignalsViewProps) {
@@ -109,7 +120,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                         <Input
                             value={ticker}
                             onChange={(event) => setTicker(event.target.value.toUpperCase())}
-                            placeholder="AAPL"
+                            placeholder={t('insider.searchPlaceholder')}
                             maxLength={20}
                             className="h-11 w-full bg-gray-900 font-mono uppercase"
                         />
@@ -132,7 +143,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                     <Badge
                         variant={initialFilings && initialFilings.status === 'ok' ? 'default' : 'outline'}
                     >
-                        Monitor cada 15 min · {initialFilings?.count ?? 0} filings persistidos
+                        Monitor cada 15 min · {countText(initialFilings?.count ?? 0)} filings persistidos
                     </Badge>
                     {initialFilings && initialFilings.status !== 'ok' ? (
                         <span className="text-xs text-amber-300">
@@ -168,8 +179,8 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                 </p>
             ) : signals.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
-                    {initialTicker}: sin señales de compra insider en los últimos filings
-                    ({formatRecordValue(initialResult.filings_scanned)} analizados).
+                    {initialTicker}: {t('insider.noSignals')}
+                    ({countText(initialResult.filings_scanned)} analizados).
                 </p>
             ) : (
                 <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
@@ -187,9 +198,10 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                                     </Link>
                                 </CardTitle>
                                 <CardDescription className="mt-0.5 text-sm text-gray-500">
-                                    {signals.length} señales · {formatRecordValue(initialResult.buy_count)} compras ·{' '}
-                                    {formatRecordValue(initialResult.filings_scanned)} filings · datos al{' '}
-                                    {formatFetchedAt((initialResult.provenance as Record<string, unknown> | undefined)?.fetched_at ?? initialResult.fetched_at)}
+                                    {formatNumber(signals.length, { maximumFractionDigits: 0 })} señales ·{' '}
+                                    {countText(initialResult.buy_count)} compras ·{' '}
+                                    {countText(initialResult.filings_scanned)} filings · datos al{' '}
+                                    {t('signals.asOf', { date: formatFetchedAt((initialResult.provenance as Record<string, unknown> | undefined)?.fetched_at ?? initialResult.fetched_at) })}
                                 </CardDescription>
                             </div>
                         </div>
@@ -203,11 +215,11 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                         <Table>
                             <TableHeader>
                                 <TableRow className="border-gray-700 hover:bg-transparent">
-                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">Señal</TableHead>
-                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">Insider</TableHead>
-                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">Fecha</TableHead>
-                                    <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Valor</TableHead>
-                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">Detalle</TableHead>
+                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">{t('insider.signal')}</TableHead>
+                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">{t('insider.insider')}</TableHead>
+                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">{t('insider.date')}</TableHead>
+                                    <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">{t('insider.value')}</TableHead>
+                                    <TableHead className="text-xs font-semibold uppercase text-gray-500">{t('insider.detail')}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -227,7 +239,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                                             ) : null}
                                         </TableCell>
                                         <TableCell className="text-sm text-gray-300">
-                                            {formatRecordValue(signal.date ?? signal.window_start)}
+                                            {filingDateText(signal.date ?? signal.window_start)}
                                         </TableCell>
                                         <TableCell className="text-right text-sm font-semibold text-gray-100">
                                             {moneyText(signal.value ?? signal.total_value)}
@@ -269,7 +281,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                                     {signal.officer_title ?? signal.role ? (
                                         <div className="text-xs text-gray-500">{formatRecordValue(signal.officer_title ?? signal.role)}</div>
                                     ) : null}
-                                    <div className="mt-1 text-xs text-gray-500">{formatRecordValue(signal.date ?? signal.window_start)}</div>
+                                    <div className="mt-1 text-xs text-gray-500">{filingDateText(signal.date ?? signal.window_start)}</div>
                                     <div className="mt-2 text-sm leading-6 text-gray-400"><span className="line-clamp-3">{formatRecordValue(signal.detail)}</span></div>
                                     <div className="mt-2 flex flex-wrap items-center gap-2">
                                         {formBadge(signal.form) ? <Badge variant="outline">{formBadge(signal.form)!.label}</Badge> : null}
@@ -311,10 +323,10 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                                     <Badge variant="outline">{filing.form}</Badge>
                                     {filing.is_amendment ? <Badge>Enmienda</Badge> : null}
                                     <span className="font-mono text-gray-300">
-                                        {formatRecordValue(filing.filing_date)}
+                                        {filingDateText(filing.filing_date)}
                                     </span>
                                     <span className="text-gray-500">
-                                        {filing.transaction_count} operaciones
+                                        {formatNumber(filing.transaction_count, { maximumFractionDigits: 0 })} operaciones
                                     </span>
                                     {secLink(filing.source_url) ? (
                                         <a

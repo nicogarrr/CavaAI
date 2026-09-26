@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getResearchDashboard, runResearchWorkflow } from '@/lib/actions/research.actions';
 import { MutationForm } from '@/components/forms/MutationForm';
+import { formatNumber } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -34,7 +35,7 @@ export default async function ResearchWorkflowsPage() {
           </p>
         </div>
         <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
-          {workflows.length} flujos
+          {formatNumber(workflows.length, { maximumFractionDigits: 0 })} flujos
         </div>
       </header>
 
