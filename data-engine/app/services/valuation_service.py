@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, MarketPrice, Position, ValuationModel, ValuationOutput
 from app.valuation.engines import resolve, resolve_engine_key
-from app.valuation.engines.base import MODEL_VERSION
+from app.valuation.engines.base import MODEL_VERSION, apply_publication_blockers
 from app.valuation.point_in_time import (
     assert_fiscal_year_no_lookahead,
     assert_no_lookahead,
@@ -137,7 +137,11 @@ class ValuationService:
         current_price = _position_price(db, company.id)
         engine = resolve(company)
         context = engine.build_context(db, company, current_price)
-        result = engine.value(context)
+        # Blocker enforcement lives here as well as in the engines: this is the
+        # function every consumer goes through (thesis, red team, snapshot,
+        # persistence), and a result that carries publication blockers must
+        # never reach them labelled as a final valuation.
+        result = apply_publication_blockers(engine.value(context))
 
         # Ensure contract fields always present for API / thesis consumers.
         result.setdefault("status", "ok")
