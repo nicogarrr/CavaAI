@@ -8,10 +8,10 @@ const e2eResearchSecret =
   process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
 
 // /research/MSFT solo renderiza el workspace si la empresa existe: el spec
-// asegura su propio dato en vez de depender del estado de otros specs.
-// Firma ligada al request (nonce + metodo + ruta + sha256 del cuerpo), la
-// misma que e2e/fixtures/research-api.ts: sirve contra backend leniente y
-// contra research_auth_strict_binding=True (el default).
+// asegura su propio dato en vez de depender del estado de otros specs. Firma ligada al request
+// (nonce + metodo + ruta + sha256 del cuerpo), la misma que
+// e2e/fixtures/research-api.ts: sirve contra backend leniente y contra
+// research_auth_strict_binding=True (el default).
 test.beforeAll(async () => {
   if (!runUiE2E) return;
   const path = "/api/companies/ensure";
