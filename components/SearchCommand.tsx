@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { CornerDownLeft, Loader2, Search, TrendingUp } from "lucide-react";
-import { searchStocks } from "@/lib/actions/finnhub.actions";
+import { searchStocks, getPopularStocks } from "@/lib/actions/finnhub.actions";
+import { loadPopularStocks } from "@/lib/popular-stocks-loader";
 import { showErrorToast } from "@/lib/toast";
 import { isNextRedirectError } from "@/lib/types/errors";
 import { flattenNavItems, NAV_SECTIONS } from "@/lib/constants";
@@ -15,7 +16,14 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
     const [searchTerm, setSearchTerm] = useState("")
     const [loading, setLoading] = useState(false)
     const [searchError, setSearchError] = useState(false)
-    const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks);
+    // Populares: si no llegan por props (el shell ya no las bloquea en el
+    // primer byte), se cargan perezosamente al abrir el buscador. La cache
+    // es COMPARTIDA a nivel de modulo (loadPopularStocks): las instancias
+    // de desktop, icono movil y drawer no repiten la rafaga Finnhub entre
+    // si, y un fallo o un cierre a mitad de carga se reintenta en la
+    // siguiente apertura (la lista vacia tras fallo nunca es permanente).
+    const [popular, setPopular] = useState<StockWithWatchlistStatus[]>(initialStocks ?? []);
+    const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks ?? []);
     const [mounted, setMounted] = useState(false);
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -58,7 +66,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         }
 
         if (!query.trim()) {
-            setStocks(initialStocks);
+            setStocks(popular);
             setSearchError(false);
             setLoading(false);
             return;
@@ -92,7 +100,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 setLoading(false);
             }
         }
-    }, [initialStocks]);
+    }, [popular]);
 
     // Debounce efectivo
     useEffect(() => {
@@ -109,7 +117,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         const trimmedQuery = searchTerm.trim();
 
         if (!trimmedQuery) {
-            setStocks(initialStocks);
+            setStocks(popular);
             setSearchError(false);
             setLoading(false);
             return;
@@ -129,13 +137,13 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 abortControllerRef.current.abort();
             }
         };
-    }, [searchTerm, handleSearch, initialStocks]);
+    }, [searchTerm, handleSearch, popular]);
 
     // Limpiar cuando se cierra el diálogo
     useEffect(() => {
         if (!open) {
             setSearchTerm("");
-            setStocks(initialStocks);
+            setStocks(popular);
             setSearchError(false);
             if (searchTimeoutRef.current) {
                 clearTimeout(searchTimeoutRef.current);
@@ -143,8 +151,41 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
+            return;
         }
-    }, [open, initialStocks]);
+        // Carga perezosa de las populares. Si ya hay lista (props o cache
+        // compartida resuelta antes), no hace falta pedir nada; si no, se
+        // pide a la cache compartida (gratis si otra instancia ya la tiene)
+        // y cualquier fallo se reintenta en la proxima apertura.
+        if (popular.length > 0) return;
+        let active = true;
+        setLoading(true);
+        loadPopularStocks(getPopularStocks)
+            .then((list) => {
+                if (!active) return;
+                setPopular(list);
+                setSearchError(false);
+                setStocks((current) => (searchTerm.trim() ? current : list));
+            })
+            .catch((error: unknown) => {
+                // Fallo de proveedor/red: indicador explicito (no confundir
+                // con "no hay acciones") y la proxima apertura reintenta —
+                // la cache compartida nunca guarda fallos.
+                if (active && !isNextRedirectError(error)) {
+                    setSearchError(true);
+                    showErrorToast(error, {});
+                }
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+        // popular/searchTerm leidos del cierre actual: popular.length ya esta
+        // en deps; searchTerm fresco solo decide si volcar la lista cargada.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, popular.length]);
 
     const go = useCallback((href: string) => {
         setOpen(false);
