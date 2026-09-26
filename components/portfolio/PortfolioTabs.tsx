@@ -39,7 +39,7 @@ type Transaction = {
 type Props = {
     summary: PortfolioSummaryType;
     transactions: Transaction[];
-    scores: { quality: number; growth: number; value: number; dividend: number; cagr3y: number; history?: PortfolioPerformanceHistory };
+    scores: { quality: number | null; growth: number | null; value: number | null; dividend: number | null; cagr3y: number | null; history?: PortfolioPerformanceHistory };
     tearsheet: PortfolioTearsheetType | null;
     userId: string;
     partialMessage?: string | null;
