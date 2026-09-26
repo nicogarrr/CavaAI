@@ -106,7 +106,7 @@ export function Panel({
                         onClick={() => setOpen((value) => !value)}
                         type="button"
                     >
-                        <ChevronDown className={cn('h-5 w-5 transition-transform', open ? 'rotate-180' : 'rotate-0')} />
+                        <ChevronDown aria-hidden="true" className={cn('h-5 w-5 transition-transform', open ? 'rotate-180' : 'rotate-0')} />
                         <span className="sr-only">
                             {open ? 'Contraer' : 'Expandir'} {title}
                         </span>

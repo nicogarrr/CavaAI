@@ -23,7 +23,7 @@ import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
 import ImportIBKRButton from '@/components/portfolio/ImportIBKRButton';
 import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
-import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, ShieldAlert, Activity } from 'lucide-react';
+import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, Gauge, ShieldAlert, Activity } from 'lucide-react';
 import type { PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType, PortfolioTearsheet as PortfolioTearsheetType } from '@/lib/actions/portfolio.actions';
 
 type Transaction = {
@@ -140,17 +140,37 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                         Factores
                     </TabsTrigger>
                     <TabsTrigger
-                        value="riesgo"
+                        value="simulacion"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
                     >
+                        {/* "Riesgo" colisionaba con /risk (concentraciones) y con
+                            Inteligencia (volatilidad, VaR, drawdown). Esto es un
+                            Monte Carlo: se llama Simulación. */}
                         <ShieldAlert aria-hidden="true" className="h-4 w-4" />
-                        Riesgo
+                        Simulación
                     </TabsTrigger>
                 </TabsList>
                 </div>
 
                 {/* Tab: Resumen */}
                 <TabsContent value="resumen" className="mt-0">
+                    {/* Salida cruzada a las otras dos páginas de riesgo: el
+                        resumen es pesos y precio, no riesgo medido (eso está en
+                        Inteligencia) ni simulación (esta misma pestaña). */}
+                    <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-gray-700/50 bg-surface-1 p-4">
+                        <p className="min-w-0 flex-1 text-sm text-gray-400">
+                            El riesgo medido (TWR, XIRR, caída máxima, Sharpe, VaR y correlaciones) y las
+                            concentraciones por sector, país y divisa están fuera de la cartera: en su propia
+                            página, con su propia metodología.
+                        </p>
+                        <Link className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300 sm:min-h-0 sm:py-1.5" href="/portfolio/intelligence">
+                            <Activity aria-hidden="true" className="h-4 w-4" /> Riesgo y rendimiento
+                        </Link>
+                        <Link className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300 sm:min-h-0 sm:py-1.5" href="/risk">
+                            <Gauge aria-hidden="true" className="h-4 w-4" /> Exposiciones
+                        </Link>
+                    </div>
+
                     {/* Métricas en fila */}
                     <div className="mb-6">
                         <PortfolioSummary summary={summary} />
@@ -239,8 +259,8 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                     <PortfolioScores scores={scores} />
                 </TabsContent>
 
-                {/* Tab: Riesgo Monte Carlo */}
-                <TabsContent value="riesgo" className="mt-0">
+                {/* Tab: Simulación Monte Carlo */}
+                <TabsContent value="simulacion" className="mt-0">
                     <PortfolioRiskSimulator userId={userId} />
                 </TabsContent>
             </Tabs>

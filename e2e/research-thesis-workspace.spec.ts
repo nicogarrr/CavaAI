@@ -47,10 +47,15 @@ test.describe("research thesis workspace", () => {
     const emptyHistory = page.getByText("Aún no hay historial de versiones.");
     await expect(emptyHistory).toBeHidden();
 
-    // The tap target expands the panel on demand.
-    await page
-      .locator("summary", { hasText: "Historial de versiones y aprobaciones" })
-      .click();
+    // El tap target abre el panel. `components/ui/panel.tsx` renderiza un
+    // <button> con aria-expanded (no un <details>/<summary>): un disclosure
+    // nativo no se puede controlar por estado sin romper el SSR.
+    const toggle = page.getByRole("button", {
+      name: "Historial de versiones y aprobaciones",
+    });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
     await expect(emptyHistory).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
   });
 });
