@@ -21,14 +21,11 @@ from app.services.financial_ingestion_service import (
     SEC_INTANGIBLE_COMPONENTS,
     SEC_METRIC_MAP,
     SOURCE_PRIORITY,
-<<<<<<< HEAD
-=======
     SUMMED_COMPONENT_METRICS,
     _collect_by_concept,
     _decimal,
     _merge_esef_periods,
     _merge_for_metric,
->>>>>>> origin/main
     _sum_disjoint_components,
     is_summed_component,
 )

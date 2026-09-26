@@ -22,13 +22,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models import Company, FXRate, Portfolio, Transaction
-<<<<<<< HEAD
 from app.models.entities import Base
-from app.services.ibkr_import_service import _decimal, _is_number, _parse_amount
-=======
 from app.services.ibkr_import_service import _decimal, _is_number
 from app.services.number_parsing import parse_localized_number
->>>>>>> origin/main
 from app.services.portfolio_ledger_service import (
     BUY_ACTIONS,
     SELL_ACTIONS,

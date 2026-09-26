@@ -14,17 +14,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models import CalculatedMetric, Company, FinancialFact
-<<<<<<< HEAD
 from app.models.entities import Base
-from app.valuation.engines.base import clamp_fcf_margin, traceable_wacc
-=======
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import (
     apply_publication_blockers,
     clamp_fcf_margin,
     traceable_wacc,
 )
->>>>>>> origin/main
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
 from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth
 
