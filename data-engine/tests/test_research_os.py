@@ -582,8 +582,12 @@ def test_fmp_refresh_normalizes_facts_and_valuation_uses_them(monkeypatch):
     assert valuation.status_code == 200
     payload = valuation.json()
     trace = payload["trace"]
-    assert payload["status"] == "ok"
-    assert payload["publishable"] is True
+    # An FMP refresh gives the fundamentals, not the discount rate: with no
+    # dated WACC persisted, the DCF is an orientation and says so, instead of
+    # being published as final on the strength of a tag default.
+    assert payload["status"] == "partial"
+    assert payload["publishable"] is False
+    assert "traceable_wacc" in payload["publication_blockers"]
     assert payload["expected_value"] is not None
     assert trace["input_source"] == "financial_facts"
     assert trace["fact_ids"]["revenue"] == revenue_facts[0]["id"]

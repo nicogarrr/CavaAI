@@ -19,6 +19,7 @@ from app.valuation.engines.base import (
     ValuationContext,
     ValuationEngine,
     adr_ratio,
+    apply_publication_blockers,
     clamp_fcf_margin,
     default_growth,
     default_terminal_growth,
@@ -295,6 +296,8 @@ class StandardDCFEngine(ValuationEngine):
         publication_blockers: list[str] = []
         if wacc_source != "calculated_metric":
             publication_blockers.append("traceable_wacc")
+        if terminal_share is not None and terminal_share > 0.95:
+            publication_blockers.append("forecast_is_not_the_driver")
 
         # The DCF runs in the filing's share basis (ordinary shares), so the
         # quote has to be converted into that basis before margin of safety is
@@ -302,7 +305,8 @@ class StandardDCFEngine(ValuationEngine):
         ratio = adr_ratio(company)
         comparable_price = current_price / ratio if (ratio and current_price) else current_price
 
-        return {
+        return apply_publication_blockers(
+            {
             "ticker": company.ticker,
             "model_type": company.valuation_model,
             "status": "ok",
@@ -358,4 +362,5 @@ class StandardDCFEngine(ValuationEngine):
                 "weighted": weighted["trace"],
                 "reverse_dcf": reverse.get("trace") if reverse else None,
             },
-        }
+            }
+        )
