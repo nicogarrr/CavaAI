@@ -32,10 +32,22 @@ def terminal_values(sim_returns: np.ndarray) -> np.ndarray:
 
 
 def max_drawdowns(sim_returns: np.ndarray) -> np.ndarray:
-    """Maximum drawdown (negative) of each path (1-D, length ``sims``)."""
+    """Maximum drawdown (negative) of each path (1-D, length ``sims``).
+
+    El pico inicial es 1,0 (NAV recien abierto), no ``growth[0]``. Sin esa fila
+    fantasma, un camino que empieza bajando no registra ningun drawdown: con
+    retornos ``[-0.10, +0.50, +0.10]`` el maxdd salia 0,0 en vez de -0,10, y
+    como ``bust_probability`` cuenta los caminos por debajo de un umbral, ese
+    camino no se contaba como bust. Con deriva ~0 la mitad de los caminos
+    empiezan por debajo de 1,0, asi que la medida omitia justo el peor
+    periodo de cada uno. Es la misma correccion que aplica stats.py:2480.
+    """
     growth = np.cumprod(1.0 + sim_returns, axis=0)
-    running_max = np.maximum.accumulate(growth, axis=0)
-    drawdowns = growth / running_max - 1.0
+    # Fila fantasma con el NAV inicial, para que el primer periodos entre en el
+    # calculo del maximo.
+    with_baseline = np.vstack([np.ones((1, growth.shape[1])), growth])
+    running_max = np.maximum.accumulate(with_baseline, axis=0)
+    drawdowns = with_baseline / running_max - 1.0
     return drawdowns.min(axis=0)
 
 
