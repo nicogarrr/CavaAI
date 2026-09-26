@@ -23,12 +23,12 @@ def tax_report(
     (una escritura) hacia que un GET tuviera efectos de estado: no idempotente,
     imposible de cachear y capaz de devolver 500 en un camino de lectura. El
     calculo forzado vive en POST /report/{fiscal_year}/regenerate, que ya
-    existe; este handler delega en el servicio sin `regenerate`, que devuelve el
-    informe persistido o lo calcula sin escribir.
+    existe; este handler usa `get_report`, que devuelve el informe persistido
+    o lo calcula EN MEMORIA sin escribir (`persisted=False`).
     """
     _validate_year(fiscal_year)
     try:
-        return TaxReportService().get_or_compute(db, fiscal_year)
+        return TaxReportService().get_report(db, fiscal_year)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -49,6 +49,6 @@ def tax_holdings(db: Session = Depends(get_db)) -> list[dict]:
 def regenerate_tax_report(fiscal_year: int, db: Session = Depends(get_db)) -> dict:
     _validate_year(fiscal_year)
     try:
-        return TaxReportService().get_or_compute(db, fiscal_year, regenerate=True)
+        return TaxReportService().regenerate_report(db, fiscal_year)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

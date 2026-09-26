@@ -133,7 +133,7 @@ def list_alerts(
     include_snoozed: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-) -> list[ResearchAlert]:
+) -> list[ResearchAlertOut]:
     now = datetime.now(UTC)
     statement = select(ResearchAlert)
     if ticker:
@@ -146,21 +146,14 @@ def list_alerts(
     if status:
         statement = statement.where(ResearchAlert.status == status)
     elif not include_snoozed:
-        # Solo se ocultan las alertas que siguen EFFECTIVAMENTE snoozadas: las
-        # que no tienen fecha de caducidad, y las cuya fecha sigue en el
-        # futuro. Un snooze ya caducado significa que la alerta vuelve a ser
-        # accionable, asi que se muestra (y el bucle de mas abajo la devuelve
-        # con status derivado "open").
-        #
-        # La formula anterior era `status != 'snoozed' OR snoozed_until <= now`,
-        # que tiene dos fallos: con snoozed_until NULL (snooze sin fecha) la
-        # comparacion es NULL y `FALSE OR NULL` = NULL, de modo que la alerta
-        # se escondia para siempre; y las ya caducadas, que deberian reaparecer,
-        # tambien quedaban fuera.
+        # Solo REAPARECEN las alertas cuyo snooze ya caduco: un snooze sin
+        # fecha es indefinido (silenciar = ocultar) y uno con fecha futura
+        # sigue activo; ambos quedan fuera salvo include_snoozed=True.
+        # (`snoozed_until <= now` con NULL evalua a NULL -> excluida, que es
+        # exactamente la semantica de snooze indefinido.)
         statement = statement.where(
             or_(
                 ResearchAlert.status != "snoozed",
-                ResearchAlert.snoozed_until.is_(None),
                 ResearchAlert.snoozed_until <= now,
             )
         )
@@ -177,11 +170,17 @@ def list_alerts(
     # ruta, y podia devolver 500 en un camino de lectura. Aqui solo se refleja
     # el estado derivado en la respuesta, sin tocar la fila; la transicion
     # persistente la hace el worker que evalua las reglas de alerta.
+    # El estado derivado se refleja en DTOs, NUNCA en las entidades ORM:
+    # mutarlas dejaba la sesion sucia y cualquier commit posterior del mismo
+    # request podia flushear una escritura desde un GET.
+    result: list[ResearchAlertOut] = []
     for alert in alerts:
+        out = ResearchAlertOut.model_validate(alert)
         if alert.status == "snoozed" and _snooze_expired(alert.snoozed_until, now):
-            alert.status = "open"
-            alert.snoozed_until = None
-    return alerts
+            out.status = "open"
+            out.snoozed_until = None
+        result.append(out)
+    return result
 
 
 @router.post("/{alert_id}/action", response_model=ResearchAlertOut)
