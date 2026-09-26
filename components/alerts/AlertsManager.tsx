@@ -28,7 +28,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
 import { isNextRedirectError } from '@/lib/types/errors';
-import { formatDate, formatDateTime } from '@/lib/format';
+import { formatDate, formatUserDateTime } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { reviewResearchExpectations } from '@/lib/actions/research.actions';
 
@@ -379,13 +379,13 @@ function AlertsManager() {
                                     <p className={`inline-flex items-center gap-1 text-xs ${alert.lastTriggered ? 'text-amber-300' : 'text-gray-500'}`}>
                                         <History aria-hidden="true" className="h-3.5 w-3.5" />
                                         {alert.lastTriggered
-                                            ? `Disparada por última vez: ${formatDateTime(alert.lastTriggered)}`
+                                            ? `Disparada por última vez: ${formatUserDateTime(alert.lastTriggered)}`
                                             : t('common.states.neverTriggered')}
                                     </p>
                                     <p className="inline-flex items-center gap-1 text-xs text-gray-500" title={`Canales: ${alert.channels.join(', ') || 'in_app'} · disparos: ${alert.triggerCount}`}>
                                         <Send aria-hidden="true" className="h-3.5 w-3.5" />
                                         {alert.lastEvaluatedAt
-                                            ? `Motor: evaluada ${formatDateTime(alert.lastEvaluatedAt)} · ${alert.triggerCount} disparos · ${alert.channels.join(', ') || 'in_app'}`
+                                            ? `Motor: evaluada ${formatUserDateTime(alert.lastEvaluatedAt)} · ${alert.triggerCount} disparos · ${alert.channels.join(', ') || 'in_app'}`
                                             : 'Motor: pendiente de primera evaluación (cada 5 min)'}
                                         {alert.lastResultStatus === 'skipped_stale_observation' ? ' · dato desactualizado' : null}
                                     </p>

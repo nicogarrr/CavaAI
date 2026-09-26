@@ -12,7 +12,7 @@ import {
     type DataRecord,
 } from '@/components/data/RecordViews';
 import { getTaxHoldings, getTaxReport, regenerateTaxReport } from '@/lib/actions/taxes.actions';
-import { formatDateTime, formatMoney, NA } from '@/lib/format';
+import { formatUserDateTime, formatMoney, NA } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
@@ -95,7 +95,7 @@ function humanizeTaxReport(summary: DataRecord): DataRecord {
         } else if (key === 'wash_sale_rule') {
             display[label] = WASH_RULE_LABELS[String(value)] ?? String(value);
         } else if (key === 'generated_at') {
-            display[label] = formatDateTime(value as string);
+            display[label] = formatUserDateTime(value as string);
         } else if (typeof value === 'boolean') {
             display[label] = value ? 'Sí' : 'No';
         } else {
