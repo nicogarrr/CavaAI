@@ -251,6 +251,24 @@ export function formatMarketDateTime(
 }
 
 /** Fecha + hora en la zona del usuario. */
+/**
+ * Etiqueta de fecha "generada el ..." para tesis y memos.
+ *
+ * Un timestamp PRESENTE pero invalido no debe caer en el fallback `NA`:
+ * pintar "generada el N/D" enmascara un dato roto como si el dato
+ * faltara. Guard explicito: fecha ausente o no parseable devuelve null
+ * (la UI omite la etiqueta), solo una fecha valida se formatea.
+ */
+export function formatGeneratedDate(
+  value: string | number | Date | null | undefined,
+  options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' },
+): string | null {
+  if (value === null || value === undefined) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return formatUserDate(parsed, options);
+}
+
 export function formatUserDateTime(
   value: string | number | Date | null | undefined,
   options: Intl.DateTimeFormatOptions = {

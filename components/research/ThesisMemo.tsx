@@ -1,4 +1,4 @@
-import { formatMoney, formatPercent, formatUserDate, NA } from '@/lib/format';
+import { formatGeneratedDate, formatMoney, formatPercent, NA } from '@/lib/format';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
 import ThesisDebatePanel from '@/components/research/ThesisDebatePanel';
@@ -92,8 +92,7 @@ export default function ThesisMemo({
   debateBody?: string | null;
 }) {
   const probabilities = thesis.scenario_probabilities ?? {};
-  const generatedAt = new Date(thesis.created_at);
-  const generatedLabel = formatUserDate(generatedAt, { day: 'numeric', month: 'short', year: 'numeric' }, undefined) || null;
+  const generatedLabel = formatGeneratedDate(thesis.created_at);
 
   return (
     <div className="space-y-5">
