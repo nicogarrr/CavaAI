@@ -34,7 +34,6 @@ from app.core import auth as auth_module
 from app.core.database import SessionLocal, init_db
 from app.models import FinancialFact, InsiderFiling
 from app.seed import seed
-
 from tests.auth_helpers import auth_settings, signed_request
 
 SECRET = "cross-tenant-secret-with-at-least-32-characters"
@@ -192,9 +191,9 @@ def test_insider_scan_does_not_skip_another_tenants_accessions():
         assert accession in own
 
         # Y el helper de insider_monitor lleva el filtro.
-        from app.services import insider_monitor
-
         import inspect
+
+        from app.services import insider_monitor
 
         source = inspect.getsource(insider_monitor.scan)
         assert "InsiderFiling.tenant_id" in source, (
