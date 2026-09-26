@@ -13,11 +13,33 @@ dist
 coverage
 
 # Environment files (se pasan via docker-compose)
+# Globa .env*: el listado enumerado dejaba fuera .env.production, y
+# `COPY . .` + `next build` lo meterian en required-server-files.json con
+# output:'standalone'. Los secretos de produccion deben entrar solo por
+# docker-compose / el entorno del contenedor.
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!docker.env.example
+!*.env.example
+
+# Datos de mercado/reguladores: 2.008 ficheros y ~870 MB de snapshots SEC/ESEF.
+# Se montan como volumen; nunca deben entrar en el contexto de build.
+data-engine/data/
+data-esef-snapshots/
+storage/
+backups/
+*.duckdb
+*.duckdb.wal
+*.db
+*.sqlite
+data-engine/storage/
+data-engine/.venv/
+data-engine/.pytest_cache/
+data-engine/.ruff_cache/
+data-engine/.mypy_cache/
+.git
+.github
+e2e/
 
 # Debug
 npm-debug.log*
