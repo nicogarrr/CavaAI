@@ -315,6 +315,46 @@
     .search-item-name {
         @apply font-medium text-base text-gray-400;
     }
+
+    /*
+     * Shell publico (landing, metodologia, terminos, ayuda). Vive en el
+     * layout `app/(public)/layout.tsx`, sin el sidebar de la app: cabecera
+     * pegajosa de la misma altura que la autenticada (--header-h, para que
+     * scroll-padding-top siga viendo la cabecera correcta), contenido y pie con
+     * los enlaces legales. El ancho lo aporta `.container` en el JSX, no aqui,
+     * para que las tres piezas no se desincronicen de `.container`.
+     */
+    .public-shell {
+        @apply flex min-h-dvh flex-col text-gray-300;
+    }
+    .public-header {
+        @apply sticky top-0 z-50 border-b border-gray-700/50 bg-gray-800/80 backdrop-blur-md;
+    }
+    /* Dos filas en movil (marca + CTA encima, enlaces debajo) y una sola a
+     * partir de md, sin necesitar un menu cliente. */
+    .public-header-inner {
+        @apply flex flex-col gap-2 py-2 md:h-[var(--header-h)] md:flex-row md:items-center md:justify-between md:gap-3 md:py-0;
+    }
+    .public-nav {
+        @apply flex flex-wrap items-center gap-1;
+    }
+    .public-nav-link {
+        @apply inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-gray-400 transition-colors hover:bg-gray-700/30 hover:text-gray-300;
+    }
+    /* Cada pagina publica es duena de su unico <main id="content">; el layout
+     * solo aporta el hueco flexible. Igual que en `app/(root)/layout.tsx`. */
+    .public-content {
+        @apply flex-1;
+    }
+    .public-footer {
+        @apply border-t border-gray-700/50 bg-gray-800/40;
+    }
+    .public-footer-inner {
+        @apply flex flex-col gap-6 py-8 text-sm leading-6 text-gray-500 sm:flex-row sm:items-start sm:justify-between;
+    }
+    .public-footer-link {
+        @apply text-gray-400 underline-offset-4 transition-colors hover:text-teal-400 hover:underline;
+    }
 }
 /* Market News Component Styles */
 .scrollbar-hide {
