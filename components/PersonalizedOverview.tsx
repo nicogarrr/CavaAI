@@ -20,6 +20,7 @@ import {
     type TriggeredAlertDelivery,
 } from '@/lib/actions/alerts.actions';
 import { t } from '@/lib/i18n/t';
+import { buildPortfolioInsight } from '@/lib/portfolio-insight';
 
 interface PersonalizedOverviewProps {
     userId: string;
@@ -147,7 +148,6 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [triggeredAlerts, setTriggeredAlerts] = useState<TriggeredAlertDelivery[]>([]);
-    const [aiInsight, setAiInsight] = useState('');
     const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
     const [opportunities, setOpportunities] = useState<UndervaluedStock[]>([]);
     const [indicesLoading, setIndicesLoading] = useState(true);
@@ -261,25 +261,6 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             setWatchlistLoading(false);
             setWatchlistError(watchlistWithPrices.error ?? watchlistResult.error);
 
-            if (summaryResult.data && summaryResult.data.holdings.length > 0) {
-                const summary = summaryResult.data;
-                // F17: gainPercent es rentabilidad desde la compra (no la
-                // variacion de hoy) y solo existe con base de coste. Sin
-                // coste no hay frase de movimiento: un "0,00%" seria inventado.
-                const conCoste = summary.holdings.filter((h) => h.cost > 0 && !h.fxMissing);
-                if (conCoste.length === 0) {
-                    setAiInsight('Todavía no tenemos la base de coste de tus posiciones. Cuando esté cargada, aquí verás cómo va tu cartera desde la compra.');
-                } else {
-                    const topMover = conCoste.reduce((a, b) => Math.abs(b.gainPercent) > Math.abs(a.gainPercent) ? b : a);
-                    const costeTotal = conCoste.reduce((sum, h) => sum + h.cost, 0);
-                    const gananciaTotal = conCoste.reduce((sum, h) => sum + h.gain, 0);
-                    const totalPercent = costeTotal > 0 ? (gananciaTotal / costeTotal) * 100 : 0;
-                    const direccion = totalPercent >= 0 ? 'una subida' : 'una caída';
-                    setAiInsight(`Tu cartera acumula ${direccion} del ${formatPercent(totalPercent, { fromRatio: false, digits: 2, signDisplay: 'never' })} desde la compra. ${topMover.symbol} es la posición que más se mueve (${formatPercent(topMover.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}).`);
-                }
-            } else {
-                setAiInsight('');
-            }
         };
 
         void loadData();
@@ -299,6 +280,10 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             .sort((a, b) => Math.abs(b.gainPercent) - Math.abs(a.gainPercent))
             .slice(0, 4);
     }, [portfolioSummary]);
+
+    /** Frase "tu cartera en una línea": derivada solo del resumen, nunca
+     *  del waterfall de oportunidades (F38). */
+    const insight = useMemo(() => buildPortfolioInsight(portfolioSummary), [portfolioSummary]);
 
     /** Posición que más se mueve desde la compra: el destino del enlace
      *  "¿qué ha cambiado?" del encabezado. Sin base de coste no hay dato. */
@@ -336,7 +321,12 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         ) : (
                             <>
                                 <p className="text-gray-200 text-sm leading-relaxed">
-                                    {aiInsight || 'Todavía no tienes posiciones. Añade tu primera inversión para ver aquí qué ha cambiado desde la compra.'}
+                                    {insight.kind === 'empty' &&
+                                        'Todavía no tienes posiciones. Añade tu primera inversión para ver aquí qué ha cambiado desde la compra.'}
+                                    {insight.kind === 'no-cost-basis' &&
+                                        'Todavía no tenemos la base de coste de tus posiciones. Cuando esté cargada, aquí verás cómo va tu cartera desde la compra.'}
+                                    {insight.kind === 'movement' &&
+                                        `${insight.partial ? 'Entre las posiciones con base de coste, tu' : 'Tu'} cartera acumula ${insight.direction === 'up' ? 'una subida' : 'una caída'} del ${formatPercent(insight.totalPercent, { fromRatio: false, digits: 2, signDisplay: 'never' })} desde la compra. ${insight.topSymbol} es la posición que más se mueve (${formatPercent(insight.topGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}).`}
                                 </p>
                                 <Link
                                     href={topMover ? `/research/${topMover.symbol}?view=changes` : '/portfolio'}
@@ -375,7 +365,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                             <div className="flex flex-col min-[420px]:flex-row min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
                                 <div className="min-w-0">
                                     <p className="text-sm text-gray-400">Valor Total Estimado</p>
-                                    <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">{formatMoney(portfolioSummary.totalValue)}</p>
+                                    <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">{formatMoney(portfolioSummary.totalValue, portfolioSummary.baseCurrency)}</p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>
