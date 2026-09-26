@@ -168,8 +168,8 @@ def list_alerts(
     # caducado y hacia commit, lo que hacia la operacion no idempotente (dos
     # GET seguidos no dan el mismo resultado), rompia cualquier cache HTTP de la
     # ruta, y podia devolver 500 en un camino de lectura. Aqui solo se refleja
-    # el estado derivado en la respuesta, sin tocar la fila; la transicion
-    # persistente la hace el worker que evalua las reglas de alerta.
+    # el estado derivado en la respuesta, sin tocar la fila: la fila queda
+    # 'snoozed' en base y cada respuesta deriva a 'open' sin escritura.
     # El estado derivado se refleja en DTOs, NUNCA en las entidades ORM:
     # mutarlas dejaba la sesion sucia y cualquier commit posterior del mismo
     # request podia flushear una escritura desde un GET.
