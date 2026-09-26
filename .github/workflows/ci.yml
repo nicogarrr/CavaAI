@@ -62,6 +62,8 @@ jobs:
         run: node --experimental-strip-types --test scripts/export-url-guard.test.ts
       - name: Portfolio score honesty (ausente != 0)
         run: node --experimental-strip-types --test scripts/portfolio-score-honesty.test.ts
+      - name: Thesis date guard (invalid date never renders N/D)
+        run: node --experimental-strip-types --test scripts/thesis-memo-date-guard.test.ts
       - run: npm run build
       - name: Bundle budget
         run: node scripts/check-bundle-budget.mjs

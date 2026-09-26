@@ -1,16 +1,24 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
 
 import { getMarketMovers, type MarketMover } from '@/lib/actions/market.actions';
-import { formatCompact, formatPercent, formatPrice } from '@/lib/format';
+import { NA, formatCompact, formatPercent, formatPrice } from '@/lib/format';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
+
+export const metadata: Metadata = {
+  title: 'Movers',
+  description:
+    'Mayores subidas y caídas sobre los precios que CavaAI tiene ingeridos, con el origen del dato declarado.',
+};
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 function formatPct(value: number | null): string {
-  if (value === null) return '—';
+  // `value == null` y no `!value`: un 0,00 % es un dato, no una ausencia.
+  if (value == null) return NA;
   // signDisplay: 'always' imprime el + en es-ES sin concatenarlo a mano
   return formatPercent(value, { fromRatio: false, digits: 2, signDisplay: 'always' });
 }
