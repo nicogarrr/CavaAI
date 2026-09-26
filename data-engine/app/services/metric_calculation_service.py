@@ -177,60 +177,47 @@ def _quantize(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
 
 
-# Separacion de magnitud tolerable cuando la provenance no garantiza
-# unidades comparables. 100x cubre con holgura cualquier estructura de
-# capital real; mas alla de eso, y solo si la fuente no es de confianza
-# absoluta, las unidades no son comparables.
-_CAPITAL_SCALE_RATIO_LIMIT = Decimal("100")
-
 # Fuentes cuyos importes monetarios llegan en unidades absolutas: market data
-# (yfinance, Finnhub) y hechos SEC/FMP. Entre ellas un ratio extremo entre
-# capitalizacion y deuda es estructura de capital real (una mega-cap casi sin
-# deuda), NO un error de unidades.
+# (yfinance, Finnhub) y hechos SEC/FMP. Entre ellas, con la misma unidad, un
+# ratio extremo entre capitalizacion y deuda es estructura de capital real
+# (una mega-cap casi sin deuda), NO un error de unidades.
 _ABSOLUTE_AMOUNT_SOURCES = frozenset({"yfinance", "Finnhub", "SEC", "FMP"})
-
-# Fuentes cuya escala NO se conserva en el pipeline: el conector ESEF lee
-# entry.val pero pierde el atributo ix:nonFraction scale, asi que un hecho
-# puede llegar en miles o en millones sin que FinancialFact lo registre.
-# Mismo source_type + misma unit NO garantiza misma escala (dos documentos
-# distintos - o dos hechos del mismo documento - pueden escalar distinto).
-# Como la escala no es verificable desde lo almacenado, cualquier par con
-# participacion ESEF queda fail-closed. Si algun dia se persiste la escala,
-# podra relajarse para pares del mismo documento con escala comprobada.
-_UNVERIFIABLE_SCALE_SOURCES = frozenset({"ESEF"})
 
 
 def _capital_scale_conflict(equity_fact: FinancialFact, debt_fact: FinancialFact) -> bool:
-    """True si equity y debt no son comparables en magnitud para el WACC.
+    """True si equity y debt no son comparables para el WACC.
 
-    La provenance manda, no la magnitud pura:
-    - Las dos fuentes absolutas: comparables siempre, a cualquier ratio.
-    - Cualquier fuente de escala no verificable (ESEF): conflicto siempre,
-      venga acompanada de lo que venga y con el ratio que sea. Fail-closed:
-      el WACC queda unavailable antes que arriesgar una mezcla de escalas.
-    - Resto de provenance no absoluta: la escala no se puede verificar;
-      solo entonces la magnitud decide con el limite de 100x.
+    Fail-closed, en este orden:
+    - Unidades monetarias explicitas y distintas (USD vs EUR): conflicto
+      siempre. No es un error de escala sino de divisa, y ninguna
+      provenance lo rescata: un par de fuentes "absolutas" no es
+      comparable si cada una expresa otra moneda.
+    - Ambas fuentes absolutas y misma unidad: comparables a cualquier
+      ratio (una mega-cap casi sin deuda supera 100x de forma real).
+    - Cualquier otra combinacion (ESEF sin escala persistida, o
+      provenance incierta): conflicto siempre, a cualquier magnitud.
+      Un ratio razonable no demuestra unidades compatibles; el atajo
+      del 100x dejaba pasar mezclas no verificables.
 
-    Nunca se deduce un factor de escala: si no son comparables, el metodo
-    queda unavailable en vez de publicar un WACC inventado.
+    Nunca se deduce un factor de escala ni de divisa: si no son
+    comparables, el metodo queda unavailable en vez de publicar un WACC
+    inventado.
     """
     if debt_fact.value == 0:
         return False
     if (
+        equity_fact.unit
+        and debt_fact.unit
+        and equity_fact.unit != debt_fact.unit
+    ):
+        return True
+    if (
         equity_fact.source_type in _ABSOLUTE_AMOUNT_SOURCES
         and debt_fact.source_type in _ABSOLUTE_AMOUNT_SOURCES
+        and equity_fact.unit == debt_fact.unit
     ):
         return False
-    if (
-        equity_fact.source_type in _UNVERIFIABLE_SCALE_SOURCES
-        or debt_fact.source_type in _UNVERIFIABLE_SCALE_SOURCES
-    ):
-        return True
-    larger = max(abs(equity_fact.value), abs(debt_fact.value))
-    smaller = min(abs(equity_fact.value), abs(debt_fact.value))
-    if smaller <= 0:
-        return True
-    return larger / smaller > _CAPITAL_SCALE_RATIO_LIMIT
+    return True
 
 
 class MetricCalculationService:

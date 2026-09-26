@@ -44,23 +44,32 @@ def mechanical_dcf_scenarios(
 ) -> list[ScenarioDefinition]:
     """Fact-anchored mechanical sensitivities with evidence-weighted probabilities.
 
-    El suelo del margen bear (0.005) está por debajo del margen mínimo que
-    aceptan los motores (0.01) para garantizar bear <= base también cuando
-    el FCF observado es negativo y el margen base queda clampado al mínimo.
+    El margen bear NO tiene suelo positivo: con un margen base negativo
+    (quema de caja), subir el bear a positivo lo colocaba POR ENCIMA del
+    base en valoración (bear mejor que base). bear = margen base - 6pp,
+    siempre por debajo del base, en signo honesto.
     """
     direction = (growth - wacc) * 3.0 + (margin - 0.10) * 2.0
     probabilities = evidence_weighted_probabilities(
         evidence_confidence=evidence_confidence,
         directional_signal=direction,
     )
+    # Quema de caja (margen base negativo): variar crecimiento o WACC
+    # INVIERTE la economía del escenario — crecer más quema más caja (el
+    # bull saldría peor) y descontar pérdidas a más WACC las encoge (el
+    # bear saldría mejor que el base). Con margen negativo la dispersión
+    # honesta viene solo del margen.
+    burn = margin < 0
     return [
         ScenarioDefinition(
             name="bear",
             probability=probabilities["bear"],
             assumptions={
-                "revenue_growth": max(growth - 0.08, -0.05),
-                "fcf_margin": max(margin - 0.06, 0.005),
-                "wacc": wacc + 0.02,
+                "revenue_growth": growth if burn else max(growth - 0.08, -0.05),
+                # Sin suelo positivo: con margen base negativo, clampar el
+                # bear a +0.5% invertía el orden bear <= base.
+                "fcf_margin": margin - 0.06,
+                "wacc": wacc if burn else wacc + 0.02,
                 "terminal_growth": terminal,
             },
             drivers=["mechanical_growth_down", "mechanical_margin_down", "mechanical_wacc_up"],
@@ -82,9 +91,9 @@ def mechanical_dcf_scenarios(
             name="bull",
             probability=probabilities["bull"],
             assumptions={
-                "revenue_growth": growth + 0.08,
+                "revenue_growth": growth if burn else growth + 0.08,
                 "fcf_margin": min(margin + 0.06, 0.45),
-                "wacc": max(wacc - 0.01, terminal + 0.01),
+                "wacc": wacc if burn else max(wacc - 0.01, terminal + 0.01),
                 "terminal_growth": terminal,
             },
             drivers=["mechanical_growth_up", "mechanical_margin_up", "mechanical_wacc_down"],
@@ -108,15 +117,23 @@ def speculative_causal_scenarios(
         directional_signal=(growth - wacc) * 2.0,
         downside_risk=funding_risk,
     )
+    # Quema de caja: igual que en mechanical_dcf_scenarios, con margen
+    # negativo la dispersión por crecimiento/WACC/terminal invertiría el
+    # orden bear <= base <= bull; solo el margen dispersa.
+    burn = margin < 0
     return [
         ScenarioDefinition(
             name="execution_delay_funding_stress",
             probability=probabilities["bear"],
             assumptions={
-                "revenue_growth": max(growth - 0.12, -0.05),
-                "fcf_margin": max(margin - 0.08, 0.01),
-                "wacc": wacc + 0.03,
-                "terminal_growth": max(terminal - 0.005, 0.01),
+                "revenue_growth": growth if burn else max(growth - 0.12, -0.05),
+                # Sin suelo positivo: con margen base negativo (quema de
+                # caja), clampar el bear a +1% lo ponía por encima del
+                # base en valoración: bear MEJOR que base entrando en
+                # probability_weighted_value.
+                "fcf_margin": margin - 0.08,
+                "wacc": wacc if burn else wacc + 0.03,
+                "terminal_growth": terminal if burn else max(terminal - 0.005, 0.01),
                 "extra_dilution_pct": max(dilution_pct, 0.15),
             },
             drivers=["launch_or_deployment_delay", "higher_capex", "equity_raise", "higher_cost_of_capital"],
@@ -139,9 +156,9 @@ def speculative_causal_scenarios(
             name="accelerated_monetization",
             probability=probabilities["bull"],
             assumptions={
-                "revenue_growth": growth + 0.10,
+                "revenue_growth": growth if burn else growth + 0.10,
                 "fcf_margin": min(margin + 0.05, 0.35),
-                "wacc": max(wacc - 0.015, terminal + 0.015),
+                "wacc": wacc if burn else max(wacc - 0.015, terminal + 0.015),
                 "terminal_growth": terminal,
                 "extra_dilution_pct": max(dilution_pct * 0.5, 0.0),
             },

@@ -54,6 +54,7 @@ def add_fact(
     fiscal_year: int = 2025,
     fiscal_quarter: str | None = "FY",
     is_reported: bool = True,
+    source_type: str = "test_metric",
 ) -> FinancialFact:
     fact = FinancialFact(
         company_id=company.id,
@@ -63,7 +64,7 @@ def add_fact(
         period=period,
         fiscal_year=fiscal_year,
         fiscal_quarter=fiscal_quarter,
-        source_type="test_metric",
+        source_type=source_type,
         is_reported=is_reported,
         confidence=Decimal("0.90"),
     )
@@ -263,9 +264,11 @@ def test_wacc_v1_traces_derived_debt_cost_country_risk_currency_and_date():
         add_fact(db, company, "beta", "1.2", period, 2025, None)
         add_fact(db, company, "equity_risk_premium", "0.05", period, 2025, None)
         add_fact(db, company, "country_risk_premium", "0.01", period, 2025, None)
-        add_fact(db, company, "market_cap", "800", period, 2025, None)
+        # Fuentes absolutas y misma unidad: el guard de capital es
+        # fail-closed con provenance incierta (#375).
+        add_fact(db, company, "market_cap", "800", period, 2025, None, source_type="yfinance")
         add_fact(db, company, "interest_expense", "12")
-        add_fact(db, company, "total_debt", "200")
+        add_fact(db, company, "total_debt", "200", source_type="SEC")
         add_fact(db, company, "effective_tax_rate", "0.25")
         db.commit()
 
@@ -501,7 +504,7 @@ def test_quality_moat_score_full_pass_and_partial_coverage():
         company = create_test_company(db)
         add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
         add_fact(db, company, "operating_income", "300", "FY2025", 2025)
-        add_fact(db, company, "total_debt", "500", "FY2025", 2025)
+        add_fact(db, company, "total_debt", "500", "FY2025", 2025, source_type="SEC")
         add_fact(db, company, "cash_and_equivalents", "100", "FY2025", 2025)
         add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
         add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
@@ -525,7 +528,7 @@ def test_quality_moat_score_full_pass_and_partial_coverage():
         add_fact(db, company, "beta", "1.2", "2025-12-31", 2025, None)
         add_fact(db, company, "equity_risk_premium", "0.05", "2025-12-31", 2025, None)
         add_fact(db, company, "country_risk_premium", "0.01", "2025-12-31", 2025, None)
-        add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None)
+        add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None, source_type="yfinance")
         add_fact(db, company, "interest_expense", "30", "FY2025", 2025)
         add_fact(db, company, "effective_tax_rate", "0.25", "FY2025", 2025)
         db.commit()
@@ -634,7 +637,7 @@ def add_wacc_facts(db, company: Company) -> None:
     add_fact(db, company, "beta", "1.2", "2025-12-31", 2025, None)
     add_fact(db, company, "equity_risk_premium", "0.05", "2025-12-31", 2025, None)
     add_fact(db, company, "country_risk_premium", "0.01", "2025-12-31", 2025, None)
-    add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None)
+    add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None, source_type="yfinance")
     add_fact(db, company, "interest_expense", "30", "FY2025", 2025)
     add_fact(db, company, "effective_tax_rate", "0.25", "FY2025", 2025)
 
@@ -703,7 +706,7 @@ def test_quality_moat_score_v2_full_pass_and_partial():
         add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
         add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
         add_fact(db, company, "operating_income", "300", "FY2025", 2025)
-        add_fact(db, company, "total_debt", "500", "FY2025", 2025)
+        add_fact(db, company, "total_debt", "500", "FY2025", 2025, source_type="SEC")
         add_fact(db, company, "cash_and_equivalents", "100", "FY2025", 2025)
         add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
         add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
@@ -747,7 +750,7 @@ def test_quality_moat_score_v2_capex_intensity_fails_when_heavy():
         add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
         add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025], capex="-300")
         add_fact(db, company, "operating_income", "300", "FY2025", 2025)
-        add_fact(db, company, "total_debt", "500", "FY2025", 2025)
+        add_fact(db, company, "total_debt", "500", "FY2025", 2025, source_type="SEC")
         add_fact(db, company, "cash_and_equivalents", "100", "FY2025", 2025)
         add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
         add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)

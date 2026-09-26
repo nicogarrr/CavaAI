@@ -139,7 +139,14 @@ def test_wacc_never_uses_book_equity_as_market_equity(company_factory):
 
 def test_wacc_uses_market_equity_when_available(company_factory):
     db, company = company_factory
-    _wacc_facts(db, company, market_cap="10000", total_debt="3000")
+    _wacc_facts(
+        db,
+        company,
+        market_cap_source="yfinance",
+        total_debt_source="SEC",
+        market_cap="10000",
+        total_debt="3000",
+    )
     db.add(_fact(company, "total_equity", "2000", PERIOD, 2025, None))
     db.commit()
 
@@ -207,6 +214,43 @@ def test_capital_scale_guard(equity, debt, equity_src, debt_src, expected):
     )
 
 
+def test_capital_scale_guard_fails_closed_on_currency_mismatch():
+    """USD contra EUR no es un error de escala: es un error de divisa.
+
+    Dos fuentes absolutas con unidades monetarias distintas no son
+    comparables a ningun ratio: el WACC queda unavailable antes que
+    sumar dolares con euros.
+    """
+    assert (
+        _capital_scale_conflict(
+            _scale_fact("10000", "yfinance", unit="USD"),
+            _scale_fact("3000", "SEC", unit="EUR"),
+        )
+        is True
+    )
+
+
+def test_capital_scale_guard_fails_closed_on_uncertain_provenance():
+    """Provenance no absoluta: la escala no se puede verificar.
+
+    El atajo del ratio 100x dejaba pasar pares de procedencia incierta
+    con magnitud razonable. Un ratio razonable no demuestra unidades
+    compatibles: fail-closed a cualquier magnitud.
+    """
+    assert (
+        _capital_scale_conflict(
+            _scale_fact("10000", "manual"), _scale_fact("3000", "manual")
+        )
+        is True
+    )
+    assert (
+        _capital_scale_conflict(
+            _scale_fact("10000", "yfinance"), _scale_fact("3000", "manual")
+        )
+        is True
+    )
+
+
 def test_wacc_unavailable_when_capital_amounts_have_different_scales(company_factory):
     """market cap en unidades absolutas y debt en millones no son comparables.
 
@@ -255,6 +299,48 @@ def test_dcf_keeps_a_negative_fcf_margin_negative():
     assert all(row["fcf"] < 0 for row in result.forecast)
     assert result.enterprise_value < 0
     assert result.value_per_share < 0
+
+
+def test_pre_revenue_engine_keeps_cash_burn_scenarios_ordered(company_factory):
+    """El bear de una quema de caja no puede valer MAS que el base.
+
+    Con margen base -15%, el suelo positivo del bear en
+    scenario_definitions invertia el orden dentro del motor:
+    bear MEJOR que base entrando en probability_weighted_value.
+    El motor completo (facts -> snapshot -> escenarios -> DCF) debe
+    dar bear <= base <= bull y los tres en negativo.
+    """
+    from app.valuation.engines.base import ValuationContext
+    from app.valuation.engines.pre_revenue import PreRevenueScenarioEngine
+    from app.valuation.financial_snapshot import FinancialSnapshotBuilder
+
+    db, company = company_factory
+    company.valuation_model = "pre_revenue"
+    for metric, value in {
+        "revenue": "1000",
+        "shares_diluted": "100",
+        "fcf_margin": "-0.15",
+        "revenue_growth": "0.05",
+        "net_debt": "2000",
+    }.items():
+        db.add(_fact(company, metric, value, PERIOD, 2025, None))
+    db.commit()
+
+    snapshot = FinancialSnapshotBuilder().build(db, company)
+    assert snapshot.coherent
+    result = PreRevenueScenarioEngine().value(
+        ValuationContext(
+            db=db,
+            company=company,
+            snapshot=snapshot,
+            current_price=None,
+            engine_key="pre_revenue",
+        )
+    )
+
+    assert result["status"] in ("ok", "partial")
+    assert result["bear_value"] <= result["base_value"] <= result["bull_value"]
+    assert result["bull_value"] < 0
 
 
 def test_dcf_reports_terminal_value_weight():

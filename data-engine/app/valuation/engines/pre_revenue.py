@@ -175,7 +175,13 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 )
             )
             extra_dilution = float(scenario.assumptions.get("extra_dilution_pct") or 0.0)
-            value = dcf.value_per_share * (1.0 - min(extra_dilution, 0.80))
+            # La dilución recorta un valor positivo. Multiplicar un valor
+            # NEGATIVO (quema de caja) lo acercaría a cero y rompería el
+            # orden bear <= base <= bull: una quema diluida no vale menos
+            # negativo.
+            value = dcf.value_per_share
+            if value > 0:
+                value *= 1.0 - min(extra_dilution, 0.80)
             scenario_results[scenario.name] = {
                 "definition": {
                     "name": scenario.name,
@@ -354,7 +360,13 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 )
             )
             extra_dilution = float(scenario.assumptions.get("extra_dilution_pct") or 0.0)
-            value = dcf.value_per_share * (1.0 - min(extra_dilution, 0.80))
+            # La dilución recorta un valor positivo. Multiplicar un valor
+            # NEGATIVO (quema de caja) lo acercaría a cero y rompería el
+            # orden bear <= base <= bull: una quema diluida no vale menos
+            # negativo.
+            value = dcf.value_per_share
+            if value > 0:
+                value *= 1.0 - min(extra_dilution, 0.80)
             scenario_results[scenario.name] = {
                 "definition": {
                     "name": scenario.name,
