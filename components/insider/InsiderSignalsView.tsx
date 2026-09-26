@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
 import type { InsiderFilingsResult, InsiderSignalsResult } from '@/lib/actions/insider.actions';
 import { getInsiderSignals } from '@/lib/actions/insider.actions';
@@ -104,7 +104,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
             <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
                 <CardHeader className="border-b border-gray-700/50 pb-4">
                     <div className="flex items-center gap-3">
-                        <Users className="h-5 w-5 text-teal-400" />
+                        <Users aria-hidden="true" className="h-5 w-5 text-teal-400" />
                         <div>
                             <CardTitle className="text-lg font-semibold text-gray-100">
                                 Buscar señales por ticker
@@ -125,7 +125,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                             className="h-11 w-full bg-gray-900 font-mono uppercase"
                         />
                         <Button type="submit" className="h-11 w-full gap-2 bg-teal-600 hover:bg-teal-700 sm:w-auto">
-                            <Search className="h-4 w-4" />
+                            <Search aria-hidden="true" className="h-4 w-4" />
                             Buscar
                         </Button>
                     </form>
@@ -186,7 +186,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                 <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
                     <CardHeader className="flex flex-col gap-3 space-y-0 border-b border-gray-700/50 pb-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
-                            <Users className="h-5 w-5 text-teal-400" />
+                            <Users aria-hidden="true" className="h-5 w-5 text-teal-400" />
                             <div>
                                 <CardTitle className="text-lg font-semibold text-gray-100">
                                     Señales ·{' '}
@@ -212,7 +212,8 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                     </CardHeader>
                     <CardContent className="min-w-0 pt-4">
                         <div className="hidden md:block">
-                        <Table>
+                        <Table regionLabel="Señales insider del ticker">
+                            <TableCaption className="sr-only">Compras insider registradas: tipo de señal, persona, fecha, importe y detalle con enlace al filing de la SEC.</TableCaption>
                             <TableHeader>
                                 <TableRow className="border-gray-700 hover:bg-transparent">
                                     <TableHead className="text-xs font-semibold uppercase text-gray-500">{t('insider.signal')}</TableHead>
@@ -260,7 +261,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                                                         rel="noopener noreferrer"
                                                         className="inline-flex items-center gap-1 text-xs text-teal-300 hover:text-teal-200 hover:underline"
                                                     >
-                                                        Ver filing SEC <ExternalLink className="h-3 w-3" />
+                                                        Ver filing SEC <ExternalLink aria-hidden="true" className="h-3 w-3" />
                                                     </a>
                                                 ) : null}
                                             </span>
@@ -293,7 +294,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                                                 rel="noopener noreferrer"
                                                 className="inline-flex items-center gap-1 text-xs text-teal-300 hover:text-teal-200 hover:underline"
                                             >
-                                                Ver filing SEC <ExternalLink className="h-3 w-3" />
+                                                Ver filing SEC <ExternalLink aria-hidden="true" className="h-3 w-3" />
                                             </a>
                                         ) : null}
                                     </div>
@@ -335,7 +336,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                                             rel="noopener noreferrer"
                                             className="inline-flex items-center gap-1 text-xs text-teal-300 hover:text-teal-200 hover:underline"
                                         >
-                                            Ver filing SEC <ExternalLink className="h-3 w-3" />
+                                            Ver filing SEC <ExternalLink aria-hidden="true" className="h-3 w-3" />
                                         </a>
                                     ) : null}
                                 </li>

@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
     Table,
     TableBody,
+    TableCaption,
     TableCell,
     TableHead,
     TableHeader,
@@ -193,7 +194,8 @@ export default async function WatchlistPage() {
 
                     {/* Desktop (≥md): tabla completa */}
                     <div className="hidden overflow-hidden rounded-lg border border-gray-700 bg-gray-900/50 md:block">
-                        <Table>
+                        <Table regionLabel="Watchlist: precio, cambio, market cap y PER">
+                            <TableCaption className="sr-only">Valoración y métricas de cada símbolo de tu watchlist: precio, cambio de sesión, market cap y PER</TableCaption>
                             <TableHeader className="bg-gray-800/80">
                                 <TableRow className="border-gray-700 hover:bg-gray-800/80">
                                     <TableHead className="text-gray-300">Símbolo</TableHead>
@@ -235,7 +237,7 @@ export default async function WatchlistPage() {
                                                 <span className="font-mono text-gray-500">{NA}</span>
                                             ) : (
                                                 <div className={`flex items-center justify-end gap-1 ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                    {stock.changePercent >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                                    {stock.changePercent >= 0 ? <TrendingUp aria-hidden="true" className="h-3 w-3" /> : <TrendingDown aria-hidden="true" className="h-3 w-3" />}
                                                     <span className="font-mono">
                                                         {formatChangePercent(stock.changePercent)}
                                                     </span>
@@ -253,7 +255,7 @@ export default async function WatchlistPage() {
                                                     {formatPeRatio(stock.peRatio)}
                                                 </Badge>
                                             ) : (
-                                                <span className="text-gray-600">{NA}</span>
+                                                <span className="text-gray-500">{NA}</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right">
@@ -265,7 +267,7 @@ export default async function WatchlistPage() {
                                                     className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
                                                     aria-label={`Ver ${stock.symbol}`}
                                                 >
-                                                    <ArrowRight className="h-4 w-4" />
+                                                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
                                                 </Link>
                                             </div>
                                         </TableCell>

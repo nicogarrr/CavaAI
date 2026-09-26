@@ -24,7 +24,7 @@ export default async function ResearchWorkflowsPage() {
         <div>
           <Button asChild className="mb-4" size="sm" variant="ghost">
             <Link href="/research">
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Research
             </Link>
           </Button>
@@ -58,7 +58,7 @@ export default async function ResearchWorkflowsPage() {
           return (
             <div key={workflow.name} className="rounded-lg border border-gray-800 bg-[#111111] p-5">
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <Layers className="h-5 w-5 text-teal-300" />
+                <Layers aria-hidden="true" className="h-5 w-5 text-teal-300" />
                 <span className="font-semibold text-gray-100">{workflow.name}</span>
                 <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusStyles[status]}`}>
                   {statusLabels[status]}
@@ -100,12 +100,12 @@ export default async function ResearchWorkflowsPage() {
                       />
                     )}
                     <Button size="sm" type="submit" variant="outline">
-                      <Play className="h-3.5 w-3.5" />
+                      <Play aria-hidden="true" className="h-3.5 w-3.5" />
                       Ejecutar
                     </Button>
                   </MutationForm>
                 ) : (
-                  <span className="text-xs text-gray-600">
+                  <span className="text-xs text-gray-500">
                     POST /api/workflows/{workflow.name}/run
                   </span>
                 )}

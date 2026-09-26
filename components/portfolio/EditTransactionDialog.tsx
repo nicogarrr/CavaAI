@@ -97,8 +97,11 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                     variant="ghost"
                     size="icon"
                     className="text-blue-400 hover:text-blue-300 hover:bg-blue-950/20"
+                    // Boton solo-icono: sin nombre accesible el boton es
+                    // announces como "boton" y no se sabe que edita (WCAG 4.1.2).
+                    aria-label={`Editar transacción de ${transaction.symbol}`}
                 >
-                    <Pencil className="h-4 w-4" />
+                    <Pencil aria-hidden="true" className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
             <DialogContent className="bg-gray-900 border-gray-700 max-w-md">
@@ -217,6 +220,7 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                         <Button
                             type="submit"
                             disabled={loading}
+                            aria-busy={loading}
                             className="bg-teal-600 hover:bg-teal-700"
                         >
                             {loading ? 'Guardando...' : 'Guardar Cambios'}
