@@ -20,7 +20,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
 import { hasTransactionErrors, validateTransactionForm, type TransactionFormErrors } from './transactionValidation';
-import { parseLocalizedNumber } from '@/lib/format';
+import { parseLocalizedNumber, todayLocal } from '@/lib/format';
 
 type Props = {
   userId: string;
@@ -67,7 +67,7 @@ export default function AddTransactionButton({ userId }: Props) {
     currency: 'USD',
     quantity: '',
     price: '',
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocal(),
     notes: '',
   });
 
@@ -162,7 +162,7 @@ export default function AddTransactionButton({ userId }: Props) {
         currency: 'USD',
         quantity: '',
         price: '',
-        date: new Date().toISOString().split('T')[0],
+        date: todayLocal(),
         notes: '',
       });
       setSearchQuery('');

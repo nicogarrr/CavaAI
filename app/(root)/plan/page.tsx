@@ -1,6 +1,7 @@
 import { Target } from 'lucide-react';
 import PlanView from '@/components/plan/PlanView';
 import { getPlan, getPlanContributions, getPlanDrift } from '@/lib/actions/plan.actions';
+import { t } from '@/lib/i18n/t';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -16,8 +17,8 @@ export default async function PlanPage() {
         <main id="content" tabIndex={-1} className="mx-auto flex max-w-6xl flex-col gap-6">
             <header className="flex flex-col gap-3 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <p className="text-sm font-semibold uppercase text-teal-300">Planning</p>
-                    <h1 className="mt-1 text-3xl font-bold text-gray-100">Plan de Inversión</h1>
+                    <p className="text-sm font-semibold uppercase text-teal-300">Planificación</p>
+                    <h1 className="mt-1 text-3xl font-bold text-gray-100">{t('plan.title')}</h1>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
                         Tu objetivo a largo plazo, las aportaciones registradas y la desviación de la cartera frente a la asignación objetivo.
                     </p>
