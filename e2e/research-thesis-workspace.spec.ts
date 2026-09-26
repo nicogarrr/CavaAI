@@ -85,10 +85,13 @@ test.describe("research thesis workspace", () => {
     const emptyHistory = page.getByText("Aún no hay historial de versiones.");
     await expect(emptyHistory).toBeHidden();
 
-    // The tap target expands the panel on demand.
-    await page
-      .locator("summary", { hasText: "Historial de versiones y aprobaciones" })
-      .click();
+    // The tap target expands the panel on demand (button + aria-expanded).
+    const historyToggle = page.getByRole("button", {
+      name: "Historial de versiones y aprobaciones",
+    });
+    await expect(historyToggle).toHaveAttribute("aria-expanded", "false");
+    await historyToggle.click();
+    await expect(historyToggle).toHaveAttribute("aria-expanded", "true");
     await expect(emptyHistory).toBeVisible();
   });
 });
