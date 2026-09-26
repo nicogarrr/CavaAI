@@ -421,11 +421,17 @@ def refresh_market_pipeline(
         # ValueError si el tenant no esta activo, y esa excepcion entre la
         # toma del lease y el try se escapaba sin pasar por el finally que
         # lo libera, dejando el lease retenido hasta su TTL.
-    lease = acquire_job_lease(
-        f"refresh_market_pipeline:{tenant_id}",
-        ttl_seconds=3000,
-        redis_url=_lease_redis_url(),
-    )
+    try:
+        lease = acquire_job_lease(
+            f"refresh_market_pipeline:{tenant_id}",
+            ttl_seconds=3000,
+            redis_url=_lease_redis_url(),
+        )
+    except Exception:
+        # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+        # justo arriba no puede quedar sin cerrar.
+        db.close()
+        raise
     if lease is None:
         db.close()
         return {
@@ -470,11 +476,17 @@ def refresh_portfolio_prices_intraday(
         # ValueError si el tenant no esta activo, y esa excepcion entre la
         # toma del lease y el try se escapaba sin pasar por el finally que
         # lo libera, dejando el lease retenido hasta su TTL.
-    lease = acquire_job_lease(
-        f"refresh_portfolio_prices_intraday:{tenant_id}",
-        ttl_seconds=900,
-        redis_url=_lease_redis_url(),
-    )
+    try:
+        lease = acquire_job_lease(
+            f"refresh_portfolio_prices_intraday:{tenant_id}",
+            ttl_seconds=900,
+            redis_url=_lease_redis_url(),
+        )
+    except Exception:
+        # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+        # justo arriba no puede quedar sin cerrar.
+        db.close()
+        raise
     if lease is None:
         db.close()
         return {
@@ -538,11 +550,17 @@ def refresh_propicks_prices(
         # ValueError si el tenant no esta activo, y esa excepcion entre la
         # toma del lease y el try se escapaba sin pasar por el finally que
         # lo libera, dejando el lease retenido hasta su TTL.
-    lease = acquire_job_lease(
-        f"refresh_propicks_prices:{tenant_id}",
-        ttl_seconds=3600,
-        redis_url=_lease_redis_url(),
-    )
+    try:
+        lease = acquire_job_lease(
+            f"refresh_propicks_prices:{tenant_id}",
+            ttl_seconds=3600,
+            redis_url=_lease_redis_url(),
+        )
+    except Exception:
+        # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+        # justo arriba no puede quedar sin cerrar.
+        db.close()
+        raise
     if lease is None:
         db.close()
         return {
@@ -1210,11 +1228,17 @@ def scan_insider_watchlist(
         db = _session(tenant_id, user_id)
         # Ver refresh_market_pipeline: la sesion se abre antes del lease para
         # que un ValueError de _session no lo retenga hasta el TTL.
-        lease = acquire_job_lease(
-            f"scan_insider_watchlist:{tenant_id}",
-            ttl_seconds=600,
-            redis_url=_lease_redis_url(),
-        )
+        try:
+            lease = acquire_job_lease(
+                f"scan_insider_watchlist:{tenant_id}",
+                ttl_seconds=600,
+                redis_url=_lease_redis_url(),
+            )
+        except Exception:
+            # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+            # justo arriba no puede quedar sin cerrar.
+            db.close()
+            raise
         if lease is None:
             db.close()
             return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
@@ -1261,11 +1285,17 @@ def dispatch_insider_alerts(
         db = _session(tenant_id, user_id)
         # Ver refresh_market_pipeline: la sesion se abre antes del lease para
         # que un ValueError de _session no lo retenga hasta el TTL.
-        lease = acquire_job_lease(
-            f"dispatch_insider_alerts:{tenant_id}",
-            ttl_seconds=900,
-            redis_url=_lease_redis_url(),
-        )
+        try:
+            lease = acquire_job_lease(
+                f"dispatch_insider_alerts:{tenant_id}",
+                ttl_seconds=900,
+                redis_url=_lease_redis_url(),
+            )
+        except Exception:
+            # Si la adquisicion lanza (Redis caido, red, ...), la sesion abierta
+            # justo arriba no puede quedar sin cerrar.
+            db.close()
+            raise
         if lease is None:
             db.close()
             return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
