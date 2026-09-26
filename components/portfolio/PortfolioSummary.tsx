@@ -34,6 +34,9 @@ export default function PortfolioSummary({ summary }: Props) {
         <p className="text-xl sm:text-2xl font-bold text-gray-100 tracking-tight">
           {format(summary.totalValue)}
         </p>
+        <p className="text-xs text-gray-500 mt-1">
+          RV {format(summary.equityValue)} + caja {format(summary.cash)}
+        </p>
       </div>
 
       <div className="bg-[#111111] border border-gray-800 rounded-xl p-4 sm:p-5 relative overflow-hidden group hover:border-blue-500/30 transition-colors">
