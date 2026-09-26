@@ -10,6 +10,10 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+// @ts-expect-error TS5097: la extension explicita la exige node --experimental-strip-types.
+import { portfolioScoreDisplay } from '../lib/portfolio-score-display.ts';
+// @ts-expect-error TS5097: la extension explicita la exige node --experimental-strip-types.
+import { formatNumber, formatPercent } from '../lib/format.ts';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -79,16 +83,42 @@ describe('factores de cartera: ausente no es cero', () => {
     );
   });
 
-  it('la UI dice "sin datos" en vez de renderizar 0,00', () => {
+  it('la UI decide el pintado con portfolioScoreDisplay y dice "sin datos"', () => {
     const component = source('components/portfolio/PortfolioScores.tsx');
     assert.ok(component.includes('sin datos'), 'la tarjeta debe rotular los factores sin datos');
     assert.ok(
-      component.includes('item.value == null'),
-      'la tarjeta debe distinguir null de un 0 real',
+      component.includes('portfolioScoreDisplay(item.value'),
+      'la tarjeta debe decidir null-vs-0 con portfolioScoreDisplay',
     );
     assert.ok(
       !/value: number;/.test(component),
       'las props de la tarjeta no pueden exigir number: admiten null',
     );
+  });
+});
+
+describe('factores de cartera: la decision de pintado, ejecutada', () => {
+  it('una caida real del backend (factores en null) pinta "sin datos", no 0,00', () => {
+    // NO_PORTFOLIO_SCORES es lo que devuelve getPortfolioScores cuando el
+    // backend falla: los cinco factores en null. La decision de pintado debe
+    // llevar cada uno a "sin datos".
+    for (const value of [null, null, null, null, null]) {
+      assert.equal(portfolioScoreDisplay(value).kind, 'no-data');
+    }
+  });
+
+  it('un 0 medido SI se pinta como 0,00: ausente y cero no se confunden', () => {
+    const display = portfolioScoreDisplay(0);
+    assert.equal(display.kind, 'score');
+    assert.deepEqual(display, { kind: 'score', value: 0, isPercent: false });
+  });
+
+  it('el formato del 0 medido es una cifra, no el rotulo de ausente', () => {
+    const display = portfolioScoreDisplay(0);
+    assert.ok(display.kind === 'score');
+    assert.equal(formatNumber(display.value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), '0,00');
+    const percent = portfolioScoreDisplay(0.125, true);
+    assert.ok(percent.kind === 'score');
+    assert.equal(formatPercent(percent.value, { fromRatio: false, digits: 2 }), '0,13\u00a0%');
   });
 });

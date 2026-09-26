@@ -288,7 +288,7 @@ def test_esef_capex_sums_the_parts_when_the_filer_disaggregates_it():
             concepts[1]: [_flow("2024-12-31", "2024-01-01", "100")],
         }
     )
-    merged = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
     assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(1000.0)
 
 
@@ -302,7 +302,7 @@ def test_esef_capex_never_adds_a_disclosed_total_to_its_own_parts():
             concepts[2]: [_flow("2024-12-31", "2024-01-01", "950")],
         }
     )
-    merged = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
     assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(950.0)
 
 
@@ -314,7 +314,7 @@ def test_esef_keeps_the_first_alias_and_never_sums_tags():
             concepts[1]: [_flow("2024-12-31", "2024-01-01", "480")],
         }
     )
-    merged = _merge_esef_periods(facts, concepts, "iso4217:EUR", "total_equity")
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "total_equity")
     assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(500.0)
 
 
@@ -329,16 +329,103 @@ def test_esef_skips_dimensional_and_non_annual_facts():
             concepts[1]: [_flow("2024-12-31", "2024-01-01", "100")],
         }
     )
-    merged = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
     assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(100.0)
 
 
 def test_esef_instant_facts_need_no_duration():
     concepts = _esef_concepts("total_equity")
     facts = _esef_capex(**{concepts[0]: [{"instant": "2024-12-31", "val": "700"}]})
-    merged = _merge_esef_periods(facts, concepts, "iso4217:EUR", "total_equity")
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "total_equity")
     assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(700.0)
 
+
+
+def test_esef_capex_dedupes_the_same_fact_tagged_twice():
+    # Two snapshots of one filing, or one snapshot read twice: the same tag,
+    # the same context, the same value. It is ONE fact, and adding it twice
+    # read 900+900+100 as the capex of the year.
+    concepts = _esef_concepts("capital_expenditure")
+    facts = _esef_capex(
+        **{
+            concepts[0]: [
+                _flow("2024-12-31", "2024-01-01", "900"),
+                _flow("2024-12-31", "2024-01-01", "900"),
+            ],
+            concepts[1]: [_flow("2024-12-31", "2024-01-01", "100")],
+        }
+    )
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
+    assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(1000.0)
+    assert coverage["ambiguous"] == {}
+    assert coverage["partial"] == {}
+
+
+def test_esef_rejects_a_period_with_conflicting_facts_for_one_tag():
+    # 900 and 950 for the same tag and period cannot both be the capex, and
+    # without a filing date there is nothing honest to rank them with: the
+    # period is refused, not averaged, summed or first-wins.
+    concepts = _esef_concepts("capital_expenditure")
+    facts = _esef_capex(
+        **{
+            concepts[0]: [
+                _flow("2024-12-31", "2024-01-01", "900"),
+                _flow("2024-12-31", "2024-01-01", "950"),
+            ],
+            concepts[1]: [_flow("2024-12-31", "2024-01-01", "100")],
+        }
+    )
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
+    assert "2024-12-31" not in merged
+    assert coverage["ambiguous"]["2024-12-31"] == {concepts[0]: ["900", "950"]}
+
+
+def test_esef_a_disclosed_total_still_wins_over_ambiguous_parts():
+    concepts = _esef_concepts("capital_expenditure")
+    facts = _esef_capex(
+        **{
+            concepts[0]: [
+                _flow("2024-12-31", "2024-01-01", "900"),
+                _flow("2024-12-31", "2024-01-01", "950"),
+            ],
+            concepts[2]: [_flow("2024-12-31", "2024-01-01", "1000")],
+        }
+    )
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
+    assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(1000.0)
+
+
+def test_esef_partial_coverage_is_explicit_and_not_published():
+    # The filer reports both parts in 2023 but only PP&E in 2024: the 2024
+    # subtotal is NOT the capex of the year, and publishing it as such inflates
+    # the FCF. The period is left unpublished and the gap is stated.
+    concepts = _esef_concepts("capital_expenditure")
+    facts = _esef_capex(
+        **{
+            concepts[0]: [
+                _flow("2024-12-31", "2024-01-01", "900"),
+                _flow("2023-12-31", "2023-01-01", "800"),
+            ],
+            concepts[1]: [_flow("2023-12-31", "2023-01-01", "100")],
+        }
+    )
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
+    assert sorted(merged) == ["2023-12-31"]
+    assert _decimal(merged["2023-12-31"]["val"]) == pytest.approx(900.0)
+    assert coverage["partial"] == {"2024-12-31": [concepts[1]]}
+
+
+def test_esef_a_part_the_filer_never_reports_is_not_partial():
+    # Absence is only a gap when the filer reports the concept elsewhere. A
+    # part that never appears can be zero or not applicable, and the sum of
+    # what IS reported stands as the complete metric.
+    concepts = _esef_concepts("capital_expenditure")
+    facts = _esef_capex(
+        **{concepts[0]: [_flow("2024-12-31", "2024-01-01", "900")]}
+    )
+    merged, coverage = _merge_esef_periods(facts, concepts, "iso4217:EUR", "capital_expenditure")
+    assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(900.0)
+    assert coverage["partial"] == {}
 
 # --------------------------------------------------------------------------
 # provider precedence
