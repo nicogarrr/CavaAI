@@ -145,6 +145,67 @@ def test_current_usage_filters_by_tenant():
     assert "db.info.get(\"tenant_id\")" in source
 
 
+def test_current_usage_isolates_two_tenants_functionally():
+    # Funcional, no inspeccion de fuente: dos tenants con importes distintos y
+    # cada sesion (db.info["tenant_id"]) debe ver solo su propio consumo.
+    from datetime import date
+    from decimal import Decimal
+    from uuid import uuid4
+
+    from app.core.database import SessionLocal, init_db
+    from app.models import BudgetUsage, Tenant
+    from app.services.budget import BudgetController
+
+    init_db()
+    db = SessionLocal()
+    suffix = uuid4().hex[:6]
+    tenant_a = Tenant(external_id=f"budget-a-{suffix}", name="Budget A")
+    tenant_b = Tenant(external_id=f"budget-b-{suffix}", name="Budget B")
+    db.add_all([tenant_a, tenant_b])
+    db.commit()
+    db.refresh(tenant_a)
+    db.refresh(tenant_b)
+    today = date.today()
+    db.add_all(
+        [
+            BudgetUsage(
+                tenant_id=tenant_a.id,
+                usage_date=today,
+                model="m",
+                workflow="w",
+                cost_eur=Decimal("1.25"),
+                token_count=1,
+            ),
+            BudgetUsage(
+                tenant_id=tenant_b.id,
+                usage_date=today,
+                model="m",
+                workflow="w",
+                cost_eur=Decimal("7.50"),
+                token_count=1,
+            ),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    controller = BudgetController()
+    db_a = SessionLocal()
+    db_a.info["tenant_id"] = tenant_a.id
+    usage_a = controller.current_usage(db_a)
+    db_b = SessionLocal()
+    db_b.info["tenant_id"] = tenant_b.id
+    usage_b = controller.current_usage(db_b)
+    db_a.close()
+    db_b.close()
+
+    assert usage_a["daily_cost_eur"] == pytest.approx(1.25)
+    assert usage_b["daily_cost_eur"] == pytest.approx(7.50)
+    assert usage_a["monthly_cost_eur"] == pytest.approx(1.25)
+    assert usage_b["monthly_cost_eur"] == pytest.approx(7.50)
+    assert usage_a["tenant_scoped"] and usage_b["tenant_scoped"]
+
+
 def test_knowledge_principles_batches_go_through_the_budget():
     import inspect
 

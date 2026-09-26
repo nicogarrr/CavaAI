@@ -758,4 +758,3 @@ class KnowledgeLibraryService:
             },
             "required": ["principles"],
         }
-
