@@ -178,6 +178,36 @@ def _quantize(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
 
 
+# Separacion de magnitud tolerable entre dos importes que se suman para un
+# peso de estructura de capital. 100x cubre "uno en miles y el otro en
+# unidades" con holgura; mas alla de eso las unidades no son comparables.
+_CAPITAL_SCALE_RATIO_LIMIT = Decimal("100")
+
+
+def _capital_amounts_share_scale(equity_value: Decimal, debt: Decimal) -> bool:
+    """¿Equity y debt estan expresados en la misma unidad?
+
+    El WACC necesita los dos en la misma escala. ``market_cap`` llega de
+    yfinance en unidades absolutas (2.5e11) mientras que ``total_debt`` llega
+    de los fatos declarados, cuya magnitud depende de la fuente (1e6 en
+    algunas, absoluta en otras). Sumarlos sin reconciliar no da un peso de
+    deuda "~pequeño", da un peso de deuda cero: con market cap 200M (real) y
+    debt 300 (millones), Dw salia 1,5e-6 y el WACC 18,0% donde correspondía
+    12,6%.
+
+    No se intenta deducir el factor: se declara la inconsistencia y el metodo
+    queda unavailable en vez de publicar un WACC con un error de 43%.
+    """
+    if debt == 0:
+        # Sin deuda el peso es 0 con cualquier escala; no hay conflicto.
+        return True
+    larger = max(equity_value, debt)
+    smaller = min(equity_value, debt)
+    if smaller <= 0:
+        return False
+    return larger / smaller <= _CAPITAL_SCALE_RATIO_LIMIT
+
+
 class MetricCalculationService:
     def calculate_all(self, db: Session, company: Company, persist: bool = True) -> list[MetricResult]:
         results = [self.calculate(db, company, metric, persist=persist) for metric in METRIC_DEFINITIONS]
@@ -743,17 +773,24 @@ class MetricCalculationService:
                 else:
                     missing.append(key)
 
+            # Solo valor de MERCADO para el peso de equity. `total_equity` es el
+            # patrimonio contable: usarlo como Ew del WACC mezcla market value
+            # con book value. Con market cap 10.000M, book equity 2.000M y debt
+            # 3.000M, el WACC correcto es 7,08% y con book equity salia 5,60%
+            # (-21%), y como el DCF escala con 1/(WACC-g) el valor de salida se
+            # desvía +48%. Si no hay market cap, el WACC no se calcula: se
+            # declara unavailable con el motivo (ver mas abajo).
             equity = self._match_alias(
                 db,
                 company,
-                ("market_cap", "market_capitalization", "total_equity"),
+                ("market_cap", "market_capitalization"),
                 anchor,
                 allow_latest=True,
             )
             if equity:
                 facts["equity_value"] = equity[1]
             else:
-                missing.append("market_cap_or_total_equity")
+                missing.append("market_cap")
 
             tax_rate, tax_trace, tax_facts = self._tax_rate_for_period(
                 db,
@@ -849,6 +886,17 @@ class MetricCalculationService:
             ):
                 best_facts = facts
                 best_missing = ["valid_rates_and_capital_weights"]
+                best_tax_trace = tax_trace
+                continue
+            if not _capital_amounts_share_scale(equity_value, debt):
+                # market_cap viene de yfinance en unidades absolutas; total_debt
+                # viene de los fatos declarados, cuya magnitud depende de la
+                # fuente. Sumarlos sin reconciliar daba Dw ~= 1,5e-6 en un
+                # emisor apalancado: WACC 18,0% donde correspondía 12,6% (-34%
+                # de valor de salida). No se adivina un factor de escala: se
+                # declara inconsistente.
+                best_facts = facts
+                best_missing = ["capital_amounts_scale_mismatch"]
                 best_tax_trace = tax_trace
                 continue
 

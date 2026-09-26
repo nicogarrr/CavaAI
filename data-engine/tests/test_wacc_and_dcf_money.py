@@ -1,0 +1,254 @@
+"""Bugs de dinero en el WACC y en el DCF.
+
+Cada test fija un error concreto que hacia que el numero publicado no
+correspondiera al modelo que el trace declaraba.
+
+1. El peso de equity del WACC caia a `total_equity` (patrimonio contable)
+   cuando no habia market cap. Book value mezclado con market value en el
+   mismo peso.
+2. `market_cap` (unidades absolutas de yfinance) y `total_debt` (magnitud
+   dependiente de la fuente) se sumaban sin reconciliar. Con market cap real
+   de 200M y debt de 300 (millones), el peso de deuda salia 1,5e-6 y el WACC
+   18,0% donde correspondia 12,6%.
+3. El motor pre-revenue clampeaba un margen de FCF negativo a +1%, convirtiendo
+   una quema de caja en un FCF positivo.
+"""
+
+from decimal import Decimal
+
+import pytest
+
+from app.services.metric_calculation_service import (
+    _capital_amounts_share_scale,
+    MetricCalculationService,
+)
+from app.valuation.dcf_fcff import DCFInputs, run_dcf
+
+PERIOD = "2025-12-31"
+
+
+# --------------------------------------------------------------------------
+# 1. El peso de equity debe ser valor de MERCADO
+# --------------------------------------------------------------------------
+
+
+def _wacc_facts(db, company, **overrides):
+    base = {
+        "risk_free_rate": "0.04",
+        "beta": "1.0",
+        "equity_risk_premium": "0.05",
+        "country_risk_premium": "0.01",
+        "interest_expense": "12",
+        "total_debt": "300",
+        "effective_tax_rate": "0.25",
+    }
+    base.update(overrides)
+    for metric, value in base.items():
+        if value is None:
+            continue
+        db.add(
+            _fact(company, metric, value, PERIOD, 2025, None)
+        )
+    db.flush()
+
+
+def _fact(company, metric, value, period, fiscal_year, fiscal_quarter):
+    from app.models import FinancialFact
+
+    return FinancialFact(
+        company_id=company.id,
+        metric=metric,
+        value=Decimal(value),
+        unit="USD",
+        period=period,
+        fiscal_year=fiscal_year,
+        fiscal_quarter=fiscal_quarter,
+        source_type="test_wacc_units",
+        is_reported=True,
+        confidence=Decimal("0.90"),
+    )
+
+
+TEST_TICKER = "TWACC"
+
+
+def _cleanup() -> None:
+    from sqlalchemy import delete, select
+
+    from app.core.database import SessionLocal, init_db
+    from app.models import CalculatedMetric, Company, FinancialFact
+
+    init_db()
+    db = SessionLocal()
+    try:
+        for company in db.scalars(
+            select(Company).where(Company.ticker == TEST_TICKER)
+        ).all():
+            db.execute(
+                delete(CalculatedMetric).where(
+                    CalculatedMetric.company_id == company.id
+                )
+            )
+            db.execute(
+                delete(FinancialFact).where(FinancialFact.company_id == company.id)
+            )
+            db.delete(company)
+        db.commit()
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def company_factory():
+    from tests.test_calculated_metrics import create_test_company
+
+    from app.core.database import SessionLocal
+
+    _cleanup()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db, ticker=TEST_TICKER, name="WACC Units Co")
+        yield db, company
+        db.rollback()
+    finally:
+        db.close()
+        _cleanup()
+
+
+def test_wacc_never_uses_book_equity_as_market_equity(company_factory):
+    """Sin market cap el WACC queda unavailable, no se sustituye por book value.
+
+    Con market cap 10.000M, book equity 2.000M y debt 3.000M el WACC correcto
+    es 7,08%; usando el patrimonio contable salia 5,60% (-21%). Como el DCF
+    escala con 1/(WACC-g), eso es +48% de valor de salida.
+    """
+    db, company = company_factory
+    _wacc_facts(db, company, total_debt="3000")
+    db.add(_fact(company, "total_equity", "2000", PERIOD, 2025, None))
+    db.commit()
+
+    result = MetricCalculationService().calculate(db, company, "wacc", persist=False)
+
+    assert result.status == "unavailable"
+    assert "market_cap" in " ".join(result.calculation_trace.get("missing_inputs", []))
+    # Y en ningún caso el valor publicado sale de un peso con book value.
+    assert result.value is None
+
+
+def test_wacc_uses_market_equity_when_available(company_factory):
+    db, company = company_factory
+    _wacc_facts(db, company, market_cap="10000", total_debt="3000")
+    db.add(_fact(company, "total_equity", "2000", PERIOD, 2025, None))
+    db.commit()
+
+    result = MetricCalculationService().calculate(db, company, "wacc", persist=False)
+
+    assert result.status == "ok"
+    assert result.calculation_trace["equity_value_source"] == "market_cap"
+    # E_w = 10000/13000, D_w = 3000/13000
+    assert Decimal(result.calculation_trace["equity_weight"]) == Decimal(10000) / Decimal(
+        13000
+    )
+    assert Decimal(result.calculation_trace["debt_weight"]) == Decimal(3000) / Decimal(
+        13000
+    )
+
+
+# --------------------------------------------------------------------------
+# 2. Escalas de importes incompatibles
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "equity,debt,expected",
+    [
+        (Decimal("10000"), Decimal("3000"), True),
+        (Decimal("200000000"), Decimal("300"), False),
+        (Decimal("10000"), Decimal("0"), True),
+        (Decimal("10000"), Decimal("-1"), False),
+    ],
+)
+def test_capital_scale_guard(equity, debt, expected):
+    assert _capital_amounts_share_scale(equity, debt) is expected
+
+
+def test_wacc_unavailable_when_capital_amounts_have_different_scales(company_factory):
+    """market cap en unidades absolutas y debt en millones no son comparables.
+
+    Con Ke 18% y Kd 9% el WACC correcto es 12,6%; sumando 300 contra
+    2,0e8 salia 18,0% (+43%), y el valor de salida un -34%.
+    """
+    db, company = company_factory
+    _wacc_facts(
+        db,
+        company,
+        risk_free_rate="0.08",
+        beta="1.5",
+        market_cap="200000000",
+        total_debt="300",
+        interest_expense="27",
+    )
+    db.commit()
+
+    result = MetricCalculationService().calculate(db, company, "wacc", persist=False)
+
+    assert result.status == "unavailable"
+    assert "capital_amounts_scale_mismatch" in " ".join(
+        result.calculation_trace.get("missing_inputs", [])
+    )
+
+
+# --------------------------------------------------------------------------
+# 3. El DCF no invierte el signo de una quema de caja
+# --------------------------------------------------------------------------
+
+
+def test_dcf_keeps_a_negative_fcf_margin_negative():
+    result = run_dcf(
+        DCFInputs(
+            revenue=1000.0,
+            revenue_growth=0.05,
+            fcf_margin=-0.15,
+            wacc=0.10,
+            terminal_growth=0.03,
+            net_debt=2000.0,
+            shares_outstanding=100.0,
+        )
+    )
+    assert all(row["fcf"] < 0 for row in result.forecast)
+    assert result.enterprise_value < 0
+    assert result.value_per_share < 0
+
+
+def test_dcf_reports_terminal_value_weight():
+    result = run_dcf(
+        DCFInputs(
+            revenue=1000.0,
+            revenue_growth=0.05,
+            fcf_margin=0.20,
+            wacc=0.10,
+            terminal_growth=0.03,
+            net_debt=0.0,
+            shares_outstanding=100.0,
+        )
+    )
+    share = result.trace["pv_terminal_share_of_ev"]
+    assert 0.0 < share < 1.0
+    assert result.trace["wacc_minus_growth"] == pytest.approx(0.07)
+
+
+def test_dcf_rejects_a_wacc_below_minus_one():
+    # (1 + wacc) ** year alternaria de signo y el valor presente seria
+    # inventado.
+    with pytest.raises(ValueError, match="greater than -1"):
+        run_dcf(
+            DCFInputs(
+                revenue=1000.0,
+                revenue_growth=0.0,
+                fcf_margin=0.1,
+                wacc=-1.5,
+                terminal_growth=-2.0,
+                net_debt=0.0,
+                shares_outstanding=100.0,
+            )
+        )

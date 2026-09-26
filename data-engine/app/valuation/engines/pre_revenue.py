@@ -117,8 +117,14 @@ class PreRevenueScenarioEngine(ValuationEngine):
             growth = default_growth(company)
 
         growth = max(min(growth, 0.60), -0.15)
-        # Allow thinner / negative-ish margins for early stage but clamp for DCF math.
-        margin = max(min(margin, 0.40), 0.01)
+        # Techo de margen, pero el suelo NO se clampa a positivo: un margen de
+        # FCF negativo significa que la empresa quema caja, y subirlo a +1%
+        # convertia una quema de 150M sobre 1.000M de ingresos (-15%) en un FCF
+        # positivo, subiendo el valor por accion de -44,03 a -18,40 (2,56bn de
+        # destruccion de valor oculta). run_dcf ya soporta el signo negativo y
+        # devuelve un EV negativo, que es lo correcto. Para las quemas, el
+        # modelo de funding-gap/dilucion es el que informa.
+        margin = min(margin, 0.40)
         wacc = default_wacc(company)
         terminal = default_terminal_growth(company)
         net_debt = snapshot.value("net_debt") or 0.0
