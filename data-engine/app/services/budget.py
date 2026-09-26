@@ -45,9 +45,20 @@ class BudgetController:
 
     def current_usage(self, db: Session) -> dict:
         today = date.today()
+        # BudgetUsage es TenantOwnedMixin, asi que el agregado tiene que
+        # filtrar por tenant. Sin el predicado, `db.scalar(select(sum(...)))`
+        # con una sola columna no dispara el with_loader_criteria de
+        # app/core/database.py y el total era GLOBAL: un solo tenant podia
+        # agotar el tope diario de todos los demas, y ningun tenant podia
+        # ver su propio consumo. La columna existia precisely para esto.
+        tenant_id = db.info.get("tenant_id")
+        tenant_filter = (
+            [] if tenant_id is None else [BudgetUsage.tenant_id == tenant_id]
+        )
         daily = db.scalar(
             select(func.coalesce(func.sum(BudgetUsage.cost_eur), 0)).where(
-                BudgetUsage.usage_date == today
+                BudgetUsage.usage_date == today,
+                *tenant_filter,
             )
         )
         month_start = today.replace(day=1)
@@ -59,6 +70,7 @@ class BudgetController:
             select(func.coalesce(func.sum(BudgetUsage.cost_eur), 0)).where(
                 BudgetUsage.usage_date >= month_start,
                 BudgetUsage.usage_date < next_month,
+                *tenant_filter,
             )
         )
         return {
@@ -66,6 +78,7 @@ class BudgetController:
             "monthly_cost_eur": float(monthly or 0),
             "daily_cap_eur": self.settings.llm_daily_cap_eur,
             "monthly_cap_eur": self.settings.llm_monthly_cap_eur,
+            "tenant_scoped": tenant_id is not None,
         }
 
     def can_spend(self, db: Session, estimated_cost_eur: float) -> bool:

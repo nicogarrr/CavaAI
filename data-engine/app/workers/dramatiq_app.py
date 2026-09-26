@@ -79,7 +79,14 @@ def _batch_status(processed: int, errors: list[dict]) -> str:
 
 
 def _run(coroutine):
-    return asyncio.run(coroutine)
+    """Ejecuta la corrutina del actor, venga de donde venga el loop.
+
+    Delega en el puente compartido en vez de abrir su propio executor por
+    llamada: asi los actores y los servicios sync comparten el mismo pool.
+    """
+    from app.services.async_bridge import run_from_any_context
+
+    return run_from_any_context(coroutine)
 
 
 def _session(tenant_id: int | None, user_id: str | None):
