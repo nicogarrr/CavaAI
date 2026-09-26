@@ -39,7 +39,10 @@ export default async function PortfolioPage() {
     const [summaryResult, transactionsResult, scoresResult, tearsheetResult] = await Promise.all([
       getPortfolioSummary(userId).then((value) => ({ value, error: null as string | null })).catch((error) => ({ value: null, error: error instanceof Error ? error.message : 'No se pudo cargar la cartera' })),
       getPortfolioTransactions(userId).then((value) => ({ value, error: null as string | null })).catch((error) => ({ value: [] as Awaited<ReturnType<typeof getPortfolioTransactions>>, error: error instanceof Error ? error.message : 'No se pudieron cargar los movimientos' })),
-      getPortfolioScores(userId).then((value) => ({ value, error: null as string | null })).catch((error) => ({ value: { quality: 0, growth: 0, value: 0, dividend: 0, cagr3y: 0 }, error: error instanceof Error ? error.message : 'No se pudieron cargar los factores' })),
+      // Un fallo al pedir los factores no son cinco ceros: son cinco fatores
+      // desconocidos, y la UI los pinta como "no disponible" en vez de
+      // "0,00", que es lo que se veia cuando el backend no respondia.
+      getPortfolioScores(userId).then((value) => ({ value, error: null as string | null })).catch((error) => ({ value: { quality: null, growth: null, value: null, dividend: null, cagr3y: null }, error: error instanceof Error ? error.message : 'No se pudieron cargar los factores' })),
       getPortfolioTearsheet(userId).then((value) => ({ value, error: null as string | null })).catch((error) => ({ value: null, error: error instanceof Error ? error.message : 'No se pudo cargar el historial' })),
     ]);
     if (!summaryResult.value) {
