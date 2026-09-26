@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.errors import safe_detail
 from app.models import Company
 from app.models.entities import WorkflowRun
 from app.services.workflow_run_service import WorkflowEnvelope, begin_run
@@ -169,7 +170,7 @@ async def run_workflow(
         except HTTPException:
             raise
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=safe_detail(exc, 500)) from exc
 
     if name == "DailyResearchWorkflow" and payload.params.get("news_items"):
         from app.schemas import NewsFeedItem

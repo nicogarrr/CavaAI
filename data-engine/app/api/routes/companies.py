@@ -10,6 +10,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.errors import safe_detail
 from app.models import (
     CalculatedMetric,
     Company,
@@ -840,7 +841,9 @@ async def refresh_fmp_financials(ticker: str, db: Session = Depends(get_db)) -> 
             client=FMPClient(),
         )
     except RuntimeError as exc:
-        raise HTTPException(status_code=424, detail=str(exc)) from exc
+        # El RuntimeError envuelve el texto del error de httpx, que lleva la
+        # URL completa con la api key del proveedor en la query.
+        raise HTTPException(status_code=424, detail=safe_detail(exc, 424)) from exc
     except httpx.HTTPStatusError as exc:
         # Sanitize: httpx exception text embeds the full request URL,
         # which carries the FMP api key - never log or return it.
@@ -871,7 +874,9 @@ async def refresh_sec_financials(ticker: str, db: Session = Depends(get_db)) -> 
         service = FinancialIngestionService()
         result = await service.refresh_from_sec(db=db, company=company)
     except RuntimeError as exc:
-        raise HTTPException(status_code=424, detail=str(exc)) from exc
+        # El RuntimeError envuelve el texto del error de httpx, que lleva la
+        # URL completa con la api key del proveedor en la query.
+        raise HTTPException(status_code=424, detail=safe_detail(exc, 424)) from exc
     # Completa el contrato FinancialRefreshResponse (la via SEC solo importa
     # hechos, no statements; el resumen se calcula aqui para no meter queries
     # extra en el servicio).
@@ -891,7 +896,9 @@ async def refresh_esef_financials(ticker: str, db: Session = Depends(get_db)) ->
         service = FinancialIngestionService()
         result = await service.refresh_from_esef(db=db, company=company)
     except RuntimeError as exc:
-        raise HTTPException(status_code=424, detail=str(exc)) from exc
+        # El RuntimeError envuelve el texto del error de httpx, que lleva la
+        # URL completa con la api key del proveedor en la query.
+        raise HTTPException(status_code=424, detail=safe_detail(exc, 424)) from exc
     result["statements_imported"] = 0
     return result
 
@@ -906,4 +913,6 @@ async def refresh_wacc_inputs(
     try:
         return await WaccInputService().refresh(db, company)
     except RuntimeError as exc:
-        raise HTTPException(status_code=424, detail=str(exc)) from exc
+        # El RuntimeError envuelve el texto del error de httpx, que lleva la
+        # URL completa con la api key del proveedor en la query.
+        raise HTTPException(status_code=424, detail=safe_detail(exc, 424)) from exc
