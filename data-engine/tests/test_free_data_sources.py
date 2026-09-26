@@ -168,6 +168,11 @@ class QuoteNoTimestampFMP(OkFMP):
         return [{"price": 21.5}]
 
 
+class QuoteBadTimestampFMP(OkFMP):
+    async def quote(self, ticker: str):
+        return [{"price": 21.5, "timestamp": "no-es-un-numero"}]
+
+
 class BrokenFMP:
     async def quote(self, ticker: str):
         raise RuntimeError("FMP down")
@@ -210,6 +215,8 @@ def test_chain_fmp_etiquetas_reales_y_readiness(db):
     assert bars[0].date == datetime(2026, 9, 25, tzinfo=UTC).date()
     assert bars[0].volume == 4321
     assert bars[0].close == Decimal("21.5")
+    # Spot no es barra ajustada: la fila nueva no afirma ajuste.
+    assert bars[0].adj_close is None
 
 
 def test_chain_fmp_quote_sin_timestamp_no_fabrica_barra(db):
@@ -224,6 +231,53 @@ def test_chain_fmp_quote_sin_timestamp_no_fabrica_barra(db):
     assert result["provider"] == "FMP"
     assert result["facts_imported"] > 0
     assert db.scalars(select(MarketPrice)).all() == []
+
+
+def test_chain_fmp_quote_malformada_no_tumba_el_refresh(db):
+    """Un timestamp no numerico no debe propagar excepcion tras importar
+    facts: el refresh termina y no se escribe barra sin fecha honesta."""
+    company = _company(db)
+    result = asyncio.run(
+        FinancialIngestionService().refresh_from_fmp(
+            db, company, client=QuoteBadTimestampFMP()
+        )
+    )
+    assert result["provider"] == "FMP"
+    assert result["facts_imported"] > 0
+    assert db.scalars(select(MarketPrice)).all() == []
+
+
+def test_chain_fmp_spot_no_pisa_adjusted_autentico(db):
+    """Un refresh spot del mismo dia actualiza el close pero preserva OHLC y
+    el adj_close real de la barra persistida por la via OHLCV."""
+    company = _company(db)
+    friday = datetime(2026, 9, 25, tzinfo=UTC).date()
+    db.add(
+        MarketPrice(
+            company_id=company.id,
+            date=friday,
+            open=Decimal("20.0"),
+            high=Decimal("22.0"),
+            low=Decimal("19.5"),
+            close=Decimal("21.0"),
+            adj_close=Decimal("19.25"),
+            volume=9000,
+            source="FMP",
+        )
+    )
+    db.flush()
+    asyncio.run(
+        FinancialIngestionService().refresh_from_fmp(db, company, client=OkFMP())
+    )
+    bars = db.scalars(select(MarketPrice)).all()
+    assert len(bars) == 1
+    bar = bars[0]
+    assert bar.close == Decimal("21.5")
+    assert bar.adj_close == Decimal("19.25")
+    assert bar.open == Decimal("20.0")
+    assert bar.high == Decimal("22.0")
+    assert bar.low == Decimal("19.5")
+    assert bar.volume == 4321
 
 
 def test_chain_fmp_caido_no_fabrica_ingesta(db):

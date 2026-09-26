@@ -574,7 +574,11 @@ class MarketPrice(Base, TimestampMixin):
     high: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     low: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     close: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
-    adj_close: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
+    # NULL = la fuente dio un spot, no una serie ajustada por splits/dividendos.
+    # Copiar close afirmaria un ajuste nunca realizado y un 0 fabricado hundia
+    # a cero los retornos compuestos; los consumidores tratan falsy como
+    # "sin dato ajustado" y lo saltan.
+    adj_close: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     # NULL = la fuente no da el volumen (spot sin dato); un 0 fabricado
     # coronaba al ticker como el menos activo con un dato inexistente.
     volume: Mapped[int | None] = mapped_column(Integer, nullable=True)

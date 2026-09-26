@@ -140,6 +140,8 @@ def test_ingest_market_persists_dated_sourced_price_and_market_cap(db):
     assert price_row is not None
     assert price_row.close == Decimal("190.5")
     assert price_row.volume == 12345
+    # Spot no es barra ajustada: la fila nueva no afirma ajuste.
+    assert price_row.adj_close is None
     assert price_row.source == "Finnhub"
     assert db.scalar(
         select(func.count()).select_from(MarketPrice).where(
@@ -363,3 +365,58 @@ def test_ingest_market_quote_sin_volumen_deja_null_no_cero(db):
     row = db.scalar(select(MarketPrice).where(MarketPrice.company_id == company.id))
     assert row is not None
     assert row.volume is None
+
+
+def test_ingest_market_spot_no_pisa_adjusted_autentico(db):
+    """La via OHLCV sembro una barra con adjusted real; una ingesta spot del
+    mismo dia actualiza el close y no toca adj_close ni OHLC."""
+    friday = datetime(2026, 9, 25, 20, 0, tzinfo=UTC)
+    company = _company(db)
+    db.add(
+        MarketPrice(
+            company_id=company.id,
+            date=friday.date(),
+            open=Decimal("185.0"),
+            high=Decimal("191.0"),
+            low=Decimal("184.0"),
+            close=Decimal("189.0"),
+            adj_close=Decimal("181.75"),
+            volume=50000,
+            source="Finnhub",
+        )
+    )
+    db.flush()
+    service = ThesisEvidenceService()
+    _stub_market(
+        service,
+        quote={"c": 190.5, "t": int(friday.timestamp())},
+        profile=None,
+    )
+    service._ingest_market(db, company)
+    db.commit()
+
+    rows = db.scalars(select(MarketPrice).where(MarketPrice.company_id == company.id)).all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.close == Decimal("190.5")
+    assert row.adj_close == Decimal("181.75")
+    assert row.open == Decimal("185.0")
+    assert row.high == Decimal("191.0")
+    assert row.low == Decimal("184.0")
+    assert row.volume == 50000
+
+
+def test_ingest_market_quote_malformada_no_propaga_excepcion(db):
+    company = _company(db)
+    service = ThesisEvidenceService()
+    _stub_market(service, quote={"c": 190.5, "t": "no-es-un-numero"}, profile=None)
+    result = service._ingest_market(db, company)
+    db.commit()
+
+    assert result["status"] == "pending"
+    assert "timestamp" in result["detail"]
+    assert db.scalar(
+        select(func.count()).select_from(MarketPrice).where(
+            MarketPrice.company_id == company.id
+        )
+    ) == 0

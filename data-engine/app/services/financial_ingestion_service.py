@@ -1529,24 +1529,33 @@ class FinancialIngestionService:
         price = _decimal(item.get("price"))
         if price is None or price <= 0:
             return
-        timestamp = int(item.get("timestamp") or 0)
-        if timestamp <= 0:
+        # Fallar cerrado ante payload malformado: un timestamp o volumen
+        # invalidos no deben tumbar el refresh financiero tras importar facts.
+        try:
+            timestamp = int(item.get("timestamp") or 0)
+            quote_date = datetime.fromtimestamp(timestamp, tz=UTC).date() if timestamp > 0 else None
+        except (TypeError, ValueError, OverflowError, OSError):
+            quote_date = None
+        if quote_date is None or quote_date > datetime.now(UTC).date():
             return
-        quote_date = datetime.fromtimestamp(timestamp, tz=UTC).date()
-        if quote_date > datetime.now(UTC).date():
-            return
-        raw_volume = item.get("volume")
-        volume = int(raw_volume) if raw_volume is not None else None
+        try:
+            volume = int(item["volume"]) if item.get("volume") is not None else None
+        except (TypeError, ValueError):
+            volume = None
         existing = db.scalar(
             select(MarketPrice).where(MarketPrice.company_id == company.id, MarketPrice.date == quote_date)
         )
         if existing:
+            # La fila existente es una barra real: se actualiza solo el close
+            # y se preservan OHLC y el adjusted autentico de esa fecha.
             existing.close = price
-            existing.adj_close = price
             if volume is not None:
                 existing.volume = volume
             existing.source = "FMP"
             return
+        # Una quote spot no es una barra ajustada: adj_close queda NULL en vez
+        # de copiar close, que afirmaria un ajuste nunca realizado y
+        # corromperia total-return/beta/Sharpe sobre splits o dividendos.
         db.add(
             MarketPrice(
                 company_id=company.id,
@@ -1555,7 +1564,7 @@ class FinancialIngestionService:
                 high=price,
                 low=price,
                 close=price,
-                adj_close=price,
+                adj_close=None,
                 volume=volume,
                 source="FMP",
             )
