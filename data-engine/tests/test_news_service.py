@@ -5,6 +5,8 @@ on word boundaries only, duplicates must be skipped deterministically,
 and ingest accounting must be exact.
 """
 
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -86,3 +88,34 @@ def test_ingest_skips_duplicates_and_accounts_exactly(db):
     assert second.received == 2
     assert second.created == 0
     assert second.skipped_duplicates == 2
+
+
+
+def test_ingest_preserves_source_publication_date(db):
+    """Un filing de 2025 no puede aparecer con la fecha de ingesta (F73)."""
+    filing_date = datetime(2025, 10, 15, 14, 30, tzinfo=UTC)
+    response = NewsService().ingest_news_items(
+        db,
+        [NewsFeedItem(
+            title="Apple files 10-K annual report",
+            text="Apple 10-K",
+            ticker="AAPL",
+            url="https://sec.gov/x",
+            published_at=filing_date,
+        )],
+    )
+    assert response.created == 1
+    event = db.query(NewsEvent).filter_by(url="https://sec.gov/x").one()
+    assert event.date.replace(tzinfo=UTC) == filing_date
+
+
+def test_ingest_without_source_date_falls_back_to_now(db):
+    """Sin fecha de fuente, la de ingesta es el fallback legitimo."""
+    response = NewsService().ingest_news_items(
+        db,
+        [NewsFeedItem(title="Noticia manual sin fecha fuente", text="manual", url="https://example.com/1")],
+    )
+    assert response.created == 1
+    event = db.query(NewsEvent).filter_by(url="https://example.com/1").one()
+    age = datetime.now(UTC) - event.date.replace(tzinfo=UTC)
+    assert age.total_seconds() < 3600

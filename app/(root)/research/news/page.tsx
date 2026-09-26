@@ -132,11 +132,6 @@ export default async function ResearchNewsPage() {
                           event.title
                         )}
                       </div>
-                      {event.materiality_reasons?.length ? (
-                        <div className="mt-1 truncate text-xs text-gray-500">
-                          {event.materiality_reasons.slice(0, 3).join(' | ')}
-                        </div>
-                      ) : null}
                     </td>
                     <td className="py-3 text-gray-400">
                       <div>{event.source}</div>

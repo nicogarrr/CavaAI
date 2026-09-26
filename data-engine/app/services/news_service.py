@@ -58,6 +58,7 @@ class NewsService:
         source: str,
         url: str | None,
         ticker: str | None = None,
+        published_at: datetime | None = None,
     ) -> ManualNewsResponse:
         company = self._company_for_item(db, text, ticker)
         # Gate Jev (3): duplicate/noise con confianza >= 0.85 -> via ligera:
@@ -132,7 +133,11 @@ class NewsService:
             pass
         news = NewsEvent(
             company_id=company.id if company else None,
-            date=datetime.now(UTC),
+            # La fecha del evento es la de publicacion de la fuente (filing,
+            # noticia), no la de ingesta: con la de ingesta, una tanda de
+            # filings de 2025 aparecia como "100 eventos de hoy" y las
+            # urgencias por recencia se disparaban sobre historia antigua.
+            date=published_at or datetime.now(UTC),
             title=summary[:180],
             source=source,
             url=url,
@@ -259,6 +264,7 @@ class NewsService:
                     source=item.source or default_source,
                     url=item.url,
                     ticker=item.ticker,
+                    published_at=item.published_at,
                 )
             )
 
