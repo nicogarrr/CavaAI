@@ -98,6 +98,42 @@ def _date_value(value: Any) -> str | None:
     return str(value)
 
 
+def _current_price_with_date(
+    db: Session, company_id: int
+) -> tuple[float | None, str | None, str | None]:
+    """Return ``(price, as_of, source)`` for the company's current quote.
+
+    ``MarketPrice`` is the quote table and is preferred, ordered by date. The
+    portfolio ``Position.market_price`` is only a holding mark: consulting it
+    first (and without an ORDER BY, so non-deterministically when the company
+    sits in several portfolios) made the reverse DCF answer "the current price
+    requires 3% growth" off a three-year-old purchase price instead of today's
+    close.
+    """
+    market = db.scalar(
+        select(MarketPrice)
+        .where(MarketPrice.company_id == company_id)
+        .order_by(desc(MarketPrice.date))
+        .limit(1)
+    )
+    if market is not None:
+        close = _float(market.close)
+        if close is not None and close > 0:
+            return close, _date_value(market.date), "market_price"
+
+    position = db.scalar(
+        select(Position)
+        .where(Position.company_id == company_id, Position.market_price.is_not(None))
+        .order_by(desc(Position.updated_at))
+        .limit(1)
+    )
+    if position is not None:
+        mark = _float(position.market_price)
+        if mark is not None and mark > 0:
+            return mark, _date_value(position.as_of), "position_mark_fallback"
+    return None, None, None
+
+
 def _unique_ids(*facts: FinancialFact | None, ids: list[int] | None = None) -> list[int]:
     result = list(ids or [])
     for fact in facts:
@@ -218,7 +254,7 @@ class LongTermModelService:
         latest_year = years[-1] if years else None
         history = self._history_rows(fact_cache, years)
 
-        current_price = self._current_price(db, company.id)
+        current_price, market_as_of, market_price_source = _current_price_with_date(db, company.id)
         current = history[-1] if history else {
             "period": None,
             "fiscal_year": None,
@@ -496,6 +532,12 @@ class LongTermModelService:
                 "fact_count": sum(len(items) for items in fact_cache.values()),
                 "annual_periods": years,
                 "wacc": assumption_meta.get("wacc_trace"),
+                # The market fingerprint hashes this key. Without it two quotes
+                # of the same price on different dates were indistinguishable,
+                # so the valuation snapshot match overwrote history instead of
+                # versioning it.
+                "market_as_of": market_as_of,
+                "market_price_source": market_price_source,
             },
         }
         persisted = FundamentalModelRepository().persist(db, company, payload, commit=commit)
@@ -795,11 +837,19 @@ class LongTermModelService:
 
         tax_rate = ratio_assumption("effective_tax_rate", "income_tax_expense", "income_before_tax")
         if tax_rate.value is not None:
+            raw_tax = tax_rate.value
+            clamped_tax = max(0.0, min(raw_tax, 0.60))
             tax_rate = Assumption(
-                value=max(0, min(tax_rate.value, 0.60)),
+                value=clamped_tax,
                 unit="decimal",
                 source_type=tax_rate.source_type,
-                basis=tax_rate.basis,
+                basis=(
+                    f"clamped from {raw_tax} (negative effective tax rates come from "
+                    "non-operating charges and would otherwise inflate NOPAT, which "
+                    "maximises it)"
+                    if clamped_tax != raw_tax
+                    else tax_rate.basis
+                ),
                 source_fact_ids=tax_rate.source_fact_ids,
                 confidence=tax_rate.confidence,
             )
@@ -1100,19 +1150,33 @@ class LongTermModelService:
                 if cash_after_planned_debt is not None
                 else None
             )
+            # Unknown EBITDA does not mean zero borrowing capacity. Coercing it
+            # to 0.0 turned a whole funding gap into primary equity issuance:
+            # a company with 200 of EBITDA and no debt would have funded 50 of
+            # gap with debt, but the same company without an ebitda fact
+            # funded it 100% with equity and invented ~5% of dilution.
             debt_capacity = (
                 max(0.0, ebitda * 3.0 - planned_debt)
                 if ebitda is not None and planned_debt is not None
-                else 0.0
+                else None
             )
             new_debt_for_gap = (
-                min(funding_gap, debt_capacity) if funding_gap is not None else None
+                min(funding_gap, debt_capacity)
+                if funding_gap is not None and debt_capacity is not None
+                else None
             )
             equity_issuance = (
                 max(0.0, funding_gap - (new_debt_for_gap or 0.0))
                 if funding_gap is not None
                 else None
             )
+            if funding_gap is not None and debt_capacity is None:
+                # The split between debt and equity is unknown, so neither leg
+                # can be asserted. Report the gap and refuse to guess the mix.
+                equity_issuance = None
+                funding_mix_status = "insufficient_data"
+            else:
+                funding_mix_status = "ok"
             incremental_shares = (
                 equity_issuance / book_value_per_share
                 if equity_issuance is not None
@@ -1192,12 +1256,22 @@ class LongTermModelService:
             }
             funding_model = {
                 "status": (
-                    "complete_baseline"
-                    if previous_cash is not None
-                    and previous_debt is not None
-                    and debt_trend is not None
-                    and (equity_issuance in (None, 0) or incremental_shares is not None)
-                    else "partial_unknowns"
+                    "insufficient_data"
+                    if funding_mix_status == "insufficient_data"
+                    else (
+                        "complete_baseline"
+                        if previous_cash is not None
+                        and previous_debt is not None
+                        and debt_trend is not None
+                        and (equity_issuance in (None, 0) or incremental_shares is not None)
+                        else "partial_unknowns"
+                    )
+                ),
+                "funding_mix_status": funding_mix_status,
+                "funding_mix_missing_inputs": (
+                    ["ebitda", "total_debt"]
+                    if funding_mix_status == "insufficient_data" and funding_gap
+                    else []
                 ),
                 "opening_cash": previous_cash,
                 "operating_cash_generation": operating_cash_flow,
@@ -1290,6 +1364,9 @@ class LongTermModelService:
     ) -> dict[str, Any]:
         latest_revenue = self._value_for_year(fact_cache["revenue"], latest_year)
         net_debt = self._value_for_year(fact_cache["net_debt"], latest_year)
+        current_shares = self._value_for_year(
+            fact_cache.get("shares_diluted") or [], latest_year
+        )
         dcf = None
         valuation_note = None
         terminal_shares = forecast[-1].get("shares_diluted") if forecast else None
@@ -1311,10 +1388,19 @@ class LongTermModelService:
                 pv_terminal = terminal_value / ((1 + spec["wacc"]) ** len(forecast))
                 enterprise_value = pv_explicit + pv_terminal
                 equity_value = enterprise_value - net_debt
+                # The discounted stream is pure FCFF, so the equity value it
+                # supports belongs to the shares outstanding *at the valuation
+                # date*. Dividing by the fully diluted TERMINAL share count
+                # charged the whole primary issuance against value per share
+                # while its proceeds were never added to the stream: with a
+                # 250M-share raise the same enterprise value reported 1.07
+                # instead of 1.60 (-33%), a number produced entirely by a
+                # dilution whose cash is not in the numerator.
+                valuation_shares = current_shares if current_shares not in (None, 0) else terminal_shares
                 dcf = {
                     "enterprise_value": enterprise_value,
                     "equity_value": equity_value,
-                    "value_per_share": equity_value / terminal_shares,
+                    "value_per_share": equity_value / valuation_shares,
                     "trace": {
                         "method": "explicit_driver_fcff_dcf",
                         "pv_explicit_fcf": pv_explicit,
@@ -1322,7 +1408,21 @@ class LongTermModelService:
                         "terminal_value": terminal_value,
                         "pv_terminal_value": pv_terminal,
                         "current_net_debt": net_debt,
+                        "valuation_shares": valuation_shares,
+                        "valuation_shares_basis": (
+                            "shares_at_valuation_date"
+                            if current_shares not in (None, 0)
+                            else "terminal_shares_fallback_no_current_count"
+                        ),
                         "terminal_diluted_shares": terminal_shares,
+                        "forward_dilution_pct": (
+                            (terminal_shares - valuation_shares) / valuation_shares
+                            if terminal_shares is not None and valuation_shares
+                            else None
+                        ),
+                        "terminal_value_share": (
+                            pv_terminal / enterprise_value if enterprise_value else None
+                        ),
                     },
                 }
         first = forecast[0] if forecast else None
@@ -1438,11 +1538,13 @@ class LongTermModelService:
                 years=horizon,
             )
         )
+        required = solved.get("required_revenue_growth")
+        base_growth = assumptions["revenue_growth"].value or 0
         return {
-            "status": "ok",
+            "status": solved.get("status", "ok"),
             **solved,
             "base_revenue_growth": assumptions["revenue_growth"].value,
-            "growth_gap_vs_base": solved["required_revenue_growth"] - (assumptions["revenue_growth"].value or 0),
+            "growth_gap_vs_base": (required - base_growth) if required is not None else None,
             "source_fact_ids": _unique_ids(ids=assumptions["revenue_growth"].source_fact_ids + assumptions["fcf_margin"].source_fact_ids),
             "trace": {**solved["trace"], "source_fact_ids": assumptions["revenue_growth"].source_fact_ids + assumptions["fcf_margin"].source_fact_ids, "horizon_years": horizon},
         }
@@ -1560,9 +1662,14 @@ class LongTermModelService:
             roic = base_scenario["terminal_year"]["roic"]
             wacc = assumptions["wacc"].value
             conditions.append({"id": "roic_above_wacc", "condition": "ROIC must remain above WACC to create value", "value": roic, "comparison": wacc, "unit": "decimal", "source_fact_ids": base_scenario["terminal_year"]["evidence"]["roic"]["source_fact_ids"], "status": "monitor"})
-        if reverse_dcf.get("status") == "ok":
+        if reverse_dcf.get("status") == "ok" and reverse_dcf.get("required_revenue_growth") is not None:
             required = reverse_dcf["required_revenue_growth"]
             conditions.append({"id": "price_expectations", "condition": f"The current price requires revenue growth of about {required:.1%}", "value": required, "unit": "decimal", "source_fact_ids": reverse_dcf.get("source_fact_ids", []), "status": "valuation_implied"})
+        elif reverse_dcf.get("out_of_bounds"):
+            # The price is outside every valueable scenario: there is no
+            # required growth to state, and inventing one from the search
+            # bound would read as a forecast.
+            conditions.append({"id": "price_expectations", "condition": f"The current price is outside the valueable range: {reverse_dcf.get('reason', 'no achievable growth reproduces this price')}", "value": None, "unit": "decimal", "source_fact_ids": reverse_dcf.get("source_fact_ids", []), "status": "out_of_bounds"})
         if self._fact_for_year(fact_cache["shares_diluted"], latest_year) is not None:
             conditions.append({"id": "share_count", "condition": "Share count must not expand faster than the model assumption", "value": assumptions["shares_cagr"].value, "unit": "decimal", "source_fact_ids": assumptions["shares_cagr"].source_fact_ids, "status": "monitor"})
         market_share = market_opportunity.get("market_share", {})
@@ -1633,11 +1740,8 @@ class LongTermModelService:
 
     @staticmethod
     def _current_price(db: Session, company_id: int) -> float | None:
-        position = db.scalar(select(Position).where(Position.company_id == company_id).limit(1))
-        if position and _float(position.market_price) and (_float(position.market_price) or 0) > 0:
-            return _float(position.market_price)
-        market = db.scalar(select(MarketPrice).where(MarketPrice.company_id == company_id).order_by(desc(MarketPrice.date)).limit(1))
-        return _float(market.close) if market and _float(market.close) and (_float(market.close) or 0) > 0 else None
+        price, _as_of, _source = _current_price_with_date(db, company_id)
+        return price
 
     @staticmethod
     def _metric_value(value: float | None, unit: str, source_fact_ids: list[int], calculation: str) -> dict[str, Any]:

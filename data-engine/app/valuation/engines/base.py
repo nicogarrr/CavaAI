@@ -2,18 +2,98 @@
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import Company
+from app.models import CalculatedMetric, Company
 from app.valuation.financial_snapshot import FinancialSnapshot, FinancialSnapshotBuilder
 from app.valuation.moat_framework import empty_moat_framework
 
 
-MODEL_VERSION = "valuation-engines-v1"
+# v2: net_debt is a required DCF input (no longer coerced to zero debt), the
+# FCF-margin clamp no longer flips the sign of a known-negative margin, the
+# traceable WACC is preferred over the tag default, and the reverse DCF
+# withholds its value when the price is out of bounds. Snapshots persisted
+# under v1 were computed with a fabricated net_debt and are not comparable.
+MODEL_VERSION = "valuation-engines-v2"
+
+
+def traceable_wacc(db: Session, company: Company) -> float | None:
+    """Return the persisted, traceable WACC for this company, if any.
+
+    ``metric_calculation_service`` / ``WaccInputService`` already compute a
+    dated, sourced WACC (risk-free + ERP + beta + capital-structure weights).
+    The valuation engines must prefer it over the tag-based policy default so
+    the same company is not discounted at 10% and 6.2% depending on which
+    module answers.
+    """
+    metric = db.scalar(
+        select(CalculatedMetric)
+        .where(
+            CalculatedMetric.company_id == company.id,
+            CalculatedMetric.metric == "wacc",
+            CalculatedMetric.status == "ok",
+            CalculatedMetric.value.is_not(None),
+        )
+        .order_by(
+            CalculatedMetric.fiscal_year.desc().nullslast(),
+            desc(CalculatedMetric.created_at),
+        )
+        .limit(1)
+    )
+    if metric is None or metric.value is None:
+        return None
+    value = float(metric.value)
+    if not math.isfinite(value) or not 0.0 < value < 1.0:
+        return None
+    return value
+
+
+def clamp_fcf_margin(margin: float, *, ceiling: float) -> tuple[float, bool]:
+    """Clamp a known FCF margin without ever flipping its sign.
+
+    A negative FCF margin is a *known fact* (the company burns cash), not a
+    degenerate input, so it is preserved. Only the ceiling is applied.
+    """
+    clamped = min(margin, ceiling)
+    return clamped, clamped != margin
+
+
+# A fact's `shares_diluted` comes from the filing in ORDINARY shares while the
+# quote is an ADR price. Dividing one by the other is an N-times error, so the
+# ratio has to be explicit. It is encoded in factor_tags as "adr:N" (N ordinary
+# shares per ADR) to avoid a schema change; a company tagged "adr" without a
+# ratio is refused instead of being valued at the wrong multiple.
+ADR_TAG_PREFIX = "adr:"
+
+
+def adr_ratio(company: Company) -> float | None:
+    """Ordinary shares represented by one ADR, or ``None`` if not applicable."""
+    for tag in company.factor_tags or []:
+        text = str(tag).strip().lower()
+        if text.startswith(ADR_TAG_PREFIX):
+            try:
+                ratio = float(text[len(ADR_TAG_PREFIX):])
+            except ValueError:
+                return None
+            return ratio if ratio > 0 else None
+    return None
+
+
+def is_adr_without_ratio(company: Company) -> bool:
+    """True for any ADR marker (bare ``adr`` or ``adr:N``) with no usable ratio.
+
+    A malformed ratio must refuse too: falling back to "no ratio" would let an
+    ``adr:0`` slip through as if the company were not an ADR.
+    """
+    tags = {str(tag).strip().lower() for tag in (company.factor_tags or [])}
+    is_adr = "adr" in tags or any(tag.startswith(ADR_TAG_PREFIX) for tag in tags)
+    return is_adr and adr_ratio(company) is None
 
 
 @dataclass

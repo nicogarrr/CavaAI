@@ -76,16 +76,45 @@ def solve_required_growth(inputs: ReverseDCFInputs, iterations: int = 60) -> dic
     required_growth = (low + high) / 2
     result_value = _value_at(inputs, required_growth)
 
+    if out_of_bounds:
+        # Outside the valueable growth range the bisection saturates at a
+        # bound, so ``required_growth`` is an artefact of the search grid and
+        # not a growth rate the model can produce. Returning the saturated
+        # number made consumers publish "the price requires -25% revenue
+        # growth" when the truth is "the price is outside every valueable
+        # scenario", so the value is withheld and only the bounds are reported.
+        return {
+            "required_revenue_growth": None,
+            "market_price": inputs.market_price,
+            "solved_value_per_share": result_value,
+            "out_of_bounds": True,
+            "status": "out_of_bounds",
+            "reason": (
+                f"market_price {inputs.market_price} is outside the valueable range "
+                f"[{floor}, {ceiling}] for growth in "
+                f"[{inputs.low_growth}, {inputs.high_growth}]; no required growth exists"
+            ),
+            "trace": {
+                "method": "binary_search_reverse_dcf",
+                "iterations": iterations,
+                "growth_bounds": [inputs.low_growth, inputs.high_growth],
+                "bound_values": [low_value, high_value],
+                "saturated_growth": required_growth,
+                "out_of_bounds": True,
+            },
+        }
+
     return {
         "required_revenue_growth": required_growth,
         "market_price": inputs.market_price,
         "solved_value_per_share": result_value,
-        "out_of_bounds": out_of_bounds,
+        "out_of_bounds": False,
+        "status": "ok",
         "trace": {
             "method": "binary_search_reverse_dcf",
             "iterations": iterations,
             "growth_bounds": [inputs.low_growth, inputs.high_growth],
             "bound_values": [low_value, high_value],
-            "out_of_bounds": out_of_bounds,
+            "out_of_bounds": False,
         },
     }

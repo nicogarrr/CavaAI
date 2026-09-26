@@ -16,8 +16,6 @@ from sqlalchemy.orm import Session
 from app.models.entities import Base, Company, MarketPrice, Position, Transaction
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 
-TODAY = date.today()
-
 
 @pytest.fixture
 def db():
@@ -52,17 +50,18 @@ def _company(db: Session) -> Company:
 
 
 def test_returns_from_adj_close_ratios(db):
+    today = date.today()
     company = _company(db)
     _prices(db, company, [
-        (TODAY - timedelta(days=2), "100"),
-        (TODAY - timedelta(days=1), "110"),
-        (TODAY, "99"),
+        (today - timedelta(days=2), "100"),
+        (today - timedelta(days=1), "110"),
+        (today, "99"),
     ])
     service = PortfolioIntelligenceService()
     series = db.query(MarketPrice).order_by(MarketPrice.date).all()
     returns = service._returns(series)
-    assert returns[TODAY - timedelta(days=1)] == pytest.approx(0.10)
-    assert returns[TODAY] == pytest.approx(-0.10)
+    assert returns[today - timedelta(days=1)] == pytest.approx(0.10)
+    assert returns[today] == pytest.approx(-0.10)
 
 
 def test_portfolio_returns_renormalize_active_weights():
@@ -102,7 +101,17 @@ def test_historical_var_requires_enough_observations():
     assert cvar == pytest.approx((-0.050 - 0.049 - 0.048 - 0.047 - 0.046 - 0.045) / 6)
 
 
-def test_xirr_money_weighted_return(db):
+def test_xirr_money_weighted_return(db, monkeypatch):
+    today = date.today()
+
+    class _FixedDate(date):
+        @classmethod
+        def today(cls):
+            return today
+
+    import app.services.portfolio_intelligence_service as pi_module
+
+    monkeypatch.setattr(pi_module, "date", _FixedDate)
     company = _company(db)
     service = PortfolioIntelligenceService()
     from app.services.portfolio_fx_service import PortfolioFXService
@@ -111,7 +120,7 @@ def test_xirr_money_weighted_return(db):
     db.add(
         Transaction(
             portfolio_id=portfolio.id, company_id=company.id,
-            trade_date=TODAY - timedelta(days=365), action="buy",
+            trade_date=today - timedelta(days=365), action="buy",
             quantity=Decimal("10"), price=Decimal("100"), currency="EUR",
             external_id="xirr-1",
         )
@@ -119,7 +128,7 @@ def test_xirr_money_weighted_return(db):
     position = Position(
         portfolio_id=portfolio.id, company_id=company.id,
         quantity=Decimal("10"), market_price=Decimal("110"),
-        market_value_base=Decimal("1100"), currency="EUR", as_of=TODAY,
+        market_value_base=Decimal("1100"), currency="EUR", as_of=today,
     )
     db.add(position)
     db.commit()
