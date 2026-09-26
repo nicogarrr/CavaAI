@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 const runUiE2E = process.env.E2E_UI_RUN === "1";
@@ -8,23 +8,34 @@ const e2eResearchSecret =
   process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
 
 // /research/MSFT solo renderiza el workspace si la empresa existe: el spec
-// asegura su propio dato en vez de depender del estado de otros specs
-// (misma firma que el harness de playwright.config).
+// asegura su propio dato en vez de depender del estado de otros specs.
+// Firma ligada al request (nonce + metodo + ruta + sha256 del cuerpo), la
+// misma que e2e/fixtures/research-api.ts: sirve contra backend leniente y
+// contra research_auth_strict_binding=True (el default).
 test.beforeAll(async () => {
   if (!runUiE2E) return;
+  const path = "/api/companies/ensure";
+  const body = JSON.stringify({ ticker: "MSFT", name: "Microsoft Corporation" });
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const res = await fetch(`${uiBackendURL}/api/companies/ensure`, {
+  const nonce = randomUUID().replaceAll("-", "");
+  const bodyHash = createHash("sha256").update(body).digest("hex");
+  const signature = createHmac("sha256", e2eResearchSecret)
+    .update(`e2e-api-tenant:e2e-api-user:${timestamp}:${nonce}:POST:${path}:${bodyHash}`)
+    .digest("hex");
+  const res = await fetch(`${uiBackendURL}${path}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "X-CavaAI-Tenant": "e2e-api-tenant",
       "X-CavaAI-User": "e2e-api-user",
       "X-CavaAI-Timestamp": timestamp,
-      "X-CavaAI-Signature": createHmac("sha256", e2eResearchSecret)
-        .update(`e2e-api-tenant:e2e-api-user:${timestamp}`)
-        .digest("hex"),
+      "X-CavaAI-Nonce": nonce,
+      "X-CavaAI-Method": "POST",
+      "X-CavaAI-Path": path,
+      "X-CavaAI-Body-Hash": bodyHash,
+      "X-CavaAI-Signature": signature,
     },
-    body: JSON.stringify({ ticker: "MSFT", name: "Microsoft Corporation" }),
+    body,
   });
   if (!res.ok) throw new Error(`ensure MSFT fallo: ${res.status} ${await res.text()}`);
 });
