@@ -28,6 +28,7 @@ Comparison contract (honest by construction):
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Any
 
 from langgraph.types import Command
@@ -35,12 +36,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Company, ThesisVersion
+from app.services.company_resolver import resolve_company
 from app.services.thesis_job_service import THESIS_PHASES
 from app.services.workflow_run_service import begin_run
-
-
-from contextlib import contextmanager
-from app.services.company_resolver import resolve_company
 
 
 @contextmanager

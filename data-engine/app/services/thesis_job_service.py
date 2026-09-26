@@ -304,8 +304,15 @@ def run_thesis_job(run_id: int) -> None:
                 tenant_id=tenant.id if tenant is not None else None,
             )
             db.add(step)
-            db.commit()
+            # flush, never commit: ThesisService.generate() holds a SAVEPOINT
+            # open for the whole generation and a commit here closes it, which
+            # made the documented atomicity impossible and turned any later
+            # failure into a ResourceClosedError that masked the real cause.
+            # Progress stays visible in the same transaction; the failure
+            # handler re-creates the step it was running.
+            db.flush()
             state["open_step"] = step
+            state["open_step_name"] = name
 
         try:
             from app.services.thesis_service import ThesisService
@@ -331,19 +338,35 @@ def run_thesis_job(run_id: int) -> None:
             run.finished_at = datetime.now(UTC)
             db.commit()
         except Exception as exc:
+            # The rollback discards the step rows flushed by on_phase, so the
+            # in-memory `open_step` is expunged and its identity is gone. The
+            # progress already flushed is intentionally lost with the failed
+            # attempt: the run row is what a reconciler reads, and a step that
+            # survives a rolled-back attempt would describe work that was
+            # undone. Capture the step NAME before the rollback so the failure
+            # handler can re-create the step it was running.
+            open_step_name = (
+                state["open_step_name"] if state.get("open_step") is not None else None
+            )
             db.rollback()
             run = db.get(
                 WorkflowRun, run_id, execution_options={"include_all_tenants": True}
             )
             retryable = _is_retryable_error(exc)
             if run is not None:
-                open_step = state["open_step"]
-                if open_step is not None:
-                    step = db.get(WorkflowStepRun, int(open_step.id))
-                    if step is not None and step.status == "running":
-                        step.status = "retrying" if retryable else "failed"
-                        step.error_class = type(exc).__name__
-                        step.finished_at = None if retryable else datetime.now(UTC)
+                if open_step_name is not None:
+                    step = WorkflowStepRun(
+                        run_id=run.id,
+                        step_name=open_step_name,
+                        position=int(state["position"]),
+                        attempt=int(run.attempt or 1),
+                        status="retrying" if retryable else "failed",
+                        started_at=now,
+                        finished_at=None if retryable else datetime.now(UTC),
+                        error_class=type(exc).__name__,
+                        tenant_id=tenant.id if tenant is not None else None,
+                    )
+                    db.add(step)
                 run.error_class = type(exc).__name__
                 run.error_message = (
                     "Transient failure; delivery will be retried"

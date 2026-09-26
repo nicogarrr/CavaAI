@@ -6,6 +6,17 @@ import { AppError } from '@/lib/types/errors';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
+// Destino fijo: los unicos años exportables son 2000-2100 y cada uno mapea a
+// una ruta constante construida desde literales. El valor remoto (`year`)
+// solo se usa como clave del mapa, nunca para componer la URL, de modo que
+// ningun dato del cliente llega al fetch (CodeQL js/request-forgery).
+const EXPORT_PATHS: Readonly<Record<number, string>> = Object.fromEntries(
+    Array.from({ length: 101 }, (_, i) => {
+        const y = 2000 + i;
+        return [y, `/api/export/${y}`];
+    }),
+);
+
 export type ExportFormat = 'csv' | 'json';
 
 export interface ExportResult {
@@ -25,19 +36,42 @@ export async function exportJournal(year: number, format: ExportFormat = 'csv'):
         throw new AppError('Año de exportación inválido', 'VALIDATION_ERROR', 400);
     }
 
+    // `format` es una union de TypeScript: no valida nada en runtime.
+    if (format !== 'csv' && format !== 'json') {
+        throw new AppError('Formato de exportación inválido', 'VALIDATION_ERROR', 400);
+    }
+
+    // La peticion sale hacia el backend configurado y nada mas: la ruta sale
+    // del mapa de constantes (year solo actua de clave), se fija el origen al
+    // de BACKEND_URL y format entra como literal revalidado.
+    const exportPath = EXPORT_PATHS[year];
+    const exportUrl = new URL(exportPath, BACKEND_URL);
+    if (exportUrl.origin !== new URL(BACKEND_URL).origin) {
+        throw new AppError('Backend de exportación mal configurado', 'CONFIG_ERROR', 500);
+    }
+    const safeFormat = format === 'csv' ? 'csv' : 'json';
+    exportUrl.searchParams.set('format', safeFormat);
+
     const identityHeaders = await researchIdentityHeaders({
         method: 'GET',
-        path: `/api/export/${year}`,
+        path: exportPath,
     });
-    const response = await fetch(`${BACKEND_URL}/api/export/${year}?format=${format}`, {
+    const response = await fetch(exportUrl, {
         headers: { ...identityHeaders },
         cache: 'no-store',
     });
 
     if (!response.ok) {
-        const detail = await response.text().catch(() => response.statusText);
+        // El cuerpo del engine puede traer trazas internas (rutas, SQL,
+        // hostnames) o eco de la peticion con credenciales (apikey en la
+        // URL): NUNCA se registra - ni entero ni truncado. Al log solo van
+        // el status y la referencia fija del endpoint; al cliente, el
+        // mensaje publico generico.
+        console.error(
+            `[exportJournal] research engine respondió ${response.status} para ${exportPath}`,
+        );
         throw new AppError(
-            `Exportación falló (${response.status}): ${detail.slice(0, 300)}`,
+            `Exportación falló (${response.status})`,
             'RESEARCH_API_ERROR',
             response.status,
         );

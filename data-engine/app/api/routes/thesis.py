@@ -1,16 +1,23 @@
+import logging
+from typing import Literal
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
-from typing import Literal
-
-import logging
-from uuid import uuid4
 
 from app.core.database import get_db
-from app.models import Claim, ClaimEvidence, Company, ThesisDiff, ThesisSection, ThesisVersion
+from app.models import Claim, ClaimEvidence, ThesisDiff, ThesisSection, ThesisVersion
 from app.schemas import ThesisGenerateRequest, ThesisGraphOut, ThesisOut
+from app.services.company_resolver import resolve_company
+from app.services.provenance import Coverage, SourceKind, provenance
+from app.services.thesis_approval_service import (
+    DECISION_APPROVE,
+    DECISION_REJECT,
+    apply_approval_decision,
+)
 from app.services.thesis_epub_service import (
     EpubSection,
     ThesisEpubData,
@@ -19,8 +26,6 @@ from app.services.thesis_epub_service import (
 from app.services.thesis_graph_service import ThesisGraphService
 from app.services.thesis_memo import build_memo_markdown
 from app.services.thesis_service import ThesisService
-from app.services.provenance import Coverage, SourceKind, provenance
-from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 
@@ -414,8 +419,20 @@ def approve_thesis(ticker: str, payload: ThesisApproveRequest, db: Session = Dep
     )
     if thesis is None:
         raise HTTPException(status_code=404, detail="No thesis for ticker")
-    thesis.status = payload.decision
-    db.commit()
+    # Delegate to the same transition function the Telegram poller uses. The
+    # route used to assign `thesis.status = payload.decision` directly, with no
+    # state check and a different vocabulary, so an `insufficient_data` or
+    # `draft_failed_audit` version could be marked approved while its own memo
+    # said "NO VALUATION".
+    try:
+        thesis = apply_approval_decision(
+            db,
+            thesis.id,
+            DECISION_APPROVE if payload.decision == "approved" else DECISION_REJECT,
+            via="api",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.refresh(thesis)
     _logger.info(
         "thesis %s v%s %s by actor=%s", company.ticker, thesis.version, payload.decision, payload.actor

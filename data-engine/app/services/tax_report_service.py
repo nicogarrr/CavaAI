@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import UTC, date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import select
@@ -39,7 +39,6 @@ from app.core.config import get_settings
 from app.models import (
     Company,
     Position,
-    Portfolio,
     TaxReport,
     Transaction,
 )
@@ -65,6 +64,34 @@ def _money(value: Decimal | None) -> float | None:
     return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+def _new_cash_bucket(ticker: str, transaction) -> dict:
+    return {
+        "ticker": ticker,
+        "currency": transaction.currency,
+        "dividends_native": Decimal("0"),
+        "dividends_base": Decimal("0"),
+        "withholding_native": Decimal("0"),
+        "withholding_base": Decimal("0"),
+        "missing_fx": False,
+        "unattributed": False,
+        "payments": [],
+    }
+
+
+def _unattributed_label(transaction) -> str:
+    """A stable, visible label for cash whose company could not be resolved.
+
+    The symbol is recovered from the raw Flex payload when present so the
+    reviewer can see WHICH issuer is unattributed instead of a single opaque
+    "unattributed" bucket.
+    """
+    payload = transaction.raw_payload or {}
+    for key, value in payload.items():
+        if str(key).lower() in {"symbol", "underlyingsymbol"} and value:
+            return f"UNATTRIBUTED:{str(value).strip().upper()}"
+    return f"UNATTRIBUTED:{transaction.currency or '???'}:{transaction.action or '?'}"
+
+
 class TaxReportService:
     """Compute and persist per-fiscal-year tax snapshots."""
 
@@ -73,17 +100,21 @@ class TaxReportService:
         self.settings = get_settings()
 
     def compute_report(self, db: Session, fiscal_year: int) -> dict:
+        # SOLO lectura: sin portfolio persistido se usa la divisa por defecto;
+        # crearlo aqui convertia cualquier GET del informe en una escritura.
         portfolio = self.fx.portfolio(db)
-        if portfolio is None:
-            portfolio = self.fx.ensure_portfolio(db)
-        base_currency = portfolio.base_currency or "EUR"
+        base_currency = (portfolio.base_currency if portfolio else "EUR") or "EUR"
 
         start = date(fiscal_year, 1, 1)
         end = date(fiscal_year, 12, 31)
 
+        # outerjoin, not join: a cash row with company_id NULL (an IBKR
+        # dividend or retention whose symbol could not be resolved) is real
+        # taxable income. The INNER JOIN dropped it silently, so the report
+        # declared zero dividends with no flag anywhere.
         rows = db.execute(
             select(Transaction, Company)
-            .join(Company, Transaction.company_id == Company.id)
+            .outerjoin(Company, Transaction.company_id == Company.id)
             .where(Transaction.trade_date >= start, Transaction.trade_date <= end)
             .order_by(Transaction.trade_date, Transaction.id)
         ).all()
@@ -95,7 +126,26 @@ class TaxReportService:
         # First pass: dividends, withholding and misc cash movements.
         for transaction, company in rows:
             action = (transaction.action or "").lower()
-            ticker = company.ticker
+            if company is None:
+                # Taxable cash with no resolvable company (an IBKR dividend or
+                # retention whose symbol is not in the workspace). It must not
+                # disappear: it is income, and hiding it produces a filing that
+                # understates the taxable base with no flag.
+                if not (
+                    action in DIVIDEND_ACTIONS
+                    or "dividend" in action
+                    or "withholding" in action
+                    or "interest" in action
+                    or "fee" in action
+                    or action == "cash_misc"
+                ):
+                    continue
+                ticker = _unattributed_label(transaction)
+                if ticker not in dividends_by_company:
+                    dividends_by_company[ticker] = _new_cash_bucket(ticker, transaction)
+                dividends_by_company[ticker]["unattributed"] = True
+            else:
+                ticker = company.ticker
             if action in DIVIDEND_ACTIONS or "dividend" in action or "withholding" in action:
                 rate = self.fx.rate(
                     db,
@@ -109,18 +159,10 @@ class TaxReportService:
                 # amount is unknown and must stay None.
                 amount_base = amount_native * rate if rate is not None else None
                 bucket = dividends_by_company.setdefault(
-                    ticker,
-                    {
-                        "ticker": ticker,
-                        "currency": transaction.currency,
-                        "dividends_native": Decimal("0"),
-                        "dividends_base": Decimal("0"),
-                        "withholding_native": Decimal("0"),
-                        "withholding_base": Decimal("0"),
-                        "missing_fx": False,
-                        "payments": [],
-                    },
+                    ticker, _new_cash_bucket(ticker, transaction)
                 )
+                if company is None:
+                    bucket["unattributed"] = True
                 if "withholding" in action or "tax" in action:
                     withheld = abs(amount_native)
                     bucket["withholding_native"] += withheld
@@ -189,6 +231,9 @@ class TaxReportService:
         # - When a sale's forward window extends beyond the latest available
         #   transaction, the unblocked remainder is reported as provisionally
         #   computable and flagged (wash_sale_window_open).
+        # The FIFO pass only needs buy/sell legs, which always carry a company;
+        # an INNER JOIN here is correct and keeps unattributed cash out of the
+        # lot rebuild (it is handled and reported in the first pass).
         tx_rows = db.execute(
             select(Transaction, Company)
             .join(Company, Transaction.company_id == Company.id)
@@ -404,6 +449,7 @@ class TaxReportService:
                     "withholding_native": _money(bucket["withholding_native"]),
                     "withholding_base": None if bucket["missing_fx"] else _money(bucket["withholding_base"]),
                     "missing_fx": bucket["missing_fx"],
+                    "unattributed": bucket.get("unattributed", False),
                     "payments": bucket["payments"],
                 }
             )
@@ -461,6 +507,19 @@ class TaxReportService:
             ),
             "net_taxable_base": None if incomplete_fx else _money(total_dividends + total_gain),
             "dividend_count": len(dividends),
+            "unattributed_tickers": sorted(
+                b["ticker"] for b in dividends if b.get("unattributed")
+            ),
+            "unattributed_dividends_base": _money(
+                sum(
+                    (
+                        Decimal(str(b["dividends_base"] or 0))
+                        for b in dividends
+                        if b.get("unattributed")
+                    ),
+                    Decimal("0"),
+                )
+            ),
             "sell_count": sum(b["sale_count"] for b in realized),
             "over_sell": sorted(
                 b["ticker"] for b in realized if b.get("over_sell")
@@ -480,13 +539,20 @@ class TaxReportService:
             "misc": sorted(misc_rows, key=lambda d: d["date"]),
         }
 
-    def get_or_compute(self, db: Session, fiscal_year: int, regenerate: bool = False) -> dict:
+    def get_report(self, db: Session, fiscal_year: int) -> dict:
+        """Informe de un ejercicio. SOLO LECTURA: nunca escribe en la base.
+
+        Si existe un informe persistido lo devuelve; si no, lo calcula en
+        memoria y lo marca con ``persisted=False`` y ``generated_at=None``
+        (honesto: no esta guardado; un GET repetido no cambia el estado).
+        La persistencia vive en ``regenerate_report`` (POST).
+        """
         report = db.scalar(
             select(TaxReport).where(
                 TaxReport.fiscal_year == fiscal_year
             ).order_by(TaxReport.updated_at.desc())
         )
-        if report is not None and not regenerate:
+        if report is not None:
             return {
                 "summary": report.summary,
                 "dividends": report.dividends,
@@ -495,9 +561,15 @@ class TaxReportService:
                 "generated_at": report.generated_at.isoformat() if report.generated_at else None,
                 "persisted": True,
             }
-
         data = self.compute_report(db, fiscal_year)
-        portfolio = self.fx.portfolio(db)
+        data["generated_at"] = None
+        data["persisted"] = False
+        return data
+
+    def regenerate_report(self, db: Session, fiscal_year: int) -> dict:
+        """Recalcula y PERSISTE el informe del ejercicio (camino POST)."""
+        data = self.compute_report(db, fiscal_year)
+        portfolio = self.fx.ensure_portfolio(db)
         report = db.scalar(
             select(TaxReport).where(TaxReport.fiscal_year == fiscal_year)
         )

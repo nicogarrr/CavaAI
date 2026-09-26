@@ -16,12 +16,10 @@ Run from data-engine/:
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
-
-from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 import main
 from app.core.database import SessionLocal, init_db

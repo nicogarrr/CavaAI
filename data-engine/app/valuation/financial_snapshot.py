@@ -210,9 +210,7 @@ class FinancialSnapshotBuilder:
         missing: list[str] = []
         for metric in REQUIRED_FOR_DCF:
             fact = snapshot.facts.get(metric)
-            if fact is None or not math.isfinite(float(fact.value)):
-                missing.append(metric)
-            elif metric in POSITIVE_REQUIRED_FOR_DCF and float(fact.value) <= 0:
+            if fact is None or not math.isfinite(float(fact.value)) or metric in POSITIVE_REQUIRED_FOR_DCF and float(fact.value) <= 0:
                 missing.append(metric)
 
         has_margin = "fcf_margin" in snapshot.facts

@@ -1444,6 +1444,30 @@
         "title": "CompanySnapshotOut",
         "type": "object"
       },
+      "CompanySnapshotsBatchOut": {
+        "description": "Respuesta del snapshot por lote del indice de research.\n\n``snapshots`` va keyed por ticker de la Company resuelta; ``missing``\nlista los tickers pedidos sin company en el registro (nunca se\nfabrican snapshots vacios para ellos).",
+        "properties": {
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "snapshots": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CompanySnapshotOut"
+            },
+            "title": "Snapshots",
+            "type": "object"
+          }
+        },
+        "required": [
+          "snapshots"
+        ],
+        "title": "CompanySnapshotsBatchOut",
+        "type": "object"
+      },
       "ContradictionScanRequest": {
         "properties": {
           "create_reviews": {
@@ -6330,6 +6354,14 @@
             "title": "Model Type",
             "type": "string"
           },
+          "publication_blockers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Publication Blockers",
+            "type": "array"
+          },
           "publishable": {
             "default": true,
             "title": "Publishable",
@@ -9259,6 +9291,178 @@
           }
         },
         "summary": "Ensure Company",
+        "tags": [
+          "companies"
+        ]
+      }
+    },
+    "/api/companies/snapshots": {
+      "get": {
+        "description": "Snapshots de varias empresas en UNA llamada (indice de research).\n\nSustituye el fan-out de ~40 GET /{ticker}/snapshot por visita del\nindice: la resolucion de tickers va en 1-2 queries IN (politica de\nalias de sufijos de resolve_company) y las del snapshot agregadas por\nIN(company_ids) (~13 para todo el lote, no 5 por empresa). Limites\nhonestos: maximo MAX_SNAPSHOT_BATCH_TICKERS tickers por llamada (400\npor encima); los tickers sin company en el registro vuelven en\n``missing`` y NUNCA se fabrican snapshots vacios para ellos.",
+        "operationId": "company_snapshots_batch_api_companies_snapshots_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tickers",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Tickers",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-User"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-tenant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Tenant"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-nonce",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Nonce"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-method",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Method"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Path"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-body-hash",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Body-Hash"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanySnapshotsBatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Company Snapshots Batch",
         "tags": [
           "companies"
         ]
@@ -36088,6 +36292,7 @@
     },
     "/api/taxes/report/{fiscal_year}": {
       "get": {
+        "description": "Informe fiscal de un ejercicio. Solo lectura.\n\nAntes aceptaba `?regenerate=true`, que ademas de persistir un TaxReport\n(una escritura) hacia que un GET tuviera efectos de estado: no idempotente,\nimposible de cachear y capaz de devolver 500 en un camino de lectura. El\ncalculo forzado vive en POST /report/{fiscal_year}/regenerate, que ya\nexiste; este handler usa `get_report`, que devuelve el informe persistido\no lo calcula EN MEMORIA sin escribir (`persisted=False`).",
         "operationId": "tax_report_api_taxes_report__fiscal_year__get",
         "parameters": [
           {
@@ -36097,16 +36302,6 @@
             "schema": {
               "title": "Fiscal Year",
               "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "regenerate",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Regenerate",
-              "type": "boolean"
             }
           },
           {

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatPercent } from '@/lib/format';
 
 export type AllocationSlice = {
     symbol: string;
@@ -52,11 +52,11 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
                     Valor: <span className="font-semibold text-white">{formatMoney(data.value)}</span>
                 </p>
                 <p className="text-gray-300 text-sm">
-                    Peso: <span className="font-semibold text-white">{data.percentage.toFixed(1)}%</span>
+                    Peso: <span className="font-semibold text-white">{formatPercent(data.percentage, { fromRatio: false, digits: 1 })}</span>
                 </p>
                 <p className="text-gray-300 text-sm">
                     G/P: <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                        {isPositive ? '+' : ''}{data.gainPercent.toFixed(2)}%
+                        {formatPercent(data.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                     </span>
                 </p>
             </div>

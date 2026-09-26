@@ -9,15 +9,39 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import Company, Document, FinancialFact, FinancialStatement, MarketPrice
+from app.services.connectors import esef as esef_connector
 from app.services.connectors import fred as fred_connector
 from app.services.connectors import sec_edgar as sec_edgar_connector
-from app.services.connectors import esef as esef_connector
-from app.services.fact_chunk_service import sync_company_fact_chunks
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.sec import SECClient
-
+from app.services.fact_chunk_service import sync_company_fact_chunks
 
 MetricSpec = tuple[str, str, str]
+
+# Concepts that are DISJOINT PARTS of one total, not alternative tags for it.
+# Treating them as aliases meant whichever happened to be filed last won, so an
+# issuer with 5.000 of finite-lived and 8.000 of indefinite-lived intangibles
+# stored only one of the two and the metric silently changed meaning between
+# years. These are summed per period instead.
+SEC_INTANGIBLE_COMPONENTS = [
+    "FiniteLivedIntangibleAssetsNet",
+    "IndefiniteLivedIntangibleAssetsExcludingGoodwill",
+]
+# Metrics whose concepts are disjoint parts to be summed, not alternative tags.
+SUMMED_COMPONENT_METRICS: frozenset[str] = frozenset({"intangible_assets"})
+
+# Which provider wins when the same (metric, fiscal year) exists more than once.
+# A regulator filing the number itself beats a vendor's restatement of it, and
+# a vendor beats a manually typed value, which beats an unattributed row.
+# Without this, `created_at` decided ownership and the DCF could be anchored on
+# whichever provider happened to be ingested last.
+SOURCE_PRIORITY: dict[str, int] = {
+    "SEC": 0,
+    "ESEF": 0,
+    "CNMV": 0,
+    "FMP": 10,
+    "FMP_profile": 20,
+}
 
 
 INCOME_METRICS: list[MetricSpec] = [
@@ -78,12 +102,21 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("cash_and_equivalents", ["CashAndCashEquivalentsAtCarryingValue",
                               "CashCashEquivalentsAndShortTermInvestments",
                               "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"], "USD"),
-    ("total_debt",        ["LongTermDebt", "LongTermDebtNoncurrent", "DebtLongtermAndShorttermCombinedAmount"],     "USD"),
+    # Orden por alcance, NO por antiguedad: el tag combinado (largo + corto) es
+    # el que representa "deuda total", y se coloco antes detras de
+    # LongTermDebt, asi que la deuda neta salia sin la parte corriente. El
+    # ganador lo decide el `filed` mas reciente del MISMO periodo, de modo que el
+    # orden solo desempata cuando el emisor nunca presenta el tag combinado.
+    ("total_debt",        ["DebtLongtermAndShorttermCombinedAmount", "LongTermDebt", "LongTermDebtNoncurrent"], "USD"),
     ("total_assets",      ["Assets"],                                                                               "USD"),
     ("total_liabilities", ["Liabilities"],                                                                          "USD"),
+    # StockholdersEquity = patrimonio atribuible a la matriz; la variante
+    # "IncludingPortionAttributableToNoncontrollingInterest" consolida los
+    # intereses minoritarios. Son MAGNITUDES DISTINTAS: mezclarlas hacia que el
+    # balance cuadre por la diferencia de NCI. Se usa la de la matriz.
     ("total_equity",      ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], "USD"),
     ("goodwill",          ["Goodwill"],                                                                              "USD"),
-    ("intangible_assets", ["FiniteLivedIntangibleAssetsNet", "IndefiniteLivedIntangibleAssetsExcludingGoodwill"],    "USD"),
+    ("intangible_assets", SEC_INTANGIBLE_COMPONENTS,                                                                "USD"),
     ("operating_lease_liabilities", ["OperatingLeaseLiability", "OperatingLeaseLiabilityNoncurrent"],                "USD"),
     ("operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities"],                                         "USD"),
     ("capital_expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],          "USD"),
@@ -93,15 +126,18 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
 ]
 
 
-# IFRS (ESEF) -> metricas internas. Mismo contrato que SEC: los alias se
-# FUSIONAN por periodo (gana el primer alias que informa el periodo, NUNCA
-# se suman tags). Solo conceptos verificados en los snapshots reales de los
-# 6 emisores reviewed (24-25/9); ampliado 25/9 con componentes de deuda
-# verificados en 105 emisores (27+ con CurrentFinancialLiabilities). Hueco
-# honesto: shares_diluted (ninguno de los 6 reviewed trae
-# WeightedAverageNumberOfShares en base scope). EBITDA no es tag IFRS estandar: se deriva como
-# operating_income + D&A en _derive_esef_metrics (no aplica a bancos sin
-# beneficio operativo, p.ej. SAN).
+# IFRS (ESEF) -> metricas internas. Mismo contrato que SEC con una diferencia
+# que importa: aqui los snapshots no llevan fecha de presentacion, asi que no
+# hay nada honesto con lo que ordenar dos tags y gana el primero declarado. Los
+# tags que NO son alias sino partes disjuntas de un total (capex desagregado)
+# se suman, y un total yaAgglomerado nunca se suma con sus propias partes; ver
+# ESEF_PART_CONCEPTS y ESEF_SUPERSET_CONCEPTS. Solo conceptos verificados en
+# los snapshots reales de los 6 emisores reviewed (24-25/9); ampliado 25/9 con
+# componentes de deuda verificados en 105 emisores (27+ con
+# CurrentFinancialLiabilities). Hueco honesto: shares_diluted (ninguno de los 6
+# reviewed trae WeightedAverageNumberOfShares en base scope). EBITDA no es tag
+# IFRS estandar: se deriva como operating_income + D&A en _derive_esef_metrics
+# (no aplica a bancos sin beneficio operativo, p.ej. SAN).
 ESEF_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("revenue",           ["ifrs-full:Revenue", "ifrs-full:RevenueFromInterest"],                        "iso4217:EUR"),
     ("net_income",        ["ifrs-full:ProfitLoss"],                                                      "iso4217:EUR"),
@@ -133,6 +169,27 @@ ESEF_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("dividends_paid",    ["ifrs-full:DividendsPaidClassifiedAsFinancingActivities"],                    "iso4217:EUR"),
 ]
 
+# ESEF: concepts that are disjoint PARTS of one total. A filer that discloses
+# capex disaggregated reports PP&E and intangibles separately, and taking the
+# first alias that reports leaves half the capex out: FCF that is too high and a
+# DCF that is too generous. These are added up per period.
+ESEF_PART_CONCEPTS: dict[str, list[str]] = {
+    "capital_expenditure": [
+        "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+        "ifrs-full:PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities",
+    ],
+}
+# ESEF: concepts that ALREADY include the parts above. Summing a total with its
+# own components is the double count this table prevents: a filer that tags the
+# combined concept (REP) is taken at its word, and only filers that disclose
+# the parts get them added up.
+ESEF_SUPERSET_CONCEPTS: dict[str, list[str]] = {
+    "capital_expenditure": [
+        "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwill"
+        "InvestmentPropertyAndOtherNoncurrentAssets",
+    ],
+}
+
 
 def _decimal(value: Any) -> Decimal | None:
     if value is None or value == "":
@@ -141,6 +198,251 @@ def _decimal(value: Any) -> Decimal | None:
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+
+
+def is_summed_component(metric: str) -> bool:
+    """True when a metric's concepts are disjoint PARTS of one total."""
+    return metric in SUMMED_COMPONENT_METRICS
+
+
+def _collapse_aliases(
+    by_concept: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    """One winner per period across concepts that are ALIASES of each other.
+
+    Many filers migrate from one tag to another and freeze the old one in the
+    past, so the same period arrives under two concepts. That is one fact
+    reported twice, and the most recent ``filed`` is its current presentation
+    (a recast included). These concepts are alternatives, never added up.
+    """
+    by_end: dict[str, dict[str, Any]] = {}
+    for entries in by_concept.values():
+        for entry in entries.values():
+            end = str(entry.get("end") or "")
+            current = by_end.get(end)
+            if current is None or str(entry.get("filed") or "") > str(
+                current.get("filed") or ""
+            ):
+                by_end[end] = entry
+    return by_end
+
+
+def _sum_disjoint_components(
+    by_concept: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    """Add up per-period values of concepts that are parts of the same total.
+
+    Takes the concepts APART on purpose. The previous shape was a flat
+    ``{end: entry}`` map, which had already collapsed the parts of a period
+    into a single winner before this function ever saw them, so a total like
+    intangible assets stored whichever component was filed last and quietly
+    dropped the other: the metric changed meaning between years and no amount
+    of summing downstream could recover it.
+
+    The merged row keeps the most recent ``filed`` for provenance and records
+    every contributing concept in ``_components``, so the total stays auditable
+    back to its parts instead of becoming an opaque number.
+    """
+    totals: dict[str, dict[str, Any]] = {}
+    for concept, entries in by_concept.items():
+        for end, entry in entries.items():
+            value = _decimal(entry.get("val"))
+            if value is None:
+                continue
+            bucket = totals.setdefault(
+                end,
+                {
+                    "val": Decimal("0"),
+                    "filed": "",
+                    "end": end,
+                    "_components": {},
+                    "_latest": entry,
+                },
+            )
+            bucket["val"] = bucket["val"] + value
+            bucket["_components"][concept] = str(value)
+            filed = str(entry.get("filed") or "")
+            if filed > str(bucket["filed"]):
+                bucket["filed"] = filed
+                # The label of the merged row (`fp`, `accn`, `form`) comes from
+                # the newest filing of the period, not from whichever part was
+                # summed first.
+                bucket["_latest"] = entry
+    for key, bucket in list(totals.items()):
+        latest = bucket.pop("_latest")
+        merged = {**latest, **bucket}
+        if len(merged["_components"]) == 1:
+            merged["_concept"] = next(iter(merged["_components"]))
+        else:
+            merged["_concept"] = "+".join(sorted(merged["_components"]))
+        merged["val"] = float(merged["val"])
+        totals[key] = merged
+    return totals
+
+
+def _merge_for_metric(
+    by_concept: dict[str, dict[str, dict[str, Any]]], metric: str
+) -> dict[str, dict[str, Any]]:
+    """Merge concepts per period: summed when they are parts, else one winner."""
+    if is_summed_component(metric):
+        return _sum_disjoint_components(by_concept)
+    return _collapse_aliases(by_concept)
+
+
+def _collect_by_concept(
+    us_gaap: dict[str, Any],
+    concepts: list[str],
+    unit_key: str,
+    *,
+    forms: set[str],
+    periods: set[str],
+    min_span: int | None,
+    max_span: int | None,
+    modal_month: str | None = None,
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Newest ``filed`` fact per concept and period, before any merging.
+
+    Keeping the concepts apart until the caller knows what they are (aliases or
+    disjoint parts) is what lets `_collapse_aliases` and
+    `_sum_disjoint_components` disagree on purpose instead of by accident.
+    """
+    by_concept: dict[str, dict[str, dict[str, Any]]] = {}
+    for concept in concepts:
+        entries = us_gaap.get(concept, {}).get("units", {}).get(unit_key, [])
+        for entry in entries:
+            if entry.get("form") not in forms or entry.get("fp") not in periods:
+                continue
+            # A flow fact (one WITH `start`) has to really span the period it
+            # claims: `fp="FY"` does not guarantee an annual duration, and the
+            # year-to-date and TTM variants clear a duration check too. Instant
+            # facts (balance sheet, no `start`) are not duration-filtered.
+            start = entry.get("start")
+            if start and min_span is not None and max_span is not None:
+                try:
+                    span = (
+                        date.fromisoformat(str(entry["end"]))
+                        - date.fromisoformat(str(start))
+                    ).days
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if not min_span <= span <= max_span:
+                    continue
+                # The duration check alone is not enough: the ~365-day TTM
+                # rows that close on a quarter end pass it. Only the issuer's
+                # modal fiscal close month enters an annual fact.
+                if modal_month and str(entry.get("end") or "")[5:7] != modal_month:
+                    continue
+            end = str(entry.get("end") or "")
+            if not end:
+                continue
+            concept_entries = by_concept.setdefault(concept, {})
+            current = concept_entries.get(end)
+            if current is None or str(entry.get("filed") or "") > str(
+                current.get("filed") or ""
+            ):
+                concept_entries[end] = {**entry, "_concept": concept}
+    return by_concept
+
+
+def _esef_period(entry: dict[str, Any]) -> str | None:
+    """The period an ESEF fact belongs to, or None when it is not usable.
+
+    A per-member breakdown is not the consolidated figure, and a flow fact
+    only counts when it really spans the fiscal year it claims.
+    """
+    if entry.get("dims"):
+        return None
+    if "end" in entry and "start" in entry:
+        try:
+            span = (
+                date.fromisoformat(str(entry["end"]))
+                - date.fromisoformat(str(entry["start"]))
+            ).days
+        except (TypeError, ValueError):
+            return None
+        if not 300 <= span <= 380:
+            return None
+        return str(entry["end"])
+    if "instant" in entry:
+        return str(entry["instant"])
+    return None
+
+
+def _merge_esef_periods(
+    facts_data: dict[str, Any], concepts: list[str], unit: str, metric: str
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """One value per period for an ESEF metric, plus an explicit coverage record.
+
+    A filer that disaggregates a total into disjoint parts has them added up, a
+    filer that tags the combined total is taken at its word, and everything
+    else keeps the first concept that reports the period: ESEF snapshots carry
+    no filing date, so there is nothing honest to rank two aliases with beyond
+    the order the concepts are declared in.
+
+    Two failure modes of the sum are refused rather than published:
+
+    * the same fact twice (same tag, same context, same value) used to be added
+      twice - two snapshots of one filing read as double the capex. Identical
+      duplicates collapse to one fact; two DIFFERENT values for the same tag
+      and period cannot be ranked without a filing date, so the period is
+      ambiguous and is rejected (a disclosed total for the period still wins);
+    * a part that is missing for the period used to vanish silently, and the
+      subtotal was published as the complete metric. A missing part is only
+      declared when its absence can be affirmed - the filer DOES report that
+      concept, just not for this period; a part the filer never reports can be
+      zero or not applicable, and the sum is taken as complete.
+
+    Returns the merged periods and a coverage record with the rejected
+    (ambiguous) and incomplete (partial) periods, so the caller can state what
+    was NOT published instead of letting it pass for the whole magnitude.
+    """
+    superset = ESEF_SUPERSET_CONCEPTS.get(metric, [])
+    parts = ESEF_PART_CONCEPTS.get(metric, [])
+    by_period: dict[str, dict[str, Any]] = {}
+    part_facts: dict[str, dict[str, set[Decimal]]] = {}
+    concepts_with_data: set[str] = set()
+    for concept in concepts:
+        for entry in facts_data.get(concept, {}).get(unit, []):
+            period = _esef_period(entry)
+            if period is None:
+                continue
+            if concept in superset:
+                by_period.setdefault(period, entry)
+            elif concept in parts:
+                value = _decimal(entry.get("val"))
+                if value is None:
+                    continue
+                concepts_with_data.add(concept)
+                part_facts.setdefault(period, {}).setdefault(concept, set()).add(value)
+            elif period not in by_period:
+                by_period[period] = entry
+    coverage: dict[str, Any] = {"ambiguous": {}, "partial": {}}
+    for period, by_concept in part_facts.items():
+        # A disclosed total always beats the sum of its parts: it is the only
+        # statement of the whole magnitude, and it may include components the
+        # parts do not itemise.
+        if period in by_period:
+            continue
+        conflicts = {
+            concept: sorted(str(value) for value in values)
+            for concept, values in by_concept.items()
+            if len(values) > 1
+        }
+        if conflicts:
+            coverage["ambiguous"][period] = conflicts
+            continue
+        missing = sorted(concepts_with_data - set(by_concept))
+        if missing:
+            coverage["partial"][period] = missing
+            continue
+        by_period[period] = {
+            "val": float(sum((next(iter(values)) for values in by_concept.values()), Decimal("0"))),
+            "period": period,
+            "_components": {
+                concept: str(next(iter(values))) for concept, values in by_concept.items()
+            },
+        }
+    return by_period, coverage
 
 
 def _period(row: dict[str, Any]) -> tuple[str, int | None, str | None]:
@@ -334,10 +636,11 @@ class FinancialIngestionService:
         us_gaap = facts_data.get("facts", {}).get("us-gaap", {})
 
         document = self._source_document_sec(db, company, ticker)
-        self._replace_sec_data(db, company)
+        self._replace_sec_data(db, company, document)
 
         facts_imported = 0
         cash_restricted_years: set[int] = set()
+        concept_usage: dict[str, dict[str, Any]] = {}
         modal_fy_month = _modal_fiscal_end_month(us_gaap)
 
         for metric, concepts, unit in SEC_METRIC_MAP:
@@ -349,34 +652,18 @@ class FinancialIngestionService:
             # los consumidores anuales seleccionan por fiscal_year (y los que
             # ordenan por el usan nullslast), asi las filas :Qn nunca se
             # confunden con el ejercicio anual. period = "<end>:Q<n>".
-            by_end_q: dict[str, dict[str, Any]] = {}
-            for concept in concepts:
-                entries = (
-                    us_gaap.get(concept, {}).get("units", {}).get(xbrl_unit_key, [])
-                )
-                for e in entries:
-                    fp = e.get("fp")
-                    if fp not in {"Q1", "Q2", "Q3", "Q4"} or e.get("form") != "10-Q":
-                        continue
-                    start = e.get("start")
-                    if start:
-                        try:
-                            span = (
-                                date.fromisoformat(str(e["end"]))
-                                - date.fromisoformat(str(start))
-                            ).days
-                        except (TypeError, ValueError):
-                            continue
-                        if not 70 <= span <= 110:
-                            continue
-                    end = str(e.get("end") or "")
-                    if not end:
-                        continue
-                    current = by_end_q.get(end)
-                    if current is None or str(e.get("filed", "")) > str(
-                        current.get("filed", "")
-                    ):
-                        by_end_q[end] = {**e, "_concept": concept}
+            by_end_q = _merge_for_metric(
+                _collect_by_concept(
+                    us_gaap,
+                    concepts,
+                    xbrl_unit_key,
+                    forms={"10-Q"},
+                    periods={"Q1", "Q2", "Q3", "Q4"},
+                    min_span=70,
+                    max_span=110,
+                ),
+                metric,
+            )
             if by_end_q:
                 q_sorted = sorted(
                     by_end_q.values(), key=lambda e: str(e["end"]), reverse=True
@@ -410,57 +697,25 @@ class FinancialIngestionService:
             # congelado en el pasado. Fusion por periodo (`end`) conservando
             # el `filed` mas reciente: mismo periodo bajo dos tags = una sola
             # vez, con su presentacion mas reciente (recast incluido).
-            by_end: dict[str, dict[str, Any]] = {}
-            for concept in concepts:
-                concept_data = us_gaap.get(concept, {})
-                entries = concept_data.get("units", {}).get(xbrl_unit_key, [])
-                annual = []
-                for e in entries:
-                    if e.get("fp") != "FY" or e.get("form") not in {"10-K", "20-F"}:
-                        continue
-                    # fp="FY" NO garantiza hecho anual: los 10-K incluyen
-                    # segmentos trimestrales etiquetados FY (caso real AAPL
-                    # FY2020: revenue 2020-03-28 de 91 dias colado como anual).
-                    # Regla (igual que en la via ESEF): anual = 300-380 dias.
-                    # Los hechos instantaneos (balance: sin `start`) pasan
-                    # igual que antes; el filtro solo aplica a hechos de flujo.
-                    start = e.get("start")
-                    if start:
-                        try:
-                            from datetime import date as _date
-
-                            span = (
-                                _date.fromisoformat(str(e["end"]))
-                                - _date.fromisoformat(str(start))
-                            ).days
-                        except (TypeError, ValueError):
-                            continue
-                        if not 300 <= span <= 380:
-                            continue
-                        # Segunda pasada F28: el filtro de duracion solo no
-                        # basta; los TTM de ~365 dias que cierran en fin de
-                        # trimestre lo superan (AA/AAL 2020). Solo entra el
-                        # mes modal de cierre del emisor; los instantaneos
-                        # (sin start) no se ven afectados.
-                        if (
-                            modal_fy_month
-                            and str(e.get("end") or "")[5:7] != modal_fy_month
-                        ):
-                            continue
-                    annual.append(e)
-                # OJO: `fy` es el ANIO DEL FILING, no el del periodo. Un 10-K
-                # de FY2025 trae revenue de 2025, 2024 y 2023; el ano fiscal
-                # correcto es el del `end`. Ante re-presentaciones del mismo
-                # periodo manda el `filed` mas reciente.
-                for entry in annual:
-                    end = str(entry.get("end") or "")
-                    if not end:
-                        continue
-                    current = by_end.get(end)
-                    if current is None or str(entry.get("filed", "")) > str(
-                        current.get("filed", "")
-                    ):
-                        by_end[end] = {**entry, "_concept": concept}
+            # OJO: `fy` es el ANIO DEL FILING, no el del periodo. Un 10-K de
+            # FY2025 trae revenue de 2025, 2024 y 2023; el ano fiscal correcto
+            # es el del `end`. Ante re-presentaciones del mismo periodo manda
+            # el `filed` mas reciente, pero DENTRO de cada tag: comparar tags
+            # distintos entre si es lo que descartaba una de las partes de
+            # `intangible_assets` en vez de sumarlas.
+            by_end = _merge_for_metric(
+                _collect_by_concept(
+                    us_gaap,
+                    concepts,
+                    xbrl_unit_key,
+                    forms={"10-K", "20-F"},
+                    periods={"FY"},
+                    min_span=300,
+                    max_span=380,
+                    modal_month=modal_fy_month,
+                ),
+                metric,
+            )
             if by_end:
                 annual_sorted = sorted(
                     by_end.values(), key=lambda e: str(e["end"]), reverse=True
@@ -492,7 +747,21 @@ class FinancialIngestionService:
                             confidence=Decimal("0.95"),
                         )
                     )
+                    # Record which XBRL concept produced the value. Several
+                    # metrics accept alternative tags with different scopes, so
+                    # without this the definition of a series can change between
+                    # years with nothing in the database saying so. The map is
+                    # written to the document below (FinancialFact has no
+                    # free-form column, and this is per-run provenance).
+                    concept_usage.setdefault(metric, {})[str(entry["end"])] = entry.get(
+                        "_concept"
+                    )
                     facts_imported += 1
+
+        if concept_usage:
+            existing_meta = dict(document.metadata_ or {})
+            existing_meta["xbrl_concept_by_metric_period"] = concept_usage
+            document.metadata_ = existing_meta
 
         db.flush()
 
@@ -582,32 +851,14 @@ class FinancialIngestionService:
 
         facts_data = snapshot.get("facts", {})
         document = self._source_document_esef(db, company, ticker, snapshot)
-        self._replace_esef_data(db, company)
+        self._replace_esef_data(db, company, document)
         facts_imported = 0
 
+        esef_coverage: dict[str, Any] = {}
         for metric, concepts, unit in ESEF_METRIC_MAP:
-            by_period: dict[str, dict[str, Any]] = {}
-            for concept in concepts:
-                entries = facts_data.get(concept, {}).get(unit, [])
-                for entry in entries:
-                    if entry.get("dims"):  # desglose por miembro: no es el consolidado
-                        continue
-                    if "end" in entry and "start" in entry:
-                        try:
-                            from datetime import date as _date
-
-                            span = (_date.fromisoformat(entry["end"]) - _date.fromisoformat(entry["start"])).days
-                        except (TypeError, ValueError):
-                            continue
-                        if not 300 <= span <= 380:
-                            continue  # solo ejercicios anuales
-                        period_date = str(entry["end"])
-                    elif "instant" in entry:
-                        period_date = str(entry["instant"])
-                    else:
-                        continue
-                    if period_date not in by_period:  # primer alias que informa gana
-                        by_period[period_date] = entry
+            by_period, coverage = _merge_esef_periods(facts_data, concepts, unit, metric)
+            if coverage["ambiguous"] or coverage["partial"]:
+                esef_coverage[metric] = coverage
             for period_date in sorted(by_period, reverse=True)[:10]:
                 val = _decimal(by_period[period_date].get("val"))
                 if val is None:
@@ -642,6 +893,7 @@ class FinancialIngestionService:
             "period_end": snapshot.get("period_end"),
             "fxo_id": snapshot.get("fxo_id"),
             "snapshot_fetched_at": snapshot.get("fetched_at"),
+            "esef_coverage": esef_coverage,
             "last_refreshed_at": datetime.now(UTC).isoformat(),
         }
         # Chunks RAG desde los hechos persistidos (documento parseado no existe:
@@ -675,14 +927,32 @@ class FinancialIngestionService:
         )
 
     def latest_fact(self, db: Session, company: Company, metric: str) -> FinancialFact | None:
-        return db.scalar(
-            select(FinancialFact)
-            .where(FinancialFact.company_id == company.id, FinancialFact.metric == metric)
-            .order_by(
-                FinancialFact.fiscal_year.desc().nullslast(),
-                FinancialFact.created_at.desc(),
-            )
-            .limit(1)
+        """Latest fact for a metric, preferring the authoritative source.
+
+        Ordering by ``created_at`` alone meant whichever provider was ingested
+        last owned the metric: after a ``refresh_from_fmp`` on top of SEC, the
+        DCF anchor could be the vendor's revenue while the primary filing sat
+        ignored, with nothing in the trace saying so. The priority makes the
+        choice deterministic and the provenance auditable.
+        """
+        rows = list(
+            db.scalars(
+                select(FinancialFact)
+                .where(FinancialFact.company_id == company.id, FinancialFact.metric == metric)
+                .order_by(
+                    FinancialFact.fiscal_year.desc().nullslast(),
+                    FinancialFact.created_at.desc(),
+                    FinancialFact.id.desc(),
+                )
+            ).all()
+        )
+        if not rows:
+            return None
+        latest_year = rows[0].fiscal_year
+        candidates = [row for row in rows if row.fiscal_year == latest_year]
+        return min(
+            candidates,
+            key=lambda row: (SOURCE_PRIORITY.get(row.source_type or "", 50), row.id),
         )
 
     def _source_document(self, db: Session, company: Company) -> Document:
@@ -1039,7 +1309,8 @@ class FinancialIngestionService:
         db.flush()
         return document
 
-    def _replace_esef_data(self, db: Session, company: Company) -> None:
+    def _replace_esef_data(self, db: Session, company: Company, document: Document) -> None:
+        """Delete only the facts THIS document wrote (see ``_replace_sec_data``)."""
         tenant_id = db.info.get("tenant_id")
         tenant_filter = (
             FinancialFact.tenant_id == tenant_id
@@ -1049,12 +1320,22 @@ class FinancialIngestionService:
         db.execute(
             delete(FinancialFact).where(
                 FinancialFact.company_id == company.id,
-                FinancialFact.source_type == "ESEF",
+                FinancialFact.source_id == document.id,
                 tenant_filter,
             )
         )
 
-    def _replace_sec_data(self, db: Session, company: Company) -> None:
+    def _replace_sec_data(self, db: Session, company: Company, document: Document) -> None:
+        """Delete only the facts THIS document wrote.
+
+        The filter used to be ``source_type == "SEC"``, which is not an
+        ownership boundary: ``kpi_extraction_service.approve()`` writes
+        human-approved canonical facts carrying the ingested document's
+        ``source_type``, and ``thesis_evidence_service`` writes evidence facts
+        with its own document. A fundamentals refresh therefore deleted
+        reviewer-approved values with no trace, and left the two services
+        fighting over the same rows.
+        """
         tenant_id = db.info.get("tenant_id")
         tenant_filter = (
             FinancialFact.tenant_id == tenant_id
@@ -1064,7 +1345,7 @@ class FinancialIngestionService:
         db.execute(
             delete(FinancialFact).where(
                 FinancialFact.company_id == company.id,
-                FinancialFact.source_type == "SEC",
+                FinancialFact.source_id == document.id,
                 tenant_filter,
             )
         )

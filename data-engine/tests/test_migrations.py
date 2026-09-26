@@ -7,7 +7,6 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, inspect
 
-
 POSTGRESQL_MAX_IDENTIFIER_LENGTH = 63
 
 

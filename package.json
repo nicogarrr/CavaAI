@@ -14,7 +14,9 @@
     "generate:openapi": "python data-engine/scripts/export_openapi.py && openapi-typescript data-engine/openapi.json -o lib/research/openapi.generated.ts",
     "test:auth": "node scripts/test-auth-signup.mjs",
     "repair:auth": "node scripts/repair-auth-store.mjs",
-    "test:routes": "node scripts/check-routes.mjs"
+    "test:routes": "node scripts/check-routes.mjs",
+    "test:guards": "node --experimental-strip-types --test scripts/research-identity-guard.test.ts scripts/research-client-contract.test.ts scripts/e2e-auth-bypass-guard.test.ts scripts/ui-format-guard.test.ts",
+    "check:i18n": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",

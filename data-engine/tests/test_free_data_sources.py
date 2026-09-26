@@ -14,7 +14,6 @@ Tests herméticos: proveedores inyectables por constructor, sin red.
 
 import asyncio
 import inspect
-from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import create_engine, select

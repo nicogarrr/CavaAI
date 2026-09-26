@@ -18,10 +18,10 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, DividendRecord, Position
 from app.core.errors import redact_secrets
+from app.services.company_resolver import resolve_company
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.yahoo import YahooFinanceClient
 from app.services.provenance import Coverage, SourceKind, provenance
-from app.services.company_resolver import resolve_company
 
 
 class DividendIngestionService:

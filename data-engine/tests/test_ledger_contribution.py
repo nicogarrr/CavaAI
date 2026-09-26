@@ -8,7 +8,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
-    Base, CashBalance, Company, FXRate, MarketPrice, Portfolio, Position, Transaction,
+    Base,
+    CashBalance,
+    Company,
+    MarketPrice,
+    Portfolio,
+    Position,
+    Transaction,
 )
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 
