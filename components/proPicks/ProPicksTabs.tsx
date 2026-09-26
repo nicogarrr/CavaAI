@@ -72,7 +72,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt }: 
             <TabsList
                 tabIndex={0}
                 aria-label="Secciones de Pro Picks"
-                className="flex h-auto w-full max-w-full snap-x gap-1 overflow-x-auto border border-gray-700 bg-gray-800 pb-2 text-gray-400 sm:inline-flex sm:h-9 sm:w-auto sm:overflow-visible sm:pb-[3px]"
+                className="flex h-auto w-max min-w-full snap-x gap-1 overflow-x-auto border border-gray-700 bg-gray-800 pb-2 text-gray-400 sm:inline-flex sm:h-9 sm:w-auto sm:overflow-visible sm:pb-[3px]"
             >
                 <TabsTrigger value="picks" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Picks IA
