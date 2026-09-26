@@ -118,3 +118,43 @@ def test_httpx_status_attribute_still_works():
     response = httpx.Response(503, request=request)
     exc = httpx.HTTPStatusError("boom", request=request, response=response)
     assert _is_transient(exc) is True
+
+
+@pytest.mark.parametrize("actor_name", LEASED_ACTORS)
+def test_lease_acquisition_failure_closes_the_session(monkeypatch, actor_name):
+    """Comportamiento real: si acquire_job_lease lanza, la sesion se cierra.
+
+    La sesion se abre antes de tomar el lease; una excepcion en la adquisicion
+    (Redis caido, red) no puede dejarla abierta.
+    """
+
+    class _FakeDB:
+        def __init__(self) -> None:
+            self.closed = False
+            self.rolled_back = False
+
+        def close(self) -> None:
+            self.closed = True
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+    fake = _FakeDB()
+    monkeypatch.setattr(dramatiq_app, "_session", lambda *a, **k: fake)
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("redis unreachable")
+
+    monkeypatch.setattr(dramatiq_app, "acquire_job_lease", _boom)
+
+    # Los actores refresh_* no tienen handler externo: el fallo propaga a
+    # Dramatiq (politica de reintentos). Los insider_* devuelven payload de
+    # error. En ambos casos la sesion tiene que quedar cerrada.
+    try:
+        result = _actor_fn(actor_name)()
+    except RuntimeError:
+        result = None
+
+    assert fake.closed, f"{actor_name}: la sesion quedo abierta tras el fallo"
+    if result is not None:
+        assert "error" in str(result).lower()
