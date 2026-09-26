@@ -6,6 +6,11 @@ from urllib.parse import urlsplit
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Los unicos APP_ENV que authorizes a saltarse las garantias de produccion.
+# Todo lo demas (incluidos 'staging', 'preprod' y los typos) se trata como
+# produccion:Settings.is_production es una denylist, no una allowlist.
+_NON_PRODUCTION_ENVS = frozenset({"local", "test", "ci", "dev", "development"})
+
 # Credenciales de desarrollo conocidas: jamas validas en produccion.
 _WEAK_CREDENTIAL_PAIRS = {
     "postgres:postgres",
@@ -90,7 +95,17 @@ class Settings(BaseSettings):
     # Research OS is private by default. Tests that intentionally exercise the
     # public dependency graph must opt out explicitly with
     # RESEARCH_AUTH_REQUIRED=false.
+    # OJO: desactivarlo no solo abre la API, tambien desactiva el aislamiento
+    # multitenant (ver _scope_tenant_queries/_scope_tenant_dml en
+    # app/core/database.py). validate_production_security lo rechaza en
+    # produccion.
     research_auth_required: bool = True
+    # Obliga a que la firma HMAC cubra method+path+body_hash+nonce. Antes el
+    # flag no existia en Settings (extra="ignore" lo descartaba en silencio) y
+    # el getattr de app/core/auth.py devolvia False para siempre: fuera de
+    # produccion la firma era solo tenant:user:timestamp, reproducible y
+    # reutilizable en cualquier verbo, path y body durante la ventana de 300 s.
+    research_auth_strict_binding: bool = True
     research_auth_secret: str | None = Field(default=None, repr=False, min_length=32)
     research_auth_max_age_seconds: int = Field(default=300, ge=30, le=3600)
     rate_limit_enabled: bool = True
@@ -104,6 +119,11 @@ class Settings(BaseSettings):
     # uso normal. Tier propio y alto; son lecturas baratas cacheadas.
     rate_limit_market_requests_per_minute: int = Field(default=900, ge=10, le=100000)
     rate_limit_expensive_requests_per_minute: int = Field(default=20, ge=1, le=1000)
+    # Suelo del limite SOLO en local. Antes se deducía de app_env in
+    # {"local","test"} dentro de app/core/rate_limit.py, así que 'dev', 'ci' y
+    # 'development' se quedaban sin limite real (10000/min) mientras si
+    # exigian Redis. Ahora es un valor explicito y la prediccion es una sola.
+    rate_limit_local_request_floor: int = Field(default=10000, ge=0)
     financial_document_retention_days: int = Field(default=2555, ge=1)
     market_price_max_age_days: int = Field(default=3, ge=0, le=30)
 
@@ -200,15 +220,40 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        # APP_ENV canonico: acepta los alias 'production' y 'prod'. Toda
-        # decision de seguridad debe usar esta propiedad; comparar solo con
-        # 'production' dejaba 'prod' sin forzar auth firmada.
-        return self.app_env.lower() in {"production", "prod"}
+        # Denylist, no allowlist: cualquier APP_ENV que no sea un entorno local
+        # conocido se trata como produccion. Con una allowlist, 'staging',
+        # 'stage', 'preprod', 'prod-eu' o un typo (el default es 'local')
+        # degradaban en silencio TODAS las decisiones de seguridad: firma
+        # ligada al request, nonce en Redis, rate limit, MinIO.
+        return self.app_env.strip().lower() not in _NON_PRODUCTION_ENVS
+
+    @property
+    def is_local_environment(self) -> bool:
+        """Complemento de is_production.
+
+        Unica prediccion de "entorno local" del backend. El rate limiter la
+        usaba con tres allowlists distintas y contradictorias, lo que dejaba
+        'dev' y 'ci' sin limite efectivo.
+        """
+        return not self.is_production
 
     @model_validator(mode="after")
     def validate_production_security(self) -> Self:
         if not self.is_production:
             return self
+        if not self.research_auth_required:
+            # Desactivar la auth firmada no solo abre la API: deja la sesion
+            # sin tenant_id, y con el tenant ausente los guards de
+            # aislamiento (with_loader_criteria / _scope_tenant_dml) no inyectan
+            # filtro alguno. Es decir, desactiva multitenant completo.
+            raise ValueError(
+                "RESEARCH_AUTH_REQUIRED cannot be disabled in production: it would "
+                "also disable tenant isolation"
+            )
+        if any(origin.strip() == "*" for origin in self.cors_origins):
+            raise ValueError(
+                "CORS_ORIGINS must not contain '*' (CORS is mounted with allow_credentials)"
+            )
         if not self.research_auth_secret:
             raise ValueError("RESEARCH_AUTH_SECRET is required in production")
         if self.document_storage_backend != "minio":

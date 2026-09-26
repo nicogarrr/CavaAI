@@ -84,8 +84,8 @@ def _limit_for(settings, path: str) -> int:
         )
     else:
         limit = settings.rate_limit_requests_per_minute
-    if settings.app_env.lower() in {"local", "test"}:
-        limit = max(limit, 10000)
+    if settings.is_local_environment:
+        limit = max(limit, settings.rate_limit_local_request_floor)
     return limit
 
 
@@ -170,7 +170,7 @@ async def enforce_rate_limit(
         f"{identity}:{_tier_for(request.url.path)}".encode()
     ).hexdigest()
     key = f"cavaai:rate:{digest}"
-    use_redis = settings.app_env.lower() not in {"local", "test"}
+    use_redis = not settings.is_local_environment
     try:
         count, retry_after = await _record_hit(
             key,
