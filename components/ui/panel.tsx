@@ -34,6 +34,24 @@ export interface PanelProps extends Omit<React.HTMLAttributes<HTMLElement>, 'tit
     titleAs?: 'h2' | 'h3';
 }
 
+/**
+ * matchMedia reactivo y seguro en SSR: el servidor y la primera pintada del
+ * cliente asumen `false` (mobile-first; en desktop el contenido ya se ve por
+ * `md:block`), y tras la hidratacion el valor real corrige el estado ARIA.
+ * Breakpoint `md` de Tailwind = 768px.
+ */
+function useMediaQuery(query: string): boolean {
+    return React.useSyncExternalStore(
+        (onChange) => {
+            const media = window.matchMedia(query);
+            media.addEventListener('change', onChange);
+            return () => media.removeEventListener('change', onChange);
+        },
+        () => window.matchMedia(query).matches,
+        () => false,
+    );
+}
+
 /** Un icono puede llegar como componente lucide o como elemento ya pintado. */
 function renderIcon(icon: PanelProps['icon']) {
     if (!icon) return null;
@@ -74,12 +92,18 @@ export function Panel({
     const mobileOnly = collapsible === 'mobile';
     const toggleable = collapsible === true || mobileOnly;
     const spacing = DENSITY_CLASSES[density];
+    const isDesktop = useMediaQuery('(min-width: 768px)');
+
+    // Con `collapsible="mobile"` el contenido SIEMPRE es visible desde `md`
+    // (md:block): el estado expuesto a AT debe decirlo. Anunciar
+    // aria-expanded={false} con el contenido a la vista contradice la pagina.
+    const effectiveOpen = mobileOnly && isDesktop ? true : open;
 
     const bodyVisibility = !toggleable
         ? undefined
         : mobileOnly
-          ? (open ? 'md:block' : 'hidden md:block')
-          : (open ? undefined : 'hidden');
+          ? (effectiveOpen ? 'md:block' : 'hidden md:block')
+          : (effectiveOpen ? undefined : 'hidden');
 
     return (
         <section
@@ -98,7 +122,7 @@ export function Panel({
                 {toggleable ? (
                     <button
                         aria-controls={contentId}
-                        aria-expanded={open}
+                        aria-expanded={effectiveOpen}
                         className={cn(
                             '-mr-2 -mt-1 flex size-11 shrink-0 items-center justify-center rounded-lg text-gray-500 transition hover:text-gray-200',
                             mobileOnly && 'md:hidden',
@@ -106,9 +130,11 @@ export function Panel({
                         onClick={() => setOpen((value) => !value)}
                         type="button"
                     >
-                        <ChevronDown aria-hidden="true" className={cn('h-5 w-5 transition-transform', open ? 'rotate-180' : 'rotate-0')} />
+                        <ChevronDown
+                            className={cn('h-5 w-5 transition-transform', effectiveOpen ? 'rotate-180' : 'rotate-0')}
+                        />
                         <span className="sr-only">
-                            {open ? 'Contraer' : 'Expandir'} {title}
+                            {effectiveOpen ? 'Contraer' : 'Expandir'} {title}
                         </span>
                     </button>
                 ) : null}
