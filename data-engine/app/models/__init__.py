@@ -36,6 +36,8 @@ from app.models.entities import (
     FundamentalValuationSnapshot,
     FundManager,
     FXRate,
+    InsiderFiling,
+    InsiderTransaction,
     InvestmentCaseStudy,
     InvestmentPlan,
     InvestmentPrinciple,
@@ -85,9 +87,15 @@ from app.models.entities import (
     ValuationModel,
     ValuationOutput,
     WatchItem,
+    WorkflowRun,
+    WorkflowStepRun,
 )
 
 __all__ = [
+    "WorkflowStepRun",
+    "WorkflowRun",
+    "InsiderTransaction",
+    "InsiderFiling",
     "ManagerHolding",
     "FundManager",
     "DividendRecord",

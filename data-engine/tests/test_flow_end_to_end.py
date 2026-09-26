@@ -81,8 +81,7 @@ def test_flow_end_to_end(monkeypatch):
     monkeypatch.setattr(
         screeners_module, "_refetch_real_items", lambda **kwargs: list(FAKE_VENDOR_ITEMS)
     )
-    screeners_module._real_items_cache["at"] = 0.0
-    screeners_module._real_items_cache["items"] = []
+    screeners_module._real_items_cache.clear()
 
     client = TestClient(main.app)
 
