@@ -368,7 +368,7 @@ class KPIExtractionService:
             value_matches_quote = (
                 normalized is not None
                 and bool(figures)
-                and self._value_supported(normalized, figures)
+                and self._value_supported(normalized, figures, kpi.canonical_unit)
             )
             reconciliation = (
                 "reconciled"
@@ -616,16 +616,24 @@ class KPIExtractionService:
         return figures
 
     @staticmethod
-    def _value_supported(reported: Decimal, figures: list[_QuoteFigure]) -> bool:
+    def _value_supported(
+        reported: Decimal, figures: list[_QuoteFigure], canonical_unit: str
+    ) -> bool:
         """Whether the reported value matches a figure the quote states.
 
         The match is exact against the value the figure's own unit produces,
         never against a global ladder of tolerated scales: "1.234,5 millones"
-        supports 1.234.500.000 because the quote says "millones", and "12,5%"
-        supports 0.125 (a rate) and 12,5 (the points as written). The sign
+        supports 1.234.500.000 because the quote says "millones". The sign
         must agree, so "(100) millones" supports -100.000.000 and never
-        +100.000.000, and a ``year_like`` figure supports nothing. The
-        tolerance only covers rounding in the last digit the quote carries.
+        +100.000.000, and a ``year_like`` figure supports nothing.
+
+        A percentage figure follows the canonical unit of the KPI, because a
+        rate is stored as a fraction: with canonical unit "decimal", "12,5%"
+        supports 0.125 and ONLY 0.125 - accepting the points as written
+        vouched a reported 12,5 (1250%) for a rate the document stated at
+        12,5%, a 100x error that reached pending_approval when the raw unit
+        arrived as "unknown". The tolerance only covers rounding in the last
+        digit the quote carries.
         """
         for figure in figures:
             if figure.year_like:
@@ -637,9 +645,14 @@ class KPIExtractionService:
             if (reported < 0) != (figure.value < 0):
                 continue
             magnitude = abs(figure.value)
-            expected = {magnitude * figure.scale}
             if figure.percent:
-                expected.add(magnitude / Decimal("100"))
+                expected = (
+                    {magnitude / Decimal("100")}
+                    if canonical_unit == "decimal"
+                    else {magnitude}
+                )
+            else:
+                expected = {magnitude * figure.scale}
             for candidate in expected:
                 if candidate == 0:
                     continue
