@@ -2,6 +2,7 @@
 
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { formatNumber, formatPercent, formatUserDate, NA } from '@/lib/format';
 import type { WalkForwardBacktestResult } from '@/lib/actions/propicks-backtest.actions';
 
 /** La ficha acepta el backtest walk-forward point-in-time (métricas en español). */
@@ -60,8 +61,11 @@ function Metric({
     );
 }
 
+/** El backtest entrega porcentajes ya multiplicados por 100 (puntos, no ratio). */
 const fmtPct = (v: number | undefined, digits = 2) =>
-    v === undefined ? undefined : `${v > 0 ? '+' : ''}${v.toFixed(digits)} %`;
+    v === undefined
+        ? undefined
+        : formatPercent(v, { fromRatio: false, digits, signDisplay: 'always' });
 
 /**
  * Ficha pública de una estrategia: métricas NETAS de costes cuando el backtest
@@ -134,20 +138,27 @@ export default function StrategyFactsheet({
             <p className="text-sm leading-6 text-gray-400">{description}</p>
             <p className="mt-1 text-xs text-gray-500">
                 Período:{' '}
-                {period?.start ? new Date(period.start).toLocaleDateString('es-ES') : '—'} —{' '}
-                {period?.end ? new Date(period.end).toLocaleDateString('es-ES') : '—'}
+                {period?.start ? formatUserDate(period.start) : NA} —{' '}
+                {period?.end ? formatUserDate(period.end) : NA}
             </p>
             <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
                 <Metric label="Retorno neto" value={fmtPct(m.retorno)} footnote="Descontados los costes" />
                 <Metric label="SPY (referencia)" value={fmtPct(m.benchmark)} footnote="Mismo período" />
-                <Metric label="Sharpe neto" value={m.sharpe === undefined ? undefined : m.sharpe.toFixed(2)} />
+                <Metric
+                    label="Sharpe neto"
+                    value={
+                        m.sharpe === undefined
+                            ? undefined
+                            : formatNumber(m.sharpe, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    }
+                />
                 <Metric
                     label="Caída máxima neta"
-                    value={m.maxDD === undefined ? undefined : `${m.maxDD.toFixed(2)} %`}
+                    value={m.maxDD === undefined ? undefined : formatPercent(m.maxDD, { fromRatio: false, digits: 2 })}
                 />
                 <Metric
                     label="Rotación media"
-                    value={m.turnover === undefined ? undefined : `${m.turnover.toFixed(0)} %`}
+                    value={m.turnover === undefined ? undefined : formatPercent(m.turnover, { fromRatio: false, digits: 0 })}
                     footnote="Turnover"
                 />
                 <Metric label="Exceso vs SPY (alpha)" value={fmtPct(m.alpha)} />

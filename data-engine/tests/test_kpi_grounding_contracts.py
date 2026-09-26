@@ -32,7 +32,6 @@ from app.models.entities import (
 from app.services.kpi_extraction_service import KPIExtractionService
 from app.services.number_parsing import find_number_tokens, parse_localized_number
 
-
 LOCALE_TOKENS = [
     ("3.456,7", Decimal("3456.7")),
     ("0,24", Decimal("0.24")),
@@ -118,28 +117,72 @@ GROUNDED_QUOTE = (
 
 
 def test_grounding_accepts_the_figures_the_quote_states():
-    figures, stated = KPIExtractionService._value_in_quote(GROUNDED_QUOTE)
-    assert stated is True
-    assert Decimal("1234.5") in figures
-    assert Decimal("12.5") in figures
-    # The canonical value carries the multiplier the quote omits.
-    assert KPIExtractionService._same_magnitude(Decimal("1234500000"), figures) is True
+    figures = KPIExtractionService._quote_figures(GROUNDED_QUOTE)
+    assert figures, GROUNDED_QUOTE
+    assert {figure.value for figure in figures} == {
+        Decimal("2024"), Decimal("1234.5"), Decimal("12.5"), Decimal("2023"),
+    }
+    # The canonical value carries the multiplier the quote states explicitly.
+    assert KPIExtractionService._value_supported(Decimal("1234500000"), figures, "USD") is True
     # A percentage is stored as a decimal rate.
-    assert KPIExtractionService._same_magnitude(Decimal("0.125"), figures) is True
+    assert KPIExtractionService._value_supported(Decimal("0.125"), figures, "decimal") is True
 
 
 def test_grounding_rejects_a_figure_the_quote_never_states():
-    figures, _ = KPIExtractionService._value_in_quote(GROUNDED_QUOTE)
-    assert KPIExtractionService._same_magnitude(Decimal("9999"), figures) is False
+    figures = KPIExtractionService._quote_figures(GROUNDED_QUOTE)
+    assert KPIExtractionService._value_supported(Decimal("9999"), figures, "USD") is False
     # The 1000x error this service used to publish: 3.456.700 instead of
     # 3.456.700.000 is a real number, but not one the quote supports.
-    assert KPIExtractionService._same_magnitude(Decimal("3456700"), figures) is False
+    assert KPIExtractionService._value_supported(Decimal("3456700"), figures, "USD") is False
 
 
 def test_a_quote_without_figures_cannot_vouch_for_a_value():
-    figures, stated = KPIExtractionService._value_in_quote("los ingresos del ejercicio")
-    assert figures == set()
-    assert stated is False
+    assert KPIExtractionService._quote_figures("los ingresos del ejercicio") == []
+
+
+def test_the_fiscal_year_cannot_vouch_for_the_kpi():
+    # "Ingresos FY2025: 100 millones" yields the tokens {2025, 100}. The old
+    # magnitude ladder accepted 2.025.000.000 because the year 2025 was in the
+    # set and a 1e6 ratio was tolerated: the fiscal year became the KPI.
+    figures = KPIExtractionService._quote_figures(
+        "Ingresos FY2025: 100 millones de euros."
+    )
+    by_value = {figure.value: figure for figure in figures}
+    assert by_value[Decimal("2025")].year_like is True
+    assert by_value[Decimal("100")].scale == Decimal("1e6")
+    assert KPIExtractionService._value_supported(Decimal("2025000000"), figures, "EUR") is False
+    assert KPIExtractionService._value_supported(Decimal("100000000"), figures, "EUR") is True
+
+
+def test_a_scale_the_quote_does_not_state_cannot_vouch():
+    # The quote says "millones": a figure stored in miles, or a hundred times
+    # over, is not what the document reported even though a global magnitude
+    # ladder used to wave both through.
+    figures = KPIExtractionService._quote_figures("Los ingresos fueron 100 millones.")
+    assert KPIExtractionService._value_supported(Decimal("100000"), figures, "EUR") is False
+    assert KPIExtractionService._value_supported(Decimal("10000000000"), figures, "EUR") is False
+    assert KPIExtractionService._value_supported(Decimal("100000000"), figures, "EUR") is True
+
+
+def test_the_sign_of_the_quote_is_part_of_the_figure():
+    # abs() used to erase accounting parentheses, so a loss vouched for a
+    # profit of the same magnitude.
+    figures = KPIExtractionService._quote_figures("El resultado fue (100) millones de euros.")
+    assert {figure.value for figure in figures} == {Decimal("-100")}
+    assert KPIExtractionService._value_supported(Decimal("-100000000"), figures, "EUR") is True
+    assert KPIExtractionService._value_supported(Decimal("100000000"), figures, "EUR") is False
+    figures = KPIExtractionService._quote_figures("El resultado fue -100 millones de euros.")
+    assert KPIExtractionService._value_supported(Decimal("100000000"), figures, "EUR") is False
+
+
+def test_a_figure_cannot_borrow_the_unit_of_the_next_one():
+    # The unit window is cut where the next figure starts: in "un 12,5% mas
+    # que en 2023", the year must not pick up the percent sign, and the 12,5
+    # must not pick up a scale meant for another number.
+    figures = KPIExtractionService._quote_figures("un 12,5% mas que en 2023")
+    by_value = {figure.value: figure for figure in figures}
+    assert by_value[Decimal("12.5")].percent is True
+    assert by_value[Decimal("2023")].year_like is True
 
 
 # --------------------------------------------------------------------------
@@ -168,7 +211,7 @@ class _StaticProvider(LLMProvider):
         )
 
 
-def _extraction(chunk_text: str, raw_value: str) -> KPIExtractionCandidate:
+def _extraction(chunk_text: str, raw_value: str, raw_unit: str = "percent") -> KPIExtractionCandidate:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as db:
@@ -196,7 +239,7 @@ def _extraction(chunk_text: str, raw_value: str) -> KPIExtractionCandidate:
                         "metric_key": "penetration",
                         "raw_label": "Penetration",
                         "raw_value": raw_value,
-                        "raw_unit": "percent",
+                        "raw_unit": raw_unit,
                         "period": "FY2025",
                         "fiscal_year": 2025,
                         "fiscal_quarter": "FY",
@@ -242,3 +285,44 @@ def test_a_grounded_figure_stays_approvable():
     assert candidate.reconciliation_status == "reconciled"
     assert candidate.status == "pending_approval"
     assert candidate.trace["value_grounded"] is True
+
+
+def test_the_fiscal_year_cannot_become_the_kpi_end_to_end():
+    # "Penetration reached 12.5% in FY2025." reported as "2025": the year was
+    # in the quote's figure set and the old magnitude ladder accepted it, so
+    # 2025 percent points reached pending_approval as a canonical fact. It
+    # must now stop at needs_review, where approve() refuses to persist it.
+    candidate = _extraction("Penetration reached 12.5% in FY2025.", "2025")
+    assert candidate.reconciliation_status == "needs_review"
+    assert candidate.status == "needs_review"
+    assert candidate.trace["value_grounded"] is False
+
+
+def test_a_negative_report_cannot_hide_behind_a_positive_quote_end_to_end():
+    # The quote says penetration ROSE to 12.5%. Reporting -12.5% used to pass
+    # because abs() erased the sign on both sides of the comparison.
+    candidate = _extraction("Penetration reached 12.5% in FY2025.", "(12,5)%")
+    assert candidate.normalized_value == Decimal("-0.125")
+    assert candidate.reconciliation_status == "needs_review"
+    assert candidate.trace["value_grounded"] is False
+
+
+def test_a_percent_quote_vouches_only_the_fraction_for_a_decimal_kpi():
+    figures = KPIExtractionService._quote_figures("Penetration reached 12.5% in FY2025.")
+    assert KPIExtractionService._value_supported(Decimal("0.125"), figures, "decimal") is True
+    # The points as written are 100x the rate: with canonical decimal they
+    # must NOT vouch, or a raw_unit "unknown" sneaks 12,5 in as reconciled.
+    assert KPIExtractionService._value_supported(Decimal("12.5"), figures, "decimal") is False
+
+
+def test_a_percent_quote_with_raw_unit_unknown_degrades_end_to_end():
+    # Real path of the hole: canonical_unit decimal, raw_value "12,5" with
+    # raw_unit "unknown" normalizes to 12.5 (no percent division), and the
+    # quote "12,5%" used to vouch it via the points as written: a 100x error
+    # that approve() could persist. It must stop at needs_review.
+    engine_chunk = "Penetration reached 12.5% in FY2025."
+    candidate = _extraction(engine_chunk, "12,5", "unknown")
+    assert candidate.normalized_value == Decimal("12.5")
+    assert candidate.reconciliation_status == "needs_review"
+    assert candidate.status == "needs_review"
+    assert candidate.trace["value_grounded"] is False

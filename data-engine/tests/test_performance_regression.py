@@ -15,24 +15,24 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, event, inspect, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
-from app.core.database import Base
 import app.models  # noqa: F401  (registra todas las tablas en Base.metadata)
+from app.core.database import Base
 from app.models import (
     CashBalance,
     Company,
     FinancialFact,
+    FundamentalModelVersion,
     FXRate,
     MarketPrice,
     Portfolio,
     Position,
     ThesisChange,
     ThesisVersion,
-    FundamentalModelVersion,
-    ValuationModel,
     Transaction,
+    ValuationModel,
 )
 
 
@@ -241,6 +241,7 @@ def test_snapshot_capture_under_2s(perf_db) -> None:
 
 def test_positions_fiscal_batch_matches_row_by_row(perf_db) -> None:
     from sqlalchemy import desc  # noqa: F401
+
     from app.api.routes.portfolio import _fiscal_info, _fiscal_info_batch
 
     db, counter, _today = perf_db
@@ -332,8 +333,8 @@ def test_risk_dashboard_query_budget(perf_db) -> None:
 
 
 def test_pagination_caps_are_enforced(perf_db) -> None:
-    from app.api.routes import portfolio as portfolio_routes
     from app.api.routes import companies as companies_routes
+    from app.api.routes import portfolio as portfolio_routes
 
     db, _counter, _today = perf_db
     assert len(portfolio_routes.transactions(limit=5, offset=0, db=db)) == 5

@@ -8,7 +8,6 @@ from app.models import Company, Position
 from app.services.llm_router import route_model
 from app.services.source_hierarchy_service import SourceTier, classify_source
 
-
 MATERIAL_KEYWORDS = {
     "dilution": ["offering", "dilution", "atm", "capital raise", "convertible", "shares"],
     "earnings": ["earnings", "guidance", "revenue", "eps", "fcf", "margin"],

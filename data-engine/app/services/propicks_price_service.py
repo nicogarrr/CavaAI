@@ -11,10 +11,11 @@ suficiente no se escribe metrica.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert

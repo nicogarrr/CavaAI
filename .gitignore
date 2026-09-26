@@ -56,12 +56,27 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
+*.db-journal-*
 *.sqlite*
 data-engine/knowledge_base/
 data-engine/funds_cache.json
 data-engine/.pytest_cache/
 data-engine/storage/.pytest_cache/
 data-engine/storage/raw/
+# Entornos y cachés de Python dentro del repo. Además de no ser código,
+# contienen binarios que el escáner de Tailwind v4 de Next lee como clases:
+# generaba utilidades basura del tipo `.pt-[var(--<bytes>)]` y lightningcss
+# fallaba con "Unexpected token Ident", dejando `next dev` en 500 para TODAS las
+# rutas. En Vercel no se reproduce porque allí no existe .venv.
+data-engine/.venv/
+data-engine/venv/
+data-engine/.ruff_cache/
+data-engine/.mypy_cache/
+data-engine/htmlcov/
+
+# Builds de verificación de los agentes (no forman parte del producto)
+.next-*/
 
 # IDE
 .idea/

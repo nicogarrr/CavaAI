@@ -32,10 +32,10 @@ from app.schemas import (
     ThesisSectionCreate,
     ThesisSectionOut,
 )
+from app.services.company_resolver import resolve_company
 from app.services.review_alert_service import ReviewAlertService
 from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_change_types import claim_change_type
-from app.services.company_resolver import resolve_company
 
 router = APIRouter()
 

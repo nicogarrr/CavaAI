@@ -21,19 +21,20 @@ import hashlib
 import logging
 import random
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Traza activa de la corrida en curso (request o actor). Los spans de
 # generacion LLM se cuelgan de ella; sin traza activa no se emite nada.
-_current_tracer: contextvars.ContextVar["ShadowTracer | None"] = contextvars.ContextVar(
+_current_tracer: contextvars.ContextVar[ShadowTracer | None] = contextvars.ContextVar(
     "cavaai_current_tracer", default=None
 )
 
 
-def set_current_tracer(tracer: "ShadowTracer | None") -> contextvars.Token:
+def set_current_tracer(tracer: ShadowTracer | None) -> contextvars.Token:
     return _current_tracer.set(tracer)
 
 

@@ -1,3 +1,4 @@
+import { Metadata } from 'next';
 import Link from 'next/link';
 import {
   BookOpen,
@@ -22,6 +23,18 @@ import { Button } from '@/components/ui/button';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 3600;
+
+/**
+ * Página pública: la metodología es el mejor argumento de confianza del
+ * producto y tiene que poder leerse sin crear una cuenta. El noindex de
+ * `app/layout.tsx` lo sobrescribe `app/(public)/layout.tsx`.
+ */
+export const metadata: Metadata = {
+  title: 'Metodología',
+  description:
+    'Fuentes de datos, motores de valoración, límites y costes de CavaAI: de dónde sale cada dato y qué no debes esperar de la plataforma.',
+  robots: { index: true, follow: true },
+};
 
 const sources = [
   {
@@ -147,7 +160,7 @@ const costs = [
 
 export default function MetodologiaPage() {
   return (
-    <main className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-6 overflow-x-clip">
+    <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-6 overflow-x-clip px-4 py-10 md:px-6 lg:px-8">
       <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-semibold uppercase text-teal-300">Transparencia</p>
@@ -178,6 +191,23 @@ export default function MetodologiaPage() {
           </Button>
         </div>
       </header>
+
+      {/* La página es pública, pero los módulos que enlaza viven dentro de la
+          app: se dice aquí, en vez de dejar que un visitante sin cuenta
+          descubra el muro de sesión al pulsarlos. */}
+      <p className="rounded-xl border border-gray-700/50 bg-surface-overlay p-4 text-sm leading-6 text-gray-300">
+        Esta página es pública. Los botones y las fichas que enlazan (research, índices, señales de
+        insiders, Knowledge, búsqueda de evidencia y ProPicks) forman parte del espacio de trabajo:
+        requieren una cuenta, así que al pulsarlos se te pedirá iniciar sesión.{' '}
+        <Link href="/sign-up" className="public-footer-link">
+          Crear cuenta
+        </Link>{' '}
+        o{' '}
+        <Link href="/sign-in" className="public-footer-link">
+          iniciar sesión
+        </Link>
+        .
+      </p>
 
       <section className="min-w-0">
         <div className="mb-4 flex flex-wrap items-center gap-2">

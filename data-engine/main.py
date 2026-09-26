@@ -4,13 +4,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.router import api_router as research_api_router
 from app.api.routes.health import router as health_router
-from app.core.config import get_settings
 from app.core.auth import get_research_principal
+from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.core.rate_limit import enforce_rate_limit
 from app.core.raw_body import RawBodyMiddleware
@@ -18,10 +19,10 @@ from app.llm.factory import validate_llm_configuration
 from app.llm.model_aliases import configure_model_aliases
 from app.seed import ensure_company_master
 
-
 try:  # preload optional probe modules during process startup, not in a request
-    import redis  # noqa: F401
     import urllib.request  # noqa: F401
+
+    import redis  # noqa: F401
 except Exception:  # noqa: BLE001 — readiness reports the unavailable dependency
     pass
 
@@ -98,6 +99,23 @@ app.add_middleware(
 )
 
 private_dependencies = [Depends(get_research_principal), Depends(enforce_rate_limit)]
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Cierre de red para excepciones no capturadas.
+
+    Sin esto, cualquier error que se escape de un handler devolvía el
+    ``{"detail": "Internal Server Error"}`` pelado de FastAPI, sin id de
+    correlación: era imposible casar un reporte de usuario con el log.
+    """
+    from app.core.errors import safe_detail
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": safe_detail(exc, 500)},
+    )
+
 
 # /api/health es público (sin firma): lo montamos fuera del research API
 # para que orquestación/monitoreo pueda consultarlo sin identidad.
@@ -216,7 +234,7 @@ async def _run_health_probe(
             timeout=HEALTH_READY_TIMEOUT_SECONDS,
         )
         return name, str(result)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return name, "error:TimeoutError"
     except Exception as exc:  # noqa: BLE001 — reportar y continuar
         return name, f"error:{type(exc).__name__}"

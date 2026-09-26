@@ -1,12 +1,11 @@
 import re
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
 from app.models import CalculatedMetric, Company, FinancialFact
-
 
 MetricFormula = tuple[str, str, tuple[str, ...], str]
 
@@ -176,6 +175,49 @@ class MetricResult:
 
 def _quantize(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
+
+
+# Fuentes cuyos importes monetarios llegan en unidades absolutas: market data
+# (yfinance, Finnhub) y hechos SEC/FMP. Entre ellas, con la misma unidad, un
+# ratio extremo entre capitalizacion y deuda es estructura de capital real
+# (una mega-cap casi sin deuda), NO un error de unidades.
+_ABSOLUTE_AMOUNT_SOURCES = frozenset({"yfinance", "Finnhub", "SEC", "FMP"})
+
+
+def _capital_scale_conflict(equity_fact: FinancialFact, debt_fact: FinancialFact) -> bool:
+    """True si equity y debt no son comparables para el WACC.
+
+    Fail-closed, en este orden:
+    - Unidades monetarias explicitas y distintas (USD vs EUR): conflicto
+      siempre. No es un error de escala sino de divisa, y ninguna
+      provenance lo rescata: un par de fuentes "absolutas" no es
+      comparable si cada una expresa otra moneda.
+    - Ambas fuentes absolutas y misma unidad: comparables a cualquier
+      ratio (una mega-cap casi sin deuda supera 100x de forma real).
+    - Cualquier otra combinacion (ESEF sin escala persistida, o
+      provenance incierta): conflicto siempre, a cualquier magnitud.
+      Un ratio razonable no demuestra unidades compatibles; el atajo
+      del 100x dejaba pasar mezclas no verificables.
+
+    Nunca se deduce un factor de escala ni de divisa: si no son
+    comparables, el metodo queda unavailable en vez de publicar un WACC
+    inventado.
+    """
+    if debt_fact.value == 0:
+        return False
+    if (
+        equity_fact.unit
+        and debt_fact.unit
+        and equity_fact.unit != debt_fact.unit
+    ):
+        return True
+    if (
+        equity_fact.source_type in _ABSOLUTE_AMOUNT_SOURCES
+        and debt_fact.source_type in _ABSOLUTE_AMOUNT_SOURCES
+        and equity_fact.unit == debt_fact.unit
+    ):
+        return False
+    return True
 
 
 class MetricCalculationService:
@@ -743,17 +785,24 @@ class MetricCalculationService:
                 else:
                     missing.append(key)
 
+            # Solo valor de MERCADO para el peso de equity. `total_equity` es el
+            # patrimonio contable: usarlo como Ew del WACC mezcla market value
+            # con book value. Con market cap 10.000M, book equity 2.000M y debt
+            # 3.000M, el WACC correcto es 7,08% y con book equity salia 5,60%
+            # (-21%), y como el DCF escala con 1/(WACC-g) el valor de salida se
+            # desvía +48%. Si no hay market cap, el WACC no se calcula: se
+            # declara unavailable con el motivo (ver mas abajo).
             equity = self._match_alias(
                 db,
                 company,
-                ("market_cap", "market_capitalization", "total_equity"),
+                ("market_cap", "market_capitalization"),
                 anchor,
                 allow_latest=True,
             )
             if equity:
                 facts["equity_value"] = equity[1]
             else:
-                missing.append("market_cap_or_total_equity")
+                missing.append("market_cap")
 
             tax_rate, tax_trace, tax_facts = self._tax_rate_for_period(
                 db,
@@ -849,6 +898,17 @@ class MetricCalculationService:
             ):
                 best_facts = facts
                 best_missing = ["valid_rates_and_capital_weights"]
+                best_tax_trace = tax_trace
+                continue
+            if _capital_scale_conflict(facts["equity_value"], facts["total_debt"]):
+                # market_cap viene de market data en unidades absolutas;
+                # total_debt ESEF puede llegar escalado (scale no se conserva).
+                # Sumarlos sin reconciliar daba Dw ~= 1,5e-6 en un emisor
+                # apalancado: WACC 18,0% donde correspondía 12,6% (-34% de
+                # valor de salida). No se adivina un factor de escala: se
+                # declara inconsistente.
+                best_facts = facts
+                best_missing = ["capital_amounts_scale_mismatch"]
                 best_tax_trace = tax_trace
                 continue
 

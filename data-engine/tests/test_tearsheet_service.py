@@ -22,9 +22,9 @@ from app.models import (
     Tenant,
 )
 from app.services.tearsheet_service import (
+    TearsheetService,
     compute_metrics,
     exposure_from_snapshot,
-    TearsheetService,
 )
 
 # Serie determinista: mezcla de dias positivos y negativos.

@@ -9,13 +9,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import Company, Document, FinancialFact, FinancialStatement, MarketPrice
+from app.services.connectors import esef as esef_connector
 from app.services.connectors import fred as fred_connector
 from app.services.connectors import sec_edgar as sec_edgar_connector
-from app.services.connectors import esef as esef_connector
-from app.services.fact_chunk_service import sync_company_fact_chunks
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.sec import SECClient
-
+from app.services.fact_chunk_service import sync_company_fact_chunks
 
 MetricSpec = tuple[str, str, str]
 
@@ -371,19 +370,37 @@ def _esef_period(entry: dict[str, Any]) -> str | None:
 
 def _merge_esef_periods(
     facts_data: dict[str, Any], concepts: list[str], unit: str, metric: str
-) -> dict[str, dict[str, Any]]:
-    """One value per period for an ESEF metric.
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """One value per period for an ESEF metric, plus an explicit coverage record.
 
     A filer that disaggregates a total into disjoint parts has them added up, a
     filer that tags the combined total is taken at its word, and everything
     else keeps the first concept that reports the period: ESEF snapshots carry
     no filing date, so there is nothing honest to rank two aliases with beyond
     the order the concepts are declared in.
+
+    Two failure modes of the sum are refused rather than published:
+
+    * the same fact twice (same tag, same context, same value) used to be added
+      twice - two snapshots of one filing read as double the capex. Identical
+      duplicates collapse to one fact; two DIFFERENT values for the same tag
+      and period cannot be ranked without a filing date, so the period is
+      ambiguous and is rejected (a disclosed total for the period still wins);
+    * a part that is missing for the period used to vanish silently, and the
+      subtotal was published as the complete metric. A missing part is only
+      declared when its absence can be affirmed - the filer DOES report that
+      concept, just not for this period; a part the filer never reports can be
+      zero or not applicable, and the sum is taken as complete.
+
+    Returns the merged periods and a coverage record with the rejected
+    (ambiguous) and incomplete (partial) periods, so the caller can state what
+    was NOT published instead of letting it pass for the whole magnitude.
     """
     superset = ESEF_SUPERSET_CONCEPTS.get(metric, [])
     parts = ESEF_PART_CONCEPTS.get(metric, [])
     by_period: dict[str, dict[str, Any]] = {}
-    summed: dict[str, dict[str, Any]] = {}
+    part_facts: dict[str, dict[str, set[Decimal]]] = {}
+    concepts_with_data: set[str] = set()
     for concept in concepts:
         for entry in facts_data.get(concept, {}).get(unit, []):
             period = _esef_period(entry)
@@ -392,25 +409,40 @@ def _merge_esef_periods(
             if concept in superset:
                 by_period.setdefault(period, entry)
             elif concept in parts:
-                bucket = summed.setdefault(
-                    period,
-                    {"val": Decimal("0"), "period": period, "_components": {}},
-                )
                 value = _decimal(entry.get("val"))
                 if value is None:
                     continue
-                bucket["val"] += value
-                bucket["_components"][concept] = str(value)
+                concepts_with_data.add(concept)
+                part_facts.setdefault(period, {}).setdefault(concept, set()).add(value)
             elif period not in by_period:
                 by_period[period] = entry
-    for period, bucket in summed.items():
+    coverage: dict[str, Any] = {"ambiguous": {}, "partial": {}}
+    for period, by_concept in part_facts.items():
         # A disclosed total always beats the sum of its parts: it is the only
         # statement of the whole magnitude, and it may include components the
         # parts do not itemise.
         if period in by_period:
             continue
-        by_period[period] = {**bucket, "val": float(bucket["val"])}
-    return by_period
+        conflicts = {
+            concept: sorted(str(value) for value in values)
+            for concept, values in by_concept.items()
+            if len(values) > 1
+        }
+        if conflicts:
+            coverage["ambiguous"][period] = conflicts
+            continue
+        missing = sorted(concepts_with_data - set(by_concept))
+        if missing:
+            coverage["partial"][period] = missing
+            continue
+        by_period[period] = {
+            "val": float(sum((next(iter(values)) for values in by_concept.values()), Decimal("0"))),
+            "period": period,
+            "_components": {
+                concept: str(next(iter(values))) for concept, values in by_concept.items()
+            },
+        }
+    return by_period, coverage
 
 
 def _period(row: dict[str, Any]) -> tuple[str, int | None, str | None]:
@@ -822,8 +854,11 @@ class FinancialIngestionService:
         self._replace_esef_data(db, company, document)
         facts_imported = 0
 
+        esef_coverage: dict[str, Any] = {}
         for metric, concepts, unit in ESEF_METRIC_MAP:
-            by_period = _merge_esef_periods(facts_data, concepts, unit, metric)
+            by_period, coverage = _merge_esef_periods(facts_data, concepts, unit, metric)
+            if coverage["ambiguous"] or coverage["partial"]:
+                esef_coverage[metric] = coverage
             for period_date in sorted(by_period, reverse=True)[:10]:
                 val = _decimal(by_period[period_date].get("val"))
                 if val is None:
@@ -858,6 +893,7 @@ class FinancialIngestionService:
             "period_end": snapshot.get("period_end"),
             "fxo_id": snapshot.get("fxo_id"),
             "snapshot_fetched_at": snapshot.get("fetched_at"),
+            "esef_coverage": esef_coverage,
             "last_refreshed_at": datetime.now(UTC).isoformat(),
         }
         # Chunks RAG desde los hechos persistidos (documento parseado no existe:

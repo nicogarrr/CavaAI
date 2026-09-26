@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, MarketPrice, Position, ValuationModel, ValuationOutput
+from app.models.entities import Base, Company, MarketPrice, Position, ValuationOutput
 from app.services.valuation_service import ValuationService, _position_price
 
 
