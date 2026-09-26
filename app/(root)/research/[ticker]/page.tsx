@@ -65,7 +65,7 @@ import ThesisApproveButton from '@/components/research/ThesisApproveButton';
 import CitationsList from '@/components/chat/CitationsList';
 import FollowButton from '@/components/screener/FollowButton';
 import ThesisGenerateButton from '@/components/research/ThesisGenerateButton';
-import { formatCompact, formatDate, formatDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
+import { formatCompact, formatDate, formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { glossary, moatGlossaryKey } from '@/lib/glossary';
 
 export const dynamic = 'force-dynamic';
@@ -710,7 +710,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                     <Badge variant="outline">{label(entry.rating)}</Badge>
                     {entry.diff?.rating_changed ? <Badge>rating cambiado</Badge> : null}
                     <span className="ml-auto text-xs text-gray-500">
-                      {formatDateTime(entry.updated_at)}
+                      {formatUserDateTime(entry.updated_at)}
                     </span>
                   </div>
                   {entry.diff ? (
