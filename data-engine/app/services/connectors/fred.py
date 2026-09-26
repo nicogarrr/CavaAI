@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from app.core.config import get_settings
-
+from app.services.connectors.base import get_with_retry
 
 _BROWSER_HEADERS: dict[str, str] = {
     "User-Agent": (
@@ -50,18 +50,16 @@ class FREDClient:
             "limit": limit,
             "sort_order": "desc",
         }
+        url = f"{self.base_url}/series/observations"
         if self.client is not None:
-            response = await self.client.get(
-                f"{self.base_url}/series/observations",
-                params=params,
-                headers=self.headers,
+            response = await get_with_retry(
+                lambda: self.client.get(url, params=params, headers=self.headers)
             )
         else:
             async with httpx.AsyncClient(timeout=30, headers=self.headers) as client:
-                response = await client.get(
-                    f"{self.base_url}/series/observations", params=params
+                response = await get_with_retry(
+                    lambda: client.get(url, params=params)
                 )
-        response.raise_for_status()
         return response.json()
 
     async def series_csv(self, series_id: str, limit: int = 10) -> dict:
@@ -194,3 +192,4 @@ async def latest_observation(
     except (KeyError, TypeError, ValueError):
         value = last.get("value")
     return {"series_id": series_id, "date": last.get("date"), "value": value}
+

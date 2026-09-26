@@ -9,8 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router as research_api_router
 from app.api.routes.health import router as health_router
-from app.core.config import get_settings
 from app.core.auth import get_research_principal
+from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.core.rate_limit import enforce_rate_limit
 from app.core.raw_body import RawBodyMiddleware
@@ -18,10 +18,10 @@ from app.llm.factory import validate_llm_configuration
 from app.llm.model_aliases import configure_model_aliases
 from app.seed import ensure_company_master
 
-
 try:  # preload optional probe modules during process startup, not in a request
-    import redis  # noqa: F401
     import urllib.request  # noqa: F401
+
+    import redis  # noqa: F401
 except Exception:  # noqa: BLE001 — readiness reports the unavailable dependency
     pass
 
@@ -52,6 +52,11 @@ async def lifespan(_: FastAPI):
 
     if scheduler is not None:
         scheduler.shutdown(wait=False)
+    # Los executores de sonda son de nivel de modulo: sin apagarlos, un
+    # TestClient que abre y cierra muitas veces deja hilos vivos por proceso.
+    # wait=False porque pueden tener sondas colgadas.
+    _HEALTH_REQUIRED_EXECUTOR.shutdown(wait=False)
+    _HEALTH_PROBE_EXECUTOR.shutdown(wait=False)
 
 
 _app_env = get_settings().app_env.strip().lower()
@@ -118,6 +123,15 @@ async def health_live():
 
 
 HEALTH_READY_TIMEOUT_SECONDS = 1.0
+# Dos executors y no uno. La BD es la unica dependencia hard-required: si
+# comparte pool con Redis/Qdrant/MinIO, tres sondas opcionales que se quedan
+# colgadas (aceptan la conexion y nunca responden) consumian los 4 hilos y la
+# sonda de BD ya nofindaba ninguno -> checks["database"] != "ok" -> 503
+# permanente con la base de datos perfectamente sana, y sin reaper que lo
+# desbloquee. asyncio.wait_for cancela la espera, no el hilo.
+_HEALTH_REQUIRED_EXECUTOR = ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="cavaai-health-required"
+)
 # Un executor dedicado evita que ``asyncio.run``/el cierre de un test espere a
 # los hilos de sondas que vencieron su timeout. Las sondas conservan su propio
 # timeout de red y los hilos remanentes terminan solos al concluir.
@@ -133,6 +147,11 @@ def _probe_database(_settings) -> str:
     from app.core.database import SessionLocal
 
     with SessionLocal() as db:
+        # statement_timeout acota la sonda a nivel de servidor. Sin el, un
+        # lock de Postgres puede dejar el hilo bloqueado indefinidamente y
+        #Slottear el executor dedicado para siempre. En SQLite no aplica.
+        if db.bind is not None and db.bind.dialect.name == "postgresql":
+            db.execute(text("SET LOCAL statement_timeout = '1s'"))
         db.execute(text("SELECT 1"))
     return "ok"
 
@@ -183,17 +202,21 @@ def _probe_minio(settings) -> str:
         return "ok" if exc.code < 500 else f"error:status_{exc.code}"
 
 
-async def _run_health_probe(name: str, probe, settings) -> tuple[str, str]:
+async def _run_health_probe(
+    name: str, probe, settings, executor=None
+) -> tuple[str, str]:
     """Ejecuta una sonda en un hilo y la corta al deadline compartido."""
     try:
         loop = asyncio.get_running_loop()
-        future = loop.run_in_executor(_HEALTH_PROBE_EXECUTOR, probe, settings)
+        future = loop.run_in_executor(
+            executor or _HEALTH_PROBE_EXECUTOR, probe, settings
+        )
         result = await asyncio.wait_for(
             future,
             timeout=HEALTH_READY_TIMEOUT_SECONDS,
         )
         return name, str(result)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return name, "error:TimeoutError"
     except Exception as exc:  # noqa: BLE001 — reportar y continuar
         return name, f"error:{type(exc).__name__}"
@@ -208,14 +231,20 @@ async def health_ready():
     bloqueada la ruta ni convierte un backend SQLite sano en 503.
     """
     settings = get_settings()
-    probes = (
-        ("database", _probe_database),
-        ("redis", _probe_redis),
-        ("qdrant", _probe_qdrant),
-        ("minio", _probe_minio),
-    )
+    # La BD va a un executor propio: es la unica que puede tirar el 503, y no
+    # puede quedarse sin hilo por culpa de las opcionales.
     results = await asyncio.gather(
-        *(_run_health_probe(name, probe, settings) for name, probe in probes)
+        _run_health_probe(
+            "database", _probe_database, settings, _HEALTH_REQUIRED_EXECUTOR
+        ),
+        *(
+            _run_health_probe(name, probe, settings)
+            for name, probe in (
+                ("redis", _probe_redis),
+                ("qdrant", _probe_qdrant),
+                ("minio", _probe_minio),
+            )
+        ),
     )
     checks = dict(results)
 

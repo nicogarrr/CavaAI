@@ -7,7 +7,7 @@ import { ShieldAlert, AlertTriangle, RefreshCw } from 'lucide-react';
 import { generateRiskAnalysis, type MonteCarloResult } from '@/lib/actions/risk.actions';
 import { toast } from 'sonner';
 
-import { formatPercent } from '@/lib/format';
+import { formatNumber, formatPercent } from '@/lib/format';
 
 interface PortfolioRiskSimulatorProps {
     userId: string;
@@ -90,7 +90,7 @@ export function PortfolioRiskSimulator({ userId }: PortfolioRiskSimulatorProps) 
                             </div>
                             <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800">
                                 <p className="text-xs text-muted-foreground">Modelos ejecutados</p>
-                                <p className="text-xl font-mono text-white">{result.summary.models_run}</p>
+                                <p className="text-xl font-mono text-white">{formatNumber(result.summary.models_run, { maximumFractionDigits: 0 })}</p>
                             </div>
                         </div>
 
@@ -132,7 +132,8 @@ export function PortfolioRiskSimulator({ userId }: PortfolioRiskSimulatorProps) 
                             <span>
                                 Los modelos se calibran sobre retornos históricos de la cartera actual.
                                 Resultados son distribuciones de probabilidad, no predicciones.
-                                Horizonte: {result.horizon_days} días · {result.simulations.toLocaleString()} simulaciones por modelo.
+                                Horizonte: {formatNumber(result.horizon_days, { maximumFractionDigits: 0 })} días ·{' '}
+                                {formatNumber(result.simulations, { maximumFractionDigits: 0 })} simulaciones por modelo.
                             </span>
                         </div>
                     </div>

@@ -6,6 +6,7 @@ never inferred; amendments immutable).
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0028_fund_manager_holdings"

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Callable, Protocol
+from typing import Protocol
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -18,8 +19,8 @@ from app.services.connectors.ecb import ECBClient, ECBRates
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.fmp import FMPClient
 from app.services.portfolio_fx_service import PortfolioFXService
-from app.services.propicks_price_service import yahoo_symbol
 from app.services.portfolio_ledger_service import PortfolioLedgerService
+from app.services.propicks_price_service import yahoo_symbol
 from app.services.risk_service import RiskService
 from app.services.screener_service import ScreenerService
 
@@ -82,7 +83,7 @@ class PublicPriceProvider:
                     self._one(company, as_of),
                     timeout=self.PER_TICKER_TIMEOUT_SECONDS,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return company, None, {
                     "ticker": company.ticker,
                     "reason": "per_ticker_timeout",
@@ -98,7 +99,24 @@ class PublicPriceProvider:
                 item = payload[0] if isinstance(payload, list) and payload else None
                 value = Decimal(str(item.get("price"))) if isinstance(item, dict) else None
                 if value and value > 0:
-                    return company, PriceObservation(company.ticker, value, as_of, "FMP"), None
+                    # Stamp the quote with the provider's own date, never with
+                    # `as_of`. The FMP profile endpoint returns the LAST traded
+                    # close, so a Sunday refresh wrote a Sunday bar holding
+                    # Friday's close: market_movers then reported a 0.00% move
+                    # that never happened, and `age_days` came out as 0, which
+                    # silently disabled the staleness guard for every alert on
+                    # that symbol. Finnhub already derived its date from the
+                    # payload timestamp; FMP did not, so the two providers had
+                    # different semantics for the same column.
+                    quote_date = _provider_date(item, as_of)
+                    if quote_date is None or quote_date > as_of:
+                        errors.append("FMP:quote_date_unknown")
+                    else:
+                        return (
+                            company,
+                            PriceObservation(company.ticker, value, quote_date, "FMP"),
+                            None,
+                        )
             except Exception as exc:
                 errors.append(f"FMP:{type(exc).__name__}")
         if self.finnhub.configured():
@@ -106,13 +124,59 @@ class PublicPriceProvider:
                 payload = await self.finnhub.quote(company.ticker)
                 value = Decimal(str(payload.get("c") or 0))
                 timestamp = int(payload.get("t") or 0)
-                observed_date = datetime.fromtimestamp(timestamp, tz=UTC).date() if timestamp > 0 else as_of
                 if value > 0:
-                    return company, PriceObservation(company.ticker, value, observed_date, "Finnhub"), None
+                    if timestamp <= 0:
+                        # Sin timestamp no podemos fechar la quote con honestidad:
+                        # publicarla como de hoy fabricaria el observed_date.
+                        errors.append("Finnhub:quote_missing_timestamp")
+                    else:
+                        observed_date = datetime.fromtimestamp(timestamp, tz=UTC).date()
+                        return company, PriceObservation(company.ticker, value, observed_date, "Finnhub"), None
             except Exception as exc:
                 errors.append(f"Finnhub:{type(exc).__name__}")
         reason = ",".join(errors) if errors else "no_price_provider_configured"
         return company, None, {"ticker": company.ticker, "reason": reason}
+
+
+def _provider_date(item: dict, fallback: date) -> date | None:
+    """The provider's own observation date, or None when it does not give one.
+
+    A quote without a date is not a quote for "today": writing it under
+    `fallback` is what produced Sunday bars with Friday's close. Returning None
+    lets the caller skip the observation instead of mis-dating it.
+    """
+    for key in ("date", "datetime", "timestamp", "lastUpdated"):
+        raw = item.get(key)
+        if raw in (None, ""):
+            continue
+        if isinstance(raw, (int, float)) and raw > 0:
+            try:
+                return datetime.fromtimestamp(int(raw), tz=UTC).date()
+            except (OverflowError, OSError, ValueError):
+                continue
+        text = str(raw).strip()
+        # ISO primero, con timezone si la trae: la fecha se toma en UTC, no
+        # en la zona del proveedor (una quote a las 23:30 -05:00 ya es el dia
+        # siguiente en UTC). fromisoformat en 3.12 acepta offsets y fraccion.
+        iso = text[:-1] + "+00:00" if text.endswith("Z") else text
+        try:
+            parsed = datetime.fromisoformat(iso)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(UTC).date()
+            return parsed.date()
+        # Formatos de fecha sola, sin slices magicos: cadena completa o el
+        # prefijo ISO de 10 chars; nada de text[:len(fmt)+2] (fragil: corta
+        # offsets y basura intermedia y puede casar un prefijo que no es).
+        for candidate in (text, text[:10]):
+            for fmt in ("%Y-%m-%d", "%Y%m%d"):
+                try:
+                    return datetime.strptime(candidate, fmt).date()
+                except ValueError:
+                    continue
+    return None
 
 
 YahooIntradayFetcher = Callable[[list[str]], dict[str, "tuple[Decimal, date]"]]
@@ -253,17 +317,31 @@ class MarketRefreshService:
         for company, observation in observed:
             market = existing_prices.get((company.id, observation.price_date))
             if market is None:
+                # A SPOT price is not a daily bar. Writing one overwrote the
+                # real open/high/low/close of that session and set
+                # `adj_close = close`, which is by definition "unadjusted" and
+                # therefore corrupts every total-return, beta and Sharpe
+                # computed over a history that includes a split or a dividend.
+                # adj_close stays NULL: the provider gave a spot, not a
+                # split/dividend-adjusted series. A NULL is honest; a copy of
+                # `close` claims an adjustment that was never performed.
                 market = MarketPrice(
                     company_id=company.id,
                     date=observation.price_date,
+                    open=observation.price,
+                    high=observation.price,
+                    low=observation.price,
+                    close=observation.price,
+                    adj_close=None,
+                    volume=0,
+                    source=observation.source,
                 )
                 db.add(market)
-            market.open = observation.price
-            market.high = observation.price
-            market.low = observation.price
-            market.close = observation.price
-            market.adj_close = observation.price
-            market.source = observation.source
+            else:
+                # An existing row is a real bar from the OHLCV path: update
+                # only the close, never the session's open/high/low.
+                market.close = observation.price
+                market.source = observation.source
         db.commit()
         stages.append(
             {

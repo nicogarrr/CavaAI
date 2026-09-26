@@ -5,20 +5,17 @@ Run from data-engine/:
     pytest tests/test_portfolio_analytics.py -v
 """
 
-import math
 import numpy as np
 import pandas as pd
 import pytest
 
 from modules.portfolio_analytics import (
     _safe_float,
-    _fetch_multi_returns,
-    get_portfolio_performance,
-    get_holding_metrics,
-    run_portfolio_montecarlo,
     get_correlation_matrix,
+    get_holding_metrics,
+    get_portfolio_performance,
+    run_portfolio_montecarlo,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

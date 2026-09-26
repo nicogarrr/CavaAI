@@ -1,27 +1,50 @@
+import type { Metadata } from 'next';
 import { generateEnhancedProPicks, getAvailableStrategies } from '@/lib/actions/proPicks.actions';
 import { Sparkles } from 'lucide-react';
 import ProPicksTabs from '@/components/proPicks/ProPicksTabs';
+import BackendOffline from '@/components/system/BackendOffline';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 
-// Cache for 1 hour - don't regenerate on every visit
-export const revalidate = 3600;
+// Dinámica (antes `revalidate = 3600`): con ISR, un fallo transitorio del motor
+// se congelaba en la caché durante una hora y el «Reintentar» no ayudaba de
+// nada. `loading.tsx` sólo tiene sentido con renderizado dinámico.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export const metadata: Metadata = {
+    title: 'ProPicks IA',
+    description:
+        'Selección vigente del embudo IA sobre el universo líquido, con la fecha de datos de cada tarjeta y backtesting walk-forward aparte.',
+};
 
 export default async function ProPicksPage() {
     // Preparar picks iniciales y estrategias disponibles en paralelo
-    const [initialPicks, strategies] = await Promise.all([
-        generateEnhancedProPicks({
-            timePeriod: 'month',
-            limit: 20,
-            minScore: 70,
-            sector: 'all',
-            sortBy: 'score',
-        }),
-        getAvailableStrategies(),
-    ]);
+    let initialPicks: Awaited<ReturnType<typeof generateEnhancedProPicks>>;
+    let strategies: Awaited<ReturnType<typeof getAvailableStrategies>>;
+    try {
+        [initialPicks, strategies] = await Promise.all([
+            generateEnhancedProPicks({
+                timePeriod: 'month',
+                limit: 20,
+                minScore: 70,
+                sector: 'all',
+                sortBy: 'score',
+            }),
+            getAvailableStrategies(),
+        ]);
+    } catch (error) {
+        // Esta página es de las más frágiles cuando el motor importa: sin catch
+        // el fallo subía al ErrorBoundary global.
+        if (isBackendUnavailableError(error)) {
+            return <BackendOffline feature="ProPicks IA" retryHref="/propicks" />;
+        }
+        throw error;
+    }
 
     const generatedAt = new Date().toISOString();
 
     return (
-        <div className="mx-auto flex min-h-screen w-full min-w-0 max-w-7xl flex-col overflow-x-clip p-4 sm:p-6">
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-7xl flex-col overflow-x-clip p-4 sm:p-6">
             {/* Header */}
             <div className="mb-8">
                 <div className="flex items-center gap-3 mb-4">
@@ -47,6 +70,6 @@ export default async function ProPicksPage() {
 
             {/* Picks IA + Backtesting por estrategia */}
             <ProPicksTabs strategies={strategies} initialPicks={initialPicks} generatedAt={generatedAt} />
-        </div>
+        </main>
     );
 }

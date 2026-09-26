@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Download, FileText, Receipt, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,8 @@ import {
     type DataRecord,
 } from '@/components/data/RecordViews';
 import { getTaxHoldings, getTaxReport, regenerateTaxReport } from '@/lib/actions/taxes.actions';
-import { formatDateTime, formatMoney } from '@/lib/format';
+import { formatDateTime, formatMoney, NA } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 
@@ -68,7 +69,8 @@ function humanizeKey(key: string): string {
 
 /** Convierte el resumen fiscal a filas etiquetadas en español con valores
  *  formateados (importes con divisa, listas de tickers, fechas). Nunca
- *  inventa: los null quedan como «s/d» y las claves raras se humanizan. */
+ *  inventa: los null quedan como `NA` («N/D») y las claves raras se
+ *  humanizan. */
 function humanizeTaxReport(summary: DataRecord): DataRecord {
     const currency = typeof summary.base_currency === 'string' && summary.base_currency
         ? summary.base_currency
@@ -86,7 +88,7 @@ function humanizeTaxReport(summary: DataRecord): DataRecord {
         const label = humanizeKey(key);
         if (moneyKeys.has(key)) {
             display[label] = value === null || value === undefined
-                ? 's/d (faltan tipos de cambio)'
+                ? `${NA} (faltan tipos de cambio)`
                 : formatMoney(value as number | string, currency);
         } else if (listKeys.has(key)) {
             display[label] = Array.isArray(value) && value.length > 0 ? value.join(', ') : 'Ninguno';
@@ -174,14 +176,22 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
         }
     };
 
-    const currentYear = new Date().getFullYear();
-    const yearOptions = Array.from({ length: 6 }, (_, index) => currentYear - index);
+    // El año civil viene del reloj del navegador: leerlo en el render rompe la
+    // hidratación en la frontera de año. Se arranca con un estado fijo (0) y se
+    // fija el año real en el primer efecto.
+    const [currentYear, setCurrentYear] = useState(0);
+    useEffect(() => {
+        setCurrentYear(new Date().getFullYear());
+    }, []);
+    const yearOptions = currentYear === 0
+        ? []
+        : Array.from({ length: 6 }, (_, index) => currentYear - index);
 
     return (
         <div className="grid gap-6">
             <div className="flex flex-wrap items-center gap-3">
                 <label htmlFor="tax-year" className="text-sm text-gray-400">
-                    Ejercicio
+                    {t('taxes.year')}
                 </label>
                 <select
                     id="tax-year"
@@ -204,7 +214,7 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
                 hiddenKeys={['trace']}
                 record={toDisplayReport(report)}
                 fetchRecord={async () => toDisplayReport((await getTaxReport(year)) as DataRecord | null)}
-                emptyMessage="Sin reporte fiscal disponible para este año. Pulsa «Regenerar» para generarlo."
+                emptyMessage={t('taxes.noReport')}
                 actions={
                     <Button
                         size="sm"
@@ -214,7 +224,7 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
                         className="gap-2 border-gray-600 text-gray-300 hover:text-teal-400"
                     >
                         <RotateCcw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
-                        Regenerar
+                        {t('taxes.regenerate')}
                     </Button>
                 }
             />

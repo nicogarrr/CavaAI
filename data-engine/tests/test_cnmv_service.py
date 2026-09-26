@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import httpx
-import pytest
 
 from app.services import cnmv_service
 from app.services.connectors import cnmv

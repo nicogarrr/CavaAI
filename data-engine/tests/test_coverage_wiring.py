@@ -24,8 +24,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from app.services import insider_service
-from app.services import tearsheet_service
+from app.services import insider_service, tearsheet_service
 from app.services.connectors import earnings_calendar as calendar_connector
 from app.services.connectors import form4 as form4_connector
 from app.services.connectors.finnhub import FinnhubClient

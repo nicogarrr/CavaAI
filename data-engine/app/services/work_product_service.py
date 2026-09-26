@@ -25,7 +25,6 @@ from app.services.peer_comparison_service import (
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
 from app.services.risk_service import RiskService
 
-
 WORK_PRODUCT_TYPES = {
     "one_page_memo",
     "full_thesis",

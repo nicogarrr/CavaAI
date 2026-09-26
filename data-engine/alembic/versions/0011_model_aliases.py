@@ -7,9 +7,9 @@ Create Date: 2026-07-16 00:00:00
 
 from datetime import UTC, datetime
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0011_model_aliases"
 down_revision = "0010_alert_rules"

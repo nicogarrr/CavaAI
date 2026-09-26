@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models import (
     AlertRule,
     Company,
@@ -16,8 +17,19 @@ from app.models import (
     NewsEvent,
     Position,
 )
+from app.services.notification_service import NotificationService
 from app.services.review_alert_service import ReviewAlertService
-from app.core.config import get_settings
+
+# Operators the evaluator understands. `create()` did not validate the operator,
+# so a rule created with "!=" (which the screener's comparator table does accept)
+# could never fire and always reported `matched: false`.
+_OPERATORS = frozenset({">", "<", ">=", "<=", "==", "!="})
+
+
+# Operators the evaluator understands. `create()` did not validate the operator,
+# so a rule created with "!=" (which the screener's comparator table does accept)
+# could never fire and always reported `matched: false`.
+_OPERATORS = frozenset({">", "<", ">=", "<=", "==", "!="})
 
 
 class AlertRuleService:
@@ -33,6 +45,14 @@ class AlertRuleService:
     ) -> AlertRule:
         if rule_type in {"news", "earnings"}:
             operator, value = ">", 0
+        elif operator not in _OPERATORS:
+            # A rule created with an unknown operator can never fire and always
+            # reports `matched: false`, which reads as "the threshold was not
+            # reached" rather than "this rule is broken".
+            raise ValueError(
+                f"Unsupported alert operator: {operator!r}. "
+                f"Expected one of {sorted(_OPERATORS)}."
+            )
         name = f"{company.ticker}: {rule_type} {operator} {value}"[:300]
         target = self._target(rule_type)
         rule = db.scalar(
@@ -125,7 +145,7 @@ class AlertRuleService:
             }
             if jev_urgency is not None:
                 alert_metadata["jev_urgency"] = jev_urgency
-            ReviewAlertService().emit_alert(
+            alert = ReviewAlertService().emit_alert(
                 db,
                 company_id=company.id,
                 alert_type=rule.rule_type,
@@ -136,6 +156,16 @@ class AlertRuleService:
                 channels=rule.channels,
                 metadata=alert_metadata,
             )
+            # Deliver on the channels the rule asked for. `emit_alert` only
+            # records the alert; the only caller of `NotificationService
+            # .dispatch` was the manual `POST /alerts/{id}/dispatch` endpoint,
+            # so a user who configured Telegram for their rules never received
+            # anything until they found the alert in the UI and pressed
+            # "dispatch" by hand. Two implementations of the same "deliver on
+            # these channels" contract existed and only one was wired.
+            deliveries = NotificationService().dispatch(db, alert)
+            alert_metadata["deliveries"] = deliveries
+            alert.metadata_ = {**(alert.metadata_ or {}), "deliveries": deliveries}
             rule.last_triggered_at = now
             rule.trigger_count += 1
         result = {
@@ -285,19 +315,31 @@ class AlertRuleService:
     def _matches(observed: Any, operator: str, expected: Any) -> bool:
         if observed is None:
             return False
+        if operator not in _OPERATORS:
+            return False
         try:
             left = Decimal(str(observed))
             right = Decimal(str(expected))
         except (InvalidOperation, TypeError, ValueError):
-            left, right = str(observed), str(expected)
+            # Not comparable as a number. Equality on the string form is
+            # meaningful; ordering is not. The previous fallback compared
+            # strings for every operator, so "1,234" < "1000" was decided by
+            # ASCII order (',' is 0x2C, '0' is 0x30) and the SIGN of the
+            # comparison silently inverted for any non-numeric value.
+            if operator == "==":
+                return str(observed) == str(expected)
+            if operator == "!=":
+                return str(observed) != str(expected)
+            return False
         operations = {
             ">": lambda: left > right,
             "<": lambda: left < right,
             ">=": lambda: left >= right,
             "<=": lambda: left <= right,
             "==": lambda: left == right,
+            "!=": lambda: left != right,
         }
-        return bool(operations.get(operator, lambda: False)())
+        return bool(operations[operator]())
 
     @staticmethod
     def _target(rule_type: str) -> dict[str, Any]:
