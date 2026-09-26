@@ -65,8 +65,8 @@ const RISK_LABELS: Record<string, string> = {
     total_value: 'Valor total',
     equity_value: 'Valor en renta variable',
     cash: 'Caja',
-    top_1_weight: 'Peso de la mayor posición',
-    top_5_weight: 'Peso de las 5 mayores',
+    top_1_weight: 'Peso de la mayor posición (sobre el total con caja)',
+    top_5_weight: 'Peso de las 5 mayores (sobre el total con caja)',
     sector_exposure: 'Exposición por sector',
     factor_exposure: 'Exposición por factor',
     status: 'Estado',
@@ -280,7 +280,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                                             <TableHead className="text-xs font-semibold uppercase text-gray-500">Nombre</TableHead>
                                             <TableHead className="text-xs font-semibold uppercase text-gray-500">Sector</TableHead>
                                             <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Valor</TableHead>
-                                            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Peso</TableHead>
+                                            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Peso (con caja)</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -323,7 +323,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                                                 <dd className="break-words text-right text-sm text-gray-200">{formatRecordValue(position.market_value)}</dd>
                                             </div>
                                             <div className="min-w-0">
-                                                <dt className="text-[11px] uppercase tracking-wide text-gray-500">Peso</dt>
+                                                <dt className="text-[11px] uppercase tracking-wide text-gray-500">Peso (con caja)</dt>
                                                 <dd className="break-words text-right text-sm font-semibold text-gray-100">{weightText(position)}</dd>
                                             </div>
                                         </dl>
