@@ -47,10 +47,18 @@ test.describe("research thesis workspace", () => {
     const emptyHistory = page.getByText("Aún no hay historial de versiones.");
     await expect(emptyHistory).toBeHidden();
 
-    // The tap target expands the panel on demand.
-    await page
-      .locator("summary", { hasText: "Historial de versiones y aprobaciones" })
-      .click();
+    // The toggle button expands the panel on demand (Panel primitive with
+    // collapsible="mobile": the accessible name carries the action + title).
+    const expandHistory = page.getByRole("button", {
+      name: "Expandir Historial de versiones y aprobaciones",
+    });
+    await expect(expandHistory).toHaveAttribute("aria-expanded", "false");
+    await expandHistory.click();
     await expect(emptyHistory).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Contraer Historial de versiones y aprobaciones",
+      }),
+    ).toHaveAttribute("aria-expanded", "true");
   });
 });
