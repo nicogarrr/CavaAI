@@ -150,7 +150,7 @@ def test_orm_and_migration_agree_on_constraint_names():
         pathlib.Path(__file__).resolve().parents[1]
         / "alembic"
         / "versions"
-        / "0032_tenant_uniques_and_fk_actions.py"
+        / "0032_tenant_uniques_fk_actions.py"
     ).read_text(encoding="utf-8")
     for name in orm_names:
         assert name in source, f"{name} existe en el ORM pero no en 0032"

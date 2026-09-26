@@ -174,15 +174,43 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Empty database to head
         run: python -m alembic upgrade head
-      - name: Revision 0006 to head
+      - name: 0032 rejects a clean downgrade (forward-only)
+        # 0032 es forward-only a proposito (restaurar los unique globales
+        # reabriria el IntegrityError cross-tenant). El round-trip de
+        # downgrade solo cubre revisiones ANTERIORES; aqui se verifica que
+        # 0032 rechaza el downgrade sin dejar DDL parcial.
         run: |
+          if python -m alembic downgrade 0031_propick_runs; then
+            echo "0032 downgrade should have raised (forward-only)" >&2
+            exit 1
+          fi
+          python -m alembic current | grep -q "0032_tenant_uniques_fk_actions"
+          python -c "
+          import os
+          import sqlalchemy as sa
+
+          engine = sa.create_engine(os.environ['DATABASE_URL'])
+          with engine.connect() as conn:
+              names = sa.inspect(conn).get_unique_constraints('fund_managers')
+          assert any(c['name'] == 'uq_fund_manager_tenant_cik' for c in names), names
+          print('0032 schema intacto tras el raise: uq_fund_manager_tenant_cik existe')
+          "
+      - name: Pre-0032 round trip on a fresh database
+        # El round-trip de downgrade cubre solo revisiones < 0032, asi que
+        # necesita una base limpia (desde head no se puede bajar de 0032).
+        run: |
+          python -c "
+          import os
+          import sqlalchemy as sa
+
+          engine = sa.create_engine(os.environ['DATABASE_URL'], isolation_level='AUTOCOMMIT')
+          with engine.connect() as conn:
+              conn.execute(sa.text('DROP SCHEMA public CASCADE'))
+              conn.execute(sa.text('CREATE SCHEMA public'))
+          "
+          python -m alembic upgrade 0031_propick_runs
           python -m alembic downgrade base
           python -m alembic upgrade 0006_fundamental_model_journal
-          python -m alembic upgrade head
-      - name: Head downgrade and re-upgrade
-        run: |
-          python -m alembic downgrade base
-          python -m alembic upgrade head
           python -m alembic downgrade base
           python -m alembic upgrade head
 

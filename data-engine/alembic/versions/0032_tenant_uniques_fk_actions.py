@@ -1,6 +1,6 @@
 """0032 tenant-scoped uniques and missing tenant indexes
 
-Revision ID: 0032_tenant_uniques_and_fk_actions
+Revision ID: 0032_tenant_uniques_fk_actions
 Revises: 0031_propick_runs
 
 Unique constraints globales sobre columnas de datos compartidos, en tablas que
@@ -55,7 +55,7 @@ disponible para verificarlo):
 
 from alembic import op
 
-revision = "0032_tenant_uniques_and_fk_actions"
+revision = "0032_tenant_uniques_fk_actions"
 down_revision = "0031_propick_runs"
 branch_labels = None
 depends_on = None
@@ -81,19 +81,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Volver a los unique globales exige que no haya duplicados por tenant. El
-    # codigo de la app solo inserta con el tenant de la sesion, asi que no
-    # deberia haber ninguno; si los hubiera, esta operacion falla en vez de
-    # borrar datos en silencio.
-    with op.batch_alter_table("fund_managers") as batch:
-        batch.drop_constraint("uq_fund_manager_tenant_cik", type_="unique")
-        batch.create_unique_constraint("uq_fund_manager_cik", ["cik"])
-
-    with op.batch_alter_table("dividend_records") as batch:
-        batch.drop_constraint("uq_dividend_record_tenant", type_="unique")
-        batch.create_unique_constraint(
-            "uq_dividend_record", ["company_id", "ex_date", "amount"]
-        )
-
-    for table in ("dividend_records", "fund_managers", "manager_holdings"):
-        op.drop_index(f"ix_{table}_tenant_id", table_name=table, if_exists=True)
+    # Forward-only a proposito. Volver a los unique globales reabriria el
+    # IntegrityError cross-tenant que esta migracion cierra, y un fallo a
+    # mitad dejaria constraints a medio migrar. Un rollback real exige
+    # deduplicar por tenant primero y verificarlo: operacion deliberada,
+    # no un `alembic downgrade`.
+    raise RuntimeError(
+        "0032_tenant_uniques_fk_actions es forward-only: restaurar los "
+        "unique globales exige deduplicar por tenant y verificarlo a mano"
+    )
