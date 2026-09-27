@@ -12,6 +12,8 @@
  * Ejecución: node --experimental-strip-types --test scripts/research-unknown-ticker-guard.test.ts
  */
 import test from 'node:test';
+// @ts-expect-error TS5097
+import { drainRejection } from '../lib/research/drain-rejection.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
@@ -92,7 +94,6 @@ void test('el drenaje se adjunta EN CREACIÓN, antes de cualquier await intermed
 });
 
 void test('drainRejection: sin unhandledRejection aunque nadie consuma, y el consumidor sigue recibiendo el error', async () => {
-    const { drainRejection } = await import('../lib/research/drain-rejection.ts');
     let unhandled = 0;
     const listener = () => {
         unhandled += 1;
