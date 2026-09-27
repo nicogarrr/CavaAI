@@ -501,6 +501,28 @@ async def _free_data_snapshot(ticker: str, cik: str) -> dict[str, Any]:
     return snapshot
 
 
+
+def _fiscal_quarter_from_end(end: str, modal_fy_month: str | None) -> str | None:
+    """Trimestre fiscal derivado del cierre del periodo contra el mes modal de
+    cierre de ejercicio. El `fp` de companyfacts es el periodo fiscal DE LA
+    PRESENTACION, no del dato: las comparativas trimestrales dentro de un 10-Q
+    heredan el fp de ese 10-Q (caso real AAPL: dividendos pagados en abril o
+    julio etiquetados Q1 porque la copia mas reciente salio en el 10-Q de Q1),
+    asi que no sirve para etiquetar. Meses desde el cierre modal redondeados a
+    trimestres: el propio mes de cierre (y su drift de 52/53 semanas, +-1 mes)
+    es Q4; +3 meses es Q1; +6, Q2; +9, Q3. None sin ancla modal."""
+    if not modal_fy_month:
+        return None
+    try:
+        month = date.fromisoformat(str(end)).month
+        modal = int(modal_fy_month)
+    except (TypeError, ValueError):
+        return None
+    quarter = round(((month - modal) % 12) / 3)
+    if quarter == 0:
+        quarter = 4
+    return f"Q{quarter}"
+
 def _modal_fiscal_end_month(us_gaap: dict[str, Any]) -> str | None:
     """Mes modal de cierre de ejercicio a partir de TODOS los hechos de flujo
     anuales candidatos (300-380 dias, fp=FY, 10-K/20-F). Los acumulados TTM de
@@ -652,7 +674,11 @@ class FinancialIngestionService:
             # (balance, sin start) pasan. fiscal_year queda NULL a proposito:
             # los consumidores anuales seleccionan por fiscal_year (y los que
             # ordenan por el usan nullslast), asi las filas :Qn nunca se
-            # confunden con el ejercicio anual. period = "<end>:Q<n>".
+            # confunden con el ejercicio anual. period = "<end>:Q<n>". La
+            # etiqueta <n> se deriva del cierre contra el mes modal de cierre
+            # de ejercicio: el fp de companyfacts es el periodo fiscal DE LA
+            # PRESENTACION (las comparativas heredan el fp del 10-Q que las
+            # trae), no el del dato. Fallback a fp sin ancla modal.
             by_end_q = _merge_for_metric(
                 _collect_by_concept(
                     us_gaap,
@@ -675,7 +701,9 @@ class FinancialIngestionService:
                         continue
                     if metric == "capital_expenditure":
                         val = -val
-                    fp = str(entry["fp"])
+                    fp = _fiscal_quarter_from_end(
+                        str(entry["end"]), modal_fy_month
+                    ) or str(entry["fp"])
                     db.add(
                         FinancialFact(
                             company_id=company.id,
