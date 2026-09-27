@@ -328,7 +328,12 @@ def get_signals_for_ticker(
                         tx["date"] = filing.get("filing_date")
                 transactions.extend(parsed.get("transactions", []))
             except Exception as exc:  # noqa: BLE001 — best-effort por filing
-                errors.append(f"{filing.get('accession_number')}: {type(exc).__name__}")
+                # El tipo solo («ValueError») no diagnostica nada: el detalle
+                # redactado permite distinguir parseo de red sin filtrar datos.
+                errors.append(
+                    f"{filing.get('accession_number')}: "
+                    f"{type(exc).__name__}: {redact_secrets(str(exc))[:200]}"
+                )
         signals = detect_signals(transactions)
         parse_error_count = len(errors)
         scanned = len(filings[:limit])

@@ -117,10 +117,10 @@ export default function HelpTabs() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-8 border-b border-gray-700">
+      <div className="flex flex-wrap gap-2 mb-8 border-b border-gray-700">
         <button
           onClick={() => setActiveTab('faq')}
-          className={`px-6 py-3 font-medium transition-colors ${
+          className={`px-4 py-3 font-medium transition-colors sm:px-6 ${
             activeTab === 'faq'
               ? 'text-teal-400 border-b-2 border-teal-400'
               : 'text-gray-400 hover:text-gray-300'
@@ -130,7 +130,7 @@ export default function HelpTabs() {
         </button>
         <button
           onClick={() => setActiveTab('api')}
-          className={`px-6 py-3 font-medium transition-colors ${
+          className={`px-4 py-3 font-medium transition-colors sm:px-6 ${
             activeTab === 'api'
               ? 'text-teal-400 border-b-2 border-teal-400'
               : 'text-gray-400 hover:text-gray-300'
@@ -140,7 +140,7 @@ export default function HelpTabs() {
         </button>
         <button
           onClick={() => setActiveTab('community')}
-          className={`px-6 py-3 font-medium transition-colors ${
+          className={`px-4 py-3 font-medium transition-colors sm:px-6 ${
             activeTab === 'community'
               ? 'text-teal-400 border-b-2 border-teal-400'
               : 'text-gray-400 hover:text-gray-300'
