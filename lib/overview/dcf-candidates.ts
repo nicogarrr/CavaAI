@@ -49,5 +49,6 @@ export function dcfEmptyNote(scope: DcfScope): string {
     if (scope.evaluated === 0) {
         return `No se pudo calcular el valor intrínseco de las ${scope.probed} candidatas del screener probadas.`;
     }
-    return `Ninguna de las ${scope.evaluated} candidatas del screener evaluadas supera hoy un ${DCF_MIN_UPSIDE_PCT} % de potencial sobre su valor intrínseco.`;
+    const base = `Ninguna de las ${scope.evaluated} candidatas del screener evaluadas supera hoy un ${DCF_MIN_UPSIDE_PCT} % de potencial sobre su valor intrínseco`;
+    return scope.failed > 0 ? `${base}; ${scope.failed} no se pudieron evaluar.` : `${base}.`;
 }

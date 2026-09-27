@@ -35,8 +35,13 @@ void test('el resumen de la sonda cuenta probadas, evaluadas y fallidas de verda
 void test('el estado vacío distingue «evaluadas sin potencial» de «no evaluables»', () => {
     assert.equal(
         dcfEmptyNote({ probed: 6, evaluated: 4, failed: 2 }),
+        `Ninguna de las 4 candidatas del screener evaluadas supera hoy un ${DCF_MIN_UPSIDE_PCT} % de potencial sobre su valor intrínseco; 2 no se pudieron evaluar.`,
+        'con evaluadas: el alcance son las candidatas, nunca el universo, y las fallidas se declaran',
+    );
+    assert.equal(
+        dcfEmptyNote({ probed: 4, evaluated: 4, failed: 0 }),
         `Ninguna de las 4 candidatas del screener evaluadas supera hoy un ${DCF_MIN_UPSIDE_PCT} % de potencial sobre su valor intrínseco.`,
-        'con evaluadas: el alcance son las candidatas, nunca el universo',
+        'sin fallidas no se añade coletilla',
     );
     assert.equal(
         dcfEmptyNote({ probed: 6, evaluated: 0, failed: 6 }),
