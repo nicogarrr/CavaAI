@@ -19,7 +19,10 @@ test.describe("investor knowledge flow", () => {
     ).toBeVisible();
     await expect(page.getByRole("heading", { name: "Subir conocimiento" })).toBeVisible();
     await expect(page.getByPlaceholder("Título del documento")).toBeVisible();
-    await expect(page.locator('input[type="file"]').first()).toBeVisible();
+    // F142: el input file nativo queda sr-only; el disparador visible es el
+    // label «Elegir archivo» con el estado «Ningún archivo seleccionado».
+    await expect(page.getByText("Elegir archivo").first()).toBeVisible();
+    await expect(page.getByText("Ningún archivo seleccionado").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Subir", exact: true })).toBeVisible();
 
     // El listado (y su estado vacío) vive en la pestaña Biblioteca: en una
@@ -60,5 +63,27 @@ test.describe("investor knowledge flow", () => {
 
     await page.goto("/knowledge");
     await expect(page.getByText(title).first()).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("knowledge upload reset clears the visible filename (F142)", async ({ page }) => {
+    const marker = `e2e-knowledge-reset-${Date.now()}`;
+    const title = `E2E reset notes ${marker}`;
+
+    await page.goto("/knowledge?tab=subir");
+    const uploadForm = page.locator("form", { has: page.getByPlaceholder("Título del documento") });
+    await uploadForm.getByPlaceholder("Título del documento").fill(title);
+    await uploadForm.locator('input[type="file"]').setInputFiles({
+      name: `${marker}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.from(`E2E reset ${marker}: archivo de prueba.`),
+    });
+    // Tras elegirlo, el nombre es visible junto al disparador.
+    await expect(page.getByText(`${marker}.txt`)).toBeVisible();
+    await uploadForm.getByRole("button", { name: "Subir", exact: true }).click();
+    await expect(page.getByText("Documento ingerido")).toBeVisible({ timeout: 30_000 });
+    // El form.reset() de MutationForm tras la subida limpia el input nativo;
+    // el estado visible debe sincronizarse (F142).
+    await expect(page.getByText("Ningún archivo seleccionado")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(`${marker}.txt`)).toBeHidden();
   });
 });
