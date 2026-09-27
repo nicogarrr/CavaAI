@@ -254,6 +254,14 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
                 records={initialHoldings}
                 fetchRecords={getTaxHoldings}
                 columns={['ticker', 'quantity', 'cost_basis', 'market_value', 'unrealized_pnl', 'currency']}
+                columnLabels={{
+                    ticker: 'Ticker',
+                    quantity: 'Cantidad',
+                    cost_basis: 'Base de coste',
+                    market_value: 'Valor de mercado',
+                    unrealized_pnl: 'Plusvalía latente',
+                    currency: 'Divisa',
+                }}
                 emptyMessage="Aún no hay posiciones con datos fiscales. Cuando compres valores aparecerán aquí."
                 linkColumns={{ ticker: (record) => researchHrefFor(record) }}
                 footer={

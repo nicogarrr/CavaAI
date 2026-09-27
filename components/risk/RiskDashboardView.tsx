@@ -250,7 +250,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                 <CardContent className="pt-4">
                     {alerts.length === 0 ? (
                         <p className="py-6 text-center text-sm text-gray-500">
-                            Sin alertas: ninguna posición supera los umbrales de peso (20% del cartera en una
+                            Sin alertas: ninguna posición supera los umbrales de peso (20% de la cartera en una
                             posición, 10% en empresas pre-FCF) y no hay caja negativa por divisa.
                         </p>
                     ) : (
