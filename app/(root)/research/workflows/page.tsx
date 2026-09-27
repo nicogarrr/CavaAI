@@ -56,7 +56,7 @@ export default async function ResearchWorkflowsPage() {
           };
 
           return (
-            <div key={workflow.name} className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+            <div key={workflow.name} className="min-w-0 rounded-lg border border-gray-800 bg-[#111111] p-5">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Layers aria-hidden="true" className="h-5 w-5 text-teal-300" />
                 <span className="font-semibold text-gray-100">{workflow.name}</span>
@@ -75,7 +75,7 @@ export default async function ResearchWorkflowsPage() {
                 {workflow.steps.map((step, index) => (
                   <div key={`${workflow.name}-${index}`} className="flex items-start gap-2 text-xs">
                     <span className="mt-0.5 font-mono text-teal-300/60">{String(index + 1).padStart(2, '0')}</span>
-                    <span className="font-mono text-gray-400">{step}</span>
+                    <span className="min-w-0 break-all font-mono text-gray-400">{step}</span>
                   </div>
                 ))}
               </div>
@@ -104,11 +104,11 @@ export default async function ResearchWorkflowsPage() {
                       Ejecutar
                     </Button>
                   </MutationForm>
-                ) : (
-                  <span className="text-xs text-gray-500">
+                ) : status !== 'descriptive' ? (
+                  <span className="min-w-0 break-all text-right text-xs text-gray-500">
                     POST /api/workflows/{workflow.name}/run
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
           );
