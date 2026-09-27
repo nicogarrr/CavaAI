@@ -45,8 +45,11 @@ from app.services.connectors import sec_edgar as sec_edgar_connector
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.ir import IRConnector
 
-# Metrica -> (tags us-gaap por preferencia, unidad). El primer tag que
-# informa gana; nunca se suman tags.
+# Metrica -> (tags us-gaap por preferencia, unidad). Nunca se suman
+# tags. Gana el tag con el dato mas reciente: un tag preferido puede
+# quedar congelado en el pasado (MSFT dejo de informar "Revenues" tras
+# FY2010 y paso a RevenueFromContract...); a igual fecha, manda el orden
+# de preferencia (F133).
 SEC_EVIDENCE_TAGS: dict[str, tuple[list[str], str]] = {
     "revenue": (
         ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"],
@@ -274,36 +277,80 @@ class ThesisEvidenceService:
             "document_id": document.id,
         }
 
+    # Metricas de flujo (duracion): un hecho sin ``start`` no puede
+    # probar que cubre un ano, asi que no entra al pool anual. Las
+    # instantaneas (balance, acciones) no llevan ``start`` por naturaleza.
+    FLOW_METRICS = frozenset({"revenue", "net_income", "operating_cash_flow"})
+
+    @classmethod
+    def _is_annual_duration(cls, entry: dict[str, Any], metric: str) -> bool:
+        """True si el hecho prueba duracion ~1 ano (flujos) o es
+        instantaneo sin ``start``.
+
+        Los 10-K republican trimestres: un form anual NO garantiza
+        duracion anual (MSFT FY2010: revenue 16.039B con start 2010-04-01
+        es el Q4, no el ano - F133). Fechas no parseables: cerrado.
+        """
+        start, end = entry.get("start"), entry.get("end")
+        if not start:
+            return metric not in cls.FLOW_METRICS
+        try:
+            days = (
+                datetime.strptime(str(end), "%Y-%m-%d").date()
+                - datetime.strptime(str(start), "%Y-%m-%d").date()
+            ).days
+        except (TypeError, ValueError):
+            return False
+        return 300 <= days <= 400
+
     def _extract_latest_annual(self, us_gaap: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        """Ultimo 10-K/20-F por metrica (fallback: ultimo 10-Q)."""
+        """Ultimo hecho anual por metrica (fallback: ultimo trimestre).
+
+        Reglas (F133, MSFT tenant 5):
+        - la duracion del hecho, no solo el form: un trimestre republicado
+          en un 10-K no es un dato anual, y las metricas de flujo sin
+          ``start`` tampoco (no pueden probar duracion);
+        - el fallback nunca etiqueta FY lo que no probo duracion anual;
+        - entre tags gana el hecho ANUAL sobre cualquier trimestre, y
+          dentro de la misma clase el de periodo cubierto mas reciente
+          (end), no el de envio mas reciente (filed): una enmienda de un
+          periodo antiguo no desplaza al periodo nuevo. A doble empate
+          manda la preferencia declarada en SEC_EVIDENCE_TAGS; nunca se
+          suman tags.
+        """
         out: dict[str, dict[str, Any]] = {}
         for metric, (tags, unit) in SEC_EVIDENCE_TAGS.items():
+            best: dict[str, Any] | None = None
             for tag in tags:
                 entries = ((us_gaap.get(tag) or {}).get("units") or {}).get(unit, [])
-                annual = [
-                    e
-                    for e in entries
-                    if isinstance(e, dict)
-                    and str(e.get("form", "")).upper() in ANNUAL_FORMS
-                    and e.get("val") is not None
-                    and e.get("end")
-                ]
-                pool = annual or [
+                valid = [
                     e
                     for e in entries
                     if isinstance(e, dict) and e.get("val") is not None and e.get("end")
                 ]
+                annual = [
+                    e
+                    for e in valid
+                    if str(e.get("form", "")).upper() in ANNUAL_FORMS
+                    and self._is_annual_duration(e, metric)
+                ]
+                pool = annual or valid
                 if not pool:
                     continue
-                pool.sort(key=lambda e: (str(e.get("filed", "")), str(e.get("end", ""))))
+                # Periodo cubierto primero: una enmienda (filed reciente de
+                # un end antiguo) no desplaza al periodo nuevo.
+                pool.sort(key=lambda e: (str(e.get("end", "")), str(e.get("filed", ""))))
                 latest = pool[-1]
                 end = str(latest["end"])
                 try:
                     fiscal_year = int(end[:4])
                 except ValueError:
                     fiscal_year = None
-                is_annual = str(latest.get("form", "")).upper() in ANNUAL_FORMS
-                out[metric] = {
+                is_annual = (
+                    str(latest.get("form", "")).upper() in ANNUAL_FORMS
+                    and self._is_annual_duration(latest, metric)
+                )
+                candidate = {
                     "value": latest["val"],
                     "unit": unit,
                     "period": f"{end}:FY" if is_annual else f"{end}:{latest.get('form')}",
@@ -312,7 +359,16 @@ class ThesisEvidenceService:
                     "concept": tag,
                     "form": latest.get("form"),
                 }
-                break
+                # Anual > trimestre entre tags; dentro de la clase, el
+                # periodo cubierto mas reciente; doble empate -> el tag ya
+                # elegido (preferencia declarada).
+                key = (is_annual, end, str(latest.get("filed", "")))
+                if best is None or key > best["_key"]:
+                    candidate["_key"] = key
+                    best = candidate
+            if best is not None:
+                best.pop("_key", None)
+                out[metric] = best
         return out
 
     # -- 2. precio + perfil Finnhub -------------------------------------------
