@@ -54,3 +54,40 @@ def test_hmm_no_future_lookahead_and_snapshot_exposes_probability():
         snap = build_snapshot(db, points[-1][0], generated)
         assert snap.probabilities == baseline["probabilities"]
         assert snap.metrics["hmm"]["status"] == "disponible"
+
+
+def test_fresh_fred_backfill_produces_regime_snapshot(monkeypatch):
+    import asyncio
+
+    from app.services.market_observation_service import FRED_SERIES, refresh_fred
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    calls = []
+    today = datetime.now(UTC)
+    # 240 consecutive dates; skip weekends to mimic matched trading sessions.
+    end = today.date() - timedelta(days=1)
+    days = [end - timedelta(days=i) for i in range(340)]
+    days = sorted(day for day in days if day.weekday() < 5)[-220:]
+    assert len(days) >= 127
+
+    class StubFRED:
+        async def series_csv(self, series_id, limit=10):
+            calls.append((series_id, limit))
+            observations = [
+                {"date": day.isoformat(), "value": str(15 + (i % 9) / 3 + (i % 4) / 5
+                    if series_id == "VIXCLS" else 3 + (i % 7) / 9 + (i % 5) / 4)}
+                for i, day in enumerate(days)
+            ]
+            return {"observations": list(reversed(observations[:limit]))}
+
+    with sessionmaker(engine)() as db:
+        outcome = asyncio.run(refresh_fred(db, StubFRED()))
+        assert outcome["errors"] == {}
+        assert {series for series, _ in calls} == {item[0] for item in FRED_SERIES.values()}
+        assert all(limit >= 400 for _, limit in calls)
+        snapshot = build_snapshot(db, today.date(), datetime.now(UTC))
+        assert snapshot.metrics["hmm"]["status"] == "disponible"
+        assert snapshot.metrics["hmm"]["training_sessions"] >= 126
+        assert snapshot.probabilities["state_0"] + snapshot.probabilities["state_1"] == pytest.approx(1, abs=2e-6)
+        assert snapshot.metrics["top_ten_sp500"]["status"] == "sin datos"
