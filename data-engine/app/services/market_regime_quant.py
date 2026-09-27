@@ -92,7 +92,7 @@ def observed_hmm(db: Session, as_of: date, generated_at) -> dict:
         MarketObservation.metric_key.in_(("vix_us", "high_yield_spread_us")),
         MarketObservation.status == "observed", MarketObservation.observation_date <= as_of,
         MarketObservation.fetched_at <= generated_at,
-    ).order_by(MarketObservation.observation_date)).all()
+    ).order_by(MarketObservation.observation_date, MarketObservation.fetched_at, MarketObservation.id)).all()
     series: dict[str, dict[date, float]] = {"vix_us": {}, "high_yield_spread_us": {}}
     for row in rows:
         series[row.metric_key][row.observation_date] = float(row.value)

@@ -31,7 +31,7 @@ def build_snapshot(db: Session, as_of: date, generated_at: datetime | None = Non
                 MarketObservation.status == "observed",
                 MarketObservation.fetched_at <= generated_at,
             )
-            .order_by(desc(MarketObservation.observation_date))
+            .order_by(desc(MarketObservation.observation_date), desc(MarketObservation.fetched_at), desc(MarketObservation.id))
             .limit(1)
         )
         if not point or point.observation_date < as_of - timedelta(days=max_age):
