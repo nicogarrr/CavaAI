@@ -2,8 +2,9 @@
 
 import { formatDate, formatMoney, formatPercent } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import dynamic from 'next/dynamic';
 import PortfolioSummary from '@/components/portfolio/PortfolioSummary';
@@ -44,8 +45,40 @@ type Props = {
     partialMessage?: string | null;
 };
 
+// F137: la pestaña vive en la URL (?tab=). Antes el estado nacía fijo en
+// 'resumen' y el parámetro se ignoraba tras la hidratación: un enlace a
+// /portfolio?tab=movimientos aterrizaba siempre en resumen. Un valor
+// desconocido cae a resumen sin romper la página.
+const VALID_TABS = ['resumen', 'posiciones', 'movimientos', 'estrategia'] as const;
+type PortfolioTab = (typeof VALID_TABS)[number];
+
+function normalizeTab(value: string | null): PortfolioTab {
+    return (VALID_TABS as readonly string[]).includes(value ?? '') ? (value as PortfolioTab) : 'resumen';
+}
+
 export default function PortfolioTabs({ summary, transactions, scores, tearsheet, userId, partialMessage }: Props) {
-    const [activeTab, setActiveTab] = useState('resumen');
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
+    const tabParam = searchParams.get('tab');
+    const [activeTab, setActiveTab] = useState<PortfolioTab>(() => normalizeTab(tabParam));
+
+    // Navegación cliente posterior a la hidratación (atrás/adelante,
+    // enlaces con ?tab=): sincroniza el estado con la URL.
+    useEffect(() => {
+        const next = normalizeTab(tabParam);
+        setActiveTab((current) => (current === next ? current : next));
+    }, [tabParam]);
+
+    const handleTabChange = (value: string) => {
+        const next = normalizeTab(value);
+        setActiveTab(next);
+        // Preserva los demás query params: replace sobre `${pathname}?tab=`
+        // los borraba todos (revisión #456).
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('tab', next);
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    };
     const [chartPeriod, setChartPeriod] = useState('1M');
 
     const chartData = useMemo(() => {
@@ -105,7 +138,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                 ) : null}
 
                 {/* Tabs Navigation */}
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
                 {/* Con teclado no hay barra de scroll: la region enfocable deja las
                     pestañas alcanzables con las flechas (WCAG 2.1.1). */}
                 <div role="region" aria-label="Secciones de la cartera" tabIndex={0} className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
