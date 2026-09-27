@@ -120,6 +120,9 @@ def latest_snapshot(db: Session) -> dict:
         "model_version": snapshot.model_version,
         "metrics": snapshot.metrics,
         "probabilities": snapshot.probabilities,
+        # Bloqueo multi-tenant (#561): la beta no se expone hasta el aislamiento
+        # por tenant. El snapshot macro es global y no mezcla carteras; la
+        # maquinaria de betas por posición queda en regime_quant sin exponer.
         "portfolio_beta": snapshot.metrics.get(
             "portfolio_beta",
             {"status": "no_disponible", "reason": "beta por tenant no expuesta hasta aislamiento por tenant"},

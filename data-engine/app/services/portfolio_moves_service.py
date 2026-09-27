@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, MarketPrice, NewsEvent, PortfolioMoveDigest, Position
 
-VERSION = "held-price-moves-v2"
+VERSION = "current-holdings-price-moves-v3"
 DAILY_BAR_SOURCES = frozenset({"yfinance"})
 
 
@@ -94,4 +94,6 @@ def latest_digest(db: Session) -> dict:
     return {"status": "obsoleto" if age > 4 else "disponible", "date": digest.digest_date.isoformat(),
             "generated_at": digest.generated_at.isoformat(), "version": digest.version,
             "coverage": digest.coverage, "items": digest.items,
+            "universe": "posiciones actuales al generar el digest; no cartera histórica del día del cierre",
+            "positions_sampled_at": digest.generated_at.isoformat(),
             "note": "Noticias relacionadas por fecha, no atribución causal; sin catalizador identificado."}

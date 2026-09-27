@@ -44,6 +44,9 @@ def test_tenant_digest_missing_and_news_are_not_causal(db):
     assert digest.items[0]["price_change_pct"] == 10
     assert digest.items[0]["catalyst"] == "sin catalizador identificado"
     assert [row["url"] for row in digest.items[0]["related_news"]] == ["https://example.com/a"]
+    response = latest_digest(db)
+    assert response["positions_sampled_at"] == digest.generated_at.isoformat()
+    assert "posiciones actuales" in response["universe"]
     assert build_digest(db, date(2026, 9, 24), datetime(2026, 9, 25, tzinfo=UTC)).id == digest.id
     db.info["tenant_id"] = second.id
     assert latest_digest(db)["status"] == "sin datos"
