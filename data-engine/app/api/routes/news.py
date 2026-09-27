@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -7,6 +7,7 @@ from app.models import Company, NewsEvent
 from app.schemas import ManualNewsRequest, ManualNewsResponse, NewsIngestRequest, NewsIngestResponse
 from app.services.materiality_service import MaterialityService
 from app.services.news_service import NewsService
+from app.services.second_order_news_service import analyze_second_order
 
 router = APIRouter()
 
@@ -65,3 +66,15 @@ def news_events(db: Session = Depends(get_db)) -> list[dict]:
             }
         )
     return events
+
+
+@router.get("/{event_id}/second-order")
+def second_order_hypotheses(
+    event_id: int,
+    use_llm: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> dict:
+    event = db.get(NewsEvent, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Noticia no encontrada")
+    return analyze_second_order(db, event, use_llm=use_llm)
