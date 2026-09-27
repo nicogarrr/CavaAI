@@ -6,6 +6,39 @@ import { Badge } from '@/components/ui/badge';
 import type { ResearchThesis } from '@/lib/actions/research.actions';
 import type { GlossaryKey } from '@/lib/glossary';
 
+/** Etiquetas en español para los enums persistidos por el backend (mismo
+ *  vocabulario que la ficha y el indice de research). */
+const RATING_LABELS: Record<string, string> = {
+  buy: 'compra',
+  accumulate: 'acumular',
+  overweight: 'sobreponderar',
+  hold: 'mantener',
+  underweight: 'infraponderar',
+  trim: 'recortar',
+  sell: 'venta',
+  avoid: 'evitar',
+  watch: 'seguimiento',
+  attractive: 'atractiva',
+  expensive: 'cara',
+  incomplete_price: 'precio incompleto',
+  blocked: 'bloqueada',
+  insufficient_data: 'datos insuficientes',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'borrador',
+  review: 'en revisión',
+  approved: 'aprobada',
+  published: 'publicada',
+  rejected: 'rechazada',
+  stale: 'desactualizada',
+};
+
+function enumLabel(map: Record<string, string>, value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return NA;
+  return map[value] ?? value.replaceAll('_', ' ');
+}
+
 function money(value: number | string | null | undefined): string {
   const parsed = typeof value === 'string' ? Number(value) : value;
   if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return NA;
@@ -97,8 +130,8 @@ export default function ThesisMemo({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge>{thesis.rating}</Badge>
-        <Badge variant="outline">{thesis.status}</Badge>
+        <Badge>{enumLabel(RATING_LABELS, thesis.rating)}</Badge>
+        <Badge variant="outline">{enumLabel(STATUS_LABELS, thesis.status)}</Badge>
         <Badge variant="outline">v{thesis.version}</Badge>
         {generatedLabel ? (
           <span className="text-xs text-gray-500">generada el {generatedLabel}</span>

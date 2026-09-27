@@ -201,6 +201,11 @@ const RATING_LABELS: Record<string, string> = {
   sell: 'venta',
   avoid: 'evitar',
   watch: 'seguimiento',
+  // Ratings del motor de tesis (thesis_service._rating): eje de valoracion,
+  // no de recomendacion.
+  attractive: 'atractiva',
+  expensive: 'cara',
+  incomplete_price: 'precio incompleto',
 };
 
 /** F24 (vista Comparables): etiquetas/prosa del backend en español,

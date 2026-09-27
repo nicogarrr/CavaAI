@@ -51,6 +51,13 @@ const RATING_LABELS: Record<string, string> = {
     sell: 'venta',
     avoid: 'evitar',
     watch: 'seguimiento',
+    // Ratings del motor de tesis (thesis_service._rating): eje de valoracion,
+    // no de recomendacion.
+    attractive: 'atractiva',
+    expensive: 'cara',
+    incomplete_price: 'precio incompleto',
+    blocked: 'bloqueada',
+    insufficient_data: 'datos insuficientes',
 };
 
 const HEALTH_LABELS: Record<string, string> = {
