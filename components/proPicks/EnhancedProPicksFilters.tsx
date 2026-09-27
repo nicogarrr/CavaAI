@@ -18,6 +18,9 @@ export interface ProPicksFilters {
 
 interface Props {
   filters: ProPicksFilters;
+  /** Categorías neutras en TODOS los picks del run (F184): ordenar por
+      ellas es ordenar por una constante — la opción se deshabilita. */
+  neutralSorts?: ReadonlyArray<'momentum' | 'value'>;
   onFiltersChange: (filters: ProPicksFilters) => void;
   onApply: () => void;
 }
@@ -40,7 +43,7 @@ const sectors = [
   'Communication Services'
 ];
 
-export default function EnhancedProPicksFilters({ filters, onFiltersChange, onApply }: Props) {
+export default function EnhancedProPicksFilters({ filters, neutralSorts = [], onFiltersChange, onApply }: Props) {
   const updateFilter = <K extends keyof ProPicksFilters>(key: K, value: ProPicksFilters[K]) => {
     onFiltersChange({ ...filters, [key]: value });
   };
@@ -162,8 +165,12 @@ export default function EnhancedProPicksFilters({ filters, onFiltersChange, onAp
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="score">Score General</SelectItem>
-              <SelectItem value="momentum">Momentum</SelectItem>
-              <SelectItem value="value">Valor</SelectItem>
+              <SelectItem disabled={neutralSorts.includes('momentum')} value="momentum">
+                Momentum{neutralSorts.includes('momentum') ? ' (n/d en estos resultados)' : ''}
+              </SelectItem>
+              <SelectItem disabled={neutralSorts.includes('value')} value="value">
+                Valor{neutralSorts.includes('value') ? ' (n/d en estos resultados)' : ''}
+              </SelectItem>
               <SelectItem value="growth">Crecimiento</SelectItem>
               <SelectItem value="profitability">Rentabilidad</SelectItem>
             </SelectContent>
