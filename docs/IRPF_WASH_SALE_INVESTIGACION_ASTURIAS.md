@@ -1,6 +1,6 @@
 # Wash sale IRPF — Investigación España / Asturias
 
-> **Fotografía fechada**: esta investigación se escribió ANTES del fix de código y se conserva como
+> **Fotografía fechada** (redacción original: septiembre de 2026, previa a la PR #421): esta investigación se escribió ANTES del fix de código y se conserva como
 > registro del análisis que lo motivó. El comportamiento ya implementado está en el epílogo §10;
 > donde el texto histórico diga «no hay fix» o «falta proporcionalidad», léase §10.
 > Rama docs-only: NO toca `data-engine/app/services/tax_report_service.py`.
@@ -112,8 +112,9 @@ Después de esta investigación se implementó un fix de código **parcial y ori
 proceso de integración en el momento de este epílogo):
 
 - **Proporcionalidad previa**: la recompra por compras en los 2 meses anteriores se cuantifica como
-  `min(remanente en cartera, comprado en ventana, pérdida)`, siguiendo el procedimiento del Manual
-  AEAT 2025 citado en §3.
+  `min(remanente en cartera, comprado en ventana, cantidad vendida con pérdida aún no
+  bloqueada)` (los tres términos en acciones; la pérdida monetaria bloqueada se deriva aplicando
+  la proporción resultante), siguiendo el procedimiento del Manual AEAT 2025 citado en §3.
 - **Absorción FIFO**: la pérdida diferida se absorbe en los lotes supervivientes en orden FIFO y
   aflora al transmitirlos (diferimiento puro, §2).
 - **Historial completo de ventas** para la excepción de compra única del Manual («no se aplicará la
