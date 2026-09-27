@@ -152,8 +152,8 @@ export interface TriggeredAlertDelivery {
     channels: string[];
     deliveries: Record<string, { status: string; attempted_at?: string; error?: string | null }>;
     ticker: string | null;
-    /** Hora del ultimo disparo real (la fila se reutiliza por fingerprint). */
-    triggeredAt: string;
+    /** Hora del ultimo disparo real; null en filas anteriores a la migracion 0036 (se desconoce). */
+    triggeredAt: string | null;
     createdAt: string;
 }
 
@@ -185,9 +185,9 @@ export async function getRecentTriggeredAlerts(limit = 20): Promise<TriggeredAle
         channels: row.channels ?? [],
         deliveries: row.metadata?.deliveries ?? {},
         ticker: row.ticker ?? null,
-        // last_triggered_at es la hora del ultimo disparo; en filas antiguas
-        // (pre-0036) created_at es el unico instante de disparo conocido.
-        triggeredAt: row.last_triggered_at ?? row.created_at,
+        // Sin fallback silencioso: en filas antiguas se desconoce la hora del
+        // ultimo disparo y la UI etiqueta created_at como «Creada», no como disparo.
+        triggeredAt: row.last_triggered_at ?? null,
         createdAt: row.created_at,
     }));
 }

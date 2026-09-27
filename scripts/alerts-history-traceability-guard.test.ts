@@ -20,12 +20,12 @@ describe('alerts history traceability guard (F146)', () => {
     it('la tarjeta de disparo muestra la hora del disparo', () => {
         const src = readSource('components/alerts/AlertsManager.tsx');
         assert.ok(
-            src.includes('formatUserDateTime(item.triggeredAt)'),
-            'el historial debe mostrar la hora del ultimo disparo (triggeredAt)',
+            src.includes('`Último disparo ${formatUserDateTime(item.triggeredAt)}`'),
+            'con triggeredAt se etiqueta «Último disparo»',
         );
         assert.ok(
-            !src.includes('formatUserDateTime(item.createdAt)'),
-            'createdAt es la hora del PRIMER disparo (fila reutilizada por fingerprint): exhibirla como hora del disparo es falso',
+            src.includes('`Creada ${formatUserDateTime(item.createdAt)}`'),
+            'sin triggeredAt (fila antigua) el fallback se etiqueta «Creada», nunca como disparo',
         );
     });
 
@@ -42,8 +42,12 @@ describe('alerts history traceability guard (F146)', () => {
         const src = readSource('lib/actions/alerts.actions.ts');
         assert.ok(src.includes('ticker: row.ticker ?? null'), 'alerts.actions.ts debe propagar ticker');
         assert.ok(
-            src.includes('triggeredAt: row.last_triggered_at ?? row.created_at'),
-            'triggeredAt debe salir de last_triggered_at (fallback created_at en filas antiguas)',
+            src.includes('triggeredAt: row.last_triggered_at ?? null'),
+            'triggeredAt debe salir de last_triggered_at SIN fallback silencioso (null = desconocido, la UI etiqueta «Creada»)',
+        );
+        assert.ok(
+            !src.includes('triggeredAt: row.last_triggered_at ?? row.created_at'),
+            'fallback silencioso a created_at mostraria el PRIMER disparo como si fuera el ultimo',
         );
     });
 
@@ -59,6 +63,15 @@ describe('alerts history traceability guard (F146)', () => {
         assert.ok(
             service.includes('existing.last_triggered_at = now'),
             'un re-disparo por fingerprint debe actualizar last_triggered_at',
+        );
+        assert.ok(
+            route.includes('desc(func.coalesce(ResearchAlert.last_triggered_at, ResearchAlert.created_at))'),
+            'list_alerts debe ordenar por ultimo disparo real (fallback legacy created_at)',
+        );
+        const migration = readSource('data-engine/alembic/versions/0036_research_alert_last_triggered_at.py');
+        assert.ok(
+            !migration.includes('UPDATE research_alerts SET last_triggered_at'),
+            'el backfill created_at -> last_triggered_at afirmaria una hora de ultimo disparo desconocida',
         );
     });
 });

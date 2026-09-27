@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, or_, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -157,10 +157,13 @@ def list_alerts(
                 ResearchAlert.snoozed_until <= now,
             )
         )
+    # «Ultimos disparos» se ordena por el ultimo disparo real: un re-disparo
+    # reciente de una huella antigua debe salir primero. Filas antiguas sin
+    # last_triggered_at caen al unico instante conocido (created_at).
     alerts = list(
         db.scalars(
             statement.order_by(
-                desc(ResearchAlert.created_at)
+                desc(func.coalesce(ResearchAlert.last_triggered_at, ResearchAlert.created_at))
             ).limit(limit)
         ).all()
     )

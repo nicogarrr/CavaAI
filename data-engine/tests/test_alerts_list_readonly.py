@@ -90,6 +90,30 @@ def test_list_alerts_includes_ticker_for_actionable_history(db):
     assert by_title["sin compania"].ticker is None
 
 
+def test_list_alerts_orders_by_real_last_trigger(db):
+    """F146: un re-disparo reciente de huella antigua debe salir primero."""
+    from app.services.review_alert_service import ReviewAlertService
+
+    service = ReviewAlertService()
+    first = service.emit_alert(
+        db, company_id=None, alert_type="system", severity="medium",
+        title="huella antigua", message="m", fingerprint_parts=["old"],
+    )
+    service.emit_alert(
+        db, company_id=None, alert_type="system", severity="medium",
+        title="huella nueva", message="m", fingerprint_parts=["new"],
+    )
+    # Re-disparo de la huella antigua: su created_at es el mas viejo pero su
+    # ultimo disparo es el mas reciente.
+    retriggered = service.emit_alert(
+        db, company_id=None, alert_type="system", severity="high",
+        title="huella antigua", message="m2", fingerprint_parts=["old"],
+    )
+    assert retriggered.id == first.id
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    assert [out.title for out in result][:2] == ["huella antigua", "huella nueva"]
+
+
 def test_list_alerts_exposes_last_triggered_at(db):
     """F146: la hora del disparo que ve la UI sale de last_triggered_at."""
     _seed(db)
