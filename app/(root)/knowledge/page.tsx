@@ -333,7 +333,11 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
               </div>
               <div className="sm:col-span-2">
                 <span className="mb-1 block text-xs font-medium text-gray-400">Archivo</span>
-                <FileUploadInput accept=".pdf,.docx,.txt,.md,.html,.xlsx,.csv" className="h-11 w-full" name="file" required />
+                {/* F287: sin h-11 - FileUploadInput es un compuesto (fila del boton
+                Elegir archivo + pista "Maximo N MB.") de ~70px; fijar 44px
+                hacia que la pista desbordara la caja y el boton Subir de la
+                siguiente fila del grid la solapara 8px en movil. */}
+                <FileUploadInput accept=".pdf,.docx,.txt,.md,.html,.xlsx,.csv" className="w-full" name="file" required />
               </div>
               <Button className="h-11 w-full sm:col-span-2 sm:w-fit" type="submit"><UploadCloud aria-hidden="true" className="h-4 w-4" />Subir</Button>
             </div>
