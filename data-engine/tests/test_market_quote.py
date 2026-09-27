@@ -113,3 +113,34 @@ def test_market_quote_caches_result(monkeypatch):
     second = market.market_quote(ticker)
     assert first == second
     assert calls == [ticker]
+
+
+class _RecordingClient:
+    def __init__(self, resp):
+        self._resp = resp
+        self.urls: list[str] = []
+
+    def get(self, url, **kwargs):
+        self.urls.append(url)
+        return self._resp
+
+
+def test_yahoo_chart_symbol_maps_us_share_class_dot_to_dash():
+    # Yahoo nombra las clases US con guion: BRK.B -> BRK-B (verificado contra
+    # la chart API: BRK-B devuelve datos, BRK.B 404).
+    assert market._yahoo_chart_symbol("BRK.B") == "BRK-B"
+    assert market._yahoo_chart_symbol("BF.A") == "BF-A"
+
+
+def test_yahoo_chart_symbol_keeps_exchange_suffixes_and_plain_tickers():
+    # Sufijos de bolsa (dos letras) y tickers pelados no se tocan.
+    assert market._yahoo_chart_symbol("TEF.MC") == "TEF.MC"
+    assert market._yahoo_chart_symbol("ASML.AS") == "ASML.AS"
+    assert market._yahoo_chart_symbol("AAPL") == "AAPL"
+
+
+def test_quote_requests_dashed_symbol_for_share_class():
+    client = _RecordingClient(_Resp(200, _payload()))
+    out = market._fetch_yahoo_quote(client, "BRK.B")
+    assert out is not None
+    assert client.urls == [f"{market._YAHOO_CHART_URL}/BRK-B"]
