@@ -59,7 +59,7 @@ export default async function ResearchWorkflowsPage() {
             <div key={workflow.name} className="min-w-0 rounded-lg border border-gray-800 bg-[#111111] p-5">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Layers aria-hidden="true" className="h-5 w-5 text-teal-300" />
-                <span className="font-semibold text-gray-100">{workflow.name}</span>
+                <span className="min-w-0 break-all font-semibold text-gray-100">{workflow.name}</span>
                 <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusStyles[status]}`}>
                   {statusLabels[status]}
                 </span>
