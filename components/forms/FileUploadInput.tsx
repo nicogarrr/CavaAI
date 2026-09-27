@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type ComponentPropsWithoutRef } from 'react';
 import { toast } from 'sonner';
-import { Input } from '@/components/ui/input';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -114,7 +113,12 @@ export function FileUploadInput({ maxMB = MAX_UPLOAD_MB, className, id, name, ..
 
   return (
     <div ref={rootRef} className={cn('w-full', className)}>
-      <Input
+      {/* <input> nativo a propósito: ui/Input impone w-full/h-10/borde en la
+          base y, con sr-only, el width:100% ganaba a width:1px (sr-only se
+          ordena antes en el stylesheet), dejando una caja invisible al 100%
+          que desbordaba en /research?view=documents y /knowledge?tab=subir
+          (F303). */}
+      <input
         {...props}
         id={inputId}
         name={name}
