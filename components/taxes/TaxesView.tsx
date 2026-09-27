@@ -157,6 +157,14 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
     const [report, setReport] = useState<DataRecord | null>(initialReport);
     const [reportKey, setReportKey] = useState(0);
 
+    // F94: al cambiar de ejercicio el servidor trae el informe del año nuevo,
+    // pero el estado local conservaba el anterior - el encabezado decía
+    // «Reporte Fiscal 2025» y el contenido seguía siendo el de 2026. El
+    // estado se resincroniza siempre que cambian el año o el informe inicial.
+    useEffect(() => {
+        setReport(initialReport);
+    }, [year, initialReport]);
+
     const handleYearChange = (next: string) => {
         const parsed = Number.parseInt(next, 10);
         if (!Number.isInteger(parsed)) return;

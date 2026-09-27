@@ -316,6 +316,19 @@ def test_build_tax_summary_rows_without_fiscal_year(db: Session):
     assert len(rows) == 1
     assert rows[0]["ticker"] == "AAPL"
     assert rows[0]["quantity"] == 3.0
+    # F240: la UI de /taxes lista estas claves; los null quedan None (NA),
+    # nunca 0 inventados.
+    assert set(rows[0]) >= {
+        "ticker",
+        "quantity",
+        "cost_basis",
+        "market_value",
+        "unrealized_pnl",
+        "currency",
+    }
+    assert rows[0]["cost_basis"] is None
+    assert rows[0]["market_value"] is None
+    assert rows[0]["unrealized_pnl"] is None
 
 
 def test_get_report_is_read_only_without_persisted_report(db):
