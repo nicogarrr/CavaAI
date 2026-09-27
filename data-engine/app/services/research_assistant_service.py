@@ -61,15 +61,23 @@ def guide_context(db: Session, ticker: str) -> dict:
     news = db.scalars(select(NewsEvent).where(
         NewsEvent.tenant_id == tenant_id, NewsEvent.company_id == company.id,
     ).order_by(desc(NewsEvent.date)).limit(10)).all()
+    # Composite legacy titles mix ticker, headline and snippet. Never label
+    # them as publisher-authored; omit them from the typed context response.
+    original_news = [row for row in news if isinstance((row.metadata_ or {}).get("source_headline"), str)
+                     and (row.metadata_ or {})["source_headline"].strip()]
     return {
         "ticker": company.ticker, "review_id": reviews[0].id if reviews else None,
         "open_reviews": [{"id": row.id, "status": row.status, "summary": row.summary} for row in reviews],
-        "latest_news": [{"id": row.id, "title": (row.metadata_ or {}).get("source_headline"), "source": row.source,
+        "latest_news": [{"id": row.id, "title": row.metadata_["source_headline"].strip(), "source": row.source,
                          "source_url": _url(row.url), "date": row.date,
                          "date_source": (row.metadata_ or {}).get("date_source", "unknown")}
-                        for row in news],
-        "missing_data": [] if news else ["No hay noticias registradas para este ticker."],
+                        for row in original_news],
+        "missing_data": (["No hay titulares originales verificables para este ticker."]
+                         if not original_news else
+                         ["Algunas noticias antiguas carecen del titular original y se han omitido."]
+                         if len(original_news) < len(news) else []),
     }
+
 
 
 _STOP = frozenset({"sobre", "para", "esta", "este", "dice", "dime", "cual", "cuáles", "what", "does", "about", "the", "and", "hay", "qué", "que", "los", "las", "del", "con", "por", "una", "uno", "como", "cómo", "documento"})

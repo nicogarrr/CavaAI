@@ -165,3 +165,20 @@ def test_connector_summary_cannot_become_attributed_headline(db, monkeypatch):
         mode="explore", question="What about ITU filing?", ticker="ASTS")))
     assert all(c.url != "https://publisher.example/legacy" for c in response.citations)
     assert all(n["title"] != "ASTS ITU filing legacy snippet" for n in guide_context(db, "ASTS")["latest_news"])
+
+
+def test_guide_context_route_legacy_composite_degrades_without_500(db):
+    from app.api.routes.research_assistant import GuideContextResponse, research_guide_context
+
+    tenant, _, company = setup(db)
+    db.add(NewsEvent(tenant_id=tenant.id, company_id=company.id,
+                     title="ASTS Company update New ITU filing", source="Publisher",
+                     url="https://publisher.example/article", date=datetime(2026, 9, 24, tzinfo=UTC),
+                     metadata_={"date_source": "source"}))
+    db.commit()
+    # The actual route constructs the response_model, not just the service dict.
+    response = research_guide_context(ticker="ASTS", db=db)
+    payload = GuideContextResponse.model_validate(response).model_dump(mode="json")
+    assert payload["latest_news"] == []
+    assert payload["missing_data"]
+    assert "Company update New ITU filing" not in str(payload)
