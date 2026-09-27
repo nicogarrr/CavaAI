@@ -19,9 +19,18 @@ assert.ok(listMatch, 'no se encontró el panel Documentos');
 const block = listMatch[0];
 
 describe('documents list links guard (F249)', () => {
+  it('solo se enlaza una URL absoluta http(s)', () => {
+    assert.match(page, /function safeHttpUrl/, 'helper de validación');
+    assert.match(page, /new URL\(value\)/, 'parseo estricto');
+    assert.match(page, /url\.protocol === 'https:' \|\| url\.protocol === 'http:'/, 'esquema http(s) únicamente');
+    assert.match(page, /url\.hostname/, 'hostname obligatorio');
+  });
+
+
   it('la ficha enlaza cuando hay source_url', () => {
-    assert.match(block, /document\.source_url \? <a/, 'condicional sobre source_url');
-    assert.match(block, /href=\{document\.source_url\}/, 'href desde source_url');
+    assert.match(block, /safeHttpUrl\(document\.source_url\) \? <a/, 'condicional sobre URL validada');
+    assert.match(block, /href=\{safeHttpUrl\(document\.source_url\)/, 'href solo desde URL validada');
+    assert.equal(block.includes('href={document.source_url}'), false, 'source_url en crudo no puede ser href');
   });
 
   it('sin URL queda texto, no enlace roto', () => {

@@ -235,6 +235,25 @@ function label(value: string | null | undefined): string {
   return STATUS_LABELS[value] ?? RATING_LABELS[value] ?? value.replaceAll('_', ' ');
 }
 
+/**
+ * F249: source_url se persiste tal cual en varios caminos de ingesta, así
+ * que no basta con que sea truthy: solo se enlaza una URL absoluta
+ * http(s) con hostname. Cualquier otra cosa (javascript:, data:,
+ * relativa, malformada) se queda como texto plano.
+ */
+function safeHttpUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && url.hostname) {
+      return url.toString();
+    }
+  } catch {
+    // malformada: texto plano
+  }
+  return null;
+}
+
 /** Definición metodológica del foso (glosario compartido) para pintarla en la card */
 function moatDefinition(type: string): string | null {
   const key = moatGlossaryKey[type];
@@ -934,7 +953,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             ficha queda como texto, nunca un enlace roto. */}
         <Panel title="Documentos">
           {documents.length ? (
-            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" />{document.source_url ? <a className="font-medium text-gray-200 underline decoration-gray-700 underline-offset-4 transition hover:text-teal-200" href={document.source_url} rel="noopener noreferrer" target="_blank">{document.title}</a> : <span className="font-medium text-gray-200">{document.title}</span>}<Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
+            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" />{safeHttpUrl(document.source_url) ? <a className="font-medium text-gray-200 underline decoration-gray-700 underline-offset-4 transition hover:text-teal-200" href={safeHttpUrl(document.source_url) ?? undefined} rel="noopener noreferrer" target="_blank">{document.title}</a> : <span className="font-medium text-gray-200">{document.title}</span>}<Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
           ) : (
             <EmptyState
               action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}
