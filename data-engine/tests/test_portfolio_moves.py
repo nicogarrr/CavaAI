@@ -42,6 +42,9 @@ def test_tenant_digest_missing_and_news_are_not_causal(db):
     db.info["tenant_id"] = first.id
     digest = build_digest(db, date(2026, 9, 24), datetime(2026, 9, 25, tzinfo=UTC))
     assert digest.items[0]["price_change_pct"] == 10
+    assert digest.items[0]["adjusted_close"] == "11.000000"
+    assert digest.items[0]["previous_adjusted_close"] == "10.000000"
+    assert "close" not in digest.items[0]
     assert digest.items[0]["catalyst"] == "sin catalizador identificado"
     assert [row["url"] for row in digest.items[0]["related_news"]] == ["https://example.com/a"]
     response = latest_digest(db)
@@ -104,3 +107,25 @@ def test_spot_is_not_treated_as_completed_daily_bar(db):
     digest = build_digest(db, date(2026, 9, 24), datetime(2026, 9, 25, tzinfo=UTC))
     assert digest.items[0]["status"] == "sin datos"
     assert digest.items[0]["related_news"] == []
+
+
+def test_split_does_not_become_false_price_move(db):
+    tenant = Tenant(external_id="split-tenant", name="Split", metadata_={}, status="active")
+    db.add(tenant)
+    db.flush()
+    company = Company(ticker="SPLT", name="Split", exchange="NASDAQ", currency="USD",
+                      company_type="holding", valuation_model="unassigned")
+    db.add(company)
+    db.flush()
+    db.add(Position(tenant_id=tenant.id, company_id=company.id, quantity=Decimal("2")))
+    db.add_all((MarketPrice(company_id=company.id, date=date(2026, 9, 23),
+                            close=Decimal("200"), adj_close=Decimal("100"), source="yfinance"),
+                MarketPrice(company_id=company.id, date=date(2026, 9, 24),
+                            close=Decimal("110"), adj_close=Decimal("110"), source="yfinance")))
+    db.commit()
+    db.info["tenant_id"] = tenant.id
+    item = build_digest(db, date(2026, 9, 24), datetime(2026, 9, 25, tzinfo=UTC)).items[0]
+    assert item["price_change_pct"] == 10  # raw closes would falsely show -45%.
+    assert item["adjusted_close"] == "110.000000"
+    assert item["previous_adjusted_close"] == "100.000000"
+    assert "close" not in item and "previous_close" not in item
