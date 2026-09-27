@@ -2,7 +2,6 @@
 
 from app.services.review_copy import (
     CHANGE_TYPE_LABELS,
-    CLAIM_STATUS_LABELS,
     change_type_label,
     claim_status_label,
 )

@@ -113,8 +113,8 @@ class RedTeamService:
                         "high",
                         "source_audit_failed",
                         (
-                            "La auditoría de fuentes falló con cobertura "
-                            f"{latest_audit.source_coverage_score}: "
+                            "La auditoría de fuentes falló con puntuación de respaldo "
+                            f"de afirmaciones {latest_audit.source_coverage_score}/100: "
                             f"{len(unsupported)} sin respaldo, {len(conflicts)} conflictos."
                         ),
                         source_audit_id=latest_audit.id,
@@ -130,8 +130,10 @@ class RedTeamService:
                         "medium",
                         "source_audit_blocked",
                         (
-                            "Auditoría de fuentes bloqueada aguas abajo con cobertura "
-                            f"{latest_audit.source_coverage_score} y sin afirmaciones sin respaldo: "
+                            "Auditoría de fuentes bloqueada aguas abajo (puntuación de respaldo "
+                            f"de afirmaciones {latest_audit.source_coverage_score}/100, sin "
+                            "afirmaciones sin respaldo; el bloqueo puede deberse a la traza "
+                            "u otros requisitos): "
                             f"{'; '.join(latest_audit.required_fixes or [])[:300]}"
                         ),
                         source_audit_id=latest_audit.id,
