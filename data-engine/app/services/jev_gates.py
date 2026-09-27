@@ -139,8 +139,8 @@ async def jev_choice_or_none(
 ) -> JevDecision | None:
     """Una clasificación acotada; falla cerrado al flujo preexistente."""
     state = credit_status()["status"]
-    if state in {"fallback_modelo_gratuito", "desactivado_sin_credito", "estado_no_disponible"}:
-        if state == "fallback_modelo_gratuito" and name in FREE_GATES:
+    if state in {"fallback_proveedor_alternativo", "desactivado_sin_credito", "estado_no_disponible"}:
+        if state == "fallback_proveedor_alternativo" and name in FREE_GATES:
             return await classify_free(text[:max_chars], instructions=instructions, criteria=criteria)
         return None
     try:

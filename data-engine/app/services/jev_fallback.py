@@ -1,7 +1,11 @@
-"""Fallback tipado sobre el modelo gratuito ya configurado.
+"""Fallback tipado sobre el proveedor alternativo configurado (OpenCode Go
+con la clave del despliegue). Su coste NO está verificado: no presentarlo
+como gratuito.
 
 La confianza del modelo generativo no es una probabilidad calibrada Jev: solo
 marca/ordena; no puede tomar decisiones irreversibles ni excluir evidencia.
+Las etiquetas generativas metadata-only no verifican hechos: no leerlas como
+evidencia.
 """
 from __future__ import annotations
 

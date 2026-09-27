@@ -30,6 +30,10 @@ class JevDecision:
     backend: str = "jev"
 
 
+class JevAuthError(RuntimeError):
+    """401/403 sin señal de facturación: credencial o permiso, NO crédito."""
+
+
 class JevCreditExhausted(RuntimeError):
     """Rechazo de facturacion: no debe reintentarse ni ocultarse como 5xx."""
 
@@ -86,13 +90,23 @@ class JevDecisionClient:
                             json=payload,
                             timeout=self._timeout,
                         )
-                if response.status_code in {402, 403} or (response.status_code >= 400 and any(
-                    word in response.text.lower() for word in ("insufficient credit", "credit exhausted", "billing", "payment required")
-                )):
+                text_lower = response.text.lower()
+                billing_signal = any(
+                    word in text_lower
+                    for word in (
+                        "insufficient credit", "credit exhausted", "billing",
+                        "payment required", "insufficient_quota", "quota exceeded",
+                    )
+                )
+                # 402 siempre es facturación; 403 solo con señal explícita de
+                # billing del proveedor — un 403 plano es auth/permiso.
+                if response.status_code == 402 or billing_signal:
                     raise JevCreditExhausted(f"TypeSafe billing HTTP {response.status_code}")
+                if response.status_code in {401, 403}:
+                    raise JevAuthError(f"TypeSafe auth HTTP {response.status_code}")
                 response.raise_for_status()
                 return response.json()
-            except JevCreditExhausted:
+            except (JevCreditExhausted, JevAuthError):
                 raise
             except Exception as exc:  # noqa: BLE001 — reintento best-effort
                 last_error = exc

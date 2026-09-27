@@ -13,8 +13,14 @@ from app.models.entities import TypeSafeStatus
 
 logger = logging.getLogger(__name__)
 
+# Marcador local del proceso: si no se puede persistir la transición, el
+# proceso deja de llamar a TypeSafe y expone el bloqueo operacional.
+_PERSISTENCE_BROKEN = False
+
 
 def credit_status() -> dict:
+    if _PERSISTENCE_BROKEN:
+        return {"status": "estado_no_disponible", "last_billing_failure_at": None}
     configured = bool(get_settings().typesafe_api_key)
     try:
         with SessionLocal() as db:
@@ -24,7 +30,7 @@ def credit_status() -> dict:
         # DB sin verificar: no llamar a TypeSafe ni afirmar que está activo.
         return {"status": "estado_no_disponible", "last_billing_failure_at": None}
     return {
-        "status": ("fallback_modelo_gratuito" if get_settings().typesafe_fallback == "instructor"
+        "status": ("fallback_proveedor_alternativo" if get_settings().typesafe_fallback == "instructor"
                    else "desactivado_sin_credito") if last else
                   ("activo" if configured else "sin_configurar"),
         "last_billing_failure_at": last,
@@ -55,7 +61,8 @@ def mark_credit_exhausted() -> None:
                 db.add(ResearchAlert(
                     tenant_id=tenant.id, alert_type="typesafe_credit_exhausted",
                     severity="medium", status="open", title="Crédito de TypeSafe agotado",
-                    message=("JEV usa el modelo gratuito para las etiquetas prioritarias."
+                    message=("JEV usa el proveedor alternativo configurado para las etiquetas "
+                             "prioritarias; su coste no está verificado, no asumir que es gratuito."
                              if mode == "instructor" else
                              "JEV está desactivado; se usa el flujo habitual sin sus etiquetas."),
                     fingerprint=f"typesafe_credit_exhausted:{tenant.id}",
@@ -64,4 +71,9 @@ def mark_credit_exhausted() -> None:
                 db.flush()
             db.commit()
     except Exception:  # noqa: BLE001
-        logger.exception("Cannot persist TypeSafe billing transition")
+        global _PERSISTENCE_BROKEN
+        _PERSISTENCE_BROKEN = True
+        logger.exception(
+            "Cannot persist TypeSafe billing transition; "
+            "process stops TypeSafe calls and reports estado_no_disponible"
+        )
