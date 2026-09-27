@@ -182,3 +182,22 @@ def test_guide_context_route_legacy_composite_degrades_without_500(db):
     assert payload["latest_news"] == []
     assert payload["missing_data"]
     assert "Company update New ITU filing" not in str(payload)
+
+
+def test_guide_context_prefilters_legacy_before_limit(db):
+    tenant, _, company = setup(db)
+    db.add(NewsEvent(tenant_id=tenant.id, company_id=company.id, title="ASTS ITU valid",
+                     source="Publisher", url="https://publisher.example/valid",
+                     date=datetime(2026, 9, 20, tzinfo=UTC),
+                     metadata_={"date_source": "source", "source_headline": "ITU valid"}))
+    for index in range(11):
+        db.add(NewsEvent(tenant_id=tenant.id, company_id=company.id,
+                         title=f"ASTS ITU composite {index}", source="Publisher",
+                         url=f"https://publisher.example/legacy/{index}",
+                         date=datetime(2026, 9, 24, tzinfo=UTC), metadata_={"date_source": "source"}))
+    db.commit()
+    from app.api.routes.research_assistant import research_guide_context
+    result = research_guide_context(ticker="ASTS", db=db)
+    assert len(result.latest_news) == 1
+    assert result.latest_news[0].title == "ITU valid"
+    assert result.missing_data

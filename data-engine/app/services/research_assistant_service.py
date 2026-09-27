@@ -58,8 +58,13 @@ def guide_context(db: Session, ticker: str) -> dict:
         ResearchReview.tenant_id == tenant_id, ResearchReview.company_id == company.id,
         ResearchReview.status == "open",
     ).order_by(desc(ResearchReview.created_at)).limit(10)).all()
+    legacy_count = db.scalar(select(NewsEvent.id).where(
+        NewsEvent.tenant_id == tenant_id, NewsEvent.company_id == company.id,
+        NewsEvent.metadata_["source_headline"].as_string().is_(None),
+    ).limit(1)) is not None
     news = db.scalars(select(NewsEvent).where(
         NewsEvent.tenant_id == tenant_id, NewsEvent.company_id == company.id,
+        NewsEvent.metadata_["source_headline"].as_string().is_not(None),
     ).order_by(desc(NewsEvent.date)).limit(10)).all()
     # Composite legacy titles mix ticker, headline and snippet. Never label
     # them as publisher-authored; omit them from the typed context response.
@@ -75,7 +80,7 @@ def guide_context(db: Session, ticker: str) -> dict:
         "missing_data": (["No hay titulares originales verificables para este ticker."]
                          if not original_news else
                          ["Algunas noticias antiguas carecen del titular original y se han omitido."]
-                         if len(original_news) < len(news) else []),
+                         if legacy_count or len(original_news) < len(news) else []),
     }
 
 
