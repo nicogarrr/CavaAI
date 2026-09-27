@@ -207,3 +207,22 @@ def test_prefilter_is_superset_of_python_match():
             assert set(expected) <= got, (exposure, expected, got)
     finally:
         db.close()
+
+
+def test_prefilter_folds_uppercase_accents_sqlite():
+    """SQLite lower() es ASCII-only: 'Árbol' no baja a 'árbol'. El fold SQL
+    debe reemplazar mayúsculas acentuadas ANTES del lower (casos del auditor:
+    'Árbol', 'Ñu', 'Éxito', 'ÁREA')."""
+    db = _company_db(
+        _mk_company("ARB", sector="Árbol"),
+        _mk_company("NU", industry="Ñu"),
+        _mk_company("EXI", tags=["Éxito"]),
+        _mk_company("AREA", sector="ÁREA"),
+    )
+    try:
+        assert {c.ticker for c in service._matching_companies(db, "arbol")} == {"ARB"}
+        assert {c.ticker for c in service._matching_companies(db, "nu")} == {"NU"}
+        assert {c.ticker for c in service._matching_companies(db, "exito")} == {"EXI"}
+        assert {c.ticker for c in service._matching_companies(db, "area")} == {"AREA"}
+    finally:
+        db.close()

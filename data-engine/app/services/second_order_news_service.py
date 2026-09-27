@@ -174,26 +174,43 @@ def _candidate(company: Company, theme: Theme, field: str, value: str,
 
 
 # Accent folding replicated in SQL so the prefilter sees the same alphabet
-# as _normalized (NFKD -> ascii-ignore) for the Spanish Latin-1 set
-# (á é í ó ú ü ñ). Two encodings are folded: real characters (Postgres JSONB
-# renders UTF-8) and the \uXXXX escapes that SQLite's JSON serializer emits
-# for non-ASCII text inside JSON columns. Exotic accents outside this set are
-# not folded in SQL; they simply miss the prefilter, which the module never
-# relies on for correctness claims beyond the declared coverage.
-_SQL_FOLD_GROUPS = (("á", "a"), ("é", "e"), ("í", "i"),
-                    ("ó", "o"), ("ú", "u"), ("ü", "u"), ("ñ", "n"))
-_SQL_FOLD_ESCAPES = (("\\u00e1", "a"), ("\\u00e9", "e"), ("\\u00ed", "i"),
-                     ("\\u00f3", "o"), ("\\u00fa", "u"), ("\\u00fc", "u"),
-                     ("\\u00f1", "n"))
+# as _normalized (NFKD -> ascii-ignore) for the Spanish Latin-1 set, BOTH
+# cases (ÁÉÍÓÚÜÑ áéíóúüñ): SQLite lower() is ASCII-only, so uppercase
+# accented letters must be replaced BEFORE lower(). JSON-cast columns get two
+# SEPARATE folded expressions OR-ed (real characters for Postgres JSONB;
+# \uXXXX escapes for SQLite's JSON serializer) because one 28-deep replace
+# chain overflows SQLite's parser stack.
+# Scope declared: Spanish accented vowels + ñ, upper and lower case. Other
+# Unicode simply misses the prefilter; this is NOT a general Unicode superset.
+_SQL_FOLD_UPPER = (("Á", "A"), ("É", "E"), ("Í", "I"), ("Ó", "O"),
+                   ("Ú", "U"), ("Ü", "U"), ("Ñ", "N"))
+_SQL_FOLD_LOWER = (("á", "a"), ("é", "e"), ("í", "i"),
+                   ("ó", "o"), ("ú", "u"), ("ü", "u"), ("ñ", "n"))
+_SQL_FOLD_ESCAPES_UPPER = (("\\u00c1", "A"), ("\\u00c9", "E"), ("\\u00cd", "I"),
+                           ("\\u00d3", "O"), ("\\u00da", "U"), ("\\u00dc", "U"),
+                           ("\\u00d1", "N"))
+_SQL_FOLD_ESCAPES_LOWER = (("\\u00e1", "a"), ("\\u00e9", "e"), ("\\u00ed", "i"),
+                           ("\\u00f3", "o"), ("\\u00fa", "u"), ("\\u00fc", "u"),
+                           ("\\u00f1", "n"))
+
+
+def _fold_pairs(expr, upper, lower):
+    for ch, base in upper:
+        expr = func.replace(expr, ch, base)
+    expr = func.lower(expr)
+    for ch, base in lower:
+        expr = func.replace(expr, ch, base)
+    return expr
 
 
 def _sql_fold(column):
-    expr = func.lower(column)
-    for ch, base in _SQL_FOLD_GROUPS:
-        expr = func.replace(expr, ch, base)
-    for esc, base in _SQL_FOLD_ESCAPES:
-        expr = func.replace(expr, esc, base)
-    return expr
+    """Fold real characters: Postgres JSONB and plain text columns."""
+    return _fold_pairs(column, _SQL_FOLD_UPPER, _SQL_FOLD_LOWER)
+
+
+def _sql_fold_json_escapes(column):
+    """Fold escaped sequences: SQLite JSON serializer output."""
+    return _fold_pairs(column, _SQL_FOLD_ESCAPES_UPPER, _SQL_FOLD_ESCAPES_LOWER)
 
 
 def _matching_companies(db: Session, exposure: str) -> list[Company]:
@@ -219,6 +236,7 @@ def _matching_companies(db: Session, exposure: str) -> list[Company]:
             _sql_fold(Company.sector).like(f"%{token}%"),
             _sql_fold(Company.industry).like(f"%{token}%"),
             _sql_fold(cast(Company.factor_tags, String)).like(f"%{token}%"),
+            _sql_fold_json_escapes(cast(Company.factor_tags, String)).like(f"%{token}%"),
         )
         for token in exposure_norm.split()
     ]
