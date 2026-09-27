@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, MarketPrice, NewsEvent, PortfolioMoveDigest, Position
 
-VERSION = "current-holdings-price-moves-v3"
+VERSION = "current-holdings-adjusted-moves-v4"
 DAILY_BAR_SOURCES = frozenset({"yfinance"})
 
 
@@ -35,15 +35,19 @@ def build_digest(db: Session, as_of: date, generated_at: datetime | None = None)
             MarketPrice.source.in_(DAILY_BAR_SOURCES),
             MarketPrice.adj_close.is_not(None),
         ).order_by(desc(MarketPrice.date)).limit(2)).all()
-        current = prices[0] if prices and prices[0].date == as_of and prices[0].close and prices[0].close > 0 else None
-        prior = prices[1] if current and len(prices) > 1 and prices[1].close and prices[1].close > 0 else None
+        current = prices[0] if prices and prices[0].date == as_of and prices[0].adj_close and prices[0].adj_close > 0 else None
+        prior = prices[1] if current and len(prices) > 1 and prices[1].adj_close and prices[1].adj_close > 0 else None
         item = {"position_id": position.id, "company_id": company.id, "ticker": company.ticker,
                 "quantity": str(position.quantity), "date": as_of.isoformat(), "status": "sin datos",
                 "catalyst": "sin catalizador identificado", "related_news": []}
         if current and prior:
-            change_pct = (Decimal(current.close) / Decimal(prior.close) - 1) * 100
-            item.update(status="disponible", close=str(current.close), previous_close=str(prior.close),
+            # Adjusted closes, not quoted closes: splits and distributions
+            # must not become a spurious portfolio-movement signal.
+            change_pct = (Decimal(current.adj_close) / Decimal(prior.adj_close) - 1) * 100
+            item.update(status="disponible", adjusted_close=str(current.adj_close),
+                        previous_adjusted_close=str(prior.adj_close),
                         previous_date=prior.date.isoformat(), price_change_pct=round(float(change_pct), 4),
+                        return_basis="cierres ajustados yfinance; variación del valor, no P&L de la posición",
                         price_source=current.source, previous_price_source=prior.source,
                         price_ids=[prior.id, current.id])
             # GDELT articles retain publisher domain as source and independently
@@ -96,4 +100,4 @@ def latest_digest(db: Session) -> dict:
             "coverage": digest.coverage, "items": digest.items,
             "universe": "posiciones actuales al generar el digest; no cartera histórica del día del cierre",
             "positions_sampled_at": digest.generated_at.isoformat(),
-            "note": "Noticias relacionadas por fecha, no atribución causal; sin catalizador identificado."}
+            "note": "Variación calculada con cierres ajustados; noticias relacionadas por fecha, no atribución causal; sin catalizador identificado."}
