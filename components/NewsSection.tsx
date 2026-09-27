@@ -78,7 +78,13 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                                                    textual el lector de pantalla lo anuncia dos veces. */
                                                 alt=""
                                                 fill
-                                                className="object-cover"
+                                                className={
+                                                    /* Logos de fuente (p.ej. Reuters): contain para
+                                                       no cortar la palabra; fotos: cover como antes. */
+                                                    article.image.includes('/logo/')
+                                                        ? 'object-contain bg-black/40 p-2'
+                                                        : 'object-cover'
+                                                }
                                                 sizes="(min-width: 420px) 128px, 100vw"
                                             />
                                         </div>
