@@ -1057,6 +1057,42 @@ def refresh_news(
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
+def reconcile_alert_analyses(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
+    """Queue AlertAnalysis rows for tracked_news alerts that never got one.
+
+    Independent of NewsEvent eligibility: the evaluate() repair only runs
+    while the event passes its filter, so a lost row whose event aged out
+    would never be recovered. queue_analysis stays the honest gate.
+    """
+    actor_name = "reconcile_alert_analyses"
+    from app.services.alert_analysis_service import reconcile_missing_analyses
+
+    db = _session(tenant_id, user_id)
+    try:
+        lease = acquire_job_lease(
+            f"reconcile_alert_analyses:{tenant_id}",
+            ttl_seconds=900, redis_url=_lease_redis_url(),
+        )
+    except Exception:
+        db.close()
+        raise
+    if lease is None:
+        db.close()
+        return {"actor": actor_name, "status": "skipped", "reason": "lease_held"}
+    try:
+        stats = reconcile_missing_analyses(db)
+        return {"actor": actor_name, "status": "ok", **stats}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id)
+    finally:
+        release_job_lease(
+            f"reconcile_alert_analyses:{tenant_id}", lease, redis_url=_lease_redis_url(),
+        )
+        db.close()
+
+
+@dramatiq.actor(max_retries=2, min_backoff=15_000)
 def refresh_macro_news(
     tenant_id: int | None = None,
     user_id: str | None = None,
