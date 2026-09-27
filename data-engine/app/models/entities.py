@@ -563,6 +563,51 @@ class FinancialStatement(TenantOwnedMixin, Base, TimestampMixin):
     facts: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class MarketObservation(Base, TimestampMixin):
+    """Public observation with immutable source/date/vintage."""
+
+    __tablename__ = "market_observations"
+    __table_args__ = (
+        UniqueConstraint(
+            "metric_key",
+            "geography",
+            "observation_date",
+            "source",
+            "vintage",
+            name="uq_market_observation_vintage",
+        ),
+        Index("ix_market_observations_metric_date", "metric_key", "observation_date"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    metric_key: Mapped[str] = mapped_column(String(120))
+    geography: Mapped[str] = mapped_column(String(80))
+    observation_date: Mapped[date] = mapped_column(Date)
+    value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    unit: Mapped[str] = mapped_column(String(80))
+    source: Mapped[str] = mapped_column(String(80))
+    source_url: Mapped[str] = mapped_column(String(1000))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    release_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    vintage: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(40))
+
+
+class MarketRegimeSnapshot(Base, TimestampMixin):
+    __tablename__ = "market_regime_snapshots"
+    __table_args__ = (
+        UniqueConstraint("snapshot_date", "model_version", "input_hash", name="uq_market_regime_inputs"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, index=True)
+    model_version: Mapped[str] = mapped_column(String(120))
+    input_hash: Mapped[str] = mapped_column(String(64))
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    probabilities: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    coverage: Mapped[str] = mapped_column(String(40))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class MarketPrice(Base, TimestampMixin):
     __tablename__ = "market_prices"
     __table_args__ = (UniqueConstraint("company_id", "date", name="uq_market_price_company_date"),)
