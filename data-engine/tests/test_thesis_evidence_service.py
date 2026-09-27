@@ -53,7 +53,7 @@ def test_extract_latest_annual_prefers_10k_over_newer_10q():
     us_gaap = _gaap(
         {
             "Revenues": [
-                {"form": "10-K", "val": 100, "end": "2025-09-27", "filed": "2025-11-01"},
+                {"form": "10-K", "val": 100, "start": "2024-09-28", "end": "2025-09-27", "filed": "2025-11-01"},
                 {"form": "10-Q", "val": 30, "end": "2026-06-27", "filed": "2026-08-01"},
             ]
         }
@@ -91,6 +91,167 @@ def test_extract_latest_annual_first_tag_wins_never_sums():
     out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
     assert out["revenue"]["value"] == 100
     assert out["revenue"]["concept"] == "Revenues"
+
+
+def test_extract_latest_annual_prefers_current_tag_over_stale_preferred_tag():
+    """F133 (MSFT tenant 5): "Revenues" dejo de informarse tras FY2010 y
+    el extractor lo elegia por preferencia, dejando FY2010 como "Latest
+    Results" aunque RevenueFromContract... tenia FY2026."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 62484000000,
+                    "start": "2009-07-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+            ],
+            "RevenueFromContractWithCustomerExcludingAssessedTax": [
+                {
+                    "form": "10-K",
+                    "val": 331839000000,
+                    "start": "2025-07-01",
+                    "end": "2026-06-30",
+                    "filed": "2026-07-29",
+                },
+            ],
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 331839000000
+    assert out["revenue"]["concept"] == "RevenueFromContractWithCustomerExcludingAssessedTax"
+    assert out["revenue"]["period"] == "2026-06-30:FY"
+
+
+def test_extract_latest_annual_excludes_quarter_republished_in_10k():
+    """F133: el 10-K republica trimestres; un Q4 (start 2010-04-01,
+    16.039B - el valor exacto que prod guardo como "FY2010") no es un
+    dato anual aunque venga con form 10-K."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 62484000000,
+                    "start": "2009-07-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+                {
+                    "form": "10-K",
+                    "val": 16039000000,
+                    "start": "2010-04-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+            ]
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 62484000000
+    assert out["revenue"]["fiscal_year"] == 2010
+
+
+def test_extract_latest_annual_q4_only_in_10k_is_not_labeled_fy():
+    """Auditor F133: si el tag SOLO tiene un Q4 republicado en 10-K, el
+    fallback no puede volver a etiquetarlo FY."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 16039000000,
+                    "start": "2010-04-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+            ]
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["period"] == "2010-06-30:10-K"
+    assert out["revenue"]["fiscal_quarter"] is None
+
+
+def test_extract_latest_annual_annual_beats_newer_quarter_across_tags():
+    """Auditor F133: un anual valido en un tag gana a un trimestre mas
+    reciente de otro tag."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 245122000000,
+                    "start": "2023-07-01",
+                    "end": "2024-06-30",
+                    "filed": "2024-07-30",
+                },
+            ],
+            "RevenueFromContractWithCustomerExcludingAssessedTax": [
+                {
+                    "form": "10-Q",
+                    "val": 90000000000,
+                    "start": "2026-04-01",
+                    "end": "2026-06-30",
+                    "filed": "2026-07-29",
+                },
+            ],
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 245122000000
+    assert out["revenue"]["concept"] == "Revenues"
+    assert out["revenue"]["period"] == "2024-06-30:FY"
+
+
+def test_extract_latest_annual_amendment_does_not_displace_newer_period():
+    """Auditor F133: una enmienda (filed reciente) de un periodo antiguo
+    no desplaza al periodo mas reciente: se elige por periodo cubierto."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 100,
+                    "start": "2023-01-01",
+                    "end": "2023-12-31",
+                    "filed": "2026-03-01",
+                },
+                {
+                    "form": "10-K",
+                    "val": 200,
+                    "start": "2025-01-01",
+                    "end": "2025-12-31",
+                    "filed": "2026-02-01",
+                },
+            ]
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 200
+    assert out["revenue"]["period"] == "2025-12-31:FY"
+
+
+def test_extract_latest_annual_flow_without_start_is_not_annual():
+    """Auditor F133: una metrica de flujo sin start no puede probar
+    duracion anual; una instantanea sin start si."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {"form": "10-K", "val": 100, "end": "2025-12-31", "filed": "2026-02-01"},
+            ],
+            "Assets": [
+                {"form": "10-K", "val": 500, "end": "2025-12-31", "filed": "2026-02-01"},
+            ],
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["period"] == "2025-12-31:10-K"
+    assert out["revenue"]["fiscal_quarter"] is None
+    assert out["total_assets"]["period"] == "2025-12-31:FY"
+    assert out["total_assets"]["fiscal_quarter"] == "FY"
 
 
 def test_extract_latest_annual_skips_entries_without_value_or_end():
@@ -295,7 +456,7 @@ def test_ingest_fundamentals_preserva_historico_sec(db, monkeypatch):
     monkeypatch.setattr(service, "_fetch_company_facts", lambda cik: {
         "facts": {"us-gaap": _gaap({
             "Revenues": [
-                {"form": "10-K", "val": 999, "end": "2025-12-31", "fy": "2025", "fp": "FY", "filed": "2026-02-01"},
+                {"form": "10-K", "val": 999, "start": "2025-01-01", "end": "2025-12-31", "fy": "2025", "fp": "FY", "filed": "2026-02-01"},
             ],
         })},
     })
