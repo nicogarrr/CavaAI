@@ -235,6 +235,25 @@ function label(value: string | null | undefined): string {
   return STATUS_LABELS[value] ?? RATING_LABELS[value] ?? value.replaceAll('_', ' ');
 }
 
+/**
+ * F249: source_url se persiste tal cual en varios caminos de ingesta, así
+ * que no basta con que sea truthy: solo se enlaza una URL absoluta
+ * http(s) con hostname. Cualquier otra cosa (javascript:, data:,
+ * relativa, malformada) se queda como texto plano.
+ */
+function safeHttpUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && url.hostname) {
+      return url.toString();
+    }
+  } catch {
+    // malformada: texto plano
+  }
+  return null;
+}
+
 /** Definición metodológica del foso (glosario compartido) para pintarla en la card */
 function moatDefinition(type: string): string | null {
   const key = moatGlossaryKey[type];
@@ -915,7 +934,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <Panel title="Conjunto de comparables"><p className="text-sm text-gray-300">{peers.comparison?.basis ? (PEERS_BASIS_LABELS[peers.comparison.basis] ?? peers.comparison.basis) : 'Sin conjunto de comparables'} · {peers.comparison?.peer_count ?? 0} comparables</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
-        <Panel title="Métricas comparables"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Objetivo {value.target_value ?? 'desconocido'} · mediana {value.peer_median ?? 'desconocida'} · n={value.peer_sample_size}</div></div>)}</div></Panel>
+        <Panel title="Métricas comparables"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Objetivo {value.target_value ?? 'desconocido'}{value.target_atypical ? ' (atípico: posible ganancia no operativa)' : ''} · mediana {value.peer_median ?? 'desconocida'} · n={value.peer_sample_size}</div>{(value.excluded_atypical ?? []).length > 0 ? <div className="mt-1 text-xs text-amber-300/80">Fuera de la mediana: {(value.excluded_atypical ?? []).map((ex) => `${ex.ticker} ${ex.value ?? 's/d'}`).join(', ')} - lectura atípica verificable, no benchmark</div> : null}</div>)}</div></Panel>
         <Panel title="Ventajas y desventajas"><p className="text-sm text-gray-400">{peers.analysis?.methodology ? (PEERS_METHODOLOGY_ES[peers.analysis.methodology] ?? peers.analysis.methodology) : 'Sin análisis de comparables persistido.'}</p><p className="mt-3 text-xs text-amber-300">{peers.analysis?.insufficient_data.join(', ')}</p></Panel>
       </div>
     );
@@ -929,9 +948,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <Panel title="Sube una fuente primaria"><MutationForm action={importResearchDocumentFile} className="grid gap-3" successMessage="Documento subido"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><FileUploadInput name="file" required /><Button type="submit">Subir</Button></MutationForm></Panel>
           <Panel title="Importar desde una URL"><MutationForm action={importResearchDocumentUrl} className="grid gap-3" successMessage="Documento importado"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><Input name="url" type="url" placeholder="https://..." required /><Input name="source_type" placeholder="sec_filing / investor_relations" defaultValue="url" /><Button type="submit">Importar</Button></MutationForm></Panel>
         </div>
+        {/* F249: las fichas enlazan a la fuente primaria cuando el
+            documento tiene source_url (filings SEC la traen); sin URL la
+            ficha queda como texto, nunca un enlace roto. */}
         <Panel title="Documentos">
           {documents.length ? (
-            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
+            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" />{safeHttpUrl(document.source_url) ? <a className="font-medium text-gray-200 underline decoration-gray-700 underline-offset-4 transition hover:text-teal-200" href={safeHttpUrl(document.source_url) ?? undefined} rel="noopener noreferrer" target="_blank">{document.title}</a> : <span className="font-medium text-gray-200">{document.title}</span>}<Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
           ) : (
             <EmptyState
               action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}
