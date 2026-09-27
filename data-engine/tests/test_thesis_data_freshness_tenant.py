@@ -6,14 +6,17 @@ tesis como obsoleta sin cambiar su información. MarketPrice es global por
 diseño (precios de mercado compartidos) y sí cuenta para todos.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
-    Base, Company, Document, FinancialFact, MarketPrice, NewsEvent,
+    Base,
+    Company,
+    FinancialFact,
+    MarketPrice,
 )
 from app.services.thesis_service import ThesisService
 
@@ -39,7 +42,7 @@ def _company(db: Session) -> Company:
 
 def test_freshness_ignores_other_tenant_rows(db: Session):
     company = _company(db)
-    base = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    base = datetime(2026, 9, 1, tzinfo=UTC)
 
     # updated_at se fija en construcción: asignarlo tras el INSERT dispararía
     # el onupdate=utcnow de TimestampMixin y machacaría la marca.
@@ -56,11 +59,11 @@ def test_freshness_ignores_other_tenant_rows(db: Session):
     db.info["tenant_id"] = "tenant-test"
     service = ThesisService()
     seen = service.data_freshness(db, company.id)
-    assert seen is not None and seen.replace(tzinfo=timezone.utc) == base
+    assert seen is not None and seen.replace(tzinfo=UTC) == base
 
     db.info["tenant_id"] = 999
     seen_otro = service.data_freshness(db, company.id)
-    assert seen_otro is not None and seen_otro.replace(tzinfo=timezone.utc) == base + timedelta(days=10)
+    assert seen_otro is not None and seen_otro.replace(tzinfo=UTC) == base + timedelta(days=10)
 
 
 def test_freshness_market_price_stays_global(db: Session):
