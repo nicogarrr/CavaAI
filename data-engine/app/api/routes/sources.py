@@ -87,7 +87,13 @@ def documents(
 ) -> list[dict]:
     statement = select(Document, Company).outerjoin(Company, Document.company_id == Company.id)
     if ticker:
-        statement = statement.where(Company.ticker == ticker.upper())
+        # F313: mismo criterio de identidad que /api/companies/{ticker}: el
+        # alias europeo (SAN.MC -> SAN) resuelve a la empresa base; el match
+        # literal dejaba la pestaña de documentos vacía para esos tickers.
+        company = resolve_company(db, ticker)
+        if company is None:
+            return []
+        statement = statement.where(Document.company_id == company.id)
     statement = without_archive_duplicates(statement)
 
     # «Mas recientes» = por fecha de PUBLICACION global, no por ingesta:
@@ -163,7 +169,11 @@ def documents_count(
     if tenant_id is not None:
         statement = statement.where(Document.tenant_id == tenant_id)
     if ticker:
-        statement = statement.where(Company.ticker == ticker.upper())
+        # F313: alias europeo resuelto con la misma política que la ficha.
+        company = resolve_company(db, ticker)
+        if company is None:
+            return {"total": 0}
+        statement = statement.where(Document.company_id == company.id)
     statement = without_archive_duplicates(statement)
     return {"total": int(db.execute(statement).scalar_one())}
 
@@ -405,15 +415,15 @@ def source_audits(
 ) -> list[dict]:
     statement = select(SourceAudit).order_by(desc(SourceAudit.created_at))
     if ticker:
+        # F313: alias europeo (SAN.MC -> SAN) con la misma política que la
+        # ficha; el literal dejaba las auditorías vacías para esos tickers.
+        company = resolve_company(db, ticker)
+        if company is None:
+            return []
         statement = statement.join(
             ThesisVersion,
             SourceAudit.thesis_version_id == ThesisVersion.id,
-        ).where(
-            ThesisVersion.company_id
-            == select(Company.id)
-            .where(Company.ticker == ticker.upper())
-            .scalar_subquery()
-        )
+        ).where(ThesisVersion.company_id == company.id)
     statement = statement.offset(offset).limit(limit)
     return [
         {
