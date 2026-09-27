@@ -250,7 +250,12 @@ class PeerComparisonService:
                 "period": "unknown",
                 "confidence": "0.00",
                 "source_fact_ids": [],
+                "atypical": None,
             }
+        # F153: la etiqueta de atipico y la traza viajan con el valor - un
+        # margen real del 200% no puede presentarse como benchmark normal
+        # sin advertencia ni numerador/denominador verificables.
+        trace = result.calculation_trace or {}
         return {
             "value": _decimal_string(result.value),
             "status": result.status,
@@ -258,18 +263,32 @@ class PeerComparisonService:
             "period": result.period,
             "confidence": _decimal_string(result.confidence),
             "source_fact_ids": result.source_fact_ids,
+            "atypical": trace.get("atypical"),
+            "numerator": _decimal_string(result.numerator),
+            "denominator": _decimal_string(result.denominator),
+            "calculation_trace": trace,
         }
 
     def _benchmarks(self, rows: list[dict], metric_names: list[str]) -> dict:
         target = next((row for row in rows if row["is_target"]), None)
         benchmarks = {}
         for metric in metric_names:
-            peer_values = [
-                Decimal(payload["value"])
+            # F153: un valor atipico (etiquetado por el motor de metricas)
+            # queda visible con su etiqueta pero NO entra en la
+            # mediana/promedio - un margen real del 200% no distorsiona el
+            # benchmark ni se presenta como lectura normal.
+            peer_ok = [
+                (row["ticker"], Decimal(payload["value"]), payload.get("atypical"))
                 for row in rows
                 if not row["is_target"]
                 for payload in [row["metrics"][metric]]
                 if payload["status"] == "ok" and payload["value"] is not None
+            ]
+            peer_values = [value for _, value, atypical in peer_ok if not atypical]
+            excluded_atypical = [
+                {"ticker": ticker, "value": _decimal_string(value), "atypical": atypical}
+                for ticker, value, atypical in peer_ok
+                if atypical
             ]
             target_payload = target["metrics"][metric] if target else None
             target_value = (
@@ -282,7 +301,9 @@ class PeerComparisonService:
                 "peer_median": _decimal_string(peer_median),
                 "peer_average": _decimal_string(sum(peer_values) / len(peer_values)) if peer_values else None,
                 "peer_sample_size": len(peer_values),
+                "excluded_atypical": excluded_atypical,
                 "target_value": _decimal_string(target_value),
+                "target_atypical": (target_payload or {}).get("atypical"),
                 "target_vs_peer_median": _decimal_string(target_value - peer_median)
                 if target_value is not None and peer_median is not None
                 else None,
