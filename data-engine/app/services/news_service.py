@@ -59,6 +59,7 @@ class NewsService:
         url: str | None,
         ticker: str | None = None,
         published_at: datetime | None = None,
+        connector: str | None = None,
     ) -> ManualNewsResponse:
         company = self._company_for_item(db, text, ticker)
         # Gate Jev (3): duplicate/noise con confianza >= 0.85 -> via ligera:
@@ -127,6 +128,11 @@ class NewsService:
             # fecha de ingesta como si fuera la de la fuente.
             "date_source": "source" if published_at else "ingested_at_fallback",
         }
+        # Procedencia del conector en la MISMA transacción de creación: si se
+        # etiqueta después (segundo commit), una caída entre ambos deja
+        # noticias nuevas sin connector y la reingesta las trata como previas.
+        if connector:
+            news_metadata["connector"] = connector
         try:
             from app.services.jev_triage_service import (
                 classify_doc_type_sync,
@@ -254,6 +260,7 @@ class NewsService:
         db: Session,
         items: list[NewsFeedItem],
         default_source: str = "feed",
+        connector: str | None = None,
     ) -> NewsIngestResponse:
         created_events: list[ManualNewsResponse] = []
         skipped_duplicates = 0
@@ -281,6 +288,7 @@ class NewsService:
                     url=item.url,
                     ticker=item.ticker,
                     published_at=item.published_at,
+                    connector=connector,
                 )
             )
 
