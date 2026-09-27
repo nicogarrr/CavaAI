@@ -54,6 +54,10 @@ export function etiquetaTierFuente(value: string): string {
 const TIPOS_EVENTO: Record<string, string> = {
   regulatory: 'Regulatorio',
   earnings: 'Resultados',
+  dilution: 'Dilución',
+  contract: 'Contrato',
+  capital_allocation: 'Asignación de capital',
+  general_news: 'Noticia general',
   macro: 'Macro',
   opinion: 'Opinión',
   unknown: 'Desconocido',

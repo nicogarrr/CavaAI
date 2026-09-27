@@ -38,6 +38,10 @@ void test('los ocho tiers del catálogo backend tienen etiqueta (F175)', () => {
 void test('tipos de evento y fallback de códigos futuros (F175)', () => {
     assert.equal(etiquetaTipoEvento('regulatory'), 'Regulatorio');
     assert.equal(etiquetaTipoEvento('earnings'), 'Resultados');
+    assert.equal(etiquetaTipoEvento('dilution'), 'Dilución');
+    assert.equal(etiquetaTipoEvento('contract'), 'Contrato');
+    assert.equal(etiquetaTipoEvento('capital_allocation'), 'Asignación de capital');
+    assert.equal(etiquetaTipoEvento('general_news'), 'Noticia general');
     // Código futuro desconocido: se muestra crudo (honesto), nunca inventado.
     assert.equal(etiquetaTierFuente('tier_8_futuro'), 'tier_8_futuro');
 });

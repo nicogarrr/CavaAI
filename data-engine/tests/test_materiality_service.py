@@ -138,3 +138,28 @@ def test_source_tier_catalog_is_exactly_the_known_eight():
         "tier_7_user_input",
         "tier_unknown",
     ]
+
+
+def test_event_type_catalog_is_exactly_the_known_six():
+    """Tripwire: el backend solo emite event_type desde MATERIAL_KEYWORDS o el
+    fallback 'general_news' (MaterialityService.assess_news). Si el catálogo
+    crece, la etiqueta UI (etiquetaTipoEvento en lib/labels.ts) debe crecer
+    con él - un tipo sin etiqueta se pinta crudo en /research/news (F175)."""
+    from pathlib import Path
+
+    from app.services.materiality_service import MATERIAL_KEYWORDS
+
+    assert sorted(MATERIAL_KEYWORDS) == [
+        "capital_allocation",
+        "contract",
+        "dilution",
+        "earnings",
+        "regulatory",
+    ]
+    labels_ts = (
+        Path(__file__).resolve().parents[2] / "lib" / "labels.ts"
+    ).read_text(encoding="utf-8")
+    for event_type in [*MATERIAL_KEYWORDS, "general_news"]:
+        assert f"{event_type}:" in labels_ts, (
+            f"etiquetaTipoEvento no traduce '{event_type}' y se pintaría crudo"
+        )
