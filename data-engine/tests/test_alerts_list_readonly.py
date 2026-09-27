@@ -66,6 +66,62 @@ def test_snooze_indefinite_stays_hidden_and_expired_reappears(db):
     }
 
 
+def test_list_alerts_includes_ticker_for_actionable_history(db):
+    """F146: el historial de disparos necesita el ticker para enlazar a la
+    investigacion; alertas sin compania devuelven ticker=None, nunca inventado."""
+    _seed(db)
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    tickers = {out.title: out.ticker for out in result}
+    assert tickers == {
+        "AAPL open": "AAPL",
+        "AAPL future": "AAPL",
+        "AAPL indefinite": "AAPL",
+        "AAPL expired": "AAPL",
+    }
+    orphan = ResearchAlert(
+        company_id=None, alert_type="red_team", severity="medium",
+        title="sin compania", message="m", fingerprint="fp-orphan",
+        channels=["in_app"], status="open",
+    )
+    db.add(orphan)
+    db.commit()
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    by_title = {out.title: out for out in result}
+    assert by_title["sin compania"].ticker is None
+
+
+def test_list_alerts_orders_by_real_last_trigger(db):
+    """F146: un re-disparo reciente de huella antigua debe salir primero."""
+    from app.services.review_alert_service import ReviewAlertService
+
+    service = ReviewAlertService()
+    first = service.emit_alert(
+        db, company_id=None, alert_type="system", severity="medium",
+        title="huella antigua", message="m", fingerprint_parts=["old"],
+    )
+    service.emit_alert(
+        db, company_id=None, alert_type="system", severity="medium",
+        title="huella nueva", message="m", fingerprint_parts=["new"],
+    )
+    # Re-disparo de la huella antigua: su created_at es el mas viejo pero su
+    # ultimo disparo es el mas reciente.
+    retriggered = service.emit_alert(
+        db, company_id=None, alert_type="system", severity="high",
+        title="huella antigua", message="m2", fingerprint_parts=["old"],
+    )
+    assert retriggered.id == first.id
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    assert [out.title for out in result][:2] == ["huella antigua", "huella nueva"]
+
+
+def test_list_alerts_exposes_last_triggered_at(db):
+    """F146: la hora del disparo que ve la UI sale de last_triggered_at."""
+    _seed(db)
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    for out in result:
+        assert out.last_triggered_at is None or out.last_triggered_at >= out.created_at
+
+
 def test_get_never_mutates_the_orm_rows(db):
     alerts = _seed(db)
     list_alerts(ticker=None, status=None, include_snoozed=False, limit=100, db=db)
