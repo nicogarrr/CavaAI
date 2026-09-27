@@ -881,6 +881,21 @@ def refresh_rss_feeds(
         )
 
 
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
+def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
+    """Evaluate persisted, cited news for one tenant; no upstream request."""
+    from app.services.tracked_news_alerts import evaluate
+
+    db = _session(tenant_id, user_id)
+    try:
+        return {"actor": "dispatch_tracked_news_alerts", **evaluate(db)}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error("dispatch_tracked_news_alerts", exc, tenant_id=tenant_id)
+    finally:
+        db.close()
+
+
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
 def refresh_news(
     tenant_id: int | None = None,
