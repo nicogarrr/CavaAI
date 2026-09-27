@@ -86,9 +86,22 @@ export function FileUploadInput({ maxMB = MAX_UPLOAD_MB, className, id, name, ..
         if (warning) toast.warning(warning);
       }
     };
+    // F142: un reset del formulario padre (p. ej. MutationForm tras una
+    // subida exitosa) limpia el input nativo pero NO el estado de React -
+    // sin esto, el nombre del archivo anterior quedaba en pantalla sin
+    // archivo seleccionado. El state se sincroniza con el reset.
+    const onReset = () => {
+      setFileName(null);
+      setWarning(null);
+      rootRef.current
+        ?.querySelector<HTMLInputElement>('input[type="file"]')
+        ?.setCustomValidity('');
+    };
     form.addEventListener('submit', onSubmit, true);
+    form.addEventListener('reset', onReset);
     return () => {
       form.removeEventListener('submit', onSubmit, true);
+      form.removeEventListener('reset', onReset);
       submits.forEach((el) => {
         if (el.dataset.uploadBlocked === '1') {
           el.disabled = false;
