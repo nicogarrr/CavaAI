@@ -218,6 +218,9 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = Field(default=16_000, ge=1, le=1_000_000)
     llm_daily_cap_eur: float = Field(default=1.50, ge=0)
     llm_monthly_cap_eur: float = Field(default=40.00, ge=0)
+    # Second-order free-model request quota, independent of the shared EUR ledger.
+    second_order_llm_calls_per_minute: int = Field(default=4, ge=0, le=100)
+    second_order_llm_calls_per_day: int = Field(default=100, ge=0, le=10000)
 
     @property
     def is_production(self) -> bool:
