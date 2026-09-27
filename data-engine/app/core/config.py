@@ -221,6 +221,10 @@ class Settings(BaseSettings):
     # Second-order free-model request quota, independent of the shared EUR ledger.
     second_order_llm_calls_per_minute: int = Field(default=4, ge=0, le=100)
     second_order_llm_calls_per_day: int = Field(default=100, ge=0, le=10000)
+    # ASTS catalog LLM quota, independent of the second-order and EUR ledgers.
+    # Lower defaults: the catalog refreshes a few times a day at most.
+    asts_llm_calls_per_minute: int = Field(default=2, ge=0, le=100)
+    asts_llm_calls_per_day: int = Field(default=30, ge=0, le=10000)
 
     @property
     def is_production(self) -> bool:
