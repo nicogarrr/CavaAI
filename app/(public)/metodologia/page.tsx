@@ -238,7 +238,10 @@ export default function MetodologiaPage() {
           refresco falla con aviso. No hay sustitución automática: si el emisor reporta a SEC EDGAR o ESEF,
           puedes lanzar tú el refresco desde esas fuentes (acción separada en la ficha); y si ninguna fuente
           cubre al emisor, los financieros se muestran como no disponibles en lugar de estimarse.
-          Los precios vienen de Finnhub y Yahoo Finance.
+          En el refresco de precios del backend, los listados US se consultan primero en FMP si hay clave y la
+          cotización trae fecha válida; Finnhub es el fallback. Yahoo Finance aporta el refresco intradía de cartera
+          y las series históricas de ProPicks, también para listados no-US cuando el símbolo de su bolsa se conoce.
+          Sin cotización o símbolo fiable, se muestra sin precio.
         </p>
       </section>
 
