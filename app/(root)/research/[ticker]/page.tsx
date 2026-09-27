@@ -17,6 +17,7 @@ import { MoatTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
+import { missingLayerAction, missingLayerLabel } from '@/lib/research/missing-layer-guidance';
 import { MoatPanel } from '@/components/research/MoatPanel';
 import {
   DecisionAndRealityPanel,
@@ -289,11 +290,11 @@ function FactCard({ fact }: { fact: ResearchFact }) {
 /** Hechos visibles en móvil antes del «ver más» */
 const FACTS_MOBILE_PAGE = 10;
 
-function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string }) {
+function FactTable({ facts, refreshLabel }: { facts: ResearchFact[]; refreshLabel: string }) {
   if (!facts.length) {
     return (
       <EmptyState
-        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Importa una fuente primaria</EmptyLink>}
+        description={`Pulsa «${refreshLabel}» arriba para traerlos de la fuente oficial. Si ya lo hiciste y sigue vacío, la fuente no devolvió datos para este valor.`}
         title="Todavía no hay hechos financieros persistidos."
       />
     );
@@ -346,11 +347,11 @@ function FactTable({ facts, ticker }: { facts: ResearchFact[]; ticker: string })
   );
 }
 
-function MetricsGrid({ metrics, ticker }: { metrics: ResearchCalculatedMetric[]; ticker: string }) {
+function MetricsGrid({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
   if (!metrics.length) {
     return (
       <EmptyState
-        action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=documents`}>Añade documentos y recalcula</EmptyLink>}
+        description="Las métricas se derivan de los hechos financieros: pulsa «Recalcular» arriba. Si todavía no hay hechos, refresca primero los financieros con el botón de la fuente oficial."
         title="Las métricas calculadas aún no se han refrescado."
       />
     );
@@ -699,10 +700,25 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         </Panel>
         {snapshot.research_health.missing?.length ? (
           <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-sm text-amber-200">
-            Capas de research que faltan: {snapshot.research_health.missing.join(', ')}.
-            <Link className="ml-2 underline hover:text-amber-100" href={`/research/${encodeURIComponent(ticker)}?view=documents`}>
-              Importa fuentes para completarlas
-            </Link>
+            <p>Capas de research que faltan:</p>
+            <ul className="mt-2 space-y-1">
+              {snapshot.research_health.missing.map((layer) => {
+                const action = missingLayerAction(ticker, layer);
+                return (
+                  <li key={layer}>
+                    {missingLayerLabel(layer)}
+                    {action ? (
+                      <>
+                        {' — '}
+                        <Link className="underline hover:text-amber-100" href={action.href}>
+                          {action.label}
+                        </Link>
+                      </>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         ) : null}
         {/*
@@ -893,8 +909,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           )}
           <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Métricas y modelo de research refrescados"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Recalcular</Button></MutationForm>
         </div>
-        <Panel title="Métricas calculadas trazables"><MetricsGrid metrics={data.calculatedMetrics} ticker={ticker} /></Panel>
-        <Panel title="Hechos financieros canónicos"><FactTable facts={data.facts} ticker={ticker} /></Panel>
+        <Panel title="Métricas calculadas trazables"><MetricsGrid metrics={data.calculatedMetrics} /></Panel>
+        <Panel title="Hechos financieros canónicos"><FactTable facts={data.facts} refreshLabel={
+            !ticker.includes('.')
+              ? 'Refrescar financieros (FMP)'
+              : isEsefIssuer(ticker)
+                ? 'Refrescar ESEF'
+                : 'Refrescar SEC'
+          } /></Panel>
       </div>
     );
   } else if (activeView === 'model') {
