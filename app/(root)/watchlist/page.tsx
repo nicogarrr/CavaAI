@@ -257,9 +257,12 @@ export default async function WatchlistPage() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {stock.peRatio !== null && stock.peRatio !== undefined && Number.isFinite(stock.peRatio) ? (
-                                                <Badge variant="outline" className={`border-gray-700 font-mono ${stock.peRatio < 15 ? 'text-green-400' :
-                                                    stock.peRatio < 25 ? 'text-yellow-400' : 'text-red-400'
-                                                    }`}>
+                                                // F144: sin semáforo. Los umbrales <15/<25 eran
+                                                // arbitrarios y ciegos al sector: pintaban de rojo
+                                                // KO 26x o ASML 55x, una recomendación implícita en
+                                                // una app de «datos, no recomendaciones». Color
+                                                // neutro, como en la vista de tarjetas.
+                                                <Badge variant="outline" className="border-gray-700 font-mono text-gray-300">
                                                     {formatPeRatio(stock.peRatio)}
                                                 </Badge>
                                             ) : (
