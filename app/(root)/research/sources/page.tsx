@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function ResearchSourcesPage() {
-  const { documents, audits } = await getResearchSources();
+  const { documents, audits, documentsTotal } = await getResearchSources();
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -35,7 +35,7 @@ export default async function ResearchSourcesPage() {
           </p>
         </div>
         <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
-          {formatNumber(documents.length, { maximumFractionDigits: 0 })} documentos ·{' '}
+          {formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos ·{' '}
           {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías
         </div>
       </header>
@@ -183,6 +183,12 @@ export default async function ResearchSourcesPage() {
           <FileText aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Documentos</h2>
         </div>
+        {documentsTotal > documents.length ? (
+          <p className="mb-4 text-sm text-gray-500">
+            Mostrando los {formatNumber(documents.length, { maximumFractionDigits: 0 })} más recientes de{' '}
+            {formatNumber(documentsTotal, { maximumFractionDigits: 0 })}.
+          </p>
+        ) : null}
         <div aria-label="Documentos importados" className="overflow-x-auto" role="region" tabIndex={0}>
           <table className="w-full min-w-[820px] text-left text-sm">
             <caption className="sr-only">Documentos, transcripts y auditorías que alimentan la evidencia, con fuente, nivel y fecha de publicación</caption>
