@@ -9,6 +9,9 @@ export type MarketIndex = {
   price: number;
   change: number;
   changePercent: number;
+  // F152: "index" = nivel de índice (sin unidad monetaria), "usd" = precio en dólares.
+  // Ausente en respuestas antiguas cacheadas: el front lo trata como "usd" (comportamiento previo).
+  unit?: 'index' | 'usd';
 };
 
 export type MarketMover = {

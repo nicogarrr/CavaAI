@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { getSavedScreenerEngines, getScreenerStocksReal } from '@/lib/actions/screener.actions';
-import { formatCompact, formatPercent, formatPrice } from '@/lib/format';
+import { formatCompact, formatNumber, formatPercent, formatPrice } from '@/lib/format';
 import { etiquetaSector } from '@/lib/labels';
 import { t } from '@/lib/i18n/t';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,6 +62,13 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
   const { rows, backendDown } = screenerResult;
   // Un indice sin precio real (fallo del proveedor) no se pinta como $0.00.
   const validIndices = indices.filter((i) => i.price > 0);
+  // F152: un nivel de índice no es dinero - sin sufijo «US$». El backend
+  // etiqueta cada serie con unit ("index" | "usd"); solo Bitcoin/Oro/Plata
+  // llevan US$.
+  const formatIndexValue = (i: (typeof validIndices)[number]) =>
+    i.unit === 'index'
+      ? formatNumber(i.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : formatPrice(i.price, 'USD');
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
@@ -235,7 +242,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
               {validIndices.map((i) => (
                 <div key={i.symbol} className="flex min-w-0 items-center justify-between gap-3">
                   <span className="min-w-0 flex-1 truncate text-gray-300">{i.name}</span>
-                  <span className="shrink-0 font-semibold text-gray-100">{formatPrice(i.price, 'USD')}</span>
+                  <span className="shrink-0 font-semibold text-gray-100">{formatIndexValue(i)}</span>
                 </div>
               ))}
               {validIndices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}

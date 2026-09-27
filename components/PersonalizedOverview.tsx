@@ -40,6 +40,8 @@ interface MarketIndex {
     price: number;
     change: number;
     changePercent: number;
+    // F152: "index" = nivel de índice (no es dinero), "usd" = precio en dólares.
+    unit?: 'index' | 'usd';
 }
 
 interface UndervaluedStock {
@@ -64,7 +66,12 @@ const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: Market
             <CardContent className="p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm text-gray-400 font-medium truncate">{index.name}</p>
-                    <p className="text-xl font-bold text-white mt-1">{formatMoney(index.price)}</p>
+                    {/* F152: un nivel de índice no es dinero - sin símbolo monetario. */}
+                    <p className="text-xl font-bold text-white mt-1">
+                        {index.unit === 'index'
+                            ? formatNumber(index.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                            : formatMoney(index.price)}
+                    </p>
                 </div>
                 <div className={`shrink-0 text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     <div className="flex items-center justify-end gap-1">
@@ -197,6 +204,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     price: data.price || 0,
                     change: data.change || 0,
                     changePercent: data.changePercent || 0,
+                    unit: data.unit,
                 }))
                 .filter((i) => i.price > 0));
             setIndicesLoading(false);
