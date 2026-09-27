@@ -14,6 +14,7 @@ from app.workers.dramatiq_app import (
     refresh_macro_context,
     refresh_market_pipeline,
     refresh_news,
+    refresh_portfolio_moves,
     refresh_portfolio_prices_intraday,
     refresh_propicks_prices,
     refresh_rss_feeds,
@@ -231,6 +232,8 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         minute="*/15",
         jitter=60,
     )
+    _register(scheduler, partial(enqueue_for_all_tenants, refresh_portfolio_moves),
+              "cron", job_id="portfolio_moves_daily", hour=5, minute=15)
     # F2 ProPicks: precios diarios + momentum del top-40 del ultimo run.
     # Tras el cierre de mercado US (21:45 UTC ~ cierre + margen).
     _register(
