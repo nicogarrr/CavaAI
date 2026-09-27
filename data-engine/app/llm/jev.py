@@ -90,7 +90,7 @@ class JevDecisionClient:
                             json=payload,
                             timeout=self._timeout,
                         )
-                text_lower = response.text.lower()
+                text_lower = response.text.lower() if response.status_code >= 400 else ""
                 billing_signal = any(
                     word in text_lower
                     for word in (

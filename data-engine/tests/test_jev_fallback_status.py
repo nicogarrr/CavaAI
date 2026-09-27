@@ -44,13 +44,13 @@ def test_fallback_only_marks_tier_one(monkeypatch):
     class Decision:
         label = "observed"
         confidence = .91
-        backend = "jev_fallback_free"
+        backend = "jev_fallback_alternative"
     async def free(*args, **kwargs):
         return Decision()
     monkeypatch.setattr(jev_gates, "classify_free", free)
     assert asyncio.run(jev_gates.jev_choice_or_none(name="claim_routing", text="x", instructions="?", criteria={"observed": "x"})) is None
     mark = jev_gates.mark_only("copilot_ticket", "x", "?", {"observed": "x"})
-    assert mark["backend"] == "jev_fallback_free"
+    assert mark["backend"] == "jev_fallback_alternative"
 
 def test_billing_403_with_provider_signal_is_credit():
     def handler(req):
@@ -97,4 +97,3 @@ def test_broken_db_fails_closed_and_stops_typesafe(monkeypatch):
     result = asyncio.run(jev_gates.jev_choice_or_none(
         name="claim_routing", text="x", instructions="?", criteria={"observed": "x"}))
     assert result is None
-

@@ -49,6 +49,6 @@ async def classify_free(text: str, *, instructions: str, criteria: dict[str, str
             return None
         return JevDecision(label=result.choice, confidence=result.confidence,
                            model=provider.name, latency_s=round(monotonic()-started, 3),
-                           backend="jev_fallback_free")
+                           backend="jev_fallback_alternative")
     except Exception:  # noqa: BLE001
         return None
