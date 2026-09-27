@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { AppError, ExternalAPIError, ValidationError, getErrorMessage } from '@/lib/types/errors';
 import { researchRequest } from '@/lib/research/client';
+import { paginateAll } from '@/lib/paginate-all';
 import type { components } from '@/lib/research/openapi.generated';
 
 
@@ -665,19 +666,47 @@ async function postForm<T>(path: string, fallback: T, body: FormData): Promise<T
 const COMPANIES_PAGE_SIZE = 500;
 
 async function getAllResearchCompanies(): Promise<ResearchCompany[]> {
-  const all: ResearchCompany[] = [];
-  for (let offset = 0; ; offset += COMPANIES_PAGE_SIZE) {
-    const page = await getJson<ResearchCompany[]>(
-      `/api/companies?limit=${COMPANIES_PAGE_SIZE}&offset=${offset}`,
-      [],
-    );
-    all.push(...page);
-    if (page.length < COMPANIES_PAGE_SIZE) return all;
-  }
+  return paginateAll(
+    (offset) =>
+      getJson<ResearchCompany[]>(
+        `/api/companies?limit=${COMPANIES_PAGE_SIZE}&offset=${offset}`,
+        [],
+      ),
+    COMPANIES_PAGE_SIZE,
+    (company) => company.ticker,
+  );
 }
 
+export async function getResearchWorkflows(): Promise<ResearchWorkflow[]> {
+  const payload = await getJson<{ workflows: ResearchWorkflow[] }>('/api/workflows', {
+    workflows: [],
+  });
+  return payload.workflows;
+}
+
+export async function getResearchSettings(): Promise<ResearchSettings> {
+  return getJson<ResearchSettings>('/api/settings', {
+    app_env: 'unknown',
+    maf_version: 'not loaded',
+    budget: {
+      daily_cost_eur: 0,
+      monthly_cost_eur: 0,
+      daily_cap_eur: 0,
+      monthly_cap_eur: 0,
+    },
+    connectors: {},
+    llm: { provider: 'unknown', configured: false, model: null, reason: 'backend_unreachable' },
+  });
+}
+
+/**
+ * Dashboard completo del ÍNDICE de /research: es la única pantalla que lista
+ * empresas. Las subrutas (workflows, settings) usan las acciones ligeras de
+ * arriba: cargar aquí las miles de fichas de empresa para no usarlas sería
+ * trabajo y latencia regalados en cada visita.
+ */
 export async function getResearchDashboard() {
-  const [companies, portfolio, workflowsPayload, settings] = await Promise.all([
+  const [companies, portfolio, workflows, settings] = await Promise.all([
     getAllResearchCompanies(),
     getJson<ResearchPortfolioSummary>('/api/portfolio/summary', {
       total_value: 0,
@@ -687,25 +716,14 @@ export async function getResearchDashboard() {
       top_5_weight: 0,
       alerts: [],
     }),
-    getJson<{ workflows: ResearchWorkflow[] }>('/api/workflows', { workflows: [] }),
-    getJson<ResearchSettings>('/api/settings', {
-      app_env: 'unknown',
-      maf_version: 'not loaded',
-      budget: {
-        daily_cost_eur: 0,
-        monthly_cost_eur: 0,
-        daily_cap_eur: 0,
-        monthly_cap_eur: 0,
-      },
-      connectors: {},
-      llm: { provider: 'unknown', configured: false, model: null, reason: 'backend_unreachable' },
-    }),
+    getResearchWorkflows(),
+    getResearchSettings(),
   ]);
 
   return {
     companies,
     portfolio,
-    workflows: workflowsPayload.workflows,
+    workflows,
     settings,
   };
 }
