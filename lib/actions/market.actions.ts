@@ -2,6 +2,7 @@
 
 import { researchRequest } from '@/lib/research/client';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
+import { marketIndexUnit } from '@/lib/marketIndexUnit';
 
 export type MarketIndex = {
   symbol: string;
@@ -9,6 +10,11 @@ export type MarketIndex = {
   price: number;
   change: number;
   changePercent: number;
+  // F152: "index" = nivel de índice (sin unidad monetaria), "usd" = precio en dólares.
+  // Normalizado en getMarketIndices vía marketIndexUnit: respuestas legacy sin
+  // `unit` se resuelven por símbolo conocido; un desconocido queda ausente y el
+  // front lo pinta sin sufijo monetario, nunca asumiendo USD.
+  unit?: 'index' | 'usd';
 };
 
 export type MarketMover = {
@@ -58,7 +64,13 @@ export async function getMarketIndices(): Promise<MarketIndex[]> {
       () => researchRequest<{ indices: MarketIndex[] }>('/api/market/indices'),
       45,
     );
-    return payload.indices ?? [];
+    // F152: normaliza la unidad en la frontera - las respuestas legacy sin
+    // `unit` (caché antigua) se resuelven por símbolo conocido, no por «USD
+    // por defecto» (eso volvía a pintar «US$» en el S&P 500).
+    return (payload.indices ?? []).map((item) => ({
+      ...item,
+      unit: marketIndexUnit(item.symbol, item.unit) ?? undefined,
+    }));
   } catch (error) {
     console.error('getMarketIndices error:', error);
     return [];

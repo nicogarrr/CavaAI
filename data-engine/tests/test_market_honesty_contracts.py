@@ -138,3 +138,23 @@ def test_an_unknown_operator_never_matches():
 def test_a_none_observation_never_matches():
     service = AlertRuleService()
     assert service._matches(None, ">", 0) is False
+
+
+# --------------------------------------------------------------------------
+# F152: an index level is not dollars
+# --------------------------------------------------------------------------
+
+
+def test_market_indices_declare_explicit_unit():
+    """^GSPC/^IXIC are index levels (FRED labels them "Units: Index"), not
+    dollars; BTC/gold/silver are USD prices. Each series must carry its unit
+    so the frontend never paints "7743,41 US$" for the S&P 500."""
+    from app.api.routes.market import _INDEXES
+
+    units = {entry["symbol"]: entry["unit"] for entry in _INDEXES}
+    assert units["^GSPC"] == "index"
+    assert units["^IXIC"] == "index"
+    assert units["BTC-USD"] == "usd"
+    assert units["GC=F"] == "usd"
+    assert units["SI=F"] == "usd"
+    assert all(entry["unit"] in {"index", "usd"} for entry in _INDEXES)
