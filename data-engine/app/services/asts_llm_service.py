@@ -1,8 +1,11 @@
 """Natural-language LLM analysis of the persisted CelesTrak AST catalog.
 
-Data discipline: the analysis may only restate the real persisted snapshot.
-The deterministic path aggregates the same rows with no generative step and
-is always included. 'sin datos' whenever the snapshot is stale (>30h) or
+Data discipline: the DETERMINISTIC summary is always the canonical response
+text — it restates only the real persisted snapshot and is never replaced.
+A passed generative call adds a separate `llm_interpretation` section,
+explicitly labeled unverified, and only after a hygiene check that every
+number, object name and date it cites exists in the snapshot (bag check,
+not semantic proof). 'sin datos' whenever the snapshot is stale (>30h) or
 missing — in that case no LLM call happens and no quota is consumed. The
 generative path is operator-gated (ASTS_LLM_ENABLED=1), limited to the
 verified free model and budgeted per tenant by asts_llm_quota.
@@ -79,7 +82,10 @@ def _deterministic_analysis(agg: dict, fetched_at: str) -> dict:
                   f"{agg['inclination_deg_max']}°; movimiento medio entre "
                   f"{agg['mean_motion_rev_day_min']} y {agg['mean_motion_rev_day_max']} rev/día.")},
     ]
-    return {"summary": summary, "observations": observations, "aggregates": agg}
+    # llm_interpretation: seccion aparte que solo rellena una llamada
+    # generativa superada; nunca sustituye este resumen canonico.
+    return {"summary": summary, "observations": observations, "aggregates": agg,
+            "llm_interpretation": None}
 
 
 def _llm_payload(satellites: list[dict], agg: dict, fetched_at: str) -> tuple[str, str]:
@@ -239,16 +245,19 @@ def analyze_asts_catalog(db: Session, *, use_llm: bool = True) -> dict:
                     extraction, _response = run_from_any_context(_analyze_with_llm(payload))
                     if _llm_text_verified(extraction, snapshot["satellites"], agg,
                                           snapshot["fetched_at"]):
-                        analysis = {
+                        # Seccion aparte, nunca sustituye al resumen canonico.
+                        analysis["llm_interpretation"] = {
                             "summary": extraction.summary,
                             "observations": [obs.model_dump() for obs in extraction.observations],
-                            "aggregates": agg,
+                            "disclaimer": (
+                                "Interpretación generativa no verificada: la lectura "
+                                "puede ser incorrecta aunque las cifras citadas existan "
+                                "en el catálogo. El resumen canónico es el determinista."),
                         }
                         mode = "llm"
                     else:
-                        note = ("El texto generativo incluía datos no contrastados "
-                                "con el catálogo; se usa el resumen determinista "
-                                "verificado.")
+                        note = ("Interpretación generativa descartada: incluía datos "
+                                "no contrastados con el catálogo.")
             except Exception:  # noqa: BLE001 - never claim a failed call worked
                 note = "Análisis LLM no disponible; se usa el resumen determinista."
     return {

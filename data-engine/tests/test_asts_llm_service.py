@@ -65,6 +65,7 @@ def test_fresh_catalog_deterministic_when_flag_off(db, monkeypatch):
     assert result["status"] == "disponible" and result["mode"] == "determinista"
     assert result["note"] == "Análisis LLM desactivado por configuración."
     assert result["llm_quota"] is None
+    assert result["analysis"]["llm_interpretation"] is None
     agg = result["analysis"]["aggregates"]
     assert agg["count"] == 3
     assert agg["families"] == {"BLUEWALKER": 1, "SPACEMOBILE": 2}
@@ -111,8 +112,12 @@ def test_llm_success_marks_mode_and_keeps_aggregates(db, monkeypatch):
     result = service.analyze_asts_catalog(db)
     assert result["mode"] == "llm"
     assert result["llm_input"] == "completo"
-    assert result["analysis"]["summary"].startswith("Catálogo CelesTrak")
+    # el resumen canonico es SIEMPRE el determinista, tambien en modo llm
+    assert result["analysis"]["summary"].startswith("Catálogo CelesTrak del grupo AST descargado el")
     assert result["analysis"]["aggregates"]["count"] == 3  # datos reales siempre presentes
+    interp = result["analysis"]["llm_interpretation"]
+    assert interp["summary"].startswith("Catálogo CelesTrak descargado el")
+    assert "no verificada" in interp["disclaimer"]
     assert result["llm_quota"]["day_limit"] == 30
 
 
@@ -124,6 +129,7 @@ def test_llm_rounded_values_are_accepted(db, monkeypatch):
              ["Inclinación de 53.2° en todo el catálogo."])
     result = service.analyze_asts_catalog(db)
     assert result["mode"] == "llm"
+    assert result["analysis"]["llm_interpretation"]["observations"][0]["text"].startswith("Inclinación de 53.2")
 
 
 def test_llm_invented_number_falls_back_to_deterministic(db, monkeypatch):
@@ -132,8 +138,11 @@ def test_llm_invented_number_falls_back_to_deterministic(db, monkeypatch):
              f"Catálogo CelesTrak descargado el {fetched.isoformat()[:10]}: 200 satélites operativos.")
     result = service.analyze_asts_catalog(db)
     assert result["mode"] == "determinista"
-    assert result["note"] == ("El texto generativo incluía datos no contrastados "
-                              "con el catálogo; se usa el resumen determinista verificado.")
+    assert result["note"] == ("Interpretación generativa descartada: incluía datos "
+                              "no contrastados con el catálogo.")
+    assert result["analysis"]["llm_interpretation"] is None
+    # el canonico sigue siendo el determinista con los valores reales
+    assert result["analysis"]["summary"].startswith("Catálogo CelesTrak del grupo AST descargado el")
     assert result["analysis"]["aggregates"]["count"] == 3
 
 
@@ -145,6 +154,7 @@ def test_llm_invented_satellite_name_falls_back(db, monkeypatch):
     result = service.analyze_asts_catalog(db)
     assert result["mode"] == "determinista"
     assert "no contrastados" in result["note"]
+    assert result["analysis"]["llm_interpretation"] is None
 
 
 def test_llm_generic_summary_without_source_or_date_falls_back(db, monkeypatch):
@@ -153,6 +163,7 @@ def test_llm_generic_summary_without_source_or_date_falls_back(db, monkeypatch):
     result = service.analyze_asts_catalog(db)
     assert result["mode"] == "determinista"
     assert "no contrastados" in result["note"]
+    assert result["analysis"]["llm_interpretation"] is None
 
 
 def test_quota_cap_falls_back_honestly(db, monkeypatch):
