@@ -168,7 +168,12 @@ def raw_document_url(document_url: str) -> str:
 
 
 def _looks_like_xml(text: str) -> bool:
-    return text.lstrip()[:5] == "<?xml"
+    """XML con o sin declaracion `<?xml`; la version renderizada XSLT es HTML
+    (<!DOCTYPE html> / <html) y eso es lo unico que hay que descartar."""
+    head = text.lstrip()[:200].lower()
+    if head.startswith("<!doctype") or head.startswith("<html"):
+        return False
+    return head.startswith("<")
 
 
 def _get_text(url: str, client: httpx.Client | None) -> str:
