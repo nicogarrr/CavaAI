@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.llm.factory import create_llm_provider
 from app.services.budget import BudgetController
+from app.services.jev_availability import credit_status
 from app.services.llm_router import route_table
 
 router = APIRouter()
@@ -45,6 +46,7 @@ def settings(db: Session = Depends(get_db)) -> dict:
         "routes": route_table(),
         "llm": llm_status,
         "connectors": {
+            "typesafe": credit_status(),
             "fmp": bool(app_settings.fmp_api_key),
             "ibkr": bool(app_settings.ibkr_flex_token and app_settings.ibkr_flex_query_id),
             "fred": bool(app_settings.fred_api_key),

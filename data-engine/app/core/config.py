@@ -208,6 +208,7 @@ class Settings(BaseSettings):
     typesafe_api_key: str | None = None
     typesafe_base_url: str = "https://api.typesafe.ai"
     typesafe_model: str = "jev-latest"
+    typesafe_fallback: str = Field(default="instructor", pattern="^(instructor|off)$")
     llm_enabled: bool = True
     # CavaAI intentionally uses one provider for every task.
     llm_provider: str = "opencode-go"

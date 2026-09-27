@@ -836,12 +836,24 @@ class FinancialIngestionService:
                         f"{sec_fact.metric}:{sec_fact.period} FMP={int(fmp_val)} SEC={int(sec_val)} diff={pct}%"
                     )
 
+        # Una muestra representativa por lote, nunca una llamada por hecho.
+        # La anomalía es solo una bandera; no toca las cifras ingestadas.
+        jev_anomaly = None
+        if conflicts:
+            try:
+                from app.services.jev_gates import ANOMALY_CRITERIA, mark_only
+                jev_anomaly = mark_only("data_anomaly", "\n".join(conflicts[:8]),
+                    "Mark possible source discrepancies for human review; do not correct values.",
+                    ANOMALY_CRITERIA)
+            except Exception:  # noqa: BLE001
+                pass
         document.metadata_ = {
             **(document.metadata_ or {}),
             "provider": "SEC",
             "cik": cik,
             "last_refreshed_at": datetime.now(UTC).isoformat(),
             "conflicts": conflicts,
+            **({"jev_anomaly": jev_anomaly} if jev_anomaly else {}),
         }
         # Hook gratuito best-effort (EDGAR 10-K/10-Q + FRED): una llamada que
         # nunca rompe el flujo principal de ingesta.

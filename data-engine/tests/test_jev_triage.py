@@ -2,6 +2,7 @@
 import asyncio
 from unittest.mock import patch
 
+from app.services import jev_availability
 from app.services import jev_triage_service as jts
 from app.services.jev_triage_service import (
     JevTriageResult,
@@ -26,7 +27,8 @@ def test_no_key_returns_none(monkeypatch):
         assert classify_urgency_sync("texto") is None
 
 
-def test_classify_with_fake_client():
+def test_classify_with_fake_client(monkeypatch):
+    monkeypatch.setattr(jev_availability, "credit_status", lambda: {"status": "activo"})
     class FakeDecision:
         label = "urgent"
         confidence = 0.93
@@ -45,7 +47,8 @@ def test_classify_with_fake_client():
     assert result is not None and result.label == "urgent" and result.confidence >= 0.9
 
 
-def test_classify_error_is_soft():
+def test_classify_error_is_soft(monkeypatch):
+    monkeypatch.setattr(jev_availability, "credit_status", lambda: {"status": "activo"})
     class BrokenClient:
         async def classify(self, *a, **k):
             raise RuntimeError("boom")
