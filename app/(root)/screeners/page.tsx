@@ -115,7 +115,7 @@ export default async function ScreenersPage({ searchParams }: PageProps) {
             <div className="grid gap-3 sm:grid-cols-2"><Input name="name" placeholder="Calidad a precio razonable" required /><Input name="description" placeholder="Propósito y universo" /></div>
             {([['', true], ['_2', false], ['_3', false]] as const).map(([suffix, required]) => <div className="mt-3 grid gap-3 md:grid-cols-[1fr_110px_1fr]" key={suffix || 'one'}><Input name={`left${suffix}`} placeholder={suffix ? 'Fórmula opcional' : 'roic'} required={required} /><select className="h-9 rounded-md border border-gray-800 bg-black px-3 text-sm text-gray-200" name={`operator${suffix}`} defaultValue={'>='}>{operators.map((item) => <option key={item}>{item}</option>)}</select><Input name={`right${suffix}`} placeholder={suffix ? 'Umbral opcional' : 'wacc'} required={required} /></div>)}
             <div className="mt-3 grid gap-3 sm:grid-cols-2"><Input name="ranking_formula" placeholder="free_cash_flow / market_cap" /><select className="h-9 rounded-md border border-gray-800 bg-black px-3 text-sm text-gray-200" name="ranking_direction" defaultValue="desc"><option value="desc">Mayor primero</option><option value="asc">Menor primero</option></select></div>
-            <label className="mt-4 flex items-center gap-2 text-sm text-gray-300"><input defaultChecked name="alerts_enabled" type="checkbox" />Avisar de nuevas coincidencias</label>
+            <label className="mt-4 flex items-center gap-2 text-sm text-gray-300"><input name="alerts_enabled" type="checkbox" />Avisar de nuevas coincidencias</label>
             <Button className="mt-4" type="submit"><Save aria-hidden="true" className="h-4 w-4" />Guardar filtro</Button>
           </MutationForm>
         </div>
