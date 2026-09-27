@@ -157,7 +157,8 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                         El embudo v1 puntúa las métricas de calidad y crecimiento ya
                         persistidas de todo el universo (SEC + ESEF) y las ordena por
                         percentiles. La valoración y el momentum aún no entran en v1:
-                        necesitan series de precios que no están persistidas.
+                        las series de precios solo se persisten para el top-N tras cada
+                        run, no para todo el universo.
                     </p>
                     <div className="mt-3 pt-3 border-t border-gray-700">
                         <div className="text-xs text-gray-500 space-y-1">

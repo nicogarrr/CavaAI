@@ -26,9 +26,12 @@ describe('propicks methodology honesty guard (F178)', () => {
         assert.ok(!page.includes('están publicadas con sus métricas'), 'las estrategias no se declaran publicadas');
         assert.ok(!page.includes('se rebalancea el día 1 de cada'), 'sin rebalanceo mensual prometido');
         assert.ok(
-            page.includes('La valoración\n          (FCF yield / earnings yield) y el momentum aún no entran') ||
-                page.includes('valoración\n          (FCF yield / earnings yield) y el momentum aún no entran'),
+            page.includes('y el momentum aún no entran en el embudo v1'),
             'el resumen declara que valoración y momentum aún no entran en v1',
+        );
+        assert.ok(
+            page.includes('baseline de momentum solo-precio: no es un backtest de ProPicks'),
+            'el walk-forward global se etiqueta como baseline, no como backtest de ProPicks',
         );
         assert.ok(
             page.includes('El backtest por estrategia se publicará cuando existan fundamentales point-in-time'),

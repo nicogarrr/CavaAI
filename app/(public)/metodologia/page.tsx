@@ -107,7 +107,7 @@ const steps = [
   },
   {
     title: 'Backtesting walk-forward',
-    text: 'Existe un backtest walk-forward global. El backtest por estrategia se publicará cuando existan fundamentales point-in-time; hasta entonces ninguna estrategia muestra desempeño simulado.',
+    text: 'Existe un backtest walk-forward global, pero es un baseline de momentum solo-precio: no es un backtest de ProPicks. El backtest por estrategia se publicará cuando existan fundamentales point-in-time; hasta entonces ninguna estrategia muestra desempeño simulado.',
   },
 ];
 
@@ -302,8 +302,8 @@ export default function MetodologiaPage() {
         <p className="mt-4 rounded-xl border border-teal-900/60 bg-teal-950/20 p-4 text-sm leading-6 text-teal-100">
           <strong>CavaAI ProPicks:</strong> la selección v1 puntúa calidad, rentabilidad, flujo de
           caja y crecimiento por percentiles sobre todo el universo persistido. La valoración
-          (FCF yield / earnings yield) y el momentum aún no entran: necesitan series de precios
-          que no están persistidas. De las cuatro estrategias (adaptativa, value, momentum y
+          (FCF yield / earnings yield) y el momentum aún no entran en el embudo v1: las series de
+          precios solo se persisten para el top-N tras cada run, no para todo el universo. De las cuatro estrategias (adaptativa, value, momentum y
           defensiva), cada ficha declara su estado real: si aún no tiene selección o backtest
           publicados, lo dice en lugar de mostrar estimaciones.
         </p>
@@ -358,8 +358,8 @@ export default function MetodologiaPage() {
           </ul>
           <p>
             <strong className="text-gray-200">Lo que v1 NO incluye todavía:</strong> valoración
-            (FCF yield / earnings yield) y momentum — ambos necesitan series de precios que aún no
-            están persistidas. Cada ejecución del embudo se guarda completa (runs y candidatos,
+            (FCF yield / earnings yield) y momentum — el embudo v1 no los usa: las series de
+            precios solo se persisten para el top-N tras cada run, no para todo el universo. Cada ejecución del embudo se guarda completa (runs y candidatos,
             incluidos los descartados con sus motivos), así que el histórico y el diff entra/sale
             son auditables.
           </p>
