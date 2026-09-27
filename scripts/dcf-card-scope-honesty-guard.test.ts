@@ -13,7 +13,6 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
-    DCF_CANDIDATE_LIMIT,
     DCF_MIN_UPSIDE_PCT,
     dcfEmptyNote,
     dcfScopeNote,
