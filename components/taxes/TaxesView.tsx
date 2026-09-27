@@ -66,6 +66,14 @@ const TAX_LABELS: Record<string, string> = {
     incomplete_fx: 'Tipos de cambio incompletos',
     missing_fx: 'Sin tipo de cambio para',
     generated_at: 'Generado',
+    unattributed_tickers: 'Tickers sin atribuir',
+    unattributed_dividends_base: 'Dividendos sin atribuir',
+};
+
+/** Valores conocidos del método de valoración (el backend manda el id en
+ *  minúsculas, p.ej. `fifo`, que en UI se veía en crudo). */
+const METHOD_LABELS: Record<string, string> = {
+    fifo: 'FIFO',
 };
 
 const WASH_RULE_LABELS: Record<string, string> = {
@@ -83,6 +91,16 @@ function humanizeKey(key: string): string {
     return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+/** El backend etiqueta el efectivo sin compañía resuelta como
+ *  `UNATTRIBUTED:SIMBOLO` (o `UNATTRIBUTED:DIVISA:ACCION` cuando ni eso se
+ *  recuperó). Es un identificador interno estable, no copy de UI: aquí se
+ *  traduce a español conservando el símbolo, que es la parte útil. */
+function humanizeUnattributedTicker(item: string): string {
+    const match = /^UNATTRIBUTED:(.+)$/.exec(item);
+    if (!match) return item;
+    return `Sin atribuir: ${match[1]}`;
+}
+
 /** Convierte el resumen fiscal a filas etiquetadas en español con valores
  *  formateados (importes con divisa, listas de tickers, fechas). Nunca
  *  inventa: los null quedan como `NA` («N/D») y las claves raras se
@@ -97,8 +115,9 @@ function humanizeTaxReport(summary: DataRecord): DataRecord {
         'total_realized_gain_base',
         'total_blocked_loss_base',
         'net_taxable_base',
+        'unattributed_dividends_base',
     ]);
-    const listKeys = new Set(['wash_sale_window_open', 'over_sell', 'missing_fx']);
+    const listKeys = new Set(['wash_sale_window_open', 'over_sell', 'missing_fx', 'unattributed_tickers']);
     const display: DataRecord = {};
     for (const [key, value] of Object.entries(summary)) {
         const label = humanizeKey(key);
@@ -107,11 +126,15 @@ function humanizeTaxReport(summary: DataRecord): DataRecord {
                 ? `${NA} (faltan tipos de cambio)`
                 : formatMoney(value as number | string, currency);
         } else if (listKeys.has(key)) {
-            display[label] = Array.isArray(value) && value.length > 0 ? value.join(', ') : 'Ninguno';
+            display[label] = Array.isArray(value) && value.length > 0
+                ? value.map((item) => humanizeUnattributedTicker(String(item))).join(', ')
+                : 'Ninguno';
         } else if (key === 'wash_sale_rule') {
             display[label] = WASH_RULE_LABELS[String(value)] ?? String(value);
         } else if (key === 'wash_sale_basis') {
             display[label] = WASH_BASIS_LABELS[String(value)] ?? String(value);
+        } else if (key === 'method') {
+            display[label] = METHOD_LABELS[String(value).toLowerCase()] ?? String(value);
         } else if (key === 'generated_at') {
             display[label] = formatUserDateTime(value as string);
         } else if (typeof value === 'boolean') {
@@ -257,7 +280,7 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
 
             <RecordList
                 title="Posiciones Fiscales"
-                description="Holdings con base de coste, plusvalías latentes y retenciones"
+                description="Posiciones con base de coste, plusvalías latentes y retenciones"
                 icon={<Receipt className="h-5 w-5 text-teal-400" />}
                 records={initialHoldings}
                 fetchRecords={getTaxHoldings}
