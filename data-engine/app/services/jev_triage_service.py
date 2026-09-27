@@ -32,6 +32,7 @@ class JevTriageResult:
     applied: bool  # True si el resultado influyó en el score
     latency_s: float
     error: str | None = None
+    backend: str = "jev"
 
 
 def build_client():
@@ -72,6 +73,9 @@ DOC_TYPE_CRITERIA = {
 
 def classify_urgency_sync(text: str) -> JevTriageResult | None:
     """Clasifica urgencia con Jev. Devuelve None si no está configurado o falla."""
+    from app.services.jev_availability import credit_status
+    if credit_status()["status"] != "activo":
+        return None
     client = build_client()
     if client is None:
         return None
@@ -86,6 +90,10 @@ def classify_urgency_sync(text: str) -> JevTriageResult | None:
             )
         )
     except Exception as exc:  # noqa: BLE001 — best-effort, nunca rompe ingesta
+        from app.llm.jev import JevCreditExhausted
+        from app.services.jev_availability import mark_credit_exhausted
+        if isinstance(exc, JevCreditExhausted):
+            mark_credit_exhausted()
         logger.warning("jev triage failed: %s", exc)
         return JevTriageResult(
             label="", confidence=0.0, applied=False, latency_s=0.0,
@@ -96,6 +104,7 @@ def classify_urgency_sync(text: str) -> JevTriageResult | None:
         confidence=decision.confidence,
         applied=False,
         latency_s=decision.latency_s,
+        backend=getattr(decision, "backend", "jev"),
     )
 
 
@@ -105,6 +114,9 @@ def classify_doc_type_sync(text: str) -> JevTriageResult | None:
     Coste: ~$0.042/MTok in. Fallback: sin TYPESAFE_API_KEY devuelve None y el
     llamador ingiere sin `jev_doc_type` en metadata (best-effort, nunca rompe).
     """
+    from app.services.jev_availability import credit_status
+    if credit_status()["status"] != "activo":
+        return None
     client = build_client()
     if client is None:
         return None
@@ -119,6 +131,10 @@ def classify_doc_type_sync(text: str) -> JevTriageResult | None:
             )
         )
     except Exception as exc:  # noqa: BLE001 — best-effort, nunca rompe ingesta
+        from app.llm.jev import JevCreditExhausted
+        from app.services.jev_availability import mark_credit_exhausted
+        if isinstance(exc, JevCreditExhausted):
+            mark_credit_exhausted()
         logger.warning("jev doc-type failed: %s", exc)
         return JevTriageResult(
             label="", confidence=0.0, applied=False, latency_s=0.0,
@@ -129,6 +145,7 @@ def classify_doc_type_sync(text: str) -> JevTriageResult | None:
         confidence=decision.confidence,
         applied=False,
         latency_s=decision.latency_s,
+        backend=getattr(decision, "backend", "jev"),
     )
 
 
@@ -140,6 +157,7 @@ def jev_metadata(triage: JevTriageResult | None) -> dict | None:
         "label": triage.label,
         "confidence": round(triage.confidence, 4),
         "latency_s": triage.latency_s,
+        "backend": triage.backend,
     }
     if triage.error:
         payload["error"] = triage.error[:200]

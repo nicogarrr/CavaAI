@@ -70,6 +70,7 @@ class _StubJevClient:
 @pytest.fixture(autouse=True)
 def _sin_jev_por_defecto(monkeypatch):
     """Hermetico por defecto: ningun gate toca red aunque haya key en .env."""
+    monkeypatch.setattr(jev_gates, "credit_status", lambda: {"status": "activo"})
     monkeypatch.setattr(jev_gates, "build_client", lambda: None)
     import app.services.jev_triage_service as triage
 

@@ -9,6 +9,7 @@ Coste: $0.042 / millón de tokens de entrada, salida gratis.
 """
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from time import monotonic
@@ -26,6 +27,15 @@ class JevDecision:
     probabilities: Mapping[str, float] = field(default_factory=dict)
     model: str = ""
     latency_s: float = 0.0
+    backend: str = "jev"
+
+
+class JevAuthError(RuntimeError):
+    """401/403 sin señal de facturación: credencial o permiso, NO crédito."""
+
+
+class JevCreditExhausted(RuntimeError):
+    """Rechazo de facturacion: no debe reintentarse ni ocultarse como 5xx."""
 
 
 class JevDecisionClient:
@@ -80,8 +90,24 @@ class JevDecisionClient:
                             json=payload,
                             timeout=self._timeout,
                         )
+                text_lower = response.text.lower() if response.status_code >= 400 else ""
+                billing_signal = any(
+                    word in text_lower
+                    for word in (
+                        "insufficient credit", "credit exhausted", "billing",
+                        "payment required", "insufficient_quota", "quota exceeded",
+                    )
+                )
+                # 402 siempre es facturación; 403 solo con señal explícita de
+                # billing del proveedor — un 403 plano es auth/permiso.
+                if response.status_code == 402 or billing_signal:
+                    raise JevCreditExhausted(f"TypeSafe billing HTTP {response.status_code}")
+                if response.status_code in {401, 403}:
+                    raise JevAuthError(f"TypeSafe auth HTTP {response.status_code}")
                 response.raise_for_status()
                 return response.json()
+            except (JevCreditExhausted, JevAuthError):
+                raise
             except Exception as exc:  # noqa: BLE001 — reintento best-effort
                 last_error = exc
         raise RuntimeError(f"Jev systemone failed after retries: {last_error}")
@@ -106,6 +132,8 @@ class JevDecisionClient:
         probabilities = answer.get("probabilities") or {}
         label = str(answer.get("choice") or "").lower()
         confidence = float(answer.get("confidence") or 0.0)
+        if label not in criteria or not math.isfinite(confidence) or not 0 <= confidence <= 1:
+            raise ValueError("Invalid JEV choice/confidence")
         return JevDecision(
             label=label,
             confidence=confidence,
