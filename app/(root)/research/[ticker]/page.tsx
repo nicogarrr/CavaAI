@@ -992,6 +992,16 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const activeGroupLabel = GROUPS.find((group) => group.key === activeModule.group)?.label ?? '';
   const groupModules = MODULES.filter((module) => module.group === activeModule.group);
   const recentChangeCount = snapshot.recent_changes?.length ?? 0;
+  // F143: el distintivo de tenencia sale de la posicion viva del tenant
+  // (snapshot.in_portfolio), no de companies.company_type, que es una
+  // clase estatica fijada al alta de la ficha y queda desfasada en los
+  // dos sentidos (AAPL en cartera decia "candidato de analisis"; SPCX,
+  // sin posicion del tenant, "portfolio holding" - ademas en ingles por
+  // el fallback de label()). Un company_type portfolio_holding sin
+  // posicion viva se muestra como candidato de analisis.
+  const holdingBadge = snapshot.in_portfolio
+    ? 'en cartera'
+    : label(company.company_type === 'portfolio_holding' ? 'research_candidate' : company.company_type);
 
   return (
     <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
@@ -1003,7 +1013,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {company.sector} · {company.industry}</p>
           </div>
           <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{label(company.company_type)}</span><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{holdingBadge}</span><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} currency={company.currency} /></div>
               <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} />
