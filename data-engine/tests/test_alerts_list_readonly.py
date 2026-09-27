@@ -169,3 +169,75 @@ def test_list_alerts_resolves_source_url(db):
     urls = {a.title: a.source_url for a in result}
     for key, _metadata, expected in cases:
         assert urls[f"AAPL {key}"] == expected
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "/relative/path",
+        "notaurl",
+        "",
+        "ftp://example.com/doc",
+    ],
+)
+def test_list_alerts_source_url_rejects_unsafe_schemes(db, bad_url):
+    """F172: source_url alimenta el href de un <a target="_blank">; cualquier
+    esquema que no sea http/https absoluto (javascript:, data:, relativo,
+    vacio) sale como None tanto desde metadata.source_url como de NewsEvent.url."""
+    from app.models.entities import NewsEvent
+
+    company = Company(
+        ticker="AAPL", name="Apple", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    event = NewsEvent(company_id=company.id, title="t", url=bad_url)
+    db.add(event)
+    db.flush()
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="insider", severity="medium",
+        title="meta", message="m", fingerprint=f"fp-bad-meta-{bad_url[:8]}",
+        channels=["in_app"], status="open", metadata_={"source_url": bad_url},
+    ))
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="filing", severity="medium",
+        title="news", message="m", fingerprint=f"fp-bad-news-{bad_url[:8]}",
+        channels=["in_app"], status="open", metadata_={"news_event_id": event.id},
+    ))
+    db.commit()
+
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    urls = {a.title: a.source_url for a in result}
+    assert urls["meta"] is None
+    assert urls["news"] is None
+
+
+def test_list_alerts_source_url_accepts_absolute_http(db):
+    """F172: una URL absoluta http/https con host sí sale como enlace, tanto
+    desde metadata.source_url como desde NewsEvent.url."""
+    from app.models.entities import NewsEvent
+
+    company = Company(
+        ticker="AAPL", name="Apple", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    good = "https://www.sec.gov/Archives/edgar/data/1/0001.htm"
+    event = NewsEvent(company_id=company.id, title="t", url=good)
+    db.add(event)
+    db.flush()
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="filing", severity="medium",
+        title="news-ok", message="m", fingerprint="fp-ok-news",
+        channels=["in_app"], status="open", metadata_={"news_event_id": event.id},
+    ))
+    db.commit()
+
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    assert result[0].source_url == good

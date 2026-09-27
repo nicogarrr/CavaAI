@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from typing import Annotated, Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -127,6 +128,19 @@ def _snooze_expired(snoozed_until: datetime | None, now: datetime) -> bool:
 
 
 @router.get("", response_model=list[ResearchAlertOut])
+def _safe_http_url(value: object) -> str | None:
+    """Solo una URL absoluta http/https con host puede salir como enlace: el
+    valor acaba en el href de un <a target="_blank"> y NewsEvent.url acepta
+    cualquier string, asi que javascript:/data:/relativas se descartan (None)
+    en la frontera de salida en lugar de llegar al cliente."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    parsed = urlparse(value.strip())
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return value.strip()
+    return None
+
+
 def list_alerts(
     ticker: str | None = None,
     status: str | None = None,
@@ -195,9 +209,9 @@ def list_alerts(
     }
     news_urls = (
         {
-            event.id: event.url
+            event.id: safe_url
             for event in db.scalars(select(NewsEvent).where(NewsEvent.id.in_(news_ids)))
-            if event.url
+            if (safe_url := _safe_http_url(event.url)) is not None
         }
         if news_ids
         else {}
@@ -207,7 +221,9 @@ def list_alerts(
         out = ResearchAlertOut.model_validate(alert)
         out.ticker = tickers.get(alert.company_id)
         metadata = alert.metadata_ or {}
-        out.source_url = metadata.get("source_url") or news_urls.get(metadata.get("news_event_id"))
+        out.source_url = _safe_http_url(metadata.get("source_url")) or news_urls.get(
+            metadata.get("news_event_id")
+        )
         if alert.status == "snoozed" and _snooze_expired(alert.snoozed_until, now):
             out.status = "open"
             out.snoozed_until = None
