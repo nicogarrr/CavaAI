@@ -60,10 +60,16 @@ export default async function ProPicksPage() {
                     </div>
                 </div>
                 <p className="text-sm text-gray-500">
-                    El embudo IA evalúa el universo líquido con 6 categorías
-                    (valor, crecimiento, rentabilidad, caja, momentum, salud
-                    financiera) y publica aquí la selección del último run
-                    con su fecha de datos en cada tarjeta. El backtest de la
+                    El embudo v1 puntúa cada categoría cuando hay datos para
+                    computarla (rentabilidad, crecimiento, caja y salud
+                    financiera se derivan de los filings persistidos) y
+                    publica aquí la selección del último run con su fecha de
+                    datos en cada tarjeta. En los picks actuales sin datos,
+                    valoración y momentum entran
+                    neutras (50) y se marcan n/d en las tarjetas: la
+                    valoración necesita CFROI y WACC por empresa y el
+                    momentum series de precios, y esos datos aún no cubren
+                    todo el universo. El backtest de la
                     pestaña «Backtesting» es un baseline walk-forward aparte
                     (momentum 12-1M sobre 30 valores, costes 15 pb, SPY como
                     referencia): sirve para validar el motor point-in-time,
