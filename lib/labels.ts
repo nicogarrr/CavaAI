@@ -63,6 +63,25 @@ const TIPOS_EVENTO: Record<string, string> = {
   unknown: 'Desconocido',
 };
 
+/** Etiqueta ES de los componentes de atribucion heuristica de
+ *  /portfolio/intelligence (F282). Catalogo cerrado de
+ *  portfolio_intelligence_service (fundamental_growth, multiple, dividends,
+ *  buybacks, dilution, fx, sizing); antes se pintaba la clave cruda en
+ *  mayusculas («FUNDAMENTAL GROWTH»). */
+const COMPONENTES_ATRIBUCION: Record<string, string> = {
+  fundamental_growth: 'Crecimiento fundamental',
+  multiple: 'Múltiplo',
+  dividends: 'Dividendos',
+  buybacks: 'Recompras',
+  dilution: 'Dilución',
+  fx: 'Divisa',
+  sizing: 'Tamaño de posición',
+};
+
+export function etiquetaComponenteAtribucion(value: string): string {
+  return COMPONENTES_ATRIBUCION[value] ?? value;
+}
+
 export function etiquetaTipoEvento(value: string): string {
   return TIPOS_EVENTO[value] ?? value;
 }
