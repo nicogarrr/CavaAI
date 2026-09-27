@@ -60,14 +60,21 @@ def reconcile_missing_analyses(db: Session, *, limit: int = 50) -> dict:
 
     The candidate SELECT pre-filters in SQL the rows that can never pass
     that gate (no matching event, no http(s) URL, no non-empty source
-    headline). Without the filter, permanently unqueueable rows would sit
-    at the head of every hourly batch by ID order and starve any queueable
-    alert behind them. queue_analysis stays the authoritative check: the
-    shapes the SQL approximation cannot express (URL without host or with
-    userinfo, non-string JSON headline, leading non-space whitespace) pass
-    the filter, fail the gate and are counted as unqueueable. Connectors
-    store normalized URLs, so the approximation gap is not exercised by
-    any ingestion path.
+    headline). But the SQL approximation cannot express the full gate: a
+    URL like "https://" without host, a userinfo URL, a tab-padded or
+    non-string JSON headline all pass the filter and fail the gate
+    forever. Fifty of those ahead by ID would starve the batch exactly
+    like the unfiltered version. So a deterministic gate failure
+    (queue_analysis returning None with the event present) leaves a
+    durable exclusion mark on the alert with the exact content it failed
+    on (url + source_headline). The candidate filter skips a marked
+    alert only while the event content still matches the mark: fixing
+    the URL or headline makes the row a candidate again automatically,
+    which is the retry path on data correction. A missing event needs no
+    mark: the EXISTS pre-filter already excludes it. Exceptions
+    (transient failures) never mark. A successful queue clears any stale
+    mark. queue_analysis stays the authoritative gate; the mark is only
+    bookkeeping on top of it.
     """
     tenant_id = db.info.get("tenant_id")
     if tenant_id is None:
@@ -85,6 +92,12 @@ def reconcile_missing_analyses(db: Session, *, limit: int = 50) -> dict:
             or_(url_norm.like("http://%"), url_norm.like("https://%")),
             func.length(func.trim(NewsEvent.url)) >= 8,
             func.length(func.trim(NewsEvent.metadata_["source_headline"].as_string())) > 0,
+            or_(
+                ResearchAlert.metadata_["analysis_excluded_url"].as_string().is_(None),
+                ResearchAlert.metadata_["analysis_excluded_url"].as_string() != NewsEvent.url,
+                ResearchAlert.metadata_["analysis_excluded_headline"].as_string()
+                != NewsEvent.metadata_["source_headline"].as_string(),
+            ),
         )
         .exists()
     )
@@ -107,18 +120,35 @@ def reconcile_missing_analyses(db: Session, *, limit: int = 50) -> dict:
         select(func.count(ResearchAlert.id)).where(*base_filters, ~queueable_event)
     ) or 0
     stats = {"examined": len(missing), "queued": 0, "unqueueable": 0,
-             "excluded_no_data": excluded}
+             "excluded_no_data": excluded, "marked": 0}
     for alert in missing:
         try:
             row = queue_analysis(db, alert)
         except Exception:
-            db.rollback()
+            db.rollback()  # transitorio: jamas marca
             stats["unqueueable"] += 1
             continue
         if row is None:
             stats["unqueueable"] += 1
+            event = db.scalar(select(NewsEvent).where(
+                NewsEvent.id == (alert.metadata_ or {}).get("news_event_id")))
+            if event is not None:
+                # Fallo determinista del gate: marca durable con el contenido
+                # exacto que fallo; si el dato se corrige, la marca deja de
+                # coincidir y la alerta reingresa sola.
+                alert.metadata_ = {
+                    **(alert.metadata_ or {}),
+                    "analysis_excluded_url": event.url,
+                    "analysis_excluded_headline": (event.metadata_ or {}).get("source_headline"),
+                }
+                stats["marked"] += 1
         else:
             stats["queued"] += 1
+            meta = alert.metadata_ or {}
+            if "analysis_excluded_url" in meta:
+                alert.metadata_ = {k: v for k, v in meta.items()
+                                   if not k.startswith("analysis_excluded_")}
+    db.commit()
     return stats
 
 

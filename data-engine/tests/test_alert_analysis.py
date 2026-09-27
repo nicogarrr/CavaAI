@@ -171,12 +171,13 @@ def test_reconcile_recovers_lost_row_beyond_eligibility_window(db):
     assert session.scalar(select(AlertAnalysis)) is None
     # la reconciliación sí: no depende de la elegibilidad del evento
     stats = reconcile_missing_analyses(session)
-    assert stats == {"examined": 1, "queued": 1, "unqueueable": 0, "excluded_no_data": 0}
+    assert stats == {"examined": 1, "queued": 1, "unqueueable": 0,
+                     "excluded_no_data": 0, "marked": 0}
     row = session.scalar(select(AlertAnalysis))
     assert row and row.status == "pending" and row.alert_id == alert.id
     # idempotente
     assert reconcile_missing_analyses(session) == {
-        "examined": 0, "queued": 0, "unqueueable": 0, "excluded_no_data": 0}
+        "examined": 0, "queued": 0, "unqueueable": 0, "excluded_no_data": 0, "marked": 0}
 
 
 def test_reconcile_stays_honest_without_original_headline(db):
@@ -198,7 +199,8 @@ def test_reconcile_stays_honest_without_original_headline(db):
     stats = reconcile_missing_analyses(session)
     # sin titular original no es candidata: el filtro SQL la excluye del lote
     # para que no ocupe sitio cada hora; el gate sigue como autoridad
-    assert stats == {"examined": 0, "queued": 0, "unqueueable": 0, "excluded_no_data": 1}
+    assert stats == {"examined": 0, "queued": 0, "unqueueable": 0,
+                     "excluded_no_data": 1, "marked": 0}
     assert session.scalar(select(AlertAnalysis)) is None
 
 
@@ -240,3 +242,70 @@ def test_reconcile_unqueueable_backlog_cannot_starve_valid_alert(db):
     assert stats["excluded_no_data"] == 60
     row = session.scalar(select(AlertAnalysis))
     assert row and row.alert_id == valid_alert.id and row.status == "pending"
+
+
+def test_reconcile_marks_permanent_gate_failures_and_heals_on_fix(db):
+    """50 URLs 'https://' (pasan el prefiltro SQL, fallan el gate para siempre)
+    delante de una valida: el lote 1 las marca y el lote 2 ya examina la valida.
+    Corregir el dato retira la marca y la alerta reingresa sola."""
+    from app.services.alert_analysis_service import reconcile_missing_analyses
+
+    session, tenants, company = db
+    broken_events = []
+    for i in range(50):
+        broken = NewsEvent(tenant_id=tenants[0].id, company_id=company.id,
+                           title=f"broken {i}", source="Publisher",
+                           url="https://", date=NOW,
+                           metadata_={"connector": "rss", "date_source": "source",
+                                      "source_headline": f"headline {i}"})
+        session.add(broken)
+        broken_events.append(broken)
+        session.flush()
+        session.add(ResearchAlert(tenant_id=tenants[0].id, company_id=company.id,
+                                  severity="medium", status="open", alert_type="tracked_news",
+                                  title="t", message="m", fingerprint=f"fp-broken-{i}",
+                                  channels=["in_app"], last_triggered_at=NOW,
+                                  metadata_={"news_event_id": broken.id}))
+    valid = NewsEvent(tenant_id=tenants[0].id, company_id=company.id,
+                      title="valid", source="Publisher",
+                      url="https://publisher.example/valid", date=NOW,
+                      metadata_={"connector": "rss", "date_source": "source",
+                                 "source_headline": "ASTS valid headline"})
+    session.add(valid)
+    session.flush()
+    valid_alert = ResearchAlert(tenant_id=tenants[0].id, company_id=company.id,
+                                severity="medium", status="open", alert_type="tracked_news",
+                                title="t", message="m", fingerprint="fp-valid2",
+                                channels=["in_app"], last_triggered_at=NOW,
+                                metadata_={"news_event_id": valid.id})
+    session.add(valid_alert)
+    session.commit()
+    assert valid_alert.id > 50  # las rotas van delante por ID
+
+    first = reconcile_missing_analyses(session, limit=50)
+    assert first["examined"] == 50 and first["queued"] == 0
+    assert first["unqueueable"] == 50 and first["marked"] == 50
+    marked = session.scalar(select(ResearchAlert).where(
+        ResearchAlert.fingerprint == "fp-broken-0"))
+    assert (marked.metadata_ or {}).get("analysis_excluded_url") == "https://"
+
+    # lote siguiente: las marcadas no vuelven a ocupar la ventana
+    second = reconcile_missing_analyses(session, limit=50)
+    assert second["examined"] == 1 and second["queued"] == 1 and second["marked"] == 0
+    row = session.scalar(select(AlertAnalysis).where(
+        AlertAnalysis.alert_id == valid_alert.id))
+    assert row and row.status == "pending"
+    # idempotente: nada nuevo que examinar
+    third = reconcile_missing_analyses(session, limit=50)
+    assert third["examined"] == 0 and third["excluded_no_data"] == 50
+
+    # self-heal: corregir la URL de un evento retira su marca y lo reencola
+    broken_events[0].url = "https://publisher.example/fixed"
+    session.commit()
+    healed = reconcile_missing_analyses(session, limit=50)
+    assert healed["examined"] == 1 and healed["queued"] == 1
+    healed_row = session.scalar(select(AlertAnalysis).where(
+        AlertAnalysis.alert_id == marked.id))
+    assert healed_row and healed_row.status == "pending"
+    session.refresh(marked)
+    assert "analysis_excluded_url" not in (marked.metadata_ or {})
