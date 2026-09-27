@@ -952,3 +952,55 @@ def test_same_period_end_but_different_duration_tag_is_not_coherent():
     finally:
         db.close()
         cleanup_metric_test_artifacts()
+
+
+def test_peer_comparison_excludes_atypical_from_median_but_keeps_it_visible():
+    """F153 (cierre del auditor): un margen real atipico (200%) queda
+    visible con su etiqueta, numerador y denominador, pero NO entra en la
+    mediana/promedio del benchmark."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        target = create_test_company(db)
+        peer_1 = create_test_company(db, "TPEER1", "Traceable Peer One")
+        peer_2 = create_test_company(db, "TPEER2", "Traceable Peer Two")
+
+        for company, revenue, fcf, net_income, operating_income, gross_profit in [
+            (target, "1000", "250", "180", "250", "650"),
+            (peer_1, "1000", "100", "120", "180", "500"),
+            (peer_2, "1000", "300", "2000", "280", "700"),  # margen 200%: real atipico
+        ]:
+            add_fact(db, company, "revenue", revenue)
+            add_fact(db, company, "free_cash_flow", fcf)
+            add_fact(db, company, "net_income", net_income)
+            add_fact(db, company, "operating_income", operating_income)
+            add_fact(db, company, "gross_profit", gross_profit)
+        db.commit()
+    finally:
+        db.close()
+
+    client = TestClient(main.app)
+    response = client.get(f"/api/companies/{TEST_TICKER}/peers/comparison?metrics=net_margin&limit=2")
+    assert response.status_code == 200
+    payload = response.json()
+
+    bench = payload["benchmarks"]["net_margin"]
+    # Solo TPEER1 (0,12) entra en la mediana; TPEER2 (2,0) queda fuera pero visible.
+    assert Decimal(bench["peer_median"]) == Decimal("0.12000000")
+    assert bench["peer_sample_size"] == 1
+    assert len(bench["excluded_atypical"]) == 1
+    excluded = bench["excluded_atypical"][0]
+    assert excluded["ticker"] == "TPEER2"
+    assert Decimal(excluded["value"]) == Decimal("2.00000000")
+    assert "margin_over_100pct" in excluded["atypical"]
+
+    peer2_row = next(row for row in payload["companies"] if row["ticker"] == "TPEER2")
+    metric_payload = peer2_row["metrics"]["net_margin"]
+    assert metric_payload["status"] == "ok"
+    assert Decimal(metric_payload["value"]) == Decimal("2.00000000")
+    assert "margin_over_100pct" in metric_payload["atypical"]
+    assert Decimal(metric_payload["numerator"]) == Decimal("2000.00000000")
+    assert Decimal(metric_payload["denominator"]) == Decimal("1000.00000000")
+    assert metric_payload["calculation_trace"]["atypical"]
+
+    cleanup_metric_test_artifacts()
