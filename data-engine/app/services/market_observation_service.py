@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -47,20 +48,22 @@ def store_series(db: Session, key: str, rows: list[dict], fetched_at: datetime) 
         previous = db.scalar(
             select(MarketObservation).where(
                 MarketObservation.metric_key == key,
+                MarketObservation.geography == "US",
+                MarketObservation.source == "FRED",
                 MarketObservation.observation_date == day,
-                MarketObservation.vintage == "initial",
-            )
+                MarketObservation.status == "observed",
+            ).order_by(MarketObservation.fetched_at.desc(), MarketObservation.id.desc()).limit(1)
         )
         if previous and previous.value == value:
             continue
         if previous:
-            # A revision is not silently substituted into historical evidence.
+            # FRED's new CSV value is a sourced revision. Append, never overwrite:
+            # old snapshots retain their input IDs and historical knowledge time.
             revisions += 1
-            vintage = fetched_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-            status = "revision_pending"
+            vintage = fetched_at.astimezone(UTC).strftime("%Y%m%dT%H%M%S.%fZ") + "-" + hashlib.sha256(str(value).encode()).hexdigest()[:12]
         else:
             vintage = "initial"
-            status = "observed"
+        status = "observed"
         if db.scalar(
             select(MarketObservation.id).where(
                 MarketObservation.metric_key == key,
@@ -85,7 +88,7 @@ def store_series(db: Session, key: str, rows: list[dict], fetched_at: datetime) 
         )
         db.flush()
         added += 1
-    return {"added": added, "revisions_pending": revisions}
+    return {"added": added, "revisions_applied": revisions}
 
 
 async def refresh_fred(db: Session, client: FREDClient | None = None) -> dict:
