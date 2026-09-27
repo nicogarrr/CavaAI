@@ -2279,6 +2279,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/research/assistant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Research Assistant */
+        post: operations["research_assistant_api_research_assistant_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/guide-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Research Guide Context */
+        get: operations["research_guide_context_api_research_guide_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reviews": {
         parameters: {
             query?: never;
@@ -3363,6 +3397,81 @@ export interface components {
              */
             updated_at: string;
         };
+        /** AssistantCitation */
+        AssistantCitation: {
+            /** As Of */
+            as_of?: string | null;
+            /** Excerpt */
+            excerpt?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "news_event" | "financial_fact" | "document_chunk" | "claim_evidence" | "market_observation";
+            /** Source */
+            source: string;
+            /** Url */
+            url?: string | null;
+        };
+        /** AssistantRequest */
+        AssistantRequest: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "explore" | "guide";
+            /** Question */
+            question: string;
+            /** Review Id */
+            review_id?: number | null;
+            /** Ticker */
+            ticker?: string | null;
+        };
+        /** AssistantResponse */
+        AssistantResponse: {
+            /** Answer */
+            answer: string;
+            /** Citations */
+            citations: components["schemas"]["AssistantCitation"][];
+            /** Missing Data */
+            missing_data: string[];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "explore" | "guide";
+            /** Review Id */
+            review_id: number | null;
+            /** Sections */
+            sections: components["schemas"]["AssistantSection"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "insufficient_data";
+            /** Suggested Next Steps */
+            suggested_next_steps: string[];
+            /**
+             * Writeback
+             * @default false
+             * @constant
+             */
+            writeback: false;
+        };
+        /** AssistantSection */
+        AssistantSection: {
+            /** Body */
+            body: string;
+            /** Citation Ids */
+            citation_ids?: string[];
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "facts" | "calculations" | "hypotheses" | "inferences" | "contradictions" | "insufficient_data" | "conclusion";
+        };
         /** Body_ingest_document_file_api_sources_documents_ingest_file_post */
         Body_ingest_document_file_api_sources_documents_ingest_file_post: {
             /** File */
@@ -3795,6 +3904,33 @@ export interface components {
                 [key: string]: components["schemas"]["CompanySnapshotOut"];
             };
         };
+        /** ContextNews */
+        ContextNews: {
+            /**
+             * Date
+             * Format: date-time
+             */
+            date: string;
+            /** Date Source */
+            date_source: string;
+            /** Id */
+            id: number;
+            /** Source */
+            source: string;
+            /** Source Url */
+            source_url: string | null;
+            /** Title */
+            title: string;
+        };
+        /** ContextReview */
+        ContextReview: {
+            /** Id */
+            id: number;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string;
+        };
         /** ContradictionScanRequest */
         ContradictionScanRequest: {
             /**
@@ -4200,6 +4336,19 @@ export interface components {
             ticker: string;
             /** Valuation Input Ready */
             valuation_input_ready: boolean;
+        };
+        /** GuideContextResponse */
+        GuideContextResponse: {
+            /** Latest News */
+            latest_news: components["schemas"]["ContextNews"][];
+            /** Missing Data */
+            missing_data: string[];
+            /** Open Reviews */
+            open_reviews: components["schemas"]["ContextReview"][];
+            /** Review Id */
+            review_id: number | null;
+            /** Ticker */
+            ticker: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -11483,6 +11632,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProPickRunDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    research_assistant_api_research_assistant_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    research_guide_context_api_research_guide_context_get: {
+        parameters: {
+            query: {
+                ticker: string;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideContextResponse"];
                 };
             };
             /** @description Validation Error */
