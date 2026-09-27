@@ -123,6 +123,27 @@ def test_emit_alert_dedupes_by_fingerprint_and_reopens_resolved(db):
     assert revived.resolved_at is None
 
 
+def test_emit_alert_tracks_real_last_trigger_time(db):
+    # F146: la fila se reutiliza por fingerprint; la hora exhibida debe ser
+    # la del ultimo disparo (last_triggered_at), no la de creacion.
+    service = ReviewAlertService()
+    alert = service.emit_alert(
+        db, company_id=None, alert_type="system", severity="medium",
+        title="t", message="first", fingerprint_parts=["x", "y"],
+    )
+    assert alert.last_triggered_at is not None
+    created_at = alert.created_at
+    first_trigger = alert.last_triggered_at
+
+    again = service.emit_alert(
+        db, company_id=None, alert_type="system", severity="medium",
+        title="t", message="second", fingerprint_parts=["x", "y"],
+    )
+    assert again.id == alert.id
+    assert again.created_at == created_at  # la creacion no se mueve
+    assert again.last_triggered_at >= first_trigger  # el disparo exhibido si
+
+
 def test_transition_alert_actions(db):
     service = ReviewAlertService()
     alert = ResearchAlert(
