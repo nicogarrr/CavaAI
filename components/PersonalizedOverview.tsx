@@ -1,6 +1,14 @@
 'use client';
 
 import { formatCompact, formatUserDateTime, formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import {
+    DCF_CANDIDATE_LIMIT,
+    DCF_MIN_UPSIDE_PCT,
+    dcfEmptyNote,
+    dcfScopeNote,
+    summarizeDcfProbe,
+    type DcfScope,
+} from '@/lib/overview/dcf-candidates';
 import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,10 +62,11 @@ interface UndervaluedStock {
     upside: number;
 }
 
-/** El universo de candidatos es todo el que devuelve /api/screeners/real por
- *  encima de este market cap. Antes se filtraba por `sector: 'Technology'`
- *  (duplicaba /screener?sector=Technology sin decirlo); ahora el filtro es el
- *  tamaño y la tarjeta lo dice. */
+/** El universo del screener es todo lo que devuelve /api/screeners/real por
+ *  encima de este market cap. La tarjeta solo prueba las primeras
+ *  DCF_CANDIDATE_LIMIT candidatas y lo dice (F65): no puede hablar en nombre
+ *  de todo el universo. Antes se filtraba por `sector: 'Technology'`
+ *  (duplicaba /screener?sector=Technology sin decirlo). */
 const MIN_MARKET_CAP = 10_000_000_000;
 
 // Tarjeta memorizada: la parrilla de índices re-renderiza con cada
@@ -160,6 +169,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     const [triggeredAlerts, setTriggeredAlerts] = useState<TriggeredAlertDelivery[]>([]);
     const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
     const [opportunities, setOpportunities] = useState<UndervaluedStock[]>([]);
+    const [dcfScope, setDcfScope] = useState<DcfScope | null>(null);
     const [indicesLoading, setIndicesLoading] = useState(true);
     const [portfolioLoading, setPortfolioLoading] = useState(true);
     const [watchlistLoading, setWatchlistLoading] = useState(true);
@@ -224,22 +234,34 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
 
             // Los candidatos sólo dependen del screener; sus cálculos de DCF y
             // quote sí se lanzan en paralelo por símbolo.
-            const candidates = (screenerResult.data?.map((s) => s.symbol) ?? []).slice(0, 6);
+            // F65: se prueban solo las primeras candidatas y se cuenta cuántas
+            // se pudieron evaluar; un DCF fallido no equivale a «sin potencial».
+            const candidates = (screenerResult.data?.map((s) => s.symbol) ?? []).slice(0, DCF_CANDIDATE_LIMIT);
             const opportunitiesPromise = Promise.all(candidates.map(async (sym: string) => {
                 try {
                     const [fairValue, quote] = await Promise.all([getFairValue(sym), getStockQuote(sym)]);
                     const currentPrice = quote?.c || 0;
                     if (fairValue && currentPrice > 0) {
                         const upside = ((fairValue - currentPrice) / currentPrice) * 100;
-                        return upside > 5
-                            ? { symbol: sym, name: sym, price: currentPrice, fairValue, upside }
-                            : null;
+                        return {
+                            evaluated: true,
+                            opportunity: upside > DCF_MIN_UPSIDE_PCT
+                                ? { symbol: sym, name: sym, price: currentPrice, fairValue, upside }
+                                : null,
+                        };
                     }
-                    return null;
+                    return { evaluated: false, opportunity: null };
                 } catch {
-                    return null;
+                    return { evaluated: false, opportunity: null };
                 }
-            })).then((results) => results.filter((op): op is UndervaluedStock => op !== null).sort((a, b) => b.upside - a.upside).slice(0, 4));
+            })).then((results) => ({
+                opportunities: results
+                    .map((result) => result.opportunity)
+                    .filter((op): op is UndervaluedStock => op !== null)
+                    .sort((a, b) => b.upside - a.upside)
+                    .slice(0, 4),
+                scope: summarizeDcfProbe(results),
+            }));
 
             const watchlistItems = watchlistResult.data;
             const watchlistPromise = Promise.all(watchlistItems.slice(0, 5).map(async (item): Promise<WatchlistItem> => {
@@ -261,12 +283,15 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             }));
 
             const [opportunitiesResult, watchlistWithPrices] = await Promise.all([
-                opportunitiesPromise.then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as UndervaluedStock[], error: sectionError(error) })),
+                opportunitiesPromise
+                    .then((data) => ({ data, error: null as string | null }))
+                    .catch((error) => ({ data: null, error: sectionError(error) })),
                 watchlistPromise.then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as WatchlistItem[], error: sectionError(error) })),
             ]);
             if (!active) return;
 
-            setOpportunities(opportunitiesResult.data);
+            setOpportunities(opportunitiesResult.data?.opportunities ?? []);
+            setDcfScope(opportunitiesResult.data?.scope ?? null);
             setOpportunitiesLoading(false);
             setOpportunitiesError(opportunitiesResult.error ?? screenerResult.error);
             setWatchlist(watchlistWithPrices.data);
@@ -594,8 +619,10 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     ) : opportunities.length > 0 ? (
                         <>
                             <p className="mb-4 text-xs text-gray-500">
-                                Todo el universo del screener (market cap &gt;{' '}
-                                {formatCompact(MIN_MARKET_CAP, { maximumFractionDigits: 0 })}), sin filtro de sector.
+                                {dcfScopeNote(
+                                    dcfScope ?? { probed: DCF_CANDIDATE_LIMIT, evaluated: DCF_CANDIDATE_LIMIT, failed: 0 },
+                                    formatCompact(MIN_MARKET_CAP, { maximumFractionDigits: 0 }),
+                                )}
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {opportunities.map((op) => (
@@ -624,7 +651,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         </>
                     ) : (
                         <p className="text-sm text-gray-500">
-                            Ninguna empresa del universo supera hoy un 5 % de potencial sobre su valor intrínseco.
+                            {dcfEmptyNote(dcfScope ?? { probed: 0, evaluated: 0, failed: 0 })}
                         </p>
                     )}
                 </CardContent>
