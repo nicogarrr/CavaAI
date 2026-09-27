@@ -121,3 +121,27 @@ def test_intermediate_redirect_to_nonofficial_host_rejected_before_fetch(monkeyp
     with pytest.raises(ValueError, match="redirect denied"):
         public_fetch.fetch_public_url("https://www.itu.int/start", allowed_url=lambda url: url.startswith("https://www.itu.int/"))
     assert visited == ["https://www.itu.int/start"]
+
+
+def test_real_itu_fixture_ingests_field_locator_chunks_without_publication_date(db, monkeypatch):
+    from pathlib import Path
+
+    from app.services import primary_source_ingestion as module
+    from app.services.document_store import DocumentStore
+
+    session, _, events = db
+    official = "https://www.itu.int/ITU-R/space/asreceived/Publication/DisplayPublication/72184"
+    fixture = (Path(__file__).parent / "fixtures" / "itu" / "d2026-84958-detail.html").read_bytes()
+    monkeypatch.setattr(module, "fetch_public_url", lambda *args, **kwargs: (fixture, "text/html", official))
+    monkeypatch.setattr(DocumentStore, "put_bytes", lambda *args, **kwargs: "test://original")
+    response = ingest_explicit_primary_source(session, news_event_id=events[0].id,
+                                               official_url=official, reference_kind="official_registry")
+    document = session.get(Document, response["document_id"])
+    assert document.published_at is None
+    assert document.metadata_["itu_record"]["reference"] == "D2026-84958"
+    assert document.metadata_["itu_record"]["registry_date"] == "2026-09-24"
+    assert not document.metadata_["itu_record"]["frequencies_complete"]
+    chunks = session.scalars(select(DocumentChunk).where(DocumentChunk.document_id == document.id)).all()
+    assert any("Total number of satellites: 344" in c.text for c in chunks)
+    assert any(any("NumberOfSatellites" in m["locator"] for m in c.metadata_["block_metadata"])
+               for c in chunks)

@@ -91,7 +91,14 @@ def ingest_explicit_primary_source(
     ext = ".pdf" if mime == "application/pdf" else ".html" if mime in {"text/html", "application/xhtml+xml"} else ".txt"
     filename = path.name if path.suffix.lower() == ext else f"primary{ext}"
     ingestor = DocumentIngestionService()
-    parsed = ingestor._parse(content, filename, _extension(filename, mime), mime)
+    itu_record = None
+    if urlsplit(final_url).path.startswith("/ITU-R/space/asreceived/Publication/DisplayPublication/"):
+        from app.services.itu_record_parser import as_parsed_document, parse_itu_record
+
+        itu_record = parse_itu_record(content, final_url)
+        parsed = as_parsed_document(itu_record)
+    else:
+        parsed = ingestor._parse(content, filename, _extension(filename, mime), mime)
     chunks = ingestor._chunk_blocks(parsed.blocks, checksum, parsed.parser, filename, final_url)
     if not chunks or len(" ".join(chunk["text"] for chunk in chunks).strip()) < 20:
         raise ValueError("Primary-source parser produced too little text; no cited record created")
@@ -118,6 +125,15 @@ def ingest_explicit_primary_source(
                                 "content_type": mime, "byte_count": len(content),
                                 "parser": parsed.parser, "warnings": parsed.warnings,
                                 "reference_kind": reference_kind,
+                                "itu_record": ({"submission_id": itu_record.submission_id,
+                                                "reference": itu_record.reference,
+                                                "registry_date": (itu_record.registry_date.isoformat()
+                                                                  if itu_record.registry_date else None),
+                                                "receipt_date": (itu_record.receipt_date.isoformat()
+                                                                 if itu_record.receipt_date else None),
+                                                "frequency_url": itu_record.frequency_url,
+                                                "frequencies_complete": False}
+                                               if itu_record else None),
                             })
         db.add(document)
         db.flush()
