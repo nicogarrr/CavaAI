@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { getProfile } from '@/lib/actions/finnhub.actions';
+import { resolveUnknownListingIdentity } from '@/lib/research/unknown-listing';
+import { getResearchCompanyBasics } from '@/lib/actions/market-workspace.actions';
 import { cache } from 'react';
 import {
   ArrowLeft,
@@ -9,6 +12,7 @@ import {
   History,
   RefreshCcw,
   Search,
+  ShieldAlert,
   ShieldCheck,
   Target,
 } from 'lucide-react';
@@ -530,10 +534,52 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     throw error;
   }
   if (!snapshot) {
+    // F286: llegar aquí con snapshot null implica que el master respondió
+    // (si no, readSnapshot habría pintado BackendOffline), así que un basics
+    // null es «fuera del master» real, no un apagón. Fuera del master NUNCA
+    // hay 404 (ninguna respuesta del proveedor prueba la inexistencia del
+    // emisor buscado) NI CTA «Generar tesis» (un perfil del ticker desnudo
+    // solo prueba que el símbolo existe en alguna bolsa: ALM -> Almonty US,
+    // no Almirall/BME): tres estados honestos sin CTA. La identidad del
+    // master se comprueba con un boolean explícito (getResearchCompanyBasics),
+    // nunca inferida del snapshot de mercado.
+    const masterBasics = await getResearchCompanyBasics(ticker);
+    if (!masterBasics) {
+      const identity = resolveUnknownListingIdentity(await getProfile(ticker), ticker);
+      const state =
+        identity.kind === 'unverified'
+          ? {
+              title: 'Identidad del ticker no verificada',
+              description: `${ticker} no tiene identidad de listado verificada en CavaAI: el proveedor de mercado conoce este símbolo como «${identity.providerName}», que puede no ser el emisor que buscas. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo.`,
+            }
+          : identity.kind === 'not-in-sources'
+            ? {
+                title: 'No encontramos este ticker en nuestras fuentes',
+                description: `Ninguna de nuestras fuentes reconoce ${ticker}: puede que el símbolo sea incorrecto o que aún no tenga cobertura verificada. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo.`,
+              }
+            : {
+                title: 'No pudimos comprobar este ticker',
+                description: `${ticker} no tiene identidad de listado verificada en CavaAI y el proveedor de mercado no está disponible para comprobarlo. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo; inténtalo de nuevo más tarde.`,
+              };
+      return (
+        <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1600px] space-y-6">
+            <Link className="inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
+            <EmptyState
+              description={state.description}
+              icon={ShieldAlert}
+              title={state.title}
+              titleAs="h1"
+            />
+          </div>
+        </main>
+      );
+    }
     // Ficha de la acción SIN research (aprobado por Nico 2026-09-23): los
     // datos de mercado (Finnhub) no dependen del research, así que la página
-    // muestra el panel de mercado completo + estado honesto con CTA, en vez
-    // del 404 pelado que veía el buscador con la BD nueva.
+    // muestra el panel de mercado completo + estado honesto con CTA. Desde
+    // F286 este fallback solo lo ven empresas del master (identidad
+    // verificada); fuera del master, los tres estados honestos de arriba.
     let market: Awaited<ReturnType<typeof getCompanyMarketSnapshot>>;
     try {
       market = await getCompanyMarketSnapshot(ticker);
