@@ -22,12 +22,15 @@ from app.services.provenance import SourceKind, coverage_for_age, provenance
 
 router = APIRouter()
 
+# F152: unidad explícita por serie. Los niveles de índice (^GSPC, ^IXIC) no
+# son dólares - pintarlos como «7743,41 US$» era una unidad falsa. El front
+# formatea según `unit`: "index" sin sufijo monetario, "usd" con US$.
 _INDEXES = [
-    {"symbol": "^GSPC", "name": "S&P 500"},
-    {"symbol": "^IXIC", "name": "Nasdaq Composite"},
-    {"symbol": "BTC-USD", "name": "Bitcoin"},
-    {"symbol": "GC=F", "name": "Oro"},
-    {"symbol": "SI=F", "name": "Plata"},
+    {"symbol": "^GSPC", "name": "S&P 500", "unit": "index"},
+    {"symbol": "^IXIC", "name": "Nasdaq Composite", "unit": "index"},
+    {"symbol": "BTC-USD", "name": "Bitcoin", "unit": "usd"},
+    {"symbol": "GC=F", "name": "Oro", "unit": "usd"},
+    {"symbol": "SI=F", "name": "Plata", "unit": "usd"},
 ]
 
 _HEADERS = {
