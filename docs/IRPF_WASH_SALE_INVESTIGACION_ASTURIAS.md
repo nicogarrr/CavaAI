@@ -1,17 +1,20 @@
-# Wash sale IRPF — Investigación España / Asturias (docs-only, sin fix)
+# Wash sale IRPF — Investigación España / Asturias
 
-> Rama docs-only desde `origin/main`. NO toca `data-engine/app/services/tax_report_service.py`.
+> **Fotografía fechada**: esta investigación se escribió ANTES del fix de código y se conserva como
+> registro del análisis que lo motivó. El comportamiento ya implementado está en el epílogo §10;
+> donde el texto histórico diga «no hay fix» o «falta proporcionalidad», léase §10.
+> Rama docs-only: NO toca `data-engine/app/services/tax_report_service.py`.
 > NO es asesoramiento fiscal. Requiere criterio de profesional fiscal colegiado antes de alterar la compute de declaración.
-> Estado: investigación avanzada pero **NO 100% verificada** — ver §8. Por eso no hay rama de fix de código.
+> Estado de la investigación: avanzada pero **NO 100% verificada** — ver §8.
 
 ## 0. Objeto y decisión
 
 - El usuario cambió la semántica wash-sale y la revirtió: el código solo bloquea si el lote sigue en cartera (`qty > 0`) tras la venta.
 - La hipótesis alternativa (bloquear por mera adquisición en ventana aunque el lote ya se vendió) no se sostenía sin fuente verificada.
 - Decisión correcta: **revertir y no alterar la compute fiscal sobre una lectura no verificada**.
-- Esta rama solo documenta la investigación. El fix de código queda bloqueado hasta verificación 100% + dictamen profesional.
+- Esta rama solo documenta la investigación. En el momento de escribirla, el fix de código quedó bloqueado hasta verificación 100% + dictamen profesional; después se implementó un fix parcial y orientativo (ver §10).
 
-## 1. Base de código auditada
+## 1. Base de código auditada (a fecha de la investigación; refs de `main` históricas)
 
 - `main` local (`b176f6f`) vs `HEAD` anterior (`feat/shell-nav-foundation`, `f5c2d4e`): el diff en `data-engine/app/services/tax_report_service.py` **no toca lógica wash-sale** — solo dividendo no-atribuido (`JOIN` → `OUTER JOIN`, `_new_cash_bucket`, `_unattributed_label`, `summary.unattributed_*`).
 - Semántica vigente (también en `origin/main`, `07ae9ff`):
@@ -34,7 +37,7 @@ Ley 35/2006 IRPF, BOE núm. 285 de 29/11/2006, ref. BOE-A-2006-20764. Redacción
 - No hay letra específica de fondos en el 33.5. IIC: art. 94.1.a (FIFO + traspasos sin cómputo; ETF cotizados excluidos vía art. 79 RD 1082/2012).
 - Valores homogéneos: definición reglamentaria art. 8 RD 439/2007 (BOE núm. 78, 31/03/2007, BOE-A-2007-6820): mismo emisor, misma operación financiera / unidad de propósito, igual naturaleza y régimen de transmisión, contenido sustancialmente similar de derechos y obligaciones; diferencias accesorias (importe unitario, fechas, tramos) no rompen homogeneidad.
 - FIFO: art. 37.2 Ley ("cuando existan valores homogéneos se considerará que los transmitidos son los adquiridos en primer lugar") y 94.1.a para IIC.
-- La Ley **no** prevé incrementar el coste con la pérdida diferida (a diferencia de IRC §1091 USA): mecanismo de diferimiento puro.
+- La Ley no prescribe expresamente la mecánica contable del diferimiento (a diferencia de IRC §1091 USA, que sí ajusta la base): se limita a «se integrarán a medida que se transmitan». Sumar la pérdida diferida al coste del lote recomprado (§1) es la **interpretación documentada elegida por la implementación**, coherente con ese diferimiento puro, no un criterio legal probado.
 
 ## 3. Criterio AEAT verificado directamente (resuelve el conflicto ley-literal vs código)
 
@@ -49,7 +52,7 @@ Fuente abierta y leída en esta sesión: Manual Renta 2025, cap. 11, "Pérdidas 
 - Imputación posterior solo ante "transmisión definitiva" = "en los dos meses anteriores o posteriores a ella, no se adquieran nuevamente homogéneos".
 - Identificación: FIFO art. 37.2.
 
-Conclusión: el `qty > 0` del código **coincide con AEAT 2025** (condición necesaria probada). No es mera importación IRS, aunque se parezca. La lectura ley-literal aislada ("basta adquirir") es incompleta sin este desarrollo. Matiz: `qty > 0` es necesario pero no suficiente para clonar AEAT (falta proporcionalidad `min(remanente, comprado previo)`, simetría posterior explícita, transmisión definitiva encadenada).
+Conclusión: el `qty > 0` del código **coincide con AEAT 2025** (condición necesaria probada). No es mera importación IRS, aunque se parezca. La lectura ley-literal aislada ("basta adquirir") es incompleta sin este desarrollo. Matiz: `qty > 0` es necesario pero no suficiente para clonar AEAT. En la fecha de esta investigación faltaban la proporcionalidad `min(remanente, comprado previo)`, la simetría posterior explícita y la transmisión definitiva encadenada; la proporcionalidad y la absorción FIFO se implementaron después (§10), el resto sigue abierto.
 
 Contraste USA (para no confundir): SEC/IRS wash-sale = 30 días antes/después, "substantially identical", pérdida disallowed + ajuste de base. España = 2 meses / 1 año, "homogéneos" art. 8 RIRPF, diferimiento + declaración obligatoria + complementaria art. 73.2 RIRPF si la recompra es posterior al plazo declarativo. No citar IRS como fundamento.
 
@@ -101,3 +104,26 @@ Medias: G6 lote exacto al que se difiere y orden entre ventas múltiples; G7 `ov
 - AEAT deducciones Asturias 2024/2025: `.../irpf-2024-deducciones-autonomicas/guia-deducciones-autonomicas/principado-asturias.html` y `.../irpf-2025-deducciones-autonomicas/comunidad-autonoma-principado-asturias.html` (+ subpágina inversión nuevas entidades).
 - BOE Ley 22/2009: `https://www.boe.es/buscar/act.php?id=BOE-A-2009-20375` (art. 46 competencial).
 - Contraste USA: `https://www.sec.gov/answers/wash.htm`, `https://www.irs.gov/publications/p550`.
+
+## 10. Epílogo: lo implementado tras esta investigación (PR #421, en integración)
+
+Después de esta investigación se implementó un fix de código **parcial y orientativo**, en la PR
+#421 (`fix/wash-sale-proporcionalidad-manual`, abierta tras la redacción de este documento y en
+proceso de integración en el momento de este epílogo):
+
+- **Proporcionalidad previa**: la recompra por compras en los 2 meses anteriores se cuantifica como
+  `min(remanente en cartera, comprado en ventana, pérdida)`, siguiendo el procedimiento del Manual
+  AEAT 2025 citado en §3.
+- **Absorción FIFO**: la pérdida diferida se absorbe en los lotes supervivientes en orden FIFO y
+  aflora al transmitirlos (diferimiento puro, §2).
+- **Historial completo de ventas** para la excepción de compra única del Manual («no se aplicará la
+  limitación si solo hubo una operación de compra en los dos meses anteriores y al inicio no se
+  poseían homogéneos»): la excepción se evalúa sobre el historial completo, no sobre una ventana.
+- **Disclaimer visible**: la UI declara el criterio «Manual AEAT 2025» y que el informe es
+  **orientativo, no apto para declarar sin asesor** (coherente con el dictamen de §6).
+
+Limitaciones de §5 que siguen abiertas tras el fix: G1 (sin ISIN/homogéneos), G2 (sin flag
+cotizado, 2m a todo), G3 (IIC con régimen propio), G4 (cobertura solo-ledger), G7 (`over_sell`),
+G8 (sin arrastre 4 años ni tope 25%), G9 (FX), G10 (`window_open` con fecha global) y el resto de
+medias/bajas. El fix no pretende cerrarlas: deja el cálculo alineado con el procedimiento AEAT
+2025 dentro del alcance ledger, con las limitaciones declaradas.
