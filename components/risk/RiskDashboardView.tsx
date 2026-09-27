@@ -106,13 +106,13 @@ function currencyRecord(value: unknown): string {
 }
 
 /** Mapa etiqueta -> peso (ratio) como "Tecnología 45,0 % · Salud 20,0 %". */
-function exposureRecord(value: unknown): string {
+function exposureRecord(value: unknown, labelName: (name: string) => string = (name) => name): string {
     if (!isRecord(value)) return NA;
     const entries = Object.entries(value);
     if (!entries.length) return 'Sin datos';
     return entries
         .map(([name, weight]) =>
-            `${name} ${typeof weight === 'number' ? formatPercent(weight, { fromRatio: true, digits: 1 }) : NA}`,
+            `${labelName(name)} ${typeof weight === 'number' ? formatPercent(weight, { fromRatio: true, digits: 1 }) : NA}`,
         )
         .join(' · ');
 }
@@ -136,7 +136,11 @@ function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null 
             display[label] = typeof value === 'number' ? formatPercent(value, { fromRatio: true, digits: 1 }) : NA;
         } else if (key === 'cash' || key === 'cash_native') {
             display[label] = currencyRecord(value);
-        } else if (key === 'sector_exposure' || key === 'factor_exposure') {
+        } else if (key === 'sector_exposure') {
+            // F208: las claves de sector llegan en inglés del backend y la
+            // cabecera las pintaba tal cual; las posiciones ya usan etiquetaSector.
+            display[label] = exposureRecord(value, etiquetaSector);
+        } else if (key === 'factor_exposure') {
             display[label] = exposureRecord(value);
         } else if (key === 'status') {
             display[label] = RISK_STATUS_LABELS[String(value)] ?? String(value);
@@ -220,7 +224,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
         <div className="grid gap-6">
             <RecordDetail
                 title="Exposiciones de cartera"
-                description="Estructura de la cartera: pesos, concentración (top 1 y top 5) y exposición por sector y factor. No calcula VaR, drawdown ni volatilidad: hace falta historia de precios que el motor aún no usa."
+                description="Estructura de la cartera: pesos, concentración (top 1 y top 5) y exposición por sector y factor. La volatilidad, el drawdown y el VaR de la cartera están en Inteligencia de cartera."
                 icon={<Gauge className="h-5 w-5 text-teal-400" aria-hidden="true" />}
                 record={humanizeRiskDashboard(headlineRecord(initialDashboard))}
                 fetchRecord={async () => humanizeRiskDashboard(headlineRecord(await getRiskDashboard()))}

@@ -1,0 +1,58 @@
+/**
+ * Batch copy/i18n honestidad (F208/F174/F175): las cadenas internas o en
+ * inglés no se pintan crudas - sectores de la cabecera de /risk, tipos de
+ * instrumento del buscador, tiers y tipos de evento de /research/news.
+ * Ejecución: node --experimental-strip-types --test scripts/copy-i18n-labels.test.ts
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+// @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
+import { etiquetaSector, etiquetaTierFuente, etiquetaTipoEvento, etiquetaTipoInstrumento } from '../lib/labels.ts';
+
+void test('sectores de la cabecera de exposición se traducen (F208)', () => {
+    assert.equal(etiquetaSector('Communication Services'), 'Servicios de comunicación');
+    assert.equal(etiquetaSector('Sector Inventado'), 'Sector Inventado');
+});
+
+void test('tipos de instrumento del buscador en español (F174)', () => {
+    assert.equal(etiquetaTipoInstrumento('Common Stock'), 'Acción ordinaria');
+    assert.equal(etiquetaTipoInstrumento('Canadian DR'), 'Recibo de depósito canadiense');
+    assert.equal(etiquetaTipoInstrumento('Otro tipo'), 'Otro tipo');
+});
+
+void test('los ocho tiers del catálogo backend tienen etiqueta (F175)', () => {
+    // Catálogo completo de source_hierarchy_service.SOURCE_TIERS; si el
+    // backend añade una clave, su tripwire en pytest obliga a etiquetarla aquí.
+    assert.equal(etiquetaTierFuente('tier_1_regulatory'), 'Regulatoria · T1');
+    assert.equal(etiquetaTierFuente('tier_2_company'), 'Empresa · T2');
+    assert.equal(etiquetaTierFuente('tier_3_transcript'), 'Transcripción · T3');
+    assert.equal(etiquetaTierFuente('tier_4_reputable_media'), 'Medios · T4');
+    assert.equal(etiquetaTierFuente('tier_5_data_provider'), 'Proveedor de datos · T5');
+    assert.equal(etiquetaTierFuente('tier_6_bootstrap'), 'Datos iniciales · T6');
+    assert.equal(etiquetaTierFuente('tier_7_user_input'), 'Aportado por el usuario · T7');
+    assert.equal(etiquetaTierFuente('tier_unknown'), 'Fuente sin clasificar');
+});
+
+void test('tipos de evento y fallback de códigos futuros (F175)', () => {
+    assert.equal(etiquetaTipoEvento('regulatory'), 'Regulatorio');
+    assert.equal(etiquetaTipoEvento('earnings'), 'Resultados');
+    assert.equal(etiquetaTipoEvento('dilution'), 'Dilución');
+    assert.equal(etiquetaTipoEvento('contract'), 'Contrato');
+    assert.equal(etiquetaTipoEvento('capital_allocation'), 'Asignación de capital');
+    assert.equal(etiquetaTipoEvento('general_news'), 'Noticia general');
+    // Código futuro desconocido: se muestra crudo (honesto), nunca inventado.
+    assert.equal(etiquetaTierFuente('tier_8_futuro'), 'tier_8_futuro');
+});
+
+void test('los componentes usan las etiquetas, no la cadena cruda', () => {
+    const risk = readFileSync('components/risk/RiskDashboardView.tsx', 'utf8');
+    assert.match(risk, /exposureRecord\(value, etiquetaSector\)/);
+    assert.doesNotMatch(risk, /hace falta historia de precios/);
+    const search = readFileSync('components/SearchCommand.tsx', 'utf8');
+    assert.match(search, /etiquetaTipoInstrumento\(stock\.type\)/);
+    const news = readFileSync('app/(root)/research/news/page.tsx', 'utf8');
+    assert.match(news, /etiquetaTierFuente\(event\.source_tier\)/);
+    assert.match(news, /etiquetaTipoEvento\(event\.event_type\)/);
+});
