@@ -43,7 +43,7 @@ def test_bad_catalog_fails_whole_batch(payload):
         normalize_catalog(payload, fetched_at=NOW)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_fetch_uses_only_official_endpoint():
     async def handler(request):
         assert str(request.url) == SOURCE_URL
