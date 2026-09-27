@@ -66,11 +66,12 @@ const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: Market
             <CardContent className="p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm text-gray-400 font-medium truncate">{index.name}</p>
-                    {/* F152: un nivel de índice no es dinero - sin símbolo monetario. */}
+                    {/* F152: un nivel de índice no es dinero. Solo «usd» lleva símbolo
+                        monetario; índice o unidad desconocida va como número plano. */}
                     <p className="text-xl font-bold text-white mt-1">
-                        {index.unit === 'index'
-                            ? formatNumber(index.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                            : formatMoney(index.price)}
+                        {index.unit === 'usd'
+                            ? formatMoney(index.price)
+                            : formatNumber(index.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                 </div>
                 <div className={`shrink-0 text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>

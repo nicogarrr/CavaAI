@@ -62,13 +62,14 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
   const { rows, backendDown } = screenerResult;
   // Un indice sin precio real (fallo del proveedor) no se pinta como $0.00.
   const validIndices = indices.filter((i) => i.price > 0);
-  // F152: un nivel de índice no es dinero - sin sufijo «US$». El backend
-  // etiqueta cada serie con unit ("index" | "usd"); solo Bitcoin/Oro/Plata
-  // llevan US$.
+  // F152: un nivel de índice no es dinero - sin sufijo «US$». Solo las
+  // series etiquetadas "usd" (Bitcoin/Oro/Plata) llevan US$; un nivel de
+  // índice o una serie sin unidad conocida va como número plano, jamás
+  // asumiendo dólares.
   const formatIndexValue = (i: (typeof validIndices)[number]) =>
-    i.unit === 'index'
-      ? formatNumber(i.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      : formatPrice(i.price, 'USD');
+    i.unit === 'usd'
+      ? formatPrice(i.price, 'USD')
+      : formatNumber(i.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
