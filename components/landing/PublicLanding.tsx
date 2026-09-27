@@ -147,12 +147,13 @@ const demoClaims = [
 
 // Cada check declara su unidad: antes el formato se elegia por passed, y un
 // importe (420) salia formateado como porcentaje (42.000 %). Las ganancias
-// del propietario son un flujo monetario (millones), no una tasa.
+// del propietario son un flujo monetario: mismo formatMoney (USD) que los
+// escenarios, sin escala «M» que la semilla no documenta.
 const demoMoat = [
     { check: 'Margen de caja libre 5 años', value: 0.18, unit: 'rate', threshold: '> 5%', passed: true },
     { check: 'Rentabilidad sobre recursos propios 5 años', value: 0.21, unit: 'rate', threshold: '> 15%', passed: true },
     { check: 'Rentabilidad del capital invertido', value: 0.11, unit: 'rate', threshold: '> coste de capital', passed: true },
-    { check: 'Ganancias del propietario 5 años', value: 420, unit: 'moneyM', threshold: '> 0', passed: true },
+    { check: 'Ganancias del propietario 5 años', value: 420, unit: 'money', threshold: '> 0', passed: true },
     { check: 'Inversión sobre depreciación 5 años', value: 1.8, unit: 'multiple', threshold: '≤ 1,5', passed: false },
 ];
 
@@ -422,8 +423,8 @@ export default function PublicLanding() {
                                             <span className="font-mono text-gray-200">
                                                 {check.unit === 'rate'
                                                     ? formatPercent(check.value)
-                                                    : check.unit === 'moneyM'
-                                                      ? `${formatNumber(check.value, { maximumFractionDigits: 0 })} M €`
+                                                    : check.unit === 'money'
+                                                      ? formatMoney(check.value, 'USD', { maximumFractionDigits: 0 })
                                                       : formatNumber(check.value, { maximumFractionDigits: 1 })}
                                             </span>{' '}
                                             <span className="text-gray-500">frente a {check.threshold}</span>
