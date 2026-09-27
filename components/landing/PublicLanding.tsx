@@ -255,7 +255,7 @@ export default function PublicLanding() {
                         resultado publicado contrasta tu previsión. Si un dato no está, CavaAI lo dice en
                         lugar de inventarlo.
                     </p>
-                    <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                         {signUpOpen ? (
                             <Button asChild size="lg">
                                 <Link href="/sign-up">

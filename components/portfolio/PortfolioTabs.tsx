@@ -180,7 +180,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                         resumen es pesos y precio; el riesgo medido está en
                         Inteligencia y las concentraciones en Exposiciones. */}
                     <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-gray-700/50 bg-surface-1 p-4">
-                        <p className="min-w-0 flex-1 text-sm text-gray-400">
+                        <p className="min-w-0 flex-1 basis-60 text-sm text-gray-400">
                             El riesgo medido (TWR, XIRR, caída máxima, Sharpe, VaR y correlaciones) y las
                             concentraciones por sector, país y divisa están fuera de la cartera: en su propia
                             página, con su propia metodología.
