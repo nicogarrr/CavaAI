@@ -35,8 +35,10 @@ export default async function ResearchSourcesPage() {
           </p>
         </div>
         <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
-          {formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos ·{' '}
-          {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías
+          {documentsTotal !== null
+            ? `${formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos`
+            : `${formatNumber(documents.length, { maximumFractionDigits: 0 })} documentos en esta página`}{' '}
+          · {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías
         </div>
       </header>
 
@@ -183,7 +185,7 @@ export default async function ResearchSourcesPage() {
           <FileText aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Documentos</h2>
         </div>
-        {documentsTotal > documents.length ? (
+        {documentsTotal !== null && documentsTotal > documents.length ? (
           <p className="mb-4 text-sm text-gray-500">
             Mostrando los {formatNumber(documents.length, { maximumFractionDigits: 0 })} más recientes de{' '}
             {formatNumber(documentsTotal, { maximumFractionDigits: 0 })}.

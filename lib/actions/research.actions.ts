@@ -951,16 +951,18 @@ export async function askResearchCompanyChat(
 export async function getResearchSources() {
   // La lista de documentos pagina (50): el total real viene de /count para
   // no presentar el tamano de pagina como si fuera el inventario (F131).
+  // Si /count no responde (backend antiguo), el total es DESCONOCIDO (null):
+  // mostrar 0 con la tabla poblada seria falso (F154).
   const [documents, audits, documentsCount] = await Promise.all([
     getJson<ResearchSourceDocument[]>('/api/sources/documents', []),
     getJson<ResearchSourceAudit[]>('/api/sources/audits', []),
-    getJson<{ total: number }>('/api/sources/documents/count', { total: 0 }),
+    getJson<{ total: number } | null>('/api/sources/documents/count', null),
   ]);
 
   return {
     documents,
     audits,
-    documentsTotal: documentsCount.total,
+    documentsTotal: documentsCount?.total ?? null,
   };
 }
 
