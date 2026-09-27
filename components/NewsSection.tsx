@@ -1,4 +1,5 @@
 import { getNews } from '@/lib/actions/finnhub.actions';
+import { newsBadge } from '@/lib/newsBadge';
 import { formatMarketDateTime } from '@/lib/format';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -49,7 +50,9 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
 
                 {news.length > 0 && (
                     <p className="mb-3 text-xs leading-5 text-gray-500">
-                        Titulares vinculados a tus símbolos cuando los hay (insignia con el ticker); el resto son de mercado general, sin vínculo con tu cartera.
+                        {symbols?.length
+                            ? 'Titulares vinculados a tus símbolos cuando los hay (insignia con el ticker); el resto menciona otras compañías o es mercado general, sin vínculo con tu cartera.'
+                            : 'Titulares de mercado general. La insignia indica la compañía mencionada en el titular, no una posición tuya.'}
                     </p>
                 )}
                 {news.length === 0 ? (
@@ -104,15 +107,30 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                                                     })}
                                                 </span>
                                             )}
-                                            {article.related ? (
-                                                <span className="px-2 py-0.5 bg-[#0FEDBE]/10 text-[#0FEDBE] rounded">
-                                                    {article.related}
-                                                </span>
-                                            ) : (
-                                                <span className="px-2 py-0.5 bg-gray-700/40 text-gray-400 rounded">
-                                                    Mercado general
-                                                </span>
-                                            )}
+                                            {(() => {
+                                                // related del proveedor = compañía mencionada, NO tenencia:
+                                                // «holding» solo si el ticker está entre los símbolos del usuario.
+                                                const badge = newsBadge(article, symbols);
+                                                if (badge.kind === 'holding') {
+                                                    return (
+                                                        <span className="px-2 py-0.5 bg-[#0FEDBE]/10 text-[#0FEDBE] rounded">
+                                                            {badge.ticker}
+                                                        </span>
+                                                    );
+                                                }
+                                                if (badge.kind === 'mentioned') {
+                                                    return (
+                                                        <span className="px-2 py-0.5 bg-gray-700/40 text-gray-400 rounded">
+                                                            Menciona {badge.ticker}
+                                                        </span>
+                                                    );
+                                                }
+                                                return (
+                                                    <span className="px-2 py-0.5 bg-gray-700/40 text-gray-400 rounded">
+                                                        Mercado general
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
