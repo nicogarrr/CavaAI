@@ -60,3 +60,17 @@ def test_field_node_from_another_submission_is_rejected():
     target[0].set("data-submissionid", "99999")
     with pytest.raises(ValueError, match="another submission"):
         parse_itu_record(html.tostring(tree), URL)
+
+
+@pytest.mark.parametrize("sid,reference,kind", [
+    ("70632", "J2026-83391", "Advance publication information"),
+    ("70633", "J2026-83392", "Coordination Request"),
+])
+def test_real_j_blue_bird_notices_are_distinct_and_not_company_identity(sid, reference, kind):
+    raw = (FIXTURES / f"j2026-{sid}-detail.html").read_bytes()
+    record = parse_itu_record(raw, f"https://www.itu.int/ITU-R/space/asreceived/Publication/DisplayPublication/{sid}")
+    assert record.reference == reference and record.fields["SatName"] == "J-BLUEBIRD-NGSO"
+    assert record.fields["TypeOfSubmission"] == kind
+    assert record.fields["NumberOfSatellites"] == "136"
+    assert record.registry_date.isoformat() == "2026-09-04"
+    assert "ASTS" not in str(record.fields)

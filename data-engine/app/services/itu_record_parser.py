@@ -89,7 +89,7 @@ def parse_itu_record(content: bytes, url: str, *, frequency_html: bytes | None =
             "field_complete": True,
         }))
     reference = fields.get("InternalReference")
-    if (not reference or not re.fullmatch(r"D\d{4}-\d{4,8}", reference)
+    if (not reference or not re.fullmatch(r"[A-Z]{1,5}\d{4}-\d{4,8}", reference)
             or not fields.get("SatName") or not fields.get("TypeOfSubmission")):
         raise ValueError("ITU identity fields not parsed")
     # The server-rendered frequency section is a placeholder. Only a linked,
