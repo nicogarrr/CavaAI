@@ -42,6 +42,9 @@ const SOURCE_TIER_LABELS: Record<string, string> = {
   tier_5_data_provider: 'Proveedor de datos (T5)',
   tier_6_bootstrap: 'Semilla inicial (T6)',
   tier_7_user_input: 'Entrada del usuario (T7)',
+  // classify_source devuelve tier_unknown cuando nada clasifica la fuente;
+  // sin esta clave el fallback la humanizaba en crudo.
+  tier_unknown: 'Fuente desconocida',
   primary: 'Primaria',
   secondary: 'Secundaria',
 };

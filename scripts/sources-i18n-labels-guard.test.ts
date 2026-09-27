@@ -14,7 +14,7 @@ const BACKEND_SOURCE_TYPES = [
 const BACKEND_TIERS = [
     'tier_1_regulatory', 'tier_2_company', 'tier_3_transcript',
     'tier_4_reputable_media', 'tier_5_data_provider', 'tier_6_bootstrap',
-    'tier_7_user_input', 'primary', 'secondary',
+    'tier_7_user_input', 'tier_unknown', 'primary', 'secondary',
 ];
 
 test('F323: tipo y nivel de fuente se pintan con etiqueta en espanol', () => {
