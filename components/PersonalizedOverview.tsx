@@ -602,7 +602,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
 
             {/* 5 · Oportunidades por valor intrínseco. */}
             <Card className="bg-gray-800/50 border-gray-700">
-                <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-x-2 pb-2 border-b border-gray-700/50">
                     <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
                         <Gem aria-hidden="true" className="h-5 w-5 text-purple-400" />
                         Oportunidades por valor intrínseco (DCF)
