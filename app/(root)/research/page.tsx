@@ -15,6 +15,7 @@ import { Stat } from '@/components/ui/stat';
 import { sectorIndustryLine } from '@/lib/sector-display';
 import {
     filterResearchIndex,
+    firstSearchParam,
     paginateResearchIndex,
     parseIndexPage,
     RESEARCH_INDEX_PAGE_SIZE,
@@ -178,7 +179,7 @@ function CompanyCard({ row }: { row: CompanyRow }) {
 export default async function ResearchPage({
     searchParams,
 }: {
-    searchParams?: Promise<{ q?: string; page?: string }>;
+    searchParams?: Promise<{ q?: string | string[]; page?: string | string[] }>;
 }) {
     let dashboard: Dashboard;
     try {
@@ -192,8 +193,9 @@ export default async function ResearchPage({
     const { companies, portfolio } = dashboard;
 
     const params = (await searchParams) ?? {};
-    const query = (params.q ?? '').trim();
-    const requestedPage = parseIndexPage(params.page);
+    // Claves repetidas (?q=A&q=B) llegan como array: sin normalizar rompen la página.
+    const query = firstSearchParam(params.q).trim();
+    const requestedPage = parseIndexPage(firstSearchParam(params.page));
 
     // Orden estable por ticker: el índice no debe reordenar solo entre renders.
     const ordered = [...companies].sort((left, right) => left.ticker.localeCompare(right.ticker, 'es'));
@@ -231,7 +233,7 @@ export default async function ResearchPage({
 
             <Panel
                 description={
-                    rows.length
+                    ordered.length
                         ? 'Cada ficha agrupa su análisis en seis etapas: resumen, tesis, financieros, modelo, evidencia y seguimiento.'
                         : 'El registro se crea al generar el primer análisis de una empresa.'
                 }
@@ -268,7 +270,9 @@ export default async function ResearchPage({
                         </form>
                         <p className="mb-3 text-xs text-gray-500">
                             {query
-                                ? `${slice.total} coincidencias para «${query}» (de ${formatNumber(ordered.length)} empresas en el registro)`
+                                ? slice.total
+                                    ? `Mostrando ${formatNumber(slice.from)}-${formatNumber(slice.to)} de ${formatNumber(slice.total)} coincidencias para «${query}» (de ${formatNumber(ordered.length)} empresas en el registro)`
+                                    : `0 coincidencias para «${query}» (de ${formatNumber(ordered.length)} empresas en el registro)`
                                 : `Mostrando ${formatNumber(slice.from)}-${formatNumber(slice.to)} de ${formatNumber(slice.total)} empresas`}
                         </p>
                         {rows.length ? (

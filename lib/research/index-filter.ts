@@ -52,6 +52,16 @@ export function paginateResearchIndex<T>(
     return { rows, page, pages, total, from: total === 0 ? 0 : start + 1, to: start + rows.length };
 }
 
+/**
+ * searchParams puede repetir una clave (?q=A&q=B) y Next la entrega como
+ * array; sin normalizar, un .trim() sobre el array rompe la página entera.
+ * Se toma el primer valor, como hace el navegador al preseleccionar inputs.
+ */
+export function firstSearchParam(raw: string | string[] | undefined): string {
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return typeof value === 'string' ? value : '';
+}
+
 /** searchParams.page llega como string; cualquier cosa rara cae a la página 1. */
 export function parseIndexPage(raw: string | undefined): number {
     const parsed = Number(raw);

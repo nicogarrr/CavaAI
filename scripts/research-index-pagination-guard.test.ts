@@ -13,6 +13,7 @@ import test from 'node:test';
 
 import {
     filterResearchIndex,
+    firstSearchParam,
     paginateResearchIndex,
     parseIndexPage,
     RESEARCH_INDEX_PAGE_SIZE,
@@ -65,6 +66,18 @@ void test('parseIndexPage y los enlaces conservan el filtro sin inventar paráme
     assert.equal(researchIndexHref('', 2), '/research?page=2');
 });
 
+void test('claves repetidas (?q=A&q=B) se normalizan y no rompen la página', () => {
+    assert.equal(firstSearchParam(['AAPL', 'MSFT']), 'AAPL', 'array: primer valor, como el navegador');
+    assert.equal(firstSearchParam('AAPL'), 'AAPL');
+    assert.equal(firstSearchParam(undefined), '');
+    assert.equal(firstSearchParam([]), '');
+    const page = readSource(PAGE);
+    assert.match(page, /q\?: string \| string\[\]/, 'q se tipa como string | string[]');
+    assert.match(page, /page\?: string \| string\[\]/, 'page se tipa como string | string[]');
+    assert.match(page, /firstSearchParam\(params\.q\)\.trim\(\)/, 'q se normaliza antes de trim');
+    assert.match(page, /parseIndexPage\(firstSearchParam\(params\.page\)\)/, 'page se normaliza antes de parsear');
+});
+
 void test('la página usa el helper y declara el contador honesto de lo visible', () => {
     const page = readSource(PAGE);
     assert.match(page, /filterResearchIndex\(ordered, query\)/, 'filtra en servidor con el helper');
@@ -73,7 +86,10 @@ void test('la página usa el helper y declara el contador honesto de lo visible'
     assert.match(page, /THESIS_DETAIL_LIMIT = RESEARCH_INDEX_PAGE_SIZE/, 'toda tarjeta visible entra en el tope de detalle');
     assert.ok(!page.includes('pendiente'), 'desaparece el estado «pendiente»: ninguna tarjeta visible sale sin detalle por recorte');
     assert.match(page, /Mostrando \$\{formatNumber\(slice\.from\)\}-\$\{formatNumber\(slice\.to\)\} de \$\{formatNumber\(slice\.total\)\} empresas/, 'contador de lo visible');
+    assert.match(page, /Mostrando \$\{formatNumber\(slice\.from\)\}-\$\{formatNumber\(slice\.to\)\} de \$\{formatNumber\(slice\.total\)\} coincidencias para «\$\{query\}»/, 'bajo filtro también se declara el rango visible');
     assert.match(page, /coincidencias para «\$\{query\}» \(de \$\{formatNumber\(ordered\.length\)\} empresas en el registro\)/, 'contador del filtro contra el total real');
+    assert.match(page, /`0 coincidencias para «\$\{query\}»/, 'filtro sin coincidencias no pinta un rango 0-0');
+    assert.match(page, /description=\{[\s\S]*?ordered\.length\s*\?/, 'el texto de registro vacío depende del registro, no del filtro');
     assert.match(page, /Página \{formatNumber\(slice\.page\)\} de \{formatNumber\(slice\.pages\)\}/, 'posición de página declarada');
 });
 
