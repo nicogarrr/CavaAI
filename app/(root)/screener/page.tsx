@@ -103,7 +103,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
         <CardContent>
           {engineScreens.engineDown ? (
             <p className="text-sm text-gray-500">
-              El motor (POST /api/screeners/run) no responde: la tabla de abajo muestra
+              El motor (POST /api/screeners/run) no ha podido completar la consulta: la tabla de abajo muestra
               precios Finnhub como lectura offline, sin análisis de cobertura.
             </p>
           ) : engineScreens.screens.length === 0 ? (
@@ -146,8 +146,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                   Motor de análisis desconectado
                 </span>
                 <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-gray-400 sm:text-base">
-                  No hay datos ahora mismo: el motor no responde y puede estar arrancando. Tus datos
-                  están a salvo, reintenta en unos segundos.
+                  No hay datos ahora mismo.
                 </p>
                 <Button asChild className="mt-4 min-h-[44px] px-6">
                   <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>
@@ -156,7 +155,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                   </Link>
                 </Button>
                 <p className="mt-4 text-xs text-gray-500">
-                  Si el problema persiste, el backend local no está en marcha.
+                  El servidor de CavaAI no ha podido completar la consulta. Reintenta en unos segundos.
                 </p>
               </div>
               ) : (
