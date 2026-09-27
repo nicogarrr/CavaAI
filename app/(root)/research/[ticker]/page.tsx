@@ -235,6 +235,25 @@ function label(value: string | null | undefined): string {
   return STATUS_LABELS[value] ?? RATING_LABELS[value] ?? value.replaceAll('_', ' ');
 }
 
+/**
+ * F249: source_url se persiste tal cual en varios caminos de ingesta, así
+ * que no basta con que sea truthy: solo se enlaza una URL absoluta
+ * http(s) con hostname. Cualquier otra cosa (javascript:, data:,
+ * relativa, malformada) se queda como texto plano.
+ */
+function safeHttpUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && url.hostname) {
+      return url.toString();
+    }
+  } catch {
+    // malformada: texto plano
+  }
+  return null;
+}
+
 /** Definición metodológica del foso (glosario compartido) para pintarla en la card */
 function moatDefinition(type: string): string | null {
   const key = moatGlossaryKey[type];
@@ -929,9 +948,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <Panel title="Sube una fuente primaria"><MutationForm action={importResearchDocumentFile} className="grid gap-3" successMessage="Documento subido"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><FileUploadInput name="file" required /><Button type="submit">Subir</Button></MutationForm></Panel>
           <Panel title="Importar desde una URL"><MutationForm action={importResearchDocumentUrl} className="grid gap-3" successMessage="Documento importado"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><Input name="url" type="url" placeholder="https://..." required /><Input name="source_type" placeholder="sec_filing / investor_relations" defaultValue="url" /><Button type="submit">Importar</Button></MutationForm></Panel>
         </div>
+        {/* F249: las fichas enlazan a la fuente primaria cuando el
+            documento tiene source_url (filings SEC la traen); sin URL la
+            ficha queda como texto, nunca un enlace roto. */}
         <Panel title="Documentos">
           {documents.length ? (
-            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
+            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" />{safeHttpUrl(document.source_url) ? <a className="font-medium text-gray-200 underline decoration-gray-700 underline-offset-4 transition hover:text-teal-200" href={safeHttpUrl(document.source_url) ?? undefined} rel="noopener noreferrer" target="_blank">{document.title}</a> : <span className="font-medium text-gray-200">{document.title}</span>}<Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
           ) : (
             <EmptyState
               action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}
@@ -992,6 +1014,16 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const activeGroupLabel = GROUPS.find((group) => group.key === activeModule.group)?.label ?? '';
   const groupModules = MODULES.filter((module) => module.group === activeModule.group);
   const recentChangeCount = snapshot.recent_changes?.length ?? 0;
+  // F143: el distintivo de tenencia sale de la posicion viva del tenant
+  // (snapshot.in_portfolio), no de companies.company_type, que es una
+  // clase estatica fijada al alta de la ficha y queda desfasada en los
+  // dos sentidos (AAPL en cartera decia "candidato de analisis"; SPCX,
+  // sin posicion del tenant, "portfolio holding" - ademas en ingles por
+  // el fallback de label()). Un company_type portfolio_holding sin
+  // posicion viva se muestra como candidato de analisis.
+  const holdingBadge = snapshot.in_portfolio
+    ? 'en cartera'
+    : label(company.company_type === 'portfolio_holding' ? 'research_candidate' : company.company_type);
 
   return (
     <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
@@ -1003,7 +1035,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {company.sector} · {company.industry}</p>
           </div>
           <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{label(company.company_type)}</span><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{holdingBadge}</span><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} currency={company.currency} /></div>
               <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} />
