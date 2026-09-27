@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { getProfile } from '@/lib/actions/finnhub.actions';
+import { resolveUnknownListingIdentity } from '@/lib/research/unknown-listing';
 import { cache } from 'react';
 import {
   ArrowLeft,
@@ -9,6 +11,7 @@ import {
   History,
   RefreshCcw,
   Search,
+  ShieldAlert,
   ShieldCheck,
   Target,
 } from 'lucide-react';
@@ -530,29 +533,41 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     throw error;
   }
   if (!snapshot) {
-    // Ficha de la acción SIN research (aprobado por Nico 2026-09-23): los
-    // datos de mercado (Finnhub) no dependen del research, así que la página
-    // muestra el panel de mercado completo + estado honesto con CTA, en vez
-    // del 404 pelado que veía el buscador con la BD nueva.
-    let market: Awaited<ReturnType<typeof getCompanyMarketSnapshot>>;
-    try {
-      market = await getCompanyMarketSnapshot(ticker);
-    } catch (error) {
-      if (isBackendUnavailableError(error)) {
-        return <BackendOffline feature={`Datos de mercado de ${ticker}`} retryHref={`/research/${ticker}`} />;
-      }
-      throw error;
-    }
+    // F286: snapshot null tiene procedencia EXACTA: el frontend solo devuelve
+    // null ante el 404 de /api/companies/{ticker}/snapshot, y ese 404 en
+    // backend es «compañía ausente del master» (resolve_company). Una empresa
+    // del master SIN research recibe snapshot construido y ve la guía de
+    // capas faltantes con su CTA en el render normal: esta rama es solo
+    // «ticker fuera del master». Política de veracidad: ninguna respuesta
+    // del proveedor prueba la inexistencia del emisor buscado (un perfil {}
+    // solo dice que Finnhub no conoce el símbolo) -> NUNCA 404 aquí; y un
+    // perfil del ticker desnudo solo prueba que el símbolo existe en alguna
+    // bolsa, no que sea ese emisor (ALM -> Almonty US, no Almirall/BME) ->
+    // NUNCA CTA «Generar tesis» aquí. Tres estados honestos sin CTA.
+    const identity = resolveUnknownListingIdentity(await getProfile(ticker), ticker);
+    const state =
+      identity.kind === 'unverified'
+        ? {
+            title: 'Identidad del ticker no verificada',
+            description: `${ticker} no tiene identidad de listado verificada en CavaAI: el proveedor de mercado conoce este símbolo como «${identity.providerName}», que puede no ser el emisor que buscas. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo.`,
+          }
+        : identity.kind === 'not-in-sources'
+          ? {
+              title: 'No encontramos este ticker en nuestras fuentes',
+              description: `Ninguna de nuestras fuentes reconoce ${ticker}: puede que el símbolo sea incorrecto o que aún no tenga cobertura verificada. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo.`,
+            }
+          : {
+              title: 'No pudimos comprobar este ticker',
+              description: `${ticker} no está en la cobertura verificada de CavaAI y el proveedor de mercado no está disponible para comprobarlo. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo; inténtalo de nuevo más tarde.`,
+            };
     return (
       <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px] space-y-6">
           <Link className="inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
-          <CompanyMarketPanel snapshot={market} />
           <EmptyState
-            action={<ThesisGenerateButton ticker={ticker} />}
-            description="Esta empresa todavía no tiene research generado. Puedes lanzarlo ahora: el motor recopila evidencia con fuentes trazables y construye la tesis paso a paso (puede tardar unos minutos)."
-            icon={FileText}
-            title="Research aún no generado"
+            description={state.description}
+            icon={ShieldAlert}
+            title={state.title}
             titleAs="h1"
           />
         </div>

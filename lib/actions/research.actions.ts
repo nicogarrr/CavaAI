@@ -740,7 +740,9 @@ export async function getResearchCompanySnapshot(
       { fast: true, cache: 'no-store' },
     );
   } catch (error) {
-    // 404 es "aún no hay research", no un fallo de infraestructura.
+    // 404 = compañía ausente del master (resolve_company): una empresa del
+    // master sin research recibe snapshot construido. Cualquier otro fallo
+    // (red, 5xx, firma) se propaga: null tiene procedencia exacta.
     if (error instanceof AppError && error.statusCode === 404) return null;
     throw error;
   }
