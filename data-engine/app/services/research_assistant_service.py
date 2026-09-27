@@ -5,6 +5,8 @@ Never use user text or model output as an instruction to retrieve other tenants.
 """
 from __future__ import annotations
 
+import re
+import unicodedata
 from urllib.parse import urlsplit
 
 from sqlalchemy import desc, select
@@ -70,12 +72,39 @@ def guide_context(db: Session, ticker: str) -> dict:
     }
 
 
+_STOP = frozenset({"sobre", "para", "esta", "este", "dice", "dime", "cual", "cuáles", "what", "does", "about", "the", "and", "hay", "qué", "que", "los", "las", "del", "con", "por", "una", "uno", "como", "cómo", "documento"})
+
+
+def _tokens(text: str) -> set[str]:
+    normalized = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
+    return {token for token in re.findall(r"[a-z0-9]+", normalized) if len(token) >= 3 and token not in _STOP}
+
+
+def _rank(citations: list[dict], question: str, ticker: str) -> list[dict]:
+    terms = _tokens(question) - _tokens(ticker)
+    if not terms:
+        return []
+    ranked = []
+    for citation in citations:
+        haystack = _tokens(f"{citation.get('source') or ''} {citation.get('excerpt') or ''}") - _tokens(ticker)
+        score = len(terms & haystack)
+        if score:
+            ranked.append((score, citation))
+    ranked.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
+    if not ranked:
+        return []
+    # A generic overlap ('filing') cannot dilute an exact multi-term match
+    # ('ITU filing') with unrelated financial facts.
+    best = ranked[0][0]
+    return [citation for score, citation in ranked if score == best]
+
+
 def _evidence(db: Session, company: Company, tenant_id: int, question: str) -> list[dict]:
     citations = []
     facts = db.scalars(select(FinancialFact).where(
         FinancialFact.tenant_id == tenant_id, FinancialFact.company_id == company.id,
         FinancialFact.source_id.is_not(None), FinancialFact.is_reported.is_(True),
-    ).order_by(desc(FinancialFact.created_at)).limit(12)).all()
+    ).order_by(desc(FinancialFact.created_at)).limit(200)).all()
     document_ids = {fact.source_id for fact in facts}
     documents = db.scalars(select(Document).where(
         Document.tenant_id == tenant_id, Document.company_id == company.id,
@@ -92,7 +121,7 @@ def _evidence(db: Session, company: Company, tenant_id: int, question: str) -> l
                           "excerpt": f"{row.metric}: {row.value} {row.unit}"})
     news = db.scalars(select(NewsEvent).where(
         NewsEvent.tenant_id == tenant_id, NewsEvent.company_id == company.id,
-    ).order_by(desc(NewsEvent.date)).limit(12)).all()
+    ).order_by(desc(NewsEvent.date)).limit(200)).all()
     for row in news:
         provenance = row.metadata_ or {}
         date_source = provenance.get("date_source")
@@ -104,21 +133,19 @@ def _evidence(db: Session, company: Company, tenant_id: int, question: str) -> l
         citations.append({"id": f"news_event:{row.id}", "kind": "news_event",
                           "source": row.source, "url": _url(row.url),
                           "as_of": f"{row.date.isoformat()} ({label})", "excerpt": row.title})
-    terms = {term.lower().strip(".,;?!") for term in question.split() if len(term) > 4}
+    # Seek document candidates using the question, not merely the 100 newest
+    # chunks. The cap bounds work, and empty/low-overlap results fail closed.
     chunks = db.execute(select(DocumentChunk, Document).join(Document, DocumentChunk.document_id == Document.id).where(
         DocumentChunk.tenant_id == tenant_id, Document.tenant_id == tenant_id,
         Document.company_id == company.id,
-    ).order_by(desc(Document.published_at)).limit(100)).all()
-    ranked = sorted(((sum(term in chunk.text.lower() for term in terms), chunk, doc) for chunk, doc in chunks),
-                    key=lambda result: result[0], reverse=True)
-    for score, chunk, doc in ranked[:4]:
-        if score < 1 or not _url(doc.source_url) or not doc.published_at:
+    ).order_by(desc(Document.published_at)).limit(2000)).all()
+    for chunk, doc in chunks:
+        if not _url(doc.source_url) or not doc.published_at:
             continue
         citations.append({"id": f"document_chunk:{chunk.id}", "kind": "document_chunk",
                           "source": doc.title, "url": _url(doc.source_url),
-                          "as_of": doc.published_at.isoformat() if doc.published_at else None,
-                          "excerpt": chunk.text[:450]})
-    return citations
+                          "as_of": doc.published_at.isoformat(), "excerpt": chunk.text[:450]})
+    return _rank(citations, question, company.ticker)
 
 
 def answer(db: Session, payload) -> dict:

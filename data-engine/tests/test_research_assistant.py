@@ -82,7 +82,8 @@ def test_tenant_isolation_ticket_binding_and_cited_rows(db):
         mode="guide", question="What does the ITU filing say?", ticker="ASTS", review_id=review.id)))
     assert response.review_id == review.id and response.writeback is False
     assert response.status == "answered"
-    assert any(c.kind == "financial_fact" for c in response.citations)
+    assert any(c.kind == "news_event" for c in response.citations)
+    assert all(c.kind != "financial_fact" for c in response.citations)
     assert "999" not in response.answer and "Private" not in response.answer
     assert all(cid in {c.id for c in response.citations} for sec in response.sections for cid in sec.citation_ids)
     context = guide_context(db, "ASTS")
@@ -90,3 +91,34 @@ def test_tenant_isolation_ticket_binding_and_cited_rows(db):
     assert [r["id"] for r in context["open_reviews"]] == [review.id]
     with pytest.raises(LookupError):
         answer(db, AssistantRequest(mode="guide", question="What now?", ticker="ASTS", review_id=other_review.id))
+
+
+def test_relevant_filing_chunk_beats_six_unrelated_facts(db):
+    from app.models.entities import DocumentChunk
+
+    tenant, _, company = setup(db)
+    for i in range(6):
+        doc = Document(tenant_id=tenant.id, company_id=company.id, title=f"Annual revenue {i}",
+                       source_type="company_ir", source_url=f"https://example.com/revenue/{i}")
+        db.add(doc)
+        db.flush()
+        db.add(FinancialFact(tenant_id=tenant.id, company_id=company.id, metric="revenue",
+                             value=Decimal(str(i + 10)), unit="USD", period="FY2025", fiscal_year=2025,
+                             source_id=doc.id, source_type="company_ir"))
+    filing = Document(tenant_id=tenant.id, company_id=company.id, title="D-BLUEBIRD ITU filing",
+                      source_type="regulatory", source_url="https://example.com/itu-filing",
+                      published_at=datetime(2026, 9, 24, tzinfo=UTC))
+    db.add(filing)
+    db.flush()
+    db.add(DocumentChunk(tenant_id=tenant.id, document_id=filing.id, chunk_index=0,
+                         text="ITU filing D-BLUEBIRD describes the constellation registration.", token_count=10))
+    db.commit()
+    response = AssistantResponse.model_validate(answer(db, AssistantRequest(
+        mode="guide", ticker="ASTS", question="¿Qué dice el filing ITU D-BLUEBIRD?")))
+    assert response.status == "answered"
+    assert any(c.kind == "document_chunk" and "ITU" in c.source for c in response.citations)
+    assert all(c.kind != "financial_fact" for c in response.citations)
+    missing = AssistantResponse.model_validate(answer(db, AssistantRequest(
+        mode="explore", ticker="ASTS", question="¿Qué pasó con el propulsor xenón?")))
+    assert missing.status == "insufficient_data"
+    assert missing.citations == [] and missing.missing_data
