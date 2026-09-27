@@ -14,6 +14,53 @@ import { formatDate, formatNumber, NA } from '@/lib/format';
 import { firstSearchParam, normalizeSourcesTicker, sourcesHref } from '@/lib/research/sources-inventory';
 import { auditScoreText, auditStatusLabel } from '@/lib/audit-status-copy';
 
+/** F323: tipo y nivel de fuente llegan como ids internos en ingles
+ *  (manual_upload, tier_1_regulatory...) y se pintaban en crudo en la tabla.
+ *  Mapas con el catalogo del backend y fallback que humaniza sin ocultar. */
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  sec: 'SEC EDGAR',
+  esef: 'ESEF',
+  cnmv: 'CNMV',
+  url: 'URL',
+  manual_upload: 'Subida manual',
+  upload: 'Subida de archivo',
+  manual: 'Manual',
+  seed: 'Semilla inicial',
+  fmp: 'FMP',
+  fmp_profile: 'Perfil FMP',
+  manual_transcript: 'Transcripción manual',
+  filing: 'Filing regulatorio',
+  company_ir: 'IR de la compañía',
+  transcript: 'Transcripción',
+};
+
+const SOURCE_TIER_LABELS: Record<string, string> = {
+  tier_1_regulatory: 'Regulador (T1)',
+  tier_2_company: 'Compañía (T2)',
+  tier_3_transcript: 'Transcripción (T3)',
+  tier_4_reputable_media: 'Medio reputado (T4)',
+  tier_5_data_provider: 'Proveedor de datos (T5)',
+  tier_6_bootstrap: 'Semilla inicial (T6)',
+  tier_7_user_input: 'Entrada del usuario (T7)',
+  // classify_source devuelve tier_unknown cuando nada clasifica la fuente;
+  // sin esta clave el fallback la humanizaba en crudo.
+  tier_unknown: 'Fuente desconocida',
+  primary: 'Primaria',
+  secondary: 'Secundaria',
+};
+
+function humanizeId(value: string): string {
+  return value.replaceAll('_', ' ');
+}
+
+function sourceTypeLabel(value: string): string {
+  return SOURCE_TYPE_LABELS[value] ?? humanizeId(value);
+}
+
+function sourceTierLabel(value: string): string {
+  return SOURCE_TIER_LABELS[value] ?? humanizeId(value);
+}
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -247,8 +294,8 @@ export default async function ResearchSourcesPage({
                 <tr key={document.id} className="border-b border-gray-900 last:border-0">
                   <th className="py-3 text-left text-sm font-semibold text-gray-200" scope="row">{document.ticker ?? 'GLOBAL'}</th>
                   <td className="py-3 text-gray-300">{document.title}</td>
-                  <td className="py-3 text-gray-400">{document.source_type}</td>
-                  <td className="py-3 text-gray-400">{document.source_tier}</td>
+                  <td className="py-3 text-gray-400">{sourceTypeLabel(document.source_type)}</td>
+                  <td className="py-3 text-gray-400">{sourceTierLabel(document.source_tier)}</td>
                   <td className="py-3 text-gray-500">
                     {document.published_at ? formatDate(document.published_at, undefined, NA) : 'sin fecha'}
                   </td>

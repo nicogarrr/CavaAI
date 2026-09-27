@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const page = readFileSync('app/(root)/research/sources/page.tsx', 'utf8');
+
+// Catálogo del backend: tipos de documento (ingesta SEC/ESEF/CNMV, subidas,
+// URLs, seeds, FMP, transcripts) y tiers de source_hierarchy_service.py.
+const BACKEND_SOURCE_TYPES = [
+    'sec', 'esef', 'cnmv', 'url', 'manual_upload', 'upload', 'manual',
+    'seed', 'fmp', 'fmp_profile', 'manual_transcript', 'filing',
+    'company_ir', 'transcript',
+];
+const BACKEND_TIERS = [
+    'tier_1_regulatory', 'tier_2_company', 'tier_3_transcript',
+    'tier_4_reputable_media', 'tier_5_data_provider', 'tier_6_bootstrap',
+    'tier_7_user_input', 'tier_unknown', 'primary', 'secondary',
+];
+
+test('F323: tipo y nivel de fuente se pintan con etiqueta en espanol', () => {
+    assert.match(page, /\{sourceTypeLabel\(document\.source_type\)\}/);
+    assert.match(page, /\{sourceTierLabel\(document\.source_tier\)\}/);
+    assert.doesNotMatch(page, /\{document\.source_type\}<\/td>/);
+    assert.doesNotMatch(page, /\{document\.source_tier\}<\/td>/);
+});
+
+test('F323: los mapas cubren el catalogo del backend', () => {
+    for (const key of BACKEND_SOURCE_TYPES) {
+        assert.match(page, new RegExp(`${key}: '`), `falta source_type ${key}`);
+    }
+    for (const key of BACKEND_TIERS) {
+        assert.match(page, new RegExp(`${key}: '`), `falta tier ${key}`);
+    }
+    assert.match(page, /SOURCE_TYPE_LABELS\[value\] \?\? humanizeId\(value\)/);
+    assert.match(page, /SOURCE_TIER_LABELS\[value\] \?\? humanizeId\(value\)/);
+});
