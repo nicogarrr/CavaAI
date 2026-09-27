@@ -113,14 +113,10 @@ class NewsService:
                 else None
             )
             materiality_score = (
-                semantic_impact.impact_score
-                if semantic_impact
-                else assessment.materiality_score
+                semantic_impact.impact_score if semantic_impact else assessment.materiality_score
             )
             requires_update = assessment.requires_update or bool(
-                semantic_impact
-                and semantic_impact.affected_claim_ids
-                and materiality_score >= 7
+                semantic_impact and semantic_impact.affected_claim_ids and materiality_score >= 7
             )
         # La politica de recencia tambien cubre la urgencia derivada del
         # impacto semantico: un filing antiguo nunca es urgente por recencia.
@@ -173,15 +169,21 @@ class NewsService:
                 UNIVERSE_RELEVANCE_CRITERIA,
                 mark_only,
             )
-            tracked = bool(company and (
-                db.scalar(select(Position.id).where(Position.company_id == company.id).limit(1))
-                or db.scalar(select(WatchItem.id).where(WatchItem.symbol == company.ticker).limit(1))
-            ))
+
+            tracked = bool(
+                company
+                and (
+                    db.scalar(select(Position.id).where(Position.company_id == company.id).limit(1))
+                    or db.scalar(select(WatchItem.id).where(WatchItem.symbol == company.ticker).limit(1))
+                )
+            )
             if source.lower() == "gdelt" and company:
-                mark = mark_only("universe_relevance",
+                mark = mark_only(
+                    "universe_relevance",
                     f"TRACKED_BY_ACCOUNT: {tracked}\nTICKER: {company.ticker}\nREPORT: {text}",
                     "Classify the relevance of this report for the provided tracking context; do not verify facts.",
-                    UNIVERSE_RELEVANCE_CRITERIA)
+                    UNIVERSE_RELEVANCE_CRITERIA,
+                )
                 news_metadata["tracked_by_account"] = tracked
                 if mark:
                     # La pertenencia a cartera/lista es determinista: Jev
@@ -190,13 +192,28 @@ class NewsService:
                         mark["label"] = "universe"
                     news_metadata["jev_universe_relevance"] = mark
             if requires_update and company:
-                mark = mark_only("thesis_change", text,
+                mark = mark_only(
+                    "thesis_change",
+                    text,
                     "Mark whether the change looks substantive; never decide whether to regenerate a thesis.",
-                    THESIS_CRITERIA)
+                    THESIS_CRITERIA,
+                )
                 if mark:
                     news_metadata["jev_thesis_priority"] = mark
         except Exception:  # noqa: BLE001 — jamás bloquear una ingesta
             pass
+        # Evaluacion completa persistida en la MISMA transaccion (F314):
+        # GET /api/news sirve solo lo persistido en ingesta; recomputar por
+        # peticion costaba una evaluacion por noticia y podia divergir de lo
+        # persistido (mezcla de campos persistidos y recalculados).
+        news_metadata["assessment"] = {
+            "source_tier": assessment.source_tier,
+            "source_trust_score": assessment.source_trust_score,
+            "portfolio_weight": assessment.portfolio_weight,
+            "materiality_reasons": materiality_reasons,
+            "source_policy": assessment.source_policy,
+            "model_route": assessment.model_route,
+        }
         news = NewsEvent(
             company_id=company.id if company else None,
             # La fecha del evento es la de publicacion de la fuente (filing,
@@ -243,9 +260,7 @@ class NewsService:
                     f"Material news requires thesis review: {summary}. "
                     f"{semantic_impact.summary if semantic_impact else ''}"
                 ).strip(),
-                affected_claim_ids=(
-                    semantic_impact.affected_claim_ids if semantic_impact else []
-                ),
+                affected_claim_ids=(semantic_impact.affected_claim_ids if semantic_impact else []),
                 affected_metrics=assessment.affected_assumptions,
                 requires_review=True,
             )
@@ -296,12 +311,8 @@ class NewsService:
             portfolio_weight=assessment.portfolio_weight,
             materiality_reasons=materiality_reasons,
             model_route=assessment.model_route,
-            affected_claim_ids=(
-                semantic_impact.affected_claim_ids if semantic_impact else []
-            ),
-            affected_node_ids=(
-                semantic_impact.affected_node_ids if semantic_impact else []
-            ),
+            affected_claim_ids=(semantic_impact.affected_claim_ids if semantic_impact else []),
+            affected_node_ids=(semantic_impact.affected_node_ids if semantic_impact else []),
             semantic_impact=(semantic_impact.trace if semantic_impact else {}),
         )
 
