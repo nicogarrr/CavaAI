@@ -11,3 +11,7 @@ The frequency response is unmodified. The detail response is a real capture with
 Official listing captured 2026-09-27: https://www.itu.int/ITU-R/space/asreceived/Publication/AsReceived ; original SHA256 383fad2778ed7a90aa6c0facaa6cf1cab8bf39b505879324f404af4db2c8b9c3, fixture is unmodified (no Breadcrumb token found); fixture SHA256 383fad2778ed7a90aa6c0facaa6cf1cab8bf39b505879324f404af4db2c8b9c3
 
 Official paginated table page 2 captured 2026-09-27 from GetPublicationTable?publication-table.p=(base64 JSON Skip=30,Take=30), SHA256 021691ed892522e9204658fe5d83f95e9780e019f3e0fd1a809ca55a1376ec71; server reports 517 total.
+
+J2026-83391 official detail https://www.itu.int/ITU-R/space/asreceived/Publication/DisplayPublication/70632 captured 2026-09-27, redacted token/Breadcrumb fixture SHA256 faa0af57ba670eeffc86fb91a1b39c5ddcb920805d991c8c6e9f0060ff593dd5. Registry/receipt dates are not publication. No ASTS/NORAD identity inferred.
+
+J2026-83392 official detail https://www.itu.int/ITU-R/space/asreceived/Publication/DisplayPublication/70633 captured 2026-09-27, redacted token/Breadcrumb fixture SHA256 aa79a7b35b557d55a3654de82eba00cdce1918fbd9b107babf4e12b94aad5614. Registry/receipt dates are not publication. No ASTS/NORAD identity inferred.
