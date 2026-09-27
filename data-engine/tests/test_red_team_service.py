@@ -18,6 +18,7 @@ from app.models.entities import (
     Company,
     RedTeamRun,
     ResearchReview,
+    SourceAudit,
     ThesisVersion,
 )
 from app.services.red_team_service import SEVERITY_PENALTY, RedTeamService
@@ -121,10 +122,44 @@ def test_run_without_findings_is_honest_about_coverage(db):
     assert run.trace["method"] == "deterministic_evidence_attack_v1"
     assert run.trace["claim_count"] == 0
     if not run.findings:
-        assert "insufficient coverage rather than low risk" in run.strongest_bear_case
+        assert "cobertura insuficiente" in run.strongest_bear_case
     else:
         # With no claims the valuation finding dominates the attack.
         assert run.findings[0]["type"] == "valuation_not_publishable"
+
+
+def test_run_flags_blocked_audit_with_backing_score_not_coverage(db):
+    # F301: una auditoría NO superada con afirmaciones limpias (puntuación 100,
+    # sin sin-respaldo) es un bloqueo aguas abajo. El mensaje debe hablar de
+    # «puntuación de respaldo de afirmaciones», nunca de «cobertura» (la
+    # puntuación no es cobertura global) y debe admitir otras causas de bloqueo.
+    company = _company(db)
+    thesis = ThesisVersion(
+        company_id=company.id, version=1, status="draft",
+        thesis_markdown="# t", executive_summary="e",
+    )
+    db.add(thesis)
+    db.flush()
+    db.add(
+        SourceAudit(
+            thesis_version_id=thesis.id,
+            passed=False,
+            source_coverage_score=100,
+            unsupported_claims=[],
+            data_conflicts=[],
+            required_fixes=["trace_missing"],
+        )
+    )
+    db.commit()
+
+    run = RedTeamService().run(db, company)
+
+    blocked = [f for f in run.findings if f["type"] == "source_audit_blocked"]
+    assert blocked, run.findings
+    message = blocked[0]["message"]
+    assert "puntuación de respaldo de afirmaciones 100/100" in message
+    assert "cobertura" not in message
+    assert "traza" in message
 
 
 def test_run_does_not_duplicate_open_review(db):

@@ -258,8 +258,8 @@ class ScreenerService:
                         company_id=company_id,
                         alert_type="new_screen_match",
                         severity="medium",
-                        title=f"New match: {screen.name}",
-                        message=f"{company.ticker if company else company_id} now matches {screen.name}",
+                        title=f"Nueva coincidencia: {screen.name}",
+                        message=f"{company.ticker if company else company_id} ahora cumple {screen.name}",
                         fingerprint_parts=["saved_screen", str(screen.id), str(company_id)],
                         metadata={
                             "saved_screen_id": screen.id,
