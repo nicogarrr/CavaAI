@@ -2498,6 +2498,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sources/documents/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Documents Count
+         * @description Total real de documentos del tenant.
+         *
+         *     La lista /documents pagina (50 por defecto): sin este total, la UI
+         *     presentaba el tamano de pagina como si fuera el inventario completo
+         *     y el resto de documentos quedaba inalcanzable (F131).
+         */
+        get: operations["documents_count_api_sources_documents_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sources/documents/index/rebuild": {
         parameters: {
             query?: never;
@@ -12024,6 +12048,48 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    documents_count_api_sources_documents_count_get: {
+        parameters: {
+            query?: {
+                ticker?: string | null;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
