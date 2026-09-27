@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
@@ -135,6 +136,67 @@ async def _analyze_with_llm(payload: str) -> tuple[AstsAnalysis, object]:
     return AstsAnalysis.model_validate(parse_json_response(response.text)), response
 
 
+_NUMBER_RE = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)?(?![\w.])")
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?")
+_NAME_RE = re.compile(r"\b(?:BLUEWALKER|SPACEMOBILE)-\d+\b")
+_FAMILY_RE = re.compile(r"\b(BLUEWALKER|SPACEMOBILE)\b(?![-\d])")
+
+
+def _real_values(satellites: list[dict], agg: dict) -> list[float]:
+    values: list[float] = []
+    for sat in satellites:
+        values.extend([float(sat["norad_cat_id"]), sat["inclination"],
+                       sat["mean_motion"], sat["eccentricity"]])
+    values.extend([float(agg["count"]), *(float(v) for v in agg["families"].values()),
+                   agg["inclination_deg_min"], agg["inclination_deg_max"],
+                   agg["mean_motion_rev_day_min"], agg["mean_motion_rev_day_max"],
+                   agg["eccentricity_max"]])
+    return values
+
+
+def _number_ok(token: str, reals: list[float], years: set[int]) -> bool:
+    value = float(token.replace(",", "."))
+    if token.replace(",", "").isdigit() and 1900 <= value <= 2100:
+        # Un año suelto solo es valido si es el año de algun dato real.
+        return int(value) in years
+    decimals = len(token.replace(",", ".").split(".")[1]) if ("." in token or "," in token) else 0
+    tolerance = 0.5 * 10 ** -decimals + 1e-12
+    return any(abs(real - value) <= tolerance for real in reals)
+
+
+def _llm_text_verified(analysis: AstsAnalysis, satellites: list[dict], agg: dict,
+                       fetched_at: str) -> bool:
+    """Every number, object name and date in the LLM text must exist in the
+    persisted snapshot (rounding-tolerant for magnitudes); the summary must
+    name CelesTrak and the real fetch day. Anything unverifiable rejects the
+    whole generative text: the deterministic summary is the canonical answer.
+    It does not prove prose semantics — declared limit.
+    """
+    if "celestrak" not in analysis.summary.lower():
+        return False
+    if fetched_at[:10] not in analysis.summary:
+        return False
+    texts = " ".join([analysis.summary, *(obs.text for obs in analysis.observations)])
+    real_names = {sat["object_name"] for sat in satellites}
+    if any(name not in real_names for name in _NAME_RE.findall(texts)):
+        return False
+    if any(family not in agg["families"] for family in _FAMILY_RE.findall(texts)):
+        return False
+    timestamps = [fetched_at, *(sat["epoch"] for sat in satellites)]
+    masked = texts
+    for match in _DATE_RE.findall(texts):
+        token = match
+        day_ok = any(ts[:10] == token[:10] for ts in timestamps)
+        time_ok = len(token) == 10 or any(
+            ts.startswith(token.replace(" ", "T")) for ts in timestamps)
+        if not (day_ok and time_ok):
+            return False
+        masked = masked.replace(token, " ", 1)
+    reals = _real_values(satellites, agg)
+    years = {int(ts[:4]) for ts in timestamps}
+    return all(_number_ok(token, reals, years) for token in _NUMBER_RE.findall(masked))
+
+
 def analyze_asts_catalog(db: Session, *, use_llm: bool = True) -> dict:
     """Read-only except the LLM quota reservation; never mutates the catalog."""
     snapshot = read_catalog(db)  # tenant-scoped; raises without tenant context
@@ -175,12 +237,18 @@ def analyze_asts_catalog(db: Session, *, use_llm: bool = True) -> dict:
                     payload, llm_input = _llm_payload(snapshot["satellites"], agg,
                                                       snapshot["fetched_at"])
                     extraction, _response = run_from_any_context(_analyze_with_llm(payload))
-                    analysis = {
-                        "summary": extraction.summary,
-                        "observations": [obs.model_dump() for obs in extraction.observations],
-                        "aggregates": agg,
-                    }
-                    mode = "llm"
+                    if _llm_text_verified(extraction, snapshot["satellites"], agg,
+                                          snapshot["fetched_at"]):
+                        analysis = {
+                            "summary": extraction.summary,
+                            "observations": [obs.model_dump() for obs in extraction.observations],
+                            "aggregates": agg,
+                        }
+                        mode = "llm"
+                    else:
+                        note = ("El texto generativo incluía datos no contrastados "
+                                "con el catálogo; se usa el resumen determinista "
+                                "verificado.")
             except Exception:  # noqa: BLE001 - never claim a failed call worked
                 note = "Análisis LLM no disponible; se usa el resumen determinista."
     return {

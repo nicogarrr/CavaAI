@@ -91,23 +91,68 @@ def test_llm_failure_falls_back_honestly(db, monkeypatch):
     assert result["analysis"]["aggregates"]["count"] == 3
 
 
-def test_llm_success_marks_mode_and_keeps_aggregates(db, monkeypatch):
-    fresh_catalog(db)
+def stub_llm(monkeypatch, summary, observations=()):
     monkeypatch.setenv("ASTS_LLM_ENABLED", "1")
     monkeypatch.setattr(service, "reserve_llm_call", lambda *_args: {
         "allowed": True, "minute_used": 1, "minute_limit": 2,
         "day_used": 1, "day_limit": 30, "reset": "UTC calendar minute/day"})
     async def fake(_payload):
         return service.AstsAnalysis(
-            summary="Catálogo CelesTrak con 3 objetos descargado en fecha real.",
-            observations=[service.Observation(text="Inclinación uniforme de 53.22°.")]), object()
+            summary=summary,
+            observations=[service.Observation(text=o) for o in observations]), object()
     monkeypatch.setattr(service, "_analyze_with_llm", fake)
+
+
+def test_llm_success_marks_mode_and_keeps_aggregates(db, monkeypatch):
+    fetched = fresh_catalog(db)
+    stub_llm(monkeypatch,
+             f"Catálogo CelesTrak descargado el {fetched.isoformat()}: 3 objetos.",
+             ["Inclinación uniforme de 53.22°."])
     result = service.analyze_asts_catalog(db)
     assert result["mode"] == "llm"
     assert result["llm_input"] == "completo"
     assert result["analysis"]["summary"].startswith("Catálogo CelesTrak")
     assert result["analysis"]["aggregates"]["count"] == 3  # datos reales siempre presentes
     assert result["llm_quota"]["day_limit"] == 30
+
+
+def test_llm_rounded_values_are_accepted(db, monkeypatch):
+    fetched = fresh_catalog(db)
+    # 53.2 es un redondeo legitimo de la inclinacion real 53.22
+    stub_llm(monkeypatch,
+             f"Catálogo CelesTrak descargado el {fetched.isoformat()[:10]}: 3 objetos.",
+             ["Inclinación de 53.2° en todo el catálogo."])
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "llm"
+
+
+def test_llm_invented_number_falls_back_to_deterministic(db, monkeypatch):
+    fetched = fresh_catalog(db)
+    stub_llm(monkeypatch,
+             f"Catálogo CelesTrak descargado el {fetched.isoformat()[:10]}: 200 satélites operativos.")
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "determinista"
+    assert result["note"] == ("El texto generativo incluía datos no contrastados "
+                              "con el catálogo; se usa el resumen determinista verificado.")
+    assert result["analysis"]["aggregates"]["count"] == 3
+
+
+def test_llm_invented_satellite_name_falls_back(db, monkeypatch):
+    fetched = fresh_catalog(db)
+    stub_llm(monkeypatch,
+             f"Catálogo CelesTrak descargado el {fetched.isoformat()[:10]}: 3 objetos.",
+             ["SPACEMOBILE-999 lidera la constelación."])
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "determinista"
+    assert "no contrastados" in result["note"]
+
+
+def test_llm_generic_summary_without_source_or_date_falls_back(db, monkeypatch):
+    fresh_catalog(db)
+    stub_llm(monkeypatch, "Resumen general del catálogo de satélites.")
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "determinista"
+    assert "no contrastados" in result["note"]
 
 
 def test_quota_cap_falls_back_honestly(db, monkeypatch):
