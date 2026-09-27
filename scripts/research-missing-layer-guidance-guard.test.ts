@@ -45,11 +45,15 @@ test('F309: los estados vacíos de la vista financieros ya no mandan a importar 
     const factTable = page.slice(page.indexOf('function FactTable'), page.indexOf('function MetricsGrid'));
     assert.doesNotMatch(factTable, /view=documents/);
     assert.match(factTable, /refreshLabel/);
-    assert.match(factTable, /Pulsa «\$\{refreshLabel\}» arriba para traerlos de la fuente oficial/);
-
+    assert.match(factTable, /Pulsa «\$\{refreshLabel\}» arriba para traerlos del proveedor indicado/);
+    assert.match(factTable, /no hay datos persistidos: comprueba el resultado del refresh y la fuente/);
     const metrics = page.slice(page.indexOf('function MetricsGrid'), page.indexOf('function ValuationView'));
     assert.doesNotMatch(metrics, /view=documents/);
     assert.match(metrics, /pulsa «Recalcular» arriba/);
+    assert.match(metrics, /botón de actualización correspondiente/);
+    // «Fuente oficial» solo cuando el flujo lo sea: FMP es proveedor comercial.
+    assert.doesNotMatch(factTable, /fuente oficial/);
+    assert.doesNotMatch(metrics, /fuente oficial/);
 });
 
 test('F309: FactTable recibe el nombre exacto del botón de refresh según el mercado', () => {

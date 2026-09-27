@@ -294,7 +294,7 @@ function FactTable({ facts, refreshLabel }: { facts: ResearchFact[]; refreshLabe
   if (!facts.length) {
     return (
       <EmptyState
-        description={`Pulsa «${refreshLabel}» arriba para traerlos de la fuente oficial. Si ya lo hiciste y sigue vacío, la fuente no devolvió datos para este valor.`}
+        description={`Pulsa «${refreshLabel}» arriba para traerlos del proveedor indicado. Si sigue vacío, no hay datos persistidos: comprueba el resultado del refresh y la fuente.`}
         title="Todavía no hay hechos financieros persistidos."
       />
     );
@@ -351,7 +351,7 @@ function MetricsGrid({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
   if (!metrics.length) {
     return (
       <EmptyState
-        description="Las métricas se derivan de los hechos financieros: pulsa «Recalcular» arriba. Si todavía no hay hechos, refresca primero los financieros con el botón de la fuente oficial."
+        description="Las métricas se derivan de los hechos financieros: pulsa «Recalcular» arriba. Si todavía no hay hechos, refresca primero los financieros con el botón de actualización correspondiente."
         title="Las métricas calculadas aún no se han refrescado."
       />
     );
