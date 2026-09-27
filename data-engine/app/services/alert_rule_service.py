@@ -16,6 +16,7 @@ from app.models import (
     MarketPrice,
     NewsEvent,
     Position,
+    ResearchAlert,
 )
 from app.services.notification_service import NotificationService
 from app.services.review_alert_service import ReviewAlertService
@@ -143,6 +144,23 @@ class AlertRuleService:
                 "target": rule.target,
                 "observation": observation,
             }
+            # Correlación para el digest visual. No suprime la entrega:
+            # una similitud de texto no prueba que dos fuentes sean idénticas.
+            try:
+                from app.services.jev_gates import DIGEST_CRITERIA, mark_only
+                previous = db.scalar(select(ResearchAlert).where(
+                    ResearchAlert.company_id == company.id,
+                    ResearchAlert.status == "open",
+                    ResearchAlert.created_at >= now - timedelta(days=1),
+                ).order_by(ResearchAlert.created_at.desc()).limit(1))
+                if previous:
+                    mark = mark_only("alert_digest", f"CURRENT: {alert_message}\nPREVIOUS: {previous.message}",
+                        "Are these the same dated fact or distinct facts? Tag only; never suppress an alert.",
+                        DIGEST_CRITERIA)
+                    if mark:
+                        alert_metadata["jev_digest"] = {**mark, "related_alert_id": previous.id}
+            except Exception:  # noqa: BLE001
+                pass
             if jev_urgency is not None:
                 alert_metadata["jev_urgency"] = jev_urgency
             alert = ReviewAlertService().emit_alert(

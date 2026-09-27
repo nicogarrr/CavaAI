@@ -56,6 +56,15 @@ class ReviewAlertService:
         if existing:
             return existing
 
+        # Etiqueta de la bandeja, no auto-aprueba ni oculta tickets.
+        try:
+            from app.services.jev_gates import TICKET_CRITERIA, mark_only
+            mark = mark_only("copilot_ticket", f"{title}\n{summary}",
+                "Classify the evidence status for human review; do not verify the source.", TICKET_CRITERIA)
+            if mark:
+                metadata = {**(metadata or {}), "jev_ticket": mark}
+        except Exception:  # noqa: BLE001
+            pass
         review = ResearchReview(
             company_id=company_id,
             review_type=review_type,

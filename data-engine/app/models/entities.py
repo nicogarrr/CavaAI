@@ -1280,6 +1280,14 @@ class AlertRule(TenantOwnedMixin, Base, TimestampMixin):
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 
+class TypeSafeStatus(Base):
+    """Singleton global para el estado de facturación de JEV."""
+
+    __tablename__ = "typesafe_status"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_billing_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ConnectorState(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "connector_states"
     __table_args__ = (

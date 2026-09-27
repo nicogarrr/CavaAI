@@ -19,11 +19,15 @@ helpers ``*_sync`` de este modulo (``asyncio.run`` interno, mismo patron que
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Sequence
 from typing import Any
 
-from app.llm.jev import JevDecision
+from app.core.config import get_settings
+from app.llm.jev import JevCreditExhausted, JevDecision
 from app.services.async_bridge import run_from_any_context
+from app.services.jev_availability import credit_status, mark_credit_exhausted
+from app.services.jev_fallback import classify_free
 from app.services.jev_triage_service import build_client
 
 logger = logging.getLogger("cavaai.jev_gates")
@@ -120,6 +124,11 @@ CLAIM_RELATION_CRITERIA = {
 }
 
 
+# Solo estos gates pueden usar la ruta gratuita cuando acaba el crédito.
+# Sus salidas son etiquetas de metadata, nunca decisiones finales.
+FREE_GATES = frozenset({"universe_relevance", "copilot_ticket", "alert_digest"})
+
+
 async def jev_choice_or_none(
     *,
     name: str,
@@ -128,22 +137,30 @@ async def jev_choice_or_none(
     criteria: dict[str, str],
     max_chars: int = 2000,
 ) -> JevDecision | None:
-    """Una pregunta `choice` a Jev. None si no hay key o falla (best-effort)."""
+    """Una clasificación acotada; falla cerrado al flujo preexistente."""
+    state = credit_status()["status"]
+    if state in {"fallback_modelo_gratuito", "desactivado_sin_credito", "estado_no_disponible"}:
+        if state == "fallback_modelo_gratuito" and name in FREE_GATES:
+            return await classify_free(text[:max_chars], instructions=instructions, criteria=criteria)
+        return None
     try:
         client = build_client()
-    except Exception as exc:  # noqa: BLE001 — nunca rompe el flujo
-        logger.warning("jev gate %s: no client (%s)", name, exc)
-        return None
-    if client is None:
-        return None
-    try:
-        return await client.classify(
-            (text or "")[:max_chars],
-            name=name,
-            instructions=instructions,
-            criteria=criteria,
+        if client is None:
+            return None
+        decision = await client.classify(
+            (text or "")[:max_chars], name=name,
+            instructions=instructions, criteria=criteria,
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort, sigue el flujo actual
+        # Nunca aceptar etiquetas desconocidas o confidencias fuera de rango.
+        if decision.label not in criteria or not math.isfinite(decision.confidence) or not 0 <= decision.confidence <= 1:
+            return None
+        return decision
+    except JevCreditExhausted:
+        mark_credit_exhausted()
+        if get_settings().typesafe_fallback == "instructor" and name in FREE_GATES:
+            return await classify_free(text[:max_chars], instructions=instructions, criteria=criteria)
+        return None
+    except Exception as exc:  # noqa: BLE001
         logger.warning("jev gate %s failed: %s", name, exc)
         return None
 
@@ -156,34 +173,11 @@ def jev_choice_sync(
     criteria: dict[str, str],
     max_chars: int = 2000,
 ) -> JevDecision | None:
-    """Version sync para callers sync (mismo patron que classify_urgency_sync).
-
-    Se usa run_from_any_context y no asyncio.run: este gate se llama desde
-    NewsService._analyze_news, que se alcanza tanto desde la ruta sync
-    (POST /api/news) como desde el actor de ingesta y desde la ruta de
-    documentos, todas ellas con un event loop activo. Con asyncio.run
-    lanzaba RuntimeError y el except lo convertia en None, de modo que el gate
-    nunca se aplicaba y la decision caia siempre al clasificador determinista.
-    """
-    try:
-        client = build_client()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("jev gate %s: no client (%s)", name, exc)
-        return None
-    if client is None:
-        return None
-    try:
-        return run_from_any_context(
-            client.classify(
-                (text or "")[:max_chars],
-                name=name,
-                instructions=instructions,
-                criteria=criteria,
-            )
-        )
-    except Exception as exc:  # noqa: BLE001 — best-effort
-        logger.warning("jev gate %s failed: %s", name, exc)
-        return None
+    """Puente sync seguro cuando el llamador ya ejecuta un event loop."""
+    return run_from_any_context(jev_choice_or_none(
+        name=name, text=text, instructions=instructions,
+        criteria=criteria, max_chars=max_chars,
+    ))
 
 
 def jev_news_action_sync(text: str) -> JevDecision | None:
@@ -223,7 +217,7 @@ async def kpi_chunk_keep_flags(texts: Sequence[str]) -> list[bool] | None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("jev gate kpi_signal: no client (%s)", exc)
         return None
-    if client is None:
+    if client is None or credit_status()["status"] != "activo":
         return None
     n_asked = min(len(previews), KPI_MAX_QUESTIONS)
     questions: dict[str, dict[str, Any]] = {
@@ -240,6 +234,9 @@ async def kpi_chunk_keep_flags(texts: Sequence[str]) -> list[bool] | None:
     }
     try:
         result = await client.systemone(state, questions)
+    except JevCreditExhausted:
+        mark_credit_exhausted()
+        return None
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning("jev gate kpi_signal failed: %s", exc)
         return None
@@ -260,3 +257,40 @@ async def kpi_chunk_keep_flags(texts: Sequence[str]) -> list[bool] | None:
             flags.append(True)  # dudoso o respuesta inesperada: conservar
     flags.extend([True] * (len(previews) - n_asked))
     return flags
+
+# Etiquetas auxiliares: nunca determinan si una noticia se ingiere, si un
+# ticket se acepta, si una alerta se envía, o si una tesis se regenera.
+UNIVERSE_RELEVANCE_CRITERIA = {
+    "tracked": "Directly relevant to an existing portfolio position or watchlist name",
+    "universe": "Market-universe coverage without direct tracked-position relevance",
+}
+TICKET_CRITERIA = {
+    "observed": "A dated observation supported by a named primary source",
+    "scenario": "A conditional what-if projection, not a confirmed fact",
+    "hypothesis": "An interpretation requiring independent evidence or review",
+}
+DIGEST_CRITERIA = {
+    "same_fact": "Same dated event corroborated by another source",
+    "distinct": "Separate event, or different date/claim even when same ticker",
+}
+THESIS_CRITERIA = {
+    "substantive": "New material facts or evidence require thesis review",
+    "trivial": "Only a formatting or small nonmaterial change; do not treat as verified",
+}
+CLAIM_ROUTING_CRITERIA = {
+    "verifiable": "Explicit, dated, externally checkable claim",
+    "narrative": "Interpretation, valuation judgment or scenario, not a checked fact",
+}
+ANOMALY_CRITERIA = {
+    "flag": "Possible discrepancy or anomalous value; requires source verification",
+    "ordinary": "No obvious discrepancy in the supplied context",
+}
+
+
+def mark_only(name: str, text: str, instructions: str, criteria: dict[str, str], threshold: float = .85) -> dict | None:
+    """Metadata-only classification. A failure or low confidence is no mark."""
+    decision = jev_choice_sync(name=name, text=text, instructions=instructions, criteria=criteria)
+    if decision is None or decision.label not in criteria or not math.isfinite(decision.confidence) or not threshold <= decision.confidence <= 1:
+        return None
+    return {"label": decision.label, "confidence": round(decision.confidence, 4),
+            "backend": getattr(decision, "backend", "jev")}
