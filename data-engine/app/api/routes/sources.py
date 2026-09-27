@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -132,6 +132,30 @@ def documents(
         }
         for document, company in rows
     ]
+
+
+@router.get("/documents/count")
+def documents_count(
+    ticker: str | None = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Total real de documentos del tenant.
+
+    La lista /documents pagina (50 por defecto): sin este total, la UI
+    presentaba el tamano de pagina como si fuera el inventario completo
+    y el resto de documentos quedaba inalcanzable (F131).
+    """
+    # with_loader_criteria no alcanza un SELECT de agregado: el tenant se
+    # filtra explicito para no contar documentos de otros tenants.
+    tenant_id = db.info.get("tenant_id")
+    statement = select(func.count()).select_from(Document).outerjoin(
+        Company, Document.company_id == Company.id
+    )
+    if tenant_id is not None:
+        statement = statement.where(Document.tenant_id == tenant_id)
+    if ticker:
+        statement = statement.where(Company.ticker == ticker.upper())
+    return {"total": int(db.execute(statement).scalar_one())}
 
 
 @router.get("/documents/{document_id}/chunks")
