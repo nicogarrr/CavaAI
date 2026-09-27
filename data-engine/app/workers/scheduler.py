@@ -11,6 +11,7 @@ from app.workers.dramatiq_app import (
     evaluate_alert_rules,
     reconcile_alert_deliveries,
     refresh_ir_pages,
+    refresh_macro_context,
     refresh_market_pipeline,
     refresh_news,
     refresh_portfolio_prices_intraday,
@@ -88,6 +89,7 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         job_id="market_refresh",
         hours=1,
     )
+    _register(scheduler, refresh_macro_context.send, "cron", job_id="macro_context_refresh", hour=23, minute=10)
     _register(
         scheduler,
         partial(enqueue_for_all_tenants, refresh_rss_feeds),

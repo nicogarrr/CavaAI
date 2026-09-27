@@ -15,6 +15,7 @@ from app.api.routes import (
     knowledge_graph,
     macro,
     market,
+    market_context,
     memory,
     news,
     ownership,
@@ -76,6 +77,7 @@ api_router.include_router(memory.router, prefix="/memory", tags=["memory"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(market.router, prefix="/market", tags=["market"])
+api_router.include_router(market_context.router, prefix="/market", tags=["market"])
 api_router.include_router(macro.router, prefix="/macro", tags=["macro"])
 api_router.include_router(cnmv.router, prefix="/cnmv", tags=["cnmv"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
