@@ -25,7 +25,12 @@ export default function PortfolioSummary({ summary }: Props) {
           {t('portfolio.fxMissingNotice', { n: summary.missingFx.length })}
         </div>
       ) : null}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
+      {/* F290: columnas por ANCHO DE CONTENIDO, no de viewport. Con sidebar
+          (15rem desde md) el contenido a 768px queda en ~31rem: 4 columnas
+          dejaban tarjetas de ~7rem con valores clipados y la 4ª fuera por la
+          derecha. auto-fit+minmax(12rem) da 2 columnas hasta ~1280px y 4
+          cuando cada tarjeta tiene sitio real para el valor. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:[grid-template-columns:repeat(auto-fit,minmax(12rem,1fr))]">
       <div className="bg-[#111111] border border-gray-800 rounded-xl p-4 sm:p-5 relative overflow-hidden group hover:border-teal-500/30 transition-colors">
         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
           <DollarSign className="h-12 w-12 text-teal-400" />
