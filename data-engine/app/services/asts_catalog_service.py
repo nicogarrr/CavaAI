@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models import ConnectorState
@@ -26,9 +27,25 @@ def _state(db: Session) -> ConnectorState | None:
     ))
 
 
+def _acquire_catalog_lease(db: Session, tenant_id: int) -> None:
+    # Serializa el get-or-create de ConnectorState: el unique admite company_id
+    # NULL multiples veces en Postgres, asi que sin lease dos ejecuciones
+    # concurrentes crearian duplicados y _state() fallaria despues.
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    key = int.from_bytes(
+        hashlib.sha256(f"asts-catalog:{tenant_id}:{CONNECTOR}".encode()).digest()[:8],
+        "big", signed=True)
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+
+
 def persist_catalog(db: Session, catalog: list[dict], fetched_at: datetime) -> int:
     if not catalog or fetched_at.tzinfo is None:
         raise ValueError("Invalid AST catalog snapshot")
+    tenant_id = db.info.get("tenant_id")
+    if tenant_id is None:
+        raise ValueError("Tenant context required for AST catalog")
+    _acquire_catalog_lease(db, tenant_id)
     state = _state(db)
     if state is None:
         state = ConnectorState(
@@ -61,6 +78,11 @@ def read_catalog(db: Session, *, as_of: datetime | None = None) -> dict:
     fresh = bool(fetched_at and fetched_at <= now and now - fetched_at <= FRESH_FOR and satellites)
     return {
         "ticker": "ASTS", "status": "disponible" if fresh else "sin datos",
+        "freshness_basis": "download_time",
+        "usage_note": (
+            "Inventario observado: la frescura es la de la ultima descarga; el EPOCH "
+            "orbital de cada objeto puede ser anterior al fetch. Apto como inventario, "
+            "no para posiciones actuales, mapas ni trayectorias."),
         "source": "celestrak", "source_url": SOURCE_URL,
         "fetched_at": fetched_at.isoformat() if fetched_at else None,
         "satellites": satellites if fresh else [], "count": len(satellites) if fresh else 0,

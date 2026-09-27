@@ -53,6 +53,7 @@ async def test_fetch_uses_only_official_endpoint():
     assert len(catalog) == 1
 
 
+
 def test_tenant_scoped_snapshot_and_stale_fail_closed():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -66,7 +67,14 @@ def test_tenant_scoped_snapshot_and_stale_fail_closed():
         catalog = normalize_catalog([sample()], fetched_at=NOW)
         assert persist_catalog(one, catalog, NOW) == 1
         assert persist_catalog(one, catalog, NOW) == 1
-        assert read_catalog(one, as_of=NOW)["count"] == 1
+        data = read_catalog(one, as_of=NOW)
+        assert data["count"] == 1
+        # frescura = instante de descarga, no el EPOCH orbital de cada objeto
+        assert data["freshness_basis"] == "download_time"
+        assert "no para posiciones actuales" in data["usage_note"]
+        old_epoch = normalize_catalog([dict(sample(), EPOCH="2026-08-28T13:30:44.947008")], fetched_at=NOW)
+        assert persist_catalog(one, old_epoch, NOW) == 1
+        assert read_catalog(one, as_of=NOW)["status"] == "disponible"
         later = read_catalog(one, as_of=NOW + timedelta(hours=31))
         assert later["status"] == "sin datos" and later["satellites"] == []
     with factory() as two:
