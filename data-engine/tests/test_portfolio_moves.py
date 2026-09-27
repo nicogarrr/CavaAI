@@ -38,6 +38,11 @@ def test_tenant_digest_missing_and_news_are_not_causal(db):
                      title="Related article", source="example.com", url="https://example.com/a", metadata_={"connector": "gdelt"}))
     db.add(NewsEvent(tenant_id=second.id, company_id=company.id, date=datetime(2026, 9, 24, 8, tzinfo=UTC),
                      title="Private other tenant", source="example.com", url="https://example.com/b"))
+    for hour in range(9, 15):
+        db.add(NewsEvent(tenant_id=first.id, company_id=company.id,
+                         date=datetime(2026, 9, 24, hour, tzinfo=UTC),
+                         title=f"Newer RSS {hour}", source="rss.example", url=f"https://rss.example/{hour}",
+                         metadata_={"connector": "rss"}))
     db.commit()
     db.info["tenant_id"] = first.id
     digest = build_digest(db, date(2026, 9, 24), datetime(2026, 9, 25, tzinfo=UTC))
