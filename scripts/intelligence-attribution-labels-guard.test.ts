@@ -30,3 +30,12 @@ test('F282: la cabecera de la tabla ya no pinta la clave cruda', () => {
     assert.match(page, /\{etiquetaComponenteAtribucion\(key\)\}/);
     assert.doesNotMatch(page, /key\.replaceAll\('_', ' '\)/);
 });
+
+test('F333: las tablas anchas de inteligencia llevan affordance de scroll y contain', () => {
+    // La tabla de atribución (min-w-[1050px]) se salía 45px del wrapper sin
+    // indicio visual de scroll; el patrón de F176 (scroll-affordance-x +
+    // contain) lo deja visible y contenido en las 3 tablas.
+    const wrappers = page.match(/scroll-affordance-x mt-4 overflow-x-auto \[contain:layout_paint\]/g) ?? [];
+    assert.equal(wrappers.length, 3);
+    assert.doesNotMatch(page, /className="mt-4 overflow-x-auto"/);
+});
