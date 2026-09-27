@@ -627,6 +627,7 @@ class ResearchAlertOut(BaseModel):
     acknowledged_by: str | None
     snoozed_until: datetime | None
     resolved_at: datetime | None
+    last_triggered_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

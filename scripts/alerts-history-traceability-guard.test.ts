@@ -20,8 +20,12 @@ describe('alerts history traceability guard (F146)', () => {
     it('la tarjeta de disparo muestra la hora del disparo', () => {
         const src = readSource('components/alerts/AlertsManager.tsx');
         assert.ok(
-            src.includes('formatUserDateTime(item.createdAt)'),
-            'el historial debe mostrar la hora del disparo (createdAt ya viene de la API)',
+            src.includes('formatUserDateTime(item.triggeredAt)'),
+            'el historial debe mostrar la hora del ultimo disparo (triggeredAt)',
+        );
+        assert.ok(
+            !src.includes('formatUserDateTime(item.createdAt)'),
+            'createdAt es la hora del PRIMER disparo (fila reutilizada por fingerprint): exhibirla como hora del disparo es falso',
         );
     });
 
@@ -37,6 +41,10 @@ describe('alerts history traceability guard (F146)', () => {
     it('la acción frontend propaga el ticker que entrega la API', () => {
         const src = readSource('lib/actions/alerts.actions.ts');
         assert.ok(src.includes('ticker: row.ticker ?? null'), 'alerts.actions.ts debe propagar ticker');
+        assert.ok(
+            src.includes('triggeredAt: row.last_triggered_at ?? row.created_at'),
+            'triggeredAt debe salir de last_triggered_at (fallback created_at en filas antiguas)',
+        );
     });
 
     it('la API incluye ticker en ResearchAlertOut', () => {
@@ -44,5 +52,13 @@ describe('alerts history traceability guard (F146)', () => {
         const route = readSource('data-engine/app/api/routes/alerts.py');
         assert.ok(schema.includes('ticker: str | None = None'), 'ResearchAlertOut debe exponer ticker');
         assert.ok(route.includes('out.ticker = tickers.get(alert.company_id)'), 'list_alerts debe resolver el ticker');
+        assert.ok(schema.includes('last_triggered_at: datetime | None'), 'ResearchAlertOut debe exponer last_triggered_at');
+        const model = readSource('data-engine/app/models/entities.py');
+        assert.ok(model.includes('last_triggered_at'), 'ResearchAlert debe persistir last_triggered_at');
+        const service = readSource('data-engine/app/services/review_alert_service.py');
+        assert.ok(
+            service.includes('existing.last_triggered_at = now'),
+            'un re-disparo por fingerprint debe actualizar last_triggered_at',
+        );
     });
 });

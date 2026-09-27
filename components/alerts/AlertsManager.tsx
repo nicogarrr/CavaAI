@@ -446,10 +446,11 @@ function AlertsManager() {
                                     <p className="text-sm font-medium text-gray-200">{item.title}</p>
                                     <time
                                         className="text-xs text-gray-500"
-                                        dateTime={item.createdAt}
+                                        dateTime={item.triggeredAt}
                                         suppressHydrationWarning
+                                        title="Hora del último disparo"
                                     >
-                                        {formatUserDateTime(item.createdAt)}
+                                        {formatUserDateTime(item.triggeredAt)}
                                     </time>
                                 </div>
                                 <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{item.message}</p>

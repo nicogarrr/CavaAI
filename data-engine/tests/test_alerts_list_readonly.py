@@ -90,6 +90,14 @@ def test_list_alerts_includes_ticker_for_actionable_history(db):
     assert by_title["sin compania"].ticker is None
 
 
+def test_list_alerts_exposes_last_triggered_at(db):
+    """F146: la hora del disparo que ve la UI sale de last_triggered_at."""
+    _seed(db)
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    for out in result:
+        assert out.last_triggered_at is None or out.last_triggered_at >= out.created_at
+
+
 def test_get_never_mutates_the_orm_rows(db):
     alerts = _seed(db)
     list_alerts(ticker=None, status=None, include_snoozed=False, limit=100, db=db)

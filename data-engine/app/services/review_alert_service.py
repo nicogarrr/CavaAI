@@ -158,6 +158,7 @@ class ReviewAlertService:
         existing = db.scalar(
             select(ResearchAlert).where(ResearchAlert.fingerprint == fingerprint)
         )
+        now = datetime.now(UTC)
         if existing:
             if existing.status == "resolved":
                 existing.status = "open"
@@ -165,6 +166,9 @@ class ReviewAlertService:
             existing.message = message
             existing.severity = severity
             existing.metadata_ = {**(existing.metadata_ or {}), **(metadata or {})}
+            # Re-disparo de la misma huella: la hora exhibida debe ser la de
+            # este disparo, no la de la creacion de la fila.
+            existing.last_triggered_at = now
             return existing
         alert = ResearchAlert(
             company_id=company_id,
@@ -176,6 +180,7 @@ class ReviewAlertService:
             message=message,
             fingerprint=fingerprint,
             channels=channels or self._default_channels(),
+            last_triggered_at=now,
             metadata_=metadata or {},
         )
         db.add(alert)

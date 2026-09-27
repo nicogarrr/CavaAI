@@ -152,6 +152,8 @@ export interface TriggeredAlertDelivery {
     channels: string[];
     deliveries: Record<string, { status: string; attempted_at?: string; error?: string | null }>;
     ticker: string | null;
+    /** Hora del ultimo disparo real (la fila se reutiliza por fingerprint). */
+    triggeredAt: string;
     createdAt: string;
 }
 
@@ -165,6 +167,7 @@ type ResearchAlertRow = {
     channels: string[];
     metadata: { deliveries?: TriggeredAlertDelivery['deliveries'] };
     ticker: string | null;
+    last_triggered_at: string | null;
     created_at: string;
 };
 
@@ -182,6 +185,9 @@ export async function getRecentTriggeredAlerts(limit = 20): Promise<TriggeredAle
         channels: row.channels ?? [],
         deliveries: row.metadata?.deliveries ?? {},
         ticker: row.ticker ?? null,
+        // last_triggered_at es la hora del ultimo disparo; en filas antiguas
+        // (pre-0036) created_at es el unico instante de disparo conocido.
+        triggeredAt: row.last_triggered_at ?? row.created_at,
         createdAt: row.created_at,
     }));
 }
