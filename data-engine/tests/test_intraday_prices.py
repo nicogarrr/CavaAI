@@ -35,9 +35,9 @@ def db():
         yield session
 
 
-def _company(db, ticker, currency="USD"):
+def _company(db, ticker, currency="USD", exchange="NASDAQ"):
     company = Company(
-        ticker=ticker, name=ticker, exchange="NASDAQ", currency=currency,
+        ticker=ticker, name=ticker, exchange=exchange, currency=currency,
         sector="S", industry="I", company_type="holding",
         valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
     )
@@ -55,7 +55,7 @@ class _FakeFXProvider:
 
 
 def test_yahoo_provider_maps_bme_suffix_and_reports_missing(db):
-    tef = _company(db, "TEF", currency="EUR")
+    tef = _company(db, "TEF", currency="EUR", exchange="BME")
     asts = _company(db, "ASTS")
     seen_symbols: list[str] = []
 
@@ -72,6 +72,25 @@ def test_yahoo_provider_maps_bme_suffix_and_reports_missing(db):
     assert observations["TEF"].source == "yahoo_finance_intraday"
     assert "ASTS" not in observations
     assert errors == [{"ticker": "ASTS", "reason": "yahoo_sin_precio_intradia"}]
+
+
+def test_yahoo_provider_excludes_unverified_listing(db):
+    # Par discordante (bolsa US + divisa no-USD): sin listado local verificado
+    # el proveedor no consulta nada - mejor sin precio que el del gemelo/ADR.
+    ul = _company(db, "UL", currency="EUR")
+    seen_symbols: list[str] = []
+
+    def fake_fetcher(symbols):
+        seen_symbols.extend(symbols)
+        return {}
+
+    provider = YahooIntradayPriceProvider(fetcher=fake_fetcher)
+    observations, errors = asyncio.run(
+        provider.fetch([ul], as_of=date(2026, 9, 25))
+    )
+    assert seen_symbols == []
+    assert observations == {}
+    assert errors == [{"ticker": "UL", "reason": "yahoo_sin_precio_intradia"}]
 
 
 def test_yahoo_provider_fetcher_failure_is_one_honest_error(db):
