@@ -19,6 +19,7 @@ from app.models import (
     ValuationModel,
 )
 from app.schemas import CompanySnapshotOut
+from app.services.document_visibility import without_archive_duplicates
 
 
 class CompanySnapshotService:
@@ -216,7 +217,25 @@ class CompanySnapshotService:
 
         facts = grouped(FinancialFact)
         calculated_metrics = grouped(CalculatedMetric)
-        documents = grouped(Document)
+        # F304: el contador debe contar lo que la ficha deja VER. La lista de
+        # documentos colapsa las re-ingestas del mismo filing de archivo
+        # (without_archive_duplicates); contar filas crudas declaraba el
+        # doble de documentos de los accesibles (KO: «DOCUMENTOS 40» con 20
+        # enlaces). Misma regla de visibilidad que la lista y que
+        # /documents/count.
+        documents_stmt = without_archive_duplicates(
+            select(Document.company_id, func.count())
+            .where(Document.company_id.in_(company_ids))
+            .group_by(Document.company_id)
+        )
+        # with_loader_criteria no alcanza a los agregados (func.count()
+        # select_from): sin filtro explícito una empresa compartida entre
+        # tenants sumaría los documentos de todos. Mismo patrón que
+        # /documents/count.
+        tenant_id = db.info.get("tenant_id")
+        if tenant_id is not None:
+            documents_stmt = documents_stmt.where(Document.tenant_id == tenant_id)
+        documents = {int(cid): int(n) for cid, n in db.execute(documents_stmt).all()}
         claims = grouped(Claim)
         thesis_versions = grouped(ThesisVersion)
         model_versions = grouped(FundamentalModelVersion)
@@ -374,6 +393,15 @@ class CompanySnapshotService:
     @staticmethod
     def _counts(db: Session, company_id: int) -> dict[str, int]:
         """Los 8 conteos en UNA sola query (anti 8 round-trips por snapshot)."""
+        # Filtro de tenant explicito: los criterios de carga
+        # (with_loader_criteria) no alcanzan a los agregados
+        # func.count().select_from(...) — ver _counts_many.
+        tenant_id = db.info.get("tenant_id")
+        documents_subquery = without_archive_duplicates(
+            select(func.count()).select_from(Document).where(Document.company_id == company_id)
+        )
+        if tenant_id is not None:
+            documents_subquery = documents_subquery.where(Document.tenant_id == tenant_id)
         row = db.execute(
             select(
                 select(func.count())
@@ -386,11 +414,7 @@ class CompanySnapshotService:
                 .where(CalculatedMetric.company_id == company_id)
                 .scalar_subquery()
                 .label("calculated_metrics"),
-                select(func.count())
-                .select_from(Document)
-                .where(Document.company_id == company_id)
-                .scalar_subquery()
-                .label("documents"),
+                documents_subquery.scalar_subquery().label("documents"),
                 select(func.count())
                 .select_from(Claim)
                 .where(Claim.company_id == company_id)
