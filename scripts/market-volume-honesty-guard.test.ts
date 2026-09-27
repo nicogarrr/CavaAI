@@ -28,6 +28,15 @@ void test('comportamiento: los huecos no entran en las medias y los 0 reales sí
 void test('comportamiento: sin datos suficientes o ventana previa en 0 no hay tendencia aparentada', () => {
     assert.equal(volumeTrendStats([100, 200, null, 300]), null, 'pocos datos conocidos -> null');
     assert.equal(volumeTrendStats(Array.from({ length: 40 }, () => null)), null);
+    // 19 conocidas: sin ventana reciente completa, no hay ni media.
+    assert.equal(volumeTrendStats(Array.from({ length: 19 }, () => 1000)), null);
+    // 20 conocidas: media sí, tendencia no (falta la segunda ventana).
+    const veinte = volumeTrendStats(Array.from({ length: 20 }, () => 1000));
+    assert.ok(veinte && veinte.avgVolume === 1000 && veinte.volumeTrend === null);
+    // 21-39 conocidas: la ventana previa incompleta NUNCA se compara contra
+    // la reciente de 20 (19 null + 1 conocida no puede dar 'increasing').
+    const treintaNueve = volumeTrendStats([...Array.from({ length: 19 }, () => null), 1250, ...Array.from({ length: 20 }, () => 1250)]);
+    assert.ok(treintaNueve && treintaNueve.volumeTrend === null);
     const previaCero = [...Array.from({ length: 20 }, () => 0), ...Array.from({ length: 20 }, () => 500)];
     const stats = volumeTrendStats(previaCero);
     assert.ok(stats && stats.volumeTrend === null, '0/0 evitado: sin tendencia cuando la base es 0');

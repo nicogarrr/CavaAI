@@ -14,16 +14,19 @@ export type VolumeStats = {
 };
 
 const WINDOW = 20;
-/** Mínimo de sesiones con volumen conocido para comparar dos ventanas. */
-const MIN_KNOWN = WINDOW + 1;
 
 export function volumeTrendStats(volumes: (number | null)[]): VolumeStats | null {
     const known = volumes.filter((volume): volume is number => volume !== null);
-    if (known.length < MIN_KNOWN) return null;
+    // Una ventana reciente COMPLETA de sesiones conocidas como mínimo: con
+    // menos, cualquier media aparenta una precisión que el dato no tiene.
+    if (known.length < WINDOW) return null;
     const recent = known.slice(-WINDOW);
-    const previous = known.slice(-WINDOW * 2, -WINDOW);
     const avgVolume = recent.reduce((acc, volume) => acc + volume, 0) / recent.length;
-    if (previous.length === 0) return { avgVolume, volumeTrend: null };
+    // La tendencia compara DOS ventanas completas de 20 conocidas: una
+    // ventana previa de 1-19 sesiones no es comparable con una de 20
+    // (19 huecos + 1 dato marcaban 'increasing' sin base estadística).
+    const previous = known.slice(-WINDOW * 2, -WINDOW);
+    if (previous.length < WINDOW) return { avgVolume, volumeTrend: null };
     const previousAvg = previous.reduce((acc, volume) => acc + volume, 0) / previous.length;
     if (previousAvg === 0) return { avgVolume, volumeTrend: null };
     const changePercent = ((avgVolume - previousAvg) / previousAvg) * 100;
