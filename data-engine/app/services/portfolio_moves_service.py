@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, MarketPrice, NewsEvent, PortfolioMoveDigest, Position
 
-VERSION = "held-price-moves-v1"
+VERSION = "held-price-moves-v2"
+DAILY_BAR_SOURCES = frozenset({"yfinance"})
 
 
 def build_digest(db: Session, as_of: date, generated_at: datetime | None = None) -> PortfolioMoveDigest:
@@ -31,6 +32,8 @@ def build_digest(db: Session, as_of: date, generated_at: datetime | None = None)
             MarketPrice.company_id == company.id,
             MarketPrice.date <= as_of,
             MarketPrice.date >= as_of - timedelta(days=8),
+            MarketPrice.source.in_(DAILY_BAR_SOURCES),
+            MarketPrice.adj_close.is_not(None),
         ).order_by(desc(MarketPrice.date)).limit(2)).all()
         current = prices[0] if prices and prices[0].date == as_of and prices[0].close and prices[0].close > 0 else None
         prior = prices[1] if current and len(prices) > 1 and prices[1].close and prices[1].close > 0 else None
@@ -59,7 +62,7 @@ def build_digest(db: Session, as_of: date, generated_at: datetime | None = None)
                                     "source": row.source, "connector": "gdelt", "published_at": row.date.isoformat()}
                                    for row in news]
         else:
-            item["missing"] = ["cierre fechado" if not current else "cierre anterior"]
+            item["missing"] = ["barra diaria ajustada fechada" if not current else "barra diaria anterior"]
         items.append(item)
     coverage = "sin posiciones" if not items else "completa" if all(item["status"] == "disponible" for item in items) else "parcial"
     checksum = hashlib.sha256(json.dumps(items, sort_keys=True).encode()).hexdigest()
