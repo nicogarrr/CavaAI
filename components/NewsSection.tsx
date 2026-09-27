@@ -47,6 +47,11 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                     </Link>
                 </div>
 
+                {news.length > 0 && (
+                    <p className="mb-3 text-xs leading-5 text-gray-500">
+                        Titulares vinculados a tus símbolos cuando los hay (insignia con el ticker); el resto son de mercado general, sin vínculo con tu cartera.
+                    </p>
+                )}
                 {news.length === 0 ? (
                     <div className="flex items-center justify-center px-4 py-12 text-center text-sm text-gray-500">
                         <p>No hay noticias disponibles en este momento.</p>
@@ -99,9 +104,13 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                                                     })}
                                                 </span>
                                             )}
-                                            {article.related && (
+                                            {article.related ? (
                                                 <span className="px-2 py-0.5 bg-[#0FEDBE]/10 text-[#0FEDBE] rounded">
                                                     {article.related}
+                                                </span>
+                                            ) : (
+                                                <span className="px-2 py-0.5 bg-gray-700/40 text-gray-400 rounded">
+                                                    Mercado general
                                                 </span>
                                             )}
                                         </div>
