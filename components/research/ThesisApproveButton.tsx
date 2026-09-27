@@ -48,6 +48,11 @@ export default function ThesisApproveButton({
             <Button
                 type="button"
                 size="sm"
+                // F288: sin versiones (disabled) el primario casi blanco al 50%
+                // de opacidad seguia siendo lo mas luminoso de la vista y se
+                // leia como accion principal activa. Deshabilitado se rinde
+                // como outline (claramente secundario) + leyenda visible.
+                variant={disabled ? 'outline' : 'default'}
                 onClick={() => decide('approved')}
                 disabled={disabled || pending !== null}
                 aria-busy={pending !== null}
@@ -66,6 +71,9 @@ export default function ThesisApproveButton({
                 <XCircle aria-hidden="true" className="mr-2 h-4 w-4" />
                 {pending === 'rejected' ? 'Rechazando…' : 'Rechazar'}
             </Button>
+            {disabled ? (
+                <span className="text-xs text-gray-500">Sin versiones de tesis que aprobar o rechazar.</span>
+            ) : null}
         </div>
     );
 }
