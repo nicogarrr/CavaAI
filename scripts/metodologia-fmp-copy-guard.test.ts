@@ -11,5 +11,11 @@ test('F325: la metodología describe el uso real de FMP (solo US), no un retiro 
     assert.match(ficha, /Refrescar financieros \(FMP\)/);
     assert.doesNotMatch(metodologia, /FMP retirado/);
     assert.doesNotMatch(metodologia, /Ningún cálculo actual\s+depende de FMP/);
-    assert.match(metodologia, /FMP solo en mercado US/);
+    assert.match(metodologia, /FMP solo cubre mercado US/);
+    // El copy no promete restriccion en la app ni cobertura universal
+    // EDGAR/ESEF: FMP rechaza fuera de US y la cobertura regulatoria
+    // depende del emisor.
+    assert.match(metodologia, /intenta el refresco con FMP en cualquier ticker/);
+    assert.match(metodologia, /cuando el emisor reporta a alguna de las dos/);
+    assert.doesNotMatch(metodologia, /el resto se sirve de SEC EDGAR y ESEF/);
 });
