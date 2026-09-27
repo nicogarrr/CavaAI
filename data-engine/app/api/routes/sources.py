@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -74,6 +74,22 @@ def source_tiers() -> list[dict]:
     ]
 
 
+def _without_url_duplicates(statement):
+    """F252: excluye las re-ingestas historicas del mismo documento. La
+    identidad estable es (company_id, source_url): SEC sirve el mismo filing
+    con bytes que varian entre dias y el checksum no lo capturaba. De cada
+    grupo se conserva la fila mas reciente (max id); los documentos sin URL
+    (internos, ya deduplicados en ingesta por titulo) pasan siempre."""
+    keep_ids = (
+        select(func.max(Document.id))
+        .where(Document.source_url.isnot(None))
+        .group_by(Document.company_id, Document.source_url)
+    )
+    return statement.where(
+        or_(Document.source_url.is_(None), Document.id.in_(keep_ids))
+    )
+
+
 @router.get("/documents")
 def documents(
     ticker: str | None = None,
@@ -87,6 +103,7 @@ def documents(
     statement = select(Document, Company).outerjoin(Company, Document.company_id == Company.id)
     if ticker:
         statement = statement.where(Company.ticker == ticker.upper())
+    statement = _without_url_duplicates(statement)
 
     # «Mas recientes» = por fecha de PUBLICACION global, no por ingesta:
     # ordenar por created_at agrupaba por tanda de ingesta y desplazaba
@@ -162,6 +179,7 @@ def documents_count(
         statement = statement.where(Document.tenant_id == tenant_id)
     if ticker:
         statement = statement.where(Company.ticker == ticker.upper())
+    statement = _without_url_duplicates(statement)
     return {"total": int(db.execute(statement).scalar_one())}
 
 

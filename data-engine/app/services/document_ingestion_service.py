@@ -94,9 +94,23 @@ class DocumentIngestionService:
             raise ValueError(f"Company {ticker.upper()} not found")
 
         checksum = hashlib.sha256(content).hexdigest()
-        duplicate = db.scalar(
-            select(Document).where(Document.company_id == company.id, Document.checksum == checksum)
-        )
+        # F252: la URL de origen es la identidad estable de un documento
+        # descargado; el checksum no lo es (SEC sirve el mismo filing con
+        # bytes que varian unos pocos bytes entre dias y cada re-ingesta
+        # creaba otra fila). Primero se busca por source_url; el checksum
+        # queda como respaldo para contenido sin URL.
+        duplicate = None
+        if source_url:
+            duplicate = db.scalar(
+                select(Document).where(
+                    Document.company_id == company.id,
+                    Document.source_url == source_url,
+                ).limit(1)
+            )
+        if duplicate is None:
+            duplicate = db.scalar(
+                select(Document).where(Document.company_id == company.id, Document.checksum == checksum)
+            )
         if duplicate:
             chunk_count = db.scalar(
                 select(DocumentChunk.id).where(DocumentChunk.document_id == duplicate.id).limit(1)
