@@ -3,6 +3,7 @@
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { getCandles, getProfile, getStockQuote } from '@/lib/actions/finnhub.actions';
+import { marketHistoryStatus } from '@/lib/market/history-status';
 import { quoteSymbolFor } from '@/lib/market/quote-symbol';
 
 export type CompanyMarketSnapshot = {
@@ -111,6 +112,8 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
             previousClose: quote?.pc ?? null,
         },
         history,
-        status: price != null && history.length ? 'available' : price != null ? 'partial' : 'unavailable',
+        // La insignia del historial describe la serie (F161): sin velas es
+        // «no disponible» aunque la cotización puntual haya cargado.
+        status: marketHistoryStatus(history.length),
     };
 }
