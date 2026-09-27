@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, Document, ResearchAlert, ThesisVersion, SourceAudit
+from app.models.entities import Base, Company, Document, ResearchAlert, SourceAudit, ThesisVersion
 
 
 @pytest.fixture
