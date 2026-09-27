@@ -78,7 +78,7 @@ export default async function ResearchNewsPage() {
         {/* F176: sin contain, Chrome propaga el overflow horizontal de la
             tabla al documento entero (zoom-out y recorte en movil) aunque la
             region ya scrolla por dentro; layout+paint lo contiene aqui. */}
-        <div aria-label="Flujo de eventos de noticias" className="overflow-x-auto [contain:layout_paint]" role="region" tabIndex={0}>
+        <div aria-label="Flujo de eventos de noticias" className="scroll-affordance-x overflow-x-auto [contain:layout_paint]" role="region" tabIndex={0}>
           <table className="w-full min-w-[1080px] text-left text-sm">
             <caption className="sr-only">Eventos de noticias clasificados por materialidad, con impacto sobre la cartera y si exigen actualización</caption>
             <thead className="text-xs uppercase text-gray-500">
