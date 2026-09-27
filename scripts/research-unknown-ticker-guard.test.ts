@@ -1,12 +1,14 @@
 /**
  * Guard F286: /research/<ticker> fuera del master NUNCA devuelve 404 desde
- * este camino ni ofrece el CTA «Generar tesis» sobre una identidad no
- * verificada. Política de veracidad: ninguna respuesta del proveedor prueba
- * la inexistencia del emisor buscado (un perfil {} solo dice que Finnhub no
- * conoce el símbolo), y un perfil con nombre prueba que el símbolo existe en
- * alguna bolsa, no que sea ese emisor (ALM -> Almonty US, no Almirall/BME).
- * Tres estados honestos sin CTA; el fallback completo (panel + CTA) queda
- * reservado a empresas del master.
+ * este camino ni ofrece CTA «Generar tesis» sobre una identidad no
+ * verificada. Procedencia exacta de la señal: getResearchCompanySnapshot solo
+ * devuelve null ante el 404 de /api/companies/{ticker}/snapshot, y ese 404 en
+ * backend es «compañía ausente del master» (resolve_company) — una empresa
+ * del master sin research recibe snapshot construido. Política de veracidad:
+ * ninguna respuesta del proveedor prueba la inexistencia del emisor buscado
+ * (perfil {} = Finnhub no conoce el símbolo), y un perfil con nombre prueba
+ * que el símbolo existe en alguna bolsa, no que sea ese emisor (ALM ->
+ * Almonty US, no Almirall/BME). Tres estados honestos sin CTA.
  * Ejecución: node --experimental-strip-types --test scripts/research-unknown-ticker-guard.test.ts
  */
 import test from 'node:test';
@@ -16,15 +18,13 @@ import { readFileSync } from 'node:fs';
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { resolveUnknownListingIdentity } from '../lib/research/unknown-listing.ts';
 
-void test('perfil sin nombre propio -> not-in-sources (nunca 404)', () => {
+void test('perfil sin nombre propio -> not-in-sources', () => {
     assert.deepEqual(resolveUnknownListingIdentity({}, 'ZZZZ'), { kind: 'not-in-sources' });
     assert.deepEqual(resolveUnknownListingIdentity({ name: '   ' }, 'ZZZZ'), { kind: 'not-in-sources' });
     assert.deepEqual(resolveUnknownListingIdentity({ name: 'ZZZZ' }, 'ZZZZ'), { kind: 'not-in-sources' });
 });
 
 void test('perfil del ticker desnudo con nombre -> unverified (emisor ambiguo)', () => {
-    // El caso ALM: el símbolo existe (Almonty US) pero puede no ser el emisor
-    // buscado (Almirall/BME).
     assert.deepEqual(
         resolveUnknownListingIdentity({ name: 'Almonty Industries' }, 'ALM'),
         { kind: 'unverified', providerName: 'Almonty Industries' },
@@ -35,40 +35,50 @@ void test('proveedor no disponible -> unavailable', () => {
     assert.deepEqual(resolveUnknownListingIdentity(null, 'VZ'), { kind: 'unavailable' });
 });
 
-void test('la página pinta los tres estados sin 404 y sin CTA fuera del master', () => {
-    const source: string = readFileSync(new URL('../app/(root)/research/[ticker]/page.tsx', import.meta.url), 'utf8');
-    const fallbackStart = source.indexOf('if (!snapshot) {');
-    const fallbackEnd = source.indexOf('const company = snapshot.company;', fallbackStart);
-    assert.ok(fallbackStart > -1 && fallbackEnd > fallbackStart, 'debe existir la rama if (!snapshot)');
-    const window = source.slice(fallbackStart, fallbackEnd);
+void test('la procedencia master-miss es exacta: null solo por 404 y 404 solo por compañía ausente', () => {
+    // Frontend: getResearchCompanySnapshot devuelve null SOLO ante 404; el
+    // resto de fallos se propaga (null no puede significar «error»).
+    const actions: string = readFileSync(new URL('../lib/actions/research.actions.ts', import.meta.url), 'utf8');
+    const fnStart = actions.indexOf('export async function getResearchCompanySnapshot');
+    assert.ok(fnStart > -1);
+    const fn = actions.slice(fnStart, actions.indexOf('\n}', fnStart));
+    assert.match(fn, /error\.statusCode === 404\) return null/);
+    assert.match(fn, /throw error/, 'los fallos que no son 404 deben propagarse');
 
-    // La rama fuera del master no puede devolver 404: notFound no existe en la página.
+    // Backend: /{ticker}/snapshot 404 solo cuando resolve_company no
+    // encuentra la compañía; si existe, construye el snapshot (con o sin
+    // research), así que snapshot null nunca es «master sin research».
+    const routes: string = readFileSync(new URL('../data-engine/app/api/routes/companies.py', import.meta.url), 'utf8');
+    const routeStart = routes.indexOf('"/{ticker}/snapshot"');
+    assert.ok(routeStart > -1);
+    const route = routes.slice(routeStart, routes.indexOf('@router.', routeStart));
+    assert.match(route, /if not company:\s*\n\s*raise HTTPException\(status_code=404/);
+    assert.match(route, /CompanySnapshotService\(\)\.build\(db, company\)/);
+});
+
+void test('la página pinta los tres estados sin 404, sin CTA y sin panel fuera del master', () => {
+    const source: string = readFileSync(new URL('../app/(root)/research/[ticker]/page.tsx', import.meta.url), 'utf8');
     assert.ok(!source.includes('notFound'), 'este camino nunca devuelve 404 (ninguna respuesta prueba inexistencia)');
 
-    // La pertenencia al master se comprueba con un boolean EXPLÍCITO
-    // (getResearchCompanyBasics), nunca inferida del snapshot de mercado:
-    // una empresa real del master con name === ticker y sin cotización no
-    // puede perder el CTA por una inferencia.
-    assert.match(window, /getResearchCompanyBasics\(ticker\)/);
-    assert.match(window, /if \(!masterBasics\) \{/);
-    // El perfil del proveedor solo se consulta en master-miss.
-    assert.match(window, /resolveUnknownListingIdentity\(await getProfile\(ticker\), ticker\)/);
+    const branchStart = source.indexOf('if (!snapshot) {');
+    const branchEnd = source.indexOf('const company = snapshot.company;', branchStart);
+    assert.ok(branchStart > -1 && branchEnd > branchStart, 'debe existir la rama if (!snapshot)');
+    const branch = source.slice(branchStart, branchEnd);
 
-    // Los tres estados con sus copies honestos.
-    assert.match(window, /Identidad del ticker no verificada/);
-    assert.match(window, /puede no ser el emisor que buscas/);
-    assert.match(window, /No encontramos este ticker en nuestras fuentes/);
-    assert.match(window, /No pudimos comprobar este ticker/);
+    // La rama resuelve la identidad con el perfil del proveedor y pinta los
+    // tres estados honestos.
+    assert.match(branch, /resolveUnknownListingIdentity\(await getProfile\(ticker\), ticker\)/);
+    assert.match(branch, /Identidad del ticker no verificada/);
+    assert.match(branch, /puede no ser el emisor que buscas/);
+    assert.match(branch, /No encontramos este ticker en nuestras fuentes/);
+    assert.match(branch, /No pudimos comprobar este ticker/);
 
-    // Ningún estado fuera del master lleva CTA: el de generación solo existe
-    // en el fallback posterior, reservado a empresas del master.
-    const missIdx = window.indexOf('if (!masterBasics)');
-    const ctaIdx = window.indexOf('<ThesisGenerateButton');
-    assert.ok(missIdx > -1 && ctaIdx > missIdx, 'el CTA solo existe en el fallback del master');
-    const statesBlock = window.slice(missIdx, ctaIdx);
-    assert.ok(!statesBlock.includes('<ThesisGenerateButton'), 'los estados sin identidad verificada no pueden incluir el CTA');
-    // El fallback del master conserva el panel de mercado completo.
-    assert.ok(window.indexOf('<CompanyMarketPanel') > missIdx, 'el fallback del master conserva el panel de mercado');
+    // Fuera del master no hay CTA de generación, ni panel de mercado N/D,
+    // ni una segunda consulta al master (la señal ya es exacta).
+    assert.ok(!branch.includes('<ThesisGenerateButton'), 'sin CTA de generación fuera del master');
+    assert.ok(!branch.includes('<CompanyMarketPanel'), 'sin panel N/D fuera del master');
+    assert.ok(!branch.includes('getCompanyMarketSnapshot'), 'sin fetch de mercado fuera del master');
+    assert.ok(!branch.includes('getResearchCompanyBasics'), 'sin segunda consulta al master: el 404 del snapshot ya es la señal');
 });
 
 void test('el diseño anti-homónimos sigue intacto en el snapshot de mercado', () => {
