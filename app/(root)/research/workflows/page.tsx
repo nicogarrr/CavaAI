@@ -2,7 +2,7 @@ import { ArrowLeft, Layers, Play } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getResearchDashboard, runResearchWorkflow } from '@/lib/actions/research.actions';
+import { getResearchWorkflows, runResearchWorkflow } from '@/lib/actions/research.actions';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { formatNumber } from '@/lib/format';
 
@@ -17,7 +17,7 @@ async function runWorkflow(formData: FormData) {
 }
 
 export default async function ResearchWorkflowsPage() {
-  const { workflows } = await getResearchDashboard();
+  const workflows = await getResearchWorkflows();
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-col gap-4 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">

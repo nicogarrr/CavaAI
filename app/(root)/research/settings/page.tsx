@@ -1,7 +1,7 @@
 import { ArrowLeft, CheckCircle2, Cpu, Database, DollarSign, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { getResearchDashboard } from '@/lib/actions/research.actions';
+import { getResearchSettings } from '@/lib/actions/research.actions';
 import { formatNumber, NA } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +33,7 @@ const CONNECTOR_STATUS_LABELS: Record<ConnectorStatus, string> = {
 };
 
 export default async function ResearchSettingsPage() {
-  const { settings } = await getResearchDashboard();
+  const settings = await getResearchSettings();
 
   const orderedConnectors = CONNECTOR_ORDER.map((key) => ({
     key,
