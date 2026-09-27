@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 try:
@@ -262,7 +262,10 @@ def fetch_public_url(
     *,
     max_bytes: int = DEFAULT_MAX_BYTES,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    allowed_url: Callable[[str], bool] | None = None,
 ) -> tuple[bytes, str | None, str]:
+    if allowed_url is not None and not allowed_url(url):
+        raise ValueError("Public fetch URL denied by source policy")
     target = _resolve_public_url(url)
     headers = {"User-Agent": USER_AGENT, "Accept": "*/*"}
     with httpx.Client(
@@ -281,6 +284,8 @@ def fetch_public_url(
             ) as response:
                 target_value = _redirect_target(response, target.url)
                 if target_value is not None:
+                    if allowed_url is not None and not allowed_url(target_value):
+                        raise ValueError("Public fetch redirect denied by source policy")
                     target = _resolve_public_url(target_value)
                     continue
                 response.raise_for_status()
