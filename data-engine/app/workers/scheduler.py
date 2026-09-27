@@ -14,6 +14,7 @@ from app.workers.dramatiq_app import (
     refresh_asts_catalog,
     refresh_ir_pages,
     refresh_macro_context,
+    refresh_macro_news,
     refresh_market_pipeline,
     refresh_news,
     refresh_portfolio_moves,
@@ -117,6 +118,15 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         "interval",
         job_id="news_refresh_universe",
         hours=6,
+    )
+    # Carril macro (temas sin ticker: oro/bancos centrales, tipos, etc.);
+    # 13 consultas GDELT por tenant dentro del pacing global.
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, refresh_macro_news),
+        "interval",
+        job_id="macro_news_refresh",
+        hours=1,
     )
     _register(
         scheduler,

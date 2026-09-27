@@ -144,6 +144,9 @@ class FeedIngestionService:
         result: ConnectorResult,
         *,
         ticker: str | None = None,
+        news_lane: str | None = None,
+        macro_theme: str | None = None,
+        detect_company: bool = True,
     ) -> dict:
         """Ingest connector items without importing model-dependent services at startup."""
 
@@ -184,6 +187,9 @@ class FeedIngestionService:
             default_source=result.source,
             connector=result.source,
             date_source_label="gdelt_first_seen" if result.source == "gdelt" else None,
+            news_lane=news_lane,
+            macro_theme=macro_theme,
+            detect_company=detect_company,
         )
         payload = response.model_dump(mode="json")
         payload["source"] = result.source
