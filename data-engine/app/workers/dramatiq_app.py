@@ -430,6 +430,29 @@ def evaluate_alert_rules(
         db.close()
 
 
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
+def refresh_macro_context() -> dict[str, Any]:
+    """Fetch public FRED CSV once globally, then persist an honest snapshot."""
+    from app.core.database import SessionLocal
+    from app.services.market_observation_service import refresh_fred
+    from app.services.market_snapshot_service import build_snapshot
+
+    with SessionLocal() as db:
+        try:
+            outcome = _run(refresh_fred(db))
+            snapshot = build_snapshot(db, datetime.now(UTC).date())
+            return {
+                "actor": "refresh_macro_context",
+                "status": "partial" if outcome["errors"] else "ok",
+                "ingestion": outcome,
+                "snapshot_id": snapshot.id,
+                "coverage": snapshot.coverage,
+            }
+        except Exception as exc:
+            _rollback(db)
+            return _handle_actor_error("refresh_macro_context", exc)
+
+
 @dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name="prices")
 def refresh_market_pipeline(
     tenant_id: int | None = None,
