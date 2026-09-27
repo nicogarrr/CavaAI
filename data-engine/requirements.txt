@@ -70,3 +70,6 @@ langfuse>=3.0.0,<4
 langgraph>=1.2.11,<2
 langgraph-checkpoint-sqlite>=3.1,<4
 langgraph-checkpoint-postgres>=3.1.2,<4
+
+# Anadidas por sync_requirements.py (estaban en pyproject, no aqui):
+hmmlearn>=0.3.3,<0.4

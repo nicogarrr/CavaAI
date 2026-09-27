@@ -39,5 +39,5 @@ def test_unavailable_is_not_zero():
     with sessionmaker(engine)() as db:
         snap = build_snapshot(db, date(2026, 9, 25), datetime(2026, 9, 25, tzinfo=UTC))
         assert snap.coverage == "unavailable"
-        assert snap.metrics == {}
+        assert snap.metrics["hmm"]["status"] == "sin datos"
         assert latest_snapshot(db)["status"] == "sin datos"
