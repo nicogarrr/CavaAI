@@ -1076,6 +1076,17 @@ def refresh_macro_news(
 
         db = _session(tenant_id, user_id)
         try:
+            lease = acquire_job_lease(
+                f"refresh_macro_news:{tenant_id}",
+                ttl_seconds=1800, redis_url=_lease_redis_url(),
+            )
+        except Exception:
+            db.close()
+            raise
+        if lease is None:
+            db.close()
+            return {"actor": actor_name, "status": "skipped", "reason": "lease_held"}
+        try:
             service = FeedIngestionService()
             processed = ingested = 0
             errors: list[dict] = []
@@ -1118,6 +1129,9 @@ def refresh_macro_news(
                 "errors": errors,
             }
         finally:
+            release_job_lease(
+                f"refresh_macro_news:{tenant_id}", lease, redis_url=_lease_redis_url(),
+            )
             db.close()
     except Exception as exc:
         return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id)
