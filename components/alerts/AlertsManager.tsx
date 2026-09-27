@@ -442,8 +442,27 @@ function AlertsManager() {
                                 key={item.id}
                                 className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-3"
                             >
-                                <p className="text-sm font-medium text-gray-200">{item.title}</p>
+                                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                    <p className="text-sm font-medium text-gray-200">{item.title}</p>
+                                    <time
+                                        className="text-xs text-gray-500"
+                                        dateTime={item.triggeredAt ?? item.createdAt}
+                                        suppressHydrationWarning
+                                    >
+                                        {item.triggeredAt
+                                            ? `Último disparo ${formatUserDateTime(item.triggeredAt)}`
+                                            : `Creada ${formatUserDateTime(item.createdAt)}`}
+                                    </time>
+                                </div>
                                 <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{item.message}</p>
+                                {item.ticker && (
+                                    <Link
+                                        className="mt-1 inline-block text-xs text-teal-400 hover:text-teal-300 hover:underline"
+                                        href={`/research/${item.ticker}`}
+                                    >
+                                        Abrir investigación de {item.ticker}
+                                    </Link>
+                                )}
                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                     {item.channels.length === 0 ? (
                                         <span className="text-xs text-gray-500">sin canales</span>

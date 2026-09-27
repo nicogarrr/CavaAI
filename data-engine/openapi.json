@@ -4317,6 +4317,18 @@
             "title": "Id",
             "type": "integer"
           },
+          "last_triggered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Triggered At"
+          },
           "message": {
             "title": "Message",
             "type": "string"
@@ -4369,6 +4381,17 @@
             "title": "Status",
             "type": "string"
           },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -4394,6 +4417,7 @@
           "acknowledged_by",
           "snoozed_until",
           "resolved_at",
+          "last_triggered_at",
           "created_at",
           "updated_at"
         ],
