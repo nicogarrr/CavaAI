@@ -120,3 +120,46 @@ def test_source_hierarchy_classifies_regulatory_urls_as_highest_tier():
     tier = classify_source("feed", "https://www.sec.gov/Archives/edgar/data/example")
     assert tier.key == "tier_1_regulatory"
     assert tier.trust_score == 1.0
+
+
+def test_source_tier_catalog_is_exactly_the_known_eight():
+    """Tripwire: si SOURCE_TIERS crece, la etiqueta UI (etiquetaTierFuente en
+    lib/labels.ts) debe crecer con él - un tier sin etiqueta se pinta crudo
+    en /research/news (F175)."""
+    from app.services.source_hierarchy_service import SOURCE_TIERS
+
+    assert sorted(SOURCE_TIERS) == [
+        "tier_1_regulatory",
+        "tier_2_company",
+        "tier_3_transcript",
+        "tier_4_reputable_media",
+        "tier_5_data_provider",
+        "tier_6_bootstrap",
+        "tier_7_user_input",
+        "tier_unknown",
+    ]
+
+
+def test_event_type_catalog_is_exactly_the_known_six():
+    """Tripwire: el backend solo emite event_type desde MATERIAL_KEYWORDS o el
+    fallback 'general_news' (MaterialityService.assess_news). Si el catálogo
+    crece, la etiqueta UI (etiquetaTipoEvento en lib/labels.ts) debe crecer
+    con él - un tipo sin etiqueta se pinta crudo en /research/news (F175)."""
+    from pathlib import Path
+
+    from app.services.materiality_service import MATERIAL_KEYWORDS
+
+    assert sorted(MATERIAL_KEYWORDS) == [
+        "capital_allocation",
+        "contract",
+        "dilution",
+        "earnings",
+        "regulatory",
+    ]
+    labels_ts = (
+        Path(__file__).resolve().parents[2] / "lib" / "labels.ts"
+    ).read_text(encoding="utf-8")
+    for event_type in [*MATERIAL_KEYWORDS, "general_news"]:
+        assert f"{event_type}:" in labels_ts, (
+            f"etiquetaTipoEvento no traduce '{event_type}' y se pintaría crudo"
+        )
