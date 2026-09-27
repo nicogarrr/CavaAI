@@ -53,7 +53,7 @@ export default function PortfolioAllocation({ holdings, totalValue, cash, baseCu
     return (
         <div className="bg-[#111111] border border-gray-800 rounded-2xl p-6 h-full flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2">
                 <span className="text-gray-400 text-sm font-medium">Distribución</span>
                 <span className="text-xs text-gray-500">Pesos sobre el valor total (caja incluida)</span>
             </div>

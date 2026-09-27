@@ -128,7 +128,7 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                 <th className="border-b border-gray-800 py-2" scope="col">Titular</th>
                 <th className="border-b border-gray-800 py-2" scope="col">Fuente</th>
                 <th className="border-b border-gray-800 py-2" scope="col">Tipo</th>
-                <th className="border-b border-gray-800 py-2 text-right" scope="col">Peso</th>
+                <th className="border-b border-gray-800 py-2 text-right" scope="col">Peso al evaluar</th>
                 <th className="border-b border-gray-800 py-2 text-center" scope="col">Materialidad</th>
                 <th className="border-b border-gray-800 py-2 text-center" scope="col">Impacto</th>
                 <th className="border-b border-gray-800 py-2 text-center" scope="col">¿Actualizar?</th>
