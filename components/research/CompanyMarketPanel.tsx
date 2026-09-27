@@ -73,7 +73,14 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                     </Badge>
                 </div>
                 {snapshot.history.length ? (
-                    <CompanyMarketChart history={snapshot.history} />
+                    <>
+                        {snapshot.status === 'partial' && (
+                            <p className="mb-3 text-sm text-amber-200">
+                                Serie parcial: {snapshot.history.length} sesiones con precio en el último año. Se muestra el tramo disponible.
+                            </p>
+                        )}
+                        <CompanyMarketChart history={snapshot.history} />
+                    </>
                 ) : (
                     <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
                         Historial de precio no disponible. El workspace muestra este estado de forma explícita y no inventa ningún gráfico.
