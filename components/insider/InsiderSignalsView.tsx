@@ -64,7 +64,6 @@ function countText(value: unknown): string {
 export default function InsiderSignalsView({ initialTicker, initialResult, initialFilings }: InsiderSignalsViewProps) {
     const router = useRouter();
     const [ticker, setTicker] = useState(initialTicker);
-    const [notify, setNotify] = useState(false);
     const [notifying, setNotifying] = useState(false);
 
     const handleSearch = (event: React.FormEvent) => {
@@ -74,10 +73,9 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
         router.push(`/insider?ticker=${encodeURIComponent(clean)}`);
     };
 
-    /** Toggle notify: re-evalua con notify=true (enganche Telegram best-effort). */
-    const handleNotifyToggle = async (checked: boolean) => {
-        setNotify(checked);
-        if (!checked || !initialTicker) return;
+    /** Evaluacion inmediata con notify=true (enganche Telegram best-effort, una sola vez). */
+    const handleEvaluateNotify = async () => {
+        if (!initialTicker) return;
         setNotifying(true);
         try {
             const result = await getInsiderSignals(initialTicker, { notify: true });
@@ -89,7 +87,6 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
             );
         } catch {
             toast.error(`No se pudo evaluar el aviso para ${initialTicker}`);
-            setNotify(false);
         } finally {
             setNotifying(false);
         }
@@ -150,16 +147,19 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                             lectura durable no disponible ({formatRecordValue(initialFilings.reason ?? initialFilings.status)})
                         </span>
                     ) : null}
-                    <label className="ml-auto inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
-                        <input
-                            type="checkbox"
-                            checked={notify}
-                            disabled={notifying || !initialResult}
-                            onChange={(event) => handleNotifyToggle(event.target.checked)}
-                            className="h-4 w-4 accent-teal-600"
-                        />
-                        {notifying ? 'Evaluando aviso…' : 'Avisarme por Telegram'}
-                    </label>
+                    {/* El efecto real es una evaluacion inmediata de una sola
+                        vez (evalua y, si hay senal, envia Telegram ahora): no
+                        suscribe nada. Un checkbox sugeriria una preferencia
+                        persistente que no existe (F173). */}
+                    <Button
+                        className="ml-auto min-h-[44px] text-xs sm:min-h-0"
+                        disabled={notifying || !initialResult}
+                        onClick={() => handleEvaluateNotify()}
+                        size="sm"
+                        variant="outline"
+                    >
+                        {notifying ? 'Evaluando aviso…' : 'Evaluar aviso Telegram ahora'}
+                    </Button>
                 </div>
             ) : null}
 
