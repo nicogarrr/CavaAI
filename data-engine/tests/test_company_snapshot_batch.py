@@ -252,21 +252,32 @@ def test_all_counts_scoped_to_current_tenant(db: Session):
     from app.models.entities import ResearchAlert, ResearchReview
 
     company = _company(db, "KO")
+    alert_seq = 0
 
     def fill_tenant():
+        nonlocal alert_seq
+        alert_seq += 1
+        # Las unicidades son POR TENANT: dos altas del mismo tenant necesitan
+        # metric/version/fingerprints distintos (alert_seq las desempata).
         db.add(FinancialFact(company_id=company.id, metric="revenue", value=Decimal("100"), period="FY2025"))
-        db.add(CalculatedMetric(company_id=company.id, metric="growth", value=Decimal("0.1"), period="FY2025", formula="x"))
+        db.add(CalculatedMetric(company_id=company.id, metric=f"growth-{alert_seq}", value=Decimal("0.1"), period="FY2025", formula="x"))
         db.add(Claim(company_id=company.id, statement="crece", status="verified"))
-        db.add(ThesisVersion(company_id=company.id, version=1, status="published",
+        db.add(ThesisVersion(company_id=company.id, version=alert_seq, status="published",
                              thesis_markdown="# T", executive_summary="resumen"))
         db.add(FundamentalModelVersion(
-            company_id=company.id, version=1, engine_version="e1", algorithm_version="a1",
+            company_id=company.id, version=alert_seq, engine_version="e1", algorithm_version="a1",
             framework_key="growth", horizon_years=5, status="ok",
-            input_fingerprint=f"f-{db.info.get('tenant_id')}", forecast_fingerprint=f"ff-{db.info.get('tenant_id')}",
-            market_snapshot_fingerprint=f"mf-{db.info.get('tenant_id')}", valuation_snapshot_fingerprint=f"vf-{db.info.get('tenant_id')}",
+            input_fingerprint=f"f-{db.info.get('tenant_id')}-{alert_seq}", forecast_fingerprint=f"ff-{db.info.get('tenant_id')}-{alert_seq}",
+            market_snapshot_fingerprint=f"mf-{db.info.get('tenant_id')}-{alert_seq}", valuation_snapshot_fingerprint=f"vf-{db.info.get('tenant_id')}-{alert_seq}",
         ))
         db.add(ResearchReview(company_id=company.id, status="open", review_type="expectation", title="r"))
-        db.add(ResearchAlert(company_id=company.id, status="open", alert_type="drift", title="a"))
+        db.add(ResearchAlert(
+            company_id=company.id, status="open", alert_type="drift", title="a",
+            # message y fingerprint son NOT NULL sin default, y fingerprint es
+            # unico por tenant: cada alta lleva uno distinto.
+            message="alerta de prueba",
+            fingerprint=f"fp-{db.info.get('tenant_id')}-{alert_seq}",
+        ))
         db.commit()
 
     db.info["tenant_id"] = "tenant-test"
