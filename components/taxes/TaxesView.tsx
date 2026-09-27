@@ -18,6 +18,7 @@ import { formatUserDateTime, formatMoney, NA } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
+import { onTheFlyReportNote } from '@/lib/taxes/report-note';
 
 interface TaxesViewProps {
     initialHoldings: DataRecord[];
@@ -34,7 +35,13 @@ function toDisplayReport(raw: DataRecord | null): DataRecord | null {
     if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return raw;
     const display: DataRecord = { ...(summary as DataRecord) };
     if (raw.generated_at) display.generated_at = raw.generated_at;
-    return humanizeTaxReport(display);
+    const humanized = humanizeTaxReport(display);
+    // F183: sin `generated_at` y con `persisted=false` el informe se
+    // calculó al vuelo y no está guardado: la fila «Generado» lo declara
+    // en lugar de simplemente no existir.
+    const onTheFly = onTheFlyReportNote(raw);
+    if (onTheFly) humanized[TAX_LABELS.generated_at] = onTheFly;
+    return humanized;
 }
 
 /** Etiquetas en español para las claves conocidas del resumen fiscal (F20).
