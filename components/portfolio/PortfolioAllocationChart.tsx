@@ -34,8 +34,11 @@ export default function PortfolioAllocationChart({ chartData, currency }: { char
                     data={chartData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={70}
-                    outerRadius={105}
+                    // Radios relativos al contenedor: con valores fijos
+                    // (70/105 -> diametro 210) el wrapper de 200px bajo sm
+                    // recortaba 5px por lado (F337).
+                    innerRadius="56%"
+                    outerRadius="84%"
                     paddingAngle={2}
                     dataKey="value"
                     nameKey="symbol"
