@@ -163,6 +163,14 @@ def evaluate(db: Session, *, now: datetime | None = None, limit: int = 500) -> d
                 stats["duplicates"] += 1
                 continue
             db.commit()
+            # Persist baseline work before enqueue: a Redis failure must not
+            # erase a valid alert. Only a newly gated alert gets one analysis.
+            from app.services.alert_analysis_service import queue_analysis
+
+            try:
+                queue_analysis(db, alert)
+            except Exception:  # background work cannot erase valid alert
+                db.rollback()
             NotificationService().dispatch(db, alert)
             stats["created"] += 1
         cursor = (candidates[-1].date, candidates[-1].id)
