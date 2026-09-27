@@ -1,0 +1,17 @@
+{
+  "mode": "guide",
+  "status": "insufficient_data",
+  "answer": "Sin datos suficientes para confirmar la conclusión.",
+  "sections": [
+    { "key": "facts", "body": "El documento declara una cifra, pendiente de contrastar.", "citation_ids": ["doc:1"] },
+    { "key": "insufficient_data", "body": "Falta el periodo comparable.", "citation_ids": [] }
+  ],
+  "citations": [
+    { "id": "doc:1", "kind": "document_chunk", "source": "Informe", "url": "https://example.org/report", "as_of": "2026-09-25", "excerpt": "Extracto atribuido" },
+    { "id": "news:2", "kind": "news_event", "source": "Agencia", "url": "javascript:alert(1)", "as_of": null, "excerpt": null }
+  ],
+  "missing_data": ["Periodo comparable"],
+  "suggested_next_steps": ["Consultar informe anual"],
+  "review_id": 17,
+  "writeback": false
+}
