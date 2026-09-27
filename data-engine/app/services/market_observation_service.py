@@ -93,7 +93,7 @@ async def refresh_fred(db: Session, client: FREDClient | None = None) -> dict:
     outcome: dict = {"series": {}, "errors": {}}
     for key, (series_id, _, _) in FRED_SERIES.items():
         try:
-            payload = await client.series_csv(series_id, limit=20)
+            payload = await client.series_csv(series_id, limit=800)
             if not parse_points(payload.get("observations") or []):
                 outcome["errors"][key] = "sin datos"
                 continue
