@@ -94,20 +94,20 @@ const engines = [
 
 const steps = [
   {
-    title: 'Más de 100 métricas por acción',
-    text: 'Valor, crecimiento, rentabilidad, flujo de caja, momentum y salud de balance, normalizadas por sector.',
+    title: 'Métricas de calidad y crecimiento',
+    text: 'Rentabilidad, flujo de caja, crecimiento y salud de balance, calculadas sobre los filings persistidos. La valoración (FCF/earnings yield) y el momentum aún no puntúan en v1: lo declara el embudo de abajo.',
   },
   {
-    title: 'Comparación contra el sector',
-    text: 'Cada pick se mide contra sus pares antes de puntuar: lo que es barato en un sector puede ser caro en otro.',
+    title: 'Ranking por percentiles del universo',
+    text: 'Cada componente se convierte a percentil sobre todo el universo persistido y se pondera con pesos declarados; si un componente falta, los pesos se renormalizan y queda registrado.',
   },
   {
     title: 'Score + confianza verificable',
     text: 'Score 0-100 con nivel de confianza y motivos auditables: cada motivo muestra su métrica y su valor.',
   },
   {
-    title: 'Backtest por estrategia',
-    text: 'El desempeño simulado se calcula con datos históricos y se compara contra el S&P 500 (alpha explícito).',
+    title: 'Backtesting walk-forward',
+    text: 'Existe un backtest walk-forward global. El backtest por estrategia se publicará cuando existan fundamentales point-in-time; hasta entonces ninguna estrategia muestra desempeño simulado.',
   },
 ];
 
@@ -300,11 +300,12 @@ export default function MetodologiaPage() {
           ))}
         </ol>
         <p className="mt-4 rounded-xl border border-teal-900/60 bg-teal-950/20 p-4 text-sm leading-6 text-teal-100">
-          <strong>CavaAI Propicks:</strong> la selección combina factores de valor, crecimiento,
-          rentabilidad, flujo de caja, momentum y salud financiera, se rebalancea el día 1 de cada
-          mes y publica su backtest neto de costes. Las cuatro estrategias (adaptativa, value,
-          momentum y defensiva) están publicadas con sus métricas: si una aún no tiene datos, su
-          ficha lo dice en lugar de mostrar estimaciones.
+          <strong>CavaAI ProPicks:</strong> la selección v1 puntúa calidad, rentabilidad, flujo de
+          caja y crecimiento por percentiles sobre todo el universo persistido. La valoración
+          (FCF yield / earnings yield) y el momentum aún no entran: necesitan series de precios
+          que no están persistidas. De las cuatro estrategias (adaptativa, value, momentum y
+          defensiva), cada ficha declara su estado real: si aún no tiene selección o backtest
+          publicados, lo dice en lugar de mostrar estimaciones.
         </p>
       </section>
 

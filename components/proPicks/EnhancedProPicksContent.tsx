@@ -154,16 +154,17 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                         Sobre ProPicks IA
                     </h3>
                     <p className="text-xs text-gray-400 leading-relaxed">
-                        Nuestro sistema analiza más de 100 métricas financieras,
-                        compara cada acción con su sector y utiliza inteligencia artificial
-                        para seleccionar las mejores oportunidades del mercado.
+                        El embudo v1 puntúa las métricas de calidad y crecimiento ya
+                        persistidas de todo el universo (SEC + ESEF) y las ordena por
+                        percentiles. La valoración y el momentum aún no entran en v1:
+                        necesitan series de precios que no están persistidas.
                     </p>
                     <div className="mt-3 pt-3 border-t border-gray-700">
                         <div className="text-xs text-gray-500 space-y-1">
-                            <div>✓ Análisis fundamental avanzado</div>
-                            <div>✓ Comparación con sector</div>
-                            <div>✓ Evaluación de momentum</div>
+                            <div>✓ Análisis fundamental (calidad y crecimiento)</div>
                             <div>✓ Análisis de salud financiera</div>
+                            <div>✓ Ranking por percentiles del universo</div>
+                            <div>✗ Valoración y momentum: aún no (v1)</div>
                         </div>
                     </div>
                 </Card>
