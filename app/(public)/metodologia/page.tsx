@@ -232,9 +232,10 @@ export default function MetodologiaPage() {
           ))}
         </div>
         <p className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/20 p-4 text-sm leading-6 text-amber-200">
-          <strong>FMP retirado:</strong> Financial Modeling Prep se eliminó de la app porque su plan gratuito dejó de
-          servir los endpoints que usábamos (ahora responden &laquo;Legacy Endpoint&raquo;). Ningún cálculo actual
-          depende de FMP; los consumidores que quedaban se migran a Finnhub y Yahoo Finance.
+          <strong>FMP solo en mercado US:</strong> el plan gratuito de Financial Modeling Prep quedó limitado a
+          compañías US (sus endpoints antiguos responden &laquo;Legacy Endpoint&raquo; o 402 fuera de ese mercado).
+          Hoy FMP solo alimenta el refresco de financieros de tickers US; el resto se sirve de SEC EDGAR y ESEF,
+          y los precios vienen de Finnhub y Yahoo Finance.
         </p>
       </section>
 
