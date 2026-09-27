@@ -76,6 +76,14 @@ const PROSE_ES: Record<string, string> = {
 const DECISION_LABELS: Record<string, string> = {
   buy: 'Comprar', hold: 'Mantener', trim: 'Reducir', sell: 'Vender', watch: 'Vigilar', avoid: 'Evitar',
 };
+const MODEL_STATUS_LABELS: Record<string, string> = {
+  // Catálogo cerrado de long_term_model_service: ok, insufficient_data,
+  // missing_mandatory_drivers, preview_only.
+  ok: 'completo',
+  insufficient_data: 'datos insuficientes',
+  missing_mandatory_drivers: 'faltan drivers obligatorios',
+  preview_only: 'solo vista previa',
+};
 const REVIEW_STATUS_LABELS: Record<string, string> = {
   beat: 'superado', met: 'cumplido', miss: 'no cumplido', unavailable: 's/d', pending: 'pendiente',
 };
@@ -123,7 +131,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
           {/* La cobertura mide valores PRESENTES con fuente, no completitud:
               siempre con su alcance explícito y, si no es publicable
               (missing_inputs, bloqueos o cobertura <60), con la causa visible. */}
-          {model.horizon_years} años · {model.status}
+          {model.horizon_years} años de proyección · {translate(MODEL_STATUS_LABELS, model.status, model.status)}
           {` · valores con fuente ${formatNumber(model.source_coverage.coverage_percent, { maximumFractionDigits: 0 })} %`}
           {model.publishable ? '' : ' · modelo no publicable'}
         </span>
@@ -289,7 +297,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
       </div>
 
       <p className="mt-5 border-t border-gray-800 pt-3 text-xs leading-5 text-gray-500">
-        El modelo cubre {model.historical_review.years_covered} años ({model.historical_review.first_year ?? '—'}–{model.historical_review.last_year ?? '—'}). Los números calculados conservan sus fact IDs; lo no disponible se muestra como unknown/insufficient_data.
+        Historial disponible: {model.historical_review.years_covered} {model.historical_review.years_covered === 1 ? 'año' : 'años'} ({model.historical_review.first_year ?? '—'}–{model.historical_review.last_year ?? '—'}), frente a los {model.horizon_years} años proyectados. Los números calculados conservan sus fact IDs; lo no disponible se muestra como unknown/insufficient_data.
       </p>
     </section>
   );
