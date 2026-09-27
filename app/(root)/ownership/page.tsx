@@ -32,7 +32,7 @@ const LIMITATION_LABELS: Record<string, string> = {
 };
 
 const CHANGE_LABELS: Record<string, string> = {
-    new: 'nueva posicion',
+    new: 'nueva posición',
     closed: 'cerrada',
     increased: 'aumentada',
     decreased: 'reducida',
@@ -180,7 +180,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                                 <caption className="sr-only">Posiciones declaradas en el último informe 13F del gestor, tal como constan en EDGAR</caption>
                                 <thead className="text-xs uppercase text-gray-500">
                                     <tr>
-                                        <th className="border-b border-gray-800 py-2" scope="col">Emisor (tal como se declaro)</th>
+                                        <th className="border-b border-gray-800 py-2" scope="col">Emisor (tal como se declaró)</th>
                                         <th className="border-b border-gray-800 py-2" scope="col">Clase</th>
                                         <th className="border-b border-gray-800 py-2" scope="col">CUSIP</th>
                                         <th className="border-b border-gray-800 py-2 text-right" scope="col">Valor</th>
@@ -231,8 +231,8 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                     <section className="rounded-xl border border-gray-800 bg-[#101010] p-5 text-sm text-gray-400">
                         <h2 className="font-semibold text-gray-100">Sin datos 13F todavia</h2>
                         <p className="mt-2">
-                            Este gestor aun no se ha sincronizado. Pulsa &quot;Sincronizar 13F&quot; para
-                            descargar su ultimo informe desde SEC EDGAR (gratuito, fuente oficial).
+                            Este gestor aún no se ha sincronizado. Pulsa &quot;Sincronizar 13F&quot; para
+                            descargar su último informe desde SEC EDGAR (gratuito, fuente oficial).
                         </p>
                     </section>
                 )
