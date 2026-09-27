@@ -1,0 +1,63 @@
+/**
+ * Guarda F131: el inventario global de fuentes mostraba los 50 documentos
+ * más recientes sin forma de llegar al resto (432 en prod): sin paginación,
+ * sin filtro. El backend ya pagina y filtra (?page=, ?ticker=); ahora la UI
+ * lo usa con contador honesto del subconjunto filtrado.
+ *
+ * Los tests ejercitan el helper real (lib/research/sources-inventory.ts) y
+ * comprueban que la página y la acción lo usan de verdad.
+ */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+import {
+    SOURCES_PAGE_SIZE,
+    firstSearchParam,
+    normalizeSourcesTicker,
+    sourcesHref,
+    sourcesPageInfo,
+    // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
+} from '../lib/research/sources-inventory.ts';
+
+const PAGE = 'app/(root)/research/sources/page.tsx';
+const ACTIONS = 'lib/actions/research.actions.ts';
+
+void test('la paginación acota la página y cuenta el rango visible de verdad', () => {
+    const info = sourcesPageInfo(432, 1);
+    assert.deepEqual(info, { page: 1, pages: 9, from: 1, to: SOURCES_PAGE_SIZE });
+    assert.deepEqual(sourcesPageInfo(432, 9).to, 432);
+    assert.equal(sourcesPageInfo(432, 99).page, 9, 'página fuera de rango cae en la última, nunca en una vacía');
+    assert.deepEqual(sourcesPageInfo(0, 3), { page: 1, pages: 1, from: 0, to: 0 });
+});
+
+void test('el filtro de ticker se normaliza y los enlaces lo conservan', () => {
+    assert.equal(normalizeSourcesTicker(' aapl '), 'AAPL');
+    assert.equal(normalizeSourcesTicker(''), '');
+    assert.equal(firstSearchParam(['AAPL', 'MSFT']), 'AAPL', 'claves repetidas: primer valor');
+    assert.equal(firstSearchParam(undefined), '');
+    assert.equal(sourcesHref('', 1), '/research/sources');
+    assert.equal(sourcesHref('aapl', 2), '/research/sources?ticker=AAPL&page=2');
+    assert.equal(sourcesHref('', 3), '/research/sources?page=3');
+});
+
+void test('la acción pasa filtro y página a listado y cuenta del mismo subconjunto', () => {
+    const actions = readFileSync(ACTIONS, 'utf8');
+    assert.match(actions, /getResearchSources\(options: \{ ticker\?: string; page\?: number \}/, 'firma con filtro y página');
+    assert.match(actions, /params\.set\('ticker', options\.ticker\)/, 'el listado recibe el ticker');
+    assert.match(actions, /params\.set\('page', String\(effectivePage\)\)/, 'el listado recibe la página acotada');
+    assert.match(actions, /documents\/count\$\{countQuery\}/, 'la cuenta recibe el mismo filtro');
+    assert.match(actions, /sourcesPageInfo\(documentsTotal, requested\)/, 'la página se acota con el total real');
+});
+
+void test('la página declara el subconjunto filtrado y pagina con enlaces', () => {
+    const page = readFileSync(PAGE, 'utf8');
+    assert.match(page, /searchParams\?: Promise<\{ ticker\?: string \| string\[\]; page\?: string \| string\[\] \}>/, 'searchParams tipado con arrays');
+    assert.match(page, /firstSearchParam\(params\.ticker\)/, 'ticker normalizado');
+    assert.match(page, /<form action="\/research\/sources"[^>]*method="get">/, 'filtro por GET');
+    assert.match(page, /htmlFor="sources-ticker"/, 'label accesible');
+    assert.match(page, /documentos de \$\{ticker\}/, 'el contador nombra el filtro');
+    assert.match(page, /sourcesHref\(ticker, pageInfo\.page [+-] 1\)/, 'paginación conserva el filtro');
+    assert.match(page, /Sin documentos de \{ticker\}\./, 'filtro sin resultados lo dice y no finge inventario vacío');
+    assert.match(page, /Quitar (el )?filtro/, 'salida explícita del filtro');
+});
