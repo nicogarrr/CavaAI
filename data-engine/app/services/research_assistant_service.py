@@ -136,19 +136,25 @@ def answer(db: Session, payload) -> dict:
     # It is not an LLM conclusion and does not elevate a headline to a fact.
     selected = citations[:6]
     lines = []
+    primary = any(citation["kind"] in {"financial_fact", "document_chunk"} for citation in selected)
     for citation in selected:
-        statement = (f"Dato documentado: {citation['excerpt']}" if citation["kind"] == "financial_fact"
-                     else f"Documento: {citation['excerpt']}" if citation["kind"] == "document_chunk"
-                     else f"Noticia atribuida a {citation['source']}: {citation['excerpt']}")
+        stamp = citation["as_of"] or "fecha sin datos"
+        statement = (f"Dato documentado en {citation['source']} ({stamp}): {citation['excerpt']}"
+                     if citation["kind"] == "financial_fact"
+                     else f"Extracto de {citation['source']} ({stamp}): {citation['excerpt']}"
+                     if citation["kind"] == "document_chunk"
+                     else f"Titular atribuido a {citation['source']} ({stamp}): {citation['excerpt']}")
         lines.append(f"{statement} [{citation['id']}]")
-    note = "Estos son indicios y registros, no una comprobación independiente del titular."
+    note = ("Fuente primaria documental disponible para consulta; este resumen no verifica el documento completo."
+            if primary else "Fuente primaria no consultada o no disponible; los titulares no verifican sus afirmaciones.")
     if payload.mode == "guide":
         note += " Contrasta el documento primario antes de aceptar una conclusión del ticket."
     return {"mode": payload.mode, "status": "answered", "answer": "\n".join([*lines, note]),
             "sections": [{"key": "facts", "body": "\n".join(lines),
                           "citation_ids": [c["id"] for c in selected]},
                          {"key": "insufficient_data", "body": note, "citation_ids": []}],
-            "citations": selected, "missing_data": [],
+            "citations": selected,
+            "missing_data": [] if primary else ["Fuente primaria no consultada o no disponible."],
             "suggested_next_steps": ["Abrir las fuentes y contrastar los hechos antes de concluir."],
             "review_id": review.id if review else None, "writeback": False}
 
