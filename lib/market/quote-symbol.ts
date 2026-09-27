@@ -28,9 +28,20 @@ export function quoteSymbolFor(company: ListingBasics, ticker: string): string |
     if (!company) return null;
     const exchange = (company.exchange || '').toUpperCase();
     const currency = (company.currency || '').toUpperCase();
+    // El mapa exacto de plazas no-US manda sobre la inferencia por subcadena:
+    // «NYSE EURONEXT - EURONEXT AMSTERDAM» CONTIENE «NYSE», y con la divisa
+    // ausente (estado de datos permitido) la inferencia US devolvía el ticker
+    // pelado — el ADR en USD — antes que la línea .AS verificada.
+    const suffix = EXCHANGE_YAHOO_SUFFIX[exchange];
+    if (suffix) {
+        return `${ticker}${suffix}`;
+    }
     const usExchange =
         exchange !== '' &&
         exchange !== 'UNKNOWN' &&
+        // Ninguna plaza Euronext es un listado US: la nomenclatura histórica
+        // de Finnhub («NYSE EURONEXT - ...») no abre la vía del ticker pelado.
+        !exchange.includes('EURONEXT') &&
         US_EXCHANGE_TOKENS.some((token) => exchange.includes(token));
     // Listado US: la divisa USD es la evidencia (bulk import americano con
     // bolsa UNKNOWN); a falta de divisa sirve una bolsa US conocida.
@@ -40,9 +51,7 @@ export function quoteSymbolFor(company: ListingBasics, ticker: string): string |
     if (currency === '' && usExchange) {
         return ticker;
     }
-    // No-US: solo con correspondencia de bolsa validada (Yahoo con sufijo).
-    // Sin ella, null: ni ticker desnudo (gemelo US) ni sufijo adivinado
-    // (EUR->.MC podría cotizar un homónimo español).
-    const suffix = EXCHANGE_YAHOO_SUFFIX[exchange];
-    return suffix ? `${ticker}${suffix}` : null;
+    // No-US sin correspondencia validada: null — ni ticker desnudo (gemelo
+    // US) ni sufijo adivinado (EUR->.MC podría cotizar un homónimo español).
+    return null;
 }

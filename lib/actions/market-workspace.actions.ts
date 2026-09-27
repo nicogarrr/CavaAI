@@ -29,7 +29,7 @@ type ResearchCompanyBasics = { name?: string; exchange?: string; currency?: stri
 
 // Finnhub profile2 no siempre cubre mercados no-US; la ficha research sí
 // tiene la compañía (resuelve sufijos, SAN.MC -> SAN) con nombre/bolsa/moneda.
-async function getResearchCompanyBasics(ticker: string): Promise<ResearchCompanyBasics | null> {
+export async function getResearchCompanyBasics(ticker: string): Promise<ResearchCompanyBasics | null> {
     const backendUrl = process.env.FMP_BACKEND_URL;
     if (!backendUrl) return null;
     try {

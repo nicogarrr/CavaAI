@@ -767,7 +767,7 @@ async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; 
             }
         }
     } catch {
-        console.log(`Finnhub quote failed for ${symbol}, trying Yahoo Finance...`);
+        console.log('Finnhub quote failed for %s, trying Yahoo Finance...', symbol);
     }
     
     // Fallback al backend (Yahoo chart API) para mercados que Finnhub free
@@ -792,7 +792,7 @@ async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; 
                 }
             }
         } catch (error) {
-            console.error(`Yahoo Finance quote also failed for ${symbol}:`, error);
+            console.error('Yahoo Finance quote also failed for %s:', symbol, error);
         }
     }
     

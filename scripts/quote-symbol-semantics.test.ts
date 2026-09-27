@@ -44,6 +44,23 @@ void test('listado no-US sin correspondencia validada: sin precio', () => {
     assert.equal(quoteSymbolFor({ exchange: 'LONDON STOCK EXCHANGE', currency: 'USD' }, 'SHEL'), null);
 });
 
+void test('bolsa histórica Euronext con divisa ausente: línea real, nunca el ADR', () => {
+    // «NYSE EURONEXT - ...» contiene «NYSE» y la divisa ausente es un estado
+    // permitido: la inferencia US devolvía el ticker pelado (ADR en USD).
+    assert.equal(
+        quoteSymbolFor({ exchange: 'NYSE EURONEXT - EURONEXT AMSTERDAM', currency: '' }, 'ASML'),
+        'ASML.AS',
+    );
+    assert.equal(
+        quoteSymbolFor({ exchange: 'NYSE EURONEXT - EURONEXT AMSTERDAM' }, 'ASML'),
+        'ASML.AS',
+    );
+    // Plaza Euronext no mapeada y sin divisa: ninguna plaza Euronext es US:
+    // sin precio antes que el ticker pelado.
+    assert.equal(quoteSymbolFor({ exchange: 'NYSE EURONEXT - EURONEXT PARIS', currency: '' }, 'MC'), null);
+    assert.equal(quoteSymbolFor({ exchange: 'EURONEXT', currency: '' }, 'MC'), null);
+});
+
 void test('listado US: ticker pelado', () => {
     assert.equal(quoteSymbolFor({ exchange: 'NASDAQ NMS - GLOBAL MARKET', currency: 'USD' }, 'AAPL'), 'AAPL');
     assert.equal(quoteSymbolFor({ exchange: 'NEW YORK STOCK EXCHANGE, INC.', currency: 'USD' }, 'JNJ'), 'JNJ');

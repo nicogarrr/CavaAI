@@ -28,6 +28,14 @@ describe('exchangeDisplayName (semántica F156)', () => {
         assert.equal(exchangeDisplayName('NYSE MKT LLC'), 'NYSE American');
     });
 
+    it('«NYSE EURONEXT - ...» es una plaza Euronext, nunca NYSE (F180)', () => {
+        // Finnhub nombra las plazas Euronext con su nomenclatura histórica;
+        // mostrar «NYSE» para ASML (Amsterdam, EUR) rompía el par bolsa/divisa.
+        assert.equal(exchangeDisplayName('NYSE EURONEXT - EURONEXT AMSTERDAM'), 'Euronext Amsterdam');
+        assert.equal(exchangeDisplayName('NYSE EURONEXT - EURONEXT PARIS'), 'Euronext Paris');
+        assert.notEqual(exchangeDisplayName('NYSE EURONEXT - EURONEXT AMSTERDAM'), 'NYSE');
+    });
+
     it('mercados internacionales y OTC se normalizan sin inventar', () => {
         assert.equal(exchangeDisplayName('BOLSA DE MADRID'), 'BME');
         assert.equal(exchangeDisplayName('TORONTO STOCK EXCHANGE'), 'TSX');
