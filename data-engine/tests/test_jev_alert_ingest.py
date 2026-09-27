@@ -57,6 +57,8 @@ def _mock_jev(monkeypatch, calls: dict):
 
     transport = httpx.MockTransport(handler)
     client = JevDecisionClient(api_key="test-key", client=httpx.AsyncClient(transport=transport))
+    from app.services import jev_availability
+    monkeypatch.setattr(jev_availability, "credit_status", lambda: {"status": "activo"})
     monkeypatch.setattr(jts, "build_client", lambda: client)
     return client
 

@@ -472,6 +472,17 @@ class ClaimIntelligenceService:
                 if duplicate:
                     continue
 
+                # Routing de revisión, no decide relación ni auto-aplicación.
+                # Un solo marcador por documento para no multiplicar llamadas.
+                routing = None
+                if suggestion_count == 0:
+                    try:
+                        from app.services.jev_gates import CLAIM_ROUTING_CRITERIA, mark_only
+                        routing = mark_only("claim_routing", extracted.text,
+                            "Mark whether this text is externally verifiable or narrative. Do not verify it.",
+                            CLAIM_ROUTING_CRITERIA)
+                    except Exception:  # noqa: BLE001
+                        pass
                 suggestion = EvidenceSuggestion(
                     company_id=document.company_id,
                     document_id=document.id,
@@ -490,6 +501,7 @@ class ClaimIntelligenceService:
                         "similarity": round(match.similarity, 4) if match else None,
                         "source_tier": source_tier.key,
                         "automatic": True,
+                        **({"jev_claim_routing": routing} if routing else {}),
                     },
                 )
                 db.add(suggestion)

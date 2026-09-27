@@ -153,6 +153,39 @@ class NewsService:
                 news_metadata["jev_doc_type"] = doc_type
         except Exception:  # noqa: BLE001 — Jev nunca rompe la ingesta
             pass
+        # Clasificación para priorizar la vista, no modifica el análisis ni
+        # descarta noticias: el universo completo sigue disponible.
+        try:
+            from app.models import Position, WatchItem
+            from app.services.jev_gates import (
+                THESIS_CRITERIA,
+                UNIVERSE_RELEVANCE_CRITERIA,
+                mark_only,
+            )
+            tracked = bool(company and (
+                db.scalar(select(Position.id).where(Position.company_id == company.id).limit(1))
+                or db.scalar(select(WatchItem.id).where(WatchItem.symbol == company.ticker).limit(1))
+            ))
+            if source.lower() == "gdelt" and company:
+                mark = mark_only("universe_relevance",
+                    f"TRACKED_BY_ACCOUNT: {tracked}\nTICKER: {company.ticker}\nREPORT: {text}",
+                    "Classify the relevance of this report for the provided tracking context; do not verify facts.",
+                    UNIVERSE_RELEVANCE_CRITERIA)
+                news_metadata["tracked_by_account"] = tracked
+                if mark:
+                    # La pertenencia a cartera/lista es determinista: Jev
+                    # nunca puede convertir un emisor no seguido en posición.
+                    if not tracked and mark["label"] == "tracked":
+                        mark["label"] = "universe"
+                    news_metadata["jev_universe_relevance"] = mark
+            if requires_update and company:
+                mark = mark_only("thesis_change", text,
+                    "Mark whether the change looks substantive; never decide whether to regenerate a thesis.",
+                    THESIS_CRITERIA)
+                if mark:
+                    news_metadata["jev_thesis_priority"] = mark
+        except Exception:  # noqa: BLE001 — jamás bloquear una ingesta
+            pass
         news = NewsEvent(
             company_id=company.id if company else None,
             # La fecha del evento es la de publicacion de la fuente (filing,
