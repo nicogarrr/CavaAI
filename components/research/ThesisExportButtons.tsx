@@ -10,6 +10,7 @@ import { BookDown } from 'lucide-react';
 export default function ThesisExportButtons({ ticker }: { ticker: string }) {
   const encoded = encodeURIComponent(ticker);
   return (
+    <div className="flex flex-wrap gap-2">
     <a
       className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200 sm:min-h-0"
       href={`/api/thesis/${encoded}/epub`}
@@ -18,5 +19,14 @@ export default function ThesisExportButtons({ ticker }: { ticker: string }) {
       <BookDown className="h-4 w-4" />
       Exportar EPUB
     </a>
+    <a
+      className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200 sm:min-h-0"
+      href={`/api/thesis/${encoded}/obsidian.zip`}
+      download
+    >
+      <BookDown className="h-4 w-4" />
+      Exportar a Obsidian (.zip)
+    </a>
+    </div>
   );
 }
