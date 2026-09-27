@@ -88,8 +88,15 @@ def documents(
     if ticker:
         statement = statement.where(Company.ticker == ticker.upper())
 
+    # «Mas recientes» = por fecha de PUBLICACION global, no por ingesta:
+    # ordenar por created_at agrupaba por tanda de ingesta y desplazaba
+    # filings recientes de otros emisores fuera del limite (F162). Los sin
+    # fecha de publicacion van al final (la UI los etiqueta «sin fecha»);
+    # created_at solo desempata dentro de la misma fecha.
     rows = db.execute(
-        statement.order_by(desc(Document.created_at))
+        statement.order_by(
+            desc(Document.published_at).nullslast(), desc(Document.created_at)
+        )
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
