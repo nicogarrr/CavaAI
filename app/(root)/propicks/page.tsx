@@ -60,10 +60,13 @@ export default async function ProPicksPage() {
                     </div>
                 </div>
                 <p className="text-sm text-gray-500">
-                    El embudo IA evalúa el universo líquido con 6 categorías
-                    (valor, crecimiento, rentabilidad, caja, momentum, salud
-                    financiera) y publica aquí la selección del último run
-                    con su fecha de datos en cada tarjeta. El backtest de la
+                    El embudo v1 discrimina el universo persistido con 4
+                    categorías con datos para todo el universo (rentabilidad,
+                    crecimiento, caja y salud financiera) y publica aquí la
+                    selección del último run con su fecha de datos en cada
+                    tarjeta. Valoración y momentum aún no discriminan: sin
+                    series de precios para todo el universo entran neutras
+                    (50) y se marcan n/d en las tarjetas. El backtest de la
                     pestaña «Backtesting» es un baseline walk-forward aparte
                     (momentum 12-1M sobre 30 valores, costes 15 pb, SPY como
                     referencia): sirve para validar el motor point-in-time,

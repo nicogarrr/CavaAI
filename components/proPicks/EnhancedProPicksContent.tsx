@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { TrendingUp, Sparkles, ArrowRight, Loader2, RefreshCw, Clock, Plus, Check } from 'lucide-react';
 import EnhancedProPicksFilters, { ProPicksFilters } from './EnhancedProPicksFilters';
 import { generateEnhancedProPicksWithRun, type ProPick } from '@/lib/actions/proPicks.actions';
+import { categoryDisplay } from '@/lib/propicks/category-display';
 import { addToWatchlist } from '@/lib/actions/watchlist.actions';
 import { formatNumber, formatPercent, formatPrice, formatUserDate, formatUserDateTime } from '@/lib/format';
 import { etiquetaSector } from '@/lib/labels';
@@ -156,16 +157,16 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                     <p className="text-xs text-gray-400 leading-relaxed">
                         El embudo v1 puntúa las métricas de calidad y crecimiento ya
                         persistidas de todo el universo (SEC + ESEF) y las ordena por
-                        percentiles. La valoración y el momentum aún no entran en v1:
-                        las series de precios solo se persisten para el top-N tras cada
-                        run, no para todo el universo.
+                        percentiles. Valoración y momentum no discriminan en v1: sin
+                        series de precios para todo el universo entran neutras (50)
+                        en el score y se muestran n/d en las tarjetas.
                     </p>
                     <div className="mt-3 pt-3 border-t border-gray-700">
                         <div className="text-xs text-gray-500 space-y-1">
                             <div>✓ Análisis fundamental (calidad y crecimiento)</div>
                             <div>✓ Análisis de salud financiera</div>
                             <div>✓ Ranking por percentiles del universo</div>
-                            <div>✗ Valoración y momentum: aún no (v1)</div>
+                            <div>~ Valoración y momentum: neutras en v1 (sin series para todo el universo)</div>
                         </div>
                     </div>
                 </Card>
@@ -313,27 +314,34 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                                         )}
                                     </div>
 
-                                    {/* Category Scores */}
-                                    <div className="grid grid-cols-3 gap-2 mb-3">
-                                        <div className="text-center">
-                                            <div className="text-xs text-gray-500">Valor</div>
-                                            <div className={`text-sm font-semibold ${pick.categoryScores.value >= 70 ? 'text-green-400' : 'text-gray-400'}`}>
-                                                {pick.categoryScores.value}
-                                            </div>
-                                        </div>
-                                        <div className="text-center">
-                                            <div className="text-xs text-gray-500">Momentum</div>
-                                            <div className={`text-sm font-semibold ${pick.categoryScores.momentum >= 70 ? 'text-green-400' : 'text-gray-400'}`}>
-                                                {pick.categoryScores.momentum}
-                                            </div>
-                                        </div>
-                                        <div className="text-center">
-                                            <div className="text-xs text-gray-500">Rentab.</div>
-                                            <div className={`text-sm font-semibold ${pick.categoryScores.profitability >= 70 ? 'text-green-400' : 'text-gray-400'}`}>
-                                                {pick.categoryScores.profitability}
-                                            </div>
-                                        </div>
+                                    {/* Category Scores (F184: una categoría neutral en v1 se
+                                        muestra n/d, nunca como un «50» que parece score real) */}
+                                    <div className="grid grid-cols-3 gap-2 mb-1">
+                                        {([
+                                            { label: 'Valor', key: 'value' as const },
+                                            { label: 'Momentum', key: 'momentum' as const },
+                                            { label: 'Rentab.', key: 'profitability' as const },
+                                        ]).map(({ label, key }) => {
+                                            const display = categoryDisplay(pick, key);
+                                            return (
+                                                <div className="text-center" key={key}>
+                                                    <div className="text-xs text-gray-500">{label}</div>
+                                                    {display.kind === 'neutral' ? (
+                                                        <div className="text-sm font-semibold text-gray-500">n/d*</div>
+                                                    ) : (
+                                                        <div className={`text-sm font-semibold ${display.value >= 70 ? 'text-green-400' : 'text-gray-400'}`}>
+                                                            {display.value}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
+                                    {(['value', 'momentum', 'profitability'] as const).some((key) => categoryDisplay(pick, key).kind === 'neutral') && (
+                                        <div className="text-[10px] leading-4 text-gray-500 mb-2">
+                                            * Sin datos para puntuarla en v1: entra neutral (50) en el score y no discrimina entre picks.
+                                        </div>
+                                    )}
 
                                     <div className="mb-3 rounded-md border border-teal-500/20 bg-teal-500/5 px-3 py-2">
                                         <span className="text-xs text-gray-400">
