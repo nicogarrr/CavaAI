@@ -9,5 +9,7 @@ def test_rejects_uncited_and_unattributed_claims():
         {"body": "Según un titular, 345 satélites.", "citation_ids": ["news_event:1"]},
         {"body": "Según un titular, 344 satélites.", "citation_ids": ["financial_fact:42"]},
     ]}, cites)
-    assert len(out) == 1
-    assert out[0]["body"] == "Según un titular, 344 satélites."
+    assert out == []  # Even matching numbers do not verify a paraphrase.
+    assert _validated_sentences({"sentences": [
+        {"body": "344 satellites", "citation_ids": ["news_event:1"]},
+    ]}, cites)[0]["body"] == "344 satellites"

@@ -112,7 +112,7 @@ def _evidence(db: Session, company: Company, tenant_id: int, question: str) -> l
     ranked = sorted(((sum(term in chunk.text.lower() for term in terms), chunk, doc) for chunk, doc in chunks),
                     key=lambda result: result[0], reverse=True)
     for score, chunk, doc in ranked[:4]:
-        if score < 1 or not _url(doc.source_url):
+        if score < 1 or not _url(doc.source_url) or not doc.published_at:
             continue
         citations.append({"id": f"document_chunk:{chunk.id}", "kind": "document_chunk",
                           "source": doc.title, "url": _url(doc.source_url),
