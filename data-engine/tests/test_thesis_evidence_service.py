@@ -93,6 +93,67 @@ def test_extract_latest_annual_first_tag_wins_never_sums():
     assert out["revenue"]["concept"] == "Revenues"
 
 
+def test_extract_latest_annual_prefers_current_tag_over_stale_preferred_tag():
+    """F133 (MSFT tenant 5): "Revenues" dejo de informarse tras FY2010 y
+    el extractor lo elegia por preferencia, dejando FY2010 como "Latest
+    Results" aunque RevenueFromContract... tenia FY2026."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 62484000000,
+                    "start": "2009-07-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+            ],
+            "RevenueFromContractWithCustomerExcludingAssessedTax": [
+                {
+                    "form": "10-K",
+                    "val": 331839000000,
+                    "start": "2025-07-01",
+                    "end": "2026-06-30",
+                    "filed": "2026-07-29",
+                },
+            ],
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 331839000000
+    assert out["revenue"]["concept"] == "RevenueFromContractWithCustomerExcludingAssessedTax"
+    assert out["revenue"]["period"] == "2026-06-30:FY"
+
+
+def test_extract_latest_annual_excludes_quarter_republished_in_10k():
+    """F133: el 10-K republica trimestres; un Q4 (start 2010-04-01,
+    16.039B - el valor exacto que prod guardo como "FY2010") no es un
+    dato anual aunque venga con form 10-K."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 62484000000,
+                    "start": "2009-07-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+                {
+                    "form": "10-K",
+                    "val": 16039000000,
+                    "start": "2010-04-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+            ]
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 62484000000
+    assert out["revenue"]["fiscal_year"] == 2010
+
+
 def test_extract_latest_annual_skips_entries_without_value_or_end():
     us_gaap = _gaap(
         {

@@ -45,8 +45,11 @@ from app.services.connectors import sec_edgar as sec_edgar_connector
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.ir import IRConnector
 
-# Metrica -> (tags us-gaap por preferencia, unidad). El primer tag que
-# informa gana; nunca se suman tags.
+# Metrica -> (tags us-gaap por preferencia, unidad). Nunca se suman
+# tags. Gana el tag con el dato mas reciente: un tag preferido puede
+# quedar congelado en el pasado (MSFT dejo de informar "Revenues" tras
+# FY2010 y paso a RevenueFromContract...); a igual fecha, manda el orden
+# de preferencia (F133).
 SEC_EVIDENCE_TAGS: dict[str, tuple[list[str], str]] = {
     "revenue": (
         ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"],
@@ -274,10 +277,40 @@ class ThesisEvidenceService:
             "document_id": document.id,
         }
 
+    @staticmethod
+    def _is_annual_duration(entry: dict[str, Any]) -> bool:
+        """True si el hecho cubre ~1 ano o es instantaneo (sin ``start``).
+
+        Los 10-K republican trimestres: un form anual NO garantiza
+        duracion anual (MSFT FY2010: revenue 16.039B con start 2010-04-01
+        es el Q4, no el ano - F133). Fechas no parseables: cerrado.
+        """
+        start, end = entry.get("start"), entry.get("end")
+        if not start:
+            return True
+        try:
+            days = (
+                datetime.strptime(str(end), "%Y-%m-%d").date()
+                - datetime.strptime(str(start), "%Y-%m-%d").date()
+            ).days
+        except (TypeError, ValueError):
+            return False
+        return 300 <= days <= 400
+
     def _extract_latest_annual(self, us_gaap: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        """Ultimo 10-K/20-F por metrica (fallback: ultimo 10-Q)."""
+        """Ultimo hecho anual por metrica (fallback: ultimo trimestre).
+
+        Dos filtros que antes faltaban (F133, MSFT tenant 5):
+        - la duracion del hecho, no solo el form: un trimestre republicado
+          en un 10-K no es un dato anual;
+        - el tag se elige por recencia del dato entre TODOS los tags, no
+          "el primero que informa": un tag preferido puede no tener datos
+          nuevos desde hace anos. A igual (end, filed) manda la
+          preferencia declarada en SEC_EVIDENCE_TAGS; nunca se suman tags.
+        """
         out: dict[str, dict[str, Any]] = {}
         for metric, (tags, unit) in SEC_EVIDENCE_TAGS.items():
+            best: dict[str, Any] | None = None
             for tag in tags:
                 entries = ((us_gaap.get(tag) or {}).get("units") or {}).get(unit, [])
                 annual = [
@@ -287,6 +320,7 @@ class ThesisEvidenceService:
                     and str(e.get("form", "")).upper() in ANNUAL_FORMS
                     and e.get("val") is not None
                     and e.get("end")
+                    and self._is_annual_duration(e)
                 ]
                 pool = annual or [
                     e
@@ -303,7 +337,7 @@ class ThesisEvidenceService:
                 except ValueError:
                     fiscal_year = None
                 is_annual = str(latest.get("form", "")).upper() in ANNUAL_FORMS
-                out[metric] = {
+                candidate = {
                     "value": latest["val"],
                     "unit": unit,
                     "period": f"{end}:FY" if is_annual else f"{end}:{latest.get('form')}",
@@ -312,7 +346,15 @@ class ThesisEvidenceService:
                     "concept": tag,
                     "form": latest.get("form"),
                 }
-                break
+                # Recencia por periodo cubierto; empate -> filed; doble
+                # empate -> el tag ya elegido (preferencia declarada).
+                key = (end, str(latest.get("filed", "")))
+                if best is None or key > best["_key"]:
+                    candidate["_key"] = key
+                    best = candidate
+            if best is not None:
+                best.pop("_key", None)
+                out[metric] = best
         return out
 
     # -- 2. precio + perfil Finnhub -------------------------------------------
