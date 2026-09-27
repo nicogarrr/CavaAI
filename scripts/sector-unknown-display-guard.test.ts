@@ -20,6 +20,12 @@ test('Unknown en ambos campos: «Sector sin dato», nunca el placeholder', () =>
     assert.equal(sectorIndustryLine('', ''), 'Sector sin dato');
 });
 
+test('variantes del placeholder (espacios, capitalización) también son ausencia', () => {
+    assert.equal(sectorIndustryLine(' unknown ', 'UNKNOWN'), 'Sector sin dato');
+    assert.equal(sectorIndustryLine(' Unknown ', 'Unknown'), 'Sector sin dato');
+    assert.equal(sectorIndustryLine(' Health Care ', 'Unknown'), 'Health Care');
+});
+
 test('valores reales pasan intactos; la parte Unknown se omite', () => {
     assert.equal(sectorIndustryLine('Health Care', 'Pharmaceuticals'), 'Health Care · Pharmaceuticals');
     assert.equal(sectorIndustryLine('Health Care', 'Unknown'), 'Health Care');
