@@ -275,17 +275,66 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
           <MutationForm id="upload-knowledge" action={uploadKnowledgeDocument} className="rounded-xl border border-gray-800 bg-[#101010] p-5" resetOnSuccess successMessage="Documento ingerido">
             <div className="mb-4 flex items-center gap-2"><UploadCloud aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">{t('knowledge.upload')}</h2></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input className="h-11 w-full" name="title" placeholder="Título del documento" required />
-              <select className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" name="collection_id" defaultValue="">
-                <option value="">Sin colección</option>
-                {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
-              </select>
-              <Input className="h-11 w-full" name="author" placeholder="Autor" />
-              <Input className="h-11 w-full" name="document_type" defaultValue="book" placeholder="libro, carta, artículo" required />
-              <Input className="h-11 w-full" name="publication_date" type="date" />
-              <Input className="h-11 w-full" name="language" defaultValue="en" placeholder="Idioma" />
-              <Input className="h-11 w-full sm:col-span-2" name="source_url" placeholder="URL de la fuente (opcional)" type="url" />
-              <FileUploadInput accept=".pdf,.docx,.txt,.md,.html,.xlsx,.csv" className="h-11 w-full sm:col-span-2" name="file" required />
+              {/* F142: etiquetas visibles - antes solo había placeholders/valores
+                  de ejemplo y campos sin nombre («Date», «book», «en»). */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400" htmlFor="kw-title">Título</label>
+                <Input className="h-11 w-full" id="kw-title" name="title" placeholder="Título del documento" required />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400" htmlFor="kw-collection">Colección</label>
+                <select className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" id="kw-collection" name="collection_id" defaultValue="">
+                  <option value="">Sin colección</option>
+                  {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400" htmlFor="kw-author">Autor</label>
+                <Input className="h-11 w-full" id="kw-author" name="author" placeholder="Autor" />
+              </div>
+              {/* F142: tipo como textbox libre con «book» no decía qué vocabulario
+                  acepta el backend. Select con los 9 tipos de
+                  KNOWLEDGE_DOCUMENT_TYPES, etiquetados en español. */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400" htmlFor="kw-doctype">Tipo de documento</label>
+                <select className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" id="kw-doctype" name="document_type" defaultValue="book" required>
+                  <option value="book">Libro</option>
+                  <option value="fund_letter">Carta de fondo</option>
+                  <option value="article">Artículo</option>
+                  <option value="paper">Paper / estudio</option>
+                  <option value="sector_report">Informe sectorial</option>
+                  <option value="personal_note">Nota personal</option>
+                  <option value="third_party_thesis">Tesis de terceros</option>
+                  <option value="historical_case">Caso histórico</option>
+                  <option value="personal_postmortem">Postmortem personal</option>
+                </select>
+              </div>
+              {/* F142: la fecha es un input date nativo - su formato (dd/mm o
+                  mm/dd) lo fija el idioma del navegador del usuario, no la app;
+                  la etiqueta deja claro qué se pide. */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400" htmlFor="kw-pubdate">Fecha de publicación</label>
+                <Input className="h-11 w-full" id="kw-pubdate" name="publication_date" type="date" />
+              </div>
+              {/* F142: el backend solo acepta «es» o «en» (validación en
+                  knowledge.py) - select en vez de texto libre. «en» por
+                  defecto: la mayoría de la biblioteca son cartas de fondo en
+                  inglés (dato prod: 48 en / 26 es). */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-400" htmlFor="kw-language">Idioma del documento</label>
+                <select className="h-11 w-full rounded-md border border-gray-800 bg-black px-3 text-base text-gray-200 md:text-sm" id="kw-language" name="language" defaultValue="en" required>
+                  <option value="en">Inglés</option>
+                  <option value="es">Español</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-medium text-gray-400" htmlFor="kw-source-url">URL de la fuente (opcional)</label>
+                <Input className="h-11 w-full" id="kw-source-url" name="source_url" placeholder="https://…" type="url" />
+              </div>
+              <div className="sm:col-span-2">
+                <span className="mb-1 block text-xs font-medium text-gray-400">Archivo</span>
+                <FileUploadInput accept=".pdf,.docx,.txt,.md,.html,.xlsx,.csv" className="h-11 w-full" name="file" required />
+              </div>
               <Button className="h-11 w-full sm:col-span-2 sm:w-fit" type="submit"><UploadCloud aria-hidden="true" className="h-4 w-4" />Subir</Button>
             </div>
           </MutationForm>
