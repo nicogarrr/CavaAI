@@ -100,7 +100,7 @@ export function FileUploadInput({ maxMB = MAX_UPLOAD_MB, className, id, name, ..
   }, [tooBig, warning]);
 
   return (
-    <div ref={rootRef} className="w-full">
+    <div ref={rootRef} className={cn('w-full', className)}>
       <Input
         {...props}
         id={inputId}
