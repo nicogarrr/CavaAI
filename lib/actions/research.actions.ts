@@ -949,14 +949,18 @@ export async function askResearchCompanyChat(
 }
 
 export async function getResearchSources() {
-  const [documents, audits] = await Promise.all([
+  // La lista de documentos pagina (50): el total real viene de /count para
+  // no presentar el tamano de pagina como si fuera el inventario (F131).
+  const [documents, audits, documentsCount] = await Promise.all([
     getJson<ResearchSourceDocument[]>('/api/sources/documents', []),
     getJson<ResearchSourceAudit[]>('/api/sources/audits', []),
+    getJson<{ total: number }>('/api/sources/documents/count', { total: 0 }),
   ]);
 
   return {
     documents,
     audits,
+    documentsTotal: documentsCount.total,
   };
 }
 
