@@ -62,8 +62,13 @@ class NewsService:
         connector: str | None = None,
         date_source_label: str | None = None,
         source_headline: str | None = None,
+        news_lane: str | None = None,
+        macro_theme: str | None = None,
+        detect_company: bool = True,
     ) -> ManualNewsResponse:
-        company = self._company_for_item(db, text, ticker)
+        # detect_company=False: carriles sin ticker (p.ej. macro) nunca
+        # vinculan empresa por coincidencia de texto.
+        company = self._company_for_item(db, text, ticker) if detect_company else None
         # Gate Jev (3): duplicate/noise con confianza >= 0.85 -> via ligera:
         # se registra el evento en el tracker pero se omite el analisis
         # semantico, el ThesisChange/review y el claim scan. Best-effort:
@@ -142,6 +147,12 @@ class NewsService:
         # noticias nuevas sin connector y la reingesta las trata como previas.
         if connector:
             news_metadata["connector"] = connector
+        # Carril editorial (p.ej. macro) y tema en la MISMA transacción de
+        # creación, igual que la procedencia del conector.
+        if news_lane:
+            news_metadata["news_lane"] = news_lane
+        if macro_theme:
+            news_metadata["macro_theme"] = macro_theme
         try:
             from app.services.jev_triage_service import (
                 classify_doc_type_sync,
@@ -304,6 +315,9 @@ class NewsService:
         default_source: str = "feed",
         connector: str | None = None,
         date_source_label: str | None = None,
+        news_lane: str | None = None,
+        macro_theme: str | None = None,
+        detect_company: bool = True,
     ) -> NewsIngestResponse:
         created_events: list[ManualNewsResponse] = []
         skipped_duplicates = 0
@@ -319,7 +333,7 @@ class NewsService:
             ):
                 parts.insert(0, item.ticker)
             text = " ".join(part for part in parts if part)
-            company = self._company_for_item(db, text, item.ticker)
+            company = self._company_for_item(db, text, item.ticker) if detect_company else None
             if self._is_duplicate(db, company, text, item.url):
                 skipped_duplicates += 1
                 continue
@@ -334,6 +348,9 @@ class NewsService:
                     connector=connector,
                     date_source_label=date_source_label,
                     source_headline=item.title[:500] if item.title else None,
+                    news_lane=news_lane,
+                    macro_theme=macro_theme,
+                    detect_company=detect_company,
                 )
             )
 
