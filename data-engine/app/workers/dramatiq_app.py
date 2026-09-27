@@ -1056,6 +1056,73 @@ def refresh_news(
         )
 
 
+@dramatiq.actor(max_retries=2, min_backoff=15_000)
+def refresh_macro_news(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+    max_records: int = 15,
+) -> dict[str, Any]:
+    """Carril macro: consultas GDELT por tema, sin ticker, news_lane=macro.
+
+    Los eventos quedan con company_id NULL (sin detección de empresa por
+    texto) y metadata news_lane/macro_theme en la transacción de creación.
+    No alimentan alertas tracked (sin empresa, fail-closed) ni mueven tesis;
+    alimentan el feed macro y el análisis de segundo orden.
+    """
+    actor_name = "refresh_macro_news"
+    try:
+        from app.services.feed_ingestion_service import FeedIngestionService
+        from app.services.macro_news import MACRO_NEWS_LANE, iter_macro_queries
+
+        db = _session(tenant_id, user_id)
+        try:
+            service = FeedIngestionService()
+            processed = ingested = 0
+            errors: list[dict] = []
+            for theme, query in iter_macro_queries():
+                try:
+                    result = _run(
+                        service.poll_gdelt(query, ticker=None, max_records=max_records)
+                    )
+                    if result.errors:
+                        errors.extend(
+                            {"theme": theme, "source": "gdelt", "message": error}
+                            for error in result.errors
+                        )
+                    ingestion = service.ingest_news_result(
+                        db,
+                        result,
+                        ticker=None,
+                        news_lane=MACRO_NEWS_LANE,
+                        macro_theme=theme,
+                        detect_company=False,
+                    )
+                    if result.status != "error":
+                        processed += 1
+                    ingested += int(ingestion.get("created", 0))
+                except Exception as exc:
+                    _rollback(db)
+                    errors.append(
+                        {
+                            "theme": theme,
+                            "source": "gdelt",
+                            "type": type(exc).__name__,
+                            "message": str(exc),
+                        }
+                    )
+            return {
+                "status": _batch_status(processed, errors),
+                "actor": actor_name,
+                "themes_processed": processed,
+                "news_ingested": ingested,
+                "errors": errors,
+            }
+        finally:
+            db.close()
+    except Exception as exc:
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id)
+
+
 @dramatiq.actor(max_retries=3, min_backoff=30_000)
 def process_document(
     ticker: str,
