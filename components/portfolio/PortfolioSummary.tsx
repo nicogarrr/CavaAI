@@ -36,7 +36,7 @@ export default function PortfolioSummary({ summary }: Props) {
           <DollarSign className="h-12 w-12 text-teal-400" />
         </div>
         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Valor Total</p>
-        <p className="text-xl sm:text-2xl font-bold text-gray-100 tracking-tight">
+        <p className="text-base min-[420px]:text-lg sm:text-2xl font-bold text-gray-100 tracking-tight break-words">
           {format(summary.totalValue)}
         </p>
         <p className="text-xs text-gray-500 mt-1">
@@ -49,7 +49,7 @@ export default function PortfolioSummary({ summary }: Props) {
           <PiggyBank className="h-12 w-12 text-blue-400" />
         </div>
         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Costo Total</p>
-        <p className="text-xl sm:text-2xl font-bold text-gray-100 tracking-tight">
+        <p className="text-base min-[420px]:text-lg sm:text-2xl font-bold text-gray-100 tracking-tight break-words">
           {format(summary.totalCost)}
         </p>
       </div>
@@ -65,7 +65,7 @@ export default function PortfolioSummary({ summary }: Props) {
           ) : null}
         </div>
         <p className="text-gray-400 text-[11px] sm:text-xs uppercase tracking-normal sm:tracking-wider font-semibold mb-1">Ganancia/Pérdida</p>
-        <p className={`text-xl sm:text-2xl font-bold tracking-tight ${isEmpty ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
+        <p className={`text-base min-[420px]:text-lg sm:text-2xl font-bold tracking-tight break-words ${isEmpty ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
           {isEmpty
             ? NA
             : formatMoney(summary.totalGain, summary.baseCurrency, {
@@ -79,7 +79,7 @@ export default function PortfolioSummary({ summary }: Props) {
       <div className="bg-[#111111] border border-gray-800 rounded-xl p-4 sm:p-5 relative overflow-hidden group hover:border-orange-500/30 transition-colors">
         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Rendimiento</p>
         <div className="flex items-baseline gap-2">
-          <p className={`text-xl sm:text-2xl font-bold tracking-tight ${isEmpty ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
+          <p className={`text-base min-[420px]:text-lg sm:text-2xl font-bold tracking-tight break-words ${isEmpty ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
             {isEmpty ? NA : formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
           </p>
         </div>
