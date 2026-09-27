@@ -172,10 +172,15 @@ class FeedIngestionService:
             )
             for item in result.items
         ]
+        # El connector se graba en la creación (misma transacción): solo los
+        # eventos NUEVOS de esta ingesta GDELT lo llevan; un duplicado URL ya
+        # ingerido vía RSS se salta como duplicado y conserva su origen RSS.
+        # Históricos GDELT previos a esta etiqueta quedan fuera (declarado).
         response = NewsService().ingest_news_items(
             db,
             news_items,
             default_source=result.source,
+            connector="gdelt" if result.source == "gdelt" else None,
         )
         payload = response.model_dump(mode="json")
         payload["source"] = result.source
