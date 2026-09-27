@@ -117,9 +117,18 @@ def evaluate(db: Session, *, now: datetime | None = None, limit: int = 500) -> d
             if company is None:
                 continue
             fp = _fingerprint(tenant_id, company.id, url)
-            if db.scalar(select(ResearchAlert.id).where(
+            prior_alert = db.scalar(select(ResearchAlert).where(
                 ResearchAlert.tenant_id == tenant_id, ResearchAlert.fingerprint == fp,
-            )) is not None:
+            ))
+            if prior_alert is not None:
+                # A past queue_analysis commit may have failed after alert commit.
+                # Repair on the next gated evaluation, without redispatching it.
+                from app.services.alert_analysis_service import queue_analysis
+
+                try:
+                    queue_analysis(db, prior_alert)
+                except Exception:
+                    db.rollback()
                 stats["duplicates"] += 1
                 continue
             recent = db.scalar(select(ResearchAlert).where(

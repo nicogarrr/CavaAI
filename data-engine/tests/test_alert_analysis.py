@@ -118,3 +118,30 @@ def test_read_bad_headline_type_fails_closed_not_500(db, invalid_headline):
     result = read_analysis(session, alert.id)["versions"][0]
     assert result["status"] == "insufficient_data"
     assert result["citations"] == [] and result["missing_data"]
+
+
+def test_later_evaluation_recovers_analysis_row_after_transient_creation_failure(db, monkeypatch):
+    session, tenants, company = db
+    from app.services import alert_analysis_service
+    original = alert_analysis_service.queue_analysis
+    attempts = [0]
+
+    def transient(session, alert):
+        attempts[0] += 1
+        if attempts[0] == 1:
+            raise RuntimeError("temporary database failure")
+        return original(session, alert)
+
+    monkeypatch.setattr(alert_analysis_service, "queue_analysis", transient)
+    session.add(NewsEvent(tenant_id=tenants[0].id, company_id=company.id,
+                          title="ASTS ITU filing", source="Publisher",
+                          url="https://publisher.example/itu", date=NOW,
+                          metadata_={"connector": "rss", "date_source": "source",
+                                     "source_headline": "ASTS ITU filing submitted"}))
+    session.commit()
+    assert evaluate(session, now=NOW)["created"] == 1
+    assert session.scalars(select(AlertAnalysis)).all() == []
+    assert evaluate(session, now=NOW)["created"] == 0
+    assert attempts[0] == 2
+    assert len(session.scalars(select(AlertAnalysis)).all()) == 1
+    assert len(session.scalars(select(ResearchAlert)).all()) == 1
