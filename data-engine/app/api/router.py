@@ -18,6 +18,7 @@ from app.api.routes import (
     market_context,
     memory,
     news,
+    obsidian,
     ownership,
     plan,
     portfolio,
@@ -61,6 +62,7 @@ api_router.include_router(plan.router, prefix="/plan", tags=["plan"])
 api_router.include_router(ownership.router, prefix="/ownership", tags=["ownership"])
 api_router.include_router(taxes.router, prefix="/taxes", tags=["taxes"])
 api_router.include_router(thesis.router, prefix="/thesis", tags=["thesis"])
+api_router.include_router(obsidian.router, prefix="/thesis", tags=["thesis"])
 api_router.include_router(valuation.router, prefix="/valuation", tags=["valuation"])
 api_router.include_router(watchlist.router, prefix="/watchlist", tags=["watchlist"])
 api_router.include_router(
