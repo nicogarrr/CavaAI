@@ -1,0 +1,746 @@
+
+
+<!DOCTYPE html>
+<html class="js cssanimations csstransitions" style="height: 100%">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <title>e-Submission of Satellite Network Filings</title>
+    <link rel="stylesheet" href="/ITU-R/space/asreceived/Content/toastr.css"/>
+    <script>
+        window.baseUrl = "/ITU-R/space/asreceived";
+        window.userName = '';
+        window.scriptsUrl = "/ITU-R/space/asreceived/Scripts";
+    </script>
+    <link href="/ITU-R/space/asreceived/content/itu-icons.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/jquery-ui.min.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/bootstrap-overrides.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/bootstrap.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/itu-main.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/itu-base.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/font-awesome.min.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/bootstrap-datetimepicker.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/EventList.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/sirrs.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/timeline.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/treeview.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/select2.min.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/stylesheet.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/itu_icons.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/itu-select2.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/select2-bootstrap.css" rel="stylesheet"/>
+
+    
+    <link href="/ITU-R/space/asreceived/content/as-received/as-received.css" rel="stylesheet"/>
+
+    <link href="/ITU-R/space/asreceived/content/datatable.css" rel="stylesheet"/>
+
+
+    <script src="/ITU-R/space/asreceived/Scripts/require.js"></script>
+<script src="/ITU-R/space/asreceived/Scripts/main.js" defer="defer"></script>
+<script>
+    requirejs.config({
+        baseUrl: "/ITU-R/space/asreceived/Scripts",
+        urlArgs: "v=2.1.9713.102",
+        waitSeconds: 360,
+        paths: {
+            "environment-config": "../configuration/environment-config",
+            "bootstrap": "bootstrap.min",
+            "datatables-jquery": "datatable/jquery.dataTables.min",
+            "datatables": "datatable/dataTables.bootstrap.min",
+            "jquery": "jquery-3.5.1.min",
+            "jqueryUi": "popover-fix",
+            "knockout": "knockout-3.5.1",
+            "toastr": "toastr/toastr.min",
+            "signalr": "jquery.signalR-2.4.3.min",
+            "hubs": "../signalr/hubs?",
+            "select": "select2.min",
+            "jstree" : "jstree/jstree.min",
+            "datetimepicker": "bootstrap-datetimepicker",
+            "simple-module": "symditor/module.min",
+            "simple-hotkeys": "symditor/hotkeys.min",
+            "simple-uploader": "symditor/uploader.min",
+            "simditor": "symditor/simditor.min",
+            "spinner": "spin.min",
+            "loading": "app/common/loading",            
+            "timestamp": "app/common/timestamp",
+            "single-clickable": "app/common/single-clickable",
+            "bootbox": "bootbox.min",
+            "add-doc": "app/common/add-doc",
+            "logout": "app/common/logout",
+            "ko-mapping": "knockout.mapping.min",
+            "validator": "validator",
+            "jquery-ui/ui/widget": "popover-fix",
+            "jquery-ui": "jquery-ui-1.12.1"
+        },
+        shim: {
+            "bootbox": { deps: ["bootstrap"] },
+            "simditor": { deps: ["jquery", "bootstrap", "simple-module", "simple-hotkeys", "simple-uploader"] },
+            "Res908": { deps: ["jquery", "jqueryUi"] },
+            "itu-functions": { deps: ["jquery"] },
+            "bootstrap": { deps: ["jquery"] },
+            "hubs": { deps: ["signalr"] },
+            "popover": { deps: ["tooltip", "bootstrap"] },            
+            "signalr": {
+                deps: ["jquery"],
+                exports: "$.connection"
+            },
+            "tooltip": {
+                deps: ["bootstrap", "jqueryUi"]
+            },
+            "datetimepicker": {
+                deps: ["bootstrap"],
+                exports: "$.fn.datetimepicker"
+            },
+            "datatables": {
+                deps: ["jquery", "bootstrap", "datatables-jquery"],
+                exports: "$.fn.dataTable"
+            },
+            "itu.common": {
+                deps: ["jquery"]
+            },
+            "knockout-select2": {
+                deps: ["select2"]
+            }
+        }
+    });
+</script>
+
+</head>
+
+<body style="height: 100%">
+<input name="__RequestVerificationToken" type="hidden" value="XKoy7FYD0W7QH4DRrMese3BqOx-Iu_e-DQN1BsNjmFh8kIduxt62TmE1o3GNaS5AodCjlQmafNixrUetug4j1wKmowfOTsjW-mbbjwrMYPc1" />
+    <div id="application-loader" class="container-fluid" style="height: 100%; color: #337ab7; z-index: 2147483647">
+        <h1 id="application-loader-content" style="text-align: center; display: inline-block; vertical-align: middle; font-size: 2.2em; line-height: 2.2em; height: 2.2em; width: 10em; left: 50%; top: 50%; margin-left: -5em; margin-top: -1.1em; position: fixed;  color: #337ab7;">
+            <i class="fa fa-cog fa-spin"></i>&nbsp;loading...
+        </h1>
+    </div>
+
+<div class="wrapper" id="application-ui" style="display: none">
+    <div class="container">
+        <div class="row">
+            
+
+<div class="col-xs-12 header_description">
+    <a href="#">
+        <img class="logo" src="/ITU-R/space/asreceived/Content/images/itu-logo.png" alt="itu-logo">
+    </a>
+    <div class="tag">
+        <h2>
+            e-Submission of Satellite Network Filings <span class="under_construction"></span>
+        </h2>
+    </div>
+
+    <div class="user_info" id="user-info-view">
+    </div>
+</div>
+        </div>
+        <div class="row">
+            
+
+<div class="col-xs-12">
+    <div class="main_nav text-center">
+        <ul class="navigation">
+
+    <li class=" home">
+            <a href="/ITU-R/space/asreceived/">
+                <span class="glyphicon glyphicon-home"></span>
+                Home
+            </a>
+
+            <ul>
+
+    <li class=" ">
+            <a href="/ITU-R/space/asreceived/">
+                
+                About
+            </a>
+
+    </li>
+
+
+
+            </ul>
+    </li>
+
+
+     <li class="active "> 
+ 
+         <a href="https://www.itu.int/ITU-R/space/asreceived/Publication/AsReceived" target="_blank">AsReceived </a> 
+ 
+     </li> 
+
+    <li class=" ">
+
+        <a href="https://www.itu.int/ITU-R/space/asreceived/Publication/PublishedInBrific" target="_blank">Published in BR IFIC</a>
+
+    </li>
+
+
+
+
+
+
+
+    <li class=" ">
+            <a href="/ITU-R/space/asreceived/Help/UserGuide">
+                
+                Help
+            </a>
+
+            <ul>
+
+    <li class=" ">
+            <a href="/ITU-R/space/asreceived/Help/UserGuide">
+                
+                User Guide
+            </a>
+
+    </li>
+            </ul>
+    </li>
+        </ul>
+    </div>
+</div>
+        </div>
+        <div class="row content">
+            <div class="col-xs-12">
+                
+                
+<div id="as-received" class="row"
+     data-component="table.component"
+     data-source-url="/ITU-R/space/asreceived/Publication/GetPublicationTable"
+     data-export-url="/ITU-R/space/asreceived/Publication/ExportTable"
+     data-load-mode="Partial">
+
+    <div class="col-xs-12">
+        <h1 style="font-size: x-large;">Information "As Received"</h1>
+        <h4>
+            List of satellite notices received (but not yet published) by the Bureau in accordance with Res <strong>55</strong> (Rev. WRC-19).
+        </h4>
+        <ol>
+            <li><span dir="ltr"> </span>Space station coordination requests, including those request for coordination received between 01.07.2016 and 31.12.2016 for which there are no corresponding APIs.</li>
+            <li><span dir="ltr"> </span>Notification of space station.</li>
+            <li><span dir="ltr"> </span>Submissions received under § 4.1.3 or § 4.2.6 of Article <strong>4</strong> of Appendices <strong>30</strong> and <strong>30A</strong>.</li>
+            <li><span dir="ltr"> </span>Submissions received under Article<strong>2A</strong> of Appendices <strong>30</strong> and <strong>30A</strong>.</li>
+            <li><span dir="ltr"> </span> Submissions received under § 6.1 and § 7.2 of Appendix <strong>30B</strong>.</li>
+
+        </ol>
+        <p>
+            In addition, the information "as-received" for API, Notification of Earth Station, Radio Astronomy Stations,
+            resubmissions under RR <strong>11.46</strong>,Resolution <strong>35</strong>, Resolution <strong>49</strong>, comments for API and comments for Notification under No. <strong>11.28.1</strong> are also made available in this list.
+        </p>
+        <p>
+            Information “As Received” of Part B submissions under Resolution 559 (Rev. WRC-19) is published in <a href="https://www.itu.int/en/ITU-R/space/plans/Pages/Orbital_Pos_AI14_WRC19.aspx" target="_blank">this page</a> until further notice.
+
+        </p>
+        <p>Please note that As-Received notices are removed from this list when they are published in BR IFIC (Space Services). Please access BR IFIC (Space Services) to see publications.</p>
+        
+        <p><span class="underlined"><b><i>For a list of networks published in BRIFIC, please select the "Published in BR IFIC" tab</i></b></span></p>
+
+        <p class="redtext" style="align-content: center;">
+            <em>The &ldquo;as received&rdquo; information has no regulatory status and therefore is not recommended for examination purposes.</em>
+        </p>
+    </div>
+
+    <div class="col-xs-12 align-right no-padding">
+        <div data-table-component="app/as-received/as-received-table-filters"
+     data-table-role="filtering"
+     data-filters="{&quot;RegistrationDate&quot;:null,&quot;Search&quot;:null,&quot;TypeOfSubmission&quot;:null,&quot;TypesOfSubmission&quot;:[],&quot;SpecialSectionType&quot;:null,&quot;Administration&quot;:null,&quot;GsoNgsoFilter&quot;:null,&quot;Ific&quot;:null}"
+     data-bind="with: getComponent('filtering'), visible: getComponent('filtering').show"
+     style="display: none;">
+
+    <div class="col-xs-5 header-row">
+        
+<div class="input-group filter-group">
+    <input type="text" name="search" id="search" class="form-control" aria-controls="searchable"
+           data-bind="textInput: Search, enterKey: apply, enable: enabled"
+           placeholder="Contains text"/>
+    <span class="input-group-btn">
+        <button id="search_button" class="btn btn-default  search_input_btn left_align" type="button"
+                data-bind="click: apply, enable: enabled">
+            <span class="glyphicon glyphicon-search color-icon" aria-hidden="true"></span>
+        </button>
+    </span>
+</div>
+    </div>
+
+    <div class="col-xs-7 header-row">
+        <div class="col-xs-12 col-no-padding filter-group">
+    <select data-bind="select2: {selectedItems: TypesOfSubmission, id: 'Id', text: 'Name',
+                       select2Options: {ajax: getSubmissionTypesRequest(),  allowClear: true,
+                       placeholder: 'Select submission type...', width: '100%'}}, enable: enabled" multiple>
+    </select>
+</div>
+    </div>
+
+    <div class="col-xs-5 header-row">
+        <date-range-picker params="value: RegistrationDate, caption: 'Registration Date'"/>
+    </div>
+
+    <div class="col-xs-4 header-row">
+        
+    <div class="col-xs-12 col-no-padding filter-group">
+        <select data-bind="select2: {selectedItem: Administration, id: 'Id', text: 'Name',
+                            select2Options: {ajax: getAdministrationsRequest(),  allowClear: true,
+                            placeholder: 'Administration...', width: '100%'}}, enable: enabled"></select>
+    </div>
+
+    </div>
+
+    <div class="col-xs-3 header-row">
+        <div class="col-xs-12 col-no-padding filter-group">
+    <select data-bind="select2: {selectedItem: GsoNgsoFilter, id: 'Id', text: 'Name',
+                       select2Options: {ajax: getGsoNgsoFilterValues(),  allowClear: true,
+                       placeholder: 'Orbit type filter...', width: '100%'}}, enable: enabled">
+    </select>
+</div>
+    </div>
+
+</div>
+    </div>
+
+    <div class="col-xs-4 align-left">
+        <div data-table-component="table/export"
+     data-bind="with: getComponent('export'), visible: getComponent('export').show">
+     
+     <button class="btn btn-primary" data-bind="click: execute">
+          Export
+     </button>
+</div>
+    </div>
+    
+    <div class="col-xs-8 align-right">
+        <div class="pull-right"
+     data-bind="with: getComponent('paging')">
+    <ul class="pagination"
+        data-table-component="table/paging"
+        data-bind="visible: show"
+        style="display: none">
+        <li class="prev" data-bind="visible: first.show">
+            <button class="btn pagination_nav_btn" data-bind="click: first.click, enable: first.enabled">
+                <span class="glyphicon glyphicon-fast-backward" aria-hidden="true"></span>
+            </button>
+        </li>
+        <li class="prev" data-bind="visible: prev.show">
+            <button class="btn pagination_nav_btn" data-bind="click: prev.click, enable: prev.enabled">
+                <span class="glyphicon glyphicon-backward" aria-hidden="true"></span>
+            </button>
+        </li>
+        <!-- ko foreach: pages -->
+        <li data-bind="visible: show, css: { 'active': active }">
+            <button class="btn pagination_page_btn" style="font-size: 14px" data-bind="click: click, text: page, enable: enabled">
+                <span class="active" aria-hidden="true"></span>
+            </button>
+        </li>
+        <!-- /ko -->
+        <li class="next" data-bind="visible: next.show">
+            <button class="btn pagination_nav_btn" data-bind="click: next.click, enable: next.enabled">
+                <span class="glyphicon glyphicon-forward" aria-hidden="true"></span>
+            </button>
+        </li>
+        <li class="next" data-bind="visible: last.show">
+            <button class="btn pagination_nav_btn" data-bind="click: last.click, enable: last.enabled">
+                <span class="glyphicon glyphicon-fast-forward" aria-hidden="true"></span>
+            </button>
+        </li>
+    </ul>
+    <br>
+    <div data-bind="with: displayedRecordsInfo" class="pull-right">
+        <span data-bind="text: firstDisplayedNumber"></span> - <span data-bind="text: lastDisplayedNumber"></span> of <span data-bind="text: totalItems"></span>
+    </div>
+</div>
+    </div>
+
+    <div class="col-xs-12" data-table-role="table-container">
+        <table class="table table-bordered table-hover table-ordered table-striped table-clickable" data-ordering="{&quot;OrderBy&quot;:&quot;BrRegistryDate&quot;,&quot;Direction&quot;:&quot;Descending&quot;,&quot;IsAscending&quot;:false}" data-paging="{&quot;Skip&quot;:0,&quot;Take&quot;:30}" data-total-items="517" id="publication-table"><thead><tr data-table-component="table/ordering"><th data-default-sorting-order="Ascending" data-sort-field="Reference" style="">        <span class="sort-indicator float-right"></span>
+Reference</th><th data-default-sorting-order="Ascending" data-sort-field="NoticeId">        <span class="sort-indicator float-right"></span>
+NTC ID</th><th data-default-sorting-order="Ascending" data-sort-field="Administration">        <span class="sort-indicator float-right"></span>
+Adm.</th><th data-default-sorting-order="Ascending" data-sort-field="NetworkOrg" style="">        <span class="sort-indicator float-right"></span>
+Network Org.</th><th style="">Station/Satellite Name</th><th style="">Long. Nom.</th><th data-default-sorting-order="Descending" data-sort-field="BrRegistryDate">        <span class="sort-indicator float-right"></span>
+BR Registry Date</th><th style="">Type of submission</th><th>Reg</th><th>Act. Code</th></tr></thead><tbody>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="72215">
+        <td>LAO2026-84992</td>
+        <td>126520155</td>
+        <td>LAO</td>
+        <td></td>
+        <td>LAOSAT2-128.5E</td>
+        <td>128.5 E</td>
+        <td>25.09.2026</td>
+        <td>Coordination Request</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="72201">
+        <td>USA2026-84977</td>
+        <td>126545337</td>
+        <td>USA</td>
+        <td></td>
+        <td>WSERIES11</td>
+        <td></td>
+        <td>24.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="72200">
+        <td>USA2026-84976</td>
+        <td>126545336</td>
+        <td>USA</td>
+        <td></td>
+        <td>WSERIES10</td>
+        <td></td>
+        <td>24.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="72199">
+        <td>USA2026-84975</td>
+        <td>126545335</td>
+        <td>USA</td>
+        <td></td>
+        <td>DYNAGLO</td>
+        <td></td>
+        <td>24.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="72198">
+        <td>USA2026-84974</td>
+        <td>126545334</td>
+        <td>USA</td>
+        <td></td>
+        <td>REALOP</td>
+        <td></td>
+        <td>24.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="72184">
+        <td>D2026-84958</td>
+        <td>126520154</td>
+        <td>D</td>
+        <td></td>
+        <td>D-BLUEBIRD</td>
+        <td></td>
+        <td>24.09.2026</td>
+        <td>Coordination Request</td>
+        <td></td>
+        <td>M</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71136">
+        <td>USA2026-83907</td>
+        <td>126500168</td>
+        <td>USA</td>
+        <td></td>
+        <td>USOBO-3B</td>
+        <td>49.4 W</td>
+        <td>22.09.2026</td>
+        <td>Resubmission of Notification / Notification of Space Station (GSO)</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71062">
+        <td>HOL2026-83832</td>
+        <td>126545333</td>
+        <td>HOL</td>
+        <td></td>
+        <td>NSS-35-1</td>
+        <td>40.5 W</td>
+        <td>22.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>M</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71060">
+        <td>HOL2026-83830</td>
+        <td>126545332</td>
+        <td>HOL</td>
+        <td></td>
+        <td>NSS-G2-17-1</td>
+        <td>57 E</td>
+        <td>22.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>M</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71059">
+        <td>HOL2026-83829</td>
+        <td>126545331</td>
+        <td>HOL</td>
+        <td></td>
+        <td>NSS-G2-1-1</td>
+        <td>177 W</td>
+        <td>22.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>M</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71057">
+        <td>HOL2026-83827</td>
+        <td>126545330</td>
+        <td>HOL</td>
+        <td></td>
+        <td>NSS-16-1</td>
+        <td>22 W</td>
+        <td>22.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>M</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71124">
+        <td>KOR2026-83894</td>
+        <td>126500166</td>
+        <td>KOR</td>
+        <td></td>
+        <td>KOREASAT-128.2E</td>
+        <td>128.2 E</td>
+        <td>21.09.2026</td>
+        <td>Resubmission of Notification / Notification of Space Station (GSO)</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71122">
+        <td>CHN2026-83892</td>
+        <td>126500167</td>
+        <td>CHN</td>
+        <td></td>
+        <td>MOTS</td>
+        <td></td>
+        <td>20.09.2026</td>
+        <td>Notification of Space Station</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71121">
+        <td>CHN2026-83891</td>
+        <td>126590050</td>
+        <td>CHN</td>
+        <td></td>
+        <td>MOTS</td>
+        <td></td>
+        <td>20.09.2026</td>
+        <td>Res 49/552</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71095">
+        <td>KOR2026-83865</td>
+        <td>126545329</td>
+        <td>KOR</td>
+        <td></td>
+        <td>IGRVT</td>
+        <td></td>
+        <td>18.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71094">
+        <td>KOR2026-83864</td>
+        <td>126500165</td>
+        <td>KOR</td>
+        <td></td>
+        <td>KOMPSAT-7A</td>
+        <td></td>
+        <td>18.09.2026</td>
+        <td>Notification of Space Station</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71092">
+        <td>KOR2026-83862</td>
+        <td>126500164</td>
+        <td>KOR</td>
+        <td></td>
+        <td>OBS-2</td>
+        <td></td>
+        <td>18.09.2026</td>
+        <td>Notification of Space Station</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71086">
+        <td>USA2026-83856</td>
+        <td>126545328</td>
+        <td>USA</td>
+        <td></td>
+        <td>CSP-MAXWELL</td>
+        <td></td>
+        <td>17.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71085">
+        <td>USA2026-83855</td>
+        <td>126559019</td>
+        <td>USA</td>
+        <td></td>
+        <td>USASAT-101M</td>
+        <td>72 W</td>
+        <td>17.09.2026</td>
+        <td>AP30B Articles 6 and 7</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71084">
+        <td>USA2026-83854</td>
+        <td>126520153</td>
+        <td>USA</td>
+        <td></td>
+        <td>USASAT-28U</td>
+        <td>86.15 W</td>
+        <td>17.09.2026</td>
+        <td>Coordination Request</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71067">
+        <td>GRC2026-83837</td>
+        <td>126505085</td>
+        <td>GRC</td>
+        <td></td>
+        <td>EMBASSY-PRC_ATHENS / CHINASAT-E-33.5E</td>
+        <td>33.5 E</td>
+        <td>16.09.2026</td>
+        <td>Notification of Earth Station</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="70334">
+        <td>G2026-83089</td>
+        <td>126500163</td>
+        <td>G</td>
+        <td></td>
+        <td>UK-KA-159E</td>
+        <td>159 E</td>
+        <td>16.09.2026</td>
+        <td>Notification of Space Station</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71053">
+        <td>KAZ2026-83823</td>
+        <td>126520152</td>
+        <td>KAZ</td>
+        <td></td>
+        <td>KAZSAT-KA-73E-2</td>
+        <td>73 E</td>
+        <td>15.09.2026</td>
+        <td>Coordination Request</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="70805">
+        <td>USA2026-83569</td>
+        <td>126520151</td>
+        <td>USA</td>
+        <td></td>
+        <td>USASAT-NGSO-8I</td>
+        <td></td>
+        <td>14.09.2026</td>
+        <td>Coordination Request</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71041">
+        <td>USA2026-83811</td>
+        <td>126545327</td>
+        <td>USA</td>
+        <td></td>
+        <td>STARBURST-1</td>
+        <td></td>
+        <td>14.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="70855">
+        <td>USA2026-83622</td>
+        <td>126559018</td>
+        <td>USA</td>
+        <td></td>
+        <td>USASAT-101N</td>
+        <td>157 E</td>
+        <td>14.09.2026</td>
+        <td>AP30B Articles 6 and 7</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71040">
+        <td>USA2026-83810</td>
+        <td>126545326</td>
+        <td>USA</td>
+        <td></td>
+        <td>TITAN</td>
+        <td></td>
+        <td>14.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="71039">
+        <td>USA2026-83809</td>
+        <td>126545325</td>
+        <td>USA</td>
+        <td></td>
+        <td>TAYGETA</td>
+        <td></td>
+        <td>14.09.2026</td>
+        <td>Advance publication information</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="70982">
+        <td>E2026-83750</td>
+        <td>126590049</td>
+        <td>E</td>
+        <td></td>
+        <td>HISPASAT-LEO-NB</td>
+        <td></td>
+        <td>14.09.2026</td>
+        <td>Res 49/552</td>
+        <td></td>
+        <td>A</td>
+</tr>
+<tr data-component="app/as-received/table-row" data-bind="click: openSubmission" data-submission-id="70986">
+        <td>E2026-83754</td>
+        <td>126500162</td>
+        <td>E</td>
+        <td></td>
+        <td>HISPASAT-LEO-NB</td>
+        <td></td>
+        <td>14.09.2026</td>
+        <td>Notification of Space Station</td>
+        <td></td>
+        <td>A</td>
+</tr></tbody></table>
+    </div>
+    <div class="col-xs-12" style="margin-top: 10px;">
+      <!--<h5>*Please note that for those notices received on or after 01.01.2017, they are no longer distributed on a BRIFIC DVD.</h5>-->
+    </div>
+</div>
+            </div>
+        </div>
+        <footer>
+            <div class="row">
+                <div class="col-xs-12">
+    <div class="footer">
+        <a href="#" id="to_top" class="go_top_btn"></a>
+        <h5>© ITU Space Services Submissions - BR Internal <span id="copyright_year">2026</span> All Rights Reserved</h5>
+    </div>
+</div>
+            </div>
+        </footer>
+    </div>
+</div>
+
+
+</body>
+</html>
