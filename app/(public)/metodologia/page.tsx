@@ -232,9 +232,16 @@ export default function MetodologiaPage() {
           ))}
         </div>
         <p className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/20 p-4 text-sm leading-6 text-amber-200">
-          <strong>FMP retirado:</strong> Financial Modeling Prep se eliminó de la app porque su plan gratuito dejó de
-          servir los endpoints que usábamos (ahora responden &laquo;Legacy Endpoint&raquo;). Ningún cálculo actual
-          depende de FMP; los consumidores que quedaban se migran a Finnhub y Yahoo Finance.
+          <strong>FMP solo cubre mercado US:</strong> el plan gratuito de Financial Modeling Prep quedó limitado a
+          compañías US (sus endpoints antiguos responden &laquo;Legacy Endpoint&raquo; o 402 fuera de ese mercado).
+          La API acepta el refresco con FMP para cualquier emisor, pero fuera de US el proveedor lo rechaza y el
+          refresco falla con aviso. No hay sustitución automática: si el emisor reporta a SEC EDGAR o ESEF,
+          puedes lanzar tú el refresco desde esas fuentes (acción separada en la ficha); y si ninguna fuente
+          cubre al emisor, los financieros se muestran como no disponibles en lugar de estimarse.
+          En el refresco de precios del backend, los listados US se consultan primero en FMP si hay clave y la
+          cotización trae fecha válida; Finnhub es el fallback. Yahoo Finance aporta el refresco intradía de cartera
+          y las series históricas de ProPicks, también para listados no-US cuando el símbolo de su bolsa se conoce.
+          Sin cotización o símbolo fiable, se muestra sin precio.
         </p>
       </section>
 
