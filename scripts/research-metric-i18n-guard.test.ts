@@ -24,6 +24,7 @@ const BACKEND_CATALOG = [
     'net_debt_to_ebitda', 'asset_life', 'gross_investment',
     'inflation_adjusted_gross_cash_flow', 'non_depreciating_assets',
     'terminal_non_depreciating_assets', 'fcf_margin_5y', 'net_margin_5y',
+    'wacc', 'cfroi', 'cfroi_approx',
 ];
 
 test('F321: el mapa cubre todo el catalogo canonico del backend', () => {

@@ -55,6 +55,9 @@ export const METRIC_LABELS: Record<string, string> = {
     terminal_non_depreciating_assets: 'Activos no depreciables (terminal)',
     fcf_margin_5y: 'Margen FCF (5 años)',
     net_margin_5y: 'Margen neto (5 años)',
+    wacc: 'WACC',
+    cfroi: 'CFROI',
+    cfroi_approx: 'CFROI aproximado',
 };
 
 /** Etiqueta en español de una métrica; humaniza la clave si es desconocida. */
