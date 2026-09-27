@@ -7,12 +7,23 @@
  */
 const EXCHANGE_ALIASES: Array<[RegExp, string]> = [
     [/NASDAQ/i, 'NASDAQ'],
-    [/NEW YORK STOCK EXCHANGE|^NYSE$|NYSE\s*Euronext/i, 'NYSE'],
+    [/NEW YORK STOCK EXCHANGE|^NYSE$/i, 'NYSE'],
     [/NYSE\s*(MKT|AMERICAN)/i, 'NYSE American'],
     [/BME|BOLSA DE MADRID/i, 'BME'],
     [/TORONTO/i, 'TSX'],
     [/SWISS/i, 'SIX'],
     [/OTC/i, 'OTC'],
+    // «NYSE EURONEXT - ...» es la nomenclatura histórica de Finnhub para las
+    // plazas Euronext (herencia de cuando NYSE poseía Euronext): NO es NYSE.
+    // Mostrar «NYSE» para ASML (Amsterdam) hacía incoherente el par
+    // bolsa/divisa (F180). La ciudad la garantiza la propia cadena.
+    // La tabla se evalúa en orden inverso: la regla genérica va ANTES para
+    // que las plazas con ciudad ganen.
+    [/EURONEXT/i, 'Euronext'],
+    [/EURONEXT AMSTERDAM/i, 'Euronext Amsterdam'],
+    [/EURONEXT PARIS/i, 'Euronext Paris'],
+    [/EURONEXT BRUSSELS/i, 'Euronext Brussels'],
+    [/EURONEXT LISBON/i, 'Euronext Lisbon'],
 ];
 
 export function exchangeDisplayName(raw: string | null | undefined): string | null {

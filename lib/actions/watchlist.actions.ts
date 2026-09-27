@@ -6,6 +6,9 @@ import { researchRequest, jsonBody } from '@/lib/research/client';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
 import { requestCache } from '@/lib/cache/requestCache';
 import { classifyError, getFriendlyErrorMessage, type ErrorCause } from '@/lib/types/errors';
+import { getStockQuote, getStockFinancialDataLight } from '@/lib/actions/finnhub.actions';
+import { getResearchCompanyBasics } from '@/lib/actions/market-workspace.actions';
+import { quoteSymbolFor } from '@/lib/market/quote-symbol';
 
 // Helper para obtener userId (researchRequest añade la identidad firmada
 // vía researchIdentityHeaders usando el usuario autenticado).
@@ -91,4 +94,90 @@ export async function removeFromWatchlist(symbol: string): Promise<WatchlistMuta
         console.error('removeFromWatchlist error:', error);
         return failure(error);
     }
+}
+/**
+ * Datos de mercado de una entrada de watchlist, resueltos por el LISTADO
+ * REAL (master), nunca por el ticker desnudo.
+ *
+ * Antes la watchlist pedía Finnhub con el ticker pelado: para un emisor
+ * no-US Finnhub free devuelve el gemelo americano — el ADR en USD del mismo
+ * emisor (ASML salía a 1.743,94 US$ mientras su ficha research muestra la
+ * línea de Amsterdam a 1.522,60 €, F253) u OTRO emisor (ALM -> Almonty) — y
+ * la página lo formateaba siempre como USD. Además AENA salía «sin datos»
+ * pese a tener cotización (Finnhub free no cubre BME; la ruta con sufijo
+ * .MC sí, F254).
+ *
+ * Regla: el símbolo de cotización lo decide `quoteSymbolFor` con la bolsa y
+ * divisa del master; sin correspondencia validada, «sin datos» honesto.
+ * Perfil/métricas Finnhub SOLO para líneas US (quoteSymbol === ticker): en
+ * un listado no-US serían del ADR o de un homónimo.
+ */
+export type WatchlistEntryData = {
+    symbol: string;
+    name: string;
+    exchange: string | null;
+    currency: string | null;
+    price: number | null;
+    change: number | null;
+    changePercent: number | null;
+    marketCap: number | null;
+    peRatio: number | null;
+};
+
+export async function getWatchlistEntryData(symbol: string): Promise<WatchlistEntryData> {
+    const normalized = symbol.trim().toUpperCase();
+    const basics = await getResearchCompanyBasics(normalized);
+    const quoteSymbol = quoteSymbolFor(basics, normalized);
+    const base: WatchlistEntryData = {
+        symbol: normalized,
+        name: basics?.name || normalized,
+        exchange: basics?.exchange || null,
+        currency: basics?.currency || null,
+        price: null,
+        change: null,
+        changePercent: null,
+        marketCap: null,
+        peRatio: null,
+    };
+    if (!quoteSymbol) return base;
+
+    const usListing = quoteSymbol === normalized;
+    const [quote, light] = await Promise.all([
+        getStockQuote(quoteSymbol),
+        // La línea US es el listado real: sus métricas Finnhub son de ESTE
+        // emisor. Para no-US ni se piden (ADR u homónimo).
+        usListing ? getStockFinancialDataLight(normalized) : Promise.resolve(null),
+    ]);
+
+    const price =
+        quote && typeof quote.c === 'number' && Number.isFinite(quote.c) && quote.c > 0
+            ? quote.c
+            : null;
+    const metrics = light?.metrics?.metric ?? {};
+    const marketCapM = typeof metrics.marketCapitalization === 'number' ? metrics.marketCapitalization : null;
+    const peRatio = typeof metrics.peTTM === 'number' && Number.isFinite(metrics.peTTM) ? metrics.peTTM : null;
+
+    return {
+        ...base,
+        name: basics?.name || light?.profile?.name || normalized,
+        // Línea US: la USD es evidencia de listado americano aunque el master
+        // no traiga divisa (bulk import). En una línea con sufijo, la divisa
+        // la pone el master o no se afirma.
+        currency: basics?.currency || (usListing ? 'USD' : null),
+        price,
+        change:
+            price === null
+                ? null
+                : typeof quote?.d === 'number' && Number.isFinite(quote.d)
+                  ? quote.d
+                  : null,
+        changePercent:
+            price === null
+                ? null
+                : typeof quote?.dp === 'number' && Number.isFinite(quote.dp)
+                  ? quote.dp
+                  : null,
+        marketCap: marketCapM !== null ? marketCapM * 1e6 : null, // Finnhub devuelve M USD
+        peRatio,
+    };
 }

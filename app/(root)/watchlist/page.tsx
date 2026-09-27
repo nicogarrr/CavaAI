@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { formatCompact, formatNumber, formatPercent, formatPrice, NA } from '@/lib/format';
-import { getWatchlist } from '@/lib/actions/watchlist.actions';
-import { getStockFinancialData } from '@/lib/actions/finnhub.actions';
+import { getWatchlist, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
 import { Eye, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import WatchlistRemoveButton from '@/components/watchlist/WatchlistRemoveButton';
@@ -29,6 +28,7 @@ export const metadata: Metadata = {
 interface WatchlistStock {
     symbol: string;
     name: string;
+    currency: string | null;
     price: number | null;
     change: number | null;
     changePercent: number | null;
@@ -44,29 +44,19 @@ export default async function WatchlistPage() {
     const watchlistStocks: WatchlistStock[] = await Promise.all(
         watchlistItems.map(async (item) => {
             try {
-                // Fetch Financial Data (Finnhub)
-                const financialData = await getStockFinancialData(item.symbol);
-
-                // Extract metrics (Finnhub stock/metric)
-                const metrics = financialData?.metrics?.metric ?? {};
-                const marketCapM = typeof metrics.marketCapitalization === 'number' ? metrics.marketCapitalization : null;
-                // peRatio puede venir ausente/null: se guarda null y se pinta NA ('N/D'), nunca se interpola sin guarda.
-                const peRatio = typeof metrics.peTTM === 'number' && Number.isFinite(metrics.peTTM) ? metrics.peTTM : null;
-
-                // Sin cotización válida no hay precio: null (no 0, que se confundiría con un precio real).
-                const rawPrice = financialData?.quote?.c;
-                const currentPrice = typeof rawPrice === 'number' && Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : null;
-                const rawChange = financialData?.quote?.d;
-                const rawChangePercent = financialData?.quote?.dp;
-
+                // Precio y divisa del LISTADO REAL (master), nunca del ticker
+                // desnudo: Finnhub free lo resuelve en la línea US (ADR en USD
+                // u otro emisor) y contradecía la ficha research (F253/F254).
+                const data = await getWatchlistEntryData(item.symbol);
                 return {
-                    symbol: item.symbol,
-                    name: financialData?.profile?.name || item.symbol,
-                    price: currentPrice,
-                    change: currentPrice === null ? null : (typeof rawChange === 'number' && Number.isFinite(rawChange) ? rawChange : null),
-                    changePercent: currentPrice === null ? null : (typeof rawChangePercent === 'number' && Number.isFinite(rawChangePercent) ? rawChangePercent : null),
-                    marketCap: marketCapM !== null ? marketCapM * 1e6 : null, // Finnhub devuelve M USD
-                    peRatio,
+                    symbol: data.symbol,
+                    name: data.name,
+                    price: data.price,
+                    change: data.change,
+                    changePercent: data.changePercent,
+                    currency: data.currency,
+                    marketCap: data.marketCap,
+                    peRatio: data.peRatio,
                     addedAt: item.addedAt
                 };
             } catch {
@@ -77,6 +67,7 @@ export default async function WatchlistPage() {
                     price: null,
                     change: null,
                     changePercent: null,
+                    currency: null,
                     marketCap: null,
                     peRatio: null,
                     addedAt: item.addedAt
@@ -85,7 +76,6 @@ export default async function WatchlistPage() {
         })
     );
 
-    // Sin datos al final: las filas sin precio quedan excluidas de cualquier ordenación por métricas.
     const sortedStocks = [...watchlistStocks].sort((a, b) => Number(a.price === null) - Number(b.price === null));
 
     // Un único formateador para móvil y desktop: sin dato -> NA ('N/D'),
@@ -101,7 +91,10 @@ export default async function WatchlistPage() {
         return formatPercent(changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' });
     };
 
-    const formatPriceCell = (price: number | null) => (price === null ? NA : formatPrice(price, 'USD'));
+    // La divisa la fija el listado real; sin divisa verificada se muestra el
+    // número pelado, nunca un «US$» asumido (F253).
+    const formatPriceCell = (price: number | null, currency: string | null) =>
+        price === null ? NA : currency ? formatPrice(price, currency) : formatNumber(price);
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex w-full max-w-full min-w-0 flex-col space-y-6 overflow-x-clip p-4 sm:p-6">
@@ -171,7 +164,7 @@ export default async function WatchlistPage() {
                                 <dl className="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-gray-800/50 px-2 py-3 text-center">
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">Precio</dt>
-                                        <dd className="truncate font-mono text-sm font-medium text-gray-200">{formatPriceCell(stock.price)}</dd>
+                                        <dd className="truncate font-mono text-sm font-medium text-gray-200">{formatPriceCell(stock.price, stock.currency)}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">Market Cap</dt>
@@ -238,7 +231,7 @@ export default async function WatchlistPage() {
                                             </Link>
                                         </TableCell>
                                         <TableCell className="text-right font-mono font-medium text-gray-200">
-                                            {formatPriceCell(stock.price)}
+                                            {formatPriceCell(stock.price, stock.currency)}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {stock.changePercent === null ? (

@@ -8,10 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Activity, ArrowRight, BellRing, Eye, Gem, Minus, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { getPortfolioSummary, type PortfolioHolding, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
-import { getWatchlist } from '@/lib/actions/watchlist.actions';
+import { getWatchlist, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { sectionError } from '@/lib/section-error';
-import { getStockFinancialData, getStockQuote } from '@/lib/actions/finnhub.actions';
+import { getStockQuote } from '@/lib/actions/finnhub.actions';
 import { getScreenerStocksReal, getFairValue } from '@/lib/actions/screener.actions';
 import {
     getRecentTriggeredAlerts,
@@ -31,6 +31,7 @@ interface WatchlistItem {
     name: string;
     // null = sin cotización disponible: nunca se fabrica un 0.
     price: number | null;
+    currency: string | null;
     changePercent: number | null;
 }
 
@@ -242,18 +243,19 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             const watchlistItems = watchlistResult.data;
             const watchlistPromise = Promise.all(watchlistItems.slice(0, 5).map(async (item): Promise<WatchlistItem> => {
                 try {
-                    const data = await getStockFinancialData(item.symbol);
-                    const quote = data?.quote?.c;
-                    const change = data?.quote?.dp;
+                    // Precio y divisa del LISTADO REAL (master), nunca del
+                    // ticker desnudo: Finnhub free lo resuelve en la línea US
+                    // (ADR en USD u otro emisor) y contradecía research (F253/F254).
+                    const data = await getWatchlistEntryData(item.symbol);
                     return {
-                        symbol: item.symbol,
-                        name: data?.profile?.name || item.symbol,
-                        // Un 0 de Finnhub es "sin dato", no un precio.
-                        price: typeof quote === 'number' && quote > 0 ? quote : null,
-                        changePercent: typeof change === 'number' ? change : null,
+                        symbol: data.symbol,
+                        name: data.name,
+                        price: data.price,
+                        currency: data.currency,
+                        changePercent: data.changePercent,
                     };
                 } catch {
-                    return { symbol: item.symbol, name: item.symbol, price: null, changePercent: null };
+                    return { symbol: item.symbol, name: item.symbol, price: null, currency: null, changePercent: null };
                 }
             }));
 
@@ -507,7 +509,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                     <div className="shrink-0 text-right">
                                         {stock.price != null ? (
                                             <>
-                                                <div className="text-white font-mono">{formatMoney(stock.price)}</div>
+                                                <div className="text-white font-mono">{stock.currency ? formatMoney(stock.price, stock.currency) : formatNumber(stock.price)}</div>
                                                 {stock.changePercent != null && (
                                                     <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                                         {formatPercent(stock.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
