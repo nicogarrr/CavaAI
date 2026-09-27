@@ -121,11 +121,11 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
         </div>
         <span className="text-xs uppercase tracking-wide text-gray-500 md:ml-auto">
           {/* La cobertura mide valores PRESENTES con fuente, no completitud:
-              con entradas faltantes el 100 % daría seguridad errónea y se omite. */}
+              siempre con su alcance explícito y, si no es publicable
+              (missing_inputs, bloqueos o cobertura <60), con la causa visible. */}
           {model.horizon_years} años · {model.status}
-          {model.missing_inputs.length === 0
-            ? ` · valores con fuente ${formatNumber(model.source_coverage.coverage_percent, { maximumFractionDigits: 0 })} %`
-            : ' · modelo no publicable'}
+          {` · valores con fuente ${formatNumber(model.source_coverage.coverage_percent, { maximumFractionDigits: 0 })} %`}
+          {model.publishable ? '' : ' · modelo no publicable'}
         </span>
       </div>
       <p className="mb-4 text-xs leading-5 text-gray-500">
