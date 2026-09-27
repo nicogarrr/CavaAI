@@ -47,3 +47,16 @@ def test_identity_mismatch_or_missing_field_fails_closed():
         parse_itu_record(corrupted, URL)
     with pytest.raises(ValueError, match="frequency table"):
         parse_itu_record(raw, URL, frequency_html=b"<html>No table</html>")
+
+
+def test_field_node_from_another_submission_is_rejected():
+    raw = (FIXTURES / "d2026-84958-detail.html").read_bytes()
+    # Change only the NumberOfSatellites node, not form or other fields.
+    from lxml import html
+
+    tree = html.fromstring(raw)
+    target = tree.xpath("//*[@data-fieldname='NumberOfSatellites']")
+    assert len(target) == 1 and target[0].get("data-submissionid") == "72184"
+    target[0].set("data-submissionid", "99999")
+    with pytest.raises(ValueError, match="another submission"):
+        parse_itu_record(html.tostring(tree), URL)

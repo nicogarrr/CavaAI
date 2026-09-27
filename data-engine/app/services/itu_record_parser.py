@@ -76,6 +76,8 @@ def parse_itu_record(content: bytes, url: str, *, frequency_html: bytes | None =
         if len(matches) != 1:
             continue
         node = matches[0]
+        if node.get("data-submissionid") != submission_id:
+            raise ValueError(f"ITU field {name} belongs to another submission")
         value = node.get("data-value", "").strip()
         labels = [" ".join(item.itertext()).strip() for item in node.xpath(".//label")]
         if not value or label not in labels or len(value) > 500:
