@@ -53,7 +53,7 @@ export default async function ResearchSourcesPage({
               ? `${formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos de ${ticker}`
               : `${formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos`
             : `${formatNumber(documents.length, { maximumFractionDigits: 0 })} documentos en esta página`}{' '}
-          · {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías
+          · {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías{ticker ? ' (global)' : ''}
         </div>
       </header>
 

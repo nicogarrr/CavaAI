@@ -60,4 +60,5 @@ void test('la página declara el subconjunto filtrado y pagina con enlaces', () 
     assert.match(page, /sourcesHref\(ticker, pageInfo\.page [+-] 1\)/, 'paginación conserva el filtro');
     assert.match(page, /Sin documentos de \{ticker\}\./, 'filtro sin resultados lo dice y no finge inventario vacío');
     assert.match(page, /Quitar (el )?filtro/, 'salida explícita del filtro');
+    assert.match(page, /auditorías\{ticker \? ' \(global\)' : ''\}/, 'el contador de auditorías declara que es global bajo filtro');
 });
