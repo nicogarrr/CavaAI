@@ -62,11 +62,11 @@ export default function ThesisGenerateButton({ ticker, label = 'Generar tesis' }
     return (
         <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-3">
-                <Button type="button" onClick={start} disabled={active}>
+                <Button type="button" onClick={start} disabled={active} aria-busy={active}>
                     {active ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
-                        <BrainCircuit className="mr-2 h-4 w-4" />
+                        <BrainCircuit aria-hidden="true" className="mr-2 h-4 w-4" />
                     )}
                     {active ? 'Generando en segundo plano…' : label}
                 </Button>

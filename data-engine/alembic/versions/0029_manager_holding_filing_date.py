@@ -6,6 +6,7 @@ supersede base filings in the comparison view).
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0029_manager_holding_filing_date"

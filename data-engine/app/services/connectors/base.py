@@ -1,8 +1,126 @@
+"""Contratos y utilidades compartidas por los connectors de ingesta."""
+
+
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+
+# Tope de reintentos por llamada y espera maxima por uno. El presupuesto
+# acota el tiempo total en el peor caso.
+DEFAULT_MAX_RETRIES = 2
+DEFAULT_RETRY_BASE_SECONDS = 0.5
+# Las ventanas de Retry-After de cuotas por minuto caben con margen en 120s.
+# Por encima NO se reintenta inline: una cuota diaria agotada (FMP free: 250
+# llamadas/dia) devuelve ventanas de horas y esperarlas dentro de la corrida
+# contradice el header y quema llamadas en ventana prohibida. Se pospone
+# via UpstreamRateLimited.
+DEFAULT_RETRY_CAP_SECONDS = 120.0
+
+
+class UpstreamRateLimited(RuntimeError):
+    """El proveedor respondio 429 y se agotaron los reintentos con presupuesto."""
+
+
+def _raw_retry_after(response: Any) -> float | None:
+    """Valor crudo de la cabecera Retry-After, o None si no hay/ no parsea."""
+    header = None
+    try:
+        header = response.headers.get("retry-after")
+    except AttributeError:
+        return None
+    if not header:
+        return None
+    try:
+        return max(0.0, float(header))
+    except (TypeError, ValueError):
+        return None
+
+
+def retry_after_seconds(response: Any, cap: float = DEFAULT_RETRY_CAP_SECONDS) -> float:
+    """Segundos a esperar antes del reintento inline, nunca mas de ``cap``.
+
+    Ignorarla y reintentar con backoff propio es lo que convierte un 429 en un
+    baneo de la clave: el proveedor dice explicitamente cuando puede volver a
+    intentarse. Solo se usa para esperas que CABEN en el cap (cuotas por
+    minuto); ``get_with_retry`` nunca la invoca para ventanas mayores, que se
+    posponen sin reintento inline.
+    """
+    raw = _raw_retry_after(response)
+    if raw is None:
+        return 0.0
+    return min(raw, cap)
+
+
+async def get_with_retry(
+    fetch: Any,
+    *,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    base_seconds: float = DEFAULT_RETRY_BASE_SECONDS,
+    cap_seconds: float = DEFAULT_RETRY_CAP_SECONDS,
+) -> Any:
+    """Ejecuta ``fetch()`` reintentando 429 y 5xx con backoff y presupuesto.
+
+Finnhub free son 60 llamadas/minuto (fuente: finnhub.io/pricing, consultada
+2026-09-26) y FMP free 250 llamadas/DIA
+(fuente: site.financialmodelingprep.com/developer/docs/pricing, consultada
+2026-09-26). Antes sus clients hacian ``raise_for_status()`` y nada
+mas: un 429 era un fallo definitivo, el llamante lo tragaba como
+``status="unavailable"`` y el barrido de precios perdia la cobertura sin
+reintentar nunca. Con 6 peticiones concurrentes sobre un tier de 60/min, un
+unico reflejo de trafico agotaba la cuota y no habia forma de recuperarse
+dentro de la misma corrida.
+
+    Reintenta solo 429 y 5xx: un 401/403/404 es un problema de configuracion o
+    de entitlement y reintentar solo gasta cuota.
+    """
+    import httpx
+
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            response = await fetch()
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            last_exc = exc
+            if attempt >= max_retries:
+                raise
+            await asyncio.sleep(min(base_seconds * (2**attempt), cap_seconds))
+            continue
+
+        status = getattr(response, "status_code", 200)
+        if status == 429:
+            raw_retry_after = _raw_retry_after(response)
+            if raw_retry_after is not None and raw_retry_after > cap_seconds:
+                # El proveedor pide esperar mas de lo que esta corrida puede
+                # pagar (p.ej. cuota diaria agotada: ventanas de horas). No se
+                # trunca ni se reintenta inline: se pospone y el caller marca
+                # el proveedor no disponible para esta corrida.
+                raise UpstreamRateLimited(
+                    f"upstream pidio Retry-After {raw_retry_after:.0f}s "
+                    f"(> cap {cap_seconds:.0f}s): pospuesto sin reintento inline"
+                )
+            if attempt < max_retries:
+                await asyncio.sleep(
+                    max(
+                        retry_after_seconds(response, cap_seconds),
+                        base_seconds * (2**attempt),
+                    )
+                )
+                continue
+            raise UpstreamRateLimited(
+                f"upstream rate limited after {max_retries} retries"
+            )
+        if status >= 500 and attempt < max_retries:
+            await asyncio.sleep(min(base_seconds * (2**attempt), cap_seconds))
+            continue
+        response.raise_for_status()
+        return response
+
+    if last_exc is not None:  # pragma: no cover - solo por tipos
+        raise last_exc
+    raise RuntimeError("unreachable")  # pragma: no cover
 
 
 @dataclass(slots=True)

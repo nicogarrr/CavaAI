@@ -7,13 +7,9 @@
 
 import { validateArticle, formatArticle, getDateRange } from '@/lib/utils';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { NewsSource } from '@/lib/types/vendorSources';
 
-export enum NewsSource {
-    FINNHUB = 'finnhub',
-    ALPHA_VANTAGE = 'alpha_vantage',
-    NEWSAPI = 'newsapi',
-    MARKETAUX = 'marketaux',
-}
+export type { NewsSource };
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 

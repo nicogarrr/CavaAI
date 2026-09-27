@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from app.core.config import get_settings
 
 # Forzar DB en memoria si el entorno lo permite; si no, usar sqlite temporal
 from sqlalchemy import create_engine

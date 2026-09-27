@@ -2,11 +2,11 @@
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-import { formatMoney } from '@/lib/format';
+import { formatMoney, NA } from '@/lib/format';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 
 function money(value: number | null) {
-    return value == null ? 'N/A' : formatMoney(value, 'USD');
+    return value == null ? NA : formatMoney(value, 'USD');
 }
 
 /** Gráfico de historial: se carga solo en cliente (dynamic ssr:false desde el panel) */

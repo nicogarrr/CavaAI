@@ -6,6 +6,7 @@ analytics. Dividend cash application to the ledger stays manual.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0026_dividend_records"

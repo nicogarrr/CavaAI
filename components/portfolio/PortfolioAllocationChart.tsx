@@ -3,15 +3,11 @@
 import Link from 'next/link';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 
-import { formatMoney } from '@/lib/format';
+import { AllocationTooltip } from './AllocationTooltip';
+import { buildAllocationSlices, CASH_SLICE_SYMBOL, type AllocationSliceData } from '@/lib/portfolio-allocation';
 
-export type AllocationSlice = {
-    symbol: string;
-    value: number;
-    percentage: number;
-    gain: number;
-    gainPercent: number;
-};
+export type AllocationSlice = AllocationSliceData;
+export { buildAllocationSlices, CASH_SLICE_SYMBOL };
 
 // Paleta de colores vibrantes para el pie chart
 const COLORS = [
@@ -29,44 +25,8 @@ const COLORS = [
     '#6366f1', // indigo-500
 ];
 
-interface CustomTooltipProps {
-    active?: boolean;
-    payload?: Array<{
-        name: string;
-        value: number;
-        payload: AllocationSlice;
-    }>;
-}
-
-const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
-    if (active && payload && payload.length) {
-        const data = payload[0].payload;
-        const isPositive = data.gain >= 0;
-
-        return (
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 shadow-xl">
-                <Link href={`/research/${data.symbol}`} className="font-bold text-teal-400 hover:text-teal-300 mb-1 block">
-                    {data.symbol}
-                </Link>
-                <p className="text-gray-300 text-sm">
-                    Valor: <span className="font-semibold text-white">{formatMoney(data.value)}</span>
-                </p>
-                <p className="text-gray-300 text-sm">
-                    Peso: <span className="font-semibold text-white">{data.percentage.toFixed(1)}%</span>
-                </p>
-                <p className="text-gray-300 text-sm">
-                    G/P: <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                        {isPositive ? '+' : ''}{data.gainPercent.toFixed(2)}%
-                    </span>
-                </p>
-            </div>
-        );
-    }
-    return null;
-};
-
 /** Donut de distribución: se carga solo en cliente (dynamic ssr:false desde el panel) */
-export default function PortfolioAllocationChart({ chartData }: { chartData: AllocationSlice[] }) {
+export default function PortfolioAllocationChart({ chartData, currency }: { chartData: AllocationSlice[]; currency?: string }) {
     return (
         <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -91,7 +51,7 @@ export default function PortfolioAllocationChart({ chartData }: { chartData: All
                         />
                     ))}
                 </Pie>
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<AllocationTooltip currency={currency} />} />
             </PieChart>
         </ResponsiveContainer>
     );

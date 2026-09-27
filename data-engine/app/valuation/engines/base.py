@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import desc, select
@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from app.models import CalculatedMetric, Company
 from app.valuation.financial_snapshot import FinancialSnapshot, FinancialSnapshotBuilder
 from app.valuation.moat_framework import empty_moat_framework
-
 
 # v2: net_debt is a required DCF input (no longer coerced to zero debt), the
 # FCF-margin clamp no longer flips the sign of a known-negative margin, the

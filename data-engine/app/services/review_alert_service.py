@@ -1,5 +1,5 @@
-from datetime import UTC, datetime
 import hashlib
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -158,6 +158,7 @@ class ReviewAlertService:
         existing = db.scalar(
             select(ResearchAlert).where(ResearchAlert.fingerprint == fingerprint)
         )
+        now = datetime.now(UTC)
         if existing:
             if existing.status == "resolved":
                 existing.status = "open"
@@ -165,6 +166,9 @@ class ReviewAlertService:
             existing.message = message
             existing.severity = severity
             existing.metadata_ = {**(existing.metadata_ or {}), **(metadata or {})}
+            # Re-disparo de la misma huella: la hora exhibida debe ser la de
+            # este disparo, no la de la creacion de la fila.
+            existing.last_triggered_at = now
             return existing
         alert = ResearchAlert(
             company_id=company_id,
@@ -176,6 +180,7 @@ class ReviewAlertService:
             message=message,
             fingerprint=fingerprint,
             channels=channels or self._default_channels(),
+            last_triggered_at=now,
             metadata_=metadata or {},
         )
         db.add(alert)
@@ -211,6 +216,12 @@ class ReviewAlertService:
             alert.status = "resolved"
             alert.resolved_at = now
         elif action == "snooze":
+            # El cliente envia un datetime sin zona (Pydantic no impone tz) y
+            # `naive <= aware` lanza TypeError, que el caller solo captura como
+            # ValueError: un snooze con fecha sin sufijo Z devolvia 500. Se
+            # normaliza asumiendo UTC, que es como se escribe en la app.
+            if snoozed_until is not None and snoozed_until.tzinfo is None:
+                snoozed_until = snoozed_until.replace(tzinfo=UTC)
             if snoozed_until is None or snoozed_until <= now:
                 raise ValueError("snoozed_until must be in the future")
             alert.status = "snoozed"

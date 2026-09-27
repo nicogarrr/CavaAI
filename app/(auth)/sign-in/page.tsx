@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import InputField from '@/components/forms/InputField';
 import FooterLink from '@/components/forms/FooterLink';
+import AuthPitch from '@/components/forms/AuthPitch';
 import {signInWithEmail, verifyTwoFactorTotp} from "@/lib/actions/auth.actions";
 import {toast} from "sonner";
 import {useRouter} from "next/navigation";
@@ -31,7 +32,7 @@ const SignIn = () => {
         try {
             const result = await signInWithEmail(data);
             if (result.success) {
-                router.push('/');
+                router.push('/inicio');
                 router.refresh();
                 return;
             }
@@ -60,7 +61,7 @@ const SignIn = () => {
                 totpCode,
             });
             if (result.success) {
-                router.push('/');
+                router.push('/inicio');
                 router.refresh();
                 return;
             }
@@ -101,7 +102,7 @@ const SignIn = () => {
                                         }}
                                     />
 
-                    <Button type="submit" disabled={isVerifying} className="yellow-btn w-full mt-5">
+                    <Button type="submit" disabled={isVerifying} className="brand-btn w-full mt-5">
                         {isVerifying ? 'Verificando…' : 'Verificar y entrar'}
                     </Button>
 
@@ -123,6 +124,13 @@ const SignIn = () => {
     return (
         <>
             <h1 className="form-title">Bienvenido de nuevo</h1>
+
+            {/* Contexto de producto: qué es CavaAI y qué se obtiene al entrar.
+                Va entre el H1 y el formulario, sin quitar el formulario.
+                El margen de `.form-title` (mb-12) era para separar el título
+                del formulario; con un bloque en medio sobra, así que el bloque
+                lo sube con un margen negativo. */}
+            <AuthPitch className="-mt-8 border-b border-gray-700/50 pb-8" />
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 <InputField
@@ -150,7 +158,7 @@ const SignIn = () => {
                     validation={{ required: 'La contraseña es obligatoria', minLength: { value: 8, message: 'La contraseña debe tener al menos 8 caracteres' } }}
                 />
 
-                <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
+                <Button type="submit" disabled={isSubmitting} className="brand-btn w-full mt-5">
                     {isSubmitting ? 'Iniciando sesión…' : 'Iniciar sesión'}
                 </Button>
 

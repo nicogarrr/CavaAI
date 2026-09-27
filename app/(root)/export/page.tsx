@@ -1,14 +1,20 @@
+import type { Metadata } from 'next';
 import ExportView from '@/components/export/ExportView';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+export const metadata: Metadata = {
+    title: 'Exportación',
+    description: 'Descarga el journal de decisiones de inversión de un año completo en CSV o JSON.',
+};
+
 export default async function ExportPage() {
     return (
-        <main className="mx-auto flex max-w-6xl flex-col gap-6">
+        <main id="content" tabIndex={-1} className="mx-auto flex max-w-6xl flex-col gap-6">
             <header className="flex flex-col gap-3 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <p className="text-sm font-semibold uppercase text-teal-300">Journal</p>
+                    <p className="text-sm font-semibold uppercase text-teal-300">Diario</p>
                     <h1 className="mt-1 text-3xl font-bold text-gray-100">Exportación</h1>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
                         Descarga el journal de decisiones de inversión de un año completo en CSV o JSON.

@@ -5,9 +5,9 @@ Revises: 0014_decision_learning_graph
 Create Date: 2026-07-16 00:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0015_management_promises"
 down_revision = "0014_decision_learning_graph"

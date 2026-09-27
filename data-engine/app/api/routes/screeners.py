@@ -1,11 +1,9 @@
-from typing import Any, Literal, Protocol
-
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Literal, Protocol
 
 import httpx
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -15,7 +13,6 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import CustomMetricDefinition, SavedScreen
 from app.services.screener_service import CustomMetricService, ScreenerService
-
 
 router = APIRouter()
 
@@ -170,11 +167,11 @@ def run_ad_hoc_screen(payload: AdHocScreen, db: Session = Depends(get_db)) -> di
 
 # (symbol, nombre de respaldo, sector de respaldo)
 _REAL_UNIVERSE: list[tuple[str, str, str]] = [
-    ("AAPL", "Apple", "Technology"),
-    ("MSFT", "Microsoft", "Technology"),
+    ("AAPL", "Apple", "Information Technology"),
+    ("MSFT", "Microsoft", "Information Technology"),
     ("GOOGL", "Alphabet", "Communication Services"),
     ("AMZN", "Amazon", "Consumer Discretionary"),
-    ("NVDA", "NVIDIA", "Technology"),
+    ("NVDA", "NVIDIA", "Information Technology"),
     ("TSLA", "Tesla", "Consumer Discretionary"),
     ("META", "Meta Platforms", "Communication Services"),
     ("BRK.B", "Berkshire Hathaway", "Financials"),
@@ -187,19 +184,19 @@ _REAL_UNIVERSE: list[tuple[str, str, str]] = [
     ("HD", "Home Depot", "Consumer Discretionary"),
     ("DIS", "Disney", "Communication Services"),
     ("NFLX", "Netflix", "Communication Services"),
-    ("ADBE", "Adobe", "Technology"),
-    ("CRM", "Salesforce", "Technology"),
-    ("CSCO", "Cisco", "Technology"),
+    ("ADBE", "Adobe", "Information Technology"),
+    ("CRM", "Salesforce", "Information Technology"),
+    ("CSCO", "Cisco", "Information Technology"),
     ("PFE", "Pfizer", "Health Care"),
-    ("INTC", "Intel", "Technology"),
+    ("INTC", "Intel", "Information Technology"),
     ("KO", "Coca-Cola", "Consumer Staples"),
     ("PEP", "PepsiCo", "Consumer Staples"),
     ("MRK", "Merck", "Health Care"),
     ("ABT", "Abbott", "Health Care"),
     ("BAC", "Bank of America", "Financials"),
-    ("AMD", "Advanced Micro Devices", "Technology"),
-    ("ORCL", "Oracle", "Technology"),
-    ("AVGO", "Broadcom", "Technology"),
+    ("AMD", "Advanced Micro Devices", "Information Technology"),
+    ("ORCL", "Oracle", "Information Technology"),
+    ("AVGO", "Broadcom", "Information Technology"),
     ("XOM", "Exxon Mobil", "Energy"),
     ("CVX", "Chevron", "Energy"),
     ("JNJ", "Johnson & Johnson", "Health Care"),
@@ -232,9 +229,18 @@ _real_quote_cache: dict[str, dict] = {}
 _profile_singleflight: dict[str, threading.Event] = {}
 # Items crudos (todo el universo, sin filtrar) — los filtros se aplican por
 # request sobre los datos cacheados, así cada combinación de filtros funciona
-# sin golpear Finnhub de nuevo. Se conserva el shape histórico para los tests y
-# para reversión/operaciones; "vendor" impide mezclar fuentes.
-_real_items_cache: dict = {"at": 0.0, "items": [], "vendor": None}
+# sin golpear Finnhub de nuevo. POR TENANT: los items llevan ratios
+# (PE/PB/ROE) calculados sobre financial_facts (TenantOwnedMixin); un bucket
+# global dejaba al tenant B leer los ratios del A aunque la clave de la
+# respuesta final sí incluyera tenant. "vendor" impide mezclar fuentes.
+_real_items_cache: dict[int | None, dict] = {}
+
+
+def _real_items_bucket(tenant_id: int | None) -> dict:
+    """Bucket LKG del tenant; lo crea vacío si no existe."""
+    return _real_items_cache.setdefault(
+        tenant_id, {"at": 0.0, "items": [], "vendor": None}
+    )
 # Respuesta completa por parámetros: evita incluso el filtrado O(n) en cada
 # petición repetida y hace que el last-known-good sea realmente instantáneo.
 _real_response_cache: dict[tuple, dict] = {}
@@ -250,6 +256,27 @@ _real_refresh_executor = ThreadPoolExecutor(
 
 def _cs(_str: str | None) -> str:
     return (_str or "").strip().lower()
+
+
+# Los sectores canonicos son los nombres GICS que sirve la tabla companies y
+# filtra la UI. Vendors y datos historicos usan alias (Technology,
+# Financial Services, Healthcare, ...): sin normalizacion, filtrar por el
+# nombre GICS devolvia 0 filas aunque los datos fueran reales (F223).
+_SECTOR_ALIASES: dict[str, str] = {
+    "technology": "Information Technology",
+    "financial services": "Financials",
+    "healthcare": "Health Care",
+    "consumer cyclical": "Consumer Discretionary",
+    "consumer defensive": "Consumer Staples",
+    "basic materials": "Materials",
+}
+
+
+def _gics_sector(value: str | None) -> str | None:
+    """Normaliza un sector al nombre GICS servido; lo desconocido pasa tal cual."""
+    if value is None:
+        return None
+    return _SECTOR_ALIASES.get(_cs(value), value)
 
 
 def _load_universe_from_db() -> dict[str, tuple[str, str]]:
@@ -268,13 +295,25 @@ def _load_universe_from_db() -> dict[str, tuple[str, str]]:
         return {}
 
 
-def _load_screener_ratios(live_prices: dict[str, dict] | None = None) -> dict[str, dict]:
-    """Best effort: financial ratios must not break the quote endpoint."""
+def _load_screener_ratios(
+    live_prices: dict[str, dict] | None = None,
+    tenant_id: int | None = None,
+) -> dict[str, dict]:
+    """Best effort: financial ratios must not break the quote endpoint.
+
+    Los ratios salen de `financial_facts`, que pertenece al tenant. La sesión
+    se abre aquí y por tanto nace sin `db.info["tenant_id"]`, con lo que los
+    guards de aislamiento de app/core/database.py no inyectan scope y la
+    consulta era cross-tenant: los PE/PB/ROE se derivaban de los hechos que
+    hubiera ingerido cualquier otro tenant. Se fija el tenant antes de leer.
+    """
     try:
         from app.core.database import SessionLocal
         from app.services.screener_fundamentals import load_screener_ratios
 
         with SessionLocal() as db:
+            if tenant_id is not None:
+                db.info["tenant_id"] = tenant_id
             return load_screener_ratios(
                 db,
                 {symbol for symbol, _, _ in _REAL_UNIVERSE},
@@ -295,6 +334,8 @@ class ScreenQuoteVendor(Protocol):
 
     name: str
     source_label: str
+    #: False si el vendor no puede dar perfil real (p. ej. Yahoo: solo quotes).
+    supports_profiles: bool
 
     def fetch_quote(self, client: httpx.Client, symbol: str) -> dict | None: ...
     def fetch_profile(self, client: httpx.Client, symbol: str) -> dict | None: ...
@@ -344,6 +385,7 @@ class FinnhubScreenVendor:
 
     name = "finnhub"
     source_label = "finnhub_free"
+    supports_profiles = True
 
     def fetch_quote(self, client: httpx.Client, symbol: str) -> dict | None:
         """Precio real del día vía Finnhub /quote (plan gratuito).
@@ -406,6 +448,7 @@ class YahooScreenVendor:
 
     name = "yahoo"
     source_label = "yahoo_finance"
+    supports_profiles = False
 
     def fetch_quote(self, client: httpx.Client, symbol: str) -> dict | None:
         try:
@@ -456,11 +499,28 @@ class YahooScreenVendor:
         return None
 
 
+
 SCREEN_VENDORS: dict[str, ScreenQuoteVendor] = {
     FinnhubScreenVendor.name: FinnhubScreenVendor(),
     YahooScreenVendor.name: YahooScreenVendor(),
 }
 DEFAULT_SCREENER_VENDOR = "finnhub"
+
+
+def resolve_profile_vendor(active: ScreenQuoteVendor) -> ScreenQuoteVendor:
+    """Vendor para perfiles (nombre/market cap/sector/exchange).
+
+    Si el vendor de quotes no puede dar perfil real (Yahoo), el perfil se
+    pide a Finnhub: 35 llamadas cacheadas 6h, muy por debajo del free tier.
+    Sin key de Finnhub configurada se conserva el comportamiento anterior
+    (fallbacks del universo/DB y marketCap 0 honesto → "sin datos" en UI).
+    """
+    if active.supports_profiles:
+        return active
+    finnhub = SCREEN_VENDORS.get("finnhub")
+    if finnhub is not None and get_settings().finnhub_api_key:
+        return finnhub
+    return active
 
 
 def resolve_screener_vendor(name: str | None) -> ScreenQuoteVendor:
@@ -519,9 +579,17 @@ def _fetch_profile(
 
 
 def _real_response_key(
-    vendor: str, market_cap: float | None, sector: str | None, limit: int
-) -> tuple[str, float | None, str | None, int]:
-    return (vendor, market_cap, _cs(sector), max(1, min(limit, 200)))
+    vendor: str,
+    market_cap: float | None,
+    sector: str | None,
+    limit: int,
+    tenant_id: int | None = None,
+) -> tuple[str, float | None, str | None, int, int | None]:
+    # El tenant forma parte de la clave: los ratios (PE/PB/ROE) se calculan
+    # sobre financial_facts, que es TenantOwnedMixin, asi que la respuesta
+    # depende del tenant. Con una clave global, el tenant B recibia ratios
+    # derivados de los hechos ingeridos por el tenant A.
+    return (vendor, market_cap, _cs(_gics_sector(sector)), max(1, min(limit, 200)), tenant_id)
 
 
 def _real_response_payload(
@@ -538,7 +606,7 @@ def _real_response_payload(
             market_cap is None
             or (item.get("marketCap") or 0.0) >= market_cap
         )
-        and (not sector or _cs(item.get("sector")) == _cs(sector))
+        and (not sector or _cs(_gics_sector(item.get("sector"))) == _cs(_gics_sector(sector)))
     ]
     filtered.sort(key=lambda item: (item.get("marketCap") or 0.0), reverse=True)
     limited = [dict(item) for item in filtered[: max(1, min(limit, 200))]]
@@ -550,25 +618,33 @@ def _real_response_payload(
     }
 
 
-def _real_items_are_fresh(vendor: str, now: float) -> bool:
+def _real_items_are_fresh(vendor: str, now: float, tenant_id: int | None) -> bool:
     with _real_cache_lock:
-        cache_vendor = _real_items_cache.get("vendor")
+        bucket = _real_items_cache.get(tenant_id) or {}
+        cache_vendor = bucket.get("vendor")
         return bool(
-            _real_items_cache.get("items")
+            bucket.get("items")
             and (cache_vendor is None or cache_vendor == vendor)
-            and now - float(_real_items_cache.get("at", 0.0)) < _QUOTE_TTL
+            and now - float(bucket.get("at", 0.0)) < _QUOTE_TTL
         )
 
 
-def _store_real_items(items: list[dict], vendor: str) -> None:
-    """Publica un refresco sin perder LKG cuando el proveedor devuelve parcial."""
+def _store_real_items(
+    items: list[dict], vendor: str, tenant_id: int | None = None
+) -> None:
+    """Publica un refresco sin perder LKG cuando el proveedor devuelve parcial.
+
+    Todo ocurre dentro del bucket del tenant: los items llevan ratios
+    calculados con SUS financial_facts y jamás se mezclan con los de otro.
+    """
     with _real_cache_lock:
+        bucket = _real_items_bucket(tenant_id)
         previous = {
             item.get("symbol"): item
-            for item in _real_items_cache.get("items", [])
+            for item in bucket.get("items", [])
             if item.get("symbol")
         }
-        previous_vendor = _real_items_cache.get("vendor")
+        previous_vendor = bucket.get("vendor")
         fresh = {item.get("symbol"): item for item in items if item.get("symbol")}
         if previous_vendor in (None, vendor):
             merged = [
@@ -578,29 +654,31 @@ def _store_real_items(items: list[dict], vendor: str) -> None:
             ]
         else:
             merged = list(items)
-        _real_items_cache.update(
+        bucket.update(
             {"at": time.monotonic(), "items": merged, "vendor": vendor}
         )
-        # Las respuestas cacheadas se invalidan para recomputar con el nuevo
-        # universo; durante el intervalo entre refresh y request se conserva LKG.
+        # Las respuestas cacheadas DE ESTE TENANT se invalidan para recomputar
+        # con el nuevo universo; el resto conserva su LKG intacto.
         for key in tuple(_real_response_cache):
-            if key[0] == vendor:
+            if key[0] == vendor and key[4] == tenant_id:
                 _real_response_cache.pop(key, None)
 
 
-def _refresh_real_items_background(vendor: str, generation: int) -> None:
+def _refresh_real_items_background(
+    vendor: str, generation: int, tenant_id: int | None = None
+) -> None:
     try:
-        items = _refetch_real_items(vendor=vendor)
+        items = _refetch_real_items(vendor=vendor, tenant_id=tenant_id)
         with _real_refresh_state_lock:
             stale_generation = generation != _real_refresh_generation
         if items and not stale_generation:
-            _store_real_items(items, vendor)
+            _store_real_items(items, vendor, tenant_id)
     except Exception:  # noqa: BLE001 — SWR nunca convierte un fallo upstream en 500
         # El próximo request conserva el last-known-good y vuelve a programar.
         return
 
 
-def _schedule_real_refresh(vendor: str):
+def _schedule_real_refresh(vendor: str, tenant_id: int | None = None):
     """Programa un único refresh y devuelve el Future para el cold start."""
     global _real_refresh_future, _real_refresh_generation
     with _real_refresh_state_lock:
@@ -610,7 +688,7 @@ def _schedule_real_refresh(vendor: str):
         _real_refresh_generation += 1
         generation = _real_refresh_generation
         _real_refresh_future = _real_refresh_executor.submit(
-            _refresh_real_items_background, vendor, generation
+            _refresh_real_items_background, vendor, generation, tenant_id
         )
         return _real_refresh_future
 
@@ -627,6 +705,7 @@ def real_time_screener(
     marketCapMoreThan: float | None = None,
     sector: str | None = None,
     limit: int = 25,
+    db: Session = Depends(get_db),
 ) -> dict:
     """Screener real con cache por parámetros y stale-while-revalidate.
 
@@ -634,15 +713,24 @@ def real_time_screener(
     instante y actualiza en segundo plano. En cold start espera como máximo
     50 ms para un primer resultado útil; después devuelve LKG al instante y
     deja el trabajo largo en background.
+
+    El `get_db` no es decorativo: los ratios salen de `financial_facts`, que es
+    TenantOwnedMixin, así que la respuesta depende del tenant. Sin esta
+    dependencia el handler no conocía su tenant, la clave de caché era global
+    y un tenant recibía ratios derivados de los hechos ingeridos por otro.
     """
     settings = get_settings()
+    tenant_id = db.info.get("tenant_id")
     vendor = resolve_screener_vendor(settings.screener_quote_vendor)
-    key = _real_response_key(vendor.name, marketCapMoreThan, sector, limit)
+    key = _real_response_key(
+        vendor.name, marketCapMoreThan, sector, limit, tenant_id
+    )
     now = time.monotonic()
     with _real_cache_lock:
         cached = _real_response_cache.get(key)
-        cached_items = _real_items_cache.get("items", [])
-        cached_vendor = _real_items_cache.get("vendor")
+        bucket = _real_items_cache.get(tenant_id) or {}
+        cached_items = bucket.get("items", [])
+        cached_vendor = bucket.get("vendor")
         has_lkg = bool(cached_items) and (
             cached_vendor is None or cached_vendor == vendor.name
         )
@@ -652,13 +740,13 @@ def real_time_screener(
             "screener": [dict(item) for item in cached["payload"]["screener"]],
             "as_of": time.time(),
         }
-        if not _real_items_are_fresh(vendor.name, now):
-            _schedule_real_refresh(vendor.name)
+        if not _real_items_are_fresh(vendor.name, now, tenant_id):
+            _schedule_real_refresh(vendor.name, tenant_id)
         return payload
 
     items = list(cached_items) if has_lkg else []
-    if not _real_items_are_fresh(vendor.name, now):
-        future = _schedule_real_refresh(vendor.name)
+    if not _real_items_are_fresh(vendor.name, now, tenant_id):
+        future = _schedule_real_refresh(vendor.name, tenant_id)
         if not has_lkg and not items and (
             active_vendor_allows_cold_wait(vendor.name, settings)
         ):
@@ -670,7 +758,7 @@ def real_time_screener(
             except Exception:  # noqa: BLE001 — el background seguirá intentando
                 pass
             with _real_cache_lock:
-                items = list(_real_items_cache.get("items", []))
+                items = list((_real_items_cache.get(tenant_id) or {}).get("items", []))
 
     payload = _real_response_payload(
         items, vendor.name, marketCapMoreThan, sector, limit
@@ -704,12 +792,17 @@ def _safe_fetch_profile(client: httpx.Client, symbol: str, vendor: str) -> dict 
         return None
 
 
-def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
+def _refetch_real_items(
+    *, vendor: str | None = None, tenant_id: int | None = None
+) -> list[dict]:
     """Universo completo con precios/market cap reales (vendor configurable).
 
     Fase 1: /quote en paralelo (35 llamadas, con retry en 429).
     Fase 2: /stock/profile2 en un pool acotado (sin sleep O(n)); el burst queda
     dentro del límite gratuito de 60 llamadas/min para el universo de 35 tickers.
+
+    `tenant_id` se propaga a la carga de ratios: sin él, el hilo en background
+    abría su propia sesión sin scope de tenant.
     """
     db_universe = _load_universe_from_db()
     settings = get_settings()
@@ -721,6 +814,9 @@ def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
     quotes: dict[str, dict] = {}
     with httpx.Client(headers=headers, timeout=15) as client:
         fn_key = settings.finnhub_api_key
+        # El token solo se fija cuando el vendor de QUOTES es Finnhub: con
+        # Yahoo activo, httpx fusionaria Client(params) en cada URL de quote
+        # y la key de Finnhub se filtraria a Yahoo.
         client.params = {"token": fn_key} if fn_key and active.name == "finnhub" else {}
         with ThreadPoolExecutor(max_workers=QUOTE_MAX_WORKERS) as pool:
             futures = {
@@ -747,18 +843,19 @@ def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
         for symbol, quote in quotes.items()
         if quote.get("price")
     }
-    ratios = _load_screener_ratios(live_prices=live_prices)
+    ratios = _load_screener_ratios(live_prices=live_prices, tenant_id=tenant_id)
 
     profiles: dict[str, dict] = {}
     profile_symbols = [symbol for symbol, _, _ in _REAL_UNIVERSE if symbol in quotes]
     with httpx.Client(headers=headers, timeout=15) as client:
+        profile_vendor = resolve_profile_vendor(active)
         fn_key = settings.finnhub_api_key
-        client.params = {"token": fn_key} if fn_key and active.name == "finnhub" else {}
+        client.params = {"token": fn_key} if fn_key and profile_vendor.name == "finnhub" else {}
         now = time.monotonic()
         with _real_cache_lock:
             cached_profiles = {}
             for symbol in profile_symbols:
-                cached = _real_profile_cache.get(f"{active.name}:{symbol}")
+                cached = _real_profile_cache.get(f"{profile_vendor.name}:{symbol}")
                 if cached and now - float(cached.get("at", 0.0)) < _PROFILE_TTL:
                     cached_profiles[symbol] = cached["data"]
         missing_profiles = [
@@ -771,7 +868,7 @@ def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
             ) as pool:
                 futures = {
                     pool.submit(
-                        _safe_fetch_profile, client, symbol, active.name
+                        _safe_fetch_profile, client, symbol, profile_vendor.name
                     ): symbol
                     for symbol in missing_profiles
                 }
@@ -790,7 +887,7 @@ def _refetch_real_items(*, vendor: str | None = None) -> list[dict]:
         name = (db_row[0] if db_row else None) or (
             profile["name"] if profile else name_fb
         )
-        sector_value = (
+        sector_value = _gics_sector(
             db_row[1]
             if db_row
             else (profile["sector"] if profile and profile["sector"] else sector_fb)

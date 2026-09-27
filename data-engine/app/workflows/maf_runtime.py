@@ -7,7 +7,6 @@ from typing import Any, Never
 
 from agent_framework import FunctionExecutor, WorkflowBuilder, WorkflowContext
 
-
 MAF_WORKFLOWS = {
     "DeepResearchWorkflow",
     "EarningsWorkflow",

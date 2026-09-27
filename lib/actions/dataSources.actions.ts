@@ -6,16 +6,11 @@
 'use server';
 
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { DataSource } from '@/lib/types/vendorSources';
+
+export type { DataSource };
 
 // ========== FUENTES DE DATOS DISPONIBLES ==========
-
-export enum DataSource {
-    FINNHUB = 'finnhub',
-    ALPHA_VANTAGE = 'alpha_vantage',
-    POLYGON = 'polygon',
-    YAHOO_FINANCE = 'yahoo_finance',
-    TWELVE_DATA = 'twelve_data',
-}
 
 export interface QuoteData {
     symbol: string;

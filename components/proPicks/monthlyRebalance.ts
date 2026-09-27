@@ -10,6 +10,7 @@
  */
 
 import type { ProPick } from '@/lib/actions/proPicks.actions';
+import { formatDate, formatNumber } from '@/lib/format';
 
 export interface StrategyCatalogEntry {
     id: string;
@@ -131,7 +132,9 @@ export function pickReason(pick: ProPick): TraceableReason {
     if (first?.text) {
         return { text: first.text, metric: first.metric, value: first.value };
     }
-    return { text: `Score ${pick.score}/100 con confianza ${pick.confidenceLevel}` };
+    return {
+        text: `Score ${formatNumber(pick.score, { maximumFractionDigits: 0 })}/100 con confianza ${pick.confidenceLevel}`,
+    };
 }
 
 /** Todos los motivos trazables de un pick (para la vista de rebalanceo). */
@@ -183,7 +186,9 @@ export function monthKey(date: Date = new Date()): string {
 export function monthLabelEs(month: string): string {
     const [y, m] = month.split('-').map(Number);
     if (!y || !m) return month;
-    return new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    // Fecha de solo día: formatDate la parsea en hora local, así que el mes
+    // sale igual en el servidor (UTC) y en el navegador.
+    return formatDate(`${y}-${String(m).padStart(2, '0')}-01`, { month: 'long', year: 'numeric' });
 }
 
 export function toSnapshotPick(pick: ProPick): SnapshotPick {

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Loader2, Landmark, Upload } from 'lucide-react';
 import { importFromIBKR, importIBKRCsv, importIBKRXml } from '@/lib/actions/portfolio.actions';
+import { formatNumber } from '@/lib/format';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
 
@@ -27,6 +28,10 @@ function num(value: unknown): number | null {
     return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function count(value: number): string {
+    return formatNumber(value, { maximumFractionDigits: 0 });
+}
+
 function describeResult(result: ImportCounts): string {
     const parts: string[] = [];
     const positions = num(result.positions_imported);
@@ -36,16 +41,16 @@ function describeResult(result: ImportCounts): string {
         const fees = num(result.fees_imported) ?? 0;
         const cash = num(result.cash_imported) ?? 0;
         parts.push(
-            `IBKR: ${positions} posiciones, ${trades} operaciones, ` +
-            `${dividends} dividendos, ${fees} comisiones, ` +
-            `${cash} cuentas de efectivo`
+            `IBKR: ${count(positions)} posiciones, ${count(trades)} operaciones, ` +
+            `${count(dividends)} dividendos, ${count(fees)} comisiones, ` +
+            `${count(cash)} cuentas de efectivo`
         );
     } else {
         const trades = num(result.trades_imported) ?? 0;
-        parts.push(`IBKR CSV: ${trades} operaciones importadas`);
+        parts.push(`IBKR CSV: ${count(trades)} operaciones importadas`);
     }
     if (result.rows_skipped) {
-        parts.push(`${result.rows_skipped} filas omitidas`);
+        parts.push(`${count(result.rows_skipped)} filas omitidas`);
     }
     return parts.join(' · ');
 }
@@ -97,7 +102,7 @@ export default function ImportIBKRButton({ userId }: ImportIBKRButtonProps) {
             toast.success(describeResult(result));
             if (result.row_errors?.length) {
                 toast.warning(
-                    `${result.row_errors.length} filas con avisos. Primera: ${result.row_errors[0]}`,
+                    `${formatNumber(result.row_errors.length, { maximumFractionDigits: 0 })} filas con avisos. Primera: ${result.row_errors[0]}`,
                     { duration: 8000 }
                 );
             }
@@ -125,17 +130,18 @@ export default function ImportIBKRButton({ userId }: ImportIBKRButtonProps) {
                 size="sm"
                 onClick={handleImport}
                 disabled={busy}
+                aria-busy={isImporting}
                 className="border-gray-600 hover:bg-gray-700 text-gray-200"
                 title="Importar cartera desde Interactive Brokers (Flex statement)"
             >
                 {isImporting ? (
                     <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
                         Importando IBKR...
                     </>
                 ) : (
                     <>
-                        <Landmark className="mr-2 h-4 w-4" />
+                        <Landmark aria-hidden="true" className="mr-2 h-4 w-4" />
                         Importar IBKR
                     </>
                 )}
@@ -145,17 +151,18 @@ export default function ImportIBKRButton({ userId }: ImportIBKRButtonProps) {
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
+                aria-busy={isUploading}
                 className="border-gray-600 hover:bg-gray-700 text-gray-200"
                 title="Subir un Flex XML o CSV de actividad descargado de IBKR"
             >
                 {isUploading ? (
                     <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
                         Subiendo...
                     </>
                 ) : (
                     <>
-                        <Upload className="mr-2 h-4 w-4" />
+                        <Upload aria-hidden="true" className="mr-2 h-4 w-4" />
                         Subir fichero
                     </>
                 )}

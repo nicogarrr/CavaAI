@@ -17,6 +17,7 @@
  */
 
 import { getInsiderSignals } from '@/lib/actions/insider.actions';
+import { formatNumber } from '@/lib/format';
 
 export interface SignalOverlay {
     factor: 'revisiones' | 'insider' | 'shortInterest' | 'regimen';
@@ -58,9 +59,20 @@ function round1(n: number): number {
     return Math.round(n * 10) / 10;
 }
 
+/** Número con separadores es-ES para la prosa del `detail`. Ojo: el `detail`
+ *  sigue incluyendo el valor CRUDO entre paréntesis porque la regla R5
+ *  (propicksValidation) exige que `detail` contenga `String(overlay.value)`
+ *  literal; formatearlo ahí rompería la trazabilidad del número. */
 function fmtSigned(n: number): string {
-    const r = round1(n);
-    return `${r >= 0 ? '+' : ''}${r}`;
+    return formatNumber(round1(n), {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+        signDisplay: 'always',
+    });
+}
+
+function plural(count: number, singular: string, pluralForm: string): string {
+    return `${formatNumber(count, { maximumFractionDigits: 0 })} ${count === 1 ? singular : pluralForm}`;
 }
 
 /** Día YYYY-MM-DD de un ISO, o null si inválido. */
@@ -156,7 +168,7 @@ async function revisionOverlay(symbol: string, cutoffDay: string): Promise<Signa
         return {
             factor: 'revisiones',
             impact,
-            detail: `Sorpresa media de beneficios ${fmtSigned(avgR)}% en ${valid.length} trimestre(s) hasta ${lastPeriod} (valor ${avgR})`,
+            detail: `Sorpresa media de beneficios ${fmtSigned(avgR)} % en ${plural(valid.length, 'trimestre', 'trimestres')} hasta ${lastPeriod} (valor ${avgR})`,
             metric: 'ov_revisiones',
             value: avgR,
             asOf: cutoffDay,
@@ -218,7 +230,7 @@ async function insiderOverlay(
         return {
             factor: 'insider',
             impact,
-            detail: `Compra neta insider: ${buys} compras frente a ${sells} ventas en 90 días hasta ${cutoffDay} (valor ${netR})`,
+            detail: `Compra neta insider: ${plural(buys, 'compra', 'compras')} frente a ${plural(sells, 'venta', 'ventas')} en 90 días hasta ${cutoffDay} (valor ${netR})`,
             metric: 'ov_insider',
             value: netR,
             asOf: cutoffDay,
@@ -289,7 +301,7 @@ async function shortInterestOverlay(symbol: string, cutoffDay: string): Promise<
                 return {
                     factor: 'shortInterest',
                     impact,
-                    detail: `Interés en corto FINRA de ${cached.si.toLocaleString('es-ES')} acciones a ${cached.settle} (valor ${cached.si})`,
+                    detail: `Interés en corto FINRA de ${formatNumber(cached.si, { maximumFractionDigits: 0 })} acciones a ${cached.settle} (valor ${cached.si})`,
                     metric: 'ov_shortInterest',
                     value: cached.si,
                     asOf: cutoffDay,
@@ -313,7 +325,7 @@ async function shortInterestOverlay(symbol: string, cutoffDay: string): Promise<
                     return {
                         factor: 'shortInterest',
                         impact,
-                        detail: `Interés en corto FINRA de ${parsed.si.toLocaleString('es-ES')} acciones a ${parsed.settle} (valor ${parsed.si})`,
+                        detail: `Interés en corto FINRA de ${formatNumber(parsed.si, { maximumFractionDigits: 0 })} acciones a ${parsed.settle} (valor ${parsed.si})`,
                         metric: 'ov_shortInterest',
                         value: parsed.si,
                         asOf: cutoffDay,
@@ -409,7 +421,7 @@ async function regimenOverlay(cutoffDay: string): Promise<SignalOverlay | null> 
         return {
             factor: 'regimen',
             impact,
-            detail: `VIX en ${v} el ${found.date} (régimen de ${regime}) (valor ${v})`,
+            detail: `VIX en ${formatNumber(v, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} el ${found.date} (régimen de ${regime}) (valor ${v})`,
             metric: 'ov_vix',
             value: v,
             asOf: cutoffDay,

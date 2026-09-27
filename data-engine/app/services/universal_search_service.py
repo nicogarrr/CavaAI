@@ -5,9 +5,10 @@ from __future__ import annotations
 import math
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -29,7 +30,6 @@ from app.models import (
     ThesisSection,
 )
 from app.services.source_hierarchy_service import classify_source
-
 
 TOKEN_RE = re.compile(r"[\w.-]+", re.UNICODE)
 RRF_K = 60

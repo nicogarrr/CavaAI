@@ -31,7 +31,6 @@ existente no se vuelve lenta ni flaky por EDGAR/NASDAQ/IR reales.
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -46,8 +45,11 @@ from app.services.connectors import sec_edgar as sec_edgar_connector
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.ir import IRConnector
 
-# Metrica -> (tags us-gaap por preferencia, unidad). El primer tag que
-# informa gana; nunca se suman tags.
+# Metrica -> (tags us-gaap por preferencia, unidad). Nunca se suman
+# tags. Gana el tag con el dato mas reciente: un tag preferido puede
+# quedar congelado en el pasado (MSFT dejo de informar "Revenues" tras
+# FY2010 y paso a RevenueFromContract...); a igual fecha, manda el orden
+# de preferencia (F133).
 SEC_EVIDENCE_TAGS: dict[str, tuple[list[str], str]] = {
     "revenue": (
         ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"],
@@ -79,8 +81,7 @@ EARNINGS_LOOKAHEAD_DAYS = 14
 FETCH_TIMEOUT_S = 20.0
 
 EXTERNAL_THESIS_HOWTO = (
-    "Pega URLs via POST /api/sources/documents/ingest-url "
-    "(source_type='external_thesis') o suscribe el RSS del autor; "
+    "Las tesis externas se pueden añadir desde Fuentes pegando la URL; "
     "no se scrapean paywalls."
 )
 
@@ -101,12 +102,9 @@ def _await_sync(factory, timeout: float = FETCH_TIMEOUT_S):
     async def _bounded():
         return await asyncio.wait_for(factory(), timeout)
 
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(_bounded())
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(lambda: asyncio.run(_bounded())).result()
+    from app.services.async_bridge import run_from_any_context
+
+    return run_from_any_context(_bounded())
 
 
 def _decimal(value: Any) -> Decimal | None:
@@ -279,36 +277,80 @@ class ThesisEvidenceService:
             "document_id": document.id,
         }
 
+    # Metricas de flujo (duracion): un hecho sin ``start`` no puede
+    # probar que cubre un ano, asi que no entra al pool anual. Las
+    # instantaneas (balance, acciones) no llevan ``start`` por naturaleza.
+    FLOW_METRICS = frozenset({"revenue", "net_income", "operating_cash_flow"})
+
+    @classmethod
+    def _is_annual_duration(cls, entry: dict[str, Any], metric: str) -> bool:
+        """True si el hecho prueba duracion ~1 ano (flujos) o es
+        instantaneo sin ``start``.
+
+        Los 10-K republican trimestres: un form anual NO garantiza
+        duracion anual (MSFT FY2010: revenue 16.039B con start 2010-04-01
+        es el Q4, no el ano - F133). Fechas no parseables: cerrado.
+        """
+        start, end = entry.get("start"), entry.get("end")
+        if not start:
+            return metric not in cls.FLOW_METRICS
+        try:
+            days = (
+                datetime.strptime(str(end), "%Y-%m-%d").date()
+                - datetime.strptime(str(start), "%Y-%m-%d").date()
+            ).days
+        except (TypeError, ValueError):
+            return False
+        return 300 <= days <= 400
+
     def _extract_latest_annual(self, us_gaap: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        """Ultimo 10-K/20-F por metrica (fallback: ultimo 10-Q)."""
+        """Ultimo hecho anual por metrica (fallback: ultimo trimestre).
+
+        Reglas (F133, MSFT tenant 5):
+        - la duracion del hecho, no solo el form: un trimestre republicado
+          en un 10-K no es un dato anual, y las metricas de flujo sin
+          ``start`` tampoco (no pueden probar duracion);
+        - el fallback nunca etiqueta FY lo que no probo duracion anual;
+        - entre tags gana el hecho ANUAL sobre cualquier trimestre, y
+          dentro de la misma clase el de periodo cubierto mas reciente
+          (end), no el de envio mas reciente (filed): una enmienda de un
+          periodo antiguo no desplaza al periodo nuevo. A doble empate
+          manda la preferencia declarada en SEC_EVIDENCE_TAGS; nunca se
+          suman tags.
+        """
         out: dict[str, dict[str, Any]] = {}
         for metric, (tags, unit) in SEC_EVIDENCE_TAGS.items():
+            best: dict[str, Any] | None = None
             for tag in tags:
                 entries = ((us_gaap.get(tag) or {}).get("units") or {}).get(unit, [])
-                annual = [
-                    e
-                    for e in entries
-                    if isinstance(e, dict)
-                    and str(e.get("form", "")).upper() in ANNUAL_FORMS
-                    and e.get("val") is not None
-                    and e.get("end")
-                ]
-                pool = annual or [
+                valid = [
                     e
                     for e in entries
                     if isinstance(e, dict) and e.get("val") is not None and e.get("end")
                 ]
+                annual = [
+                    e
+                    for e in valid
+                    if str(e.get("form", "")).upper() in ANNUAL_FORMS
+                    and self._is_annual_duration(e, metric)
+                ]
+                pool = annual or valid
                 if not pool:
                     continue
-                pool.sort(key=lambda e: (str(e.get("filed", "")), str(e.get("end", ""))))
+                # Periodo cubierto primero: una enmienda (filed reciente de
+                # un end antiguo) no desplaza al periodo nuevo.
+                pool.sort(key=lambda e: (str(e.get("end", "")), str(e.get("filed", ""))))
                 latest = pool[-1]
                 end = str(latest["end"])
                 try:
                     fiscal_year = int(end[:4])
                 except ValueError:
                     fiscal_year = None
-                is_annual = str(latest.get("form", "")).upper() in ANNUAL_FORMS
-                out[metric] = {
+                is_annual = (
+                    str(latest.get("form", "")).upper() in ANNUAL_FORMS
+                    and self._is_annual_duration(latest, metric)
+                )
+                candidate = {
                     "value": latest["val"],
                     "unit": unit,
                     "period": f"{end}:FY" if is_annual else f"{end}:{latest.get('form')}",
@@ -317,7 +359,16 @@ class ThesisEvidenceService:
                     "concept": tag,
                     "form": latest.get("form"),
                 }
-                break
+                # Anual > trimestre entre tags; dentro de la clase, el
+                # periodo cubierto mas reciente; doble empate -> el tag ya
+                # elegido (preferencia declarada).
+                key = (is_annual, end, str(latest.get("filed", "")))
+                if best is None or key > best["_key"]:
+                    candidate["_key"] = key
+                    best = candidate
+            if best is not None:
+                best.pop("_key", None)
+                out[metric] = best
         return out
 
     # -- 2. precio + perfil Finnhub -------------------------------------------
@@ -330,31 +381,55 @@ class ThesisEvidenceService:
             result["detail"] = f"Quote inaccesible: {exc}"[:200]
             quote = None
         price = _decimal((quote or {}).get("c")) if quote else None
+        # Fallar cerrado ante payload malformado: timestamp o volumen invalidos
+        # no propagan una excepcion; sin fecha honesta no se escribe barra.
+        try:
+            timestamp = int((quote or {}).get("t") or 0) if quote else 0
+            quote_date = datetime.fromtimestamp(timestamp, tz=UTC).date() if timestamp > 0 else None
+        except (TypeError, ValueError, OverflowError, OSError):
+            quote_date = None
+        try:
+            volume = int(quote["v"]) if quote and quote.get("v") is not None else None
+        except (TypeError, ValueError):
+            volume = None
         if price is not None and price > 0:
-            today = datetime.now(UTC).date()
-            existing = db.scalar(
-                select(MarketPrice).where(
-                    MarketPrice.company_id == company.id, MarketPrice.date == today
-                )
-            )
-            if existing:
-                existing.close = price
-                existing.adj_close = price
-                existing.source = "Finnhub"
+            if quote_date is None:
+                # Sin timestamp del proveedor no hay fecha honesta: fechar la
+                # quote con el dia de la ingesta fabricaba barras de fin de
+                # semana con el ultimo cierre conocido.
+                result["detail"] = "Quote sin timestamp valido del proveedor: no se escribe barra sin fecha honesta."
+            elif quote_date > datetime.now(UTC).date():
+                result["detail"] = "Quote con fecha futura rechazada."
             else:
-                db.add(
-                    MarketPrice(
-                        company_id=company.id,
-                        date=today,
-                        open=price,
-                        high=price,
-                        low=price,
-                        close=price,
-                        adj_close=price,
-                        source="Finnhub",
+                existing = db.scalar(
+                    select(MarketPrice).where(
+                        MarketPrice.company_id == company.id, MarketPrice.date == quote_date
                     )
                 )
-            result.update({"status": "ok", "price": float(price)})
+                if existing:
+                    # Barra real ya persistida: se actualiza solo el close y se
+                    # preservan OHLC y el adjusted autentico de esa fecha.
+                    existing.close = price
+                    if volume is not None:
+                        existing.volume = volume
+                    existing.source = "Finnhub"
+                else:
+                    # Spot no es barra ajustada: adj_close NULL, nunca una copia
+                    # de close que afirme un ajuste no realizado.
+                    db.add(
+                        MarketPrice(
+                            company_id=company.id,
+                            date=quote_date,
+                            open=price,
+                            high=price,
+                            low=price,
+                            close=price,
+                            adj_close=None,
+                            volume=volume,
+                            source="Finnhub",
+                        )
+                    )
+                result.update({"status": "ok", "price": float(price), "price_as_of": quote_date.isoformat()})
         else:
             result["detail"] = result.get("detail") or "Quote sin precio util (c<=0 o vacio)."
         try:
@@ -466,7 +541,6 @@ class ThesisEvidenceService:
             return _pending(
                 "news pipeline (NewsEvent)",
                 "Sin noticias ingeridas para este ticker.",
-                action="Ingiere via POST /api/news/ingest o espera al worker de news.",
             )
         return {
             "status": "ok",
@@ -492,7 +566,6 @@ class ThesisEvidenceService:
             return _pending(
                 "NASDAQ earnings calendar",
                 f"Calendario inaccesible: {exc}"[:200],
-                action="Revisa GET /api/calendar/earnings cuando haya red.",
             )
         wanted = company.ticker.upper()
         coming = sorted(
@@ -507,7 +580,6 @@ class ThesisEvidenceService:
             return _pending(
                 "NASDAQ earnings calendar",
                 f"Sin earnings de {wanted} en los proximos {EARNINGS_LOOKAHEAD_DAYS} dias.",
-                action="Revisa GET /api/calendar/earnings con un rango mayor.",
             )
         nxt = coming[0]
         return {
@@ -530,7 +602,7 @@ class ThesisEvidenceService:
             return _pending(
                 "transcripts",
                 "Pendiente transcripcion: sin fuente gratuita disponible.",
-                action="Importa el texto via ManualTranscriptImportService.import_text.",
+                action="Puede añadirse manualmente desde Fuentes.",
             )
         return {
             "status": "ok",
@@ -546,7 +618,7 @@ class ThesisEvidenceService:
             return _pending(
                 "IR de la empresa",
                 "Sin ir_url en el master; hueco marcado.",
-                action="Anade ir_url al company master.",
+                action="Falta la URL de relación con inversores en la ficha de la compañía.",
             )
         try:
             result = self._fetch_ir(ir_url, company.ticker.upper())
@@ -554,7 +626,7 @@ class ThesisEvidenceService:
             return _pending(
                 "IR de la empresa",
                 f"IR inaccesible ({ir_url}): {exc}"[:200],
-                action="Reintenta o pega la presentacion via /documents/ingest-url.",
+                action="Puede añadirse manualmente desde Fuentes.",
             )
         items = getattr(result, "items", None) or []
         created = 0
@@ -584,7 +656,7 @@ class ThesisEvidenceService:
             return _pending(
                 "IR de la empresa",
                 f"IR sin releases detectados ({'; '.join(errors)[:200]}).",
-                action="Pega la presentacion via /documents/ingest-url.",
+                action="Puede añadirse manualmente desde Fuentes.",
             )
         return {
             "status": "ok",

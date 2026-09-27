@@ -6,10 +6,6 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
-
-from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
-from app.services.public_fetch import fetch_public_url_async
-
 from app.services.connectors import (
     ConnectorResult,
     GDELTConnector,
@@ -17,6 +13,8 @@ from app.services.connectors import (
     RSSConnector,
     SECClient,
 )
+from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
+from app.services.public_fetch import fetch_public_url_async
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,8 +5,8 @@ from sqlalchemy import delete, select
 
 from app.core.database import SessionLocal, init_db
 from app.models import (
-    Company,
     CalculatedMetric,
+    Company,
     DecisionJournalEntry,
     ExpectationReview,
     FinancialFact,

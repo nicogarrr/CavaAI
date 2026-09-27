@@ -122,7 +122,7 @@ export default function TwoFactorSettings({ initiallyEnabled }: Props) {
                         error={passwordForm.formState.errors.password}
                         validation={{ required: 'La contraseña es obligatoria' }}
                     />
-                    <Button type="submit" disabled={busy} className="yellow-btn">
+                    <Button type="submit" disabled={busy} className="brand-btn">
                         {busy ? 'Generando…' : 'Activar 2FA'}
                     </Button>
                 </form>
@@ -171,7 +171,7 @@ export default function TwoFactorSettings({ initiallyEnabled }: Props) {
                                 pattern: { value: /^\d{6}$/, message: 'El código debe tener 6 dígitos' },
                             }}
                         />
-                        <Button type="submit" disabled={busy} className="yellow-btn">
+                        <Button type="submit" disabled={busy} className="brand-btn">
                             {busy ? 'Verificando…' : 'Activar 2FA'}
                         </Button>
                         <button

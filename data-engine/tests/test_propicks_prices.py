@@ -17,7 +17,6 @@ from app.models import (
 )
 from app.services.propicks_price_service import (
     PriceBar,
-    compute_momentum_metrics,
     momentum_from_series,
     refresh_propicks_prices,
     upsert_prices,
@@ -29,7 +28,7 @@ def _company(ticker: str, currency: str = "USD") -> Company:
     return Company(
         ticker=ticker,
         name=f"{ticker} Co",
-        exchange="TEST",
+        exchange="NASDAQ",
         currency=currency,
         sector="Industrials",
         industry="Test",
@@ -71,8 +70,9 @@ def _fake_fetcher(symbols, *, period="1y"):
     return bars
 
 
-def test_yahoo_symbol_eur_gets_mc_suffix():
-    assert yahoo_symbol(_company("TEF", currency="EUR")) == "TEF.MC"
+def test_yahoo_symbol_mapea_bolsa_o_devuelve_none_honesto():
+    # Bolsa mapeada: sufijo del listado real.
+    assert yahoo_symbol(_company("TEF", currency="EUR")) is None  # NASDAQ+EUR: incoherente, sin símbolo
     assert yahoo_symbol(_company("AAPL", currency="USD")) == "AAPL"
 
 

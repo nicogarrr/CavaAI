@@ -51,8 +51,19 @@ jobs:
         run: node --experimental-strip-types --test scripts/error-cause.test.ts
       - name: Transaction form validation (F1, no silent submits)
         run: node --experimental-strip-types --test scripts/transaction-validation.test.ts
+      - name: Server action guards (SSRF, secret redaction, use server exports)
+        run: npm run test:guards
+      - name: UI format guards (es-ES, scroll movil)
+        run: node --experimental-strip-types --test scripts/ui-format-guard.test.ts
+      - name: Market date guard (YYYY-MM-DD no pierde un dia)
+        # TZ negativa a posta: las fechas YYYY-MM-DD no deben moverse de dia.
+        run: TZ=America/New_York node --experimental-strip-types --test scripts/market-date-guard.test.ts
       - name: SSRF guard (export actions)
         run: node --experimental-strip-types --test scripts/export-url-guard.test.ts
+      - name: Portfolio score honesty (ausente != 0)
+        run: node --experimental-strip-types --test scripts/portfolio-score-honesty.test.ts
+      - name: Thesis date guard (invalid date never renders N/D)
+        run: node --experimental-strip-types --test scripts/thesis-memo-date-guard.test.ts
       - run: npm run build
       - name: Bundle budget
         run: node scripts/check-bundle-budget.mjs
@@ -174,15 +185,47 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Empty database to head
         run: python -m alembic upgrade head
-      - name: Revision 0006 to head
+      - name: 0032 rejects a clean downgrade (forward-only)
+        # 0032 es forward-only a proposito (restaurar los unique globales
+        # reabriria el IntegrityError cross-tenant). El round-trip de
+        # downgrade solo cubre revisiones ANTERIORES; aqui se verifica que
+        # 0032 rechaza el downgrade sin dejar DDL parcial.
         run: |
+          # Con 0033 en head, primero baja 0033 (downgrade limpio y verificado);
+          # si no, el raise de 0032 revertiria en la misma transaccion tambien
+          # el downgrade de 0033 y `current` quedaria en 0033.
+          python -m alembic downgrade 0032_tenant_uniques_fk_actions
+          if python -m alembic downgrade 0031_propick_runs; then
+            echo "0032 downgrade should have raised (forward-only)" >&2
+            exit 1
+          fi
+          python -m alembic current | grep -q "0032_tenant_uniques_fk_actions"
+          python -c "
+          import os
+          import sqlalchemy as sa
+
+          engine = sa.create_engine(os.environ['DATABASE_URL'])
+          with engine.connect() as conn:
+              names = sa.inspect(conn).get_unique_constraints('fund_managers')
+          assert any(c['name'] == 'uq_fund_manager_tenant_cik' for c in names), names
+          print('0032 schema intacto tras el raise: uq_fund_manager_tenant_cik existe')
+          "
+      - name: Pre-0032 round trip on a fresh database
+        # El round-trip de downgrade cubre solo revisiones < 0032, asi que
+        # necesita una base limpia (desde head no se puede bajar de 0032).
+        run: |
+          python -c "
+          import os
+          import sqlalchemy as sa
+
+          engine = sa.create_engine(os.environ['DATABASE_URL'], isolation_level='AUTOCOMMIT')
+          with engine.connect() as conn:
+              conn.execute(sa.text('DROP SCHEMA public CASCADE'))
+              conn.execute(sa.text('CREATE SCHEMA public'))
+          "
+          python -m alembic upgrade 0031_propick_runs
           python -m alembic downgrade base
           python -m alembic upgrade 0006_fundamental_model_journal
-          python -m alembic upgrade head
-      - name: Head downgrade and re-upgrade
-        run: |
-          python -m alembic downgrade base
-          python -m alembic upgrade head
           python -m alembic downgrade base
           python -m alembic upgrade head
 

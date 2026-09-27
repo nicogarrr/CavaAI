@@ -8,7 +8,6 @@ from app.core.database import SessionLocal, init_db
 from app.models import CalculatedMetric, Company, FinancialFact
 from app.services.metric_calculation_service import MetricCalculationService
 
-
 TEST_TICKER = "TCALC"
 PEER_TICKERS = ["TPEER1", "TPEER2"]
 
@@ -55,6 +54,7 @@ def add_fact(
     fiscal_year: int = 2025,
     fiscal_quarter: str | None = "FY",
     is_reported: bool = True,
+    source_type: str = "test_metric",
 ) -> FinancialFact:
     fact = FinancialFact(
         company_id=company.id,
@@ -64,7 +64,7 @@ def add_fact(
         period=period,
         fiscal_year=fiscal_year,
         fiscal_quarter=fiscal_quarter,
-        source_type="test_metric",
+        source_type=source_type,
         is_reported=is_reported,
         confidence=Decimal("0.90"),
     )
@@ -264,9 +264,11 @@ def test_wacc_v1_traces_derived_debt_cost_country_risk_currency_and_date():
         add_fact(db, company, "beta", "1.2", period, 2025, None)
         add_fact(db, company, "equity_risk_premium", "0.05", period, 2025, None)
         add_fact(db, company, "country_risk_premium", "0.01", period, 2025, None)
-        add_fact(db, company, "market_cap", "800", period, 2025, None)
+        # Fuentes absolutas y misma unidad: el guard de capital es
+        # fail-closed con provenance incierta (#375).
+        add_fact(db, company, "market_cap", "800", period, 2025, None, source_type="yfinance")
         add_fact(db, company, "interest_expense", "12")
-        add_fact(db, company, "total_debt", "200")
+        add_fact(db, company, "total_debt", "200", source_type="SEC")
         add_fact(db, company, "effective_tax_rate", "0.25")
         db.commit()
 
@@ -502,7 +504,7 @@ def test_quality_moat_score_full_pass_and_partial_coverage():
         company = create_test_company(db)
         add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
         add_fact(db, company, "operating_income", "300", "FY2025", 2025)
-        add_fact(db, company, "total_debt", "500", "FY2025", 2025)
+        add_fact(db, company, "total_debt", "500", "FY2025", 2025, source_type="SEC")
         add_fact(db, company, "cash_and_equivalents", "100", "FY2025", 2025)
         add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
         add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
@@ -526,7 +528,7 @@ def test_quality_moat_score_full_pass_and_partial_coverage():
         add_fact(db, company, "beta", "1.2", "2025-12-31", 2025, None)
         add_fact(db, company, "equity_risk_premium", "0.05", "2025-12-31", 2025, None)
         add_fact(db, company, "country_risk_premium", "0.01", "2025-12-31", 2025, None)
-        add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None)
+        add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None, source_type="yfinance")
         add_fact(db, company, "interest_expense", "30", "FY2025", 2025)
         add_fact(db, company, "effective_tax_rate", "0.25", "FY2025", 2025)
         db.commit()
@@ -635,7 +637,7 @@ def add_wacc_facts(db, company: Company) -> None:
     add_fact(db, company, "beta", "1.2", "2025-12-31", 2025, None)
     add_fact(db, company, "equity_risk_premium", "0.05", "2025-12-31", 2025, None)
     add_fact(db, company, "country_risk_premium", "0.01", "2025-12-31", 2025, None)
-    add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None)
+    add_fact(db, company, "market_cap", "2000", "2025-12-31", 2025, None, source_type="yfinance")
     add_fact(db, company, "interest_expense", "30", "FY2025", 2025)
     add_fact(db, company, "effective_tax_rate", "0.25", "FY2025", 2025)
 
@@ -704,7 +706,7 @@ def test_quality_moat_score_v2_full_pass_and_partial():
         add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
         add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
         add_fact(db, company, "operating_income", "300", "FY2025", 2025)
-        add_fact(db, company, "total_debt", "500", "FY2025", 2025)
+        add_fact(db, company, "total_debt", "500", "FY2025", 2025, source_type="SEC")
         add_fact(db, company, "cash_and_equivalents", "100", "FY2025", 2025)
         add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
         add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
@@ -748,7 +750,7 @@ def test_quality_moat_score_v2_capex_intensity_fails_when_heavy():
         add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
         add_owner_year_facts(db, company, [2021, 2022, 2023, 2024, 2025], capex="-300")
         add_fact(db, company, "operating_income", "300", "FY2025", 2025)
-        add_fact(db, company, "total_debt", "500", "FY2025", 2025)
+        add_fact(db, company, "total_debt", "500", "FY2025", 2025, source_type="SEC")
         add_fact(db, company, "cash_and_equivalents", "100", "FY2025", 2025)
         add_fact(db, company, "income_tax_expense", "75", "FY2025", 2025)
         add_fact(db, company, "income_before_tax", "300", "FY2025", 2025)
@@ -832,3 +834,173 @@ def test_quality_moat_score_v2_esef_approx_no_aplica_a_usd():
     finally:
         db.close()
         cleanup_metric_test_artifacts()
+
+
+def test_ratio_requires_matching_periods_between_numerator_and_denominator():
+    """F153: Comparables mostraba net_margin «Objetivo 8.33898622» (~834%)
+    porque componia net_income FY2026 con revenue FY2010 (el fallback no
+    estricto toma el ultimo hecho de cada metrica sin exigir periodo). Un
+    ratio sin coincidencia de periodo es «sin datos», nunca el cociente."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "133750000000", period="2026-06-30:FY", fiscal_year=2026)
+        add_fact(db, company, "revenue", "16040000000", period="2010-06-30:FY", fiscal_year=2010)
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "unavailable"
+        assert result.value is None
+        assert result.calculation_trace["reason"] == "incoherent_periods"
+        assert result.calculation_trace["incoherent_inputs"] == {"revenue": "2010-06-30:FY"}
+        assert result.calculation_trace["anchor"] == {"metric": "net_income", "period": "2026-06-30:FY"}
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_ratio_ok_when_numerator_and_denominator_share_period():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "180")
+        add_fact(db, company, "revenue", "1000")
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "ok"
+        assert result.value == Decimal("0.18000000")
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_margin_over_100pct_with_coherent_periods_is_real_and_labeled_atypical():
+    """F153: con periodos coherentes, un margen > 100% puede ser un dato
+    REAL (venta de activos, reversion fiscal, liberacion de circulante).
+    No se declara «sin datos»: se calcula y se etiqueta de atipico con
+    numerador y denominador trazados."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "2000")
+        add_fact(db, company, "revenue", "1000")
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "ok"
+        assert result.value == Decimal("2.00000000")
+        assert "margin_over_100pct" in result.calculation_trace["atypical"]
+        assert result.numerator == Decimal("2000.00000000")
+        assert result.denominator == Decimal("1000.00000000")
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_same_fiscal_year_with_different_period_ends_is_not_coherent():
+    """F153 (punto 2 del auditor): el fallback fiscal_year/fiscal_quarter no
+    puede asociar hechos con cierres distintos dentro del mismo ejercicio."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "180", period="2025-06-30:FY", fiscal_year=2025)
+        add_fact(db, company, "revenue", "1000", period="2025-12-31:FY", fiscal_year=2025)
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "unavailable"
+        assert result.calculation_trace["reason"] == "incoherent_periods"
+        assert result.calculation_trace["incoherent_inputs"] == {"revenue": "2025-12-31:FY"}
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_duration_and_instant_facts_sharing_period_end_still_compute():
+    """F153 (punto 3 del auditor): las metricas sanas que mezclan flujo y
+    saldo instantaneo del mismo cierre (ROE = net_income FY / total_equity
+    instantaneo) siguen calculando tras la puerta."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "180", period="2025-06-30:FY", fiscal_year=2025)
+        add_fact(db, company, "total_equity", "900", period="2025-06-30:FY", fiscal_year=2025)
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "roe", persist=False)
+        assert result.status == "ok"
+        assert result.value == Decimal("0.20000000")
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_same_period_end_but_different_duration_tag_is_not_coherent():
+    """Un FY no es un Q4 aunque cierren el mismo dia (leccion F133: duracion
+    anual vs trimestral)."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "180", period="2025-06-30:FY", fiscal_year=2025)
+        add_fact(db, company, "revenue", "1000", period="2025-06-30:Q4", fiscal_year=None, fiscal_quarter="Q4")
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "unavailable"
+        assert result.calculation_trace["reason"] == "incoherent_periods"
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_peer_comparison_excludes_atypical_from_median_but_keeps_it_visible():
+    """F153 (cierre del auditor): un margen real atipico (200%) queda
+    visible con su etiqueta, numerador y denominador, pero NO entra en la
+    mediana/promedio del benchmark."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        target = create_test_company(db)
+        peer_1 = create_test_company(db, "TPEER1", "Traceable Peer One")
+        peer_2 = create_test_company(db, "TPEER2", "Traceable Peer Two")
+
+        for company, revenue, fcf, net_income, operating_income, gross_profit in [
+            (target, "1000", "250", "180", "250", "650"),
+            (peer_1, "1000", "100", "120", "180", "500"),
+            (peer_2, "1000", "300", "2000", "280", "700"),  # margen 200%: real atipico
+        ]:
+            add_fact(db, company, "revenue", revenue)
+            add_fact(db, company, "free_cash_flow", fcf)
+            add_fact(db, company, "net_income", net_income)
+            add_fact(db, company, "operating_income", operating_income)
+            add_fact(db, company, "gross_profit", gross_profit)
+        db.commit()
+    finally:
+        db.close()
+
+    client = TestClient(main.app)
+    response = client.get(f"/api/companies/{TEST_TICKER}/peers/comparison?metrics=net_margin&limit=2")
+    assert response.status_code == 200
+    payload = response.json()
+
+    bench = payload["benchmarks"]["net_margin"]
+    # Solo TPEER1 (0,12) entra en la mediana; TPEER2 (2,0) queda fuera pero visible.
+    assert Decimal(bench["peer_median"]) == Decimal("0.12000000")
+    assert bench["peer_sample_size"] == 1
+    assert len(bench["excluded_atypical"]) == 1
+    excluded = bench["excluded_atypical"][0]
+    assert excluded["ticker"] == "TPEER2"
+    assert Decimal(excluded["value"]) == Decimal("2.00000000")
+    assert "margin_over_100pct" in excluded["atypical"]
+
+    peer2_row = next(row for row in payload["companies"] if row["ticker"] == "TPEER2")
+    metric_payload = peer2_row["metrics"]["net_margin"]
+    assert metric_payload["status"] == "ok"
+    assert Decimal(metric_payload["value"]) == Decimal("2.00000000")
+    assert "margin_over_100pct" in metric_payload["atypical"]
+    assert Decimal(metric_payload["numerator"]) == Decimal("2000.00000000")
+    assert Decimal(metric_payload["denominator"]) == Decimal("1000.00000000")
+    assert metric_payload["calculation_trace"]["atypical"]
+
+    cleanup_metric_test_artifacts()

@@ -8,11 +8,29 @@
 
 export const FORMAT_LOCALE = 'es-ES';
 
+/** Zona del mercado de referencia: cierres, velas y datos de cotizaciones. */
+export const MARKET_TZ = 'America/New_York';
+
+/** Zona del usuario: todo lo que es "su" fecha (suscripción, tenencias, CFD). */
+export const USER_TZ = 'Europe/Madrid';
+
 /** Valor numérico tolerante (string de backend, null, undefined) */
 export type NumericInput = number | string | null | undefined;
 
 /** Placeholder unificado para valores ausentes */
 export const NA = 'N/D';
+
+/**
+ * Placeholder unificado para ESTADOS DE FLUJO: la tesis aún no se ha
+ * generado, el job está en cola, la promesa no se ha conciliado.
+ *
+ * Por qué NO reutilizamos `NA` aunque los dos mean "no hay valor": `NA` dice
+ * que el dato NO EXISTE o no se pudo traer y siempre arrastra un CTA de
+ * reintento; `NO_CORRIDO` dice que el dato AÚN NO SE HA CALCULADO y no
+ * lleva acción posible. Un token común impediría al usuario —y a soporte—
+ * distinguir "CavaAI está roto" de "todavía no lo has pedido".
+ */
+export const NO_CORRIDO = 'No corrido';
 
 function toFinite(value: NumericInput): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -39,7 +57,15 @@ export function parseLocalizedNumber(value: string): number | null {
 
 function toDate(value: string | number | Date | null | undefined): Date | null {
   if (value === null || value === undefined || value === '') return null;
-  const date = value instanceof Date ? value : new Date(value);
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  // "YYYY-MM-DD" es UTC midnight para `new Date(string)`: en un TZ negativo se
+  // ve el día anterior. Se parsea como fecha local explícita (día del ledger,
+  // fecha de transacción, vencimiento de CFD: son días de calendario, no
+  // instantes). Cualquier otra cadena (ISO con hora, etc.) sí es un instante.
+  const dateOnly = typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -156,6 +182,9 @@ export function formatPercent(
 
 /**
  * Fecha corta en español (23 sept 2026). Acepta Date, ISO o timestamp.
+ * Sin `timeZone` por defecto: el comportamiento actual no cambia para los
+ * call sites existentes; para fechas con zona definida usa `formatUserDate`
+ * o `formatMarketDate`.
  */
 export function formatDate(
   value: string | number | Date | null | undefined,
@@ -165,6 +194,54 @@ export function formatDate(
   const date = toDate(value);
   if (!date) return fallback;
   return new Intl.DateTimeFormat(FORMAT_LOCALE, options).format(date);
+}
+
+/** Cadena de solo fecha `YYYY-MM-DD`: dia de calendario, no instante. */
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Fecha en la zona del mercado (cierre de una vela, fecha de cotización).
+ *
+ * Un string `YYYY-MM-DD` YA es el dia de calendario del mercado: se renderiza
+ * literal (UTC fijo). Parsearlo como medianoche local y aplicar
+ * America/New_York le RESTA UN DIA (medianoche en Madrid/UTC = tarde del dia
+ * anterior en NY). Los instantes (ISO con hora, timestamps, Date) si se
+ * convierten a la zona del mercado.
+ */
+export function formatMarketDate(
+  value: string | number | Date | null | undefined,
+  options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' },
+  fallback: string = NA,
+): string {
+  const dateOnly = typeof value === 'string' ? DATE_ONLY_RE.exec(value) : null;
+  if (dateOnly) {
+    const literal = new Date(
+      Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])),
+    );
+    return new Intl.DateTimeFormat(FORMAT_LOCALE, { ...options, timeZone: 'UTC' }).format(literal);
+  }
+  return formatDate(value, { ...options, timeZone: MARKET_TZ }, fallback);
+}
+
+/**
+ * Fecha en la zona del usuario (fechas de calendario propias).
+ */
+export function formatUserDate(
+  value: string | number | Date | null | undefined,
+  options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' },
+  fallback: string = NA,
+): string {
+  // Un string YYYY-MM-DD ya ES el dia de calendario (asOf de una tesis,
+  // fecha de transaccion): renderizarlo literal, sin pasar por ninguna zona
+  // (medianoche local parseada + USER_TZ puede desplazar el dia).
+  const dateOnly = typeof value === 'string' ? DATE_ONLY_RE.exec(value) : null;
+  if (dateOnly) {
+    const literal = new Date(
+      Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])),
+    );
+    return new Intl.DateTimeFormat(FORMAT_LOCALE, { ...options, timeZone: 'UTC' }).format(literal);
+  }
+  return formatDate(value, { ...options, timeZone: USER_TZ }, fallback);
 }
 
 /**
@@ -184,11 +261,87 @@ export function formatDateTime(
   return formatDate(value, options, fallback);
 }
 
+/** Fecha + hora en la zona del mercado (hora de cierre de sesión). */
+export function formatMarketDateTime(
+  value: string | number | Date | null | undefined,
+  options: Intl.DateTimeFormatOptions = {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  },
+  fallback: string = NA,
+): string {
+  return formatDate(value, { ...options, timeZone: MARKET_TZ }, fallback);
+}
+
+/** Fecha + hora en la zona del usuario. */
+/**
+ * Etiqueta de fecha "generada el ..." para tesis y memos.
+ *
+ * Un timestamp PRESENTE pero invalido no debe caer en el fallback `NA`:
+ * pintar "generada el N/D" enmascara un dato roto como si el dato
+ * faltara. Guard explicito: fecha ausente o no parseable devuelve null
+ * (la UI omite la etiqueta), solo una fecha valida se formatea.
+ */
+export function formatGeneratedDate(
+  value: string | number | Date | null | undefined,
+  options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' },
+): string | null {
+  if (value === null || value === undefined) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return formatUserDate(parsed, options);
+}
+
+export function formatUserDateTime(
+  value: string | number | Date | null | undefined,
+  options: Intl.DateTimeFormatOptions = {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  },
+  fallback: string = NA,
+): string {
+  return formatDate(value, { ...options, timeZone: USER_TZ }, fallback);
+}
+
+/**
+ * "Hoy" del usuario en `YYYY-MM-DD`, listo para `<input type="date">`.
+ *
+ * `new Date().toISOString().split('T')[0]` devuelve el día en UTC: entre las
+ * 22:00 y las 00:00 Europe/Madrid el servidor (UTC) da el día de mañana y el
+ * navegador da el de hoy, así que el default del input difiere entre el HTML
+ * del servidor y la hidratación.
+ */
+export function todayLocal(): string {
+  // "Hoy" en la zona del USUARIO, no en la del proceso: con el servidor en
+  // UTC y el navegador en Europe/Madrid, getFullYear()/getDate() daban dias
+  // distintos entre el HTML del servidor y la hidratacion. `en-CA` rinde
+  // YYYY-MM-DD directamente.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: USER_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 /**
  * Tiempo relativo en español ("hace 3 días", "hace 12 minutos").
  * `timestamp` viene en segundos (formato de APIs de noticias).
+ *
+ * `now` permite pasar el instante de referencia calculado en el servidor: sin
+ * él, `Date.now()` dentro del render rompe la hidratación en client
+ * components (el servidor y el navegador pueden caer en buckets distintos).
  */
-export function formatTimeAgo(timestamp: number | string | Date | null | undefined): string {
+export function formatTimeAgo(
+  timestamp: number | string | Date | null | undefined,
+  now: number | Date = Date.now(),
+): string {
   const date =
     timestamp instanceof Date || typeof timestamp === 'string'
       ? toDate(timestamp)
@@ -196,13 +349,17 @@ export function formatTimeAgo(timestamp: number | string | Date | null | undefin
         ? new Date(toFinite(timestamp)! * 1000)
         : null;
   if (!date) return NA;
-  const diffInMs = Date.now() - date.getTime();
+  const reference = now instanceof Date ? now.getTime() : now;
+  const diffInMs = reference - date.getTime();
   const diffInMinutes = Math.max(0, Math.floor(diffInMs / (1000 * 60)));
   const diffInHours = Math.floor(diffInMinutes / 60);
   const diffInDays = Math.floor(diffInHours / 24);
   if (diffInDays > 0) return `hace ${diffInDays} ${diffInDays === 1 ? 'día' : 'días'}`;
   if (diffInHours >= 1) return `hace ${diffInHours} ${diffInHours === 1 ? 'hora' : 'horas'}`;
-  return `hace ${diffInMinutes} ${diffInMinutes === 1 ? 'minuto' : 'minutos'}`;
+  if (diffInMinutes >= 1) {
+    return `hace ${diffInMinutes} ${diffInMinutes === 1 ? 'minuto' : 'minutos'}`;
+  }
+  return 'ahora mismo';
 }
 
 

@@ -3,9 +3,10 @@ SEC EDGAR utilities for free insider trading data.
 Uses the official SEC EDGAR API which is free and public.
 """
 
-import requests
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
+import requests
 
 # SEC EDGAR API base URL
 SEC_BASE_URL = "https://data.sec.gov"
@@ -17,10 +18,10 @@ SEC_HEADERS = {
 }
 
 # Cache for CIK lookups (symbol -> CIK)
-_cik_cache: Dict[str, str] = {}
-_company_tickers: Optional[Dict] = None
+_cik_cache: dict[str, str] = {}
+_company_tickers: dict | None = None
 
-def _load_company_tickers() -> Dict:
+def _load_company_tickers() -> dict:
     """Load the SEC company tickers mapping (cached)."""
     global _company_tickers
     
@@ -39,7 +40,7 @@ def _load_company_tickers() -> Dict:
     
     return {}
 
-def _get_cik_for_symbol(symbol: str) -> Optional[str]:
+def _get_cik_for_symbol(symbol: str) -> str | None:
     """
     Get the CIK (Central Index Key) for a stock symbol from SEC.
     """
@@ -59,7 +60,7 @@ def _get_cik_for_symbol(symbol: str) -> Optional[str]:
     
     return None
 
-def fetch_sec_insider_trading(symbol: str, limit: int = 50) -> List[Dict[str, Any]]:
+def fetch_sec_insider_trading(symbol: str, limit: int = 50) -> list[dict[str, Any]]:
     """
     Fetch insider trading data from SEC EDGAR Form 4 filings.
     """

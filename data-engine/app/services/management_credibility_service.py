@@ -18,7 +18,6 @@ from app.models import (
     Transcript,
 )
 
-
 OPERATORS = {
     ">": lambda actual, target: actual > target,
     ">=": lambda actual, target: actual >= target,

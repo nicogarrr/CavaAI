@@ -7,7 +7,6 @@ refreshes, and honestly report which WACC inputs remain missing.
 """
 
 import asyncio
-from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest

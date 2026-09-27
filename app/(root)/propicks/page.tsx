@@ -1,27 +1,53 @@
-import { generateEnhancedProPicks, getAvailableStrategies } from '@/lib/actions/proPicks.actions';
+import type { Metadata } from 'next';
+import { generateEnhancedProPicksWithRun, getAvailableStrategies } from '@/lib/actions/proPicks.actions';
 import { Sparkles } from 'lucide-react';
 import ProPicksTabs from '@/components/proPicks/ProPicksTabs';
+import BackendOffline from '@/components/system/BackendOffline';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
 
-// Cache for 1 hour - don't regenerate on every visit
-export const revalidate = 3600;
+// Dinámica (antes `revalidate = 3600`): con ISR, un fallo transitorio del motor
+// se congelaba en la caché durante una hora y el «Reintentar» no ayudaba de
+// nada. `loading.tsx` sólo tiene sentido con renderizado dinámico.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export const metadata: Metadata = {
+    title: 'ProPicks IA',
+    description:
+        'Selección vigente del embudo IA sobre el universo líquido, con la fecha de datos de cada tarjeta y backtesting walk-forward aparte.',
+};
 
 export default async function ProPicksPage() {
     // Preparar picks iniciales y estrategias disponibles en paralelo
-    const [initialPicks, strategies] = await Promise.all([
-        generateEnhancedProPicks({
-            timePeriod: 'month',
-            limit: 20,
-            minScore: 70,
-            sector: 'all',
-            sortBy: 'score',
-        }),
-        getAvailableStrategies(),
-    ]);
+    let initialResult: Awaited<ReturnType<typeof generateEnhancedProPicksWithRun>>;
+    let strategies: Awaited<ReturnType<typeof getAvailableStrategies>>;
+    try {
+        [initialResult, strategies] = await Promise.all([
+            generateEnhancedProPicksWithRun({
+                timePeriod: 'month',
+                limit: 20,
+                minScore: 70,
+                sector: 'all',
+                sortBy: 'score',
+            }),
+            getAvailableStrategies(),
+        ]);
+    } catch (error) {
+        // Esta página es de las más frágiles cuando el motor importa: sin catch
+        // el fallo subía al ErrorBoundary global.
+        if (isBackendUnavailableError(error)) {
+            return <BackendOffline feature="ProPicks IA" retryHref="/propicks" />;
+        }
+        throw error;
+    }
 
-    const generatedAt = new Date().toISOString();
+    // La fecha mostrada es el corte de datos (as_of) del último run real del
+    // embudo, nunca la hora de carga de la página (F49). Sin run completado
+    // es null y la tarjeta lo dice en vez de inventar una fecha.
+    const generatedAt = initialResult.runAsOf ?? undefined;
 
     return (
-        <div className="mx-auto flex min-h-screen w-full min-w-0 max-w-7xl flex-col overflow-x-clip p-4 sm:p-6">
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-7xl flex-col overflow-x-clip p-4 sm:p-6">
             {/* Header */}
             <div className="mb-8">
                 <div className="flex items-center gap-3 mb-4">
@@ -46,7 +72,7 @@ export default async function ProPicksPage() {
             </div>
 
             {/* Picks IA + Backtesting por estrategia */}
-            <ProPicksTabs strategies={strategies} initialPicks={initialPicks} generatedAt={generatedAt} />
-        </div>
+            <ProPicksTabs strategies={strategies} initialPicks={initialResult.picks} generatedAt={generatedAt} passedCount={initialResult.passedCount} />
+        </main>
     );
 }

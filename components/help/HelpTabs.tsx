@@ -13,7 +13,7 @@ const modules = [
   {
     href: '/research',
     title: 'Modelo a largo plazo',
-    text: 'Modelo fundamental con supuestos visibles (crecimiento, margen FCF, WACC), escenarios Bear/Base/Bull con sus spreads, owner earnings, TAM/SAM/SOM y reverse DCF. Pestaña «Model» de la ficha.',
+    text: 'Modelo fundamental con supuestos visibles (crecimiento, margen FCF, WACC), escenarios Bear/Base/Bull con sus spreads, owner earnings, TAM/SAM/SOM y reverse DCF. Pestaña «Modelo» de la ficha.',
   },
   {
     href: '/portfolio',
@@ -22,7 +22,7 @@ const modules = [
   },
   {
     href: '/risk',
-    title: 'Riesgo',
+    title: 'Exposiciones',
     text: 'Pesos, concentración (top 1 y top 5) y exposición por sector y factor. No calcula VaR, drawdown ni volatilidad: son métricas de estructura de cartera.',
   },
   {
@@ -72,8 +72,8 @@ const faqs = [
     answer: "¡Por supuesto! Úsalo para proyectos escolares, aprendizaje o construir tu portafolio. La plataforma está diseñada para ser intuitiva y educativa."
   },
   {
-    question: "¿Cómo añado acciones a mis favoritos?",
-    answer: "Navega a cualquier página de acción y haz clic en el icono de estrella. También puedes buscar usando la barra de búsqueda y añadir directamente desde los resultados."
+    question: "¿Cómo sigo una compañía?",
+    answer: "Abre su ficha en Research y pulsa «Seguir», junto al nombre. Los símbolos que sigues se recogen en tu watchlist."
   },
   {
     question: "¿Qué hago si encuentro un bug o tengo una sugerencia?",
@@ -89,7 +89,7 @@ export default function HelpTabs() {
   const [activeTab, setActiveTab] = useState<'faq' | 'api' | 'community'>('faq');
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
+    <main id="content" tabIndex={-1} className="mx-auto w-full max-w-4xl px-4 py-12">
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold text-gray-100 mb-4">Centro de Ayuda</h1>
         <p className="text-xl text-gray-200 mb-4">
@@ -100,6 +100,19 @@ export default function HelpTabs() {
           <Link href="/metodologia" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">
             Metodología y fuentes
           </Link>
+        </p>
+        {/* Esta página es pública, pero casi todos los módulos que documenta
+            viven dentro de la app. Se avisa aquí para que nadie pulse un enlace
+            y se encuentre de golpe con el formulario de acceso. */}
+        <p className="mx-auto mt-6 max-w-2xl rounded-lg border border-gray-700/50 bg-gray-800/60 p-4 text-left text-sm text-gray-300">
+          Los enlaces a <span className="text-gray-100">research</span>,{' '}
+          <span className="text-gray-100">cartera</span>, <span className="text-gray-100">riesgo</span>,{' '}
+          <span className="text-gray-100">ProPicks</span>, <span className="text-gray-100">alertas</span>,{' '}
+          <span className="text-gray-100">insiders</span>, <span className="text-gray-100">watchlist</span> y{' '}
+          <span className="text-gray-100">exportación</span>{' '}
+          describen módulos del espacio de trabajo y{' '}
+          <strong className="text-gray-100">requieren iniciar sesión</strong>. Esta página de ayuda, la
+          metodología y los términos se leen sin cuenta.
         </p>
       </div>
 
@@ -196,20 +209,22 @@ export default function HelpTabs() {
               <li>
                 <strong className="text-teal-400">1. Modelo.</strong>{' '}
                 En <Link href="/research" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">Research</Link> elige
-                la compañía y abre la pestaña «Model» → «Generate model». Revisa los supuestos (crecimiento, margen
+                la compañía y abre la pestaña «Modelo» y pulsa «Generar modelo». Revisa los supuestos (crecimiento, margen
                 FCF, WACC) y los escenarios Bear/Base/Bull con sus spreads antes de fiarte del número.
               </li>
               <li>
                 <strong className="text-teal-400">2. Tesis.</strong>{' '}
                 Genera la tesis desde la misma ficha: hipótesis, escenarios con probabilidades, catalizadores con
-                fecha y qué la invalidaría. El trabajo se puede exportar desde{' '}
-                <Link href="/export" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">/export</Link>.
+                fecha y qué la invalidaría. El memo y el EPUB se exportan desde la propia vista de tesis
+                («Exportar memo» y «Exportar EPUB»);{' '}
+                <Link href="/export" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">/export</Link>{' '}
+                es la exportación anual del journal.
               </li>
               <li>
                 <strong className="text-teal-400">3. Decisión.</strong>{' '}
-                Registra la decisión en el Decision Journal (compra / mantén / reduce / vende / vigila / evita) con la
-                evidencia que la justifica y las condiciones verificables («what must be true»). Más adelante,
-                «Expectation vs Reality» compara tu previsión con los hechos publicados.
+                Registra la decisión en el Diario de decisiones (Comprar / Mantener / Reducir / Vender / Vigilar / Evitar) con la
+                evidencia que la justifica y las condiciones verificables («Qué debe cumplirse»). Más adelante,
+                «Expectativa vs realidad» compara tu previsión con los hechos publicados.
               </li>
             </ol>
           </section>
@@ -264,6 +279,7 @@ export default function HelpTabs() {
           </div>
         </section>
       )}
-    </div>
+    </main>
   );
 }
+

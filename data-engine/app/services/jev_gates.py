@@ -18,11 +18,12 @@ helpers ``*_sync`` de este modulo (``asyncio.run`` interno, mismo patron que
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from app.llm.jev import JevDecision
+from app.services.async_bridge import run_from_any_context
 from app.services.jev_triage_service import build_client
 
 logger = logging.getLogger("cavaai.jev_gates")
@@ -155,7 +156,15 @@ def jev_choice_sync(
     criteria: dict[str, str],
     max_chars: int = 2000,
 ) -> JevDecision | None:
-    """Version sync para callers sync (mismo patron que classify_urgency_sync)."""
+    """Version sync para callers sync (mismo patron que classify_urgency_sync).
+
+    Se usa run_from_any_context y no asyncio.run: este gate se llama desde
+    NewsService._analyze_news, que se alcanza tanto desde la ruta sync
+    (POST /api/news) como desde el actor de ingesta y desde la ruta de
+    documentos, todas ellas con un event loop activo. Con asyncio.run
+    lanzaba RuntimeError y el except lo convertia en None, de modo que el gate
+    nunca se aplicaba y la decision caia siempre al clasificador determinista.
+    """
     try:
         client = build_client()
     except Exception as exc:  # noqa: BLE001
@@ -164,7 +173,7 @@ def jev_choice_sync(
     if client is None:
         return None
     try:
-        return asyncio.run(
+        return run_from_any_context(
             client.classify(
                 (text or "")[:max_chars],
                 name=name,

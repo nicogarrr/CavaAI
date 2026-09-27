@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { RecordDetail, RecordList, type DataRecord } from '@/components/data/RecordViews';
 import { getPlan, getPlanContributions, getPlanDrift } from '@/lib/actions/plan.actions';
 import PlanSetupDialog from '@/components/plan/PlanSetupDialog';
+import { t } from '@/lib/i18n/t';
 
 interface PlanViewProps {
     initialPlan: DataRecord | null;
@@ -48,13 +49,13 @@ export default function PlanView({ initialPlan, initialContributions, initialDri
     return (
         <div className="grid gap-6">
             <RecordDetail
-                title="Plan de Inversión"
+                title={t('plan.title')}
                 description="Objetivo a largo plazo, aportación mensual y asignación objetivo"
                 icon={<Target className="h-5 w-5 text-teal-400" />}
                 record={initialPlan}
                 fetchRecord={getPlan}
                 maxKeys={20}
-                emptyMessage="No hay plan de inversión configurado todavía."
+                emptyMessage={t('plan.empty')}
                 emptyAction={<PlanSetupDialog />}
                 actions={<PlanSetupDialog triggerLabel="Editar plan" initial={initialPlan} />}
             />

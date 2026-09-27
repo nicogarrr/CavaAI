@@ -7,13 +7,12 @@ from sqlalchemy import delete, or_, select
 
 import main
 from app.core.database import SessionLocal, init_db
-from app.models import Company, ExternalClaim, FinancialFact, MemoryItem, NewsEvent, ThesisChange
 from app.data.company_master import COMPANY_MASTER
+from app.models import Company, ExternalClaim, FinancialFact, MemoryItem, NewsEvent, ThesisChange
 from app.seed import seed
 from app.services.manual_transcript_import_service import ManualTranscriptImportService
 from app.services.source_auditor import SourceAuditor
 from app.valuation import DCFInputs, ReverseDCFInputs, run_dcf, solve_required_growth
-
 
 TEST_NEWS_SOURCES = {"manual_test", "test_feed", "workflow_test_feed"}
 TEST_NEWS_PATTERNS = [

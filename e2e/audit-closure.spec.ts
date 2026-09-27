@@ -44,7 +44,9 @@ test.describe("audit closure flows", () => {
   test("insider shows monitor badge and notify toggle", async ({ page }) => {
     await page.goto("/insider?ticker=AAPL");
     await expect(page.getByRole("heading", { name: "Señales Insider", level: 1 })).toBeVisible();
-    await expect(page.getByText(/Monitor cada 15 min/)).toBeVisible();
+    // El badge (con contador) es el objetivo; el resumen del desplegable
+    // "Cómo se calculan las señales" también menciona el monitor.
+    await expect(page.getByText(/Monitor cada 15 min · \d+/)).toBeVisible();
     await expect(page.getByText("Avisarme por Telegram")).toBeVisible();
   });
 

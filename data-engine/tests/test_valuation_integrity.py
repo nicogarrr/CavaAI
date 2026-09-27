@@ -2,9 +2,9 @@
 
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
-import pytest
 
 import main
 from app.core.database import SessionLocal, init_db
@@ -19,9 +19,9 @@ from app.models import (
     ValuationModel,
 )
 from app.seed import seed
-from app.services.valuation_service import ValuationService
 from app.services.thesis_graph_service import ThesisGraphService
 from app.services.thesis_service import ThesisService
+from app.services.valuation_service import ValuationService
 from app.valuation.engines import resolve_engine_key
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
 

@@ -7,13 +7,13 @@ from app.valuation.engines.base import ValuationEngine
 from app.valuation.engines.commodity import CommodityCycleEngine
 from app.valuation.engines.holding_company import HoldingCompanyEngine
 from app.valuation.engines.pre_revenue import PreRevenueScenarioEngine
-from app.valuation.engines.sotp_engine import SOTPEngine
-from app.valuation.engines.standard_dcf import StandardDCFEngine
 from app.valuation.engines.sector_specific import (
     BankValuationEngine,
     InsurerValuationEngine,
     ReitValuationEngine,
 )
+from app.valuation.engines.sotp_engine import SOTPEngine
+from app.valuation.engines.standard_dcf import StandardDCFEngine
 
 VALUATION_ENGINES: dict[str, type[ValuationEngine]] = {
     "standard_dcf": StandardDCFEngine,

@@ -15,6 +15,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { upsertPlan, type PlanTargetInput } from '@/lib/actions/plan.actions';
+import { formatNumber, parseLocalizedNumber, todayLocal } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 
@@ -49,7 +51,7 @@ export default function PlanSetupDialog({
     const [error, setError] = useState<string | null>(null);
     const [monthly, setMonthly] = useState(() => asText(initial?.monthly_contribution));
     const [startDate, setStartDate] = useState(
-        () => asText(initial?.start_date) || new Date().toISOString().split('T')[0],
+        () => asText(initial?.start_date) || todayLocal(),
     );
     const [horizon, setHorizon] = useState(() => asText(initial?.horizon_years) || '30');
     const [rows, setRows] = useState<AllocationRow[]>(() => {
@@ -72,8 +74,8 @@ export default function PlanSetupDialog({
         event.preventDefault();
         setError(null);
 
-        const monthlyContribution = Number(monthly.replace(',', '.'));
-        if (!Number.isFinite(monthlyContribution) || monthlyContribution <= 0) {
+        const monthlyContribution = parseLocalizedNumber(monthly);
+        if (monthlyContribution === null || monthlyContribution <= 0) {
             setError('La aportación mensual debe ser un número mayor que 0.');
             return;
         }
@@ -87,8 +89,8 @@ export default function PlanSetupDialog({
         for (const row of rows) {
             const label = row.label.trim().toUpperCase();
             if (!label && !row.target_pct.trim()) continue;
-            const pct = Number(row.target_pct.replace(',', '.'));
-            if (!label || !Number.isFinite(pct) || pct <= 0 || pct > 100) {
+            const pct = parseLocalizedNumber(row.target_pct);
+            if (!label || pct === null || pct <= 0 || pct > 100) {
                 setError('Cada asignación necesita un ticker y un porcentaje entre 0 y 100.');
                 return;
             }
@@ -96,7 +98,9 @@ export default function PlanSetupDialog({
             allocations.push({ kind: 'ticker', label, target_pct: pct, band_pct: 5 });
         }
         if (totalPct > 100) {
-            setError(`Las asignaciones suman ${totalPct}%: no pueden superar el 100%.`);
+            setError(
+                `Las asignaciones suman ${formatNumber(totalPct, { maximumFractionDigits: 2 })}%: no pueden superar el 100%.`,
+            );
             return;
         }
 
@@ -212,7 +216,7 @@ export default function PlanSetupDialog({
                         ))}
                         <Button type="button" variant="outline" size="sm" onClick={addRow} className="gap-2 border-gray-600 text-gray-300">
                             <Plus className="h-4 w-4" />
-                            Añadir ticker
+                            {t('plan.addTicker')}
                         </Button>
                     </div>
 

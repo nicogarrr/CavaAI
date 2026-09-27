@@ -6,13 +6,13 @@ siempre (visto en prod: AAPL "Unknown . Unknown"). El ensure ahora enriquece
 best-effort desde Finnhub; si la API no tiene datos, el stub se crea igual.
 """
 
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 import main
 from app.core.database import SessionLocal
 from app.models import Company
 from app.services.company_enrichment_service import CompanyEnrichmentService
-from fastapi.testclient import TestClient
 
 TICKER = "ZZQAENSURE"
 

@@ -131,8 +131,8 @@ export default function QuickAlertButton({ ticker, currency = 'USD' }: { ticker:
         />
       ) : null}
       <div className="flex w-full gap-2 sm:w-auto">
-        <Button size="sm" variant="outline" onClick={onCreate} disabled={busy} className="min-h-[44px] flex-1 gap-1.5 px-4 text-sm sm:min-h-0 sm:h-8 sm:flex-none sm:text-xs">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin sm:h-3.5 sm:w-3.5" /> : <BellPlus className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
+        <Button size="sm" variant="outline" onClick={onCreate} disabled={busy} aria-busy={busy} className="min-h-[44px] flex-1 gap-1.5 px-4 text-sm sm:min-h-0 sm:h-8 sm:flex-none sm:text-xs">
+          {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin sm:h-3.5 sm:w-3.5" /> : <BellPlus aria-hidden="true" className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
           + Alerta
         </Button>
         <Button size="sm" variant="ghost" asChild className="min-h-[44px] flex-1 px-4 text-sm text-gray-300 sm:min-h-0 sm:h-8 sm:flex-none sm:text-xs">

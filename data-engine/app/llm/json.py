@@ -6,7 +6,6 @@ from typing import Any
 
 from app.llm.errors import StructuredOutputError
 
-
 _FENCED_BLOCK = re.compile(r"```[^\r\n]*\r?\n?(.*?)```", re.DOTALL)
 
 

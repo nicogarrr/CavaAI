@@ -50,8 +50,9 @@ export default function ThesisApproveButton({
                 size="sm"
                 onClick={() => decide('approved')}
                 disabled={disabled || pending !== null}
+                aria-busy={pending !== null}
             >
-                <CheckCheck className="mr-2 h-4 w-4" />
+                <CheckCheck aria-hidden="true" className="mr-2 h-4 w-4" />
                 {pending === 'approved' ? 'Aprobando…' : 'Aprobar tesis'}
             </Button>
             <Button
@@ -60,8 +61,9 @@ export default function ThesisApproveButton({
                 variant="outline"
                 onClick={() => decide('rejected')}
                 disabled={disabled || pending !== null}
+                aria-busy={pending !== null}
             >
-                <XCircle className="mr-2 h-4 w-4" />
+                <XCircle aria-hidden="true" className="mr-2 h-4 w-4" />
                 {pending === 'rejected' ? 'Rechazando…' : 'Rechazar'}
             </Button>
         </div>

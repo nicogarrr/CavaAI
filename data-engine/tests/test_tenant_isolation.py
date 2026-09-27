@@ -8,7 +8,6 @@ from app.core import auth as auth_module
 from app.core.database import SessionLocal, init_db
 from app.models import Claim, Tenant
 from app.seed import seed
-
 from tests.auth_helpers import auth_settings, signed_request
 
 

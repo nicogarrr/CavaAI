@@ -62,11 +62,12 @@ def list_actions(
     # Lote: tickers en 1 query (anti N+1 de db.get por acción).
     company_ids = {action.company_id for action in actions if action.company_id}
     tickers = (
-        dict(
-            db.execute(
+        {
+            row[0]: row[1]
+            for row in db.execute(
                 select(Company.id, Company.ticker).where(Company.id.in_(company_ids))
             ).all()
-        )
+        }
         if company_ids
         else {}
     )

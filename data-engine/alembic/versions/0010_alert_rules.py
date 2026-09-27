@@ -5,9 +5,9 @@ Revises: 0009_company_kpi_extraction
 Create Date: 2026-07-15 00:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0010_alert_rules"
 down_revision = "0009_company_kpi_extraction"

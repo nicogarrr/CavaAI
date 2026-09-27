@@ -11,8 +11,8 @@ type Props = {
 };
 
 /**
- * Estado amable para páginas que dependen del backend FastAPI cuando este
- * no responde. Sustituye al crash de Server Components (error #441) por una
+ * Estado amable para páginas que dependen del backend FastAPI cuando la
+ * consulta falla. Sustituye al crash de Server Components (error #441) por una
  * explicación accionable. Mismo patrón que el empty state de /screener.
  */
 export default function BackendOffline({ feature, retryHref }: Props) {
@@ -25,18 +25,16 @@ export default function BackendOffline({ feature, retryHref }: Props) {
         {feature} no está disponible ahora mismo
       </h1>
       <p className="max-w-md text-sm leading-6 text-gray-400">
-        Esta pantalla necesita el backend de CavaAI, que no responde. Puede
-        estar arrancando o apagado. Tus datos están a salvo: reintenta en unos
-        segundos.
+        Esta pantalla necesita el servidor de CavaAI.
       </p>
       <Button asChild className="min-h-[44px] px-6">
         <Link href={retryHref}>
-          <RefreshCcw className="h-4 w-4" />
+          <RefreshCcw aria-hidden="true" className="h-4 w-4" />
           Reintentar
         </Link>
       </Button>
-      <p className="text-xs text-gray-600">
-        Si el problema persiste, el backend local no está en marcha.
+      <p className="text-xs text-gray-500">
+        El servidor de CavaAI no ha podido completar la consulta. Reintenta en unos segundos.
       </p>
     </main>
   );

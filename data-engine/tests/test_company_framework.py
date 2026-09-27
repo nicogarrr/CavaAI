@@ -1,8 +1,8 @@
-from app.models import Company
+from decimal import Decimal
+
+from app.models import Company, FinancialFact
 from app.services.company_framework import resolve_company_framework
 from app.services.driver_operating_model import DriverOperatingModel
-from app.models import FinancialFact
-from decimal import Decimal
 
 
 def _company(ticker: str, company_type: str, tags: list[str]) -> Company:

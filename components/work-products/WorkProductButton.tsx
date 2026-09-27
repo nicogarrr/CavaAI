@@ -57,7 +57,7 @@ export default function WorkProductButton() {
                 years: Math.min(50, Math.max(1, Number(years) || 10)),
             });
             setResult(generated);
-            toast.success('Work product generado');
+            toast.success('Entregable generado');
         } catch (error) {
             showErrorToast(error);
         } finally {
@@ -69,7 +69,7 @@ export default function WorkProductButton() {
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2 border-gray-700 text-gray-300 hover:text-teal-400">
-                    <FileOutput className="h-4 w-4" />
+                    <FileOutput aria-hidden="true" className="h-4 w-4" />
                     Generar entregable
                 </Button>
             </DialogTrigger>
@@ -124,8 +124,8 @@ export default function WorkProductButton() {
                         />
                     </div>
 
-                    <Button onClick={handleGenerate} disabled={loading} className="w-full gap-2 bg-teal-600 hover:bg-teal-700">
-                        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <Button onClick={handleGenerate} disabled={loading} aria-busy={loading} className="w-full gap-2 bg-teal-600 hover:bg-teal-700">
+                        {loading && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
                         {loading ? 'Generando...' : 'Generar documento'}
                     </Button>
 

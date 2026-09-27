@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.models import CashBalance, Company, Position
 from app.services.portfolio_fx_service import PortfolioFXService
-from app.valuation import calculate_portfolio_risk
 from app.services.provenance import Coverage, SourceKind, provenance
+from app.valuation import calculate_portfolio_risk
 
 
 class RiskService:

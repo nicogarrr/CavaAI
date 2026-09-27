@@ -19,9 +19,10 @@ import gzip
 import io
 import json
 import urllib.request
-from decimal import Decimal
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session

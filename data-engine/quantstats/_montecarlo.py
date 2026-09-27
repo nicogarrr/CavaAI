@@ -104,8 +104,13 @@ class MonteCarloResult:
             maxdd_values = []
             for col in self.data.columns:
                 path = self.data[col]
-                # Calculate drawdown from cumulative returns
-                cumulative = path + 1  # Convert to growth factor
+                # El pico inicial es el NAV de partida (1.0), no el primer
+                # valor de la trayectoria. Sin anadirlo al cummax, un camino que
+                # empieza bajando no registra ningun drawdown y
+                # bust_probability no lo cuenta.
+                cumulative = pd.concat(
+                    [pd.Series([0.0]), path.reset_index(drop=True)], ignore_index=True
+                ) + 1  # Convert to growth factor
                 running_max = cumulative.cummax()
                 drawdown = (cumulative - running_max) / running_max
                 maxdd_values.append(drawdown.min())

@@ -1,27 +1,60 @@
 import { getNews } from '@/lib/actions/finnhub.actions';
+import { newsBadge } from '@/lib/newsBadge';
+import { formatMarketDateTime } from '@/lib/format';
 import Image from 'next/image';
+import Link from 'next/link';
+import { RefreshCcw } from 'lucide-react';
 
 interface NewsSectionProps {
     symbols?: string[];
 }
 
+/**
+ * ÚNICA sección de noticias del dashboard (la tarjeta por símbolo de
+ * PersonalizedOverview se eliminó: duplicaba esta y añadía 5 llamadas a Finnhub
+ * por carga). Es un server component, así que llega por streaming al final del
+ * scroll sin coste de JS de cliente.
+ */
 export default async function NewsSection({ symbols }: NewsSectionProps) {
     let news;
     try {
         news = await getNews(symbols);
-    } catch (error) {
-        console.error('Error loading news:', error);
+    } catch {
         return (
-            <div className="w-full h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-6 flex items-center justify-center">
-                <p className="text-gray-500">Error al cargar las noticias. Por favor, intenta más tarde.</p>
-            </div>
+            <section aria-label="Noticias destacadas" className="w-full min-w-0 rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-center">
+                <p className="text-sm leading-6 text-amber-200">
+                    No se pudieron cargar las noticias. El resto del dashboard sigue funcionando.
+                </p>
+                <Link
+                    className="mt-3 inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-amber-400/30 px-4 text-sm text-amber-200 transition-colors hover:text-amber-100"
+                    href="/research/news"
+                >
+                    <RefreshCcw aria-hidden="true" className="h-4 w-4" />
+                    Reintentar
+                </Link>
+            </section>
         );
     }
 
     return (
-            <div className="w-full min-w-0 h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-4 sm:p-6 overflow-y-auto">
-                <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6 break-words">Noticias destacadas</h2>
+            <section aria-label="Noticias destacadas" className="w-full min-w-0 h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-4 sm:p-6 overflow-y-auto">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 sm:mb-6">
+                    <h2 className="text-xl sm:text-2xl font-bold text-white break-words">Noticias destacadas</h2>
+                    <Link
+                        className="inline-flex min-h-[44px] items-center rounded-lg border border-teal-400/20 px-3 text-xs text-teal-400 transition-colors hover:text-teal-300"
+                        href="/research/news"
+                    >
+                        Ver el análisis de noticias
+                    </Link>
+                </div>
 
+                {news.length > 0 && (
+                    <p className="mb-3 text-xs leading-5 text-gray-500">
+                        {symbols?.length
+                            ? 'Titulares vinculados a tus símbolos cuando los hay (insignia con el ticker); el resto menciona otras compañías o es mercado general, sin vínculo con tu cartera.'
+                            : 'Titulares de mercado general. La insignia indica la compañía mencionada en el titular, no una posición tuya.'}
+                    </p>
+                )}
                 {news.length === 0 ? (
                     <div className="flex items-center justify-center px-4 py-12 text-center text-sm text-gray-500">
                         <p>No hay noticias disponibles en este momento.</p>
@@ -34,17 +67,19 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                                 href={article.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="block min-w-0 p-4 bg-[#141414] hover:bg-[#1a1a1a] rounded-lg border border-gray-800 transition-all duration-200 group"
+                                className="block min-w-0 p-4 bg-surface-2 hover:bg-surface-1 rounded-lg border border-gray-800 transition-all duration-200 group"
                             >
                                 <div className="flex flex-col min-[420px]:flex-row gap-3 sm:gap-4">
                                     {article.image && (
                                         <div className="h-40 w-full min-w-0 shrink-0 relative rounded-lg overflow-hidden min-[420px]:h-24 min-[420px]:w-32">
                                             <Image
                                                 src={article.image}
-                                                alt={article.headline}
+                                                /* El titular ya está en el <h3> de al lado: con alt
+                                                   textual el lector de pantalla lo anuncia dos veces. */
+                                                alt=""
                                                 fill
                                                 className="object-cover"
-                                                unoptimized
+                                                sizes="(min-width: 420px) 128px, 100vw"
                                             />
                                         </div>
                                     )}
@@ -63,7 +98,7 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                                             )}
                                             {article.datetime && (
                                                 <span>
-                                                    {new Date(article.datetime * 1000).toLocaleDateString('es-ES', {
+                                                    {formatMarketDateTime(new Date(article.datetime * 1000), {
                                                         day: 'numeric',
                                                         month: 'short',
                                                         year: 'numeric',
@@ -72,11 +107,30 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                                                     })}
                                                 </span>
                                             )}
-                                            {article.related && (
-                                                <span className="px-2 py-0.5 bg-[#0FEDBE]/10 text-[#0FEDBE] rounded">
-                                                    {article.related}
-                                                </span>
-                                            )}
+                                            {(() => {
+                                                // related del proveedor = compañía mencionada, NO tenencia:
+                                                // «holding» solo si el ticker está entre los símbolos del usuario.
+                                                const badge = newsBadge(article, symbols);
+                                                if (badge.kind === 'holding') {
+                                                    return (
+                                                        <span className="px-2 py-0.5 bg-[#0FEDBE]/10 text-[#0FEDBE] rounded">
+                                                            {badge.ticker}
+                                                        </span>
+                                                    );
+                                                }
+                                                if (badge.kind === 'mentioned') {
+                                                    return (
+                                                        <span className="px-2 py-0.5 bg-gray-700/40 text-gray-400 rounded">
+                                                            Menciona {badge.ticker}
+                                                        </span>
+                                                    );
+                                                }
+                                                return (
+                                                    <span className="px-2 py-0.5 bg-gray-700/40 text-gray-400 rounded">
+                                                        Mercado general
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -84,7 +138,7 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
                         ))}
                     </div>
                 )}
-            </div>
+            </section>
     );
 }
 

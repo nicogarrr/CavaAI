@@ -1,4 +1,4 @@
-import { formatMoney, formatPercent } from '@/lib/format';
+import { formatGeneratedDate, formatMoney, formatPercent, NA } from '@/lib/format';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
 import ThesisDebatePanel from '@/components/research/ThesisDebatePanel';
@@ -8,13 +8,13 @@ import type { GlossaryKey } from '@/lib/glossary';
 
 function money(value: number | string | null | undefined): string {
   const parsed = typeof value === 'string' ? Number(value) : value;
-  if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return 'N/A';
+  if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return NA;
   return formatMoney(parsed, 'USD', { maximumFractionDigits: 2 });
 }
 
 function pct(value: number | string | null | undefined): string {
   const parsed = typeof value === 'string' ? Number(value) : value;
-  if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return 'N/A';
+  if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return NA;
   return formatPercent(parsed);
 }
 
@@ -65,7 +65,7 @@ function ScenarioCell({
       </div>
       <div className="mt-1 text-base font-semibold text-gray-100">{money(value)}</div>
       {probability !== null && probability !== undefined ? (
-        <div className="mt-0.5 text-xs text-gray-500">p = {(probability * 100).toFixed(0)}%</div>
+        <div className="mt-0.5 text-xs text-gray-500">p = {formatPercent(probability, { digits: 0 })}</div>
       ) : null}
     </div>
   );
@@ -92,10 +92,7 @@ export default function ThesisMemo({
   debateBody?: string | null;
 }) {
   const probabilities = thesis.scenario_probabilities ?? {};
-  const generatedAt = new Date(thesis.created_at);
-  const generatedLabel = Number.isNaN(generatedAt.getTime())
-    ? null
-    : generatedAt.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+  const generatedLabel = formatGeneratedDate(thesis.created_at);
 
   return (
     <div className="space-y-5">

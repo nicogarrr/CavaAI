@@ -17,7 +17,7 @@ export default function GlobalError({
             servidor; no se muestra aquí a propósito.
           </p>
           {error?.digest ? (
-            <p className="text-xs text-gray-600">Referencia: {error.digest}</p>
+            <p className="text-xs text-gray-500">Referencia: {error.digest}</p>
           ) : null}
           <button
             type="button"

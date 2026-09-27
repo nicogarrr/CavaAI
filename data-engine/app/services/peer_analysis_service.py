@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session, selectinload
 from app.models import Claim, Company
 from app.services.peer_comparison_service import PeerComparisonService
 
-
 LOWER_IS_BETTER = {"net_debt_to_ebitda"}
 
 

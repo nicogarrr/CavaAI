@@ -16,7 +16,6 @@ import re
 from typing import Any
 
 from app.llm import LLMRequest, LLMResponse, Message
-from app.services.prompt_registry import get_prompt
 from app.llm.base import LLMProvider
 from app.services.jev_gates import (
     DEBATE_VERDICT_CRITERIA,
@@ -26,6 +25,7 @@ from app.services.jev_gates import (
     DEBATE_WORTHWHILE_THRESHOLD,
     jev_choice_or_none,
 )
+from app.services.prompt_registry import get_prompt
 
 # Coste fijo por operacion (techo, solo si el LLM responde a todo).
 LLM_CALLS_PER_DEBATE = 3

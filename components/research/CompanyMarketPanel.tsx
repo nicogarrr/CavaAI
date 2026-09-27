@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic';
 
-import { formatMoney, formatNumber, formatPercent } from '@/lib/format';
+import { formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import { exchangeDisplayName } from '@/lib/exchangeName';
 
 import { Badge } from '@/components/ui/badge';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
@@ -22,7 +23,7 @@ function safeCurrency(currency: string | null): string {
 
 function money(value: number | null, currency: string | null) {
     return value == null
-        ? 'N/A'
+        ? NA
         : formatMoney(value, safeCurrency(currency));
 }
 
@@ -38,15 +39,15 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                               <Badge variant="outline">{snapshot.ticker}</Badge>
                           </div>
                           <p className="mt-1 text-sm text-gray-500">
-                              {[snapshot.exchange, snapshot.currency].filter(Boolean).join(' · ') || 'Metadatos de mercado no disponibles'}
+                              {[exchangeDisplayName(snapshot.exchange), snapshot.currency].filter(Boolean).join(' · ') || 'Metadatos de mercado no disponibles'}
                           </p>
                       </div>
                       <div className="sm:ml-auto sm:text-right">
                           <div className="text-2xl font-bold text-gray-100 sm:text-3xl">{money(snapshot.quote.price, snapshot.currency)}</div>
                         <div className={positive ? 'text-teal-300' : 'text-red-300'}>
-                            {snapshot.quote.change == null ? 'N/A' : formatNumber(snapshot.quote.change, { signDisplay: 'always', maximumFractionDigits: 2 })}
+                            {snapshot.quote.change == null ? NA : formatNumber(snapshot.quote.change, { signDisplay: 'always', maximumFractionDigits: 2 })}
                             {' · '}
-                            {snapshot.quote.changePercent == null ? 'N/A' : formatPercent(snapshot.quote.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                            {snapshot.quote.changePercent == null ? NA : formatPercent(snapshot.quote.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                         </div>
                     </div>
                 </div>
@@ -73,7 +74,14 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                     </Badge>
                 </div>
                 {snapshot.history.length ? (
-                    <CompanyMarketChart history={snapshot.history} />
+                    <>
+                        {snapshot.status === 'partial' && (
+                            <p className="mb-3 text-sm text-amber-200">
+                                Serie parcial: {snapshot.history.length} sesiones con precio en el último año. Se muestra el tramo disponible.
+                            </p>
+                        )}
+                        <CompanyMarketChart history={snapshot.history} />
+                    </>
                 ) : (
                     <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
                         Historial de precio no disponible. El workspace muestra este estado de forma explícita y no inventa ningún gráfico.

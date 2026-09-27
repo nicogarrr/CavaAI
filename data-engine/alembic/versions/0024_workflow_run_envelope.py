@@ -7,6 +7,7 @@ status, idempotent re-delivery and later replay/crash-resume validation.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0024_workflow_run_envelope"

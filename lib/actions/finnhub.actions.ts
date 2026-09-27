@@ -2,6 +2,7 @@
 
 import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
+import type { PopularStocksResult } from '@/lib/popular-stocks-loader';
 import { cache } from 'react';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
 
@@ -10,94 +11,12 @@ import { TIMEOUTS } from '@/lib/constants';
 import { ExternalAPIError, RateLimitError, toAppError } from '@/lib/types/errors';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
+// fetchJSON vive fuera del 'use server' a proposito: exportarlo aqui lo
+// convertiria en un Server Action invocable por HTTP con una URL arbitraria
+// (SSRF). Ver lib/upstream/finnhub.ts.
+import { fetchJSON, redactUrl } from '@/lib/upstream/finnhub';
 
 const FINNHUB_BASE_URL = env.FINNHUB_BASE_URL;
-
-/**
- * Función helper para fetch con manejo de errores apropiado
- * Lanza errores tipados en lugar de retornar arrays vacíos silenciosamente
- */
-async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T> {
-    await requireAuthenticatedUser();
-    // Para datos críticos como precios y noticias, usar cache mínimo (30-60 segundos)
-    // Para datos estáticos como perfiles, permitir cache más largo
-    const options: RequestInit & { next?: { revalidate?: number } } = revalidateSeconds && revalidateSeconds > 0
-        ? { cache: 'force-cache', next: { revalidate: revalidateSeconds } }
-        : { cache: 'no-store' };
-
-    // Timeout usando constante centralizada
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.API_REQUEST);
-
-    try {
-        const res = await fetch(url, { ...options, signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (!res.ok) {
-            // Lanzar errores apropiados en lugar de retornar arrays vacíos
-            if (res.status === 429) {
-                throw new RateLimitError(`API rate limit reached for ${url}`);
-            }
-
-            if (res.status >= 500) {
-                throw new ExternalAPIError(
-                    `External API error (${res.status}) for ${url}`,
-                    'finnhub',
-                    { status: res.status, statusText: res.statusText }
-                );
-            }
-
-            throw new ExternalAPIError(
-                `Failed to fetch ${url}: ${res.status} ${res.statusText}`,
-                'finnhub',
-                { status: res.status }
-            );
-        }
-        
-        // Verificar que la respuesta sea JSON antes de parsear
-        const contentType = res.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-            // Finnhub a veces devuelve HTML cuando hay rate limit o errores
-            const text = await res.text();
-            if (text.startsWith('<!DOCTYPE') || text.startsWith('<html')) {
-                throw new RateLimitError(`Finnhub returned HTML instead of JSON (likely rate limited)`);
-            }
-            // Intentar parsear de todos modos si no es HTML
-            try {
-                return JSON.parse(text) as T;
-            } catch {
-                throw new ExternalAPIError(`Invalid response format from Finnhub`, 'finnhub');
-            }
-        }
-        
-        return (await res.json()) as T;
-    } catch (error: unknown) {
-        clearTimeout(timeoutId);
-
-        // Si es un error de nuestra aplicación, re-lanzarlo
-        if (error instanceof RateLimitError || error instanceof ExternalAPIError) {
-            throw error;
-        }
-
-        // Manejar otros errores
-        const appError = toAppError(error);
-        if (appError.message.includes('AbortError') || appError.message.includes('aborted')) {
-            throw new ExternalAPIError(
-                `Request timeout for ${url}`,
-                'finnhub',
-                appError
-            );
-        }
-
-        throw new ExternalAPIError(
-            `Unexpected error fetching ${url}`,
-            'finnhub',
-            appError
-        );
-    }
-}
-
-export { fetchJSON };
 
 export type FinnhubCandles = { s: 'ok' | 'no_data'; c: number[]; t: number[]; o: number[]; h: number[]; l: number[]; v: number[] };
 
@@ -677,9 +596,8 @@ function exchangeFromDisplaySymbol(displaySymbol?: string): string | undefined {
     return EXCHANGE_LABEL_BY_SUFFIX[suffix] ?? suffix;
 }
 
-export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
-    await requireAuthenticatedUser();
-    try {
+const searchStocksOrThrow = async (query?: string): Promise<StockWithWatchlistStatus[]> => {    await requireAuthenticatedUser();
+    {
         const token = env.FINNHUB_API_KEY;
         if (!token) {
             // Finnhub is optional; the search command renders an explicit empty state.
@@ -691,41 +609,13 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
         let results: FinnhubSearchResult[] = [];
 
         if (!trimmed) {
-            // Fetch top 10 popular symbols' profiles
-            const top = POPULAR_STOCK_SYMBOLS.slice(0, 10);
-            const profiles = await Promise.all(
-                top.map(async (sym) => {
-                    try {
-                        const url = `${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(sym)}&token=${token}`;
-                        // Revalidate every hour
-                        const profile = await fetchJSON<any>(url, 3600);
-                        return { sym, profile } as { sym: string; profile: any };
-                    } catch {
-                        // Silently handle Finnhub timeouts - expected with rate limits
-                        return { sym, profile: null } as { sym: string; profile: any };
-                    }
-                })
-            );
-
-            results = profiles
-                .map(({ sym, profile }) => {
-                    const symbol = sym.toUpperCase();
-                    const name: string | undefined = profile?.name || profile?.ticker || undefined;
-                    const exchange: string | undefined = profile?.exchange || undefined;
-                    if (!name) return undefined;
-                    const r: FinnhubSearchResult = {
-                        symbol,
-                        description: name,
-                        displaySymbol: symbol,
-                        type: 'Common Stock',
-                    };
-                    // We don't include exchange in FinnhubSearchResult type, so carry via mapping later using profile
-                    // To keep pipeline simple, attach exchange via closure map stage
-                    // We'll reconstruct exchange when mapping to final type
-                    (r as any).__exchange = exchange; // internal only
-                    return r;
-                })
-                .filter((x): x is FinnhubSearchResult => Boolean(x));
+            // Populares con estado honesto: 0/10 perfiles con clave
+            // configurada es un fallo del proveedor, no "no hay acciones".
+            const popular = await getPopularStocks();
+            if (popular.status === 'error') {
+                throw new Error('finnhub popular profiles unavailable');
+            }
+            return popular.stocks;
         } else {
             const url = `${FINNHUB_BASE_URL}/search?q=${encodeURIComponent(trimmed)}&token=${token}`;
             const data = await fetchJSON<FinnhubSearchResponse>(url, 1800);
@@ -780,10 +670,75 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
             .slice(0, 15);
 
         return mapped;
+    }
+};
+
+export type SearchStocksResult =
+    | { status: 'ok'; stocks: StockWithWatchlistStatus[] }
+    | { status: 'error'; stocks: [] };
+
+/** Búsqueda con ESTADO explícito (F215): con la cuota de Finnhub agotada el
+ *  buscador global afirmaba "Sin resultados" para AAPL porque el error se
+ *  tragaba y volvía como []. Aquí el fallo de proveedor/red es `error` y la
+ *  UI lo dice en vez de mentir. */
+export const searchStocksWithStatus = cache(async (query?: string): Promise<SearchStocksResult> => {
+    try {
+        return { status: 'ok', stocks: await searchStocksOrThrow(query) };
     } catch (err) {
         console.error('Error in stock search:', err);
-        return [];
+        return { status: 'error', stocks: [] };
     }
+});
+
+export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
+    const result = await searchStocksWithStatus(query);
+    return result.stocks;
+});
+
+/**
+ * Populares del buscador con ESTADO explicito: `searchStocks()` atrapa todos
+ * los errores y devuelve [], indistinguible de "no hay nada que mostrar".
+ * Aqui un fallo total de proveedor/red devuelve `error` (el caller reintenta
+ * y avisa); la lista vacia valida (sin clave Finnhub) es `ok` con [].
+ */
+export const getPopularStocks = cache(async (): Promise<PopularStocksResult> => {
+    await requireAuthenticatedUser();
+    const token = env.FINNHUB_API_KEY;
+    if (!token) {
+        // Finnhub es opcional: lista vacia valida, no un fallo.
+        return { status: 'ok', stocks: [] };
+    }
+    const top = POPULAR_STOCK_SYMBOLS.slice(0, 10);
+    const profiles = await Promise.all(
+        top.map(async (sym) => {
+            try {
+                const url = `${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(sym)}&token=${token}`;
+                const profile = await fetchJSON<any>(url, 3600);
+                return { sym, profile } as { sym: string; profile: any };
+            } catch {
+                return { sym, profile: null } as { sym: string; profile: any };
+            }
+        })
+    );
+    const successful = profiles.filter(({ profile }) => profile?.name || profile?.ticker);
+    if (successful.length === 0) {
+        // 0/10 con clave configurada: proveedor o red caidos. NO se cachea
+        // como exito: el buscador reintentara y mostrara indicador.
+        return { status: 'error' };
+    }
+    const stocks: StockWithWatchlistStatus[] = successful
+        .map(({ sym, profile }) => {
+            const symbol = sym.toUpperCase();
+            return {
+                symbol,
+                name: (profile.name || profile.ticker) as string,
+                exchange: (profile.exchange as string | undefined) || 'US',
+                type: 'Common Stock',
+                isInWatchlist: false,
+            };
+        })
+        .slice(0, 10);
+    return { status: 'ok', stocks };
 });
 
 // Helper para obtener solo la cotización (más ligero que getStockFinancialData)

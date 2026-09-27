@@ -15,7 +15,6 @@ from app.models import (
     ExpectationReview,
 )
 
-
 DECISION_ERROR_TAXONOMY = {
     "overestimating_TAM",
     "underestimating_dilution",

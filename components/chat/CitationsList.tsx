@@ -1,5 +1,6 @@
 import { FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { formatNumber } from '@/lib/format';
 import type { ChatCitation } from '@/lib/chat/citations';
 
 interface CitationsListProps {
@@ -49,7 +50,7 @@ export default function CitationsList({ citations, sources }: CitationsListProps
     return (
         <div className="mt-4 border-t border-gray-800 pt-3">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Citas y evidencia ({derived.length})
+                Citas y evidencia ({formatNumber(derived.length, { maximumFractionDigits: 0 })})
             </h4>
             <ul className="mt-2 space-y-2">
                 {derived.map((citation) => (

@@ -6,7 +6,7 @@ must be exact, and missing metrics are reported as missing - never
 fabricated with empty or zero series dressed up as data.
 """
 
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest

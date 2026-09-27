@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 import main
-from app.core.database import SessionLocal, init_db
+from app.core.database import SessionLocal
 from app.models import Claim, ClaimEvidence, Company, ThesisDiff, ThesisSection, ThesisVersion
 from app.seed import seed
 

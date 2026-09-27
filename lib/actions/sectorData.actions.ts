@@ -1,7 +1,7 @@
 'use server';
 
 import { cache } from 'react';
-import { fetchJSON } from './finnhub.actions';
+import { fetchJSON } from '@/lib/upstream/finnhub';
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';

@@ -1,12 +1,11 @@
 import re
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
 from app.models import CalculatedMetric, Company, FinancialFact
-
 
 MetricFormula = tuple[str, str, tuple[str, ...], str]
 
@@ -44,6 +43,12 @@ V2_CAPEX_TO_DA_MAX = Decimal("1.5")
 
 # Metricas compuestas con ventana propia (no caben en WINDOWED_RATIO_METRICS).
 WINDOWED_COMPOSED_METRICS = ("owner_earnings_5y", "capex_to_da_5y")
+
+# F153: con periodos coherentes, un margen > 100% puede ser REAL (venta de
+# activos, reversion fiscal, liberacion de circulante). No se declara «sin
+# datos» - eso violaria veracidad: se calcula y se etiqueta de atipico en la
+# traza, con numerador y denominador visibles para su verificacion.
+MARGIN_METRICS = ("gross_margin", "operating_margin", "net_margin", "fcf_margin")
 
 METRIC_DEFINITIONS: dict[str, MetricFormula] = {
     "fcf_margin": ("FCF_MARGIN_V1", "free_cash_flow / revenue", ("free_cash_flow", "revenue"), "decimal"),
@@ -178,6 +183,49 @@ def _quantize(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
 
 
+# Fuentes cuyos importes monetarios llegan en unidades absolutas: market data
+# (yfinance, Finnhub) y hechos SEC/FMP. Entre ellas, con la misma unidad, un
+# ratio extremo entre capitalizacion y deuda es estructura de capital real
+# (una mega-cap casi sin deuda), NO un error de unidades.
+_ABSOLUTE_AMOUNT_SOURCES = frozenset({"yfinance", "Finnhub", "SEC", "FMP"})
+
+
+def _capital_scale_conflict(equity_fact: FinancialFact, debt_fact: FinancialFact) -> bool:
+    """True si equity y debt no son comparables para el WACC.
+
+    Fail-closed, en este orden:
+    - Unidades monetarias explicitas y distintas (USD vs EUR): conflicto
+      siempre. No es un error de escala sino de divisa, y ninguna
+      provenance lo rescata: un par de fuentes "absolutas" no es
+      comparable si cada una expresa otra moneda.
+    - Ambas fuentes absolutas y misma unidad: comparables a cualquier
+      ratio (una mega-cap casi sin deuda supera 100x de forma real).
+    - Cualquier otra combinacion (ESEF sin escala persistida, o
+      provenance incierta): conflicto siempre, a cualquier magnitud.
+      Un ratio razonable no demuestra unidades compatibles; el atajo
+      del 100x dejaba pasar mezclas no verificables.
+
+    Nunca se deduce un factor de escala ni de divisa: si no son
+    comparables, el metodo queda unavailable en vez de publicar un WACC
+    inventado.
+    """
+    if debt_fact.value == 0:
+        return False
+    if (
+        equity_fact.unit
+        and debt_fact.unit
+        and equity_fact.unit != debt_fact.unit
+    ):
+        return True
+    if (
+        equity_fact.source_type in _ABSOLUTE_AMOUNT_SOURCES
+        and debt_fact.source_type in _ABSOLUTE_AMOUNT_SOURCES
+        and equity_fact.unit == debt_fact.unit
+    ):
+        return False
+    return True
+
+
 class MetricCalculationService:
     def calculate_all(self, db: Session, company: Company, persist: bool = True) -> list[MetricResult]:
         results = [self.calculate(db, company, metric, persist=persist) for metric in METRIC_DEFINITIONS]
@@ -240,6 +288,42 @@ class MetricCalculationService:
             )
             return self._persist_if_requested(db, company, result, persist)
 
+        # F153: un ratio exige coincidencia de periodo entre numerador y
+        # denominador. El fallback no estricto de _coherent_facts toma el
+        # ultimo hecho de cada metrica aunque sean de periodos distintos -
+        # asi se compuso un net_margin del 834% (net_income FY2026 sobre
+        # revenue FY2010) que Comparables exponia como benchmark. Si los
+        # periodos no coinciden (mismo fin de periodo o mismo ano/trimestre
+        # fiscal), el ratio es «sin datos», nunca el cociente.
+        anchor_fact = facts[inputs[0]]
+        incoherent_inputs = {
+            input_metric: facts[input_metric].period
+            for input_metric in inputs[1:]
+            if not self._same_period(facts[input_metric], anchor_fact)
+        }
+        if incoherent_inputs:
+            result = MetricResult(
+                metric=metric,
+                status="unavailable",
+                period=period,
+                value=None,
+                unit=unit,
+                definition_version=definition_version,
+                formula=formula,
+                numerator=None,
+                denominator=None,
+                source_fact_ids=[fact.id for fact in facts.values()],
+                calculation_trace={
+                    "reason": "incoherent_periods",
+                    "anchor": {"metric": inputs[0], "period": anchor_fact.period},
+                    "incoherent_inputs": incoherent_inputs,
+                },
+                confidence=Decimal("0.00"),
+                fiscal_year=anchor_fact.fiscal_year,
+                fiscal_quarter=anchor_fact.fiscal_quarter,
+            )
+            return self._persist_if_requested(db, company, result, persist)
+
         numerator, denominator, trace, supplemental_facts = self._evaluate(
             db,
             company,
@@ -271,6 +355,16 @@ class MetricCalculationService:
             return self._persist_if_requested(db, company, result, persist)
 
         value = _quantize(numerator / denominator)
+        # F153: margen > 100% con periodos coherentes = dato real atipico
+        # (ganancia no operativa excepcional). Se publica etiquetado.
+        if metric in MARGIN_METRICS and value > Decimal("1"):
+            trace = {
+                **trace,
+                "atypical": (
+                    "margin_over_100pct: lectura real posible solo por ganancias "
+                    "no operativas excepcionales; verificar numerador/denominador"
+                ),
+            }
         confidence = min(
             (Decimal(fact.confidence) for fact in unique_facts),
             default=Decimal("0.70"),
@@ -668,11 +762,30 @@ class MetricCalculationService:
     def _same_period(self, candidate: FinancialFact, anchor: FinancialFact) -> bool:
         if candidate.period == anchor.period:
             return True
+        # F153: el fallback fiscal_year/fiscal_quarter puede asociar hechos
+        # con cierres distintos dentro del mismo ejercicio (una empresa que
+        # cambia de cierre, o un FY etiquetado a 2025-06-30 y otro a
+        # 2025-12-31). Si ambos periodos traen fin de periodo parseable, la
+        # coincidencia exige mismo fin Y misma etiqueta de duracion (un FY
+        # no es un Q4 aunque cierren el mismo dia).
+        anchor_key = self._period_key(anchor.period)
+        candidate_key = self._period_key(candidate.period)
+        if anchor_key is not None and candidate_key is not None:
+            return anchor_key == candidate_key
         return (
             anchor.fiscal_year is not None
             and candidate.fiscal_year == anchor.fiscal_year
             and candidate.fiscal_quarter == anchor.fiscal_quarter
         )
+
+    @staticmethod
+    def _period_key(period: str) -> tuple[str, str] | None:
+        """(fin_de_periodo, etiqueta) si el periodo las trae («2026-06-30:FY»);
+        None cuando la etiqueta es opaca («FY2025») y toca el fallback fiscal."""
+        end, sep, tag = period.partition(":")
+        if sep and tag and len(end) == 10 and end[4] == "-" and end[7] == "-":
+            return (end, tag)
+        return None
 
     def _normalize_rate(
         self,
@@ -743,17 +856,24 @@ class MetricCalculationService:
                 else:
                     missing.append(key)
 
+            # Solo valor de MERCADO para el peso de equity. `total_equity` es el
+            # patrimonio contable: usarlo como Ew del WACC mezcla market value
+            # con book value. Con market cap 10.000M, book equity 2.000M y debt
+            # 3.000M, el WACC correcto es 7,08% y con book equity salia 5,60%
+            # (-21%), y como el DCF escala con 1/(WACC-g) el valor de salida se
+            # desvía +48%. Si no hay market cap, el WACC no se calcula: se
+            # declara unavailable con el motivo (ver mas abajo).
             equity = self._match_alias(
                 db,
                 company,
-                ("market_cap", "market_capitalization", "total_equity"),
+                ("market_cap", "market_capitalization"),
                 anchor,
                 allow_latest=True,
             )
             if equity:
                 facts["equity_value"] = equity[1]
             else:
-                missing.append("market_cap_or_total_equity")
+                missing.append("market_cap")
 
             tax_rate, tax_trace, tax_facts = self._tax_rate_for_period(
                 db,
@@ -849,6 +969,17 @@ class MetricCalculationService:
             ):
                 best_facts = facts
                 best_missing = ["valid_rates_and_capital_weights"]
+                best_tax_trace = tax_trace
+                continue
+            if _capital_scale_conflict(facts["equity_value"], facts["total_debt"]):
+                # market_cap viene de market data en unidades absolutas;
+                # total_debt ESEF puede llegar escalado (scale no se conserva).
+                # Sumarlos sin reconciliar daba Dw ~= 1,5e-6 en un emisor
+                # apalancado: WACC 18,0% donde correspondía 12,6% (-34% de
+                # valor de salida). No se adivina un factor de escala: se
+                # declara inconsistente.
+                best_facts = facts
+                best_missing = ["capital_amounts_scale_mismatch"]
                 best_tax_trace = tax_trace
                 continue
 

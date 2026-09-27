@@ -223,12 +223,30 @@ class CompanySnapshotOut(BaseModel):
     """Small, read-only bootstrap contract for the Research workspace."""
 
     company: CompanyOut
+    # Tenencia viva del tenant actual (positions con cantidad > 0). NO
+    # confundir con companies.company_type: ese campo es una clase fijada
+    # en el alta de la ficha y queda desfasada (F143: AAPL en cartera se
+    # mostraba como "candidato de analisis" y SPCX, sin posicion del
+    # tenant, como "portfolio holding").
+    in_portfolio: bool = False
     latest_thesis: SnapshotThesisSummaryOut | None = None
     valuation_summary: SnapshotValuationSummaryOut
     model_summary: SnapshotModelSummaryOut | None = None
     research_health: ResearchHealthOut
     counts: SnapshotCountsOut
     recent_changes: list[SnapshotRecentChangeOut] = Field(default_factory=list)
+
+
+class CompanySnapshotsBatchOut(BaseModel):
+    """Respuesta del snapshot por lote del indice de research.
+
+    ``snapshots`` va keyed por ticker de la Company resuelta; ``missing``
+    lista los tickers pedidos sin company en el registro (nunca se
+    fabrican snapshots vacios para ellos).
+    """
+
+    snapshots: dict[str, CompanySnapshotOut]
+    missing: list[str] = Field(default_factory=list)
 
 
 class ThesisGenerateRequest(BaseModel):
@@ -596,6 +614,7 @@ class ResearchAlertOut(BaseModel):
     id: int
     company_id: int | None
     review_id: int | None
+    ticker: str | None = None
     severity: str
     status: str
     alert_type: str
@@ -608,6 +627,7 @@ class ResearchAlertOut(BaseModel):
     acknowledged_by: str | None
     snoozed_until: datetime | None
     resolved_at: datetime | None
+    last_triggered_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

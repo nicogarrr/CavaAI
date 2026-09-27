@@ -18,8 +18,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base
 from app.models import Claim, Company, ThesisVersion
+from app.models.entities import Base
 from app.services.claim_scope import (
     claims_for_thesis,
     latest_thesis_version,

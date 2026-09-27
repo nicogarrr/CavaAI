@@ -5,7 +5,6 @@ one query regardless of how many metrics are configured (it was one query
 per metric).
 """
 
-from datetime import date
 from decimal import Decimal
 
 import pytest

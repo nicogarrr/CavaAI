@@ -1,12 +1,11 @@
 from decimal import Decimal
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
-from app.models import Claim, Company, MoatAssessment
-from app.services.source_hierarchy_service import SOURCE_TIERS
+from app.models import Company, MoatAssessment
 from app.services.claim_scope import live_claims
-
+from app.services.source_hierarchy_service import SOURCE_TIERS
 
 MOAT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "network_effects": ("network effect", "two-sided", "liquidity", "user network"),

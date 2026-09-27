@@ -4,9 +4,9 @@ Revision ID: 0018_personal_finance_modules
 Revises: 0017_opencode_go_model_alias
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0018_personal_finance_modules"
 down_revision = "0017_opencode_go_model_alias"

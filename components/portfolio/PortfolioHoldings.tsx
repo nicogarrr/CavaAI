@@ -1,8 +1,8 @@
 'use client';
 
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
@@ -18,14 +18,20 @@ import { showErrorToast } from '@/lib/toast';
 type Props = {
   holdings: PortfolioHolding[];
   userId: string;
+  /** Caja total en divisa base; se muestra como línea propia para que
+   *  Valor Total = posiciones + caja cuadre a simple vista. */
+  cash?: number | null;
+  baseCurrency?: string;
 };
 
-export default function PortfolioHoldings({ holdings, userId }: Props) {
+export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency }: Props) {
   const router = useRouter();
   const [currentHoldings, setCurrentHoldings] = useState<PortfolioHolding[]>(holdings);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const format = (value: number, currency: string) => formatMoney(value, currency, { maximumFractionDigits: 2 });
+  const cashCurrency = baseCurrency ?? holdings[0]?.baseCurrency ?? 'EUR';
+  const showCash = typeof cash === 'number' && cash !== 0;
 
   // Sync props if they change (e.g. from server revalidation)
   useEffect(() => {
@@ -71,14 +77,15 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
           size="sm"
           onClick={handleRefresh}
           disabled={refreshing || currentHoldings.length === 0}
+          aria-busy={refreshing}
           className="h-11 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white sm:h-8"
         >
-          <RefreshCw className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
+          <RefreshCw aria-hidden="true" className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
           Actualizar Precios
         </Button>
       </CardHeader>
       <CardContent>
-        {currentHoldings.length === 0 ? (
+        {currentHoldings.length === 0 && !showCash ? (
           <div className="text-center py-8">
             <p className="text-gray-400">No tienes posiciones abiertas</p>
             <p className="text-sm text-gray-500 mt-2">Agrega tu primera transacción para comenzar</p>
@@ -103,15 +110,16 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                         size="sm"
                         onClick={() => handleDelete(holding.symbol)}
                         disabled={deleting === holding.symbol}
+                        aria-busy={deleting === holding.symbol}
                         className="min-h-[44px] min-w-[44px] text-red-400 hover:text-red-300 hover:bg-red-950/20"
                         title="Eliminar posición completa"
                         aria-label={`Eliminar posición en ${holding.symbol}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
                       </Button>
                     </div>
                     <dl className="mt-3 space-y-1.5 text-sm">
-                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Cantidad</dt><dd className="text-gray-200">{holding.quantity.toFixed(2)}</dd></div>
+                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Cantidad</dt><dd className="text-gray-200">{formatNumber(holding.quantity, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
                       <div className="flex justify-between gap-2"><dt className="text-gray-500">Promedio</dt><dd className="text-gray-200">{format(holding.avgPrice, holding.nativeCurrency)}</dd></div>
                       <div className="flex justify-between gap-2"><dt className="text-gray-500">Actual</dt><dd className="font-medium text-gray-200">{format(holding.currentPrice, holding.nativeCurrency)}</dd></div>
                       <div className="flex justify-between gap-2"><dt className="text-gray-500">Valor</dt><dd className="font-semibold text-gray-100">{holding.fxMissing ? 'FX missing' : format(holding.value, holding.baseCurrency)}</dd></div>
@@ -119,13 +127,13 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                         <dt className="text-gray-500">G/P</dt>
                         <dd className="flex items-center gap-2">
                           <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                            {holding.fxMissing ? 'N/A' : `${isPositive ? '+' : ''}${format(holding.gain, holding.baseCurrency)}`}
+                            {holding.fxMissing ? NA : format(holding.gain, holding.baseCurrency)}
                           </span>
                           <Badge
                             variant={isPositive ? 'default' : 'destructive'}
                             className={`${isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
                           >
-                            {holding.cost > 0 ? `${isPositive ? '+' : ''}${holding.gainPercent.toFixed(2)}%` : 's/d'}
+                            {formatPercent(holding.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }, NA)}
                           </Badge>
                         </dd>
                       </div>
@@ -145,7 +153,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                               {holding.holdingDays !== null ? ` · ${holding.holdingDays}d` : ''}
                             </Badge>
                           ) : (
-                            <span className="text-xs text-gray-600">N/D</span>
+                            <span className="text-xs text-gray-500">{NA}</span>
                           )}
                         </dd>
                       </div>
@@ -153,10 +161,22 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                   </div>
                 );
               })}
+              {showCash && (
+                <div className="rounded-xl border border-gray-700 border-dashed p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-lg font-bold text-gray-300">Caja</span>
+                  </div>
+                  <dl className="mt-3 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-2"><dt className="text-gray-500">Valor</dt><dd className="font-semibold text-gray-100">{format(cash, cashCurrency)}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-gray-500">G/P</dt><dd className="text-gray-500">{NA}</dd></div>
+                  </dl>
+                </div>
+              )}
             </div>
             {/* Escritorio: tabla completa */}
             <div className="hidden overflow-x-auto md:block">
-            <Table>
+            <Table regionLabel="Posiciones de la cartera">
+              <TableCaption className="sr-only">Posiciones abiertas de la cartera: símbolo, cantidad, precio medio, precio actual, valor, ganancia o pérdida y régimen fiscal.</TableCaption>
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-gray-700">
                   <TableHead className="text-gray-400">Símbolo</TableHead>
@@ -183,7 +203,7 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                         </Link>
                       </TableCell>
                       <TableCell className="text-right text-gray-300">
-                        {holding.quantity.toFixed(2)}
+                        {formatNumber(holding.quantity, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </TableCell>
                       <TableCell className="text-right text-gray-300">
                         {format(holding.avgPrice, holding.nativeCurrency)}
@@ -197,13 +217,13 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end gap-1">
                           <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                            {holding.fxMissing ? 'N/A' : `${isPositive ? '+' : ''}${format(holding.gain, holding.baseCurrency)}`}
+                            {holding.fxMissing ? NA : format(holding.gain, holding.baseCurrency)}
                           </span>
                           <Badge
                             variant={isPositive ? 'default' : 'destructive'}
                             className={`${isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
                           >
-                            {holding.cost > 0 ? `${isPositive ? '+' : ''}${holding.gainPercent.toFixed(2)}%` : 's/d'}
+                            {formatPercent(holding.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }, NA)}
                           </Badge>
                         </div>
                       </TableCell>
@@ -230,8 +250,8 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                             )}
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-600" title="Sin historial de compra registrado">
-                            N/D
+                          <span className="text-xs text-gray-500" title="Sin historial de compra registrado">
+                            {NA}
                           </span>
                         )}
                       </TableCell>
@@ -241,15 +261,35 @@ export default function PortfolioHoldings({ holdings, userId }: Props) {
                           size="icon"
                           onClick={() => handleDelete(holding.symbol)}
                           disabled={deleting === holding.symbol}
+                          aria-busy={deleting === holding.symbol}
                           className="text-red-400 hover:text-red-300 hover:bg-red-950/20"
                           title="Eliminar posición completa"
+                          // `title` no se expone de forma fiable en tactil ni en
+                          // varios lectores: el nombre accesible va en aria-label.
+                          aria-label={`Eliminar ${holding.symbol} de la cartera`}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 aria-hidden="true" className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
                   );
                 })}
+                {showCash && (
+                  <TableRow className="border-gray-700 border-dashed hover:bg-gray-800/50">
+                    <TableCell>
+                      <span className="font-bold text-gray-300">Caja</span>
+                    </TableCell>
+                    <TableCell className="text-right text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-right text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-right text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-right font-semibold text-gray-100">
+                      {format(cash, cashCurrency)}
+                    </TableCell>
+                    <TableCell className="text-right text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-center text-gray-500">{NA}</TableCell>
+                    <TableCell className="text-center" />
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
             </div>

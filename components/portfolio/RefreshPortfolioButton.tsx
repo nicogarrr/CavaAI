@@ -41,16 +41,17 @@ export default function RefreshPortfolioButton({ userId }: RefreshPortfolioButto
             size="sm"
             onClick={handleFullRefresh}
             disabled={isRefreshing}
+            aria-busy={isRefreshing}
             className="border-gray-600 hover:bg-gray-700 text-gray-200"
         >
             {isRefreshing ? (
                 <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
                     Actualizando...
                 </>
             ) : (
                 <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
+                    <RefreshCw aria-hidden="true" className="mr-2 h-4 w-4" />
                     Actualizar Todo
                 </>
             )}

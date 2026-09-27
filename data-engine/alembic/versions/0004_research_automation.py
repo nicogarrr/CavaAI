@@ -5,9 +5,9 @@ Revises: 0003_calculated_metrics
 Create Date: 2026-07-09 23:40:00
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0004_research_automation"
 down_revision = "0003_calculated_metrics"

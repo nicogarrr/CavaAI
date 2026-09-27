@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from app.services.connectors.cnmv import CNMVParseError, parse_oir_results
 from app.services.cnmv_mapping import issuer_for_nif, resolve_issuer
+from app.services.connectors.cnmv import CNMVParseError, parse_oir_results
 
 FIXTURE = Path(__file__).parent / "fixtures" / "cnmv_oir_results.html"
 

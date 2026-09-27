@@ -13,10 +13,22 @@ const nextConfig: NextConfig = {
     
     // Optimize images
     images: {
+        /*
+         * Las miniaturas de noticias llegan de CDNs arbitrarios (Finnhub
+         * `banner_image`, Alpha Vantage, NewsAPI `urlToImage`, MarketAux), no de
+         * un unico host. Con la lista cerrada en `i.ibb.co` el optimizador
+         * respondia 400 y las miniaturas no se veian. `unoptimized` lo ocultaba
+         * a costa de servir el original a full resolucion para un thumbnail de
+         * 128px: peor LCP y peor CLS de lo que academia.
+         *
+         * El riesgo SSRF sigue acotado: Next bloquea por defecto las IPs
+         * locales y privadas (`images.dangerouslyAllowLocalIP` sigue en false)
+         * y limita las redirecciones a 3.
+         */
         remotePatterns: [
             {
                 protocol: 'https',
-                hostname: 'i.ibb.co',
+                hostname: '**',
                 port: '',
                 pathname: '/**',
             },

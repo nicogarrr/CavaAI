@@ -13,6 +13,7 @@ import ipaddress
 import socket
 from collections.abc import Iterable
 from dataclasses import dataclass
+
 try:
     # API privada de httpcore (no hay equivalente publico en httpx para
     # conectar a una IP fijada manteniendo Host/SNI). Si un upgrade la mueve,

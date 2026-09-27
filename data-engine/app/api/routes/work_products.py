@@ -11,7 +11,6 @@ from app.core.database import get_db
 from app.models import Company
 from app.services.work_product_service import WorkProductService
 
-
 router = APIRouter()
 
 _logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function TickerNotFound() {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center gap-4 px-4 py-16 text-center">
+    <main id="content" tabIndex={-1} className="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center gap-4 px-4 py-16 text-center">
       <p className="text-sm font-semibold tracking-widest text-teal-300 uppercase">Error 404</p>
       <h1 className="text-3xl font-bold text-gray-100">Acción no encontrada</h1>
       <p className="max-w-md text-sm leading-6 text-gray-400">

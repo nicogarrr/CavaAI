@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -7,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.models import Company, Position
 from app.services.llm_router import route_model
 from app.services.source_hierarchy_service import SourceTier, classify_source
-
 
 MATERIAL_KEYWORDS = {
     "dilution": ["offering", "dilution", "atm", "capital raise", "convertible", "shares"],
@@ -28,6 +28,29 @@ ASSUMPTIONS_BY_EVENT_TYPE = {
 POSITIVE_TERMS = ["beat", "approval", "award", "buyback", "raise", "record", "accelerate"]
 NEGATIVE_TERMS = ["miss", "cut", "delay", "offering", "investigation", "default", "halt", "fraud"]
 CRITICAL_TERMS = ["bankruptcy", "fraud", "halt", "default"]
+
+# Un evento mas viejo que esta ventana nunca es "urgente" por recencia: un
+# filing de 2025 ingerido hoy no puede abrir una cola de revision urgente.
+RECENT_URGENCY_WINDOW = timedelta(days=7)
+
+
+def apply_recency_policy(
+    requires_update: bool, published_at: datetime | None, reasons: list[str]
+) -> bool:
+    """La urgencia solo aplica a eventos recientes (o sin fecha conocida).
+
+    El score de materialidad se conserva intacto; lo que se suprime es la
+    cola de revision urgente sobre historia antigua.
+    """
+    if not requires_update or published_at is None:
+        return requires_update
+    moment = published_at if published_at.tzinfo is not None else published_at.replace(tzinfo=UTC)
+    age = datetime.now(UTC) - moment
+    if age > RECENT_URGENCY_WINDOW:
+        if not any(r.startswith("historical_event") for r in reasons):
+            reasons.append(f"historical_event age={age.days}d => urgencia por recencia suprimida")
+        return False
+    return requires_update
 
 
 @dataclass(frozen=True)
@@ -56,6 +79,7 @@ class MaterialityService:
         url: str | None,
         *,
         use_jev: bool = True,
+        published_at: datetime | None = None,
     ) -> MaterialityAssessment:
         lower_text = text.lower()
         matched_types = [
@@ -112,6 +136,7 @@ class MaterialityService:
 
         materiality = max(1, min(materiality, 10))
         requires_update = materiality >= 7 or (portfolio_weight >= 0.10 and materiality >= 6)
+        requires_update = apply_recency_policy(requires_update, published_at, reasons)
         model_route = route_model(
             "deep_thesis" if requires_update else "news_triage",
             materiality_score=materiality,

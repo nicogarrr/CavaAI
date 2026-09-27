@@ -5,9 +5,9 @@ Revises: 0008_financial_model_v2
 Create Date: 2026-07-15 00:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0009_company_kpi_extraction"
 down_revision = "0008_financial_model_v2"

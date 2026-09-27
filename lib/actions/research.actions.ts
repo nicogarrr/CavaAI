@@ -22,6 +22,8 @@ type ResearchCompany = {
 type ResearchPortfolioSummary = {
   total_value: number;
   equity_value: number;
+  /** Moneda base de la cartera; ausente si el backend no respondió. */
+  base_currency?: string;
   cash: Record<string, number>;
   top_1_weight: number;
   top_5_weight: number;
@@ -109,7 +111,11 @@ type ResearchPeerComparison = {
       peer_median: string | null;
       peer_average: string | null;
       peer_sample_size: number;
+      // F153: valores atipicos etiquetados por el motor - visibles con su
+      // etiqueta, excluidos de la mediana/promedio.
+      excluded_atypical?: Array<{ ticker: string; value: string | null; atypical: string | null }>;
       target_value: string | null;
+      target_atypical?: string | null;
       target_vs_peer_median: string | null;
     }
   >;
@@ -128,6 +134,7 @@ type ResearchPeerComparison = {
         period: string;
         confidence: string;
         source_fact_ids: number[];
+        atypical?: string | null;
       }
     >;
   }>;
@@ -698,6 +705,28 @@ export async function getResearchCompanySnapshot(
   }
 }
 
+type ResearchCompanySnapshotsBatch = components['schemas']['CompanySnapshotsBatchOut'];
+
+/**
+ * Snapshots de varias empresas en UNA llamada (indice de research).
+ *
+ * Sustituye al fan-out de ~40 GET /{ticker}/snapshot por visita: el
+ * backend agrega las queries por IN(company_ids). Los tickers sin
+ * company en el registro vuelven en `missing` (nunca snapshots
+ * fabricados); ante un fallo de la llamada el indice degrada todas las
+ * tarjetas a "no legible", nunca a datos inventados.
+ */
+export async function getResearchCompanySnapshots(
+  tickers: string[],
+): Promise<ResearchCompanySnapshotsBatch> {
+  const normalized = tickers.map((ticker) => ticker.trim().toUpperCase()).filter(Boolean);
+  const query = encodeURIComponent(normalized.join(','));
+  return researchRequest<ResearchCompanySnapshotsBatch>(
+    `/api/companies/snapshots?tickers=${query}`,
+    { fast: true, cache: 'no-store' },
+  );
+}
+
 type CalculatedMetricsResponse = components['schemas']['CalculatedMetricsResponse'];
 export type MoatScoreMetric = components['schemas']['CalculatedMetricOut'];
 
@@ -925,14 +954,20 @@ export async function askResearchCompanyChat(
 }
 
 export async function getResearchSources() {
-  const [documents, audits] = await Promise.all([
+  // La lista de documentos pagina (50): el total real viene de /count para
+  // no presentar el tamano de pagina como si fuera el inventario (F131).
+  // Si /count no responde (backend antiguo), el total es DESCONOCIDO (null):
+  // mostrar 0 con la tabla poblada seria falso (F154).
+  const [documents, audits, documentsCount] = await Promise.all([
     getJson<ResearchSourceDocument[]>('/api/sources/documents', []),
     getJson<ResearchSourceAudit[]>('/api/sources/audits', []),
+    getJson<{ total: number } | null>('/api/sources/documents/count', null),
   ]);
 
   return {
     documents,
     audits,
+    documentsTotal: documentsCount?.total ?? null,
   };
 }
 
@@ -1003,6 +1038,8 @@ type ResearchNewsEvent = {
   materiality_score: number;
   impact_direction: string;
   requires_update: boolean;
+  /** 'source' = fecha de la fuente; 'ingested_at_fallback' = la fuente no da fecha. */
+  date_source?: string | null;
   source_tier?: string;
   source_trust_score?: number;
   portfolio_weight?: number;

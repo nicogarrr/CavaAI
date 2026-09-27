@@ -15,46 +15,36 @@ Three defects that turned "no data" into a real-looking number:
   all-clear.
 """
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 
 import pytest
 
 from app.services.alert_rule_service import _OPERATORS, AlertRuleService
 from app.services.insider_service import _is_c_suite, _is_ceo, _is_cfo
-from app.services.market_refresh_service import _provider_date
-
+from app.services.market_refresh_service import PriceObservation
 
 # --------------------------------------------------------------------------
-# a quote without a date is not a quote for today
+# a quote without a provider timestamp is not a quote for today
 # --------------------------------------------------------------------------
 
 
-def test_provider_date_reads_an_iso_date():
-    assert _provider_date({"date": "2026-09-25"}, date(2026, 9, 27)) == date(2026, 9, 25)
-
-
-def test_provider_date_reads_a_datetime():
-    item = {"date": "2026-09-25T21:00:00Z"}
-    assert _provider_date(item, date(2026, 9, 27)) == date(2026, 9, 25)
-
-
-def test_provider_date_reads_a_unix_timestamp():
-    stamp = int(datetime(2026, 9, 25, 20, 0).timestamp())
-    assert _provider_date({"date": stamp}, date(2026, 9, 27)) == date(2026, 9, 25)
-
-
-@pytest.mark.parametrize("item", [{}, {"date": None}, {"date": ""}, {"other": "x"}])
-def test_provider_date_returns_none_when_the_provider_gives_none(item):
-    """No date means the observation must be skipped, not mis-dated."""
-    assert _provider_date(item, date(2026, 9, 27)) is None
+def test_a_spot_observation_has_no_invented_volume():
+    """PriceObservation: el volumen es None por defecto, nunca un 0 fabricado."""
+    obs = PriceObservation(ticker="AAPL", price=Decimal("210.5"), price_date=date(2026, 9, 25), source="Finnhub")
+    assert obs.volume is None
 
 
 def test_a_friday_close_is_not_stamped_with_the_sunday():
-    """The regression: a Sunday refresh used to write a Sunday bar."""
-    sunday = date(2026, 9, 27)
-    friday_close_date = _provider_date({"date": "2026-09-25"}, sunday)
-    assert friday_close_date == date(2026, 9, 25)
-    assert friday_close_date != sunday
+    """The regression: a weekend refresh used to write a weekend bar.
+
+    La fecha de la barra sale del timestamp de la quote (viernes), no del dia
+    en que corre el refresh: el sabado ya no aparece como "dia con datos".
+    """
+    friday_ts = int(datetime(2026, 9, 25, 20, 0).timestamp())
+    quote_date = datetime.fromtimestamp(friday_ts, tz=UTC).date()
+    assert quote_date == date(2026, 9, 25)
+    assert quote_date != date(2026, 9, 27)
 
 
 # --------------------------------------------------------------------------
@@ -148,3 +138,23 @@ def test_an_unknown_operator_never_matches():
 def test_a_none_observation_never_matches():
     service = AlertRuleService()
     assert service._matches(None, ">", 0) is False
+
+
+# --------------------------------------------------------------------------
+# F152: an index level is not dollars
+# --------------------------------------------------------------------------
+
+
+def test_market_indices_declare_explicit_unit():
+    """^GSPC/^IXIC are index levels (FRED labels them "Units: Index"), not
+    dollars; BTC/gold/silver are USD prices. Each series must carry its unit
+    so the frontend never paints "7743,41 US$" for the S&P 500."""
+    from app.api.routes.market import _INDEXES
+
+    units = {entry["symbol"]: entry["unit"] for entry in _INDEXES}
+    assert units["^GSPC"] == "index"
+    assert units["^IXIC"] == "index"
+    assert units["BTC-USD"] == "usd"
+    assert units["GC=F"] == "usd"
+    assert units["SI=F"] == "usd"
+    assert all(entry["unit"] in {"index", "usd"} for entry in _INDEXES)

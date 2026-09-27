@@ -8,14 +8,14 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.models import Company, Document, FinancialFact, FinancialStatement, MarketPrice
+from app.services.connectors import esef as esef_connector
 from app.services.connectors import fred as fred_connector
 from app.services.connectors import sec_edgar as sec_edgar_connector
-from app.services.connectors import esef as esef_connector
-from app.services.fact_chunk_service import sync_company_fact_chunks
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.sec import SECClient
-
+from app.services.fact_chunk_service import sync_company_fact_chunks
 
 MetricSpec = tuple[str, str, str]
 
@@ -371,19 +371,37 @@ def _esef_period(entry: dict[str, Any]) -> str | None:
 
 def _merge_esef_periods(
     facts_data: dict[str, Any], concepts: list[str], unit: str, metric: str
-) -> dict[str, dict[str, Any]]:
-    """One value per period for an ESEF metric.
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """One value per period for an ESEF metric, plus an explicit coverage record.
 
     A filer that disaggregates a total into disjoint parts has them added up, a
     filer that tags the combined total is taken at its word, and everything
     else keeps the first concept that reports the period: ESEF snapshots carry
     no filing date, so there is nothing honest to rank two aliases with beyond
     the order the concepts are declared in.
+
+    Two failure modes of the sum are refused rather than published:
+
+    * the same fact twice (same tag, same context, same value) used to be added
+      twice - two snapshots of one filing read as double the capex. Identical
+      duplicates collapse to one fact; two DIFFERENT values for the same tag
+      and period cannot be ranked without a filing date, so the period is
+      ambiguous and is rejected (a disclosed total for the period still wins);
+    * a part that is missing for the period used to vanish silently, and the
+      subtotal was published as the complete metric. A missing part is only
+      declared when its absence can be affirmed - the filer DOES report that
+      concept, just not for this period; a part the filer never reports can be
+      zero or not applicable, and the sum is taken as complete.
+
+    Returns the merged periods and a coverage record with the rejected
+    (ambiguous) and incomplete (partial) periods, so the caller can state what
+    was NOT published instead of letting it pass for the whole magnitude.
     """
     superset = ESEF_SUPERSET_CONCEPTS.get(metric, [])
     parts = ESEF_PART_CONCEPTS.get(metric, [])
     by_period: dict[str, dict[str, Any]] = {}
-    summed: dict[str, dict[str, Any]] = {}
+    part_facts: dict[str, dict[str, set[Decimal]]] = {}
+    concepts_with_data: set[str] = set()
     for concept in concepts:
         for entry in facts_data.get(concept, {}).get(unit, []):
             period = _esef_period(entry)
@@ -392,25 +410,40 @@ def _merge_esef_periods(
             if concept in superset:
                 by_period.setdefault(period, entry)
             elif concept in parts:
-                bucket = summed.setdefault(
-                    period,
-                    {"val": Decimal("0"), "period": period, "_components": {}},
-                )
                 value = _decimal(entry.get("val"))
                 if value is None:
                     continue
-                bucket["val"] += value
-                bucket["_components"][concept] = str(value)
+                concepts_with_data.add(concept)
+                part_facts.setdefault(period, {}).setdefault(concept, set()).add(value)
             elif period not in by_period:
                 by_period[period] = entry
-    for period, bucket in summed.items():
+    coverage: dict[str, Any] = {"ambiguous": {}, "partial": {}}
+    for period, by_concept in part_facts.items():
         # A disclosed total always beats the sum of its parts: it is the only
         # statement of the whole magnitude, and it may include components the
         # parts do not itemise.
         if period in by_period:
             continue
-        by_period[period] = {**bucket, "val": float(bucket["val"])}
-    return by_period
+        conflicts = {
+            concept: sorted(str(value) for value in values)
+            for concept, values in by_concept.items()
+            if len(values) > 1
+        }
+        if conflicts:
+            coverage["ambiguous"][period] = conflicts
+            continue
+        missing = sorted(concepts_with_data - set(by_concept))
+        if missing:
+            coverage["partial"][period] = missing
+            continue
+        by_period[period] = {
+            "val": float(sum((next(iter(values)) for values in by_concept.values()), Decimal("0"))),
+            "period": period,
+            "_components": {
+                concept: str(next(iter(values))) for concept, values in by_concept.items()
+            },
+        }
+    return by_period, coverage
 
 
 def _period(row: dict[str, Any]) -> tuple[str, int | None, str | None]:
@@ -459,14 +492,36 @@ async def _free_data_snapshot(ticker: str, cik: str) -> dict[str, Any]:
         )
     except Exception as exc:
         snapshot["recent_filings"] = []
-        snapshot["filings_error"] = str(exc)[:200]
+        snapshot["filings_error"] = redact_secrets(str(exc))[:200]
     try:
         snapshot["macro"] = await fred_connector.latest_observation("cpi")
     except Exception as exc:  # pragma: no cover - red defensiva
         snapshot["macro"] = None
-        snapshot["macro_error"] = str(exc)[:200]
+        snapshot["macro_error"] = redact_secrets(str(exc))[:200]
     return snapshot
 
+
+
+def _fiscal_quarter_from_end(end: str, modal_fy_month: str | None) -> str | None:
+    """Trimestre fiscal derivado del cierre del periodo contra el mes modal de
+    cierre de ejercicio. El `fp` de companyfacts es el periodo fiscal DE LA
+    PRESENTACION, no del dato: las comparativas trimestrales dentro de un 10-Q
+    heredan el fp de ese 10-Q (caso real AAPL: dividendos pagados en abril o
+    julio etiquetados Q1 porque la copia mas reciente salio en el 10-Q de Q1),
+    asi que no sirve para etiquetar. Meses desde el cierre modal redondeados a
+    trimestres: el propio mes de cierre (y su drift de 52/53 semanas, +-1 mes)
+    es Q4; +3 meses es Q1; +6, Q2; +9, Q3. None sin ancla modal."""
+    if not modal_fy_month:
+        return None
+    try:
+        month = date.fromisoformat(str(end)).month
+        modal = int(modal_fy_month)
+    except (TypeError, ValueError):
+        return None
+    quarter = round(((month - modal) % 12) / 3)
+    if quarter == 0:
+        quarter = 4
+    return f"Q{quarter}"
 
 def _modal_fiscal_end_month(us_gaap: dict[str, Any]) -> str | None:
     """Mes modal de cierre de ejercicio a partir de TODOS los hechos de flujo
@@ -560,7 +615,7 @@ class FinancialIngestionService:
         db.flush()
         facts += self._add_derived_facts(db, company, document)
         facts += self._add_profile_facts(db, company, document, profile)
-        self._add_profile_price(db, company, profile)
+        await self._add_spot_price(db, company, fmp, ticker)
 
         document.metadata_ = {
             **(document.metadata_ or {}),
@@ -619,7 +674,11 @@ class FinancialIngestionService:
             # (balance, sin start) pasan. fiscal_year queda NULL a proposito:
             # los consumidores anuales seleccionan por fiscal_year (y los que
             # ordenan por el usan nullslast), asi las filas :Qn nunca se
-            # confunden con el ejercicio anual. period = "<end>:Q<n>".
+            # confunden con el ejercicio anual. period = "<end>:Q<n>". La
+            # etiqueta <n> se deriva del cierre contra el mes modal de cierre
+            # de ejercicio: el fp de companyfacts es el periodo fiscal DE LA
+            # PRESENTACION (las comparativas heredan el fp del 10-Q que las
+            # trae), no el del dato. Fallback a fp sin ancla modal.
             by_end_q = _merge_for_metric(
                 _collect_by_concept(
                     us_gaap,
@@ -642,7 +701,9 @@ class FinancialIngestionService:
                         continue
                     if metric == "capital_expenditure":
                         val = -val
-                    fp = str(entry["fp"])
+                    fp = _fiscal_quarter_from_end(
+                        str(entry["end"]), modal_fy_month
+                    ) or str(entry["fp"])
                     db.add(
                         FinancialFact(
                             company_id=company.id,
@@ -822,8 +883,11 @@ class FinancialIngestionService:
         self._replace_esef_data(db, company, document)
         facts_imported = 0
 
+        esef_coverage: dict[str, Any] = {}
         for metric, concepts, unit in ESEF_METRIC_MAP:
-            by_period = _merge_esef_periods(facts_data, concepts, unit, metric)
+            by_period, coverage = _merge_esef_periods(facts_data, concepts, unit, metric)
+            if coverage["ambiguous"] or coverage["partial"]:
+                esef_coverage[metric] = coverage
             for period_date in sorted(by_period, reverse=True)[:10]:
                 val = _decimal(by_period[period_date].get("val"))
                 if val is None:
@@ -858,6 +922,7 @@ class FinancialIngestionService:
             "period_end": snapshot.get("period_end"),
             "fxo_id": snapshot.get("fxo_id"),
             "snapshot_fetched_at": snapshot.get("fetched_at"),
+            "esef_coverage": esef_coverage,
             "last_refreshed_at": datetime.now(UTC).isoformat(),
         }
         # Chunks RAG desde los hechos persistidos (documento parseado no existe:
@@ -1470,35 +1535,65 @@ class FinancialIngestionService:
         )
         return 1
 
-    def _add_profile_price(
+    async def _add_spot_price(
         self,
         db: Session,
         company: Company,
-        profile: list[dict[str, Any]],
+        fmp: FMPClient,
+        ticker: str,
     ) -> None:
-        if not profile:
+        # Barra diaria desde /quote: fecha y volumen REALES de la cotizacion.
+        # Antes se tomaba profile[0].price fechado con el dia de la ingesta:
+        # un refresh financiero en fin de semana fabricaba una barra del
+        # sabado/domingo con el ultimo cierre conocido. Sin timestamp del
+        # proveedor no hay fecha honesta, asi que no se escribe nada.
+        try:
+            payload = await fmp.quote(ticker)
+        except Exception:  # noqa: BLE001 - best-effort: la quote no bloquea la ingesta financiera
             return
-        price = _decimal(profile[0].get("price"))
+        item = payload[0] if isinstance(payload, list) and payload else None
+        if not isinstance(item, dict):
+            return
+        price = _decimal(item.get("price"))
         if price is None or price <= 0:
             return
-        today = datetime.now(UTC).date()
+        # Fallar cerrado ante payload malformado: un timestamp o volumen
+        # invalidos no deben tumbar el refresh financiero tras importar facts.
+        try:
+            timestamp = int(item.get("timestamp") or 0)
+            quote_date = datetime.fromtimestamp(timestamp, tz=UTC).date() if timestamp > 0 else None
+        except (TypeError, ValueError, OverflowError, OSError):
+            quote_date = None
+        if quote_date is None or quote_date > datetime.now(UTC).date():
+            return
+        try:
+            volume = int(item["volume"]) if item.get("volume") is not None else None
+        except (TypeError, ValueError):
+            volume = None
         existing = db.scalar(
-            select(MarketPrice).where(MarketPrice.company_id == company.id, MarketPrice.date == today)
+            select(MarketPrice).where(MarketPrice.company_id == company.id, MarketPrice.date == quote_date)
         )
         if existing:
+            # La fila existente es una barra real: se actualiza solo el close
+            # y se preservan OHLC y el adjusted autentico de esa fecha.
             existing.close = price
-            existing.adj_close = price
+            if volume is not None:
+                existing.volume = volume
             existing.source = "FMP"
             return
+        # Una quote spot no es una barra ajustada: adj_close queda NULL en vez
+        # de copiar close, que afirmaria un ajuste nunca realizado y
+        # corromperia total-return/beta/Sharpe sobre splits o dividendos.
         db.add(
             MarketPrice(
                 company_id=company.id,
-                date=today,
+                date=quote_date,
                 open=price,
                 high=price,
                 low=price,
                 close=price,
-                adj_close=price,
+                adj_close=None,
+                volume=volume,
                 source="FMP",
             )
         )

@@ -53,7 +53,7 @@ def test_extract_latest_annual_prefers_10k_over_newer_10q():
     us_gaap = _gaap(
         {
             "Revenues": [
-                {"form": "10-K", "val": 100, "end": "2025-09-27", "filed": "2025-11-01"},
+                {"form": "10-K", "val": 100, "start": "2024-09-28", "end": "2025-09-27", "filed": "2025-11-01"},
                 {"form": "10-Q", "val": 30, "end": "2026-06-27", "filed": "2026-08-01"},
             ]
         }
@@ -93,6 +93,167 @@ def test_extract_latest_annual_first_tag_wins_never_sums():
     assert out["revenue"]["concept"] == "Revenues"
 
 
+def test_extract_latest_annual_prefers_current_tag_over_stale_preferred_tag():
+    """F133 (MSFT tenant 5): "Revenues" dejo de informarse tras FY2010 y
+    el extractor lo elegia por preferencia, dejando FY2010 como "Latest
+    Results" aunque RevenueFromContract... tenia FY2026."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 62484000000,
+                    "start": "2009-07-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+            ],
+            "RevenueFromContractWithCustomerExcludingAssessedTax": [
+                {
+                    "form": "10-K",
+                    "val": 331839000000,
+                    "start": "2025-07-01",
+                    "end": "2026-06-30",
+                    "filed": "2026-07-29",
+                },
+            ],
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 331839000000
+    assert out["revenue"]["concept"] == "RevenueFromContractWithCustomerExcludingAssessedTax"
+    assert out["revenue"]["period"] == "2026-06-30:FY"
+
+
+def test_extract_latest_annual_excludes_quarter_republished_in_10k():
+    """F133: el 10-K republica trimestres; un Q4 (start 2010-04-01,
+    16.039B - el valor exacto que prod guardo como "FY2010") no es un
+    dato anual aunque venga con form 10-K."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 62484000000,
+                    "start": "2009-07-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+                {
+                    "form": "10-K",
+                    "val": 16039000000,
+                    "start": "2010-04-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+            ]
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 62484000000
+    assert out["revenue"]["fiscal_year"] == 2010
+
+
+def test_extract_latest_annual_q4_only_in_10k_is_not_labeled_fy():
+    """Auditor F133: si el tag SOLO tiene un Q4 republicado en 10-K, el
+    fallback no puede volver a etiquetarlo FY."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 16039000000,
+                    "start": "2010-04-01",
+                    "end": "2010-06-30",
+                    "filed": "2010-07-30",
+                },
+            ]
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["period"] == "2010-06-30:10-K"
+    assert out["revenue"]["fiscal_quarter"] is None
+
+
+def test_extract_latest_annual_annual_beats_newer_quarter_across_tags():
+    """Auditor F133: un anual valido en un tag gana a un trimestre mas
+    reciente de otro tag."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 245122000000,
+                    "start": "2023-07-01",
+                    "end": "2024-06-30",
+                    "filed": "2024-07-30",
+                },
+            ],
+            "RevenueFromContractWithCustomerExcludingAssessedTax": [
+                {
+                    "form": "10-Q",
+                    "val": 90000000000,
+                    "start": "2026-04-01",
+                    "end": "2026-06-30",
+                    "filed": "2026-07-29",
+                },
+            ],
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 245122000000
+    assert out["revenue"]["concept"] == "Revenues"
+    assert out["revenue"]["period"] == "2024-06-30:FY"
+
+
+def test_extract_latest_annual_amendment_does_not_displace_newer_period():
+    """Auditor F133: una enmienda (filed reciente) de un periodo antiguo
+    no desplaza al periodo mas reciente: se elige por periodo cubierto."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {
+                    "form": "10-K",
+                    "val": 100,
+                    "start": "2023-01-01",
+                    "end": "2023-12-31",
+                    "filed": "2026-03-01",
+                },
+                {
+                    "form": "10-K",
+                    "val": 200,
+                    "start": "2025-01-01",
+                    "end": "2025-12-31",
+                    "filed": "2026-02-01",
+                },
+            ]
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["value"] == 200
+    assert out["revenue"]["period"] == "2025-12-31:FY"
+
+
+def test_extract_latest_annual_flow_without_start_is_not_annual():
+    """Auditor F133: una metrica de flujo sin start no puede probar
+    duracion anual; una instantanea sin start si."""
+    us_gaap = _gaap(
+        {
+            "Revenues": [
+                {"form": "10-K", "val": 100, "end": "2025-12-31", "filed": "2026-02-01"},
+            ],
+            "Assets": [
+                {"form": "10-K", "val": 500, "end": "2025-12-31", "filed": "2026-02-01"},
+            ],
+        }
+    )
+    out = ThesisEvidenceService()._extract_latest_annual(us_gaap)
+    assert out["revenue"]["period"] == "2025-12-31:10-K"
+    assert out["revenue"]["fiscal_quarter"] is None
+    assert out["total_assets"]["period"] == "2025-12-31:FY"
+    assert out["total_assets"]["fiscal_quarter"] == "FY"
+
+
 def test_extract_latest_annual_skips_entries_without_value_or_end():
     us_gaap = _gaap(
         {
@@ -118,9 +279,10 @@ def _stub_market(service, quote=None, profile=None, quote_exc=None):
 def test_ingest_market_persists_dated_sourced_price_and_market_cap(db):
     company = _company(db, name="AAPL")
     service = ThesisEvidenceService()
+    friday = datetime(2026, 9, 25, 20, 0, tzinfo=UTC)  # viernes de mercado
     _stub_market(
         service,
-        quote={"c": 190.5},
+        quote={"c": 190.5, "t": int(friday.timestamp()), "v": 12345},
         profile={"name": "Apple Inc.", "marketCapitalization": 2900.0, "exchange": "NASDAQ"},
     )
     result = service._ingest_market(db, company)
@@ -128,15 +290,25 @@ def test_ingest_market_persists_dated_sourced_price_and_market_cap(db):
 
     assert result["status"] == "ok"
     assert result["price"] == 190.5
-    today = datetime.now(UTC).date()
+    assert result["price_as_of"] == "2026-09-25"
+    # La barra se fecha con el timestamp del proveedor, no con el dia de la
+    # ingesta: una ingesta de domingo escribe la barra del viernes.
     price_row = db.scalar(
         select(MarketPrice).where(
-            MarketPrice.company_id == company.id, MarketPrice.date == today
+            MarketPrice.company_id == company.id, MarketPrice.date == friday.date()
         )
     )
     assert price_row is not None
     assert price_row.close == Decimal("190.5")
+    assert price_row.volume == 12345
+    # Spot no es barra ajustada: la fila nueva no afirma ajuste.
+    assert price_row.adj_close is None
     assert price_row.source == "Finnhub"
+    assert db.scalar(
+        select(func.count()).select_from(MarketPrice).where(
+            MarketPrice.company_id == company.id
+        )
+    ) == 1
 
     cap = db.scalar(
         select(FinancialFact).where(
@@ -174,13 +346,14 @@ def test_ingest_market_without_quote_keeps_honest_pending_state(db):
 def test_ingest_market_is_idempotent_within_a_day(db):
     company = _company(db)
     service = ThesisEvidenceService()
+    friday = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
     _stub_market(
         service,
-        quote={"c": 190.5},
+        quote={"c": 190.5, "t": friday},
         profile={"name": "Apple Inc.", "marketCapitalization": 2900.0, "exchange": "NASDAQ"},
     )
     service._ingest_market(db, company)
-    _stub_market(service, quote={"c": 191.0}, profile={"marketCapitalization": 2900.0})
+    _stub_market(service, quote={"c": 191.0, "t": friday}, profile={"marketCapitalization": 2900.0})
     service._ingest_market(db, company)
     db.commit()
 
@@ -188,6 +361,8 @@ def test_ingest_market_is_idempotent_within_a_day(db):
         select(MarketPrice).where(MarketPrice.company_id == company.id)
     ).all()
     assert len(rows) == 1
+    assert rows[0].close == Decimal("191.0")
+    assert rows[0].date == datetime(2026, 9, 25, 20, 0, tzinfo=UTC).date()
     assert rows[0].close == Decimal("191.0")
     assert db.scalar(
         select(func.count())
@@ -281,7 +456,7 @@ def test_ingest_fundamentals_preserva_historico_sec(db, monkeypatch):
     monkeypatch.setattr(service, "_fetch_company_facts", lambda cik: {
         "facts": {"us-gaap": _gaap({
             "Revenues": [
-                {"form": "10-K", "val": 999, "end": "2025-12-31", "fy": "2025", "fp": "FY", "filed": "2026-02-01"},
+                {"form": "10-K", "val": 999, "start": "2025-01-01", "end": "2025-12-31", "fy": "2025", "fp": "FY", "filed": "2026-02-01"},
             ],
         })},
     })
@@ -300,3 +475,109 @@ def test_ingest_fundamentals_preserva_historico_sec(db, monkeypatch):
         )
     }
     assert periods == {"2023-12-31:FY", "2024-12-31:FY", "2025-12-31:FY"}
+
+
+def test_ingest_market_quote_sin_timestamp_no_fabrica_barra(db):
+    """Sin timestamp del proveedor no hay fecha honesta: no se escribe nada.
+
+    Adversarial: con el codigo viejo la quote se fechaba con el dia de la
+    ingesta y aparecia una barra de hoy (domingo si hoy es domingo).
+    """
+    company = _company(db)
+    service = ThesisEvidenceService()
+    _stub_market(service, quote={"c": 190.5}, profile={"marketCapitalization": 2900.0})
+    result = service._ingest_market(db, company)
+    db.commit()
+
+    assert result["status"] == "pending"
+    assert "timestamp" in result["detail"]
+    assert db.scalar(
+        select(func.count()).select_from(MarketPrice).where(
+            MarketPrice.company_id == company.id
+        )
+    ) == 0
+
+
+def test_ingest_market_quote_fecha_futura_rechazada(db):
+    company = _company(db)
+    service = ThesisEvidenceService()
+    future = datetime.now(UTC).timestamp() + 3 * 86400
+    _stub_market(service, quote={"c": 190.5, "t": int(future)}, profile=None)
+    result = service._ingest_market(db, company)
+    db.commit()
+
+    assert result["status"] == "pending"
+    assert "futura" in result["detail"]
+    assert db.scalar(
+        select(func.count()).select_from(MarketPrice).where(
+            MarketPrice.company_id == company.id
+        )
+    ) == 0
+
+
+def test_ingest_market_quote_sin_volumen_deja_null_no_cero(db):
+    friday = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
+    company = _company(db)
+    service = ThesisEvidenceService()
+    _stub_market(service, quote={"c": 190.5, "t": friday}, profile=None)
+    service._ingest_market(db, company)
+    db.commit()
+
+    row = db.scalar(select(MarketPrice).where(MarketPrice.company_id == company.id))
+    assert row is not None
+    assert row.volume is None
+
+
+def test_ingest_market_spot_no_pisa_adjusted_autentico(db):
+    """La via OHLCV sembro una barra con adjusted real; una ingesta spot del
+    mismo dia actualiza el close y no toca adj_close ni OHLC."""
+    friday = datetime(2026, 9, 25, 20, 0, tzinfo=UTC)
+    company = _company(db)
+    db.add(
+        MarketPrice(
+            company_id=company.id,
+            date=friday.date(),
+            open=Decimal("185.0"),
+            high=Decimal("191.0"),
+            low=Decimal("184.0"),
+            close=Decimal("189.0"),
+            adj_close=Decimal("181.75"),
+            volume=50000,
+            source="Finnhub",
+        )
+    )
+    db.flush()
+    service = ThesisEvidenceService()
+    _stub_market(
+        service,
+        quote={"c": 190.5, "t": int(friday.timestamp())},
+        profile=None,
+    )
+    service._ingest_market(db, company)
+    db.commit()
+
+    rows = db.scalars(select(MarketPrice).where(MarketPrice.company_id == company.id)).all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.close == Decimal("190.5")
+    assert row.adj_close == Decimal("181.75")
+    assert row.open == Decimal("185.0")
+    assert row.high == Decimal("191.0")
+    assert row.low == Decimal("184.0")
+    assert row.volume == 50000
+
+
+def test_ingest_market_quote_malformada_no_propaga_excepcion(db):
+    company = _company(db)
+    service = ThesisEvidenceService()
+    _stub_market(service, quote={"c": 190.5, "t": "no-es-un-numero"}, profile=None)
+    result = service._ingest_market(db, company)
+    db.commit()
+
+    assert result["status"] == "pending"
+    assert "timestamp" in result["detail"]
+    assert db.scalar(
+        select(func.count()).select_from(MarketPrice).where(
+            MarketPrice.company_id == company.id
+        )
+    ) == 0

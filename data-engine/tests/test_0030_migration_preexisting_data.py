@@ -1,9 +1,11 @@
 """0030: upgrade/downgrade con datos preexistentes, sin perdidas.
 
 Siembra model_aliases + decision_journal_entries (+ su company) sobre el
-esquema 0029, sube a head (0030) y vuelve a bajar: las filas deben
-sobrevivir intactas en ambas direcciones porque 0030 solo crea indices.
-El downgrade revierte exactamente los indices que creo el upgrade.
+esquema 0029, sube a 0031 y vuelve a bajar: las filas deben sobrevivir
+intactas en ambas direcciones porque 0030 solo crea indices. El downgrade
+revierte exactamente los indices que creo el upgrade. El round trip se
+queda en <=0031: 0032 es forward-only (se prueba aparte que su downgrade
+levanta en limpio, sin DDL parcial).
 """
 
 import os
@@ -19,6 +21,8 @@ from sqlalchemy import create_engine, inspect, text
 
 DATA_ENGINE_DIR = Path(__file__).resolve().parents[1]
 REVISION_0029 = "0029_manager_holding_filing_date"
+REVISION_0031 = "0031_propick_runs"
+REVISION_0032 = "0032_tenant_uniques_fk_actions"
 
 INDEXES_0030 = [
     ("ix_news_events_company_id", "news_events"),
@@ -54,6 +58,18 @@ def _alembic(database_url: str, *args: str) -> None:
         timeout=180,
     )
     assert result.returncode == 0, result.stderr
+
+
+def _alembic_result(database_url: str, *args: str) -> subprocess.CompletedProcess[str]:
+    env = {**os.environ, "DATABASE_URL": database_url}
+    return subprocess.run(
+        [sys.executable, "-m", "alembic", *args],
+        cwd=DATA_ENGINE_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
 
 
 def _index_names(database_url: str, table: str) -> set[str]:
@@ -127,7 +143,7 @@ def test_0030_upgrade_downgrade_preserves_preexisting_data():
         _alembic(database_url, "upgrade", REVISION_0029)
         alias_id, journal_id = _seed_preexisting_rows(database_url)
 
-        _alembic(database_url, "upgrade", "head")
+        _alembic(database_url, "upgrade", REVISION_0031)
         engine = create_engine(database_url)
         try:
             with engine.connect() as conn:
@@ -175,5 +191,29 @@ def test_0030_upgrade_downgrade_preserves_preexisting_data():
             engine.dispose()
         for name, table in INDEXES_0030:
             assert name not in _index_names(database_url, table), f"{name} survived downgrade"
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_0032_rejects_downgrade_without_partial_ddl():
+    temp_dir = Path(tempfile.mkdtemp(prefix="cavaai_0032_"))
+    database_url = f"sqlite:///{(temp_dir / 'forward_only.db').as_posix()}"
+    try:
+        _alembic(database_url, "upgrade", "head")
+        result = _alembic_result(database_url, "downgrade", REVISION_0031)
+        assert result.returncode != 0
+        assert "forward-only" in result.stderr
+        # Sin DDL parcial: sigue en 0032 y la constraint tenant-scoped existe.
+        current = _alembic_result(database_url, "current")
+        assert REVISION_0032 in current.stdout
+        engine = create_engine(database_url)
+        try:
+            uniques = {
+                constraint["name"]
+                for constraint in inspect(engine).get_unique_constraints("fund_managers")
+            }
+            assert "uq_fund_manager_tenant_cik" in uniques
+        finally:
+            engine.dispose()
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

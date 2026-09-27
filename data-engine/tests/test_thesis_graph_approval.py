@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 from app.models.entities import Base, Company, WorkflowRun
 from app.services.thesis_graph_approval_service import (
     DECISIONS,
-    ThesisGraphApprovalService,
     WORKFLOW_NAME,
+    ThesisGraphApprovalService,
 )
 from app.workflows.thesis_graph import THESIS_GRAPH_NODES
 
