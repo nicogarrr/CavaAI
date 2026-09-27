@@ -28,3 +28,12 @@ export function categoryDisplay(pick: ProPick, key: CategoryKey): CategoryDispla
     }
     return { kind: 'score', value: pick.categoryScores[key] };
 }
+
+/**
+ * True si TODOS los picks tienen la categoría neutral en este run (p.ej.
+ * momentum sin series de precios para el universo): ordenar por ella es
+ * ordenar por una constante y el filtro debe marcarla como n/d.
+ */
+export function allNeutralCategory(picks: ProPick[], key: CategoryKey): boolean {
+    return picks.length > 0 && picks.every((pick) => categoryDisplay(pick, key).kind === 'neutral');
+}

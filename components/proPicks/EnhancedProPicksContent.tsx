@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { TrendingUp, Sparkles, ArrowRight, Loader2, RefreshCw, Clock, Plus, Check } from 'lucide-react';
 import EnhancedProPicksFilters, { ProPicksFilters } from './EnhancedProPicksFilters';
 import { generateEnhancedProPicksWithRun, type ProPick } from '@/lib/actions/proPicks.actions';
-import { categoryDisplay } from '@/lib/propicks/category-display';
+import { allNeutralCategory, categoryDisplay } from '@/lib/propicks/category-display';
 import { addToWatchlist } from '@/lib/actions/watchlist.actions';
 import { formatNumber, formatPercent, formatPrice, formatUserDate, formatUserDateTime } from '@/lib/format';
 import { etiquetaSector } from '@/lib/labels';
@@ -122,6 +122,10 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
             <div className="min-w-0 lg:col-span-1">
                 <EnhancedProPicksFilters
                     filters={filters}
+                    // F184: ordenar por una categoría neutral en TODOS los
+                    // picks del run es ordenar por una constante (50): la
+                    // opción se deshabilita y se etiqueta n/d.
+                    neutralSorts={(['momentum', 'value'] as const).filter((key) => allNeutralCategory(picks, key))}
                     onFiltersChange={setFilters}
                     onApply={handleApplyFilters}
                 />
@@ -157,16 +161,18 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                     <p className="text-xs text-gray-400 leading-relaxed">
                         El embudo v1 puntúa las métricas de calidad y crecimiento ya
                         persistidas de todo el universo (SEC + ESEF) y las ordena por
-                        percentiles. Valoración y momentum no discriminan en v1: sin
-                        series de precios para todo el universo entran neutras (50)
-                        en el score y se muestran n/d en las tarjetas.
+                        percentiles. Valoración y momentum no discriminan en v1: la
+                        valoración necesita CFROI y WACC y el momentum series de
+                        precios, y esos datos aún no cubren todo el universo, así que
+                        entran neutras (50) en el score y se muestran n/d en las
+                        tarjetas.
                     </p>
                     <div className="mt-3 pt-3 border-t border-gray-700">
                         <div className="text-xs text-gray-500 space-y-1">
                             <div>✓ Análisis fundamental (calidad y crecimiento)</div>
                             <div>✓ Análisis de salud financiera</div>
                             <div>✓ Ranking por percentiles del universo</div>
-                            <div>~ Valoración y momentum: neutras en v1 (sin series para todo el universo)</div>
+                            <div>~ Valoración y momentum: neutras en v1 (faltan CFROI/WACC y series de precios para todo el universo)</div>
                         </div>
                     </div>
                 </Card>
