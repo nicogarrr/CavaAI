@@ -24,6 +24,7 @@ import {
 } from '@/components/research/FundamentalModelPanels';
 import { Badge } from '@/components/ui/badge';
 import { exchangeDisplayName } from '@/lib/exchangeName';
+import { auditScoreText, auditStatusLabel } from '@/lib/audit-status-copy';
 import { Button } from '@/components/ui/button';
 import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -969,7 +970,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <Panel title="Auditorías de fuentes">
         {audits.length ? (
-          <div className="space-y-3">{audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'superada' : 'fallida'}</Badge><Badge variant="outline">puntuación de respaldo de afirmaciones {audit.source_coverage_score}/100 (penaliza baja confianza)</Badge><Badge variant="outline">tesis {audit.thesis_version_id ?? 'desconocida'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>)}</div>
+          <div className="space-y-3">{audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{auditStatusLabel(audit.passed)}</Badge><Badge variant="outline">{auditScoreText(audit.passed, audit.source_coverage_score, String)}</Badge><Badge variant="outline">tesis {audit.thesis_version_id ?? 'desconocida'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>)}</div>
         ) : (
           <EmptyState
             action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera una tesis para auditar fuentes</EmptyLink>}
