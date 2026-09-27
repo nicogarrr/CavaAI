@@ -44,11 +44,10 @@ V2_CAPEX_TO_DA_MAX = Decimal("1.5")
 # Metricas compuestas con ventana propia (no caben en WINDOWED_RATIO_METRICS).
 WINDOWED_COMPOSED_METRICS = ("owner_earnings_5y", "capex_to_da_5y")
 
-# F153 (segunda linea de defensa): un margen > 100% no es una lectura
-# economica valida como benchmark - con periodos coherentes solo cabe por
-# ganancias excepcionales no operativas, y antes de la puerta de coherencia
-# era la firma tipica de numerador y denominador de periodos distintos
-# (net_income FY2026 / revenue FY2010 = 834%). Fuera como «sin datos».
+# F153: con periodos coherentes, un margen > 100% puede ser REAL (venta de
+# activos, reversion fiscal, liberacion de circulante). No se declara «sin
+# datos» - eso violaria veracidad: se calcula y se etiqueta de atipico en la
+# traza, con numerador y denominador visibles para su verificacion.
 MARGIN_METRICS = ("gross_margin", "operating_margin", "net_margin", "fcf_margin")
 
 METRIC_DEFINITIONS: dict[str, MetricFormula] = {
@@ -356,28 +355,16 @@ class MetricCalculationService:
             return self._persist_if_requested(db, company, result, persist)
 
         value = _quantize(numerator / denominator)
+        # F153: margen > 100% con periodos coherentes = dato real atipico
+        # (ganancia no operativa excepcional). Se publica etiquetado.
         if metric in MARGIN_METRICS and value > Decimal("1"):
-            result = MetricResult(
-                metric=metric,
-                status="unavailable",
-                period=period,
-                value=None,
-                unit=unit,
-                definition_version=definition_version,
-                formula=formula,
-                numerator=_quantize(numerator),
-                denominator=_quantize(denominator),
-                source_fact_ids=[fact.id for fact in unique_facts],
-                calculation_trace={
-                    **trace,
-                    "reason": "implausible_margin_over_100pct",
-                    "rejected_value": str(value),
-                },
-                confidence=Decimal("0.00"),
-                fiscal_year=next(iter(facts.values())).fiscal_year if facts else None,
-                fiscal_quarter=next(iter(facts.values())).fiscal_quarter if facts else None,
-            )
-            return self._persist_if_requested(db, company, result, persist)
+            trace = {
+                **trace,
+                "atypical": (
+                    "margin_over_100pct: lectura real posible solo por ganancias "
+                    "no operativas excepcionales; verificar numerador/denominador"
+                ),
+            }
         confidence = min(
             (Decimal(fact.confidence) for fact in unique_facts),
             default=Decimal("0.70"),
@@ -775,11 +762,30 @@ class MetricCalculationService:
     def _same_period(self, candidate: FinancialFact, anchor: FinancialFact) -> bool:
         if candidate.period == anchor.period:
             return True
+        # F153: el fallback fiscal_year/fiscal_quarter puede asociar hechos
+        # con cierres distintos dentro del mismo ejercicio (una empresa que
+        # cambia de cierre, o un FY etiquetado a 2025-06-30 y otro a
+        # 2025-12-31). Si ambos periodos traen fin de periodo parseable, la
+        # coincidencia exige mismo fin Y misma etiqueta de duracion (un FY
+        # no es un Q4 aunque cierren el mismo dia).
+        anchor_key = self._period_key(anchor.period)
+        candidate_key = self._period_key(candidate.period)
+        if anchor_key is not None and candidate_key is not None:
+            return anchor_key == candidate_key
         return (
             anchor.fiscal_year is not None
             and candidate.fiscal_year == anchor.fiscal_year
             and candidate.fiscal_quarter == anchor.fiscal_quarter
         )
+
+    @staticmethod
+    def _period_key(period: str) -> tuple[str, str] | None:
+        """(fin_de_periodo, etiqueta) si el periodo las trae («2026-06-30:FY»);
+        None cuando la etiqueta es opaca («FY2025») y toca el fallback fiscal."""
+        end, sep, tag = period.partition(":")
+        if sep and tag and len(end) == 10 and end[4] == "-" and end[7] == "-":
+            return (end, tag)
+        return None
 
     def _normalize_rate(
         self,

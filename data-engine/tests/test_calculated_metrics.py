@@ -875,9 +875,11 @@ def test_ratio_ok_when_numerator_and_denominator_share_period():
         cleanup_metric_test_artifacts()
 
 
-def test_margin_over_100pct_is_rejected_as_implausible():
-    """F153 (segunda linea): aun con periodos coherentes, un margen > 100%
-    no es una lectura valida como benchmark."""
+def test_margin_over_100pct_with_coherent_periods_is_real_and_labeled_atypical():
+    """F153: con periodos coherentes, un margen > 100% puede ser un dato
+    REAL (venta de activos, reversion fiscal, liberacion de circulante).
+    No se declara «sin datos»: se calcula y se etiqueta de atipico con
+    numerador y denominador trazados."""
     cleanup_metric_test_artifacts()
     db = SessionLocal()
     try:
@@ -886,9 +888,67 @@ def test_margin_over_100pct_is_rejected_as_implausible():
         add_fact(db, company, "revenue", "1000")
         db.commit()
         result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "ok"
+        assert result.value == Decimal("2.00000000")
+        assert "margin_over_100pct" in result.calculation_trace["atypical"]
+        assert result.numerator == Decimal("2000.00000000")
+        assert result.denominator == Decimal("1000.00000000")
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_same_fiscal_year_with_different_period_ends_is_not_coherent():
+    """F153 (punto 2 del auditor): el fallback fiscal_year/fiscal_quarter no
+    puede asociar hechos con cierres distintos dentro del mismo ejercicio."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "180", period="2025-06-30:FY", fiscal_year=2025)
+        add_fact(db, company, "revenue", "1000", period="2025-12-31:FY", fiscal_year=2025)
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
         assert result.status == "unavailable"
-        assert result.value is None
-        assert result.calculation_trace["reason"] == "implausible_margin_over_100pct"
+        assert result.calculation_trace["reason"] == "incoherent_periods"
+        assert result.calculation_trace["incoherent_inputs"] == {"revenue": "2025-12-31:FY"}
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_duration_and_instant_facts_sharing_period_end_still_compute():
+    """F153 (punto 3 del auditor): las metricas sanas que mezclan flujo y
+    saldo instantaneo del mismo cierre (ROE = net_income FY / total_equity
+    instantaneo) siguen calculando tras la puerta."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "180", period="2025-06-30:FY", fiscal_year=2025)
+        add_fact(db, company, "total_equity", "900", period="2025-06-30:FY", fiscal_year=2025)
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "roe", persist=False)
+        assert result.status == "ok"
+        assert result.value == Decimal("0.20000000")
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_same_period_end_but_different_duration_tag_is_not_coherent():
+    """Un FY no es un Q4 aunque cierren el mismo dia (leccion F133: duracion
+    anual vs trimestral)."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "180", period="2025-06-30:FY", fiscal_year=2025)
+        add_fact(db, company, "revenue", "1000", period="2025-06-30:Q4", fiscal_year=None, fiscal_quarter="Q4")
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "unavailable"
+        assert result.calculation_trace["reason"] == "incoherent_periods"
     finally:
         db.close()
         cleanup_metric_test_artifacts()
