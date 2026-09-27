@@ -10,6 +10,7 @@ from app.workers.dramatiq_app import (
     dispatch_insider_alerts,
     dispatch_tracked_news_alerts,
     evaluate_alert_rules,
+    reconcile_alert_analyses,
     reconcile_alert_deliveries,
     refresh_asts_catalog,
     refresh_ir_pages,
@@ -126,6 +127,15 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         partial(enqueue_for_all_tenants, refresh_macro_news),
         "interval",
         job_id="macro_news_refresh",
+        hours=1,
+    )
+    # Durabilidad AlertAnalysis: recupera filas perdidas aunque el evento
+    # ya no pase el filtro de elegibilidad de evaluate().
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, reconcile_alert_analyses),
+        "interval",
+        job_id="alert_analysis_reconcile",
         hours=1,
     )
     _register(

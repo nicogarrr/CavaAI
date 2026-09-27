@@ -49,6 +49,49 @@ def queue_analysis(db: Session, alert: ResearchAlert) -> AlertAnalysis | None:
     return row
 
 
+def reconcile_missing_analyses(db: Session, *, limit: int = 50) -> dict:
+    """Queue analyses for tracked_news alerts that never got a row.
+
+    Independent of NewsEvent eligibility (no MAX_AGE gate): the per-alert
+    repair in evaluate() only runs while the event still passes the
+    eligibility filter, so a lost row whose event aged out would never be
+    recovered. queue_analysis remains the honest gate: no event, no valid
+    URL, or no original headline means no row.
+    """
+    tenant_id = db.info.get("tenant_id")
+    if tenant_id is None:
+        raise ValueError("Tenant context required")
+    missing = db.scalars(
+        select(ResearchAlert)
+        .where(
+            ResearchAlert.tenant_id == tenant_id,
+            ResearchAlert.alert_type == "tracked_news",
+            ~select(AlertAnalysis.id)
+            .where(
+                AlertAnalysis.tenant_id == tenant_id,
+                AlertAnalysis.alert_id == ResearchAlert.id,
+                AlertAnalysis.version == VERSION,
+            )
+            .exists(),
+        )
+        .order_by(ResearchAlert.id)
+        .limit(limit)
+    ).all()
+    stats = {"examined": len(missing), "queued": 0, "unqueueable": 0}
+    for alert in missing:
+        try:
+            row = queue_analysis(db, alert)
+        except Exception:
+            db.rollback()
+            stats["unqueueable"] += 1
+            continue
+        if row is None:
+            stats["unqueueable"] += 1
+        else:
+            stats["queued"] += 1
+    return stats
+
+
 def analyze_alert(db: Session, alert_id: int) -> dict:
     tenant_id = db.info.get("tenant_id")
     if tenant_id is None:

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -145,3 +145,55 @@ def test_later_evaluation_recovers_analysis_row_after_transient_creation_failure
     assert attempts[0] == 2
     assert len(session.scalars(select(AlertAnalysis)).all()) == 1
     assert len(session.scalars(select(ResearchAlert)).all()) == 1
+
+
+def test_reconcile_recovers_lost_row_beyond_eligibility_window(db):
+    from app.services.alert_analysis_service import reconcile_missing_analyses
+
+    session, tenants, company = db
+    old = NOW - timedelta(hours=72)  # fuera de la ventana MAX_AGE de evaluate()
+    article = NewsEvent(tenant_id=tenants[0].id, company_id=company.id,
+                        title="ASTS Old filing headline", source="Publisher",
+                        url="https://publisher.example/old", date=old,
+                        metadata_={"connector": "rss", "date_source": "source",
+                                   "source_headline": "ASTS old filing submitted"})
+    session.add(article)
+    session.flush()
+    alert = ResearchAlert(tenant_id=tenants[0].id, company_id=company.id, severity="medium",
+                          status="open", alert_type="tracked_news", title="t", message="m",
+                          fingerprint="fp-old", channels=["in_app"], last_triggered_at=old,
+                          metadata_={"news_event_id": article.id, "source_url": article.url,
+                                     "source": "Publisher"})
+    session.add(alert)
+    session.commit()
+    # evaluate() no lo recupera: el evento ya no es elegible por antigüedad
+    assert evaluate(session, now=NOW)["created"] == 0
+    assert session.scalar(select(AlertAnalysis)) is None
+    # la reconciliación sí: no depende de la elegibilidad del evento
+    stats = reconcile_missing_analyses(session)
+    assert stats == {"examined": 1, "queued": 1, "unqueueable": 0}
+    row = session.scalar(select(AlertAnalysis))
+    assert row and row.status == "pending" and row.alert_id == alert.id
+    # idempotente
+    assert reconcile_missing_analyses(session) == {"examined": 0, "queued": 0, "unqueueable": 0}
+
+
+def test_reconcile_stays_honest_without_original_headline(db):
+    from app.services.alert_analysis_service import reconcile_missing_analyses
+
+    session, tenants, company = db
+    article = NewsEvent(tenant_id=tenants[0].id, company_id=company.id,
+                        title="ASTS legacy composite", source="Publisher",
+                        url="https://publisher.example/legacy", date=NOW,
+                        metadata_={"connector": "rss", "date_source": "source"})
+    session.add(article)
+    session.flush()
+    alert = ResearchAlert(tenant_id=tenants[0].id, company_id=company.id, severity="medium",
+                          status="open", alert_type="tracked_news", title="t", message="m",
+                          fingerprint="fp-legacy", channels=["in_app"], last_triggered_at=NOW,
+                          metadata_={"news_event_id": article.id})
+    session.add(alert)
+    session.commit()
+    stats = reconcile_missing_analyses(session)
+    assert stats == {"examined": 1, "queued": 0, "unqueueable": 1}
+    assert session.scalar(select(AlertAnalysis)) is None
