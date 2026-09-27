@@ -259,7 +259,16 @@ class NewsService:
         skipped_duplicates = 0
 
         for item in items:
-            text = " ".join(part for part in [item.ticker, item.title, item.text] if part)
+            # F175: el ticker solo prefija el texto si el título no lo trae ya;
+            # si no, el titular guardado salía «COST COST 8-K».
+            parts = [item.title, item.text]
+            # Límite de palabra: «COSTCO Wholesale...» no empieza por el
+            # ticker «COST» a efectos de prefijo.
+            if item.ticker and not re.match(
+                rf"^\s*{re.escape(item.ticker)}\b", item.title or "", flags=re.IGNORECASE
+            ):
+                parts.insert(0, item.ticker)
+            text = " ".join(part for part in parts if part)
             company = self._company_for_item(db, text, item.ticker)
             if self._is_duplicate(db, company, text, item.url):
                 skipped_duplicates += 1
