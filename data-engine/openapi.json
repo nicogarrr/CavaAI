@@ -4369,6 +4369,17 @@
             "title": "Status",
             "type": "string"
           },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          },
           "title": {
             "title": "Title",
             "type": "string"

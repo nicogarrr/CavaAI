@@ -4769,6 +4769,8 @@ export interface components {
             snoozed_until: string | null;
             /** Status */
             status: string;
+            /** Ticker */
+            ticker?: string | null;
             /** Title */
             title: string;
             /**

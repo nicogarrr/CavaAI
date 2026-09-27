@@ -614,6 +614,7 @@ class ResearchAlertOut(BaseModel):
     id: int
     company_id: int | None
     review_id: int | None
+    ticker: str | None = None
     severity: str
     status: str
     alert_type: str

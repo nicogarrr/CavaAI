@@ -173,9 +173,19 @@ def list_alerts(
     # El estado derivado se refleja en DTOs, NUNCA en las entidades ORM:
     # mutarlas dejaba la sesion sucia y cualquier commit posterior del mismo
     # request podia flushear una escritura desde un GET.
+    company_ids = {alert.company_id for alert in alerts if alert.company_id is not None}
+    tickers = (
+        {
+            company.id: company.ticker
+            for company in db.scalars(select(Company).where(Company.id.in_(company_ids)))
+        }
+        if company_ids
+        else {}
+    )
     result: list[ResearchAlertOut] = []
     for alert in alerts:
         out = ResearchAlertOut.model_validate(alert)
+        out.ticker = tickers.get(alert.company_id)
         if alert.status == "snoozed" and _snooze_expired(alert.snoozed_until, now):
             out.status = "open"
             out.snoozed_until = None

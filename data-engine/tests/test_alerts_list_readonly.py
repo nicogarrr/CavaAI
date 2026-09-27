@@ -66,6 +66,30 @@ def test_snooze_indefinite_stays_hidden_and_expired_reappears(db):
     }
 
 
+def test_list_alerts_includes_ticker_for_actionable_history(db):
+    """F146: el historial de disparos necesita el ticker para enlazar a la
+    investigacion; alertas sin compania devuelven ticker=None, nunca inventado."""
+    _seed(db)
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    tickers = {out.title: out.ticker for out in result}
+    assert tickers == {
+        "AAPL open": "AAPL",
+        "AAPL future": "AAPL",
+        "AAPL indefinite": "AAPL",
+        "AAPL expired": "AAPL",
+    }
+    orphan = ResearchAlert(
+        company_id=None, alert_type="red_team", severity="medium",
+        title="sin compania", message="m", fingerprint="fp-orphan",
+        channels=["in_app"], status="open",
+    )
+    db.add(orphan)
+    db.commit()
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    by_title = {out.title: out for out in result}
+    assert by_title["sin compania"].ticker is None
+
+
 def test_get_never_mutates_the_orm_rows(db):
     alerts = _seed(db)
     list_alerts(ticker=None, status=None, include_snoozed=False, limit=100, db=db)

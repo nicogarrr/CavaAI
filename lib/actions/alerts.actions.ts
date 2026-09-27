@@ -151,6 +151,7 @@ export interface TriggeredAlertDelivery {
     alert_type: string;
     channels: string[];
     deliveries: Record<string, { status: string; attempted_at?: string; error?: string | null }>;
+    ticker: string | null;
     createdAt: string;
 }
 
@@ -163,6 +164,7 @@ type ResearchAlertRow = {
     alert_type: string;
     channels: string[];
     metadata: { deliveries?: TriggeredAlertDelivery['deliveries'] };
+    ticker: string | null;
     created_at: string;
 };
 
@@ -179,6 +181,7 @@ export async function getRecentTriggeredAlerts(limit = 20): Promise<TriggeredAle
         alert_type: row.alert_type,
         channels: row.channels ?? [],
         deliveries: row.metadata?.deliveries ?? {},
+        ticker: row.ticker ?? null,
         createdAt: row.created_at,
     }));
 }
