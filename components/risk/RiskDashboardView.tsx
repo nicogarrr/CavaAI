@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RecordDetail, formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
+import { etiquetaSector } from '@/lib/labels';
 import { formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { getRiskDashboard } from '@/lib/actions/risk.actions';
 
@@ -164,6 +165,23 @@ function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null 
     return display;
 }
 
+/** F43: el valor de mercado llega en divisa base (risk_service.py: value_base)
+ *  y se mostraba como numero crudo; el sector llega en ingles y se pintaba tal
+ *  cual. Formato monetario con la divisa base y sector con etiqueta ES. */
+function positionValueText(position: DataRecord, baseCurrency: string): string {
+    const value = position.market_value;
+    if (value === null || value === undefined || value === '') return NA;
+    const numeric = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numeric)) return NA;
+    return formatMoney(numeric, baseCurrency);
+}
+
+function positionSectorText(position: DataRecord): string {
+    const sector = position.sector;
+    if (sector === null || sector === undefined || sector === '') return NA;
+    return etiquetaSector(String(sector));
+}
+
 function weightText(position: DataRecord): string {
     const weight = position.weight;
     if (typeof weight === 'number' && Number.isFinite(weight)) {
@@ -193,6 +211,10 @@ function positionLink(position: DataRecord) {
 export default function RiskDashboardView({ initialDashboard }: RiskDashboardViewProps) {
     const positions = extractPositions(initialDashboard);
     const alerts = extractAlerts(initialDashboard);
+    // F43: misma regla que en el resumen - la divisa base viene del dashboard.
+    const baseCurrency = initialDashboard && typeof initialDashboard.base_currency === 'string' && initialDashboard.base_currency
+        ? initialDashboard.base_currency
+        : 'EUR';
 
     return (
         <div className="grid gap-6">
@@ -291,10 +313,10 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                                                     {formatRecordValue(position.name)}
                                                 </TableCell>
                                                 <TableCell className="text-sm text-gray-400">
-                                                    {formatRecordValue(position.sector)}
+                                                    {positionSectorText(position)}
                                                 </TableCell>
                                                 <TableCell className="text-right text-sm text-gray-200">
-                                                    {formatRecordValue(position.market_value)}
+                                                    {positionValueText(position, baseCurrency)}
                                                 </TableCell>
                                                 <TableCell className="text-right text-sm font-semibold text-gray-100">
                                                     {weightText(position)}
@@ -316,11 +338,11 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                                             </div>
                                             <div className="min-w-0">
                                                 <dt className="text-[11px] uppercase tracking-wide text-gray-500">Sector</dt>
-                                                <dd className="break-words text-sm text-gray-400">{formatRecordValue(position.sector)}</dd>
+                                                <dd className="break-words text-sm text-gray-400">{positionSectorText(position)}</dd>
                                             </div>
                                             <div className="min-w-0">
                                                 <dt className="text-[11px] uppercase tracking-wide text-gray-500">Valor</dt>
-                                                <dd className="break-words text-right text-sm text-gray-200">{formatRecordValue(position.market_value)}</dd>
+                                                <dd className="break-words text-right text-sm text-gray-200">{positionValueText(position, baseCurrency)}</dd>
                                             </div>
                                             <div className="min-w-0">
                                                 <dt className="text-[11px] uppercase tracking-wide text-gray-500">Peso (con caja)</dt>
