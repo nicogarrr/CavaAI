@@ -30,7 +30,8 @@ describe('portfolio tab param guard (F137)', () => {
   });
 
   it('escribe la pestaña a la URL al cambiar y cae a resumen', () => {
-    assert.match(source, /router\.replace\(`?\$?\{?pathname\}?.*tab=/, 'debe escribir ?tab= al cambiar');
+    assert.match(source, /router\.replace\(`?\$?\{?pathname\}?\?\$\{params\.toString\(\)\}/, 'debe escribir ?tab= al cambiar');
+    assert.match(source, /new URLSearchParams\(searchParams\.toString\(\)\)/, 'debe preservar los query params no-tab');
     assert.match(source, /'resumen'/, 'resumen es la caida segura');
     assert.equal(source.includes("useState('resumen')"), false, 'el estado ya no nace fijo ignorando la URL');
   });

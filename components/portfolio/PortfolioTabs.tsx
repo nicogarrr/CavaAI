@@ -73,7 +73,11 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
     const handleTabChange = (value: string) => {
         const next = normalizeTab(value);
         setActiveTab(next);
-        router.replace(`${pathname}?tab=${next}`, { scroll: false });
+        // Preserva los demás query params: replace sobre `${pathname}?tab=`
+        // los borraba todos (revisión #456).
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('tab', next);
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     };
     const [chartPeriod, setChartPeriod] = useState('1M');
 
