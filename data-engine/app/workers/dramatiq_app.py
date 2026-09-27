@@ -496,6 +496,25 @@ def refresh_market_pipeline(
         db.close()
 
 
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
+def refresh_portfolio_moves(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
+    """Digest yesterday's completed closes for one tenant."""
+    from datetime import timedelta
+
+    from app.services.portfolio_moves_service import build_digest
+
+    db = _session(tenant_id, user_id)
+    try:
+        digest = build_digest(db, datetime.now(UTC).date() - timedelta(days=1))
+        return {"actor": "refresh_portfolio_moves", "status": "ok", "digest_id": digest.id,
+                "coverage": digest.coverage}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error("refresh_portfolio_moves", exc, tenant_id=tenant_id)
+    finally:
+        db.close()
+
+
 @dramatiq.actor(max_retries=1, min_backoff=30_000, queue_name="prices")
 def refresh_portfolio_prices_intraday(
     tenant_id: int | None = None,
