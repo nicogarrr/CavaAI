@@ -63,6 +63,16 @@ def build_snapshot(db: Session, as_of: date, generated_at: datetime | None = Non
     probabilities = hmm.get("probabilities", {})
     # No complete point-in-time constituent/capitalization feed is configured.
     metrics["top_ten_sp500"] = top_ten_concentration(set(), {}, as_of)
+    # Beta fijada en el snapshot: las posiciones no tienen dimensión histórica,
+    # así que una respuesta auditable exige persistir el cálculo con su corte
+    # en vez de recalcularlo en cada GET con la cartera del momento.
+    beta = portfolio_beta(db, as_of)
+    metrics["portfolio_beta"] = {
+        **beta,
+        "as_of": as_of.isoformat(),
+        "computed_at": generated_at.isoformat(),
+        "method": "beta 63/252 vs S&P 500 con cierres ajustados emparejados; posiciones del tenant en el momento del snapshot",
+    }
     checksum = hashlib.sha256(json.dumps({"metrics": metrics, "probabilities": probabilities}, sort_keys=True).encode()).hexdigest()
     previous = db.scalar(
         select(MarketRegimeSnapshot).where(
@@ -113,6 +123,9 @@ def latest_snapshot(db: Session) -> dict:
         "model_version": snapshot.model_version,
         "metrics": snapshot.metrics,
         "probabilities": snapshot.probabilities,
-        "portfolio_beta": portfolio_beta(db, snapshot.snapshot_date),
+        "portfolio_beta": snapshot.metrics.get(
+            "portfolio_beta",
+            {"status": "sin datos", "reason": "snapshot sin beta persistida"},
+        ),
         "note": "Probabilidades filtradas sin etiqueta económica; métricas faltantes indican sin datos.",
     }
