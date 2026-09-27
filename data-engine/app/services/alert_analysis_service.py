@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import AlertAnalysis, NewsEvent, ResearchAlert
@@ -47,6 +47,109 @@ def queue_analysis(db: Session, alert: ResearchAlert) -> AlertAnalysis | None:
     db.add(row)
     db.commit()
     return row
+
+
+def reconcile_missing_analyses(db: Session, *, limit: int = 50) -> dict:
+    """Queue analyses for tracked_news alerts that never got a row.
+
+    Independent of NewsEvent eligibility (no MAX_AGE gate): the per-alert
+    repair in evaluate() only runs while the event still passes the
+    eligibility filter, so a lost row whose event aged out would never be
+    recovered. queue_analysis remains the honest gate: no event, no valid
+    URL, or no original headline means no row.
+
+    The candidate SELECT pre-filters in SQL the rows that can never pass
+    that gate (no matching event, no http(s) URL, no non-empty source
+    headline). But the SQL approximation cannot express the full gate: a
+    URL like "https://" without host, a userinfo URL, a tab-padded or
+    non-string JSON headline all pass the filter and fail the gate
+    forever. Fifty of those ahead by ID would starve the batch exactly
+    like the unfiltered version. So a deterministic gate failure
+    (queue_analysis returning None with the event present) leaves a
+    durable exclusion mark on the alert with the exact content it failed
+    on (url + source_headline). The candidate filter skips a marked
+    alert only while the event content still matches the mark: fixing
+    the URL or headline makes the row a candidate again automatically,
+    which is the retry path on data correction. A missing event needs no
+    mark: the EXISTS pre-filter already excludes it. Exceptions
+    (transient failures) never mark. A successful queue clears any stale
+    mark. queue_analysis stays the authoritative gate; the mark is only
+    bookkeeping on top of it.
+    """
+    tenant_id = db.info.get("tenant_id")
+    if tenant_id is None:
+        raise ValueError("Tenant context required")
+    if db.get_bind().dialect.name == "postgresql":
+        id_match = cast(NewsEvent.id, String) == ResearchAlert.metadata_["news_event_id"].as_string()
+    else:  # SQLite: json_extract devuelve el entero nativo; texto malformado no coincide ni rompe
+        id_match = NewsEvent.id == ResearchAlert.metadata_["news_event_id"]
+    url_norm = func.lower(func.trim(NewsEvent.url))
+    queueable_event = (
+        select(NewsEvent.id)
+        .where(
+            id_match,
+            NewsEvent.company_id == ResearchAlert.company_id,
+            or_(url_norm.like("http://%"), url_norm.like("https://%")),
+            func.length(func.trim(NewsEvent.url)) >= 8,
+            func.length(func.trim(NewsEvent.metadata_["source_headline"].as_string())) > 0,
+            or_(
+                ResearchAlert.metadata_["analysis_excluded_url"].as_string().is_(None),
+                ResearchAlert.metadata_["analysis_excluded_url"].as_string() != NewsEvent.url,
+                ResearchAlert.metadata_["analysis_excluded_headline"].as_string()
+                != NewsEvent.metadata_["source_headline"].as_string(),
+            ),
+        )
+        .exists()
+    )
+    base_filters = (
+        ResearchAlert.tenant_id == tenant_id,
+        ResearchAlert.alert_type == "tracked_news",
+        ~select(AlertAnalysis.id)
+        .where(
+            AlertAnalysis.tenant_id == tenant_id,
+            AlertAnalysis.alert_id == ResearchAlert.id,
+            AlertAnalysis.version == VERSION,
+        )
+        .exists(),
+    )
+    missing = db.scalars(
+        select(ResearchAlert).where(*base_filters, queueable_event)
+        .order_by(ResearchAlert.id).limit(limit)
+    ).all()
+    excluded = db.scalar(
+        select(func.count(ResearchAlert.id)).where(*base_filters, ~queueable_event)
+    ) or 0
+    stats = {"examined": len(missing), "queued": 0, "unqueueable": 0,
+             "excluded_no_data": excluded, "marked": 0}
+    for alert in missing:
+        try:
+            row = queue_analysis(db, alert)
+        except Exception:
+            db.rollback()  # transitorio: jamas marca
+            stats["unqueueable"] += 1
+            continue
+        if row is None:
+            stats["unqueueable"] += 1
+            event = db.scalar(select(NewsEvent).where(
+                NewsEvent.id == (alert.metadata_ or {}).get("news_event_id")))
+            if event is not None:
+                # Fallo determinista del gate: marca durable con el contenido
+                # exacto que fallo; si el dato se corrige, la marca deja de
+                # coincidir y la alerta reingresa sola.
+                alert.metadata_ = {
+                    **(alert.metadata_ or {}),
+                    "analysis_excluded_url": event.url,
+                    "analysis_excluded_headline": (event.metadata_ or {}).get("source_headline"),
+                }
+                stats["marked"] += 1
+        else:
+            stats["queued"] += 1
+            meta = alert.metadata_ or {}
+            if "analysis_excluded_url" in meta:
+                alert.metadata_ = {k: v for k, v in meta.items()
+                                   if not k.startswith("analysis_excluded_")}
+    db.commit()
+    return stats
 
 
 def analyze_alert(db: Session, alert_id: int) -> dict:
