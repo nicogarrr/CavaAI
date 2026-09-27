@@ -5,6 +5,7 @@ Cache en memoria de 60s para no golpear Yahoo en cada carga de la home.
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -86,6 +87,19 @@ _quote_cache_lock = threading.RLock()
 _YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
 
 
+# Yahoo nombra las clases de acciones US con guion (BRK-B), no con punto
+# (BRK.B, convención de Finnhub y del master). Las bolsas no-US llevan
+# sufijo de DOS letras (.MC, .AS, .TO, .SW, .DE); la clase US es UNA letra
+# A o B, así que el patrón no colisiona con sufijos de bolsa. Verificado
+# contra la chart API el 2026-09-27: BRK-B devuelve serie y BRK.B da 404.
+_SHARE_CLASS_DOTTED = re.compile(r"^([A-Z]{1,5})\.([AB])$")
+
+
+def _yahoo_chart_symbol(symbol: str) -> str:
+    match = _SHARE_CLASS_DOTTED.fullmatch(symbol)
+    return f"{match.group(1)}-{match.group(2)}" if match else symbol
+
+
 def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
     """Cotización puntual via Yahoo chart API con shape Finnhub {c,d,dp,h,l,o,pc}.
 
@@ -93,6 +107,7 @@ def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
     (IBEX .MC, .PA, .DE...); Finnhub free no los sirve. Devuelve None ante
     cualquier dato incompleto en lugar de inventar valores.
     """
+    symbol = _yahoo_chart_symbol(symbol)
     try:
         resp = client.get(
             f"{_YAHOO_CHART_URL}/{symbol}",
@@ -178,6 +193,7 @@ def _fetch_yahoo_candles(
     posiciones con close null (huecos) se descartan en TODOS los arrays para
     mantener la alineación por índice que espera el frontend.
     """
+    symbol = _yahoo_chart_symbol(symbol)
     try:
         resp = client.get(
             f"{_YAHOO_CHART_URL}/{symbol}",
