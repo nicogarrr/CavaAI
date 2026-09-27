@@ -174,11 +174,16 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                 </p>
             ) : initialResult.status === 'unavailable' ? (
                 <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
+                    {/* unavailable solo se devuelve cuando el ticker no resuelve CIK en EDGAR:
+                        eso prueba «no es emisor SEC US», nada mas. La reason estable
+                        («not a US SEC filer») ya la dice la cabecera; otra reason seria detalle. */}
                     <p>
-                        {initialTicker}: no hay señales insider públicas — no es un emisor SEC
-                        estadounidense o no constan Form 4 registrados.
+                        {initialTicker}: no es un emisor SEC estadounidense (sin CIK en EDGAR), así
+                        que no tiene señales insider Form 4.
                     </p>
-                    {typeof initialResult.reason === 'string' && initialResult.reason ? (
+                    {typeof initialResult.reason === 'string' &&
+                    initialResult.reason &&
+                    initialResult.reason !== 'not a US SEC filer' ? (
                         <p className="mt-2 text-xs text-amber-300/80">
                             Detalle técnico: {formatRecordValue(initialResult.reason)}
                         </p>

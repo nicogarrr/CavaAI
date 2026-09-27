@@ -29,10 +29,13 @@ export function degradedCopy(
 ): { header: string; detail: string | null } {
     const scanned = asNumber(fields.filings_scanned);
     const failed = asNumber(fields.filings_failed);
+    // Con contadores sabemos que se escanearon Form 4 y todos fallaron; con
+    // reason sola (catch global) el fallo pudo ser ANTES de consultar filings
+    // (CIK, listado), asi que la cabecera abarca consulta y lectura.
     const header =
         scanned !== null && failed !== null
             ? `${ticker}: SEC EDGAR no devolvió ningún Form 4 legible (${countText(failed)} con error de ${countText(scanned)} escaneados).`
-            : `${ticker}: SEC EDGAR no devolvió ningún Form 4 legible.`;
+            : `${ticker}: no se pudieron consultar o leer las señales Form 4 de SEC EDGAR.`;
     const detail =
         typeof fields.reason === 'string' && fields.reason ? fields.reason : null;
     return { header, detail };

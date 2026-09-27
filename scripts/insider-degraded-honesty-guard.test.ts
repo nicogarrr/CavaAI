@@ -22,9 +22,11 @@ test('degraded con contadores: cabecera con N de M y sin reason', () => {
     assert.equal(detail, null);
 });
 
-test('degraded con reason (catch global): cabecera explicativa común + reason como detalle', () => {
+test('degraded con reason (catch global): cabecera que abarca consulta y lectura + reason como detalle', () => {
+    // El catch también cubre fallos antes de consultar Form 4 (CIK, listado):
+    // afirmar «no devolvió ningún Form 4 legible» sobreafirmaría.
     const { header, detail } = degradedCopy('AAPL', { reason: 'TypeError: fetch failed' }, count);
-    assert.equal(header, 'AAPL: SEC EDGAR no devolvió ningún Form 4 legible.');
+    assert.equal(header, 'AAPL: no se pudieron consultar o leer las señales Form 4 de SEC EDGAR.');
     assert.equal(detail, 'TypeError: fetch failed');
 });
 
@@ -56,7 +58,13 @@ test('el vacío usa analyzedCountCopy (consciente del estado)', () => {
     assert.match(view, /analyzedCountCopy\(initialResult\.status, initialResult, countText\)/);
 });
 
-test('unavailable explica el motivo sin volcar la reason cruda', () => {
-    assert.match(view, /no es un emisor SEC\s+estadounidense o no constan Form 4 registrados/);
-    assert.match(view, /typeof initialResult\.reason === 'string' && initialResult\.reason \?/);
+test('unavailable afirma solo lo probado: sin CIK en EDGAR (backend: insider_service devuelve unavailable solo sin CIK)', () => {
+    assert.match(view, /no es un emisor SEC\s+estadounidense \(sin CIK en EDGAR\), así\s+que no tiene señales insider Form 4/);
+    assert.ok(
+        !/no constan Form 4 registrados/.test(view),
+        '«no constan Form 4 registrados» no queda probado por unavailable',
+    );
+    // La reason estable del backend («not a US SEC filer») ya la dice la
+    // cabecera; solo una reason distinta se muestra como detalle.
+    assert.match(view, /initialResult\.reason !== 'not a US SEC filer'/);
 });
