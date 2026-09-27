@@ -105,7 +105,7 @@ function NavLink({ item, pathname, collapsed }: { item: NavItem; pathname: strin
                 prefetch
                 title={collapsed ? item.label : undefined}
                 aria-current={active ? 'page' : undefined}
-                className={linkClasses(branchActive, collapsed)}
+                className={linkClasses(active, collapsed, 'text-sm', branchActive)}
             >
                 {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 shrink-0" />}
                 {!collapsed && <span className="truncate">{item.label}</span>}
@@ -161,13 +161,18 @@ function FooterLink({
  * `border-l-2`: un borde real cambia el ancho de la caja al alternar estados
  * y hace que el redondeo se corte en la esquina.
  */
-function linkClasses(active: boolean, collapsed: boolean, extra = 'text-sm') {
+function linkClasses(active: boolean, collapsed: boolean, extra = 'text-sm', branch = false) {
     return [
         'relative flex items-center gap-3 rounded-lg px-3 py-2 transition-colors',
         extra,
         collapsed ? 'justify-center' : '',
         active
             ? 'bg-gray-800 text-gray-100 before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-teal-400'
-            : 'text-gray-400 hover:bg-gray-800 hover:text-teal-300',
+            : branch
+              // La rama contiene la pagina actual, pero el padre NO es la
+              // pagina: texto claro sin fondo ni barra, para que no parezca
+              // un segundo destino activo (F283).
+              ? 'text-gray-100 hover:bg-gray-800 hover:text-teal-300'
+              : 'text-gray-400 hover:bg-gray-800 hover:text-teal-300',
     ].join(' ');
 }
