@@ -834,3 +834,61 @@ def test_quality_moat_score_v2_esef_approx_no_aplica_a_usd():
     finally:
         db.close()
         cleanup_metric_test_artifacts()
+
+
+def test_ratio_requires_matching_periods_between_numerator_and_denominator():
+    """F153: Comparables mostraba net_margin «Objetivo 8.33898622» (~834%)
+    porque componia net_income FY2026 con revenue FY2010 (el fallback no
+    estricto toma el ultimo hecho de cada metrica sin exigir periodo). Un
+    ratio sin coincidencia de periodo es «sin datos», nunca el cociente."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "133750000000", period="2026-06-30:FY", fiscal_year=2026)
+        add_fact(db, company, "revenue", "16040000000", period="2010-06-30:FY", fiscal_year=2010)
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "unavailable"
+        assert result.value is None
+        assert result.calculation_trace["reason"] == "incoherent_periods"
+        assert result.calculation_trace["incoherent_inputs"] == {"revenue": "2010-06-30:FY"}
+        assert result.calculation_trace["anchor"] == {"metric": "net_income", "period": "2026-06-30:FY"}
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_ratio_ok_when_numerator_and_denominator_share_period():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "180")
+        add_fact(db, company, "revenue", "1000")
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "ok"
+        assert result.value == Decimal("0.18000000")
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_margin_over_100pct_is_rejected_as_implausible():
+    """F153 (segunda linea): aun con periodos coherentes, un margen > 100%
+    no es una lectura valida como benchmark."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_fact(db, company, "net_income", "2000")
+        add_fact(db, company, "revenue", "1000")
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "net_margin", persist=False)
+        assert result.status == "unavailable"
+        assert result.value is None
+        assert result.calculation_trace["reason"] == "implausible_margin_over_100pct"
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()

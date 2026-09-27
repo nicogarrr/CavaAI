@@ -44,6 +44,13 @@ V2_CAPEX_TO_DA_MAX = Decimal("1.5")
 # Metricas compuestas con ventana propia (no caben en WINDOWED_RATIO_METRICS).
 WINDOWED_COMPOSED_METRICS = ("owner_earnings_5y", "capex_to_da_5y")
 
+# F153 (segunda linea de defensa): un margen > 100% no es una lectura
+# economica valida como benchmark - con periodos coherentes solo cabe por
+# ganancias excepcionales no operativas, y antes de la puerta de coherencia
+# era la firma tipica de numerador y denominador de periodos distintos
+# (net_income FY2026 / revenue FY2010 = 834%). Fuera como «sin datos».
+MARGIN_METRICS = ("gross_margin", "operating_margin", "net_margin", "fcf_margin")
+
 METRIC_DEFINITIONS: dict[str, MetricFormula] = {
     "fcf_margin": ("FCF_MARGIN_V1", "free_cash_flow / revenue", ("free_cash_flow", "revenue"), "decimal"),
     "net_margin": ("NET_MARGIN_V1", "net_income / revenue", ("net_income", "revenue"), "decimal"),
@@ -282,6 +289,42 @@ class MetricCalculationService:
             )
             return self._persist_if_requested(db, company, result, persist)
 
+        # F153: un ratio exige coincidencia de periodo entre numerador y
+        # denominador. El fallback no estricto de _coherent_facts toma el
+        # ultimo hecho de cada metrica aunque sean de periodos distintos -
+        # asi se compuso un net_margin del 834% (net_income FY2026 sobre
+        # revenue FY2010) que Comparables exponia como benchmark. Si los
+        # periodos no coinciden (mismo fin de periodo o mismo ano/trimestre
+        # fiscal), el ratio es «sin datos», nunca el cociente.
+        anchor_fact = facts[inputs[0]]
+        incoherent_inputs = {
+            input_metric: facts[input_metric].period
+            for input_metric in inputs[1:]
+            if not self._same_period(facts[input_metric], anchor_fact)
+        }
+        if incoherent_inputs:
+            result = MetricResult(
+                metric=metric,
+                status="unavailable",
+                period=period,
+                value=None,
+                unit=unit,
+                definition_version=definition_version,
+                formula=formula,
+                numerator=None,
+                denominator=None,
+                source_fact_ids=[fact.id for fact in facts.values()],
+                calculation_trace={
+                    "reason": "incoherent_periods",
+                    "anchor": {"metric": inputs[0], "period": anchor_fact.period},
+                    "incoherent_inputs": incoherent_inputs,
+                },
+                confidence=Decimal("0.00"),
+                fiscal_year=anchor_fact.fiscal_year,
+                fiscal_quarter=anchor_fact.fiscal_quarter,
+            )
+            return self._persist_if_requested(db, company, result, persist)
+
         numerator, denominator, trace, supplemental_facts = self._evaluate(
             db,
             company,
@@ -313,6 +356,28 @@ class MetricCalculationService:
             return self._persist_if_requested(db, company, result, persist)
 
         value = _quantize(numerator / denominator)
+        if metric in MARGIN_METRICS and value > Decimal("1"):
+            result = MetricResult(
+                metric=metric,
+                status="unavailable",
+                period=period,
+                value=None,
+                unit=unit,
+                definition_version=definition_version,
+                formula=formula,
+                numerator=_quantize(numerator),
+                denominator=_quantize(denominator),
+                source_fact_ids=[fact.id for fact in unique_facts],
+                calculation_trace={
+                    **trace,
+                    "reason": "implausible_margin_over_100pct",
+                    "rejected_value": str(value),
+                },
+                confidence=Decimal("0.00"),
+                fiscal_year=next(iter(facts.values())).fiscal_year if facts else None,
+                fiscal_quarter=next(iter(facts.values())).fiscal_quarter if facts else None,
+            )
+            return self._persist_if_requested(db, company, result, persist)
         confidence = min(
             (Decimal(fact.confidence) for fact in unique_facts),
             default=Decimal("0.70"),
