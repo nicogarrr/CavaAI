@@ -968,7 +968,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <Panel title="Auditorías de fuentes">
         {audits.length ? (
-          <div className="space-y-3">{audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'superada' : 'fallida'}</Badge><Badge variant="outline">cobertura {audit.source_coverage_score}/100</Badge><Badge variant="outline">tesis {audit.thesis_version_id ?? 'desconocida'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>)}</div>
+          <div className="space-y-3">{audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'superada' : 'fallida'}</Badge><Badge variant="outline">afirmaciones con fuente {audit.source_coverage_score}/100</Badge><Badge variant="outline">tesis {audit.thesis_version_id ?? 'desconocida'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>)}</div>
         ) : (
           <EmptyState
             action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera una tesis para auditar fuentes</EmptyLink>}

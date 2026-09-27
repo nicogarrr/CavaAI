@@ -156,7 +156,7 @@ export default async function ResearchSourcesPage() {
                   <span className={audit.passed ? 'font-semibold text-teal-300' : 'font-semibold text-amber-300'}>
                     {audit.passed ? 'superada' : 'bloqueada'}
                   </span>
-                  <span className="text-sm text-gray-500">cobertura {formatNumber(audit.source_coverage_score, { maximumFractionDigits: 2 })}</span>
+                  <span className="text-sm text-gray-500" title="Porcentaje de afirmaciones materiales de la tesis con fuente citada; no mide completitud de la valoración">afirmaciones con fuente {formatNumber(audit.source_coverage_score, { maximumFractionDigits: 2 })}/100</span>
                 </div>
                 <div className="mt-2 text-sm text-gray-400">
                   Tesis #{audit.thesis_version_id ?? NA}
