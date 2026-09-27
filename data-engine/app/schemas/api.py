@@ -623,6 +623,10 @@ class ResearchAlertOut(BaseModel):
     fingerprint: str
     channels: list[str]
     metadata: dict = Field(default_factory=dict, validation_alias="metadata_")
+    # F172: enlace al documento original (filing SEC, noticia) cuando la
+    # alerta nace de un evento con fuente - antes solo habia /research/<ticker>
+    # y el filing citado era inalcanzable desde la alerta.
+    source_url: str | None = None
     acknowledged_at: datetime | None
     acknowledged_by: str | None
     snoozed_until: datetime | None
