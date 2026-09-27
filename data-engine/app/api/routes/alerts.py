@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from typing import Annotated, Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.models import AlertRule, Company, ResearchAlert
+from app.models import AlertRule, Company, NewsEvent, ResearchAlert
 from app.schemas import (
     AlertRuleOut,
     ResearchAlertAction,
@@ -126,6 +127,26 @@ def _snooze_expired(snoozed_until: datetime | None, now: datetime) -> bool:
     return value <= now
 
 
+def _safe_http_url(value: object) -> str | None:
+    """Solo una URL absoluta http/https con host puede salir como enlace: el
+    valor acaba en el href de un <a target="_blank"> y NewsEvent.url acepta
+    cualquier string, asi que javascript:/data:/relativas se descartan (None)
+    en la frontera de salida en lugar de llegar al cliente."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = urlparse(value.strip())
+        hostname = parsed.hostname
+    except ValueError:
+        # URL malformada («https://[broken/path»): una alerta asi no puede
+        # tumbar el GET /api/alerts entero con un 500. El acceso a
+        # .hostname tambien puede lanzar ValueError (corchetes IPv6 rotos).
+        return None
+    if parsed.scheme in ("http", "https") and hostname:
+        return value.strip()
+    return None
+
+
 @router.get("", response_model=list[ResearchAlertOut])
 def list_alerts(
     ticker: str | None = None,
@@ -185,10 +206,31 @@ def list_alerts(
         if company_ids
         else {}
     )
+    # F172: la URL de la fuente viene de metadata.source_url (alertas insider)
+    # o del NewsEvent enlazado (alertas de filings/noticias). Sin URL no se
+    # inventa enlace: source_url queda None y la UI solo ofrece la ficha.
+    news_ids = {
+        alert.metadata_.get("news_event_id")
+        for alert in alerts
+        if alert.metadata_ and alert.metadata_.get("news_event_id")
+    }
+    news_urls = (
+        {
+            event.id: safe_url
+            for event in db.scalars(select(NewsEvent).where(NewsEvent.id.in_(news_ids)))
+            if (safe_url := _safe_http_url(event.url)) is not None
+        }
+        if news_ids
+        else {}
+    )
     result: list[ResearchAlertOut] = []
     for alert in alerts:
         out = ResearchAlertOut.model_validate(alert)
         out.ticker = tickers.get(alert.company_id)
+        metadata = alert.metadata_ or {}
+        out.source_url = _safe_http_url(metadata.get("source_url")) or news_urls.get(
+            metadata.get("news_event_id")
+        )
         if alert.status == "snoozed" and _snooze_expired(alert.snoozed_until, now):
             out.status = "open"
             out.snoozed_until = None
