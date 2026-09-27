@@ -392,9 +392,13 @@ def test_clean_audit_blocked_downstream_is_not_failed():
 
         run = RedTeamService().run(db, company, thesis, commit=False)
         messages = [f["message"] for f in run.findings]
+        # F301: el mensaje visible va en español y habla de puntuación de
+        # respaldo de afirmaciones, nunca de «cobertura» global.
         assert not any("Source audit failed with coverage 100" in m for m in messages)
         blocked = [f for f in run.findings if f["type"] == "source_audit_blocked"]
         assert blocked, messages
-        assert "no unsupported claims" in blocked[0]["message"]
+        assert "sin afirmaciones sin respaldo" in blocked[0]["message"]
+        assert "puntuación de respaldo de afirmaciones" in blocked[0]["message"]
+        assert "cobertura" not in blocked[0]["message"]
     finally:
         db.close()
