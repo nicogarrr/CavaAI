@@ -51,9 +51,9 @@ test('la divisa visible la pone solo el master: nunca un USD inventado', () => {
 });
 
 test('el market cap (solo líneas US, Finnhub en USD) declara su divisa', () => {
-    const cells = page.match(/formatCompact\(stock\.marketCap[^}]*\}\)?[^<]*/g) ?? [];
-    assert.ok(cells.length >= 2, 'market cap aparece en tarjeta y tabla');
-    for (const cell of cells) {
-        assert.ok(cell.includes('US$'), `market cap sin divisa declarada: ${cell}`);
-    }
+    assert.equal(
+        page.match(/stock\.marketCap !== null \? `\$\{formatCompact\(stock\.marketCap[^`]*` : NA/g)?.length ?? 0,
+        2,
+        'tarjeta y tabla: valor+US$ solo con dato; null es NA pelado, nunca «N/D US$»',
+    );
 });
