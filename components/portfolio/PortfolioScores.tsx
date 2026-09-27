@@ -39,6 +39,8 @@ export default function PortfolioScores({ scores }: PortfolioScoresProps) {
                             <div key={item.label} className="text-center p-3 bg-gray-900/50 rounded-lg">
                                 <item.icon className={`h-6 w-6 mx-auto mb-2 ${item.color}`} />
                                 {display.kind === 'no-data' ? (
+                                    // F255: la columna sin datos también nombra su factor;
+                                    // si no, cinco iconos iguales no dicen qué falta.
                                     <>
                                         <div
                                             className="text-2xl font-bold text-gray-500"
@@ -46,6 +48,7 @@ export default function PortfolioScores({ scores }: PortfolioScoresProps) {
                                         >
                                             &mdash;
                                         </div>
+                                        <div className="text-xs text-gray-400">{item.label}</div>
                                         <div className="text-[10px] uppercase tracking-wide text-gray-500">
                                             sin datos
                                         </div>
