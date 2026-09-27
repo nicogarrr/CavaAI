@@ -22,11 +22,24 @@ void test('tipos de instrumento del buscador en español (F174)', () => {
     assert.equal(etiquetaTipoInstrumento('Otro tipo'), 'Otro tipo');
 });
 
-void test('tiers y tipos de evento sin tokens internos (F175)', () => {
+void test('los ocho tiers del catálogo backend tienen etiqueta (F175)', () => {
+    // Catálogo completo de source_hierarchy_service.SOURCE_TIERS; si el
+    // backend añade una clave, su tripwire en pytest obliga a etiquetarla aquí.
     assert.equal(etiquetaTierFuente('tier_1_regulatory'), 'Regulatoria · T1');
+    assert.equal(etiquetaTierFuente('tier_2_company'), 'Empresa · T2');
+    assert.equal(etiquetaTierFuente('tier_3_transcript'), 'Transcripción · T3');
+    assert.equal(etiquetaTierFuente('tier_4_reputable_media'), 'Medios · T4');
+    assert.equal(etiquetaTierFuente('tier_5_data_provider'), 'Proveedor de datos · T5');
+    assert.equal(etiquetaTierFuente('tier_6_bootstrap'), 'Datos iniciales · T6');
+    assert.equal(etiquetaTierFuente('tier_7_user_input'), 'Aportado por el usuario · T7');
+    assert.equal(etiquetaTierFuente('tier_unknown'), 'Fuente sin clasificar');
+});
+
+void test('tipos de evento y fallback de códigos futuros (F175)', () => {
     assert.equal(etiquetaTipoEvento('regulatory'), 'Regulatorio');
     assert.equal(etiquetaTipoEvento('earnings'), 'Resultados');
-    assert.equal(etiquetaTierFuente('tier_raro'), 'tier_raro');
+    // Código futuro desconocido: se muestra crudo (honesto), nunca inventado.
+    assert.equal(etiquetaTierFuente('tier_8_futuro'), 'tier_8_futuro');
 });
 
 void test('los componentes usan las etiquetas, no la cadena cruda', () => {

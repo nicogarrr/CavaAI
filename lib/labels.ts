@@ -32,12 +32,18 @@ export function etiquetaSector(value: string): string {
 
 /** Etiqueta ES del tier de fuente (F175): el token interno
  *  («tier_1_regulatory») no se muestra tal cual; desconocido -> tal cual. */
+// Las ocho claves del catálogo backend (source_hierarchy_service.SOURCE_TIERS).
+// Si el backend añade una clave nueva, aquí debe llegar su etiqueta; hasta
+// entonces se muestra el código crudo (visible y honesto, nunca inventado).
 const TIERS_FUENTE: Record<string, string> = {
   tier_1_regulatory: 'Regulatoria · T1',
   tier_2_company: 'Empresa · T2',
   tier_3_transcript: 'Transcripción · T3',
   tier_4_reputable_media: 'Medios · T4',
   tier_5_data_provider: 'Proveedor de datos · T5',
+  tier_6_bootstrap: 'Datos iniciales · T6',
+  tier_7_user_input: 'Aportado por el usuario · T7',
+  tier_unknown: 'Fuente sin clasificar',
 };
 
 export function etiquetaTierFuente(value: string): string {

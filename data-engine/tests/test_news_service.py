@@ -192,3 +192,17 @@ def test_ingest_prefixes_ticker_when_title_lacks_it(db):
     response = service.ingest_news_items(db, [item])
     assert response.created == 1
     assert response.events[0].summary.startswith("AAPL Files 10-K")
+
+
+def test_ingest_ticker_prefix_uses_word_boundary(db):
+    """«COSTCO Wholesale...» no empieza por el ticker COST: sí lleva prefijo."""
+    _company(db, ticker="COST")
+    service = NewsService()
+    item = NewsFeedItem(
+        ticker="COST", title="COSTCO Wholesale files 8-K", text="...",
+        source="sec", url="https://x.test/costco-8k",
+    )
+    response = service.ingest_news_items(db, [item])
+    assert response.created == 1
+    summary = response.events[0].summary
+    assert summary.startswith("COST COSTCO Wholesale files 8-K")
