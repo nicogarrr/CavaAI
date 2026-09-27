@@ -121,7 +121,7 @@ def test_run_without_findings_is_honest_about_coverage(db):
     assert run.trace["method"] == "deterministic_evidence_attack_v1"
     assert run.trace["claim_count"] == 0
     if not run.findings:
-        assert "insufficient coverage rather than low risk" in run.strongest_bear_case
+        assert "cobertura insuficiente" in run.strongest_bear_case
     else:
         # With no claims the valuation finding dominates the attack.
         assert run.findings[0]["type"] == "valuation_not_publishable"
