@@ -12,6 +12,7 @@ import {
     type DataRecord,
 } from '@/components/data/RecordViews';
 import { getTaxHoldings, getTaxReport, regenerateTaxReport } from '@/lib/actions/taxes.actions';
+import { recordDetailKey } from '@/components/taxes/record-detail-key';
 import { formatUserDateTime, formatMoney, NA } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
@@ -157,6 +158,14 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
     const [report, setReport] = useState<DataRecord | null>(initialReport);
     const [reportKey, setReportKey] = useState(0);
 
+    // F94: al cambiar de ejercicio el servidor trae el informe del año nuevo,
+    // pero el estado local conservaba el anterior - el encabezado decía
+    // «Reporte Fiscal 2025» y el contenido seguía siendo el de 2026. El
+    // estado se resincroniza siempre que cambian el año o el informe inicial.
+    useEffect(() => {
+        setReport(initialReport);
+    }, [year, initialReport]);
+
     const handleYearChange = (next: string) => {
         const parsed = Number.parseInt(next, 10);
         if (!Number.isInteger(parsed)) return;
@@ -215,7 +224,7 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
                 </select>
             </div>
             <RecordDetail
-                key={reportKey}
+                key={recordDetailKey(year, reportKey)}
                 title={`Reporte Fiscal ${year}`}
                 description="Resumen orientativo del ejercicio — no apto para declarar sin la validación de un asesor fiscal"
                 icon={<FileText className="h-5 w-5 text-teal-400" />}
