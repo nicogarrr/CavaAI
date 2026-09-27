@@ -70,7 +70,7 @@ def test_alerts_resolves_european_alias(db: Session):
     from app.api.routes.alerts import list_alerts
 
     company = _san_base(db)
-    db.add(ResearchAlert(company_id=company.id, status="open", alert_type="drift", title="a"))
+    db.add(ResearchAlert(company_id=company.id, status="open", alert_type="drift", title="a", message="m", fingerprint=f"fp-{company.id}"))
     db.commit()
 
     alerts = list_alerts(ticker="SAN.MC", status=None, include_snoozed=False, limit=100, db=db)
