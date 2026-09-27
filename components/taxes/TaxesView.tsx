@@ -13,6 +13,7 @@ import {
 } from '@/components/data/RecordViews';
 import { getTaxHoldings, getTaxReport, regenerateTaxReport } from '@/lib/actions/taxes.actions';
 import { recordDetailKey } from '@/components/taxes/record-detail-key';
+import { reportForYear, type ReportOverride } from '@/lib/taxes/report-state';
 import { formatUserDateTime, formatMoney, NA } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
@@ -155,16 +156,15 @@ function downloadTaxSummary(holdings: DataRecord[], report: DataRecord | null, y
 export default function TaxesView({ initialHoldings, initialReport, year }: TaxesViewProps) {
     const router = useRouter();
     const [regenerating, setRegenerating] = useState(false);
-    const [report, setReport] = useState<DataRecord | null>(initialReport);
+    // F260: el informe mostrado se DERIVA del año pedido (reportForYear), no
+    // se copia a un estado espejo. Un useState(initialReport) + useEffect de
+    // resync dejaba un render intermedio con el informe viejo: RecordDetail se
+    // remontaba (key con year) capturando ese informe viejo, y el título
+    // decía «Reporte Fiscal 2025» con el contenido de 2026. Solo se guarda el
+    // override de «Regenerar», etiquetado con su ejercicio.
+    const [override, setOverride] = useState<ReportOverride | null>(null);
     const [reportKey, setReportKey] = useState(0);
-
-    // F94: al cambiar de ejercicio el servidor trae el informe del año nuevo,
-    // pero el estado local conservaba el anterior - el encabezado decía
-    // «Reporte Fiscal 2025» y el contenido seguía siendo el de 2026. El
-    // estado se resincroniza siempre que cambian el año o el informe inicial.
-    useEffect(() => {
-        setReport(initialReport);
-    }, [year, initialReport]);
+    const report = reportForYear(override, initialReport, year);
 
     const handleYearChange = (next: string) => {
         const parsed = Number.parseInt(next, 10);
@@ -180,9 +180,10 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
             // la vista muestre los datos nuevos sin recarga manual.
             const fresh = (await getTaxReport(year).catch(() => null)) as DataRecord | null;
             if (fresh) {
-                setReport(fresh);
+                setOverride({ year, report: fresh });
                 setReportKey((key) => key + 1);
             } else {
+                setOverride(null);
                 router.refresh();
             }
             toast.success(`Reporte fiscal ${year} regenerado`);
