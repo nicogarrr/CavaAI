@@ -87,6 +87,8 @@ export interface RecordListProps {
     rowActions?: (record: DataRecord, index: number) => ReactNode;
     /** Columnas cuyo valor se renderiza como enlace (p.ej. ticker -> /research/[ticker]) */
     linkColumns?: Record<string, (record: DataRecord, index: number) => string | null | undefined>;
+    /** Formateadores por columna (p. ej. importes con la divisa de la fila). */
+    formatColumns?: Record<string, (value: unknown, record: DataRecord) => string>;
     /** Etiquetas de cabecera por columna; las no mapeadas muestran la clave cruda (nunca se ocultan) */
     columnLabels?: Record<string, string>;
     footer?: ReactNode;
@@ -103,6 +105,7 @@ export function RecordList({
     emptyAction,
     rowActions,
     linkColumns,
+    formatColumns,
     columnLabels,
     footer,
 }: RecordListProps) {
@@ -122,7 +125,10 @@ export function RecordList({
     };
 
     const visibleColumns = pickColumns(records, columns);
-    const cellText = (record: DataRecord, column: string) => formatRecordValue(record[column]);
+    const cellText = (record: DataRecord, column: string) => {
+        const format = formatColumns?.[column];
+        return format ? format(record[column], record) : formatRecordValue(record[column]);
+    };
     const cellHref = (record: DataRecord, index: number, column: string) =>
         linkColumns?.[column]?.(record, index) ?? null;
 
