@@ -251,13 +251,13 @@ def test_list_alerts_over_http_serves_rows_and_sanitizes():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from app.api.routes import alerts as alerts_module
-    from app.core.database import get_db
-    from app.models.entities import NewsEvent
-
     # TestClient sirve la app en otro hilo: StaticPool comparte la unica
     # conexion entre hilos (con :memory: cada conexion seria una BD vacia).
     from sqlalchemy.pool import StaticPool
+
+    from app.api.routes import alerts as alerts_module
+    from app.core.database import get_db
+    from app.models.entities import NewsEvent
 
     engine = create_engine(
         "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
