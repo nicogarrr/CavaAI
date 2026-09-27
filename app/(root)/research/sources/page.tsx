@@ -11,6 +11,7 @@ import {
   importResearchSource,
 } from '@/lib/actions/research.actions';
 import { formatDate, formatNumber, NA } from '@/lib/format';
+import { auditScoreText, auditStatusLabel } from '@/lib/audit-status-copy';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -156,9 +157,9 @@ export default async function ResearchSourcesPage() {
               <div key={audit.id} className="rounded-md border border-gray-800 bg-black/30 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <span className={audit.passed ? 'font-semibold text-teal-300' : 'font-semibold text-amber-300'}>
-                    {audit.passed ? 'superada' : 'bloqueada'}
+                    {auditStatusLabel(audit.passed)}
                   </span>
-                  <span className="text-sm text-gray-500" title="Afirmaciones materiales con fuente citada menos 5 puntos por afirmación de baja confianza; no mide completitud de la valoración">puntuación de respaldo de afirmaciones {formatNumber(audit.source_coverage_score, { maximumFractionDigits: 2 })}/100 (penaliza baja confianza)</span>
+                  <span className="text-sm text-gray-500" title="Afirmaciones materiales con fuente citada menos 5 puntos por afirmación de baja confianza; no mide completitud de la valoración">{auditScoreText(audit.passed, audit.source_coverage_score, (value) => formatNumber(value, { maximumFractionDigits: 2 }))}</span>
                 </div>
                 <div className="mt-2 text-sm text-gray-400">
                   Tesis #{audit.thesis_version_id ?? NA}
