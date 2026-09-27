@@ -103,12 +103,13 @@ def observed_hmm(db: Session, as_of: date, generated_at) -> dict:
 
 
 def portfolio_beta(db: Session, as_of: date) -> dict:
-    """Tenant-scoped held symbols only; a missing benchmark is explicit."""
+    """Per-symbol betas for CURRENT tenant holdings; not a portfolio beta."""
     benchmark = db.scalar(select(Company).where(Company.ticker == "^GSPC"))
     positions = db.scalars(select(Position).where(Position.quantity > 0)).all()
     company_ids = {p.company_id for p in positions}
     if not benchmark or not positions:
-        return {"status": "sin datos", "reason": "sin posiciones o benchmark S&P 500", "positions": {}}
+        return {"status": "sin datos", "reason": "sin posiciones o benchmark S&P 500", "positions": {},
+                "scope": "betas individuales de las posiciones actuales; no beta agregada"}
     rows = db.scalars(select(MarketPrice).where(
         MarketPrice.company_id.in_(company_ids | {benchmark.id}), MarketPrice.date <= as_of,
         MarketPrice.date >= as_of - timedelta(days=550),
@@ -119,10 +120,12 @@ def portfolio_beta(db: Session, as_of: date) -> dict:
             prices[row.company_id][row.date] = float(row.adj_close)
     results = {}
     if not prices[benchmark.id]:
-        return {"status": "sin datos", "reason": "benchmark S&P 500 sin cierres ajustados", "positions": {}}
+        return {"status": "sin datos", "reason": "benchmark S&P 500 sin cierres ajustados", "positions": {},
+                "scope": "betas individuales de las posiciones actuales; no beta agregada"}
     for company_id in sorted(company_ids):
         if company_id == benchmark.id:
             continue  # S&P 500 vs itself is not a useful portfolio diagnostic.
         results[str(company_id)] = {str(n): paired_beta(prices[company_id], prices[benchmark.id], n) for n in (63, 252)}
-    return {"status": "disponible" if results and any(v["63"]["status"] == "disponible" for v in results.values()) else "sin datos",
+    return {"scope": "posiciones actuales al consultar, beta individual por compañía; no beta agregada de cartera",
+            "status": "disponible" if results and any(v["63"]["status"] == "disponible" for v in results.values()) else "sin datos",
             "benchmark": "^GSPC", "positions": results}
