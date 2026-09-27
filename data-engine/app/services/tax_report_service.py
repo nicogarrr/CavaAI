@@ -684,12 +684,30 @@ def build_tax_summary_rows(db: Session, fiscal_year: int | None = None) -> list[
     ).all()
     result = []
     for position, company in rows:
+        # F240: las claves son las que lista /taxes (cost_basis, market_value,
+        # unrealized_pnl, currency) - antes se devolvian cost_basis_base y
+        # unrealized_pnl_base y toda la fila salia «-». None es «sin dato»
+        # (la UI lo pinta NA): nunca 0 inventado desde un null.
         result.append(
             {
                 "ticker": company.ticker,
                 "quantity": float(position.quantity),
-                "cost_basis_base": float(position.cost_basis_base or 0),
-                "unrealized_pnl_base": float(position.unrealized_pnl_base or 0),
+                "cost_basis": (
+                    float(position.cost_basis_base)
+                    if position.cost_basis_base is not None
+                    else None
+                ),
+                "market_value": (
+                    float(position.market_value_base)
+                    if position.market_value_base is not None
+                    else None
+                ),
+                "unrealized_pnl": (
+                    float(position.unrealized_pnl_base)
+                    if position.unrealized_pnl_base is not None
+                    else None
+                ),
+                "currency": position.base_currency,
                 "as_of": position.as_of.isoformat(),
             }
         )

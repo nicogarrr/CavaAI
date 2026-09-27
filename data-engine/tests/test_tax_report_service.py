@@ -316,6 +316,53 @@ def test_build_tax_summary_rows_without_fiscal_year(db: Session):
     assert len(rows) == 1
     assert rows[0]["ticker"] == "AAPL"
     assert rows[0]["quantity"] == 3.0
+    # F240: la UI de /taxes lista estas claves; los null quedan None (NA),
+    # nunca 0 inventados.
+    assert set(rows[0]) >= {
+        "ticker",
+        "quantity",
+        "cost_basis",
+        "market_value",
+        "unrealized_pnl",
+        "currency",
+    }
+    assert rows[0]["cost_basis"] is None
+    assert rows[0]["market_value"] is None
+    assert rows[0]["unrealized_pnl"] is None
+
+
+def test_build_tax_summary_rows_passes_base_amounts_and_currency(db: Session):
+    """F240: con importes cargados, la fila expone los valores base reales y
+    la divisa base (nunca recalculados ni inventados)."""
+    from app.models.entities import Position
+    from app.services.tax_report_service import build_tax_summary_rows
+
+    company = _company(db, "MSFT")
+    db.add(
+        Position(
+            company_id=company.id,
+            quantity=Decimal("6"),
+            cost_basis_native=Decimal("2400"),
+            cost_basis_base=Decimal("2200.50"),
+            market_value_native=Decimal("2700"),
+            market_value_base=Decimal("2480.75"),
+            unrealized_pnl=Decimal("300"),
+            unrealized_pnl_base=Decimal("280.25"),
+            currency="USD",
+            base_currency="EUR",
+        )
+    )
+    db.commit()
+
+    rows = build_tax_summary_rows(db)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["ticker"] == "MSFT"
+    assert row["cost_basis"] == 2200.50
+    assert row["market_value"] == 2480.75
+    assert row["unrealized_pnl"] == 280.25
+    assert row["currency"] == "EUR"
 
 
 def test_get_report_is_read_only_without_persisted_report(db):
