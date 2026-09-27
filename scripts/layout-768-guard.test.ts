@@ -18,3 +18,15 @@ test('F285: los CTAs del hero envuelven en sm en vez de desbordar a 768px', () =
     // a la siguiente línea.
     assert.match(landing, /mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center/);
 });
+
+test('F290: los KPIs de /portfolio dimensionan por ancho de contenido (sidebar en md)', () => {
+    // grid-cols-2 md:grid-cols-4 asumía viewport≈contenido: con el sidebar de
+    // 15rem visible desde md, a 768px el contenido son ~31rem y 4 columnas
+    // dejaban ~7rem por tarjeta (valores clipados, 4ª fuera del borde).
+    // auto-fit+minmax(12rem) colapsa a 2 columnas hasta que cada tarjeta
+    // tiene sitio real (~1280px con sidebar), sin tocar el móvil (<sm sigue
+    // en 2 columnas, verificado por QA).
+    const summary = readFileSync('components/portfolio/PortfolioSummary.tsx', 'utf8');
+    assert.match(summary, /grid grid-cols-2 gap-3 sm:gap-4 sm:\[grid-template-columns:repeat\(auto-fit,minmax\(12rem,1fr\)\)\]/);
+    assert.doesNotMatch(summary, /md:grid-cols-4/);
+});
