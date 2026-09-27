@@ -27,6 +27,7 @@ from app.services.budget import BudgetExceededError
 from app.services.claim_intelligence_service import ClaimIntelligenceService
 from app.services.company_resolver import resolve_company
 from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES, DocumentIngestionService
+from app.services.document_visibility import without_archive_duplicates
 from app.services.kpi_extraction_service import KPIExtractionService
 from app.services.manual_transcript_import_service import ManualTranscriptImportService
 from app.services.rag import RAGIndex
@@ -87,6 +88,7 @@ def documents(
     statement = select(Document, Company).outerjoin(Company, Document.company_id == Company.id)
     if ticker:
         statement = statement.where(Company.ticker == ticker.upper())
+    statement = without_archive_duplicates(statement)
 
     # «Mas recientes» = por fecha de PUBLICACION global, no por ingesta:
     # ordenar por created_at agrupaba por tanda de ingesta y desplazaba
@@ -162,6 +164,7 @@ def documents_count(
         statement = statement.where(Document.tenant_id == tenant_id)
     if ticker:
         statement = statement.where(Company.ticker == ticker.upper())
+    statement = without_archive_duplicates(statement)
     return {"total": int(db.execute(statement).scalar_one())}
 
 

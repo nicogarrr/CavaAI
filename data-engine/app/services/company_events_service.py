@@ -29,6 +29,7 @@ from app.core.errors import redact_secrets
 from app.models import Company, Document
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.sec import SECClient
+from app.services.document_visibility import without_archive_duplicates
 
 logger = logging.getLogger(__name__)
 
@@ -315,9 +316,16 @@ class CompanyEventsService:
         return items
 
     def _db_documents(self, company: Company, limit: int) -> list[dict[str, Any]]:
+        # F252: hay filas duplicadas del mismo filing de la SEC (re-ingestas
+        # historicas con bytes ligeramente distintos). El dedupe se hace en
+        # SQL antes del LIMIT para que el limite se aplique sobre las filas
+        # ya visibles; sin URL no se deduplica por titulo: dos notas
+        # homonimas con contenido distinto son documentos distintos y se
+        # muestran ambos, igual que en la vista global.
         rows = self.db.execute(
-            select(Document)
-            .where(Document.company_id == company.id)
+            without_archive_duplicates(
+                select(Document).where(Document.company_id == company.id)
+            )
             .order_by(Document.created_at.desc())
             .limit(limit)
         ).scalars().all()
