@@ -4769,6 +4769,8 @@ export interface components {
             severity: string;
             /** Snoozed Until */
             snoozed_until: string | null;
+            /** Source Url */
+            source_url?: string | null;
             /** Status */
             status: string;
             /** Ticker */

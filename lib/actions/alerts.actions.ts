@@ -154,6 +154,8 @@ export interface TriggeredAlertDelivery {
     ticker: string | null;
     /** Hora del ultimo disparo real; null en filas anteriores a la migracion 0036 (se desconoce). */
     triggeredAt: string | null;
+    /** URL del documento fuente (filing/noticia/Form 4) cuando el backend la conoce; null si no consta. */
+    sourceUrl: string | null;
     createdAt: string;
 }
 
@@ -168,6 +170,7 @@ type ResearchAlertRow = {
     metadata: { deliveries?: TriggeredAlertDelivery['deliveries'] };
     ticker: string | null;
     last_triggered_at: string | null;
+    source_url: string | null;
     created_at: string;
 };
 
@@ -188,6 +191,7 @@ export async function getRecentTriggeredAlerts(limit = 20): Promise<TriggeredAle
         // Sin fallback silencioso: en filas antiguas se desconoce la hora del
         // ultimo disparo y la UI etiqueta created_at como «Creada», no como disparo.
         triggeredAt: row.last_triggered_at ?? null,
+        sourceUrl: row.source_url ?? null,
         createdAt: row.created_at,
     }));
 }
