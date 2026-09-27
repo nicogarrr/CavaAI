@@ -21,6 +21,7 @@ from app.api.routes import (
     ownership,
     plan,
     portfolio,
+    portfolio_moves,
     propicks,
     reviews,
     risk,
@@ -53,6 +54,7 @@ api_router.include_router(earnings.router, prefix="/earnings", tags=["earnings"]
 api_router.include_router(export.router, prefix="/export", tags=["export"])
 api_router.include_router(insider.router, prefix="/insider", tags=["insider"])
 api_router.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
+api_router.include_router(portfolio_moves.router, prefix="/portfolio", tags=["portfolio"])
 api_router.include_router(propicks.router, prefix="/propicks", tags=["propicks"])
 api_router.include_router(plan.router, prefix="/plan", tags=["plan"])
 api_router.include_router(ownership.router, prefix="/ownership", tags=["ownership"])

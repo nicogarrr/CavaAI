@@ -608,6 +608,21 @@ class MarketRegimeSnapshot(Base, TimestampMixin):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class PortfolioMoveDigest(TenantOwnedMixin, Base, TimestampMixin):
+    __tablename__ = "portfolio_move_digests"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "digest_date", "version", "input_hash", name="uq_portfolio_move_digest_version"),
+        Index("ix_portfolio_move_digests_tenant_date", "tenant_id", "digest_date"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    digest_date: Mapped[date] = mapped_column(Date, index=True)
+    version: Mapped[str] = mapped_column(String(80))
+    input_hash: Mapped[str] = mapped_column(String(64))
+    items: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    coverage: Mapped[str] = mapped_column(String(40))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class MarketPrice(Base, TimestampMixin):
     __tablename__ = "market_prices"
     __table_args__ = (UniqueConstraint("company_id", "date", name="uq_market_price_company_date"),)
