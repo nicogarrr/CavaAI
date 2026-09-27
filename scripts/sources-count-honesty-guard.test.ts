@@ -52,8 +52,9 @@ void test('si /count no responde el total es desconocido, nunca un 0 fingido (F1
 
 void test('la tabla declara cuando esta truncada', () => {
     const page = source('app/(root)/research/sources/page.tsx');
-    assert.ok(page.includes('documentsTotal > documents.length'), 'condicion de truncado presente');
-    assert.ok(page.includes('más recientes de'), 'copy honesto de truncado');
+    assert.ok(page.includes('(pageInfo?.pages ?? 1) > 1'), 'condicion de paginacion presente');
+    assert.ok(page.includes('`Mostrando ${formatNumber(pageInfo?.from ?? 0'), 'el rango visible se declara (X-Y de N), no solo el total');
+    assert.ok(page.includes('por fecha de publicación; los documentos sin fecha van al final.'), 'copy honesto del orden');
 });
 
 void test('/documents/count se registra antes que /documents/{document_id} (FastAPI casa en orden)', () => {
