@@ -13,6 +13,14 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Panel } from '@/components/ui/panel';
 import { Stat } from '@/components/ui/stat';
 import { sectorIndustryLine } from '@/lib/sector-display';
+import {
+    filterResearchIndex,
+    firstSearchParam,
+    paginateResearchIndex,
+    parseIndexPage,
+    RESEARCH_INDEX_PAGE_SIZE,
+    researchIndexHref,
+} from '@/lib/research/index-filter';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -27,11 +35,10 @@ export const metadata: Metadata = {
  * El registro de empresas (`/api/companies`) solo trae la ficha de la empresa,
  * así que el rating y la fecha de la última tesis salen de su snapshot. Se
  * piden en UNA llamada batch (`/api/companies/snapshots?tickers=...`, queries
- * agregadas por IN en el backend) y con tope: por encima de este número se
- * listan todas las empresas pero solo las primeras llevan detalle de tesis, y
- * se dice en pantalla en lugar de cortar en silencio.
+ * agregadas por IN en el backend) para la página visible: el tamaño de página
+ * del índice casa con este tope, así toda tarjeta visible lleva su detalle.
  */
-const THESIS_DETAIL_LIMIT = 40;
+const THESIS_DETAIL_LIMIT = RESEARCH_INDEX_PAGE_SIZE;
 
 /** Ratings persistidos por el backend, en español (mismo mapa que la ficha). */
 const RATING_LABELS: Record<string, string> = {
@@ -102,8 +109,6 @@ type CompanyRow = {
     snapshot: CompanySnapshot | null;
     /** true = el snapshot no se pudo leer (backend intermitente). */
     unreadable: boolean;
-    /** true = más allá del tope de detalle de esta visita. */
-    pendiente: boolean;
 };
 
 function money(value: number, currency: string | undefined) {
@@ -123,7 +128,7 @@ function ratingLabel(value: string | null | undefined): string {
 
 /** Una fila del índice: ticker, nombre, salud del research y última tesis. */
 function CompanyCard({ row }: { row: CompanyRow }) {
-    const { company, snapshot, unreadable, pendiente } = row;
+    const { company, snapshot, unreadable } = row;
     const health = snapshot?.research_health;
     const thesis = snapshot?.latest_thesis ?? null;
 
@@ -147,8 +152,6 @@ function CompanyCard({ row }: { row: CompanyRow }) {
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                     {unreadable ? (
                         <span className="text-xs text-warn">No se pudo leer su research</span>
-                    ) : pendiente ? (
-                        <span className="text-xs text-gray-500">Detalle de tesis no cargado en esta visita</span>
                     ) : !snapshot ? (
                         <span className="text-xs text-gray-500">Sin research generado</span>
                     ) : (
@@ -173,7 +176,11 @@ function CompanyCard({ row }: { row: CompanyRow }) {
     );
 }
 
-export default async function ResearchPage() {
+export default async function ResearchPage({
+    searchParams,
+}: {
+    searchParams?: Promise<{ q?: string | string[]; page?: string | string[] }>;
+}) {
     let dashboard: Dashboard;
     try {
         dashboard = await getResearchDashboard();
@@ -185,9 +192,18 @@ export default async function ResearchPage() {
     }
     const { companies, portfolio } = dashboard;
 
+    const params = (await searchParams) ?? {};
+    // Claves repetidas (?q=A&q=B) llegan como array: sin normalizar rompen la página.
+    const query = firstSearchParam(params.q).trim();
+    const requestedPage = parseIndexPage(firstSearchParam(params.page));
+
     // Orden estable por ticker: el índice no debe reordenar solo entre renders.
     const ordered = [...companies].sort((left, right) => left.ticker.localeCompare(right.ticker, 'es'));
-    const detailed = ordered.slice(0, THESIS_DETAIL_LIMIT);
+    // F308: filtro y paginación en servidor. Solo la página visible se
+    // materializa en el HTML y solo ella pide detalle de tesis al motor.
+    const filtered = filterResearchIndex(ordered, query);
+    const slice = paginateResearchIndex(filtered, requestedPage);
+    const detailed = slice.rows.slice(0, THESIS_DETAIL_LIMIT);
     let snapshots: Awaited<ReturnType<typeof getResearchCompanySnapshots>> | null = null;
     try {
         if (detailed.length) {
@@ -199,18 +215,12 @@ export default async function ResearchPage() {
         snapshots = null;
     }
     const missing = new Set(snapshots?.missing ?? []);
-    const rows: CompanyRow[] = ordered.map((company, index): CompanyRow => {
-        if (index >= THESIS_DETAIL_LIMIT) {
-            // Se listan todas las empresas del registro; pasado el tope, la
-            // ficha se abre sin pedir su snapshot en esta visita.
-            return { company, snapshot: null, unreadable: false, pendiente: true };
-        }
+    const rows: CompanyRow[] = slice.rows.map((company): CompanyRow => {
         if (snapshots === null || missing.has(company.ticker)) {
-            return { company, snapshot: null, unreadable: true, pendiente: false };
+            return { company, snapshot: null, unreadable: true };
         }
-        return { company, snapshot: snapshots.snapshots[company.ticker] ?? null, unreadable: false, pendiente: false };
+        return { company, snapshot: snapshots.snapshots[company.ticker] ?? null, unreadable: false };
     });
-    const pendingCount = rows.filter((row) => row.pendiente).length;
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -223,18 +233,86 @@ export default async function ResearchPage() {
 
             <Panel
                 description={
-                    rows.length
+                    ordered.length
                         ? 'Cada ficha agrupa su análisis en seis etapas: resumen, tesis, financieros, modelo, evidencia y seguimiento.'
                         : 'El registro se crea al generar el primer análisis de una empresa.'
                 }
                 title="Empresas con research"
             >
-                {rows.length ? (
-                    <ul className="grid gap-3 sm:grid-cols-2">
-                        {rows.map((row) => (
-                            <CompanyCard key={row.company.ticker} row={row} />
-                        ))}
-                    </ul>
+                {ordered.length ? (
+                    <>
+                        <form action="/research" className="mb-4 flex flex-wrap items-center gap-2" method="get">
+                            <label className="sr-only" htmlFor="research-index-q">
+                                Filtrar por ticker o nombre
+                            </label>
+                            <input
+                                className="w-full max-w-xs rounded-lg border border-gray-700 bg-surface-1 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:border-teal-600 focus:outline-none"
+                                defaultValue={query}
+                                id="research-index-q"
+                                name="q"
+                                placeholder="Filtrar por ticker o nombre"
+                                type="search"
+                            />
+                            <button
+                                className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 transition hover:border-teal-700"
+                                type="submit"
+                            >
+                                Filtrar
+                            </button>
+                            {query ? (
+                                <Link
+                                    className="text-sm text-teal-300 hover:text-teal-200"
+                                    href="/research"
+                                >
+                                    Quitar filtro
+                                </Link>
+                            ) : null}
+                        </form>
+                        <p className="mb-3 text-xs text-gray-500">
+                            {query
+                                ? slice.total
+                                    ? `Mostrando ${formatNumber(slice.from)}-${formatNumber(slice.to)} de ${formatNumber(slice.total)} coincidencias para «${query}» (de ${formatNumber(ordered.length)} empresas en el registro)`
+                                    : `0 coincidencias para «${query}» (de ${formatNumber(ordered.length)} empresas en el registro)`
+                                : `Mostrando ${formatNumber(slice.from)}-${formatNumber(slice.to)} de ${formatNumber(slice.total)} empresas`}
+                        </p>
+                        {rows.length ? (
+                            <ul className="grid gap-3 sm:grid-cols-2">
+                                {rows.map((row) => (
+                                    <CompanyCard key={row.company.ticker} row={row} />
+                                ))}
+                            </ul>
+                        ) : (
+                            <EmptyState
+                                action={<EmptyLink href="/research">Quitar el filtro</EmptyLink>}
+                                description="Ninguna empresa del registro coincide con ese filtro. Prueba con otro ticker o nombre, o quita el filtro para ver el índice completo."
+                                icon={FileSearch}
+                                title={`Sin coincidencias para «${query}».`}
+                            />
+                        )}
+                        {slice.pages > 1 ? (
+                            <nav aria-label="Paginación del índice" className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+                                {slice.page > 1 ? (
+                                    <Link
+                                        className="rounded-lg border border-gray-700 px-3 py-1.5 text-gray-200 transition hover:border-teal-700"
+                                        href={researchIndexHref(query, slice.page - 1)}
+                                    >
+                                        Anterior
+                                    </Link>
+                                ) : null}
+                                <span className="text-xs text-gray-500">
+                                    Página {formatNumber(slice.page)} de {formatNumber(slice.pages)}
+                                </span>
+                                {slice.page < slice.pages ? (
+                                    <Link
+                                        className="rounded-lg border border-gray-700 px-3 py-1.5 text-gray-200 transition hover:border-teal-700"
+                                        href={researchIndexHref(query, slice.page + 1)}
+                                    >
+                                        Siguiente
+                                    </Link>
+                                ) : null}
+                            </nav>
+                        ) : null}
+                    </>
                 ) : (
                     <EmptyState
                         action={
@@ -248,13 +326,6 @@ export default async function ResearchPage() {
                         title="Todavía no hay ninguna empresa con research."
                     />
                 )}
-                {pendingCount > 0 ? (
-                    <p className="mt-4 text-xs text-gray-500">
-                        El detalle de tesis (salud, rating y fecha) se pide al motor como mucho para {THESIS_DETAIL_LIMIT}{' '}
-                        empresas por visita. Aquí se listan las {ordered.length}: las {pendingCount} últimas salen sin ese
-                        detalle, y lo verás al abrir su ficha.
-                    </p>
-                ) : null}
             </Panel>
 
             {/*
