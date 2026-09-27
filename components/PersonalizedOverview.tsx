@@ -19,6 +19,7 @@ import {
     type Alert,
     type TriggeredAlertDelivery,
 } from '@/lib/actions/alerts.actions';
+import { alertCardDestination } from '@/lib/alerts/card-destination';
 import { t } from '@/lib/i18n/t';
 import { buildPortfolioInsight } from '@/lib/portfolio-insight';
 
@@ -435,8 +436,19 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         <InlineSectionError message={alertsError} onRetry={retry} />
                     ) : triggeredAlerts.length > 0 ? (
                         <div className="space-y-3">
-                            {triggeredAlerts.map((item) => (
-                                <article className="min-w-0 rounded-lg border border-gray-700/50 bg-gray-900/50 p-3" key={item.id}>
+                            {triggeredAlerts.map((item) => {
+                                // F300-extensión: la tarjeta entera navega con el patrón
+                                // de enlace estirado (el CTA principal lleva
+                                // after:absolute after:inset-0 sobre la tarjeta
+                                // `relative`); el CTA secundario queda por encima con
+                                // relative z-10 y conserva su destino. Sin enlaces
+                                // anidados ni roles duplicados.
+                                const destination = alertCardDestination(item);
+                                return (
+                                <article
+                                    className={`min-w-0 rounded-lg border p-3 ${destination ? 'relative border-gray-700/50 bg-gray-900/50 transition-colors hover:border-teal-700/60 hover:bg-gray-900' : 'border-gray-700/50 bg-gray-900/50'}`}
+                                    key={item.id}
+                                >
                                     <div className="flex flex-wrap items-center gap-2">
                                         <Badge variant="outline">{SEVERITY_LABELS[item.severity] ?? item.severity}</Badge>
                                         <span className="text-xs text-gray-500">{formatUserDateTime(item.createdAt)}</span>
@@ -447,7 +459,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                         <span className="mt-2 inline-flex flex-wrap gap-3">
                                             {item.ticker && (
                                                 <Link
-                                                    className="inline-flex min-h-[44px] items-center text-xs text-teal-400 hover:text-teal-300 hover:underline"
+                                                    className="inline-flex min-h-[44px] items-center text-xs text-teal-400 after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:text-teal-300 hover:underline"
                                                     href={`/research/${item.ticker}`}
                                                 >
                                                     Abrir investigación de {item.ticker}
@@ -455,7 +467,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             )}
                                             {item.sourceUrl && (
                                                 <a
-                                                    className="inline-flex min-h-[44px] items-center text-xs text-teal-400 hover:text-teal-300 hover:underline"
+                                                    className={`inline-flex min-h-[44px] items-center text-xs text-teal-400 hover:text-teal-300 hover:underline ${item.ticker ? 'relative z-10' : "after:absolute after:inset-0 after:rounded-lg after:content-['']"}`}
                                                     href={item.sourceUrl}
                                                     rel="noopener noreferrer"
                                                     target="_blank"
@@ -466,7 +478,8 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                         </span>
                                     )}
                                 </article>
-                            ))}
+                                );
+                            })}
                             <p className="text-xs text-gray-500">
                                 {alerts.length === 1 ? '1 regla activa' : `${alerts.length} reglas activas`} · el motor las evalúa cada 5 min.
                             </p>
