@@ -44,3 +44,16 @@ test('métricas Finnhub solo para líneas US (nunca del ADR ni de un homónimo)'
 test('sin correspondencia validada: «sin datos», nunca el ticker desnudo', () => {
     assert.match(action, /if \(!quoteSymbol\) return base;/);
 });
+
+test('la divisa visible la pone solo el master: nunca un USD inventado', () => {
+    assert.match(action, /currency: base\.currency/);
+    assert.ok(!/\? 'USD' : null/.test(action), 'asumir USD sin divisa real contradice F253');
+});
+
+test('el market cap (solo líneas US, Finnhub en USD) declara su divisa', () => {
+    const cells = page.match(/formatCompact\(stock\.marketCap[^}]*\}\)?[^<]*/g) ?? [];
+    assert.ok(cells.length >= 2, 'market cap aparece en tarjeta y tabla');
+    for (const cell of cells) {
+        assert.ok(cell.includes('US$'), `market cap sin divisa declarada: ${cell}`);
+    }
+});

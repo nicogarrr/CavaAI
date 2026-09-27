@@ -160,10 +160,10 @@ export async function getWatchlistEntryData(symbol: string): Promise<WatchlistEn
     return {
         ...base,
         name: basics?.name || light?.profile?.name || normalized,
-        // Línea US: la USD es evidencia de listado americano aunque el master
-        // no traiga divisa (bulk import). En una línea con sufijo, la divisa
-        // la pone el master o no se afirma.
-        currency: basics?.currency || (usListing ? 'USD' : null),
+        // La divisa visible la pone SOLO el master (curado): ni la del
+        // proveedor (puede ser discordante, F163) ni un «USD» asumido por
+        // ser línea US — sin divisa real, número pelado.
+        currency: base.currency,
         price,
         change:
             price === null
