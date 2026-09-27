@@ -5,6 +5,7 @@ agrega con window functions + GROUP BY: las queries no crecen con N y el
 resultado es IDENTICO al de build() empresa a empresa.
 """
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -70,6 +71,79 @@ def _fill(db: Session, company: Company, *, thesis_versions: int, changes: int) 
 
 def _dump(snapshot) -> dict:
     return snapshot.model_dump(mode="json")
+
+
+def test_documents_count_collapses_archive_reingestas(db: Session):
+    """F304: el contador DOCUMENTOS cuenta lo visible, no filas crudas.
+
+    La misma pieza SEC se re-ingiere a diario con deriva de bytes: dos filas
+    con la MISMA URL de archivo son un solo documento visible (la lista las
+    colapsa). URLs vivas y filas sin URL no se colapsan nunca.
+    """
+    company = _company(db, "KO")
+    archive = "https://www.sec.gov/Archives/edgar/data/21344/000002134426000001/ko-10k.htm"
+    db.add(Document(
+        company_id=company.id, title="10-K 2024", source_type="sec",
+        source_url=archive, published_at=date(2024, 2, 20),
+    ))
+    db.add(Document(
+        company_id=company.id, title="10-K 2024 re-ingesta", source_type="sec",
+        source_url=archive, published_at=date(2024, 2, 21),
+    ))
+    db.add(Document(
+        company_id=company.id, title="Página viva", source_type="url",
+        source_url="https://example.com/ir",
+    ))
+    db.add(Document(company_id=company.id, title="Sin URL", source_type="upload"))
+    db.commit()
+
+    counts = CompanySnapshotService._counts_many(db, [company.id])[company.id]
+    assert counts["documents"] == 3
+    single = CompanySnapshotService._counts(db, company.id)
+    assert single["documents"] == 3
+
+
+def test_documents_count_scoped_to_current_tenant(db: Session):
+    """Los agregados no heredan el filtro de carga por tenant: el contador
+    filtra tenant explicitamente. Una empresa compartida (Company es global)
+    puede tener documentos en varios tenants; cada uno cuenta solo los suyos.
+    """
+    company = _company(db, "KO")
+    db.add(Document(company_id=company.id, title="10-K", source_type="sec",
+                    source_url="https://www.sec.gov/Archives/edgar/data/21344/000002134426000001/ko-10k.htm"))
+    db.add(Document(company_id=company.id, title="8-K", source_type="sec"))
+    db.commit()
+
+    db.info["tenant_id"] = 999
+    for index in range(3):
+        db.add(Document(company_id=company.id, title=f"Doc otro tenant {index}", source_type="upload"))
+    db.commit()
+    db.info["tenant_id"] = "tenant-test"
+
+    counts = CompanySnapshotService._counts_many(db, [company.id])[company.id]
+    assert counts["documents"] == 2
+    assert CompanySnapshotService._counts(db, company.id)["documents"] == 2
+
+    db.info["tenant_id"] = 999
+    counts = CompanySnapshotService._counts_many(db, [company.id])[company.id]
+    assert counts["documents"] == 3
+    assert CompanySnapshotService._counts(db, company.id)["documents"] == 3
+
+
+def test_documents_count_without_tenant_counts_everything(db: Session):
+    """Escenario sin tenant en la sesion: sin filtro, se cuenta todo lo
+    visible (comportamiento previo a F304 para los agregados)."""
+    company = _company(db, "KO")
+    db.add(Document(company_id=company.id, title="10-K", source_type="sec"))
+    db.commit()
+    db.info["tenant_id"] = 999
+    db.add(Document(company_id=company.id, title="Doc otro tenant", source_type="upload"))
+    db.commit()
+    db.info.pop("tenant_id", None)
+
+    counts = CompanySnapshotService._counts_many(db, [company.id])[company.id]
+    assert counts["documents"] == 2
+    assert CompanySnapshotService._counts(db, company.id)["documents"] == 2
 
 
 def test_build_many_matches_build_company_by_company(db: Session):
