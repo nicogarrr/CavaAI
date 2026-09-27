@@ -71,8 +71,13 @@ def analyze_alert(db: Session, alert_id: int) -> dict:
         analysis.result = {"sections": [{"key": "insufficient_data", "body": "No hay titular original y enlace verificables.", "citation_ids": []}],
                            "citations": [], "writeback": False}
     else:
-        date_source = (event.metadata_ or {}).get("date_source")
-        date_label = "primera detección GDELT" if date_source == "gdelt_first_seen" else "fecha atribuida a la fuente"
+        provenance = event.metadata_ or {}
+        date_source = provenance.get("date_source")
+        if provenance.get("connector") == "gdelt" and date_source == "source":
+            date_source = "gdelt_first_seen"  # legacy GDELT seendate is first-seen
+        date_label = ("primera detección GDELT" if date_source == "gdelt_first_seen"
+                      else "fecha atribuida a la fuente" if date_source == "source"
+                      else "fecha sin procedencia confirmada")
         citation = {"id": f"news_event:{event.id}", "kind": "news_event",
                     "source": event.source, "url": event.url,
                     "as_of": f"{event.date.isoformat()} ({date_label})", "excerpt": headline.strip()[:500]}
@@ -101,13 +106,15 @@ def read_analysis(db: Session, alert_id: int) -> dict:
         result = row.result or {}
         event = db.scalar(select(NewsEvent).where(NewsEvent.id == row.news_event_id))
         citations = result.get("citations", [])
-        valid = (event is not None and event.company_id == alert.company_id and
+        headline = (event.metadata_ or {}).get("source_headline") if event else None
+        valid = (isinstance(headline, str) and bool(headline.strip()) and
+                 isinstance(citations, list) and event.company_id == alert.company_id and
                  (alert.metadata_ or {}).get("news_event_id") == event.id and
                  all(c.get("id") == f"news_event:{event.id}" and
                      c.get("url") == event.url and
                      c.get("source") == event.source and
                      event.date.isoformat() in c.get("as_of", "") and
-                     c.get("excerpt") == (event.metadata_ or {}).get("source_headline", "").strip()[:500]
+                     c.get("excerpt") == headline.strip()[:500]
                      for c in citations))
         if not valid:
             versions.append({"id": row.id, "version": row.version, "status": "insufficient_data",
