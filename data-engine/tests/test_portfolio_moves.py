@@ -32,8 +32,8 @@ def test_tenant_digest_missing_and_news_are_not_causal(db):
     db.flush()
     db.add(Position(tenant_id=first.id, portfolio_id=portfolio.id, company_id=company.id,
                     quantity=Decimal("2"), average_cost=Decimal("10")))
-    db.add_all((MarketPrice(company_id=company.id, date=date(2026, 9, 23), close=Decimal("10"), source="feed"),
-                MarketPrice(company_id=company.id, date=date(2026, 9, 24), close=Decimal("11"), source="feed")))
+    db.add_all((MarketPrice(company_id=company.id, date=date(2026, 9, 23), close=Decimal("10"), adj_close=Decimal("10"), source="yfinance"),
+                MarketPrice(company_id=company.id, date=date(2026, 9, 24), close=Decimal("11"), adj_close=Decimal("11"), source="yfinance")))
     db.add(NewsEvent(tenant_id=first.id, company_id=company.id, date=datetime(2026, 9, 24, 8, tzinfo=UTC),
                      title="Related article", source="example.com", url="https://example.com/a", metadata_={"connector": "gdelt"}))
     db.add(NewsEvent(tenant_id=second.id, company_id=company.id, date=datetime(2026, 9, 24, 8, tzinfo=UTC),
@@ -71,8 +71,8 @@ def test_sql_filter_before_limit_keeps_gdelt(db):
     db.flush()
     db.add(Position(tenant_id=tenant.id, portfolio_id=portfolio.id, company_id=company.id,
                     quantity=Decimal("2"), average_cost=Decimal("10")))
-    db.add_all((MarketPrice(company_id=company.id, date=date(2026, 9, 23), close=Decimal("10"), source="feed"),
-                MarketPrice(company_id=company.id, date=date(2026, 9, 24), close=Decimal("11"), source="feed")))
+    db.add_all((MarketPrice(company_id=company.id, date=date(2026, 9, 23), close=Decimal("10"), adj_close=Decimal("10"), source="yfinance"),
+                MarketPrice(company_id=company.id, date=date(2026, 9, 24), close=Decimal("11"), adj_close=Decimal("11"), source="yfinance")))
     db.add(NewsEvent(tenant_id=tenant.id, company_id=company.id, date=datetime(2026, 9, 24, 8, tzinfo=UTC),
                      title="GDELT article", source="example.com", url="https://example.com/gdelt",
                      metadata_={"connector": "gdelt"}))
@@ -83,3 +83,21 @@ def test_sql_filter_before_limit_keeps_gdelt(db):
     db.info["tenant_id"] = tenant.id
     digest = build_digest(db, date(2026, 9, 24), datetime(2026, 9, 25, tzinfo=UTC))
     assert [row["url"] for row in digest.items[0]["related_news"]] == ["https://example.com/gdelt"]
+def test_spot_is_not_treated_as_completed_daily_bar(db):
+    tenant = Tenant(external_id="spot-tenant", name="Spot", metadata_={}, status="active")
+    db.add(tenant)
+    db.flush()
+    company = Company(ticker="SPOT", name="Spot", exchange="NASDAQ", currency="USD",
+                      company_type="holding", valuation_model="unassigned")
+    db.add(company)
+    db.flush()
+    db.add(Position(tenant_id=tenant.id, company_id=company.id, quantity=Decimal("1")))
+    db.add_all((MarketPrice(company_id=company.id, date=date(2026, 9, 23), close=Decimal("10"),
+                            adj_close=None, source="FMP"),
+                MarketPrice(company_id=company.id, date=date(2026, 9, 24), close=Decimal("11"),
+                            adj_close=None, source="yahoo_finance_intraday")))
+    db.commit()
+    db.info["tenant_id"] = tenant.id
+    digest = build_digest(db, date(2026, 9, 24), datetime(2026, 9, 25, tzinfo=UTC))
+    assert digest.items[0]["status"] == "sin datos"
+    assert digest.items[0]["related_news"] == []
