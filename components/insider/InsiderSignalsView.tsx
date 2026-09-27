@@ -171,18 +171,48 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                 <p className="rounded-lg border border-red-900/50 bg-red-950/20 p-6 text-sm text-red-200">
                     No se pudieron cargar las señales de {initialTicker}. Reintenta más tarde.
                 </p>
-            ) : initialResult.status !== 'ok' ? (
+            ) : initialResult.status === 'unavailable' ? (
                 <p className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
                     {initialTicker}: {formatRecordValue(initialResult.reason ?? initialResult.status)}
-                    {initialResult.status === 'unavailable'
-                        ? ' — no es un emisor SEC estadounidense.' : ''}
+                    {' — no es un emisor SEC estadounidense.'}
                 </p>
-            ) : signals.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
-                    {initialTicker}: {t('insider.noSignals')}
-                    ({countText(initialResult.filings_scanned)} analizados).
+            ) : initialResult.status === 'degraded' ? (
+                // F234: «AAPL: degraded» a pelo no decía nada. El backend ya
+                // devuelve cuántos Form 4 se escanearon y cuántos fallaron:
+                // un estado técnico se explica con sus números, nunca con la
+                // palabra cruda. Y se deja claro que no es un «sin actividad».
+                <p className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
+                    {initialResult.reason ? (
+                        <>
+                            {initialTicker}: {formatRecordValue(initialResult.reason)}
+                        </>
+                    ) : (
+                        <>
+                            {initialTicker}: SEC EDGAR no devolvió ningún Form 4 legible (
+                            {countText(initialResult.filings_failed)} con error de{' '}
+                            {countText(initialResult.filings_scanned)} escaneados). Es un fallo de
+                            lectura, no una ausencia de actividad insider. Reintenta más tarde.
+                        </>
+                    )}
                 </p>
             ) : (
+                // ok y partial: las señales parseadas son reales; partial las
+                // muestra con su aviso de cobertura incompleta.
+                <>
+                    {initialResult.status === 'partial' ? (
+                        <p className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
+                            {initialTicker}: lectura incompleta — {countText(initialResult.filings_parsed)} de{' '}
+                            {countText(initialResult.filings_scanned)} Form 4 leídos (
+                            {countText(initialResult.filings_failed)} con error). Las señales de abajo
+                            cubren solo los filings legibles.
+                        </p>
+                    ) : null}
+                    {signals.length === 0 ? (
+                        <p className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
+                            {initialTicker}: {t('insider.noSignals')}
+                            ({countText(initialResult.filings_scanned)} analizados).
+                        </p>
+                    ) : (
                 <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
                     <CardHeader className="flex flex-col gap-3 space-y-0 border-b border-gray-700/50 pb-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
@@ -303,6 +333,8 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                         </div>
                     </CardContent>
                 </Card>
+                    )}
+                </>
             )}
             {initialTicker && initialFilings && initialFilings.status === 'ok' && initialFilings.filings.length > 0 ? (
                 <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
