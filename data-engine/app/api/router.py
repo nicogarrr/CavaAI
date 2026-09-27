@@ -23,6 +23,7 @@ from app.api.routes import (
     portfolio,
     portfolio_moves,
     propicks,
+    research_assistant,
     reviews,
     risk,
     screeners,
@@ -68,6 +69,7 @@ api_router.include_router(
 api_router.include_router(news.router, prefix="/news", tags=["news"])
 api_router.include_router(risk.router, prefix="/risk", tags=["risk"])
 api_router.include_router(reviews.router, prefix="/reviews", tags=["reviews"])
+api_router.include_router(research_assistant.router, prefix="/research", tags=["research-assistant"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
 api_router.include_router(
