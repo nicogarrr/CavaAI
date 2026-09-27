@@ -1,0 +1,86 @@
+/**
+ * Guarda F65: la tarjeta «Oportunidades por valor intrínseco» probaba solo 6
+ * candidatas del screener y declaraba alcance de universo («Todo el universo
+ * del screener», «Ninguna empresa del universo supera hoy un 5 %…»), y un DCF
+ * fallido contaba como «sin potencial». Ahora el alcance real se calcula
+ * (probadas/evaluadas/fallidas) y la tarjeta lo declara.
+ *
+ * Los tests ejercitan el helper real (lib/overview/dcf-candidates.ts) y
+ * comprueban que el componente lo usa, no solo strings sueltas.
+ */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+import {
+    DCF_MIN_UPSIDE_PCT,
+    dcfEmptyNote,
+    dcfScopeNote,
+    summarizeDcfProbe,
+    // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
+} from '../lib/overview/dcf-candidates.ts';
+
+const COMPONENT = 'components/PersonalizedOverview.tsx';
+
+void test('el resumen de la sonda cuenta probadas, evaluadas y fallidas de verdad', () => {
+    const scope = summarizeDcfProbe([
+        { evaluated: true, opportunity: { symbol: 'A' } },
+        { evaluated: true, opportunity: null },
+        { evaluated: false, opportunity: null },
+    ]);
+    assert.deepEqual(scope, { probed: 3, evaluated: 2, failed: 1 });
+    assert.deepEqual(summarizeDcfProbe([]), { probed: 0, evaluated: 0, failed: 0 });
+});
+
+void test('el estado vacío distingue «evaluadas sin potencial» de «no evaluables»', () => {
+    assert.equal(
+        dcfEmptyNote({ probed: 6, evaluated: 4, failed: 2 }),
+        `Ninguna de las 4 candidatas del screener evaluadas supera hoy un ${DCF_MIN_UPSIDE_PCT} % de potencial sobre su valor intrínseco; 2 no se pudieron evaluar.`,
+        'con evaluadas: el alcance son las candidatas, nunca el universo, y las fallidas se declaran',
+    );
+    assert.equal(
+        dcfEmptyNote({ probed: 4, evaluated: 4, failed: 0 }),
+        `Ninguna de las 4 candidatas del screener evaluadas supera hoy un ${DCF_MIN_UPSIDE_PCT} % de potencial sobre su valor intrínseco.`,
+        'sin fallidas no se añade coletilla',
+    );
+    assert.equal(
+        dcfEmptyNote({ probed: 6, evaluated: 0, failed: 6 }),
+        'No se pudo calcular el valor intrínseco de las 6 candidatas del screener probadas.',
+        'sin ninguna evaluada no cabe concluir nada sobre el potencial',
+    );
+    assert.equal(
+        dcfEmptyNote({ probed: 0, evaluated: 0, failed: 0 }),
+        'El screener no devolvió candidatas sobre las que calcular el valor intrínseco.',
+    );
+    for (const scope of [{ probed: 6, evaluated: 4, failed: 2 }, { probed: 6, evaluated: 0, failed: 6 }, { probed: 0, evaluated: 0, failed: 0 }]) {
+        assert.ok(!dcfEmptyNote(scope).includes('universo'), 'ningún estado vacío habla en nombre del universo');
+    }
+});
+
+void test('la nota de alcance declara las candidatas probadas y las no evaluables', () => {
+    assert.equal(
+        dcfScopeNote({ probed: 6, evaluated: 6, failed: 0 }, '10B'),
+        'Las 6 primeras candidatas del screener (market cap > 10B), sin filtro de sector.',
+    );
+    assert.equal(
+        dcfScopeNote({ probed: 6, evaluated: 4, failed: 2 }, '10B'),
+        'Las 6 primeras candidatas del screener (market cap > 10B), sin filtro de sector; 2 no se pudieron evaluar.',
+    );
+});
+
+void test('el componente prueba con tope declarado y usa los textos del helper', () => {
+    const source = readFileSync(COMPONENT, 'utf8');
+    assert.match(source, /\.slice\(0, DCF_CANDIDATE_LIMIT\)/, 'el tope de candidatas es la constante declarada');
+    assert.match(source, /upside > DCF_MIN_UPSIDE_PCT/, 'el umbral es la constante declarada');
+    assert.match(source, /summarizeDcfProbe\(results\)/, 'el alcance se calcula de la sonda real');
+    assert.match(source, /\{dcfScopeNote\(/, 'el encabezado declara el alcance real');
+    assert.match(source, /\{dcfEmptyNote\(/, 'el estado vacío declara el alcance real');
+    assert.ok(!source.includes('Ninguna empresa del universo'), 'desaparece la conclusión categórica sobre el universo');
+    assert.ok(!source.includes('Todo el universo del screener'), 'desaparece el alcance de universo en el encabezado');
+});
+
+void test('un DCF fallido no cuenta como «sin potencial»', () => {
+    const source = readFileSync(COMPONENT, 'utf8');
+    assert.match(source, /evaluated: false, opportunity: null/, 'los fallos se marcan como no evaluados');
+    assert.match(source, /evaluated: true,[\s\S]*?opportunity: upside > DCF_MIN_UPSIDE_PCT/, 'solo las evaluadas pueden dar oportunidad');
+});
