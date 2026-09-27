@@ -653,9 +653,32 @@ async function postForm<T>(path: string, fallback: T, body: FormData): Promise<T
   }
 }
 
+
+/**
+ * `/api/companies` devuelve como mucho COMPANIES_PAGE_SIZE fichas por llamada
+ * (tope del backend) y por defecto solo 100. El índice de /research se titula
+ * «Todas las empresas con research en CavaAI», así que hay que pedir TODAS las
+ * páginas: con la llamada por defecto el índice se cortaba en silencio en la
+ * centésima (A→AMBA) y cualquier ticker posterior no aparecía pese a tener
+ * ficha. Paginamos hasta recibir una página corta.
+ */
+const COMPANIES_PAGE_SIZE = 500;
+
+async function getAllResearchCompanies(): Promise<ResearchCompany[]> {
+  const all: ResearchCompany[] = [];
+  for (let offset = 0; ; offset += COMPANIES_PAGE_SIZE) {
+    const page = await getJson<ResearchCompany[]>(
+      `/api/companies?limit=${COMPANIES_PAGE_SIZE}&offset=${offset}`,
+      [],
+    );
+    all.push(...page);
+    if (page.length < COMPANIES_PAGE_SIZE) return all;
+  }
+}
+
 export async function getResearchDashboard() {
   const [companies, portfolio, workflowsPayload, settings] = await Promise.all([
-    getJson<ResearchCompany[]>('/api/companies', []),
+    getAllResearchCompanies(),
     getJson<ResearchPortfolioSummary>('/api/portfolio/summary', {
       total_value: 0,
       equity_value: 0,
