@@ -56,7 +56,7 @@ export interface WalkForwardBacktestResult {
     spy: number;
     sharpe: number;
     sortino: number;
-    /** Máximo drawdown % sobre la curva neta. */
+    /** Máximo drawdown sobre la curva neta, en puntos y con signo (<= 0: -8,12 = caída del 8,12 %). */
     maxDD: number;
     tablaMensual: WalkForwardMonthRow[];
     /** Semilla JSON para el futuro backtest con fundamentales reales. */
@@ -291,7 +291,9 @@ export async function runWalkForwardBacktest(
             spy: wfPct2(compound(spyW)),
             sharpe: Math.round(sharpe * 100) / 100,
             sortino: Math.round(sortino * 100) / 100,
-            maxDD: wfPct2(maxDD),
+            // Convención firmada como el backend (_drawdown) y /portfolio/intelligence:
+            // maxDD <= 0, la pérdida se muestra con signo menos en toda la app.
+            maxDD: wfPct2(-maxDD),
             tablaMensual,
             snapshots,
         };
