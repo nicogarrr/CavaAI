@@ -64,7 +64,7 @@ def guide_context(db: Session, ticker: str) -> dict:
     return {
         "ticker": company.ticker, "review_id": reviews[0].id if reviews else None,
         "open_reviews": [{"id": row.id, "status": row.status, "summary": row.summary} for row in reviews],
-        "latest_news": [{"id": row.id, "title": row.title, "source": row.source,
+        "latest_news": [{"id": row.id, "title": (row.metadata_ or {}).get("source_headline"), "source": row.source,
                          "source_url": _url(row.url), "date": row.date,
                          "date_source": (row.metadata_ or {}).get("date_source", "unknown")}
                         for row in news],
@@ -127,12 +127,13 @@ def _evidence(db: Session, company: Company, tenant_id: int, question: str) -> l
         date_source = provenance.get("date_source")
         if provenance.get("connector") == "gdelt" and date_source == "source":
             date_source = "gdelt_first_seen"  # legacy GDELT `seendate`
-        if not _url(row.url) or date_source not in {"source", "gdelt_first_seen"}:
+        headline = provenance.get("source_headline")
+        if not _url(row.url) or date_source not in {"source", "gdelt_first_seen"} or not isinstance(headline, str) or not headline.strip():
             continue
         label = "primera detección GDELT" if date_source == "gdelt_first_seen" else "fecha de la fuente"
         citations.append({"id": f"news_event:{row.id}", "kind": "news_event",
                           "source": row.source, "url": _url(row.url),
-                          "as_of": f"{row.date.isoformat()} ({label})", "excerpt": row.title})
+                          "as_of": f"{row.date.isoformat()} ({label})", "excerpt": headline.strip()[:500]})
     # Seek document candidates using the question, not merely the 100 newest
     # chunks. The cap bounds work, and empty/low-overlap results fail closed.
     chunks = db.execute(select(DocumentChunk, Document).join(Document, DocumentChunk.document_id == Document.id).where(

@@ -60,7 +60,7 @@ def test_tenant_isolation_ticket_binding_and_cited_rows(db):
 
     db.add(NewsEvent(tenant_id=a.id, company_id=company.id, title="ASTS ITU filing reported",
                      source="Publisher", url="https://example.com/article",
-                     date=datetime(2026, 9, 24, tzinfo=UTC), metadata_={"date_source": "gdelt_first_seen"}))
+                     date=datetime(2026, 9, 24, tzinfo=UTC), metadata_={"date_source": "gdelt_first_seen", "source_headline": "ASTS ITU filing reported"}))
 
     review = ResearchReview(tenant_id=a.id, company_id=company.id, review_type="news", title="Review ITU",
                             summary="Check original ITU filing", status="open")
@@ -122,3 +122,46 @@ def test_relevant_filing_chunk_beats_six_unrelated_facts(db):
         mode="explore", ticker="ASTS", question="¿Qué pasó con el propulsor xenón?")))
     assert missing.status == "insufficient_data"
     assert missing.citations == [] and missing.missing_data
+
+
+def test_connector_summary_cannot_become_attributed_headline(db, monkeypatch):
+    from app.schemas import NewsIngestResponse
+    from app.services.connectors.base import ConnectorItem, ConnectorResult
+    from app.services.feed_ingestion_service import FeedIngestionService
+    from app.services.news_service import NewsService
+
+    tenant, _, company = setup(db)
+    stamp = datetime(2026, 9, 24, tzinfo=UTC)
+
+    def ingest_stub(self, session, items, default_source="feed"):
+        for item in items:
+            session.add(NewsEvent(tenant_id=tenant.id, company_id=company.id,
+                                  title=f"ASTS {item.title} {item.text}", source=item.source,
+                                  url=item.url, date=item.published_at,
+                                  metadata_={"date_source": "source"}))
+        session.commit()
+        return NewsIngestResponse(status="ingested", received=len(items), created=len(items),
+                                  skipped_duplicates=0, requires_update=0, events=[])
+
+    monkeypatch.setattr(NewsService, "ingest_news_items", ingest_stub)
+    result = ConnectorResult(source="rss", items=[
+        ConnectorItem(source="Publisher", title="Company update", summary="New ITU filing",
+                      url="https://publisher.example/update", ticker="ASTS", published_at=stamp),
+        ConnectorItem(source="Publisher", title="ASTS ITU filing submitted", summary="Background",
+                      url="https://publisher.example/filing", ticker="ASTS", published_at=stamp),
+    ])
+    FeedIngestionService().ingest_news_result(db, result, ticker="ASTS")
+    response = AssistantResponse.model_validate(answer(db, AssistantRequest(
+        mode="explore", question="What about ITU filing?", ticker="ASTS")))
+    assert "ASTS ITU filing submitted" in response.answer
+    assert "Company update New ITU filing" not in response.answer
+    assert {c.url for c in response.citations if c.kind == "news_event"} == {"https://publisher.example/filing"}
+    # Legacy composite title with no original headline is never attributed.
+    db.add(NewsEvent(tenant_id=tenant.id, company_id=company.id, title="ASTS ITU filing legacy snippet",
+                     source="Publisher", url="https://publisher.example/legacy", date=stamp,
+                     metadata_={"date_source": "source"}))
+    db.commit()
+    response = AssistantResponse.model_validate(answer(db, AssistantRequest(
+        mode="explore", question="What about ITU filing?", ticker="ASTS")))
+    assert all(c.url != "https://publisher.example/legacy" for c in response.citations)
+    assert all(n["title"] != "ASTS ITU filing legacy snippet" for n in guide_context(db, "ASTS")["latest_news"])
