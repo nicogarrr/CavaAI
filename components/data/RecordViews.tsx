@@ -87,6 +87,8 @@ export interface RecordListProps {
     rowActions?: (record: DataRecord, index: number) => ReactNode;
     /** Columnas cuyo valor se renderiza como enlace (p.ej. ticker -> /research/[ticker]) */
     linkColumns?: Record<string, (record: DataRecord, index: number) => string | null | undefined>;
+    /** Etiquetas de cabecera por columna; las no mapeadas muestran la clave cruda (nunca se ocultan) */
+    columnLabels?: Record<string, string>;
     footer?: ReactNode;
 }
 
@@ -101,6 +103,7 @@ export function RecordList({
     emptyAction,
     rowActions,
     linkColumns,
+    columnLabels,
     footer,
 }: RecordListProps) {
     const [records, setRecords] = useState<DataRecord[]>(initialRecords);
@@ -169,7 +172,7 @@ export function RecordList({
                                     <TableRow className="border-gray-700 hover:bg-transparent">
                                         {visibleColumns.map((column) => (
                                             <TableHead key={column} className="text-xs font-semibold uppercase text-gray-500">
-                                                {column}
+                                                {columnLabels?.[column] ?? column}
                                             </TableHead>
                                         ))}
                                         {rowActions && <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Acciones</TableHead>}
@@ -214,7 +217,7 @@ export function RecordList({
                                             const href = cellHref(record, index, column);
                                             return (
                                                 <div className="min-w-0" key={column}>
-                                                    <dt className="text-[11px] uppercase tracking-wide text-gray-500">{column}</dt>
+                                                    <dt className="text-[11px] uppercase tracking-wide text-gray-500">{columnLabels?.[column] ?? column}</dt>
                                                     <dd className="break-words text-sm text-gray-200">
                                                         {href ? (
                                                             <Link

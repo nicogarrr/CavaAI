@@ -145,25 +145,73 @@ def recent_form4_filings(
     return items
 
 
+_RENDERED_XSL_RE = re.compile(r"/xslF345X\d+/", re.IGNORECASE)
+
+
+def raw_document_url(document_url: str) -> str:
+    """URL del documento CRUDO a partir de la de EDGAR.
+
+    El submissions JSON apunta `primaryDocument` a la version renderizada
+    para humanos (…/xslF345Xnn/form4.xml), que es HTML y revienta el parser
+    (F310: el 100% de los Form 4 de un emisor fallaba al leerse). El XML
+    crudo vive en el directorio del filing con el mismo nombre de archivo.
+    Si la URL no es una variante renderizada, se devuelve tal cual.
+    """
+    from urllib.parse import urlparse, urlunparse
+
+    parsed = urlparse(document_url)
+    match = _RENDERED_XSL_RE.search(parsed.path)
+    if not match:
+        return document_url
+    raw_path = parsed.path[: match.start()] + "/" + parsed.path[match.end() :]
+    return urlunparse(parsed._replace(path=raw_path))
+
+
+def _looks_like_xml(text: str) -> bool:
+    """XML con o sin declaracion `<?xml`; la version renderizada XSLT es HTML
+    (<!DOCTYPE html> / <html) y eso es lo unico que hay que descartar."""
+    head = text.lstrip()[:200].lower()
+    if head.startswith("<!doctype") or head.startswith("<html"):
+        return False
+    return head.startswith("<")
+
+
+def _get_text(url: str, client: httpx.Client | None) -> str:
+    _throttle()
+    if client is not None:
+        response = client.get(url, headers=default_headers())
+    else:
+        with httpx.Client(timeout=30, headers=default_headers()) as owned:
+            response = owned.get(url)
+    response.raise_for_status()
+    return response.text
+
+
 def fetch_filing_xml(
     document_url: str,
     *,
     client: httpx.Client | None = None,
 ) -> str:
-    """Descarga el XML del documento primario (solo hosts sec.gov)."""
+    """Descarga el XML del documento primario (solo hosts sec.gov).
+
+    Si la URL servida es la version renderizada en HTML (xslF345Xnn), se
+    reintenta con el documento crudo del mismo directorio (F310).
+    """
     from urllib.parse import urlparse
 
     hostname = (urlparse(document_url).hostname or "").lower()
     if hostname not in {"sec.gov", "www.sec.gov"}:
         raise ValueError("Form 4 document URL must use sec.gov")
-    _throttle()
-    if client is not None:
-        response = client.get(document_url, headers=default_headers())
-    else:
-        with httpx.Client(timeout=30, headers=default_headers()) as owned:
-            response = owned.get(document_url)
-    response.raise_for_status()
-    return response.text
+    text = _get_text(document_url, client)
+    if _looks_like_xml(text):
+        return text
+    raw_url = raw_document_url(document_url)
+    if raw_url == document_url:
+        raise ValueError("Form 4 document is not XML and has no raw variant")
+    raw_text = _get_text(raw_url, client)
+    if not _looks_like_xml(raw_text):
+        raise ValueError("Form 4 raw document is not XML either")
+    return raw_text
 
 
 # ---------------- Parse del XML <ownershipDocument> ----------------
