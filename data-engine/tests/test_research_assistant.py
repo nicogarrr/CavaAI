@@ -133,12 +133,19 @@ def test_connector_summary_cannot_become_attributed_headline(db, monkeypatch):
     tenant, _, company = setup(db)
     stamp = datetime(2026, 9, 24, tzinfo=UTC)
 
-    def ingest_stub(self, session, items, default_source="feed"):
+    def ingest_stub(self, session, items, default_source="feed", connector=None,
+                    date_source_label=None, source_headline=None):
         for item in items:
+            metadata = {"date_source": date_source_label or "source"}
+            if connector:
+                metadata["connector"] = connector
+            headline = source_headline or item.title
+            if headline:
+                metadata["source_headline"] = headline
             session.add(NewsEvent(tenant_id=tenant.id, company_id=company.id,
                                   title=f"ASTS {item.title} {item.text}", source=item.source,
                                   url=item.url, date=item.published_at,
-                                  metadata_={"date_source": "source"}))
+                                  metadata_=metadata))
         session.commit()
         return NewsIngestResponse(status="ingested", received=len(items), created=len(items),
                                   skipped_duplicates=0, requires_update=0, events=[])
