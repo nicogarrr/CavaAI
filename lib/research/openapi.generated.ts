@@ -4753,6 +4753,8 @@ export interface components {
             fingerprint: string;
             /** Id */
             id: number;
+            /** Last Triggered At */
+            last_triggered_at: string | null;
             /** Message */
             message: string;
             /** Metadata */
@@ -4769,6 +4771,8 @@ export interface components {
             snoozed_until: string | null;
             /** Status */
             status: string;
+            /** Ticker */
+            ticker?: string | null;
             /** Title */
             title: string;
             /**
