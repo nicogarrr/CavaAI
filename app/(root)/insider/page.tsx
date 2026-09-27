@@ -76,12 +76,11 @@ export default async function InsiderPage({ searchParams }: PageProps) {
                     <p>
                         Se leen los Form 4 de EDGAR y sólo las transacciones con código <strong>P</strong> (compra): en
                         mercado abierto o privado, porque el XML no siempre distingue el motivo. De ahí salen tres
-                        señales: <em>cluster buy</em> (varios insiders compran en pocos días), <em>C-suite buy</em> (CEO,
-                        CFO o Rhino) y <em>big buy</em> (importe por encima del umbral de la estrategia).
+                        señales: <em>cluster buy</em> (varios insiders compran en pocos días), <em>C-suite buy</em> (CEO o CFO) y <em>big buy</em> (importe por encima del umbral de la estrategia).
                     </p>
                     <p>
                         El monitor automático deja el recuento de filings persistidos en el distintivo de
-                        arriba; el aviso por Telegram se activa a mano con el interruptor de la tarjeta. Esta
+                        arriba; el aviso por Telegram se evalúa a mano con el botón de la tarjeta. Esta
                         pantalla es la lectura bajo demanda de un ticker concreto, no un listado del monitor.
                     </p>
                     <p>
