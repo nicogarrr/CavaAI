@@ -72,3 +72,48 @@ def test_complete_field_can_contradict_exact_claim_but_not_arbitrary_text(db, mo
     assert result["evidence"]["official_literal"] == "Total number of satellites: 344"
     assert verify_itu_claims(session, news_event_id=news.id,
                              claims=[AtomicClaim("NumberOfSatellites", "1344", "Total number of satellites: 1344")])[0]["status"] == "not_verifiable"
+
+
+def test_mutated_chunk_text_with_stale_hash_fails_closed(db, monkeypatch):
+    from sqlalchemy import select
+
+    from app.models.entities import DocumentChunk
+    from app.services import primary_source_ingestion as module
+    from app.services.document_store import DocumentStore
+
+    session, a, b, news = db
+    monkeypatch.setattr(module, "fetch_public_url", lambda *args, **kw: (FIXTURE.read_bytes(), "text/html", URL))
+    monkeypatch.setattr(DocumentStore, "put_bytes", lambda *args, **kw: "test://fixture")
+    response = ingest_explicit_primary_source(session, news_event_id=news.id, official_url=URL,
+                                               reference_kind="official_registry")
+    # Change the decisive value without changing stored provenance/hash.
+    chunks = session.scalars(select(DocumentChunk).where(DocumentChunk.document_id == response["document_id"])).all()
+    target = next(c for c in chunks if "Total number of satellites: 344" in c.text)
+    target.text = target.text.replace("Total number of satellites: 344", "Total number of satellites: 345")
+    news.metadata_ = {"source_headline": "Total number of satellites: 345"}
+    session.commit()
+    result = verify_itu_claims(session, news_event_id=news.id,
+                               claims=[AtomicClaim("NumberOfSatellites", "345", "Total number of satellites: 345")])[0]
+    assert result["status"] == "not_verifiable" and result["evidence"] is None
+
+
+def test_invalid_linked_revision_cannot_be_ignored_in_favor_of_valid_one(db, monkeypatch):
+    from sqlalchemy import select
+
+    from app.models.entities import PrimarySourceRecord
+    from app.services import primary_source_ingestion as module
+    from app.services.document_store import DocumentStore
+
+    session, a, b, news = db
+    monkeypatch.setattr(module, "fetch_public_url", lambda *args, **kw: (FIXTURE.read_bytes(), "text/html", URL))
+    monkeypatch.setattr(DocumentStore, "put_bytes", lambda *args, **kw: "test://fixture")
+    response = ingest_explicit_primary_source(session, news_event_id=news.id, official_url=URL,
+                                               reference_kind="official_registry")
+    record = session.scalar(select(PrimarySourceRecord).where(PrimarySourceRecord.id == response["record_id"]))
+    session.add(PrimarySourceRecord(tenant_id=a.id, news_event_id=news.id, document_id=record.document_id,
+                                    requested_url=URL, final_url=URL, checksum="0" * 64,
+                                    fetched_at=record.fetched_at, reference_kind="official_registry"))
+    session.commit()
+    result = verify_itu_claims(session, news_event_id=news.id,
+                               claims=[AtomicClaim("NumberOfSatellites", "344", "Total number of satellites: 344")])[0]
+    assert result["status"] == "not_verifiable" and result["evidence"] is None

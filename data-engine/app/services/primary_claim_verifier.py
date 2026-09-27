@@ -60,6 +60,7 @@ def verify_itu_claims(db: Session, *, news_event_id: int,
     ).order_by(PrimarySourceRecord.id)).all()
     # Cross-version disagreement is not silently settled by a newest-row pick.
     documents = []
+    invalid_revision = False
     for record in records:
         doc = db.scalar(select(Document).where(Document.id == record.document_id,
                                                 Document.tenant_id == tenant_id,
@@ -69,6 +70,8 @@ def verify_itu_claims(db: Session, *, news_event_id: int,
                 doc.source_url == record.final_url and
                 urlsplit(doc.source_url).path.startswith("/ITU-R/space/asreceived/Publication/DisplayPublication/")):
             documents.append((record, doc))
+        else:
+            invalid_revision = True
     out = []
     source_headline = (news.metadata_ or {}).get("source_headline")
     for claim in claims:
@@ -77,6 +80,9 @@ def verify_itu_claims(db: Session, *, news_event_id: int,
         # convert a semantic statement ("approved 344 satellites") into a
         # narrower field claim by spotting the number 344.
         canonical = f"{FIELDS[claim.fieldname]}: {claim.value}" if claim.fieldname in FIELDS else ""
+        if invalid_revision:
+            out.append(_unverified(claim, "Linked official revision failed provenance validation"))
+            continue
         if (not isinstance(source_headline, str) or claim.literal != source_headline
                 or claim.literal.strip() != canonical or not claim.value
                 or not _literal_has_value(claim.literal, claim.value)):
@@ -89,7 +95,10 @@ def verify_itu_claims(db: Session, *, news_event_id: int,
                 DocumentChunk.tenant_id == tenant_id,
             ).order_by(DocumentChunk.chunk_index)).all()
             for chunk in chunks:
-                if chunk.metadata_.get("checksum") != doc.checksum:
+                actual_chunk_hash = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
+                if (chunk.metadata_.get("checksum") != doc.checksum or
+                        chunk.metadata_.get("chunk_sha256") != actual_chunk_hash):
+                    invalid_revision = True
                     continue
                 blocks = chunk.metadata_.get("block_metadata", [])
                 for block in blocks:
@@ -108,8 +117,8 @@ def verify_itu_claims(db: Session, *, news_event_id: int,
                     if not official_value:
                         continue
                     matching.append((official_value, record, doc, chunk, locator))
-        if not matching or len({value for value, *_ in matching}) != 1:
-            out.append(_unverified(claim, "Official field unavailable or conflicting versions"))
+        if invalid_revision or not matching or len({value for value, *_ in matching}) != 1:
+            out.append(_unverified(claim, "Official field unavailable, invalid, or conflicting versions"))
             continue
         official_value, record, doc, chunk, locator = matching[-1]
         status = "supported" if claim.value == official_value else "contradicted"
@@ -127,5 +136,5 @@ def verify_itu_claims(db: Session, *, news_event_id: int,
                                  "publication_date": doc.published_at.isoformat() if doc.published_at else None,
                                  "registry_date": (doc.metadata_.get("itu_record") or {}).get("registry_date"),
                                  "fetched_at": record.fetched_at.isoformat(),
-                                 "chunk_sha256": hashlib.sha256(chunk.text.encode()).hexdigest()}})
+                                 "chunk_sha256": chunk.metadata_["chunk_sha256"]}})
     return out
