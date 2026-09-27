@@ -63,7 +63,7 @@ def ingest_explicit_primary_source(
 
 
     content, content_type, final_url = fetch_public_url(
-        official_url, max_bytes=MAX_DOCUMENT_BYTES, timeout=20,
+        official_url, max_bytes=MAX_DOCUMENT_BYTES, timeout=20, allowed_url=_official,
     )
     if not _official(final_url):
         raise ValueError("Primary-source redirect left the official registry")

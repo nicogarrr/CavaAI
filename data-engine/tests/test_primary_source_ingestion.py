@@ -84,3 +84,40 @@ def test_redirect_mime_parser_fail_closed(db, monkeypatch):
             ingest_explicit_primary_source(session, **kwargs)
     assert session.scalars(select(PrimarySourceRecord)).all() == []
 
+
+
+def test_intermediate_redirect_to_nonofficial_host_rejected_before_fetch(monkeypatch):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import httpx
+
+    from app.services import public_fetch
+
+    visited = []
+    def resolve(url):
+        visited.append(url)
+        return SimpleNamespace(url=url, request_url=url, host_header="www.itu.int", sni_hostname="www.itu.int")
+
+    @contextmanager
+    def stream(method, url, **kwargs):
+        if url == "https://www.itu.int/start":
+            yield SimpleNamespace(status_code=302, headers={"location": "https://publisher.example/bridge"})
+        else:
+            pytest.fail("Nonofficial intermediate redirect was fetched")
+
+    class Client:
+        def stream(self, method, url, **kwargs):
+            return stream(method, url, **kwargs)
+
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return None
+
+    monkeypatch.setattr(public_fetch, "_resolve_public_url", resolve)
+    monkeypatch.setattr(public_fetch, "_connect_pinned_httpcore", lambda **kw: None)
+    monkeypatch.setattr(httpx, "Client", lambda **kw: Client())
+    with pytest.raises(ValueError, match="redirect denied"):
+        public_fetch.fetch_public_url("https://www.itu.int/start", allowed_url=lambda url: url.startswith("https://www.itu.int/"))
+    assert visited == ["https://www.itu.int/start"]
