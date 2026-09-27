@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, FileSearch, Library, Newspaper, Settings, Workflow } from 'lucide-react';
+import { ArrowRight, BookOpen, FileSearch, Library, Newspaper, Settings, Workflow } from 'lucide-react';
 
 import { getResearchCompanySnapshots, getResearchDashboard } from '@/lib/actions/research.actions';
 import BackendOffline from '@/components/system/BackendOffline';
@@ -80,6 +80,12 @@ const HEALTH_TONES: Record<string, string> = {
  * la herramienta que se usa a diario.
  */
 const TOOLS = [
+    {
+        href: '/research/assistant',
+        label: 'Asistente de investigación',
+        icon: BookOpen,
+        description: 'Explora preguntas con fuentes y guía el análisis, sin modificar tickets.',
+    },
     {
         href: '/research/news',
         label: 'Noticias',
@@ -363,7 +369,7 @@ export default async function ResearchPage({
                 density="compact"
                 title="Contexto de cartera"
             >
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     <Stat label="Valor total" size="sm" value={money(portfolio.total_value, portfolio.base_currency)} />
                     <Stat label="Renta variable" size="sm" value={money(portfolio.equity_value, portfolio.base_currency)} />
                     <Stat label="Top 1" size="sm" tone="warn" value={pct(portfolio.top_1_weight)} />
@@ -377,10 +383,10 @@ export default async function ResearchPage({
             </Panel>
 
             <Panel
-                description="Las cuatro herramientas de research. También están en el menú lateral, dentro del grupo Research."
+                description="Las herramientas de research. También están en el menú lateral, dentro del grupo Research."
                 title="Herramientas de research"
             >
-                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {TOOLS.map((tool) => (
                         <li key={tool.href}>
                             <Link
