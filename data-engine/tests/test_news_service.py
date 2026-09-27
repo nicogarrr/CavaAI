@@ -165,3 +165,30 @@ def test_item_without_date_marks_ingested_fallback(db):
     assert response.created == 1
     event = db.query(NewsEvent).filter_by(url="https://example.com/2").one()
     assert event.metadata_["date_source"] == "ingested_at_fallback"
+
+
+def test_ingest_does_not_duplicate_ticker_already_in_title(db):
+    """F175: «COST 8-K» como título no debe guardarse como «COST COST 8-K»."""
+    _company(db, ticker="COST")
+    service = NewsService()
+    item = NewsFeedItem(
+        ticker="COST", title="COST 8-K", text="Material agreement",
+        source="sec", url="https://x.test/cost-8k",
+    )
+    response = service.ingest_news_items(db, [item])
+    assert response.created == 1
+    summary = response.events[0].summary
+    assert summary.startswith("COST 8-K")
+    assert "COST COST" not in summary
+
+
+def test_ingest_prefixes_ticker_when_title_lacks_it(db):
+    _company(db, ticker="AAPL")
+    service = NewsService()
+    item = NewsFeedItem(
+        ticker="AAPL", title="Files 10-K annual report", text="...",
+        source="sec", url="https://x.test/aapl-10k",
+    )
+    response = service.ingest_news_items(db, [item])
+    assert response.created == 1
+    assert response.events[0].summary.startswith("AAPL Files 10-K")

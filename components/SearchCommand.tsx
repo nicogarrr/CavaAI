@@ -9,6 +9,7 @@ import { loadPopularStocks } from "@/lib/popular-stocks-loader";
 import { showErrorToast } from "@/lib/toast";
 import { isNextRedirectError } from "@/lib/types/errors";
 import { flattenNavItems, NAV_SECTIONS } from "@/lib/constants";
+import { etiquetaTipoInstrumento } from "@/lib/labels";
 
 export default function SearchCommand({ renderAs = 'button', label = 'Añadir acción', initialStocks }: SearchCommandProps) {
     const router = useRouter()
@@ -341,7 +342,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                                                         {stock.name}
                                                     </div>
                                                     <div className="text-sm text-gray-500">
-                                                        {stock.symbol} | {stock.exchange} | {stock.type}
+                                                        {stock.symbol} | {stock.exchange} | {etiquetaTipoInstrumento(stock.type)}
                                                     </div>
                                                 </div>
                                             </button>
