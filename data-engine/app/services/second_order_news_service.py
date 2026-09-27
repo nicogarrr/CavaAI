@@ -240,9 +240,9 @@ def _matching_companies(db: Session, exposure: str) -> list[Company]:
         )
         for token in exposure_norm.split()
     ]
-    return db.scalars(
+    return list(db.scalars(
         select(Company).where(or_(*token_predicates)).order_by(Company.ticker)
-    ).all()
+    ).all())
 
 
 def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False) -> dict:

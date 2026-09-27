@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 from datetime import UTC, datetime
+from typing import cast
 
 _LOCAL: dict[str, tuple[int, int]] = {}
 _LOCK = threading.Lock()
@@ -41,7 +42,8 @@ def reserve_llm_call(tenant_id: int | str | None, settings) -> dict:
 
         client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=0.25, socket_timeout=0.5)
         try:
-            allowed, minute, daily = client.eval(_SCRIPT, 2, minute_key, day_key, minute_cap, day_cap)
+            # redis-py tipa eval como Awaitable[str] en stubs; el cliente sync devuelve la lista del script
+            allowed, minute, daily = cast("list[int]", client.eval(_SCRIPT, 2, minute_key, day_key, minute_cap, day_cap))
         finally:
             client.close()
     else:
