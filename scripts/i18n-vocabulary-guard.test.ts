@@ -16,5 +16,8 @@ test('el vocabulario ES no recae en compostadora/ingestar/Rhino', () => {
     assert.match(es, /compounders de calidad/);
     assert.doesNotMatch(knowledge, /ingestar/i);
     assert.doesNotMatch(insider, /Rhino/);
-    assert.match(insider, /CEO,?\s*CFO u otro C-suite/);
+    // El backend clasifica c-suite como CEO o CFO (insider_service._is_c_suite
+    // = _is_ceo OR _is_cfo): prometer «otro C-suite» insinuaria deteccion de
+    // COO/CIO/CTO que no existe.
+    assert.match(insider, /C-suite buy<\/em> \(CEO o CFO\)/);
 });

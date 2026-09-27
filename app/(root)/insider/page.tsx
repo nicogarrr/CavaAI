@@ -76,8 +76,7 @@ export default async function InsiderPage({ searchParams }: PageProps) {
                     <p>
                         Se leen los Form 4 de EDGAR y sólo las transacciones con código <strong>P</strong> (compra): en
                         mercado abierto o privado, porque el XML no siempre distingue el motivo. De ahí salen tres
-                        señales: <em>cluster buy</em> (varios insiders compran en pocos días), <em>C-suite buy</em> (CEO,
-                        CFO u otro C-suite) y <em>big buy</em> (importe por encima del umbral de la estrategia).
+                        señales: <em>cluster buy</em> (varios insiders compran en pocos días), <em>C-suite buy</em> (CEO o CFO) y <em>big buy</em> (importe por encima del umbral de la estrategia).
                     </p>
                     <p>
                         El monitor automático deja el recuento de filings persistidos en el distintivo de
