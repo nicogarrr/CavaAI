@@ -131,3 +131,41 @@ def test_get_never_mutates_the_orm_rows(db):
     # La fila sigue como estaba: el GET no escribe (ni commit ni dirty flush).
     assert expired.status == "snoozed"
     assert expired.snoozed_until is not None
+
+
+def test_list_alerts_resolves_source_url(db):
+    """F172: la URL de la fuente sale de metadata.source_url (insider) o del
+    NewsEvent enlazado via metadata.news_event_id (filing/noticia); sin URL
+    conocida queda None, nunca inventada."""
+    from app.models.entities import NewsEvent
+
+    company = Company(
+        ticker="AAPL", name="Apple", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    event = NewsEvent(
+        company_id=company.id, title="AAPL 8-K",
+        url="https://www.sec.gov/Archives/edgar/data/1/0001.htm",
+    )
+    db.add(event)
+    db.flush()
+    cases = [
+        ("insider", {"source_url": "https://www.sec.gov/form4/1"}, "https://www.sec.gov/form4/1"),
+        ("filing", {"news_event_id": event.id}, event.url),
+        ("sin-fuente", {}, None),
+    ]
+    for key, metadata, _expected in cases:
+        db.add(ResearchAlert(
+            company_id=company.id, alert_type="filing", severity="medium",
+            title=f"AAPL {key}", message="m", fingerprint=f"fp-src-{key}",
+            channels=["in_app"], status="open", metadata_=metadata,
+        ))
+    db.commit()
+
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    urls = {a.title: a.source_url for a in result}
+    for key, _metadata, expected in cases:
+        assert urls[f"AAPL {key}"] == expected
