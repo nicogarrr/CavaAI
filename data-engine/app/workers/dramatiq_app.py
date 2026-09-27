@@ -431,6 +431,34 @@ def evaluate_alert_rules(
 
 
 @dramatiq.actor(max_retries=1, min_backoff=30_000)
+def refresh_asts_catalog() -> dict[str, Any]:
+    """One global network fetch, explicit tenant-scoped persisted copies."""
+    from app.services.asts_catalog_service import persist_catalog
+    from app.services.connectors.celestrak_ast import fetch_catalog
+
+    contexts = tenant_contexts()
+    if not contexts:
+        return {"actor": "refresh_asts_catalog", "status": "skipped", "reason": "no_tenants"}
+    fetched_at = datetime.now(UTC)
+    try:
+        catalog = _run(fetch_catalog(fetched_at=fetched_at))
+    except Exception as exc:
+        return _handle_actor_error("refresh_asts_catalog", exc)
+    errors = []
+    for tenant_id, user_id in contexts:
+        db = _session(tenant_id, user_id)
+        try:
+            persist_catalog(db, catalog, fetched_at)
+        except Exception as exc:
+            _rollback(db)
+            errors.append({"tenant_id": tenant_id, "type": type(exc).__name__})
+        finally:
+            db.close()
+    return {"actor": "refresh_asts_catalog", "status": "partial" if errors else "ok",
+            "count": len(catalog), "tenant_count": len(contexts), "errors": errors}
+
+
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
 def refresh_macro_context() -> dict[str, Any]:
     """Fetch public FRED CSV once globally, then persist an honest snapshot."""
     from app.core.database import SessionLocal

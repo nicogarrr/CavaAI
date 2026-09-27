@@ -11,6 +11,7 @@ from app.workers.dramatiq_app import (
     dispatch_tracked_news_alerts,
     evaluate_alert_rules,
     reconcile_alert_deliveries,
+    refresh_asts_catalog,
     refresh_ir_pages,
     refresh_macro_context,
     refresh_market_pipeline,
@@ -92,6 +93,8 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         hours=1,
     )
     _register(scheduler, refresh_macro_context.send, "cron", job_id="macro_context_refresh", hour=23, minute=10)
+    # Public GP data refreshes every ~2 h; one global fetch per 6 h, not per tenant.
+    _register(scheduler, refresh_asts_catalog.send, "interval", job_id="asts_celestrak_refresh", hours=6)
     _register(
         scheduler,
         partial(enqueue_for_all_tenants, refresh_rss_feeds),
