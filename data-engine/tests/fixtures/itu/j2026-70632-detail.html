@@ -1,0 +1,983 @@
+
+
+<!DOCTYPE html>
+<html class="js cssanimations csstransitions" style="height: 100%">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <title>e-Submission of Satellite Network Filings</title>
+    <link rel="stylesheet" href="/ITU-R/space/asreceived/Content/toastr.css"/>
+    <script>
+        window.baseUrl = "/ITU-R/space/asreceived";
+        window.userName = '';
+        window.scriptsUrl = "/ITU-R/space/asreceived/Scripts";
+    </script>
+    <link href="/ITU-R/space/asreceived/content/itu-icons.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/jquery-ui.min.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/bootstrap-overrides.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/bootstrap.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/itu-main.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/itu-base.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/font-awesome.min.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/bootstrap-datetimepicker.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/EventList.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/sirrs.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/timeline.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/treeview.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/select2.min.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/stylesheet.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/itu_icons.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/itu-select2.css" rel="stylesheet"/>
+<link href="/ITU-R/space/asreceived/content/select2-bootstrap.css" rel="stylesheet"/>
+
+    
+    <style>
+        a.custom-tab-button {
+            -ms-border-radius: 0 !important;
+            border-radius: 0 !important;
+            font-size: 14px;
+        }
+
+        ul.nav-pills.custom-tabs > li.active > a {
+            background-color: #b3b3b3 !important;
+        }
+
+        ul.nav-pills.custom-tabs > li > a {
+            background-color: #337ab7 !important;
+            color: white;
+            padding: 5px 10px;
+        }
+
+        ul.custom-tabs {
+            margin-right: 0 !important;
+        }
+    </style>
+
+    <script src="/ITU-R/space/asreceived/Scripts/require.js"></script>
+<script src="/ITU-R/space/asreceived/Scripts/main.js" defer="defer"></script>
+<script>
+    requirejs.config({
+        baseUrl: "/ITU-R/space/asreceived/Scripts",
+        urlArgs: "v=2.1.9713.102",
+        waitSeconds: 360,
+        paths: {
+            "environment-config": "../configuration/environment-config",
+            "bootstrap": "bootstrap.min",
+            "datatables-jquery": "datatable/jquery.dataTables.min",
+            "datatables": "datatable/dataTables.bootstrap.min",
+            "jquery": "jquery-3.5.1.min",
+            "jqueryUi": "popover-fix",
+            "knockout": "knockout-3.5.1",
+            "toastr": "toastr/toastr.min",
+            "signalr": "jquery.signalR-2.4.3.min",
+            "hubs": "../signalr/hubs?",
+            "select": "select2.min",
+            "jstree" : "jstree/jstree.min",
+            "datetimepicker": "bootstrap-datetimepicker",
+            "simple-module": "symditor/module.min",
+            "simple-hotkeys": "symditor/hotkeys.min",
+            "simple-uploader": "symditor/uploader.min",
+            "simditor": "symditor/simditor.min",
+            "spinner": "spin.min",
+            "loading": "app/common/loading",            
+            "timestamp": "app/common/timestamp",
+            "single-clickable": "app/common/single-clickable",
+            "bootbox": "bootbox.min",
+            "add-doc": "app/common/add-doc",
+            "logout": "app/common/logout",
+            "ko-mapping": "knockout.mapping.min",
+            "validator": "validator",
+            "jquery-ui/ui/widget": "popover-fix",
+            "jquery-ui": "jquery-ui-1.12.1"
+        },
+        shim: {
+            "bootbox": { deps: ["bootstrap"] },
+            "simditor": { deps: ["jquery", "bootstrap", "simple-module", "simple-hotkeys", "simple-uploader"] },
+            "Res908": { deps: ["jquery", "jqueryUi"] },
+            "itu-functions": { deps: ["jquery"] },
+            "bootstrap": { deps: ["jquery"] },
+            "hubs": { deps: ["signalr"] },
+            "popover": { deps: ["tooltip", "bootstrap"] },            
+            "signalr": {
+                deps: ["jquery"],
+                exports: "$.connection"
+            },
+            "tooltip": {
+                deps: ["bootstrap", "jqueryUi"]
+            },
+            "datetimepicker": {
+                deps: ["bootstrap"],
+                exports: "$.fn.datetimepicker"
+            },
+            "datatables": {
+                deps: ["jquery", "bootstrap", "datatables-jquery"],
+                exports: "$.fn.dataTable"
+            },
+            "itu.common": {
+                deps: ["jquery"]
+            },
+            "knockout-select2": {
+                deps: ["select2"]
+            }
+        }
+    });
+</script>
+
+</head>
+
+<body style="height: 100%">
+<input name="__RequestVerificationToken" type="hidden" value="yJcbzSRiZ-eY0_57FTU9rnGsDpbzURENlr_-q4apGn3z-c6FFuC81VUFs20ZEyQKCerIcBJg-R4gsJ7jXftav87xznBMkyeyaiE4Iikbz601" />
+    <div id="application-loader" class="container-fluid" style="height: 100%; color: #337ab7; z-index: 2147483647">
+        <h1 id="application-loader-content" style="text-align: center; display: inline-block; vertical-align: middle; font-size: 2.2em; line-height: 2.2em; height: 2.2em; width: 10em; left: 50%; top: 50%; margin-left: -5em; margin-top: -1.1em; position: fixed;  color: #337ab7;">
+            <i class="fa fa-cog fa-spin"></i>&nbsp;loading...
+        </h1>
+    </div>
+
+<div class="wrapper" id="application-ui" style="display: none">
+    <div class="container">
+        <div class="row">
+            
+
+<div class="col-xs-12 header_description">
+    <a href="#">
+        <img class="logo" src="/ITU-R/space/asreceived/Content/images/itu-logo.png" alt="itu-logo">
+    </a>
+    <div class="tag">
+        <h2>
+            e-Submission of Satellite Network Filings <span class="under_construction"></span>
+        </h2>
+    </div>
+
+    <div class="user_info" id="user-info-view">
+    </div>
+</div>
+        </div>
+        <div class="row">
+            
+
+<div class="col-xs-12">
+    <div class="main_nav text-center">
+        <ul class="navigation">
+
+    <li class=" home">
+            <a href="/ITU-R/space/asreceived/">
+                <span class="glyphicon glyphicon-home"></span>
+                Home
+            </a>
+
+            <ul>
+
+    <li class=" ">
+            <a href="/ITU-R/space/asreceived/">
+                
+                About
+            </a>
+
+    </li>
+
+
+
+            </ul>
+    </li>
+
+
+     <li class="active "> 
+ 
+         <a href="https://www.itu.int/ITU-R/space/asreceived/Publication/AsReceived" target="_blank">AsReceived </a> 
+ 
+     </li> 
+
+    <li class=" ">
+
+        <a href="https://www.itu.int/ITU-R/space/asreceived/Publication/PublishedInBrific" target="_blank">Published in BR IFIC</a>
+
+    </li>
+
+
+
+
+
+
+
+    <li class=" ">
+            <a href="/ITU-R/space/asreceived/Help/UserGuide">
+                
+                Help
+            </a>
+
+            <ul>
+
+    <li class=" ">
+            <a href="/ITU-R/space/asreceived/Help/UserGuide">
+                
+                User Guide
+            </a>
+
+    </li>
+            </ul>
+    </li>
+        </ul>
+    </div>
+</div>
+        </div>
+        <div class="row content">
+            <div class="col-xs-12">
+                
+                
+
+<div class="row details align-right">
+    <div class="col-xs-6">
+        <h4>J2026-83391</h4>
+    </div>
+    <div class="col-xs-6 bottom_indent">
+        <ul class="nav nav-pills navbar-right custom-tabs" role="tablist">
+                <li role="presentation" class="active">
+                    <a href="#details" class="custom-tab-button" aria-controls="details" role="tab" data-toggle="tab">Details</a>
+                </li>
+                    <li role="presentation">
+                        <a href="#frequencies" class="custom-tab-button" aria-controls="frequencies" role="tab"
+                           data-toggle="tab">Frequencies</a>
+                    </li>
+        </ul>
+    </div>
+</div>
+
+<hr class="underline"/>
+
+<form action="/ITU-R/space/asreceived/Publication/DisplayPublication/70632" id="5c0a0752-27c8-4e0d-9b35-bf86a5a182ef" method="post"><input id="Breadcrumb" name="Breadcrumb" type="hidden" value="REDACTED" /><input data-val="true" data-val-number="The field SubmissionId must be a number." id="Item_SubmissionId" name="Item.SubmissionId" type="hidden" value="70632" /><input data-val="true" data-val-required="The ViewCommand field is required." id="ViewCommand" name="ViewCommand" type="hidden" value="None" /><input data-val="true" data-val-required="The TypeOfSubmission field is required." id="Item_TypeOfSubmission" name="Item.TypeOfSubmission" type="hidden" value="APINotSubjectToCoordination" /><input data-val="true" data-val-number="The field Id must be a number." data-val-required="The Id field is required." id="Item_Id" name="Item.Id" type="hidden" value="70632" /><input id="Item_SubmissionId" name="Item.SubmissionId" type="hidden" value="70632" /><input id="FormId" name="FormId" type="hidden" value="5c0a0752-27c8-4e0d-9b35-bf86a5a182ef" /><input data-val="true" data-val-required="The FileStorageId field is required." id="Item_FileStorageList_0__FileStorageId" name="Item.FileStorageList[0].FileStorageId" type="hidden" value="de237aa6-947a-4a0d-8068-2e0734bef6d3" /><input data-val="true" data-val-required="The FileStorageId field is required." id="Item_FileStorageList_1__FileStorageId" name="Item.FileStorageList[1].FileStorageId" type="hidden" value="eafdec7d-7bf6-4bba-8eee-86a3e1829eaf" /><input data-val="true" data-val-required="The FileStorageId field is required." id="Item_FileStorageList_2__FileStorageId" name="Item.FileStorageList[2].FileStorageId" type="hidden" value="604d1f2e-461d-4eda-baa8-2231f40a002d" /><input data-val="true" data-val-required="The FileStorageId field is required." id="Item_FileStorageList_3__FileStorageId" name="Item.FileStorageList[3].FileStorageId" type="hidden" value="73126841-c3c1-481d-830c-11330f89a748" />    <div class="tab-content">
+        <div role="tabpanel" class="tab-pane tab-content active" id="details">
+            <div class="row is-flex">
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="126545312"
+             data-submissionid="70632"
+             data-fieldname="SnsNtcId"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Notice ID</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="integer form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="SnsNtcId" name="SnsNtcId" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="Itu.RadioCommunication.Coordination.Mvc.Models.AdmWithNetworkOrg"
+             data-submissionid="70632"
+             data-fieldname="AdmWithNetworkOrg"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Administration / Network Org.</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control" id="Administration___Network_Org" name="Administration / Network Org" readonly="readonly" type="text" value="J" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="J-BLUEBIRD-NGSO"
+             data-submissionid="70632"
+             data-fieldname="SatName"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="true"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Satellite Name</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="SatName" name="SatName" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="J2026-83391"
+             data-submissionid="70632"
+             data-fieldname="InternalReference"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Submission Reference Number</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="InternalReference" name="InternalReference" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="A"
+             data-submissionid="70632"
+             data-fieldname="ActCode"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Act. Code</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<select class="form-control" data-bind="value: value" disabled="" id="Value" name="Value"><option value="">Select...</option>
+<option value="A">A</option>
+<option value="M">M</option>
+<option value="S">S</option>
+</select>
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="Advance publication information"
+             data-submissionid="70632"
+             data-fieldname="TypeOfSubmission"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Type of Submission</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="integer form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="TypeOfSubmission" name="TypeOfSubmission" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="9.1/IA"
+             data-submissionid="70632"
+             data-fieldname="Provision"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Provision</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="Provision" name="Provision" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="NGSO"
+             data-submissionid="70632"
+             data-fieldname="NonGeoData"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Orbital Position</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="NonGeoData" name="NonGeoData" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="T"
+             data-submissionid="70632"
+             data-fieldname="ref_body"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Reference Body</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="ref_body" name="ref_body" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="34"
+             data-submissionid="70632"
+             data-fieldname="nbr_plane"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Number of Planes</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="integer form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="nbr_plane" name="nbr_plane" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="04.09.2026"
+             data-submissionid="70632"
+             data-fieldname="BRRegistryDate"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">BR registry date</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control datetimepicker" data-bind="datePicker: value" id="BRRegistryDate" name="BRRegistryDate" readonly="readonly" type="text" value="04.09.2026" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="04.09.2026"
+             data-submissionid="70632"
+             data-fieldname="DateOfReceive"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Date of Receipt</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control datetimepicker" data-bind="datePicker: value" id="DateOfReceive" name="DateOfReceive" readonly="readonly" type="text" value="04.09.2026" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="136"
+             data-submissionid="70632"
+             data-fieldname="NumberOfSatellites"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Total number of satellites</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="NumberOfSatellites" name="NumberOfSatellites" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-4 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="NO"
+             data-submissionid="70632"
+             data-fieldname="ShortDurationMission"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Short Duration Mission</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="ShortDurationMission" name="ShortDurationMission" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xs-12 row-eq-height" data-component="app/coordination/submission-detail-action"
+             data-value="TELECOMMUNICATIONS BUREAU (T.B.), MINISTRY OF POSTS AND TELECOMMUNICATIONS"
+             data-submissionid="70632"
+             data-fieldname="OperatingAgency"
+             data-url="/ITU-R/space/asreceived/SubmissionDetailsActions/SaveField"
+             data-is-validatable="false"
+             data-validation-url="/ITU-R/space/asreceived/SubmissionDetailsActions/ValidateField">
+
+            <div class="form_group_custom">
+                <label for="">Operating Agency</label>
+                <div class="display_coordination_detail_item">
+                    <div class="">
+<input class="form-control" data-bind="textInput: value, attr: {title: value}, enterKey: action" id="OperatingAgency" name="OperatingAgency" readonly="readonly" type="text" value="" />
+                    </div>
+                    <div>
+                        <label class="error-label" data-bind="text: validationMessage, visible: hasErrors"
+                               style="display: none">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+</div>
+                            <div class="row">
+                    <div class="col-xs-12">
+                        
+    <table class="table-bordered table_body upload_table"
+           data-component="app/coordination/submission-documents/submission-document-actions"
+           data-submissionId='70632'>
+        <thead>
+        <tr>
+            <th style="width: 180px;">Document Type</th>
+            <th>File Name</th>
+            <th style="width: 100px;">Size</th>
+            <th class="version">#</th>
+            <th style="width: 80px;">Actions</th>
+        </tr>
+        </thead>
+        <tbody class="table text-center">
+
+            <tr>
+                <td colspan="5" class="row-group-title custom_heading expanded noselect" data-group-id="0">
+                    <i class="fa fa-caret-up"></i>
+                    
+                </td>
+            </tr>
+                <tr data-group-id="0" id="file-info-de237aa6-947a-4a0d-8068-2e0734bef6d3">
+                    <td style="min-width: 160px">Other</td>
+                    <td class="file-name" title="J-BLUEBIRD-NGSO_API_Attachments.docx">
+                        <div class="column_sizing_fix">
+                            
+                            
+
+
+    <div id="timestamp-de237aa6-947a-4a0d-8068-2e0734bef6d3" style="display: none;">
+        
+
+
+
+
+
+
+<table style="white-space: normal; min-width: 200px; text-align: left;">
+    <thead>
+    <tr style="display: none">
+        <th style="width: 100px;">
+        </th>
+        
+        <th style="width: 100%;">
+        </th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td>
+            Timestamp is:
+        </td>
+        <td>
+            valid
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Time:
+        </td>
+        <td>
+            20.08.2026 05:07:08
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Hash algorithm:
+        </td>
+        <td>
+            MD5
+        </td>
+    </tr>
+    <tr>
+        <td style="min-width: 120px;">
+            Message Imprint:
+        </td>
+        <td>
+            9F-84-2A-82-CF-9B-2D-60-D8-3E-8F-F2-01-02-4E-00
+        </td>
+    </tr>
+    <tr>
+        <td>
+            TSA Issuer:
+        </td>
+        <td>
+            CN=timestamping.itu.int,O=International Telecommunication Union,OU=Radiocommunication Bureau,E=spacehelp@itu.int,C=CH
+        </td>
+    </tr>
+    </tbody>
+</table>
+    </div>
+        <i id="timestamp-btn-de237aa6-947a-4a0d-8068-2e0734bef6d3" data-file="de237aa6-947a-4a0d-8068-2e0734bef6d3" title="Timestamp verified" class="fa fa-shield"  style="color: darkgreen">&nbsp;</i>        
+
+                            <a href="/ITU-R/space/asreceived/Publication/Get?token=REDACTED" target="_blank">J-BLUEBIRD-NGSO_API_Attachments.docx</a>
+                        </div>
+                    </td>
+                    <td>27.45 KB</td>
+                    <td class="version"></td>
+                    <td>
+                        <div>
+                                                                                </div>
+                    </td>
+                </tr>
+                <tr data-group-id="0" id="file-info-604d1f2e-461d-4eda-baa8-2231f40a002d">
+                    <td style="min-width: 160px">Other</td>
+                    <td class="file-name" title="MICTB731.pdf">
+                        <div class="column_sizing_fix">
+                            
+                            
+
+
+    <div id="timestamp-604d1f2e-461d-4eda-baa8-2231f40a002d" style="display: none;">
+        
+
+
+
+
+
+
+<table style="white-space: normal; min-width: 200px; text-align: left;">
+    <thead>
+    <tr style="display: none">
+        <th style="width: 100px;">
+        </th>
+        
+        <th style="width: 100%;">
+        </th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td>
+            Timestamp is:
+        </td>
+        <td>
+            valid
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Time:
+        </td>
+        <td>
+            04.09.2026 09:54:03
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Hash algorithm:
+        </td>
+        <td>
+            MD5
+        </td>
+    </tr>
+    <tr>
+        <td style="min-width: 120px;">
+            Message Imprint:
+        </td>
+        <td>
+            82-F5-83-F2-E6-26-DB-FE-E3-47-98-E8-F0-0D-5F-72
+        </td>
+    </tr>
+    <tr>
+        <td>
+            TSA Issuer:
+        </td>
+        <td>
+            CN=timestamping.itu.int,O=International Telecommunication Union,OU=Radiocommunication Bureau,E=spacehelp@itu.int,C=CH
+        </td>
+    </tr>
+    </tbody>
+</table>
+    </div>
+        <i id="timestamp-btn-604d1f2e-461d-4eda-baa8-2231f40a002d" data-file="604d1f2e-461d-4eda-baa8-2231f40a002d" title="Timestamp verified" class="fa fa-shield"  style="color: darkgreen">&nbsp;</i>        
+
+                            <a href="/ITU-R/space/asreceived/Publication/Get?token=REDACTED" target="_blank">MICTB731.pdf</a>
+                        </div>
+                    </td>
+                    <td>134.58 KB</td>
+                    <td class="version"></td>
+                    <td>
+                        <div>
+                                                                                </div>
+                    </td>
+                </tr>
+                <tr data-group-id="0" id="file-info-eafdec7d-7bf6-4bba-8eee-86a3e1829eaf">
+                    <td style="min-width: 160px">SNS(MDB) As Received Copy</td>
+                    <td class="file-name" title="J-BLUEBIRD-NGSO_API.mdb">
+                        <div class="column_sizing_fix">
+                            
+                            
+
+
+    <div id="timestamp-eafdec7d-7bf6-4bba-8eee-86a3e1829eaf" style="display: none;">
+        
+
+
+
+
+
+
+<table style="white-space: normal; min-width: 200px; text-align: left;">
+    <thead>
+    <tr style="display: none">
+        <th style="width: 100px;">
+        </th>
+        
+        <th style="width: 100%;">
+        </th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td>
+            Timestamp is:
+        </td>
+        <td>
+            valid
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Time:
+        </td>
+        <td>
+            20.08.2026 05:07:22
+        </td>
+    </tr>
+    <tr>
+        <td>
+            Hash algorithm:
+        </td>
+        <td>
+            MD5
+        </td>
+    </tr>
+    <tr>
+        <td style="min-width: 120px;">
+            Message Imprint:
+        </td>
+        <td>
+            CB-D1-15-1B-20-27-FA-2B-29-23-E1-7B-9D-F8-92-8C
+        </td>
+    </tr>
+    <tr>
+        <td>
+            TSA Issuer:
+        </td>
+        <td>
+            CN=timestamping.itu.int,O=International Telecommunication Union,OU=Radiocommunication Bureau,E=spacehelp@itu.int,C=CH
+        </td>
+    </tr>
+    </tbody>
+</table>
+    </div>
+        <i id="timestamp-btn-eafdec7d-7bf6-4bba-8eee-86a3e1829eaf" data-file="eafdec7d-7bf6-4bba-8eee-86a3e1829eaf" title="Timestamp verified" class="fa fa-shield"  style="color: darkgreen">&nbsp;</i>        
+
+                            <a href="/ITU-R/space/asreceived/Publication/Get?token=REDACTED" target="_blank">J-BLUEBIRD-NGSO_API.mdb</a>
+                        </div>
+                    </td>
+                    <td>8.09 MB</td>
+                    <td class="version">V10</td>
+                    <td>
+                        <div>
+                                                                                </div>
+                    </td>
+                </tr>
+        </tbody>
+    </table>
+        <ul class="list-group ul-summary">
+            <li class="download_table_data text-center">
+                <div style="background: rgb(51, 122, 183)">
+                    <span style="color: white">
+                        <i class="fa fa-download"></i>
+                        
+                        <a href="/ITU-R/space/asreceived/Publication/GetZipWithAllFileByResId?submissionId=70632" style="color: white;" target="_blank">Download All</a>
+                    </span>
+                </div>
+            </li>
+        </ul>
+
+                    </div>
+                </div>
+        </div>
+            <div role="tabpanel" class="tab-pane tab-content" id="frequencies">
+                <div class="col-xs-12">
+                        <div data-component="table.component"
+         data-source-url="/ITU-R/space/asreceived/Publication/FrequenciesTable?submissionId=70632"
+         data-load-mode="Partial">
+        <div class="row">
+            <h4>List of unique frequency bands</h4>
+        </div>
+        <div class="row">
+            <div class="col-sm-6">&nbsp;</div>
+            <div class="col-sm-6">
+                <div class="dataTables_paginate"><div class="pull-right"
+     data-bind="with: getComponent('paging')">
+    <ul class="pagination"
+        data-table-component="table/paging"
+        data-bind="visible: show"
+        style="display: none">
+        <li class="prev" data-bind="visible: first.show">
+            <button class="btn pagination_nav_btn" data-bind="click: first.click, enable: first.enabled">
+                <span class="glyphicon glyphicon-fast-backward" aria-hidden="true"></span>
+            </button>
+        </li>
+        <li class="prev" data-bind="visible: prev.show">
+            <button class="btn pagination_nav_btn" data-bind="click: prev.click, enable: prev.enabled">
+                <span class="glyphicon glyphicon-backward" aria-hidden="true"></span>
+            </button>
+        </li>
+        <!-- ko foreach: pages -->
+        <li data-bind="visible: show, css: { 'active': active }">
+            <button class="btn pagination_page_btn" style="font-size: 14px" data-bind="click: click, text: page, enable: enabled">
+                <span class="active" aria-hidden="true"></span>
+            </button>
+        </li>
+        <!-- /ko -->
+        <li class="next" data-bind="visible: next.show">
+            <button class="btn pagination_nav_btn" data-bind="click: next.click, enable: next.enabled">
+                <span class="glyphicon glyphicon-forward" aria-hidden="true"></span>
+            </button>
+        </li>
+        <li class="next" data-bind="visible: last.show">
+            <button class="btn pagination_nav_btn" data-bind="click: last.click, enable: last.enabled">
+                <span class="glyphicon glyphicon-fast-forward" aria-hidden="true"></span>
+            </button>
+        </li>
+    </ul>
+    <br>
+    <div data-bind="with: displayedRecordsInfo" class="pull-right">
+        <span data-bind="text: firstDisplayedNumber"></span> - <span data-bind="text: lastDisplayedNumber"></span> of <span data-bind="text: totalItems"></span>
+    </div>
+</div></div>
+            </div>
+        </div>
+        <div class="row">
+            <div data-table-role="table-container"> 
+    <table class="table table-bordered table-ordered" data-ordering="{&quot;OrderBy&quot;:null,&quot;Direction&quot;:&quot;Ascending&quot;,&quot;IsAscending&quot;:true}" data-paging="{&quot;Skip&quot;:0,&quot;Take&quot;:30}" data-total-items="14" id="freqs"><thead><tr data-table-component="table/ordering"><th>Freq From (MHz)</th><th>Freq To (MHz)</th></tr></thead><tbody>
+<tr>
+<td>430</td><td>440</td></tr>
+<tr>
+<td>698</td><td>960</td></tr>
+<tr>
+<td>1427</td><td>1518</td></tr>
+<tr>
+<td>1675</td><td>1680</td></tr>
+<tr>
+<td>1710</td><td>1785</td></tr>
+<tr>
+<td>1805</td><td>1915</td></tr>
+<tr>
+<td>1920</td><td>1995</td></tr>
+<tr>
+<td>2025</td><td>2170</td></tr>
+<tr>
+<td>2200</td><td>2290</td></tr>
+<tr>
+<td>2305</td><td>2320</td></tr>
+<tr>
+<td>2332.5</td><td>2360</td></tr>
+<tr>
+<td>2500</td><td>2570</td></tr>
+<tr>
+<td>2620</td><td>2690</td></tr>
+<tr>
+<td>45500</td><td>47000</td></tr></tbody></table>
+</div>
+        </div>
+    </div>
+
+                </div>
+            </div>
+
+
+    </div>
+</form>
+            </div>
+        </div>
+        <footer>
+            <div class="row">
+                <div class="col-xs-12">
+    <div class="footer">
+        <a href="#" id="to_top" class="go_top_btn"></a>
+        <h5>© ITU Space Services Submissions - BR Internal <span id="copyright_year">2026</span> All Rights Reserved</h5>
+    </div>
+</div>
+            </div>
+        </footer>
+    </div>
+</div>
+
+
+</body>
+</html>
