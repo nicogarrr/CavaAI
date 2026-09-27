@@ -126,3 +126,54 @@ def test_annual_consumers_do_not_see_quarters(db, monkeypatch):
     ))
     for fact in derived:
         assert fact.period.endswith(":FY")
+
+
+class _FakeSECFilingPeriodFp:
+    """Caso real AAPL (F157): el `fp` de companyfacts es el periodo fiscal DE
+    LA PRESENTACION, no del dato. Las comparativas trimestrales dentro del 10-Q
+    de Q1 del FY2018 llevan fp=Q1 aunque el dividendo se pago en abril (Q2
+    fiscal de Apple, ejercicio cerrando en septiembre). La copia mas reciente
+    (`filed` mayor) es la que sobrevive la deduplicacion, asi que confiar en
+    fp etiqueta TODOS los trimestres como Q1. La etiqueta se deriva del cierre
+    del periodo contra el mes modal de cierre de ejercicio (septiembre)."""
+
+    async def cik_for_ticker(self, ticker):
+        return "0000320193"
+
+    async def company_facts(self, cik):
+        div = "PaymentsOfDividendsCommonStock"
+        return {"facts": {"us-gaap": {
+            div: {"units": {"USD": [
+                {"fy": 2017, "fp": "FY", "form": "10-K", "start": "2016-09-25",
+                 "end": "2017-09-30", "val": 12769000000, "filed": "2017-11-03"},
+                # Trimestre pagado en abril: fiscal Q2 de Apple. La copia del
+                # 10-Q de Q3 FY2017 (fp=Q3) pierde contra la comparativa del
+                # 10-Q de Q1 FY2018 (fp=Q1, filed posterior): ambas describen
+                # el mismo dividendo; fp no es la etiqueta del periodo.
+                {"fy": 2017, "fp": "Q3", "form": "10-Q", "start": "2017-01-01",
+                 "end": "2017-04-01", "val": 2988000000, "filed": "2017-08-02"},
+                {"fy": 2018, "fp": "Q1", "form": "10-Q", "start": "2017-01-01",
+                 "end": "2017-04-01", "val": 2988000000, "filed": "2018-02-02"},
+                # Julio: fiscal Q3.
+                {"fy": 2018, "fp": "Q1", "form": "10-Q", "start": "2017-04-02",
+                 "end": "2017-07-01", "val": 3281000000, "filed": "2018-02-02"},
+                # Diciembre: fiscal Q1 (unico que fp acertaba por casualidad).
+                {"fy": 2018, "fp": "Q1", "form": "10-Q", "start": "2017-10-01",
+                 "end": "2017-12-30", "val": 3339000000, "filed": "2018-02-02"},
+            ]}},
+        }}}
+
+
+def test_quarter_label_comes_from_fiscal_calendar_not_filing_fp(db, monkeypatch):
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECFilingPeriodFp)
+    company = _company(db, "AAPL")
+    service = FinancialIngestionService()
+    asyncio.run(service.refresh_from_sec(db=db, company=company))
+    rows = _facts(db, company, "dividends_paid")
+    by_period = {r.period: r for r in rows}
+    assert "2017-04-01:Q2" in by_period
+    assert "2017-07-01:Q3" in by_period
+    assert "2017-12-30:Q1" in by_period
+    assert not any(p.endswith(":Q1") and not p.startswith("2017-12-30") for p in by_period if ":Q" in p)
+    assert by_period["2017-04-01:Q2"].fiscal_quarter == "Q2"
+    assert by_period["2017-04-01:Q2"].value == Decimal("2988000000")
