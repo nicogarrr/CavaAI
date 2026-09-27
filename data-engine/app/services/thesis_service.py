@@ -51,10 +51,16 @@ class ThesisService:
         from app.models import Document, FinancialFact, MarketPrice, NewsEvent
 
         latest_seen: datetime | None = None
+        # F317: los agregados MAX no heredan with_loader_criteria; las
+        # fuentes tenant-owned se filtran explícitamente o una actualización
+        # de otro tenant marcaría obsoleta esta tesis sin cambiar su
+        # información. MarketPrice es global por diseño y sigue global.
+        tenant_id = db.info.get("tenant_id")
         for model in (FinancialFact, MarketPrice, NewsEvent, Document):
-            stamp = db.scalar(
-                select(func.max(model.updated_at)).where(model.company_id == company_id)
-            )
+            stmt = select(func.max(model.updated_at)).where(model.company_id == company_id)
+            if tenant_id is not None and model is not MarketPrice:
+                stmt = stmt.where(model.tenant_id == tenant_id)
+            stamp = db.scalar(stmt)
             if stamp is not None and (latest_seen is None or stamp > latest_seen):
                 latest_seen = stamp
         return latest_seen

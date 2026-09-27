@@ -242,3 +242,59 @@ def test_recent_changes_many_returns_deterministic_order(db: Session):
     assert ordered == [
         change.summary for change in service.build(db, company).recent_changes
     ]
+
+
+def test_all_counts_scoped_to_current_tenant(db: Session):
+    """F315: los 8 conteos filtran tenant explícitamente, no solo documents.
+    Una empresa compartida (Company es global) con filas en dos tenants
+    cuenta solo las del tenant de la sesión, en _counts y en _counts_many.
+    """
+    from app.models.entities import ResearchAlert, ResearchReview
+
+    company = _company(db, "KO")
+    alert_seq = 0
+
+    def fill_tenant():
+        nonlocal alert_seq
+        alert_seq += 1
+        # Las unicidades son POR TENANT: dos altas del mismo tenant necesitan
+        # metric/version/fingerprints distintos (alert_seq las desempata).
+        db.add(FinancialFact(company_id=company.id, metric="revenue", value=Decimal("100"), period="FY2025"))
+        db.add(CalculatedMetric(company_id=company.id, metric=f"growth-{alert_seq}", value=Decimal("0.1"), period="FY2025", formula="x"))
+        db.add(Claim(company_id=company.id, statement="crece", status="verified"))
+        db.add(ThesisVersion(company_id=company.id, version=alert_seq, status="published",
+                             thesis_markdown="# T", executive_summary="resumen"))
+        db.add(FundamentalModelVersion(
+            company_id=company.id, version=alert_seq, engine_version="e1", algorithm_version="a1",
+            framework_key="growth", horizon_years=5, status="ok",
+            input_fingerprint=f"f-{db.info.get('tenant_id')}-{alert_seq}", forecast_fingerprint=f"ff-{db.info.get('tenant_id')}-{alert_seq}",
+            market_snapshot_fingerprint=f"mf-{db.info.get('tenant_id')}-{alert_seq}", valuation_snapshot_fingerprint=f"vf-{db.info.get('tenant_id')}-{alert_seq}",
+        ))
+        db.add(ResearchReview(company_id=company.id, status="open", review_type="expectation", title="r"))
+        db.add(ResearchAlert(
+            company_id=company.id, status="open", alert_type="drift", title="a",
+            # message y fingerprint son NOT NULL sin default, y fingerprint es
+            # unico por tenant: cada alta lleva uno distinto.
+            message="alerta de prueba",
+            fingerprint=f"fp-{db.info.get('tenant_id')}-{alert_seq}",
+        ))
+        db.commit()
+
+    db.info["tenant_id"] = "tenant-test"
+    fill_tenant()
+    db.info["tenant_id"] = 999
+    fill_tenant()
+    fill_tenant()
+
+    db.info["tenant_id"] = "tenant-test"
+    expected = {
+        "facts": 1, "calculated_metrics": 1, "documents": 0, "claims": 1,
+        "thesis_versions": 1, "model_versions": 1, "open_reviews": 1, "open_alerts": 1,
+    }
+    assert CompanySnapshotService._counts(db, company.id) == expected
+    assert CompanySnapshotService._counts_many(db, [company.id])[company.id] == expected
+
+    db.info["tenant_id"] = 999
+    expected_otro = {key: value * 2 for key, value in expected.items()}
+    assert CompanySnapshotService._counts(db, company.id) == expected_otro
+    assert CompanySnapshotService._counts_many(db, [company.id])[company.id] == expected_otro
