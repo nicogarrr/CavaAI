@@ -88,16 +88,20 @@ export default async function ResearchSettingsPage() {
 
             return (
               <div key={key} className="rounded-md border border-gray-800 p-4">
+                {/* F324: a 768px (grid de 2 columnas) la etiqueta larga del
+                    conector empujaba el badge de estado fuera de la tarjeta;
+                    min-w-0 deja encoger/envolver la etiqueta y shrink-0
+                    protege el badge. */}
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     {status === 'configured' ? (
                       <CheckCircle2 aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-teal-300" />
                     ) : (
                       <XCircle aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-gray-500" />
                     )}
-                    <span className="font-semibold text-gray-200">{meta?.label ?? key}</span>
+                    <span className="break-words font-semibold text-gray-200">{meta?.label ?? key}</span>
                   </div>
-                  <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadge}`}>
+                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadge}`}>
                     {CONNECTOR_STATUS_LABELS[status]}
                   </span>
                 </div>
