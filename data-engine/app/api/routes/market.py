@@ -5,6 +5,7 @@ Cache en memoria de 60s para no golpear Yahoo en cada carga de la home.
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -22,12 +23,15 @@ from app.services.provenance import SourceKind, coverage_for_age, provenance
 
 router = APIRouter()
 
+# F152: unidad explícita por serie. Los niveles de índice (^GSPC, ^IXIC) no
+# son dólares - pintarlos como «7743,41 US$» era una unidad falsa. El front
+# formatea según `unit`: "index" sin sufijo monetario, "usd" con US$.
 _INDEXES = [
-    {"symbol": "^GSPC", "name": "S&P 500"},
-    {"symbol": "^IXIC", "name": "Nasdaq Composite"},
-    {"symbol": "BTC-USD", "name": "Bitcoin"},
-    {"symbol": "GC=F", "name": "Oro"},
-    {"symbol": "SI=F", "name": "Plata"},
+    {"symbol": "^GSPC", "name": "S&P 500", "unit": "index"},
+    {"symbol": "^IXIC", "name": "Nasdaq Composite", "unit": "index"},
+    {"symbol": "BTC-USD", "name": "Bitcoin", "unit": "usd"},
+    {"symbol": "GC=F", "name": "Oro", "unit": "usd"},
+    {"symbol": "SI=F", "name": "Plata", "unit": "usd"},
 ]
 
 _HEADERS = {
@@ -83,6 +87,19 @@ _quote_cache_lock = threading.RLock()
 _YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
 
 
+# Yahoo nombra las clases de acciones US con guion (BRK-B), no con punto
+# (BRK.B, convención de Finnhub y del master). Las bolsas no-US llevan
+# sufijo de DOS letras (.MC, .AS, .TO, .SW, .DE); la clase US es UNA letra
+# A o B, así que el patrón no colisiona con sufijos de bolsa. Verificado
+# contra la chart API el 2026-09-27: BRK-B devuelve serie y BRK.B da 404.
+_SHARE_CLASS_DOTTED = re.compile(r"^([A-Z]{1,5})\.([AB])$")
+
+
+def _yahoo_chart_symbol(symbol: str) -> str:
+    match = _SHARE_CLASS_DOTTED.fullmatch(symbol)
+    return f"{match.group(1)}-{match.group(2)}" if match else symbol
+
+
 def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
     """Cotización puntual via Yahoo chart API con shape Finnhub {c,d,dp,h,l,o,pc}.
 
@@ -90,6 +107,7 @@ def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
     (IBEX .MC, .PA, .DE...); Finnhub free no los sirve. Devuelve None ante
     cualquier dato incompleto en lugar de inventar valores.
     """
+    symbol = _yahoo_chart_symbol(symbol)
     try:
         resp = client.get(
             f"{_YAHOO_CHART_URL}/{symbol}",
@@ -175,6 +193,7 @@ def _fetch_yahoo_candles(
     posiciones con close null (huecos) se descartan en TODOS los arrays para
     mantener la alineación por índice que espera el frontend.
     """
+    symbol = _yahoo_chart_symbol(symbol)
     try:
         resp = client.get(
             f"{_YAHOO_CHART_URL}/{symbol}",
@@ -351,7 +370,9 @@ def market_movers(
             "sector": sector,
             "currency": currency,
             "price": float(close or 0),
-            "volume": int(volume or 0),
+            # Volumen desconocido = None (la UI muestra "-"), nunca un 0
+            # fabricado que corona al ticker como el menos activo.
+            "volume": int(volume) if volume is not None else None,
             "date": day.isoformat() if day else None,
         }
         if company_id not in latest:
@@ -373,7 +394,10 @@ def market_movers(
     with_change = [m for m in movers if m["change_pct"] is not None]
     gainers = sorted(with_change, key=lambda m: m["change_pct"], reverse=True)[:limit]
     losers = sorted(with_change, key=lambda m: m["change_pct"])[:limit]
-    most_active = sorted(movers, key=lambda m: m["volume"], reverse=True)[:limit]
+    # "Mas activas" ordena por volumen REAL: las filas sin dato de volumen
+    # no pueden coronarse ni hundirse en el ranking por un 0 inventado.
+    with_volume = [m for m in movers if m["volume"] is not None]
+    most_active = sorted(with_volume, key=lambda m: m["volume"], reverse=True)[:limit]
     return {
         "as_of": as_of,
         "universe": len(movers),

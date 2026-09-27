@@ -1,6 +1,6 @@
 'use client';
 
-import { formatCompact, formatDateTime, formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import { formatCompact, formatUserDateTime, formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
 import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +20,7 @@ import {
     type TriggeredAlertDelivery,
 } from '@/lib/actions/alerts.actions';
 import { t } from '@/lib/i18n/t';
+import { buildPortfolioInsight } from '@/lib/portfolio-insight';
 
 interface PersonalizedOverviewProps {
     userId: string;
@@ -39,6 +40,8 @@ interface MarketIndex {
     price: number;
     change: number;
     changePercent: number;
+    // F152: "index" = nivel de índice (no es dinero), "usd" = precio en dólares.
+    unit?: 'index' | 'usd';
 }
 
 interface UndervaluedStock {
@@ -63,7 +66,13 @@ const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: Market
             <CardContent className="p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm text-gray-400 font-medium truncate">{index.name}</p>
-                    <p className="text-xl font-bold text-white mt-1">{formatMoney(index.price)}</p>
+                    {/* F152: un nivel de índice no es dinero. Solo «usd» lleva símbolo
+                        monetario; índice o unidad desconocida va como número plano. */}
+                    <p className="text-xl font-bold text-white mt-1">
+                        {index.unit === 'usd'
+                            ? formatMoney(index.price)
+                            : formatNumber(index.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
                 </div>
                 <div className={`shrink-0 text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     <div className="flex items-center justify-end gap-1">
@@ -147,7 +156,6 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [triggeredAlerts, setTriggeredAlerts] = useState<TriggeredAlertDelivery[]>([]);
-    const [aiInsight, setAiInsight] = useState('');
     const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
     const [opportunities, setOpportunities] = useState<UndervaluedStock[]>([]);
     const [indicesLoading, setIndicesLoading] = useState(true);
@@ -197,6 +205,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     price: data.price || 0,
                     change: data.change || 0,
                     changePercent: data.changePercent || 0,
+                    unit: data.unit,
                 }))
                 .filter((i) => i.price > 0));
             setIndicesLoading(false);
@@ -261,25 +270,6 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             setWatchlistLoading(false);
             setWatchlistError(watchlistWithPrices.error ?? watchlistResult.error);
 
-            if (summaryResult.data && summaryResult.data.holdings.length > 0) {
-                const summary = summaryResult.data;
-                // F17: gainPercent es rentabilidad desde la compra (no la
-                // variacion de hoy) y solo existe con base de coste. Sin
-                // coste no hay frase de movimiento: un "0,00%" seria inventado.
-                const conCoste = summary.holdings.filter((h) => h.cost > 0 && !h.fxMissing);
-                if (conCoste.length === 0) {
-                    setAiInsight('Todavía no tenemos la base de coste de tus posiciones. Cuando esté cargada, aquí verás cómo va tu cartera desde la compra.');
-                } else {
-                    const topMover = conCoste.reduce((a, b) => Math.abs(b.gainPercent) > Math.abs(a.gainPercent) ? b : a);
-                    const costeTotal = conCoste.reduce((sum, h) => sum + h.cost, 0);
-                    const gananciaTotal = conCoste.reduce((sum, h) => sum + h.gain, 0);
-                    const totalPercent = costeTotal > 0 ? (gananciaTotal / costeTotal) * 100 : 0;
-                    const direccion = totalPercent >= 0 ? 'una subida' : 'una caída';
-                    setAiInsight(`Tu cartera acumula ${direccion} del ${formatPercent(totalPercent, { fromRatio: false, digits: 2, signDisplay: 'never' })} desde la compra. ${topMover.symbol} es la posición que más se mueve (${formatPercent(topMover.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}).`);
-                }
-            } else {
-                setAiInsight('');
-            }
         };
 
         void loadData();
@@ -299,6 +289,10 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             .sort((a, b) => Math.abs(b.gainPercent) - Math.abs(a.gainPercent))
             .slice(0, 4);
     }, [portfolioSummary]);
+
+    /** Frase "tu cartera en una línea": derivada solo del resumen, nunca
+     *  del waterfall de oportunidades (F38). */
+    const insight = useMemo(() => buildPortfolioInsight(portfolioSummary), [portfolioSummary]);
 
     /** Posición que más se mueve desde la compra: el destino del enlace
      *  "¿qué ha cambiado?" del encabezado. Sin base de coste no hay dato. */
@@ -336,7 +330,12 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         ) : (
                             <>
                                 <p className="text-gray-200 text-sm leading-relaxed">
-                                    {aiInsight || 'Todavía no tienes posiciones. Añade tu primera inversión para ver aquí qué ha cambiado desde la compra.'}
+                                    {insight.kind === 'empty' &&
+                                        'Todavía no tienes posiciones. Añade tu primera inversión para ver aquí qué ha cambiado desde la compra.'}
+                                    {insight.kind === 'no-cost-basis' &&
+                                        'Todavía no tenemos la base de coste de tus posiciones. Cuando esté cargada, aquí verás cómo va tu cartera desde la compra.'}
+                                    {insight.kind === 'movement' &&
+                                        `${insight.partial ? 'Entre las posiciones con base de coste, tu' : 'Tu'} cartera acumula ${insight.direction === 'up' ? 'una subida' : 'una caída'} del ${formatPercent(insight.totalPercent, { fromRatio: false, digits: 2, signDisplay: 'never' })} desde la compra. ${insight.topSymbol} es la posición que más se mueve (${formatPercent(insight.topGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}).`}
                                 </p>
                                 <Link
                                     href={topMover ? `/research/${topMover.symbol}?view=changes` : '/portfolio'}
@@ -375,7 +374,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                             <div className="flex flex-col min-[420px]:flex-row min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
                                 <div className="min-w-0">
                                     <p className="text-sm text-gray-400">Valor Total Estimado</p>
-                                    <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">{formatMoney(portfolioSummary.totalValue)}</p>
+                                    <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">{formatMoney(portfolioSummary.totalValue, portfolioSummary.baseCurrency)}</p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>
@@ -438,7 +437,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 <article className="min-w-0 rounded-lg border border-gray-700/50 bg-gray-900/50 p-3" key={item.id}>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <Badge variant="outline">{SEVERITY_LABELS[item.severity] ?? item.severity}</Badge>
-                                        <span className="text-xs text-gray-500">{formatDateTime(item.createdAt)}</span>
+                                        <span className="text-xs text-gray-500">{formatUserDateTime(item.createdAt)}</span>
                                     </div>
                                     <p className="mt-2 text-sm break-words text-gray-200">{item.title}</p>
                                     <p className="mt-1 text-xs break-words text-gray-400">{item.message}</p>

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { getSavedScreenerEngines, getScreenerStocksReal } from '@/lib/actions/screener.actions';
-import { formatCompact, formatPercent, formatPrice } from '@/lib/format';
+import { formatCompact, formatNumber, formatPercent, formatPrice } from '@/lib/format';
 import { etiquetaSector } from '@/lib/labels';
 import { t } from '@/lib/i18n/t';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,22 +22,27 @@ export const metadata: Metadata = {
 
 /** Sectores que el Screener ofrece: etiqueta ES de lib/labels.ts + valor EN
  *  que espera el backend. */
+// Nombres GICS exactamente como los sirve el backend: filtrar por un nombre
+// distinto (p.ej. 'Technology' en vez de 'Information Technology') devuelve
+// 0 filas y el primer pintado salía siempre vacío (F223).
 const SECTORES = [
-  { en: 'Technology' },
+  { en: 'Information Technology' },
   { en: 'Health Care' },
-  { en: 'Financial Services' },
-  { en: 'Consumer Cyclical' },
+  { en: 'Financials' },
+  { en: 'Consumer Discretionary' },
+  { en: 'Consumer Staples' },
   { en: 'Energy' },
-  { en: 'Utilities' },
+  { en: 'Communication Services' },
+  { en: 'Materials' },
 ];
 
 const sectorEn = (value: string) =>
-  SECTORES.some((s) => s.en === value) ? value : 'Technology';
+  SECTORES.some((s) => s.en === value) ? value : 'Information Technology';
 
 const sectorEs = (value: string) => etiquetaSector(value);
 
 export default async function ScreenerPage({ searchParams }: { searchParams?: Promise<{ sector?: string }> }) {
-  const sector = sectorEn((await searchParams)?.sector ?? 'Technology');
+  const sector = sectorEn((await searchParams)?.sector ?? 'Information Technology');
   // Screener (backend) e índices (backend) son independientes: en paralelo
   // en vez de en serie. El flag distingue "backend caído" (reintentar) de
   // "filtro sin resultados" (cambiar de sector).
@@ -57,6 +62,14 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
   const { rows, backendDown } = screenerResult;
   // Un indice sin precio real (fallo del proveedor) no se pinta como $0.00.
   const validIndices = indices.filter((i) => i.price > 0);
+  // F152: un nivel de índice no es dinero - sin sufijo «US$». Solo las
+  // series etiquetadas "usd" (Bitcoin/Oro/Plata) llevan US$; un nivel de
+  // índice o una serie sin unidad conocida va como número plano, jamás
+  // asumiendo dólares.
+  const formatIndexValue = (i: (typeof validIndices)[number]) =>
+    i.unit === 'usd'
+      ? formatPrice(i.price, 'USD')
+      : formatNumber(i.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto w-full max-w-full min-w-0 space-y-6 overflow-x-clip p-4 sm:p-6">
@@ -90,7 +103,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
         <CardContent>
           {engineScreens.engineDown ? (
             <p className="text-sm text-gray-500">
-              El motor (POST /api/screeners/run) no responde: la tabla de abajo muestra
+              El motor (POST /api/screeners/run) no ha podido completar la consulta: la tabla de abajo muestra
               precios Finnhub como lectura offline, sin análisis de cobertura.
             </p>
           ) : engineScreens.screens.length === 0 ? (
@@ -133,8 +146,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                   Motor de análisis desconectado
                 </span>
                 <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-gray-400 sm:text-base">
-                  No hay datos ahora mismo: el motor no responde y puede estar arrancando. Tus datos
-                  están a salvo, reintenta en unos segundos.
+                  No hay datos ahora mismo.
                 </p>
                 <Button asChild className="mt-4 min-h-[44px] px-6">
                   <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>
@@ -143,7 +155,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                   </Link>
                 </Button>
                 <p className="mt-4 text-xs text-gray-500">
-                  Si el problema persiste, el backend local no está en marcha.
+                  El servidor de CavaAI no ha podido completar la consulta. Reintenta en unos segundos.
                 </p>
               </div>
               ) : (
@@ -205,7 +217,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                         <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Market Cap</span>
                           <span className="font-mono text-gray-300">
-                            {formatCompact(r.marketCap, { maximumFractionDigits: 1 })}
+                            {r.marketCap > 0 ? formatCompact(r.marketCap, { maximumFractionDigits: 1 }) : 'N/D'}
                           </span>
                         </td>
                         <td className="mt-2 flex items-center justify-between gap-3 border-t border-gray-800/60 pt-3 md:table-cell md:mt-0 md:border-0 md:py-3 md:pt-3 md:text-right">
@@ -230,7 +242,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
               {validIndices.map((i) => (
                 <div key={i.symbol} className="flex min-w-0 items-center justify-between gap-3">
                   <span className="min-w-0 flex-1 truncate text-gray-300">{i.name}</span>
-                  <span className="shrink-0 font-semibold text-gray-100">{formatPrice(i.price, 'USD')}</span>
+                  <span className="shrink-0 font-semibold text-gray-100">{formatIndexValue(i)}</span>
                 </div>
               ))}
               {validIndices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}

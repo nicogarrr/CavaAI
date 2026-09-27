@@ -20,7 +20,6 @@ from app.services.market_refresh_service import (
     MarketRefreshService,
     PriceObservation,
     PublicPriceProvider,
-    _provider_date,
 )
 
 
@@ -184,38 +183,174 @@ def test_finnhub_quote_uses_provider_timestamp_date():
     assert observation is not None
     assert observation.price_date == expected
     assert observation.price_date != date(2026, 9, 26)
-class TestProviderDate:
-    """_provider_date: ISO/timezone honesto, sin slices magicos de strptime."""
 
-    def test_iso_with_negative_offset_uses_utc_date(self):
-        # 23:30 a -05:00 ya es el dia siguiente en UTC: la fecha de la quote
-        # es la UTC, no la del huso del proveedor.
-        assert _provider_date(
-            {"date": "2026-09-26T23:30:00-05:00"}, date(2026, 9, 27)
-        ) == date(2026, 9, 27)
 
-    def test_iso_with_positive_offset_uses_utc_date(self):
-        assert _provider_date(
-            {"date": "2026-09-26T00:30:00+02:00"}, date(2026, 9, 26)
-        ) == date(2026, 9, 25)
+def test_fmp_quote_without_timestamp_is_not_dated():
+    """Quote de FMP sin timestamp: se salta, nunca se fecha con metadatos."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
 
-    def test_iso_z_and_fractional_seconds(self):
-        assert _provider_date(
-            {"datetime": "2026-09-26T15:30:00Z"}, date(2026, 9, 27)
-        ) == date(2026, 9, 26)
-        assert _provider_date(
-            {"datetime": "2026-09-26T15:30:00.123456"}, date(2026, 9, 27)
-        ) == date(2026, 9, 26)
+    async def quote(_ticker):
+        return [{"price": 210.5}]
 
-    def test_date_only_and_compact(self):
-        assert _provider_date({"date": "2026-09-26"}, date(2026, 9, 27)) == date(2026, 9, 26)
-        assert _provider_date({"date": "20260926"}, date(2026, 9, 27)) == date(2026, 9, 26)
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+    company = SimpleNamespace(ticker="AAPL")
 
-    def test_epoch_timestamp(self):
-        expected = datetime.fromtimestamp(1_758_900_000, tz=UTC).date()
-        assert _provider_date({"timestamp": 1_758_900_000}, date(2026, 9, 27)) == expected
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
 
-    def test_garbage_or_missing_is_none_never_fallback(self):
-        assert _provider_date({"date": "not a date"}, date(2026, 9, 26)) is None
-        assert _provider_date({"date": ""}, date(2026, 9, 26)) is None
-        assert _provider_date({}, date(2026, 9, 26)) is None
+    assert observation is None
+    assert error is not None
+    assert "FMP:quote_missing_timestamp" in error["reason"]
+
+
+def test_fmp_quote_uses_provider_timestamp_and_real_volume():
+    """Un refresh en sabado fechaba la barra EN sabado: ya no.
+
+    La quote del viernes (timestamp del proveedor) se guarda con la fecha del
+    viernes y con el volumen real del dia, no un 0 inventado.
+    """
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+    friday_ts = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
+
+    async def quote(_ticker):
+        return [{"price": 210.5, "timestamp": friday_ts, "volume": 48_123_456}]
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+    company = SimpleNamespace(ticker="AAPL")
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert error is None
+    assert observation is not None
+    assert observation.price_date == date(2026, 9, 25)
+    assert observation.price_date != date(2026, 9, 26)
+    assert observation.volume == 48_123_456
+
+
+def test_fmp_future_quote_date_is_rejected():
+    """Un timestamp futuro no puede escribir una barra de manana."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+    future_ts = int(datetime(2026, 9, 28, 20, 0, tzinfo=UTC).timestamp())
+
+    async def quote(_ticker):
+        return [{"price": 210.5, "timestamp": future_ts}]
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+    company = SimpleNamespace(ticker="AAPL")
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert observation is None
+    assert error is not None
+    assert "FMP:quote_date_in_future" in error["reason"]
+
+
+def test_fmp_profile_is_never_used_for_prices():
+    """El profile (fechas de metadatos) ya no es fuente de precios."""
+
+    async def forbidden_profile(_ticker):
+        raise AssertionError("company_profile no debe usarse para precios")
+
+    async def quote(_ticker):
+        friday_ts = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
+        return [{"price": 210.5, "timestamp": friday_ts, "volume": 1000}]
+
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+    provider.fmp = SimpleNamespace(
+        configured=lambda: True, quote=quote, company_profile=forbidden_profile
+    )
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+    company = SimpleNamespace(ticker="AAPL")
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert error is None
+    assert observation is not None
+    assert observation.source == "FMP"
+
+
+def test_non_us_company_never_gets_a_bare_ticker_us_quote():
+    """ALM es Almirall (BME, EUR); Finnhub/FMP con el ticker pelado devuelven
+    Almonty (ALM en Nasdaq). Ese precio NUNCA puede guardarse bajo Almirall."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+
+    async def fmp_quote(_ticker):
+        return [{"price": 13.72, "timestamp": 1_800_000_000}]
+
+    async def finnhub_quote(_ticker):
+        return {"c": 13.72, "t": 1_800_000_000}
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: True, quote=finnhub_quote)
+    company = SimpleNamespace(ticker="ALM", exchange="BME", currency="EUR")
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert observation is None
+    assert error is not None
+    assert error["reason"] == "non_us_listing"
+
+
+def test_adr_is_not_the_amsterdam_listing():
+    """ASML cotiza en Euronext Amsterdam en EUR; la quote pelada es el ADR
+    Nasdaq en USD. La bolsa contiene «NYSE» pero la divisa manda: fuera."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+
+    async def fmp_quote(_ticker):
+        return [{"price": 1743.94, "timestamp": 1_800_000_000}]
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+    company = SimpleNamespace(
+        ticker="ASML", exchange="NYSE EURONEXT - EURONEXT AMSTERDAM", currency="EUR"
+    )
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert observation is None
+    assert error is not None
+    assert error["reason"] == "non_us_listing"
+
+
+def test_us_and_unknown_usd_companies_keep_us_quotes():
+    """NASDAQ/USD y UNKNOWN/USD (bulk import US) siguen cotizando en US."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+    ts = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
+
+    async def fmp_quote(_ticker):
+        return [{"price": 210.5, "timestamp": ts}]
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+
+    for exchange, currency in (
+        ("NASDAQ NMS - GLOBAL MARKET", "USD"),
+        ("NEW YORK STOCK EXCHANGE, INC.", "USD"),  # literal de prod: sin «NYSE»
+        ("NYSE MKT LLC", "USD"),
+        ("UNKNOWN", "USD"),
+        ("", ""),
+    ):
+        company = SimpleNamespace(ticker="AAPL", exchange=exchange, currency=currency)
+        _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+        assert error is None, (exchange, currency)
+        assert observation is not None, (exchange, currency)
+
+
+def test_unknown_exchange_with_eur_is_not_a_us_listing():
+    """UNKNOWN+EUR: sin evidencia de listado US, no arriesgar el gemelo."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+
+    async def fmp_quote(_ticker):
+        return [{"price": 10.0, "timestamp": 1_800_000_000}]
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+    company = SimpleNamespace(ticker="XYZ", exchange="UNKNOWN", currency="EUR")
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert observation is None
+    assert error is not None
+    assert error["reason"] == "non_us_listing"

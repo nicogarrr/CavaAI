@@ -7,11 +7,11 @@ tickers stay unavailable (never guessed). Failures degrade honestly.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 
 from app.core.errors import redact_secrets
 from app.services import cnmv_mapping
+from app.services.async_bridge import run_from_any_context
 from app.services.connectors import cnmv
 from app.services.provenance import Coverage, SourceKind, provenance
 
@@ -28,7 +28,11 @@ def get_oir_for_ticker(ticker: str, *, days: int = 7) -> dict:
             "filings": [],
         }
     try:
-        filings = asyncio.run(cnmv.fetch_oir_filings(days=days))
+        # Puente compartido y no asyncio.run: la ruta async de CNMV
+        # (POST /api/cnmv/oir) tiene un event loop activo, y asyncio.run
+        # lanzaba RuntimeError que el except de abajo convertía en
+        # status="degraded" para siempre.
+        filings = run_from_any_context(cnmv.fetch_oir_filings(days=days))
     except cnmv.CNMVParseError as exc:
         return {
             "ticker": wanted,

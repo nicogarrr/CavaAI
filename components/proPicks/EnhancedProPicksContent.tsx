@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { TrendingUp, Sparkles, ArrowRight, Loader2, RefreshCw, Clock, Plus, Check } from 'lucide-react';
 import EnhancedProPicksFilters, { ProPicksFilters } from './EnhancedProPicksFilters';
-import { generateEnhancedProPicks, type ProPick } from '@/lib/actions/proPicks.actions';
+import { generateEnhancedProPicksWithRun, type ProPick } from '@/lib/actions/proPicks.actions';
 import { addToWatchlist } from '@/lib/actions/watchlist.actions';
 import { formatNumber, formatPercent, formatPrice, formatUserDate, formatUserDateTime } from '@/lib/format';
 import { etiquetaSector } from '@/lib/labels';
@@ -17,13 +17,15 @@ import { toast } from 'sonner';
 interface EnhancedProPicksContentProps {
     initialPicks: ProPick[];
     generatedAt?: string;
+    initialPassedCount?: number | null;
 }
 
-export default function EnhancedProPicksContent({ initialPicks, generatedAt }: EnhancedProPicksContentProps) {
+export default function EnhancedProPicksContent({ initialPicks, generatedAt, initialPassedCount = null }: EnhancedProPicksContentProps) {
     const [picks, setPicks] = useState<ProPick[]>(initialPicks);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastGenerated, setLastGenerated] = useState<string | null>(generatedAt || null);
+    const [passedCount, setPassedCount] = useState<number | null>(initialPassedCount);
     const [filters, setFilters] = useState<ProPicksFilters>({
         timePeriod: 'month',
         limit: 20,
@@ -58,9 +60,10 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
         setLoading(true);
         setError(null);
         try {
-            const newPicks = await generateEnhancedProPicks(filters);
-            setPicks(newPicks);
-            setLastGenerated(new Date().toISOString());
+            const result = await generateEnhancedProPicksWithRun(filters);
+            setPicks(result.picks);
+            setLastGenerated(result.runAsOf);
+            setPassedCount(result.passedCount);
         } catch (error) {
             console.error('Error applying filters:', error);
             setError('Error al aplicar los filtros. Por favor, intenta de nuevo.');
@@ -73,9 +76,10 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
         setLoading(true);
         setError(null);
         try {
-            const newPicks = await generateEnhancedProPicks(filters);
-            setPicks(newPicks);
-            setLastGenerated(new Date().toISOString());
+            const result = await generateEnhancedProPicksWithRun(filters);
+            setPicks(result.picks);
+            setLastGenerated(result.runAsOf);
+            setPassedCount(result.passedCount);
         } catch (error) {
             console.error('Error refreshing picks:', error);
             setError('Error al regenerar. Por favor, intenta de nuevo.');
@@ -139,7 +143,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                     {lastGenerated && (
                         <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
                             <Clock aria-hidden="true" className="h-3 w-3" />
-                            Generado: {formatLastGenerated(lastGenerated)}
+                            Último run (datos): {formatLastGenerated(lastGenerated)}
                         </div>
                     )}
                 </Card>
@@ -225,8 +229,12 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt }: E
                             {t('propicks.noResults')}
                         </p>
                         <p className="text-sm text-gray-500 mt-2">
-                            No se encontraron acciones con los filtros seleccionados.
-                            Prueba a bajar el score mínimo o pulsa «Reintentar» para volver a intentarlo.
+                            {!lastGenerated &&
+                                'El embudo todavía no ha publicado un run completado. Pulsa «Reintentar» para volver a intentarlo.'}
+                            {lastGenerated && passedCount === 0 &&
+                                `El último run (datos del ${formatLastGenerated(lastGenerated)}) no produjo candidatos aptos en el embudo. No es cuestión de filtros: el motor no encontró oportunidades que superaran sus propios criterios.`}
+                            {lastGenerated && passedCount !== 0 &&
+                                `Ningún pick del último run (datos del ${formatLastGenerated(lastGenerated)}) cumple los filtros actuales (score ≥ ${filters.minScore}${filters.sector !== 'all' ? `, sector ${filters.sector}` : ''}). Prueba a bajar el score mínimo o cambiar de sector.`}
                         </p>
                         <Button
                             onClick={handleRefresh}

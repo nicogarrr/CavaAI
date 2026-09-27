@@ -125,6 +125,25 @@ def test_enrich_sets_sector_from_declared_mapping(db):
     assert company.sector == "Information Technology"
 
 
+def test_enrich_maps_finnhub_communications_to_information_technology(db):
+    """F155: la industria Finnhub "Communications" es GICS Communications
+    Equipment (CSCO, ANET...), sector Information Technology, no
+    Communication Services."""
+    company = _company(db, name="CSCO", ticker="CSCO", exchange="UNKNOWN")
+    company.sector = "Unknown"
+    db.commit()
+    profile = {
+        "name": "Cisco Systems Inc",
+        "exchange": "NASDAQ",
+        "finnhubIndustry": "Communications",
+        "currency": "USD",
+    }
+    service = CompanyEnrichmentService(settings=_Settings(), client=_Client(profile))
+    assert service.enrich(db, company) is True
+    assert company.industry == "Communications"
+    assert company.sector == "Information Technology"
+
+
 def test_enrich_keeps_real_sector_and_unknown_industry_stays_honest(db):
     company = _company(db, name="XYZ", ticker="XYZ", exchange="UNKNOWN")
     company.sector = "Unknown"

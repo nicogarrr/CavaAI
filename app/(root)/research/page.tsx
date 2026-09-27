@@ -6,7 +6,7 @@ import { getResearchCompanySnapshots, getResearchDashboard } from '@/lib/actions
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import WorkProductButton from '@/components/work-products/WorkProductButton';
-import { formatDate, formatMoney, formatNumber, formatPercent } from '@/lib/format';
+import { formatDate, formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
@@ -105,8 +105,10 @@ type CompanyRow = {
     pendiente: boolean;
 };
 
-function money(value: number) {
-    return formatMoney(value, 'USD', { maximumFractionDigits: 0 });
+function money(value: number, currency: string | undefined) {
+    // Sin moneda base del backend, pintar un importe con símbolo inventado
+    // es peor que no pintarlo: NA honesto.
+    return currency ? formatMoney(value, currency, { maximumFractionDigits: 0 }) : NA;
 }
 
 function pct(value: number) {
@@ -280,8 +282,8 @@ export default async function ResearchPage() {
                 title="Contexto de cartera"
             >
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    <Stat label="Valor total" size="sm" value={money(portfolio.total_value)} />
-                    <Stat label="Renta variable" size="sm" value={money(portfolio.equity_value)} />
+                    <Stat label="Valor total" size="sm" value={money(portfolio.total_value, portfolio.base_currency)} />
+                    <Stat label="Renta variable" size="sm" value={money(portfolio.equity_value, portfolio.base_currency)} />
                     <Stat label="Top 1" size="sm" tone="warn" value={pct(portfolio.top_1_weight)} />
                     <Stat
                         label="Alertas de concentración"

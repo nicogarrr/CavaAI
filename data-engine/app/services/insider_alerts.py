@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -221,6 +222,7 @@ def evaluate(
             record = ResearchAlert(
                 tenant_id=tenant_id,
                 company_id=alert["company_id"],
+                last_triggered_at=datetime.now(UTC),
                 severity=alert["severity"],
                 status="open",
                 alert_type=f"{ALERT_TYPE_PREFIX}{alert['rule']}",

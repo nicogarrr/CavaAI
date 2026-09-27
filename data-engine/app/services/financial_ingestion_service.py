@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.models import Company, Document, FinancialFact, FinancialStatement, MarketPrice
 from app.services.connectors import esef as esef_connector
 from app.services.connectors import fred as fred_connector
@@ -491,14 +492,36 @@ async def _free_data_snapshot(ticker: str, cik: str) -> dict[str, Any]:
         )
     except Exception as exc:
         snapshot["recent_filings"] = []
-        snapshot["filings_error"] = str(exc)[:200]
+        snapshot["filings_error"] = redact_secrets(str(exc))[:200]
     try:
         snapshot["macro"] = await fred_connector.latest_observation("cpi")
     except Exception as exc:  # pragma: no cover - red defensiva
         snapshot["macro"] = None
-        snapshot["macro_error"] = str(exc)[:200]
+        snapshot["macro_error"] = redact_secrets(str(exc))[:200]
     return snapshot
 
+
+
+def _fiscal_quarter_from_end(end: str, modal_fy_month: str | None) -> str | None:
+    """Trimestre fiscal derivado del cierre del periodo contra el mes modal de
+    cierre de ejercicio. El `fp` de companyfacts es el periodo fiscal DE LA
+    PRESENTACION, no del dato: las comparativas trimestrales dentro de un 10-Q
+    heredan el fp de ese 10-Q (caso real AAPL: dividendos pagados en abril o
+    julio etiquetados Q1 porque la copia mas reciente salio en el 10-Q de Q1),
+    asi que no sirve para etiquetar. Meses desde el cierre modal redondeados a
+    trimestres: el propio mes de cierre (y su drift de 52/53 semanas, +-1 mes)
+    es Q4; +3 meses es Q1; +6, Q2; +9, Q3. None sin ancla modal."""
+    if not modal_fy_month:
+        return None
+    try:
+        month = date.fromisoformat(str(end)).month
+        modal = int(modal_fy_month)
+    except (TypeError, ValueError):
+        return None
+    quarter = round(((month - modal) % 12) / 3)
+    if quarter == 0:
+        quarter = 4
+    return f"Q{quarter}"
 
 def _modal_fiscal_end_month(us_gaap: dict[str, Any]) -> str | None:
     """Mes modal de cierre de ejercicio a partir de TODOS los hechos de flujo
@@ -592,7 +615,7 @@ class FinancialIngestionService:
         db.flush()
         facts += self._add_derived_facts(db, company, document)
         facts += self._add_profile_facts(db, company, document, profile)
-        self._add_profile_price(db, company, profile)
+        await self._add_spot_price(db, company, fmp, ticker)
 
         document.metadata_ = {
             **(document.metadata_ or {}),
@@ -651,7 +674,11 @@ class FinancialIngestionService:
             # (balance, sin start) pasan. fiscal_year queda NULL a proposito:
             # los consumidores anuales seleccionan por fiscal_year (y los que
             # ordenan por el usan nullslast), asi las filas :Qn nunca se
-            # confunden con el ejercicio anual. period = "<end>:Q<n>".
+            # confunden con el ejercicio anual. period = "<end>:Q<n>". La
+            # etiqueta <n> se deriva del cierre contra el mes modal de cierre
+            # de ejercicio: el fp de companyfacts es el periodo fiscal DE LA
+            # PRESENTACION (las comparativas heredan el fp del 10-Q que las
+            # trae), no el del dato. Fallback a fp sin ancla modal.
             by_end_q = _merge_for_metric(
                 _collect_by_concept(
                     us_gaap,
@@ -674,7 +701,9 @@ class FinancialIngestionService:
                         continue
                     if metric == "capital_expenditure":
                         val = -val
-                    fp = str(entry["fp"])
+                    fp = _fiscal_quarter_from_end(
+                        str(entry["end"]), modal_fy_month
+                    ) or str(entry["fp"])
                     db.add(
                         FinancialFact(
                             company_id=company.id,
@@ -1506,35 +1535,65 @@ class FinancialIngestionService:
         )
         return 1
 
-    def _add_profile_price(
+    async def _add_spot_price(
         self,
         db: Session,
         company: Company,
-        profile: list[dict[str, Any]],
+        fmp: FMPClient,
+        ticker: str,
     ) -> None:
-        if not profile:
+        # Barra diaria desde /quote: fecha y volumen REALES de la cotizacion.
+        # Antes se tomaba profile[0].price fechado con el dia de la ingesta:
+        # un refresh financiero en fin de semana fabricaba una barra del
+        # sabado/domingo con el ultimo cierre conocido. Sin timestamp del
+        # proveedor no hay fecha honesta, asi que no se escribe nada.
+        try:
+            payload = await fmp.quote(ticker)
+        except Exception:  # noqa: BLE001 - best-effort: la quote no bloquea la ingesta financiera
             return
-        price = _decimal(profile[0].get("price"))
+        item = payload[0] if isinstance(payload, list) and payload else None
+        if not isinstance(item, dict):
+            return
+        price = _decimal(item.get("price"))
         if price is None or price <= 0:
             return
-        today = datetime.now(UTC).date()
+        # Fallar cerrado ante payload malformado: un timestamp o volumen
+        # invalidos no deben tumbar el refresh financiero tras importar facts.
+        try:
+            timestamp = int(item.get("timestamp") or 0)
+            quote_date = datetime.fromtimestamp(timestamp, tz=UTC).date() if timestamp > 0 else None
+        except (TypeError, ValueError, OverflowError, OSError):
+            quote_date = None
+        if quote_date is None or quote_date > datetime.now(UTC).date():
+            return
+        try:
+            volume = int(item["volume"]) if item.get("volume") is not None else None
+        except (TypeError, ValueError):
+            volume = None
         existing = db.scalar(
-            select(MarketPrice).where(MarketPrice.company_id == company.id, MarketPrice.date == today)
+            select(MarketPrice).where(MarketPrice.company_id == company.id, MarketPrice.date == quote_date)
         )
         if existing:
+            # La fila existente es una barra real: se actualiza solo el close
+            # y se preservan OHLC y el adjusted autentico de esa fecha.
             existing.close = price
-            existing.adj_close = price
+            if volume is not None:
+                existing.volume = volume
             existing.source = "FMP"
             return
+        # Una quote spot no es una barra ajustada: adj_close queda NULL en vez
+        # de copiar close, que afirmaria un ajuste nunca realizado y
+        # corromperia total-return/beta/Sharpe sobre splits o dividendos.
         db.add(
             MarketPrice(
                 company_id=company.id,
-                date=today,
+                date=quote_date,
                 open=price,
                 high=price,
                 low=price,
                 close=price,
-                adj_close=price,
+                adj_close=None,
+                volume=volume,
                 source="FMP",
             )
         )

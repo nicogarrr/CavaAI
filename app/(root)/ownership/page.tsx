@@ -12,7 +12,7 @@ import {
     type ManagerHoldings,
 } from '@/lib/actions/ownership.actions';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
-import { formatCompact, formatDate, formatDateTime, formatNumber, NA } from '@/lib/format';
+import { formatCompact, formatDate, formatUserDateTime, formatNumber, NA } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 
 import SyncButton from './SyncButton';
@@ -223,7 +223,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                         {holdings.provenance ? (
                             <p className="mt-3 text-xs text-gray-500">
                                 Fuente: {holdings.provenance.source} ({holdings.provenance.source_kind}),
-                                obtenido {formatDateTime(holdings.provenance.fetched_at)}.
+                                obtenido {formatUserDateTime(holdings.provenance.fetched_at)}.
                             </p>
                         ) : null}
                     </section>

@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
 import { formatPercent, NA } from '@/lib/format';
+import { etiquetaTierFuente, etiquetaTipoEvento } from "@/lib/labels";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -121,7 +122,12 @@ export default async function ResearchNewsPage() {
                         <span className="text-gray-500">—</span>
                       )}
                     </th>
-                    <td className="py-3 text-gray-400">{event.date.split('T')[0]}</td>
+                    <td className="py-3 text-gray-400">
+                      <div>{event.date.split('T')[0]}</div>
+                      {event.date_source === 'ingested_at_fallback' ? (
+                        <div className="mt-1 text-xs text-gray-500">fecha de ingesta · la fuente no da fecha</div>
+                      ) : null}
+                    </td>
                     <td className="max-w-[360px] py-3 text-gray-300">
                       <div className="truncate">
                         {event.url ? (
@@ -132,17 +138,12 @@ export default async function ResearchNewsPage() {
                           event.title
                         )}
                       </div>
-                      {event.materiality_reasons?.length ? (
-                        <div className="mt-1 truncate text-xs text-gray-500">
-                          {event.materiality_reasons.slice(0, 3).join(' | ')}
-                        </div>
-                      ) : null}
                     </td>
                     <td className="py-3 text-gray-400">
                       <div>{event.source}</div>
-                      <div className="mt-1 text-xs text-gray-500">{event.source_tier ?? 'tier desconocido'}</div>
+                      <div className="mt-1 text-xs text-gray-500">{event.source_tier ? etiquetaTierFuente(event.source_tier) : 'tier desconocido'}</div>
                     </td>
-                    <td className="py-3 text-gray-400">{event.event_type}</td>
+                    <td className="py-3 text-gray-400">{etiquetaTipoEvento(event.event_type)}</td>
                     <td className="py-3 text-right text-gray-400">{pct(event.portfolio_weight)}</td>
                     <td className="py-3 text-center">
                       <span className={`font-semibold ${materialityColor}`}>

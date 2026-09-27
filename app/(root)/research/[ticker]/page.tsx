@@ -23,6 +23,7 @@ import {
   LongTermModelPanel,
 } from '@/components/research/FundamentalModelPanels';
 import { Badge } from '@/components/ui/badge';
+import { exchangeDisplayName } from '@/lib/exchangeName';
 import { Button } from '@/components/ui/button';
 import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -65,7 +66,7 @@ import ThesisApproveButton from '@/components/research/ThesisApproveButton';
 import CitationsList from '@/components/chat/CitationsList';
 import FollowButton from '@/components/screener/FollowButton';
 import ThesisGenerateButton from '@/components/research/ThesisGenerateButton';
-import { formatCompact, formatDate, formatDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
+import { formatCompact, formatDate, formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { glossary, moatGlossaryKey } from '@/lib/glossary';
 
 export const dynamic = 'force-dynamic';
@@ -235,6 +236,25 @@ function label(value: string | null | undefined): string {
   return STATUS_LABELS[value] ?? RATING_LABELS[value] ?? value.replaceAll('_', ' ');
 }
 
+/**
+ * F249: source_url se persiste tal cual en varios caminos de ingesta, así
+ * que no basta con que sea truthy: solo se enlaza una URL absoluta
+ * http(s) con hostname. Cualquier otra cosa (javascript:, data:,
+ * relativa, malformada) se queda como texto plano.
+ */
+function safeHttpUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && url.hostname) {
+      return url.toString();
+    }
+  } catch {
+    // malformada: texto plano
+  }
+  return null;
+}
+
 /** Definición metodológica del foso (glosario compartido) para pintarla en la card */
 function moatDefinition(type: string): string | null {
   const key = moatGlossaryKey[type];
@@ -373,6 +393,45 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
     .filter(([, value]) => value)
     .map(([metric, period]) => `${metric}: ${period}`)
     .join(' · ');
+  // Una valoración no publicable (estado distinto de ok, p.ej. partial por
+  // entradas sin trazabilidad fechada como traceable_wacc) no puede
+  // presentarse como precio objetivo: los números son una orientación del
+  // motor y van degradados, con el motivo primero.
+  const blockers = Array.isArray(valuation.trace?.publication_blockers)
+    ? (valuation.trace?.publication_blockers as unknown[]).map(String).filter(Boolean)
+    : [];
+  const missingInputs = (valuation.missing_inputs ?? []).filter(Boolean);
+  const engineNotice = typeof valuation.trace?.notice === 'string' ? valuation.trace.notice : null;
+  const notPublishable = valuation.status !== 'ok' || valuation.publishable === false;
+  if (notPublishable) {
+    return (
+      <div className="space-y-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Stat label="Precio actual" value={formatMoney(valuation.current_price, currency)} />
+        </div>
+        <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-4 text-sm text-amber-200">
+          <p className="font-semibold">Orientación del motor, no precio objetivo.</p>
+          <p className="mt-1">
+            Esta valoración no es publicable (estado {valuation.status ?? 'desconocido'}): los números de
+            abajo son una orientación del motor, no una valoración final ni un precio objetivo.
+          </p>
+          {blockers.length ? <p className="mt-2 text-xs">Motivos registrados: {blockers.join(', ')}.</p> : null}
+          {missingInputs.length ? <p className="mt-2 text-xs">Entradas faltantes: {missingInputs.join(', ')}.</p> : null}
+          {engineNotice ? <p className="mt-2 text-xs text-amber-200/70">Nota del motor: {engineNotice}</p> : null}
+        </div>
+        <div className="grid gap-4 opacity-60 sm:grid-cols-3">
+          <Stat label="Bear (orientación)" value={formatMoney(valuation.bear_value, currency)} />
+          <Stat label="Base (orientación)" value={formatMoney(valuation.base_value, currency)} />
+          <Stat label="Bull (orientación)" value={formatMoney(valuation.bull_value, currency)} />
+        </div>
+        <p className="text-xs leading-5 text-gray-500">
+          Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
+          El «Value/share» del Modelo a largo plazo es otro cálculo (otra versión/fecha/motor).
+          Fuente de datos: {inputSource ?? NA}{periods ? ` · periodos ${periods}` : ` · periodos ${NA}`}.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-3">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -710,7 +769,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                     <Badge variant="outline">{label(entry.rating)}</Badge>
                     {entry.diff?.rating_changed ? <Badge>rating cambiado</Badge> : null}
                     <span className="ml-auto text-xs text-gray-500">
-                      {formatDateTime(entry.updated_at)}
+                      {formatUserDateTime(entry.updated_at)}
                     </span>
                   </div>
                   {entry.diff ? (
@@ -876,7 +935,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <Panel title="Conjunto de comparables"><p className="text-sm text-gray-300">{peers.comparison?.basis ? (PEERS_BASIS_LABELS[peers.comparison.basis] ?? peers.comparison.basis) : 'Sin conjunto de comparables'} · {peers.comparison?.peer_count ?? 0} comparables</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
-        <Panel title="Métricas comparables"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Objetivo {value.target_value ?? 'desconocido'} · mediana {value.peer_median ?? 'desconocida'} · n={value.peer_sample_size}</div></div>)}</div></Panel>
+        <Panel title="Métricas comparables"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Objetivo {value.target_value ?? 'desconocido'}{value.target_atypical ? ' (atípico: posible ganancia no operativa)' : ''} · mediana {value.peer_median ?? 'desconocida'} · n={value.peer_sample_size}</div>{(value.excluded_atypical ?? []).length > 0 ? <div className="mt-1 text-xs text-amber-300/80">Fuera de la mediana: {(value.excluded_atypical ?? []).map((ex) => `${ex.ticker} ${ex.value ?? 's/d'}`).join(', ')} - lectura atípica verificable, no benchmark</div> : null}</div>)}</div></Panel>
         <Panel title="Ventajas y desventajas"><p className="text-sm text-gray-400">{peers.analysis?.methodology ? (PEERS_METHODOLOGY_ES[peers.analysis.methodology] ?? peers.analysis.methodology) : 'Sin análisis de comparables persistido.'}</p><p className="mt-3 text-xs text-amber-300">{peers.analysis?.insufficient_data.join(', ')}</p></Panel>
       </div>
     );
@@ -890,9 +949,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <Panel title="Sube una fuente primaria"><MutationForm action={importResearchDocumentFile} className="grid gap-3" successMessage="Documento subido"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><FileUploadInput name="file" required /><Button type="submit">Subir</Button></MutationForm></Panel>
           <Panel title="Importar desde una URL"><MutationForm action={importResearchDocumentUrl} className="grid gap-3" successMessage="Documento importado"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><Input name="url" type="url" placeholder="https://..." required /><Input name="source_type" placeholder="sec_filing / investor_relations" defaultValue="url" /><Button type="submit">Importar</Button></MutationForm></Panel>
         </div>
+        {/* F249: las fichas enlazan a la fuente primaria cuando el
+            documento tiene source_url (filings SEC la traen); sin URL la
+            ficha queda como texto, nunca un enlace roto. */}
         <Panel title="Documentos">
           {documents.length ? (
-            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" /><span className="font-medium text-gray-200">{document.title}</span><Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
+            <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" />{safeHttpUrl(document.source_url) ? <a className="font-medium text-gray-200 underline decoration-gray-700 underline-offset-4 transition hover:text-teal-200" href={safeHttpUrl(document.source_url) ?? undefined} rel="noopener noreferrer" target="_blank">{document.title}</a> : <span className="font-medium text-gray-200">{document.title}</span>}<Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
           ) : (
             <EmptyState
               action={<EmptyLink href="/research/sources">Importa tu primer documento</EmptyLink>}
@@ -907,7 +969,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <Panel title="Auditorías de fuentes">
         {audits.length ? (
-          <div className="space-y-3">{audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'superada' : 'fallida'}</Badge><Badge variant="outline">cobertura {audit.source_coverage_score}/100</Badge><Badge variant="outline">tesis {audit.thesis_version_id ?? 'desconocida'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>)}</div>
+          <div className="space-y-3">{audits.slice(0, 100).map((audit) => <div className="rounded-lg border border-gray-800 p-4" key={audit.id}><div className="flex flex-wrap gap-2"><Badge>{audit.passed ? 'superada' : 'fallida'}</Badge><Badge variant="outline">puntuación de respaldo de afirmaciones {audit.source_coverage_score}/100 (penaliza baja confianza)</Badge><Badge variant="outline">tesis {audit.thesis_version_id ?? 'desconocida'}</Badge></div>{audit.required_fixes.length ? <p className="mt-3 text-sm text-amber-300">{audit.required_fixes.join(' · ')}</p> : null}</div>)}</div>
         ) : (
           <EmptyState
             action={<EmptyLink href={`/research/${encodeURIComponent(ticker)}?view=thesis`}>Genera una tesis para auditar fuentes</EmptyLink>}
@@ -953,6 +1015,16 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const activeGroupLabel = GROUPS.find((group) => group.key === activeModule.group)?.label ?? '';
   const groupModules = MODULES.filter((module) => module.group === activeModule.group);
   const recentChangeCount = snapshot.recent_changes?.length ?? 0;
+  // F143: el distintivo de tenencia sale de la posicion viva del tenant
+  // (snapshot.in_portfolio), no de companies.company_type, que es una
+  // clase estatica fijada al alta de la ficha y queda desfasada en los
+  // dos sentidos (AAPL en cartera decia "candidato de analisis"; SPCX,
+  // sin posicion del tenant, "portfolio holding" - ademas en ingles por
+  // el fallback de label()). Un company_type portfolio_holding sin
+  // posicion viva se muestra como candidato de analisis.
+  const holdingBadge = snapshot.in_portfolio
+    ? 'en cartera'
+    : label(company.company_type === 'portfolio_holding' ? 'research_candidate' : company.company_type);
 
   return (
     <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
@@ -960,11 +1032,11 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
         <header className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-6">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3"><h1 className="text-2xl font-bold sm:text-3xl">{ticker}</h1><Badge variant="outline">{company.exchange}</Badge><Badge variant="outline">{company.currency}</Badge></div>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3"><h1 className="text-2xl font-bold sm:text-3xl">{ticker}</h1>{exchangeDisplayName(company.exchange) ? <Badge variant="outline">{exchangeDisplayName(company.exchange)}</Badge> : null}<Badge variant="outline">{company.currency}</Badge></div>
             <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {company.sector} · {company.industry}</p>
           </div>
           <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{label(company.company_type)}</span><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{holdingBadge}</span><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} currency={company.currency} /></div>
               <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} />

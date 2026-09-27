@@ -100,7 +100,8 @@ def test_buy_and_hold_contribution(db):
 def test_flows_and_income_inside_horizon(db):
     _usd_base(db)
     company = _company(db)
-    position = _position(db, company, qty=15, price=100)  # end 1500
+    # La cantidad actual debe reconciliar con los legs: 10 + 5 - 5 = 10.
+    position = _position(db, company, qty=10, price=100)  # end 1000
     _tx(db, company, "buy", 10, 100, date(2025, 6, 1))  # pre-horizon
     _price(db, company, CUTOFF - timedelta(days=1), 100)  # start = 1000
     _tx(db, company, "buy", 5, 80, CUTOFF + timedelta(days=10))  # invested 400
@@ -110,8 +111,8 @@ def test_flows_and_income_inside_horizon(db):
         db, [(position, company)], CUTOFF
     )
     entry = result["positions"][0]
-    # pnl = 1500 - 1000 - 400 + 550 + 25 = 675
-    assert entry["contribution_pnl"] == pytest.approx(675.0)
+    # pnl = 1000 - 1000 - 400 + 550 + 25 = 175
+    assert entry["contribution_pnl"] == pytest.approx(175.0)
     assert entry["net_invested"] == pytest.approx(400 - 550)
     assert entry["income"] == pytest.approx(25.0)
 
@@ -164,3 +165,40 @@ def test_multi_position_shares_sum_to_one(db):
     assert shares[0] == pytest.approx(1.5)  # signed share: winner > 100%
     assert shares[1] == pytest.approx(-0.5)
     assert sum(shares) == pytest.approx(1.0)
+
+
+def test_position_without_ledger_is_honest_null(db):
+    """Sin transacciones no hay reconstrucción: P&L = valor íntegro es mentira."""
+    company = _company(db, "NOLEDGER")
+    _position(db, company, qty=10, price=1770.20)
+    result = PortfolioIntelligenceService()._ledger_contribution(db, [(db.query(Position).one(), company)], CUTOFF)
+    assert result["positions"][0]["contribution_pnl"] is None
+    assert result["positions"][0]["reason"] == "missing_ledger"
+    assert result["total_pnl"] is None
+    assert result["coverage"]["with_contribution"] == 0
+    assert result["coverage"]["reasons"] == {"missing_ledger": 1}
+
+
+def test_dividend_only_ledger_is_honest_null(db):
+    """Un dividendo suelto no reconstruye la posición: P&L inventada si no."""
+    company = _company(db, "DIVONLY")
+    _position(db, company, qty=10, price=1770.20)
+    _tx(db, company, "dividend", 10, 0.5, date(2026, 2, 1))
+    position = db.query(Position).one()
+    result = PortfolioIntelligenceService()._ledger_contribution(db, [(position, company)], CUTOFF)
+    assert result["positions"][0]["contribution_pnl"] is None
+    assert result["positions"][0]["reason"] == "missing_ledger"
+    assert result["total_pnl"] is None
+
+
+def test_partial_ledger_is_honest_null(db):
+    """Compra de 1 acción sobre posición de 10: ledger incompleto, nulo."""
+    company = _company(db, "PARTIAL")
+    _position(db, company, qty=10, price=100)
+    _tx(db, company, "buy", 1, 90, date(2025, 6, 1))
+    position = db.query(Position).one()
+    result = PortfolioIntelligenceService()._ledger_contribution(db, [(position, company)], CUTOFF)
+    assert result["positions"][0]["contribution_pnl"] is None
+    assert result["positions"][0]["reason"] == "incomplete_ledger"
+    assert result["total_pnl"] is None
+    assert result["coverage"]["reasons"] == {"incomplete_ledger": 1}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 from collections.abc import Callable
@@ -22,6 +23,7 @@ from app.models import (
     KnowledgeCollection,
     KnowledgeDocument,
 )
+from app.services.budget import BudgetController
 from app.services.document_ingestion_service import (
     MAX_DOCUMENT_BYTES,
     SUPPORTED_EXTENSIONS,
@@ -71,6 +73,9 @@ def _slug(value: str) -> str:
 
 def _compact(value: str) -> str:
     return " ".join(value.lower().split())
+
+
+logger = logging.getLogger("cavaai.knowledge_library")
 
 
 class KnowledgeLibraryService:
@@ -285,12 +290,33 @@ class KnowledgeLibraryService:
         created: list[InvestmentPrinciple] = []
         exact_duplicates = 0
         semantic_duplicates = 0
+        # El bucle de lotes es el unico lugar del motor que puede disparar
+        # muchas llamadas seguidas (un documento de 1 MB son ~40 lotes), y era
+        # el unico sin gate de presupuesto: 40 llamadas sin pasar por
+        # budget.can_spend ni por budget.record. Se comprueba por lote con un
+        # tope por llamada derivado del tamano real del prompt.
+        budget = BudgetController()
         for batch_index, batch in enumerate(batches, start=1):
             source = "\n\n".join(
                 f"[chunk:{chunk.id} page:{chunk.page_number or 'unknown'} "
                 f"section:{chunk.section_title or 'unknown'}]\n{chunk.content}"
                 for chunk in batch
             )
+            # Estimacion con el tamano real del prompt (~4 caracteres por token)
+            # y el max_tokens de la llamada, en vez del 0.02 plano que usan otros
+            # sitios: aqui el input es de 24.000 caracteres por lote.
+            planned_cost_eur = budget.estimate_cost_eur(
+                getattr(self.provider, "name", "") or "",
+                input_tokens=len(source) // 4,
+                output_tokens=3000,
+            )
+            if not budget.can_spend(db, planned_cost_eur):
+                logger.info(
+                    "principle extraction stopped at batch %s/%s: budget",
+                    batch_index,
+                    len(batches),
+                )
+                break
             response = await self.provider.complete(
                 LLMRequest(
                     messages=[
@@ -316,6 +342,21 @@ class KnowledgeLibraryService:
                 )
             )
             payload = parse_json_response(response.text)
+            # Contabilidad del gasto: sin este record, ninguna de las llamadas
+            # de este bucle aparecia en budget_usage, asi que el gasto real no
+            # se compedia contra el tope diario.
+            budget.record(
+                db,
+                response.model,
+                "investment_principles",
+                budget.estimate_cost_eur(
+                    response.model,
+                    response.usage.input_tokens,
+                    response.usage.output_tokens,
+                ),
+                response.usage.total_tokens,
+                commit=False,
+            )
             if not isinstance(payload, dict) or not isinstance(
                 payload.get("principles"), list
             ):

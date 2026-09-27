@@ -468,7 +468,19 @@ const SECTOR_ALIASES: Record<string, string[]> = {
   Materials: ['materials', 'chemical', 'mining', 'metal'],
 };
 
-export async function generateEnhancedProPicks(filters: EnhancedProPicksFilters = {}): Promise<ProPick[]> {
+export interface EnhancedProPicksResult {
+  picks: ProPick[];
+  /** Corte de datos (as_of) del último run completado del embudo; null si
+   *  todavía no hay ninguno. La página lo muestra como fecha del dato: la
+   *  hora de carga de la página no es la fecha del run (F49). */
+  runAsOf: string | null;
+  /** Candidatos aptos (passed) del run antes de filtrar por score/sector:
+   *  0 con run existente significa que el embudo no produjo candidatos, no
+   *  que los filtros descartaran picks (estado vacío honesto, F49). */
+  passedCount: number | null;
+}
+
+export async function generateEnhancedProPicksWithRun(filters: EnhancedProPicksFilters = {}): Promise<EnhancedProPicksResult> {
   await requireAuthenticatedUser();
   const { limit = 20, minScore = 70, sector = 'all', sortBy = 'score' } = filters;
   // Fuente: ultimo run del embudo (ver generateProPicks).
@@ -487,5 +499,14 @@ export async function generateEnhancedProPicks(filters: EnhancedProPicksFilters 
   };
   const finalists = picks.sort((left, right) => scoreFor(right) - scoreFor(left)).slice(0, Math.max(1, Math.min(limit, 100)));
   // Overlays externos SOLO sobre finalistas (máx 20); [] si el módulo aún no existe.
-  return attachSignalOverlays(finalists, funnel?.runAsOf);
+  return {
+    picks: await attachSignalOverlays(finalists, funnel?.runAsOf),
+    runAsOf: funnel?.runAsOf ?? null,
+    passedCount: funnel?.passedCount ?? null,
+  };
+}
+
+export async function generateEnhancedProPicks(filters: EnhancedProPicksFilters = {}): Promise<ProPick[]> {
+  const { picks } = await generateEnhancedProPicksWithRun(filters);
+  return picks;
 }

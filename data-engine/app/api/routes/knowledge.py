@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, ValidationError
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
 from app.core.errors import safe_detail
@@ -215,7 +216,11 @@ async def upload_document(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
-        return KnowledgeLibraryService().ingest_bytes(
+        content = await _read_upload_limited(file)
+        # La ingesta es sync y hace llamadas LLM (segundos): en un hilo del
+        # pool para no bloquear el event loop mientras tanto.
+        return await run_in_threadpool(
+            KnowledgeLibraryService().ingest_bytes,
             db,
             title=title,
             document_type=validated_type,
@@ -224,7 +229,7 @@ async def upload_document(
             source_url=validated_url,
             publication_date=publication_date,
             language=validated_language,
-            content=await _read_upload_limited(file),
+            content=content,
             filename=file.filename or "knowledge-document.bin",
             content_type=file.content_type,
         )

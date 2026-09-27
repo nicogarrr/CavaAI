@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RecordDetail, formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
-import { formatDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
+import { etiquetaSector } from '@/lib/labels';
+import { formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { getRiskDashboard } from '@/lib/actions/risk.actions';
 
 interface RiskDashboardViewProps {
@@ -65,8 +66,8 @@ const RISK_LABELS: Record<string, string> = {
     total_value: 'Valor total',
     equity_value: 'Valor en renta variable',
     cash: 'Caja',
-    top_1_weight: 'Peso de la mayor posición',
-    top_5_weight: 'Peso de las 5 mayores',
+    top_1_weight: 'Peso de la mayor posición (sobre el total con caja)',
+    top_5_weight: 'Peso de las 5 mayores (sobre el total con caja)',
     sector_exposure: 'Exposición por sector',
     factor_exposure: 'Exposición por factor',
     status: 'Estado',
@@ -105,13 +106,13 @@ function currencyRecord(value: unknown): string {
 }
 
 /** Mapa etiqueta -> peso (ratio) como "Tecnología 45,0 % · Salud 20,0 %". */
-function exposureRecord(value: unknown): string {
+function exposureRecord(value: unknown, labelName: (name: string) => string = (name) => name): string {
     if (!isRecord(value)) return NA;
     const entries = Object.entries(value);
     if (!entries.length) return 'Sin datos';
     return entries
         .map(([name, weight]) =>
-            `${name} ${typeof weight === 'number' ? formatPercent(weight, { fromRatio: true, digits: 1 }) : NA}`,
+            `${labelName(name)} ${typeof weight === 'number' ? formatPercent(weight, { fromRatio: true, digits: 1 }) : NA}`,
         )
         .join(' · ');
 }
@@ -135,7 +136,11 @@ function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null 
             display[label] = typeof value === 'number' ? formatPercent(value, { fromRatio: true, digits: 1 }) : NA;
         } else if (key === 'cash' || key === 'cash_native') {
             display[label] = currencyRecord(value);
-        } else if (key === 'sector_exposure' || key === 'factor_exposure') {
+        } else if (key === 'sector_exposure') {
+            // F208: las claves de sector llegan en inglés del backend y la
+            // cabecera las pintaba tal cual; las posiciones ya usan etiquetaSector.
+            display[label] = exposureRecord(value, etiquetaSector);
+        } else if (key === 'factor_exposure') {
             display[label] = exposureRecord(value);
         } else if (key === 'status') {
             display[label] = RISK_STATUS_LABELS[String(value)] ?? String(value);
@@ -144,12 +149,12 @@ function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null 
                 ? value.map((item) => (isRecord(item) ? String(item.ticker ?? item.currency ?? '?') : String(item))).join(', ')
                 : 'Ninguno';
         } else if (key === 'data_as_of') {
-            display[label] = typeof value === 'string' && value ? formatDateTime(value) : NA;
+            display[label] = typeof value === 'string' && value ? formatUserDateTime(value) : NA;
         } else if (key === 'provenance') {
             if (isRecord(value)) {
                 const source = typeof value.source === 'string' ? value.source : 'Fuente interna';
                 const fetched = typeof value.fetched_at === 'string' && value.fetched_at
-                    ? ` · ${formatDateTime(value.fetched_at)}`
+                    ? ` · ${formatUserDateTime(value.fetched_at)}`
                     : '';
                 display[label] = `${source}${fetched}`;
             } else {
@@ -162,6 +167,23 @@ function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null 
         }
     }
     return display;
+}
+
+/** F43: el valor de mercado llega en divisa base (risk_service.py: value_base)
+ *  y se mostraba como numero crudo; el sector llega en ingles y se pintaba tal
+ *  cual. Formato monetario con la divisa base y sector con etiqueta ES. */
+function positionValueText(position: DataRecord, baseCurrency: string): string {
+    const value = position.market_value;
+    if (value === null || value === undefined || value === '') return NA;
+    const numeric = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numeric)) return NA;
+    return formatMoney(numeric, baseCurrency);
+}
+
+function positionSectorText(position: DataRecord): string {
+    const sector = position.sector;
+    if (sector === null || sector === undefined || sector === '') return NA;
+    return etiquetaSector(String(sector));
 }
 
 function weightText(position: DataRecord): string {
@@ -193,12 +215,16 @@ function positionLink(position: DataRecord) {
 export default function RiskDashboardView({ initialDashboard }: RiskDashboardViewProps) {
     const positions = extractPositions(initialDashboard);
     const alerts = extractAlerts(initialDashboard);
+    // F43: misma regla que en el resumen - la divisa base viene del dashboard.
+    const baseCurrency = initialDashboard && typeof initialDashboard.base_currency === 'string' && initialDashboard.base_currency
+        ? initialDashboard.base_currency
+        : 'EUR';
 
     return (
         <div className="grid gap-6">
             <RecordDetail
                 title="Exposiciones de cartera"
-                description="Estructura de la cartera: pesos, concentración (top 1 y top 5) y exposición por sector y factor. No calcula VaR, drawdown ni volatilidad: hace falta historia de precios que el motor aún no usa."
+                description="Estructura de la cartera: pesos, concentración (top 1 y top 5) y exposición por sector y factor. La volatilidad, el drawdown y el VaR de la cartera están en Inteligencia de cartera."
                 icon={<Gauge className="h-5 w-5 text-teal-400" aria-hidden="true" />}
                 record={humanizeRiskDashboard(headlineRecord(initialDashboard))}
                 fetchRecord={async () => humanizeRiskDashboard(headlineRecord(await getRiskDashboard()))}
@@ -280,7 +306,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                                             <TableHead className="text-xs font-semibold uppercase text-gray-500">Nombre</TableHead>
                                             <TableHead className="text-xs font-semibold uppercase text-gray-500">Sector</TableHead>
                                             <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Valor</TableHead>
-                                            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Peso</TableHead>
+                                            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Peso (con caja)</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -291,10 +317,10 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                                                     {formatRecordValue(position.name)}
                                                 </TableCell>
                                                 <TableCell className="text-sm text-gray-400">
-                                                    {formatRecordValue(position.sector)}
+                                                    {positionSectorText(position)}
                                                 </TableCell>
                                                 <TableCell className="text-right text-sm text-gray-200">
-                                                    {formatRecordValue(position.market_value)}
+                                                    {positionValueText(position, baseCurrency)}
                                                 </TableCell>
                                                 <TableCell className="text-right text-sm font-semibold text-gray-100">
                                                     {weightText(position)}
@@ -316,14 +342,14 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                                             </div>
                                             <div className="min-w-0">
                                                 <dt className="text-[11px] uppercase tracking-wide text-gray-500">Sector</dt>
-                                                <dd className="break-words text-sm text-gray-400">{formatRecordValue(position.sector)}</dd>
+                                                <dd className="break-words text-sm text-gray-400">{positionSectorText(position)}</dd>
                                             </div>
                                             <div className="min-w-0">
                                                 <dt className="text-[11px] uppercase tracking-wide text-gray-500">Valor</dt>
-                                                <dd className="break-words text-right text-sm text-gray-200">{formatRecordValue(position.market_value)}</dd>
+                                                <dd className="break-words text-right text-sm text-gray-200">{positionValueText(position, baseCurrency)}</dd>
                                             </div>
                                             <div className="min-w-0">
-                                                <dt className="text-[11px] uppercase tracking-wide text-gray-500">Peso</dt>
+                                                <dt className="text-[11px] uppercase tracking-wide text-gray-500">Peso (con caja)</dt>
                                                 <dd className="break-words text-right text-sm font-semibold text-gray-100">{weightText(position)}</dd>
                                             </div>
                                         </dl>

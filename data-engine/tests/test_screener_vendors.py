@@ -44,6 +44,12 @@ class _FakeClient:
                 return response
         return _FakeResponse({}, status_code=404)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
 
 @pytest.fixture(autouse=True)
 def _clean_caches():
@@ -61,6 +67,172 @@ def test_registry_has_both_vendors_and_finnhub_default():
     assert isinstance(SCREEN_VENDORS["yahoo"], YahooScreenVendor)
     assert SCREEN_VENDORS["finnhub"].source_label == "finnhub_free"
     assert SCREEN_VENDORS["yahoo"].source_label == "yahoo_finance"
+
+
+def test_profile_vendor_falls_back_to_finnhub_when_quotes_have_no_profiles(monkeypatch):
+    """F63/F97: con SCREENER_QUOTE_VENDOR=yahoo los market caps salían 0 para
+    siempre (Yahoo no tiene profile). El perfil debe pedirse a Finnhub cuando
+    hay key; sin key se conserva el fallback honesto anterior."""
+    from app.api.routes.screeners import resolve_profile_vendor
+
+    class _Settings:
+        finnhub_api_key = "k" * 8
+
+    monkeypatch.setattr(screeners, "get_settings", lambda: _Settings())
+    yahoo = resolve_screener_vendor("yahoo")
+    assert yahoo.supports_profiles is False
+    assert resolve_profile_vendor(yahoo).name == "finnhub"
+
+    finnhub = resolve_screener_vendor("finnhub")
+    assert finnhub.supports_profiles is True
+    assert resolve_profile_vendor(finnhub).name == "finnhub"
+
+    class _NoKey:
+        finnhub_api_key = ""
+
+    monkeypatch.setattr(screeners, "get_settings", lambda: _NoKey())
+    assert resolve_profile_vendor(yahoo).name == "yahoo"
+
+
+def test_gics_sector_normalizes_known_aliases_and_passes_unknown_through():
+    from app.api.routes.screeners import _gics_sector
+
+    assert _gics_sector("Technology") == "Information Technology"
+    assert _gics_sector(" Financial Services ") == "Financials"  # tolera espacios
+    assert _gics_sector("Financial Services") == "Financials"
+    assert _gics_sector("Healthcare") == "Health Care"
+    assert _gics_sector("Consumer Cyclical") == "Consumer Discretionary"
+    assert _gics_sector("Consumer Defensive") == "Consumer Staples"
+    assert _gics_sector("Basic Materials") == "Materials"
+    assert _gics_sector("Health Care") == "Health Care"
+    assert _gics_sector("Sector Inedito") == "Sector Inedito"
+    assert _gics_sector(None) is None
+
+
+def test_sector_filter_matches_gics_across_universe_db_and_profile(monkeypatch):
+    """Conductual (F223): universo, fila de DB y perfil de Finnhub dicen todos
+    'Technology'; el filtro por el GICS servido 'Information Technology' debe
+    devolver las filas igualmente, y el item servido lleva el nombre GICS."""
+    from app.api.routes.screeners import _gics_sector  # noqa: F401
+
+    class _Settings:
+        finnhub_api_key = "k" * 8
+        screener_quote_vendor = "finnhub"
+
+    monkeypatch.setattr(screeners, "get_settings", lambda: _Settings())
+    # La DB enriquece MSFT con el alias historico 'Technology'
+    monkeypatch.setattr(
+        screeners,
+        "_load_universe_from_db",
+        lambda: {"MSFT": ("Microsoft", "Technology")},
+    )
+    monkeypatch.setattr(screeners, "_load_screener_ratios", lambda **kwargs: {})
+
+    quote_client = _FakeClient(
+        {"/quote": _FakeResponse({"c": 100.0, "d": 1.0, "dp": 1.0, "pc": 99.0, "v": 10, "t": 1})}
+    )
+    profile_client = _FakeClient(
+        {
+            "/stock/profile2": _FakeResponse(
+                {
+                    "ticker": "X",
+                    "name": "X Co",
+                    "marketCapitalization": 2.0,
+                    "finnhubIndustry": "Technology",
+                    "exchange": "NASDAQ",
+                }
+            )
+        }
+    )
+    clients = [quote_client, profile_client]
+    monkeypatch.setattr(screeners.httpx, "Client", lambda **kwargs: clients.pop(0))
+
+    items = screeners._refetch_real_items(vendor="finnhub", tenant_id=None)
+    assert items, "el universo falso debe producir items"
+    assert all(item["sector"] == "Information Technology" for item in items), (
+        "universe/DB/perfil 'Technology' se sirven ya normalizados a GICS"
+    )
+    # MSFT venia de la fila DB con 'Technology'; el resto del perfil Finnhub
+    assert "MSFT" in {item["symbol"] for item in items}
+
+    payload = screeners._real_response_payload(
+        items, "finnhub", None, "Information Technology", 200
+    )
+    assert payload["count"] == len(items), (
+        "filtrar por el GICS servido no puede dejar la tabla en cero (F223)"
+    )
+    # Un enlace legacy ?sector=Technology sigue funcionando tras normalizar
+    legacy = screeners._real_response_payload(items, "finnhub", None, "Technology", 200)
+    assert legacy["count"] == len(items)
+
+
+def test_quote_client_never_leaks_finnhub_token_to_yahoo(monkeypatch):
+    """Regresion de seguridad: con SCREENER_QUOTE_VENDOR=yahoo y key Finnhub
+    (necesaria para perfiles), el cliente de la fase quotes NO puede fijar
+    client.params={'token': key}: httpx 0.28 fusiona Client(params) con los
+    params por request y la URL de quote a Yahoo llevaria ?token=SECRET."""
+    import httpx as real_httpx
+
+    class _Settings:
+        finnhub_api_key = "k" * 8
+        screener_quote_vendor = "yahoo"
+
+    monkeypatch.setattr(screeners, "get_settings", lambda: _Settings())
+    monkeypatch.setattr(screeners, "_load_universe_from_db", lambda: {})
+    monkeypatch.setattr(screeners, "_load_screener_ratios", lambda **kwargs: {})
+
+    quote_client = _FakeClient(
+        {
+            "chart": _FakeResponse(
+                {
+                    "chart": {
+                        "result": [
+                            {
+                                "timestamp": [7],
+                                "meta": {},
+                                "indicators": {"quote": [{"close": [99.0], "volume": [3]}]},
+                            }
+                        ]
+                    }
+                }
+            )
+        }
+    )
+    profile_client = _FakeClient(
+        {
+            "/stock/profile2": _FakeResponse(
+                {
+                    "ticker": "X",
+                    "name": "X Co",
+                    "marketCapitalization": 2.0,
+                    "finnhubIndustry": "Technology",
+                    "exchange": "NASDAQ",
+                }
+            )
+        }
+    )
+    clients = [quote_client, profile_client]
+    monkeypatch.setattr(screeners.httpx, "Client", lambda **kwargs: clients.pop(0))
+
+    items = screeners._refetch_real_items(vendor="yahoo", tenant_id=None)
+    assert items, "Yahoo falso debe producir items"
+    assert getattr(quote_client, "params", {}) == {}, (
+        "la fase quotes NO puede llevar el token Finnhub (fuga a Yahoo)"
+    )
+    assert profile_client.params == {"token": "k" * 8}, (
+        "la fase perfiles si lo lleva: va a Finnhub"
+    )
+
+    # Verificacion a nivel httpx real: con los params de la fase quotes,
+    # la URL construida para Yahoo no lleva token.
+    # (monkeypatch parchea el atributo en el modulo httpx global: hay que
+    # deshacerlo antes de usar el Client real)
+    monkeypatch.undo()
+    with real_httpx.Client(params=getattr(quote_client, "params", {})) as real:
+        req = real.build_request(
+            "GET", "https://query1.finance.yahoo.com/v8/finance/chart/AAPL"
+        )
+        assert "token" not in str(req.url).lower()
 
 
 def test_resolve_vendor_falls_back_to_finnhub():

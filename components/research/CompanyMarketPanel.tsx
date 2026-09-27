@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 
 import { formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import { exchangeDisplayName } from '@/lib/exchangeName';
 
 import { Badge } from '@/components/ui/badge';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
@@ -38,7 +39,7 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                               <Badge variant="outline">{snapshot.ticker}</Badge>
                           </div>
                           <p className="mt-1 text-sm text-gray-500">
-                              {[snapshot.exchange, snapshot.currency].filter(Boolean).join(' · ') || 'Metadatos de mercado no disponibles'}
+                              {[exchangeDisplayName(snapshot.exchange), snapshot.currency].filter(Boolean).join(' · ') || 'Metadatos de mercado no disponibles'}
                           </p>
                       </div>
                       <div className="sm:ml-auto sm:text-right">
@@ -73,7 +74,14 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                     </Badge>
                 </div>
                 {snapshot.history.length ? (
-                    <CompanyMarketChart history={snapshot.history} />
+                    <>
+                        {snapshot.status === 'partial' && (
+                            <p className="mb-3 text-sm text-amber-200">
+                                Serie parcial: {snapshot.history.length} sesiones con precio en el último año. Se muestra el tramo disponible.
+                            </p>
+                        )}
+                        <CompanyMarketChart history={snapshot.history} />
+                    </>
                 ) : (
                     <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
                         Historial de precio no disponible. El workspace muestra este estado de forma explícita y no inventa ningún gráfico.

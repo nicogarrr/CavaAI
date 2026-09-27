@@ -574,8 +574,14 @@ class MarketPrice(Base, TimestampMixin):
     high: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     low: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
     close: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
-    adj_close: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=0)
-    volume: Mapped[int] = mapped_column(Integer, default=0)
+    # NULL = la fuente dio un spot, no una serie ajustada por splits/dividendos.
+    # Copiar close afirmaria un ajuste nunca realizado y un 0 fabricado hundia
+    # a cero los retornos compuestos; los consumidores tratan falsy como
+    # "sin dato ajustado" y lo saltan.
+    adj_close: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    # NULL = la fuente no da el volumen (spot sin dato); un 0 fabricado
+    # coronaba al ticker como el menos activo con un dato inexistente.
+    volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(80), default="seed")
 
 
@@ -1098,6 +1104,9 @@ class ResearchAlert(TenantOwnedMixin, Base, TimestampMixin):
     acknowledged_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
     snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Hora del ultimo disparo: la fila se reutiliza por fingerprint en
+    # disparos repetidos y created_at queda en el primero.
+    last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 

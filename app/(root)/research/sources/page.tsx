@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function ResearchSourcesPage() {
-  const { documents, audits } = await getResearchSources();
+  const { documents, audits, documentsTotal } = await getResearchSources();
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -35,8 +35,10 @@ export default async function ResearchSourcesPage() {
           </p>
         </div>
         <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
-          {formatNumber(documents.length, { maximumFractionDigits: 0 })} documentos ·{' '}
-          {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías
+          {documentsTotal !== null
+            ? `${formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos`
+            : `${formatNumber(documents.length, { maximumFractionDigits: 0 })} documentos en esta página`}{' '}
+          · {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías
         </div>
       </header>
 
@@ -156,7 +158,7 @@ export default async function ResearchSourcesPage() {
                   <span className={audit.passed ? 'font-semibold text-teal-300' : 'font-semibold text-amber-300'}>
                     {audit.passed ? 'superada' : 'bloqueada'}
                   </span>
-                  <span className="text-sm text-gray-500">cobertura {formatNumber(audit.source_coverage_score, { maximumFractionDigits: 2 })}</span>
+                  <span className="text-sm text-gray-500" title="Afirmaciones materiales con fuente citada menos 5 puntos por afirmación de baja confianza; no mide completitud de la valoración">puntuación de respaldo de afirmaciones {formatNumber(audit.source_coverage_score, { maximumFractionDigits: 2 })}/100 (penaliza baja confianza)</span>
                 </div>
                 <div className="mt-2 text-sm text-gray-400">
                   Tesis #{audit.thesis_version_id ?? NA}
@@ -183,6 +185,13 @@ export default async function ResearchSourcesPage() {
           <FileText aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Documentos</h2>
         </div>
+        {documentsTotal !== null && documentsTotal > documents.length ? (
+          <p className="mb-4 text-sm text-gray-500">
+            Mostrando los {formatNumber(documents.length, { maximumFractionDigits: 0 })} más recientes de{' '}
+            {formatNumber(documentsTotal, { maximumFractionDigits: 0 })} por fecha de publicación; los
+            documentos sin fecha van al final.
+          </p>
+        ) : null}
         <div aria-label="Documentos importados" className="overflow-x-auto" role="region" tabIndex={0}>
           <table className="w-full min-w-[820px] text-left text-sm">
             <caption className="sr-only">Documentos, transcripts y auditorías que alimentan la evidencia, con fuente, nivel y fecha de publicación</caption>
@@ -203,7 +212,9 @@ export default async function ResearchSourcesPage() {
                   <td className="py-3 text-gray-300">{document.title}</td>
                   <td className="py-3 text-gray-400">{document.source_type}</td>
                   <td className="py-3 text-gray-400">{document.source_tier}</td>
-                  <td className="py-3 text-gray-500">{formatDate(document.published_at, undefined, NA)}</td>
+                  <td className="py-3 text-gray-500">
+                    {document.published_at ? formatDate(document.published_at, undefined, NA) : 'sin fecha'}
+                  </td>
                   <td className="py-3 text-gray-500">
                     {document.source_url ? (
                       <a className="text-teal-300 hover:text-teal-200" href={document.source_url} rel="noreferrer" target="_blank">

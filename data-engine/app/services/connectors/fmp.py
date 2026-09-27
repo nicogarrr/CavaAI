@@ -43,6 +43,15 @@ class FMPClient:
     async def company_profile(self, ticker: str) -> list | dict:
         return await self._get("/profile", {"symbol": ticker.upper()})
 
+    async def quote(self, ticker: str) -> list | dict:
+        """Cotizacion puntual: price, volume y timestamp REAL de la quote.
+
+        El profile no trae timestamp de cotizacion (sus campos de fecha son
+        metadatos como ipoDate), asi que fechar precios con el escribia barras
+        en dias sin mercado con el ultimo cierre conocido.
+        """
+        return await self._get("/quote", {"symbol": ticker.upper()})
+
     async def dividends(self, ticker: str) -> list | dict:
         """Declared dividend records for a symbol (FMP stable/dividends).
 
