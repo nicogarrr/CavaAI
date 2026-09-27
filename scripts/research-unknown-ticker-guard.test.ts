@@ -86,4 +86,15 @@ void test('el diseño anti-homónimos sigue intacto en el snapshot de mercado', 
     assert.match(marketModule, /if \(!quoteSymbol\) \{/, 'quoteSymbolFor null debe seguir cortando antes del proveedor');
 });
 
+
+void test('los escapes E2E conocen los tres estados honestos', () => {
+    // audit-closure vuelve antes si la ficha no ofrece workspace: los tres
+    // estados de F286 deben estar en su lista o los tests exigirán controles
+    // de tesis en una página que honestamente no los tiene.
+    const spec: string = readFileSync(new URL('../e2e/audit-closure.spec.ts', import.meta.url), 'utf8');
+    assert.match(spec, /Identidad del ticker no verificada/);
+    assert.match(spec, /No encontramos este ticker/);
+    assert.match(spec, /No pudimos comprobar este ticker/);
+});
+
 console.log('research-unknown-ticker-guard: ok');
