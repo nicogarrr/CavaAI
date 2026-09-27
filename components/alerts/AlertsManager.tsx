@@ -407,11 +407,11 @@ function AlertsManager() {
                                         onClick={() => handleReview(alert)}
                                         disabled={reviewing === alert._id}
                                         aria-busy={reviewing === alert._id}
-                                        aria-label={`Revisar expectativas de ${alert.symbol}`}
+                                        aria-label={`Ejecutar revisión de expectativas de ${alert.symbol}`}
                                         className="min-h-[44px] gap-1.5 px-3 text-xs sm:min-h-0"
                                     >
                                         <RefreshCcw aria-hidden="true" className={`h-3.5 w-3.5 ${reviewing === alert._id ? 'animate-spin' : ''}`} />
-                                        Revisar
+                                        Ejecutar revisión
                                     </Button>
                                 ) : null}
                                 <Button
