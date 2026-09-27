@@ -19,12 +19,35 @@ void test('la cabecera usa el total real de /documents/count, no el tamano de pa
     assert.ok(page.includes('documentsTotal'), 'la pagina recibe el total real');
     // documents.length solo es legitimo en la nota de truncado; en la cabecera
     // el conteo de documentos debe salir de documentsTotal.
+    // Vetado el chip antiguo (tamano de pagina presentado como total); la
+    // variante con alcance declarado («en esta página») es legitima (F154).
     assert.ok(
-        !page.includes('{formatNumber(documents.length, { maximumFractionDigits: 0 })} documentos'),
+        !page.includes("{formatNumber(documents.length, { maximumFractionDigits: 0 })} documentos ·{' '}"),
         'la cabecera no puede contar con el tamano de pagina',
     );
     const actions = source('lib/actions/research.actions.ts');
     assert.ok(actions.includes("'/api/sources/documents/count'"), 'la accion pide el total al backend');
+});
+
+void test('si /count no responde el total es desconocido, nunca un 0 fingido (F154)', () => {
+    const actions = source('lib/actions/research.actions.ts');
+    assert.ok(
+        !actions.includes("getJson<{ total: number }>('/api/sources/documents/count', { total: 0 })"),
+        'fallback { total: 0 } pinta «0 documentos» con la tabla poblada (backend antiguo sin /count)',
+    );
+    assert.ok(
+        actions.includes("getJson<{ total: number } | null>('/api/sources/documents/count', null)"),
+        'el fallback honesto es null (total desconocido)',
+    );
+    const page = source('app/(root)/research/sources/page.tsx');
+    assert.ok(
+        page.includes('documentsTotal !== null'),
+        'la cabecera y el truncado solo usan el total cuando es conocido',
+    );
+    assert.ok(
+        page.includes('documentos en esta página'),
+        'con total desconocido se declara el alcance: documentos de esta página',
+    );
 });
 
 void test('la tabla declara cuando esta truncada', () => {
