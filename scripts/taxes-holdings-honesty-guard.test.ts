@@ -25,11 +25,29 @@ test('los null de importes pasan como None, nunca como 0 inventado', () => {
     assert.ok(!/unrealized_pnl_base or 0/.test(backend), 'unrealized_pnl_base or 0 fabrica un 0 desde null');
 });
 
-test('F94: RecordDetail se remonta al cambiar de ejercicio (key con year)', () => {
-    // RecordDetail tiene useState propio sin resync: la key fuerza remount.
+test('F260: el informe mostrado se deriva del año pedido, sin estado espejo', () => {
+    // La fuente de verdad es initialReport (llega con el año en el mismo
+    // render); un useState(initialReport) dejaba un render con el informe
+    // viejo bajo el título del año nuevo.
+    assert.doesNotMatch(view, /useState<DataRecord \| null>\(initialReport\)/);
+    assert.match(view, /reportForYear\(override, initialReport, year\)/);
+    // el override de «Regenerar» se etiqueta con su ejercicio
+    assert.match(view, /setOverride\(\{ year, report: fresh \}\)/);
+    // RecordDetail sigue remontándose por ejercicio (su useState no resincroniza)
     assert.match(view, /key=\{recordDetailKey\(year, reportKey\)\}/);
-    // y el estado local de TaxesView también se resincroniza con las props
-    assert.match(view, /setReport\(initialReport\)/);
+});
+
+test('F260: reportForYear solo acepta el override de su propio ejercicio', async () => {
+    // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
+    const { reportForYear } = await import('../lib/taxes/report-state.ts');
+    const servidor = { Ejercicio: 2025 };
+    const regenerado = { Ejercicio: 2026, Generado: 'nuevo' };
+    // sin override manda el informe del servidor para ese año
+    assert.equal(reportForYear(null, servidor, 2025), servidor);
+    // override del MISMO año (tras Regenerar) manda el regenerado
+    assert.equal(reportForYear({ year: 2026, report: regenerado }, servidor, 2026), regenerado);
+    // override de OTRO año no contamina: al cambiar de año manda el del servidor
+    assert.equal(reportForYear({ year: 2026, report: regenerado }, servidor, 2025), servidor);
 });
 
 test('F94: la key cambia con el ejercicio aunque reportKey no cambie', async () => {
