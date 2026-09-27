@@ -1,8 +1,8 @@
 """On-demand, non-persistent hypotheses about indirect effects of a news item.
 
 No signal from this service verifies a source claim or changes investment state.
-The generative path is operator-gated because the provider's marginal cost has
-not been established. No background job calls it during news ingestion.
+The generative path is operator-gated and limited to the verified free model.
+No background job calls it during news ingestion.
 """
 
 from __future__ import annotations
@@ -14,12 +14,14 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.llm import LLMRequest, Message, ResponseFormat, create_llm_provider, parse_json_response
 from app.models import Company, NewsEvent
 from app.services.async_bridge import run_from_any_context
+from app.services.second_order_quota import reserve_llm_call
 
 
 class CausalStep(BaseModel):
@@ -76,11 +78,11 @@ def _fallback(text: str) -> Extraction:
 _SCHEMA = Extraction.model_json_schema()
 
 
-async def _extract_with_llm(text: str) -> Extraction:
+async def _extract_with_llm(text: str) -> tuple[Extraction, object]:
     provider = create_llm_provider()
     if provider.name == "disabled":
         raise RuntimeError("LLM not configured")
-    response = await provider.complete(LLMRequest(
+    request = LLMRequest(
         messages=[
             Message("system", (
                 "Extrae hasta 8 hipótesis causales indirectas de la noticia. "
@@ -94,11 +96,16 @@ async def _extract_with_llm(text: str) -> Extraction:
             Message("user", text[:3500]),
         ],
         task="news_second_order",
+        model="space-bunny-free",
         temperature=0,
         max_tokens=900,
         response_format=ResponseFormat.json_schema(_SCHEMA, name="second_order_themes"),
-    ))
-    return Extraction.model_validate(parse_json_response(response.text))
+    )
+    # Pin the exact free model: task overrides and env defaults may route to paid models.
+    if provider.model_router.resolve(request) != "space-bunny-free":
+        raise RuntimeError("Second-order model is not the verified free model")
+    response = await provider.complete(request)
+    return Extraction.model_validate(parse_json_response(response.text)), response
 
 
 def _company_exposures(company: Company) -> list[tuple[str, str]]:
@@ -166,30 +173,52 @@ def _candidate(company: Company, theme: Theme, field: str, value: str,
     }
 
 
+def _matching_companies(db: Session, exposure: str) -> list[Company]:
+    """Prefilter in SQL, then confirm normalized metadata matches in Python.
+
+    Factor tags are JSON across SQLite/Postgres; a quoted JSON string is an
+    index-independent, bounded prefilter rather than loading the full universe.
+    """
+    value = exposure.strip().lower()
+    if not value:
+        return []
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    predicate = or_(
+        func.lower(Company.sector) == value,
+        func.lower(Company.industry) == value,
+        cast(Company.factor_tags, String).ilike(f'%"{escaped}"%', escape="\\"),
+    )
+    return db.scalars(select(Company).where(predicate).order_by(Company.ticker).limit(100)).all()
+
+
 def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False) -> dict:
-    """Read only: no commit, no thesis/score/alert changes and no ingestion filtering."""
+    """No thesis/score/alert changes or ingestion filtering; reserves LLM quota."""
     text = " ".join(part for part in (event.title, event.summary) if part)[:3500]
     mode = "determinista"
     llm_note = None
+    llm_quota = None
     extraction = _fallback(text)
     if use_llm:
         if os.getenv("SECOND_ORDER_LLM_ENABLED") != "1":
-            llm_note = "LLM desactivado: coste del proveedor no verificado."
+            llm_note = "Análisis LLM desactivado por configuración."
         else:
             try:
-                extraction = run_from_any_context(_extract_with_llm(text))
-                mode = "llm"
-            except Exception:  # noqa: BLE001 - do not interrupt the read path
-                llm_note = "LLM no disponible; se usa el camino determinista."
+                llm_quota = reserve_llm_call(db.info.get("tenant_id"), get_settings())
+                if not llm_quota["allowed"]:
+                    llm_note = "Análisis LLM no disponible: tope alcanzado."
+                else:
+                    extraction, _response = run_from_any_context(_extract_with_llm(text))
+                    mode = "llm"
+            except Exception:  # noqa: BLE001 - never claim a failed call worked
+                llm_note = "Análisis LLM no disponible; se usa el camino determinista."
     # The LLM does not select companies. Only exact, normalized matches in
     # existing sector/industry/factor metadata can create a candidate.
-    companies = db.scalars(select(Company).order_by(Company.ticker)).all()
     candidates = []
     for theme in extraction.themes:
         if not theme.chain or not _normalized(theme.exposure):
             continue
         matches = []
-        for company in companies:
+        for company in _matching_companies(db, theme.exposure):
             for field, value in _company_exposures(company):
                 if _normalized(value) == _normalized(theme.exposure):
                     matches.append((company, field, value))
@@ -211,5 +240,6 @@ def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False
         "source_claim": text, "source_verified": False,
         "themes": [theme.model_dump() for theme in extraction.themes],
         "candidates": candidates, "limited_to": 100, "note": llm_note,
+        "llm_quota": llm_quota,
         "warning": "Solo hipótesis. Verificar fuente, cadena causal y exposición antes de usar como conclusión.",
     }
