@@ -112,3 +112,22 @@ def test_route_caches(monkeypatch):
     second = market.market_candles(ticker, from_ts=0, to_ts=9999)
     assert first == second
     assert calls == [ticker]
+
+
+class _RecordingClient:
+    def __init__(self, resp):
+        self._resp = resp
+        self.urls: list[str] = []
+
+    def get(self, url, **kwargs):
+        self.urls.append(url)
+        return self._resp
+
+
+def test_candles_request_dashed_symbol_for_share_class():
+    # Sin la traduccion BRK.B -> BRK-B, Yahoo da 404 y el historial de la
+    # ficha sale vacio (F161: chip «parcial» sin serie que mostrar).
+    client = _RecordingClient(_Resp(200, _payload()))
+    out = market._fetch_yahoo_candles(client, "BRK.B", 0, 9999, "1d")
+    assert out is not None
+    assert client.urls == [f"{market._YAHOO_CHART_URL}/BRK-B"]

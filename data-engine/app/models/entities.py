@@ -1104,6 +1104,9 @@ class ResearchAlert(TenantOwnedMixin, Base, TimestampMixin):
     acknowledged_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
     snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Hora del ultimo disparo: la fila se reutiliza por fingerprint en
+    # disparos repetidos y created_at queda en el primero.
+    last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 
