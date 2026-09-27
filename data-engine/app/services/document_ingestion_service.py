@@ -17,6 +17,7 @@ from app.core.errors import redact_secrets
 from app.models import Document, DocumentChunk
 from app.services.company_resolver import resolve_company
 from app.services.document_store import DocumentStore
+from app.services.document_visibility import is_immutable_archive_url
 from app.services.public_fetch import fetch_public_url
 
 MAX_DOCUMENT_BYTES = 15 * 1024 * 1024
@@ -94,24 +95,35 @@ class DocumentIngestionService:
             raise ValueError(f"Company {ticker.upper()} not found")
 
         checksum = hashlib.sha256(content).hexdigest()
-        # F252: la URL de origen es la identidad estable de un documento
-        # descargado; el checksum no lo es (SEC sirve el mismo filing con
-        # bytes que varian unos pocos bytes entre dias y cada re-ingesta
-        # creaba otra fila). Primero se busca por source_url; el checksum
-        # queda como respaldo para contenido sin URL.
+        # F252: la re-ingesta diaria del mismo filing de la SEC deriva unos
+        # pocos bytes y el checksum no la capturaba (cada dia, otra fila).
+        # La identidad por URL solo se aplica a URLs de archivo inmutable:
+        # una URL cualquiera puede servir contenido que cambia (feeds,
+        # paginas vivas) y ante esa ambiguedad no se descarta nada; ahi el
+        # checksum sigue siendo el unico criterio.
         duplicate = None
-        if source_url:
+        duplicate_reason = None
+        if is_immutable_archive_url(source_url):
             duplicate = db.scalar(
                 select(Document).where(
                     Document.company_id == company.id,
                     Document.source_url == source_url,
                 ).limit(1)
             )
+            if duplicate is not None:
+                duplicate_reason = "archive_url"
         if duplicate is None:
             duplicate = db.scalar(
                 select(Document).where(Document.company_id == company.id, Document.checksum == checksum)
             )
+            if duplicate is not None:
+                duplicate_reason = "checksum"
         if duplicate:
+            warning = (
+                "Document from the same SEC archive URL already exists for this company; byte drift ignored."
+                if duplicate_reason == "archive_url"
+                else "Document with same checksum already exists for this company."
+            )
             chunk_count = db.scalar(
                 select(DocumentChunk.id).where(DocumentChunk.document_id == duplicate.id).limit(1)
             )
@@ -123,7 +135,7 @@ class DocumentIngestionService:
                 "checksum": checksum,
                 "parser": duplicate.metadata_.get("parser", "unknown"),
                 "storage_uri": duplicate.storage_uri,
-                "warnings": ["Document with same checksum already exists for this company."],
+                "warnings": [warning],
             }
 
         ext = _extension(filename, content_type)
