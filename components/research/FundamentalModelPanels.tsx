@@ -1,4 +1,5 @@
 import { formatCompact, formatNumber, formatPercent, NA } from '@/lib/format';
+import { expectationMetricLabel, reviewStatusLabel } from '@/lib/research/expectation-labels';
 import { BarChart3, BrainCircuit, CheckCircle2, GitBranch } from 'lucide-react';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
@@ -83,9 +84,6 @@ const MODEL_STATUS_LABELS: Record<string, string> = {
   insufficient_data: 'datos insuficientes',
   missing_mandatory_drivers: 'faltan drivers obligatorios',
   preview_only: 'solo vista previa',
-};
-const REVIEW_STATUS_LABELS: Record<string, string> = {
-  beat: 'superado', met: 'cumplido', miss: 'no cumplido', unavailable: 's/d', pending: 'pendiente',
 };
 function translate(map: Record<string, string>, value: string | null | undefined, fallback = 's/d'): string {
   if (value == null || value === '') return fallback;
@@ -369,12 +367,12 @@ export function DecisionAndRealityPanel({
             <div className="max-h-[560px] space-y-3 overflow-auto md:hidden">
               {reviews.slice(0, 40).map((review) => (
                 <div className="rounded-md border border-gray-800 p-3 text-sm" key={review.id}>
-                  <div className="font-medium text-gray-200">{review.fiscal_year} · {review.metric}</div>
+                  <div className="font-medium text-gray-200">{review.fiscal_year} · {expectationMetricLabel(review.metric)}</div>
                   <div className="mt-2 space-y-1 text-xs text-gray-400">
                     <div className="flex justify-between gap-2"><span>Esperado</span><span className="text-gray-200">{compactNumber(review.expected_value)}</span></div>
                     <div className="flex justify-between gap-2"><span>Real</span><span className="text-gray-200">{compactNumber(review.actual_value)}</span></div>
                   </div>
-                  <div className="mt-2"><Badge variant="outline">{translate(REVIEW_STATUS_LABELS, review.status, review.status)}</Badge></div>
+                  <div className="mt-2"><Badge variant="outline">{reviewStatusLabel(review.status)}</Badge></div>
                 </div>
               ))}
             </div>
@@ -392,10 +390,10 @@ export function DecisionAndRealityPanel({
               <tbody>
                 {reviews.slice(0, 40).map((review) => (
                   <tr key={review.id} className="border-b border-gray-900">
-                    <th className="py-3 text-left text-sm font-normal text-gray-300" scope="row">{review.fiscal_year} · {review.metric}</th>
+                    <th className="py-3 text-left text-sm font-normal text-gray-300" scope="row">{review.fiscal_year} · {expectationMetricLabel(review.metric)}</th>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.expected_value)}</td>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.actual_value)}</td>
-                    <td className="py-3 text-right"><Badge variant="outline">{translate(REVIEW_STATUS_LABELS, review.status, review.status)}</Badge></td>
+                    <td className="py-3 text-right"><Badge variant="outline">{reviewStatusLabel(review.status)}</Badge></td>
                   </tr>
                 ))}
               </tbody>
