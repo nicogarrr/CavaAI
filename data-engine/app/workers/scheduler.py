@@ -8,6 +8,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from app.workers.dramatiq_app import (
     consolidate_memory,
     dispatch_insider_alerts,
+    dispatch_tracked_news_alerts,
     evaluate_alert_rules,
     reconcile_alert_deliveries,
     refresh_ir_pages,
@@ -220,6 +221,8 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         minutes=20,
         jitter=180,
     )
+    _register(scheduler, partial(enqueue_for_all_tenants, dispatch_tracked_news_alerts),
+              "interval", job_id="tracked_news_in_app", minutes=15)
     # F17: precios intradia de la cartera (Yahoo, retardo ~15 min declarado
     # en la UI) durante la sesion US. Ventana 13-21 UTC cubre EDT y EST.
     _register(

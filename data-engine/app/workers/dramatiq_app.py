@@ -881,6 +881,35 @@ def refresh_rss_feeds(
         )
 
 
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
+def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
+    """Evaluate persisted, cited news for one tenant; no upstream request."""
+    from app.services.tracked_news_alerts import evaluate
+
+    db = _session(tenant_id, user_id)
+    try:
+        lease = acquire_job_lease(
+            f"dispatch_tracked_news_alerts:{tenant_id}",
+            ttl_seconds=900, redis_url=_lease_redis_url(),
+        )
+    except Exception:
+        db.close()
+        raise
+    if lease is None:
+        db.close()
+        return {"actor": "dispatch_tracked_news_alerts", "status": "skipped", "reason": "lease_held"}
+    try:
+        return {"actor": "dispatch_tracked_news_alerts", **evaluate(db)}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error("dispatch_tracked_news_alerts", exc, tenant_id=tenant_id)
+    finally:
+        release_job_lease(
+            f"dispatch_tracked_news_alerts:{tenant_id}", lease, redis_url=_lease_redis_url(),
+        )
+        db.close()
+
+
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
 def refresh_news(
     tenant_id: int | None = None,
