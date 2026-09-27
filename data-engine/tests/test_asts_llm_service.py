@@ -11,6 +11,7 @@ from app.models.entities import Base, Tenant
 from app.services import asts_llm_quota as quota
 from app.services import asts_llm_service as service
 from app.services.asts_catalog_service import persist_catalog
+from app.services.connectors.celestrak_ast import SOURCE_URL
 
 
 def row(cat_id, name, epoch):
@@ -55,7 +56,7 @@ def test_stale_snapshot_reports_sin_datos_without_llm(db, monkeypatch):
     assert result["stale_snapshot_at"] == fetched.isoformat()
     assert result["llm_quota"] is None  # ni reserva sin datos frescos
     assert "30 h" in result["note"]
-    assert result["source"]["url"].startswith("https://celestrak.org")
+    assert result["source"]["url"] == SOURCE_URL  # igualdad exacta, no substring
 
 
 def test_fresh_catalog_deterministic_when_flag_off(db, monkeypatch):
