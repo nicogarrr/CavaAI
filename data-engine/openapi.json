@@ -1401,6 +1401,11 @@
           "counts": {
             "$ref": "#/components/schemas/SnapshotCountsOut"
           },
+          "in_portfolio": {
+            "default": false,
+            "title": "In Portfolio",
+            "type": "boolean"
+          },
           "latest_thesis": {
             "anyOf": [
               {
