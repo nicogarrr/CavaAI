@@ -131,3 +131,180 @@ def test_get_never_mutates_the_orm_rows(db):
     # La fila sigue como estaba: el GET no escribe (ni commit ni dirty flush).
     assert expired.status == "snoozed"
     assert expired.snoozed_until is not None
+
+
+def test_list_alerts_resolves_source_url(db):
+    """F172: la URL de la fuente sale de metadata.source_url (insider) o del
+    NewsEvent enlazado via metadata.news_event_id (filing/noticia); sin URL
+    conocida queda None, nunca inventada."""
+    from app.models.entities import NewsEvent
+
+    company = Company(
+        ticker="AAPL", name="Apple", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    event = NewsEvent(
+        company_id=company.id, title="AAPL 8-K",
+        url="https://www.sec.gov/Archives/edgar/data/1/0001.htm",
+    )
+    db.add(event)
+    db.flush()
+    cases = [
+        ("insider", {"source_url": "https://www.sec.gov/form4/1"}, "https://www.sec.gov/form4/1"),
+        ("filing", {"news_event_id": event.id}, event.url),
+        ("sin-fuente", {}, None),
+    ]
+    for key, metadata, _expected in cases:
+        db.add(ResearchAlert(
+            company_id=company.id, alert_type="filing", severity="medium",
+            title=f"AAPL {key}", message="m", fingerprint=f"fp-src-{key}",
+            channels=["in_app"], status="open", metadata_=metadata,
+        ))
+    db.commit()
+
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    urls = {a.title: a.source_url for a in result}
+    for key, _metadata, expected in cases:
+        assert urls[f"AAPL {key}"] == expected
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "/relative/path",
+        "notaurl",
+        "",
+        "ftp://example.com/doc",
+        "https://[broken/path",
+        "https://@/bad",
+        "https://:443/path",
+    ],
+)
+def test_list_alerts_source_url_rejects_unsafe_schemes(db, bad_url):
+    """F172: source_url alimenta el href de un <a target="_blank">; cualquier
+    esquema que no sea http/https absoluto (javascript:, data:, relativo,
+    vacio) sale como None tanto desde metadata.source_url como de NewsEvent.url."""
+    from app.models.entities import NewsEvent
+
+    company = Company(
+        ticker="AAPL", name="Apple", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    event = NewsEvent(company_id=company.id, title="t", url=bad_url)
+    db.add(event)
+    db.flush()
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="insider", severity="medium",
+        title="meta", message="m", fingerprint=f"fp-bad-meta-{bad_url[:8]}",
+        channels=["in_app"], status="open", metadata_={"source_url": bad_url},
+    ))
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="filing", severity="medium",
+        title="news", message="m", fingerprint=f"fp-bad-news-{bad_url[:8]}",
+        channels=["in_app"], status="open", metadata_={"news_event_id": event.id},
+    ))
+    db.commit()
+
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    urls = {a.title: a.source_url for a in result}
+    assert urls["meta"] is None
+    assert urls["news"] is None
+
+
+def test_list_alerts_source_url_accepts_absolute_http(db):
+    """F172: una URL absoluta http/https con host sí sale como enlace, tanto
+    desde metadata.source_url como desde NewsEvent.url."""
+    from app.models.entities import NewsEvent
+
+    company = Company(
+        ticker="AAPL", name="Apple", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    good = "https://www.sec.gov/Archives/edgar/data/1/0001.htm"
+    event = NewsEvent(company_id=company.id, title="t", url=good)
+    db.add(event)
+    db.flush()
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="filing", severity="medium",
+        title="news-ok", message="m", fingerprint="fp-ok-news",
+        channels=["in_app"], status="open", metadata_={"news_event_id": event.id},
+    ))
+    db.commit()
+
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    assert result[0].source_url == good
+
+
+def test_list_alerts_over_http_serves_rows_and_sanitizes():
+    """F172: el endpoint HTTP real GET /api/alerts responde 200 con las filas
+    (regresión: un helper mal insertado entre el decorador y list_alerts
+    dejaba el listado roto aunque la llamada directa pasara) y expone
+    source_url ya sanitizado."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    # TestClient sirve la app en otro hilo: StaticPool comparte la unica
+    # conexion entre hilos (con :memory: cada conexion seria una BD vacia).
+    from sqlalchemy.pool import StaticPool
+
+    from app.api.routes import alerts as alerts_module
+    from app.core.database import get_db
+    from app.models.entities import NewsEvent
+
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    session.info["tenant_id"] = "tenant-test"
+    db = session
+
+    company = Company(
+        ticker="AAPL", name="Apple", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    event = NewsEvent(
+        company_id=company.id, title="t",
+        url="https://www.sec.gov/Archives/edgar/data/1/0001.htm",
+    )
+    db.add(event)
+    db.flush()
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="filing", severity="medium",
+        title="http-ok", message="m", fingerprint="fp-http-ok",
+        channels=["in_app"], status="open", metadata_={"news_event_id": event.id},
+    ))
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="insider", severity="medium",
+        title="http-bad", message="m", fingerprint="fp-http-bad",
+        channels=["in_app"], status="open", metadata_={"source_url": "javascript:alert(1)"},
+    ))
+    db.commit()
+
+    app = FastAPI()
+    app.include_router(alerts_module.router, prefix="/api/alerts")
+    def _override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = _override_db
+    client = TestClient(app)
+
+    response = client.get("/api/alerts")
+    assert response.status_code == 200, response.text
+    rows = {row["title"]: row for row in response.json()}
+    assert rows["http-ok"]["source_url"] == event.url
+    assert rows["http-bad"]["source_url"] is None

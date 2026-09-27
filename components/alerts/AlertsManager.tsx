@@ -455,13 +455,27 @@ function AlertsManager() {
                                     </time>
                                 </div>
                                 <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{item.message}</p>
-                                {item.ticker && (
-                                    <Link
-                                        className="mt-1 inline-block text-xs text-teal-400 hover:text-teal-300 hover:underline"
-                                        href={`/research/${item.ticker}`}
-                                    >
-                                        Abrir investigación de {item.ticker}
-                                    </Link>
+                                {(item.ticker || item.sourceUrl) && (
+                                    <span className="mt-1 inline-flex flex-wrap gap-3">
+                                        {item.ticker && (
+                                            <Link
+                                                className="text-xs text-teal-400 hover:text-teal-300 hover:underline"
+                                                href={`/research/${item.ticker}`}
+                                            >
+                                                Abrir investigación de {item.ticker}
+                                            </Link>
+                                        )}
+                                        {item.sourceUrl && (
+                                            <a
+                                                className="text-xs text-teal-400 hover:text-teal-300 hover:underline"
+                                                href={item.sourceUrl}
+                                                rel="noopener noreferrer"
+                                                target="_blank"
+                                            >
+                                                Abrir documento fuente
+                                            </a>
+                                        )}
+                                    </span>
                                 )}
                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                     {item.channels.length === 0 ? (
