@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.services.research_assistant_narrative import synthesize
 from app.services.research_assistant_service import answer, guide_context
 
 router = APIRouter()
@@ -80,9 +81,10 @@ class GuideContextResponse(BaseModel):
 
 
 @router.post("/assistant", response_model=AssistantResponse)
-def research_assistant(payload: AssistantRequest, db: Session = Depends(get_db)) -> AssistantResponse:
+async def research_assistant(payload: AssistantRequest, db: Session = Depends(get_db)) -> AssistantResponse:
     try:
-        return AssistantResponse.model_validate(answer(db, payload))
+        baseline = answer(db, payload)
+        return AssistantResponse.model_validate(await synthesize(db, payload, baseline))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
