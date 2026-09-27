@@ -160,7 +160,11 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
       </div>
 
       <div className="mt-5 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div>
+        {/* F319: min-w-0 en las pistas del grid: sin él, el min-content de
+            la tabla de escenarios (min-w-[640px]) expandía la pista por
+            encima del contenedor a 768-1279px en vez de dejar que el
+            wrapper overflow-x-auto recortara con scroll interno. */}
+        <div className="min-w-0">
           <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Bajista / Base / Alcista</div>
           {/* Móvil: cards sin scroll horizontal */}
           <div className="space-y-3 md:hidden">
