@@ -10,7 +10,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
-from sqlalchemy import desc, select
+from sqlalchemy import and_, desc, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -71,85 +71,99 @@ def evaluate(db: Session, *, now: datetime | None = None, limit: int = 500) -> d
     if not tracked:
         return stats
     since = now - MAX_AGE
-    # Work oldest first so cooldown does not select a later syndicated copy
-    # ahead of the first eligible dated source. Explicit tenant filter remains
-    # even though Session scoping also applies.
-    candidates = db.scalars(select(NewsEvent).where(
+    # SQL filters cheap provenance before each bounded page. Keyset scans
+    # across pages, so 500 old ineligible rows cannot starve new filings.
+    # Preserve date ordering for per-ticker cooldown decisions.
+    eligible = and_(
         NewsEvent.tenant_id == tenant_id,
         NewsEvent.company_id.in_(tracked),
         NewsEvent.date >= since,
         NewsEvent.date <= now,
         NewsEvent.url.is_not(None),
-    ).order_by(NewsEvent.date, NewsEvent.id).limit(limit)).all()
+        NewsEvent.metadata_["connector"].as_string().in_(("gdelt", "rss", "ir", "sec")),
+        NewsEvent.metadata_["date_source"].as_string().in_(("source", "gdelt_first_seen")),
+        NewsEvent.metadata_["source_headline"].as_string().is_not(None),
+    )
     companies = {c.id: c for c in db.scalars(select(Company).where(Company.id.in_(tracked))).all()}
-    for event in candidates:
-        stats["examined"] += 1
-        url = _valid_source_url(event.url)
-        published = _aware(event.date)
-        # GDELT `seendate` is first-seen, not the publisher's publication
-        # date. Both are usable recency evidence, but NEVER conflate them.
-        provenance = event.metadata_ or {}
-        date_source = provenance.get("date_source")
-        # Old GDELT rows say `source` even though seendate is first-seen,
-        # not publication. The fallback marker remains ineligible.
-        if provenance.get("connector") == "gdelt" and date_source == "source":
-            date_source = "gdelt_first_seen"
-        # Only trusted ingestion connectors, not arbitrary manual inputs.
-        if (not url or not (event.source or "").strip() or
-                provenance.get("connector") not in {"gdelt", "rss", "ir", "sec"} or
-                date_source not in {"source", "gdelt_first_seen"} or
-                published < since or published > now or not EVENT_TERMS.search(event.title or "")):
-            stats["unverified_skips"] += 1
-            continue
-        company = companies.get(event.company_id)
-        if company is None:
-            continue
-        fp = _fingerprint(tenant_id, company.id, url)
-        if db.scalar(select(ResearchAlert.id).where(
-            ResearchAlert.tenant_id == tenant_id, ResearchAlert.fingerprint == fp,
-        )) is not None:
-            stats["duplicates"] += 1
-            continue
-        recent = db.scalar(select(ResearchAlert).where(
-            ResearchAlert.tenant_id == tenant_id,
-            ResearchAlert.company_id == company.id,
-            ResearchAlert.alert_type == "tracked_news",
-        ).order_by(desc(ResearchAlert.last_triggered_at)).limit(1))
-        if recent is not None:
-            last_triggered = _aware(recent.last_triggered_at or recent.created_at)
-            # Cooldown-suppressed backlog cannot burst out six hours later.
-            # A later alert only covers articles published after the last
-            # notification, never previously skipped articles from that batch.
-            if last_triggered > now - COOLDOWN or published <= last_triggered:
-                stats["cooldown_skips"] += 1
+    cursor = None
+    while True:
+        query = select(NewsEvent).where(eligible)
+        if cursor is not None:
+            query = query.where(tuple_(NewsEvent.date, NewsEvent.id) > cursor)
+        candidates = db.scalars(query.order_by(NewsEvent.date, NewsEvent.id).limit(limit)).all()
+        if not candidates:
+            break
+        for event in candidates:
+            stats["examined"] += 1
+            url = _valid_source_url(event.url)
+            published = _aware(event.date)
+            # GDELT `seendate` is first-seen, not the publisher's publication
+            # date. Both are usable recency evidence, but NEVER conflate them.
+            provenance = event.metadata_ or {}
+            date_source = provenance.get("date_source")
+            # Old GDELT rows say `source` even though seendate is first-seen,
+            # not publication. The fallback marker remains ineligible.
+            if provenance.get("connector") == "gdelt" and date_source == "source":
+                date_source = "gdelt_first_seen"
+            # Only trusted ingestion connectors, not arbitrary manual inputs.
+            if (not url or not (event.source or "").strip() or
+                    provenance.get("connector") not in {"gdelt", "rss", "ir", "sec"} or
+                    date_source not in {"source", "gdelt_first_seen"} or
+                    published < since or published > now or not isinstance(provenance.get("source_headline"), str) or
+                    not EVENT_TERMS.search(provenance["source_headline"])):
+                stats["unverified_skips"] += 1
                 continue
-        membership = [kind for kind, match in (("cartera", company.id in held), ("watchlist", company.id in watched)) if match]
-        title = f"Noticia sobre {company.ticker}: {event.title}"[:300]
-        source_label = "detectada por GDELT" if date_source == "gdelt_first_seen" else "fechada por la fuente"
-        date_phrase = (f"detectada por GDELT el {published.date().isoformat()}" if date_source == "gdelt_first_seen"
-                       else f"fechada el {published.date().isoformat()} por {event.source}")
-        alert = ResearchAlert(
-            tenant_id=tenant_id, company_id=company.id, severity="medium", status="open",
-            alert_type="tracked_news", title=title,
-            message=(f"Artículo de {event.source}, {date_phrase}: {event.title}. "
-                     "Revisa la fuente; la fecha de GDELT no es la fecha de publicación "
-                     "y el titular no confirma por sí solo los hechos."),
-            fingerprint=fp, channels=["in_app"], last_triggered_at=now,
-            metadata_={"news_event_id": event.id, "source_url": url, "source": event.source,
-                       "published_at": published.isoformat(), "matching": membership,
-                       "rule_version": VERSION, "date_source": date_source,
-                       "date_label": source_label},
-        )
-        try:
-            # Savepoint protects the tenant-scoped unique fingerprint in a
-            # concurrent run; never redeliver an existing alert.
-            with db.begin_nested():
-                db.add(alert)
-                db.flush()
-        except IntegrityError:
-            stats["duplicates"] += 1
-            continue
-        db.commit()
-        NotificationService().dispatch(db, alert)
-        stats["created"] += 1
+            company = companies.get(event.company_id)
+            if company is None:
+                continue
+            fp = _fingerprint(tenant_id, company.id, url)
+            if db.scalar(select(ResearchAlert.id).where(
+                ResearchAlert.tenant_id == tenant_id, ResearchAlert.fingerprint == fp,
+            )) is not None:
+                stats["duplicates"] += 1
+                continue
+            recent = db.scalar(select(ResearchAlert).where(
+                ResearchAlert.tenant_id == tenant_id,
+                ResearchAlert.company_id == company.id,
+                ResearchAlert.alert_type == "tracked_news",
+            ).order_by(desc(ResearchAlert.last_triggered_at)).limit(1))
+            if recent is not None:
+                last_triggered = _aware(recent.last_triggered_at or recent.created_at)
+                # Cooldown-suppressed backlog cannot burst out six hours later.
+                # A later alert only covers articles published after the last
+                # notification, never previously skipped articles from that batch.
+                if last_triggered > now - COOLDOWN or published <= last_triggered:
+                    stats["cooldown_skips"] += 1
+                    continue
+            membership = [kind for kind, match in (("cartera", company.id in held), ("watchlist", company.id in watched)) if match]
+            headline = provenance["source_headline"].strip()
+            title = f"Noticia sobre {company.ticker}: {headline}"[:300]
+            source_label = "detectada por GDELT" if date_source == "gdelt_first_seen" else "fechada por la fuente"
+            date_phrase = (f"detectada por GDELT el {published.date().isoformat()}" if date_source == "gdelt_first_seen"
+                           else f"fechada el {published.date().isoformat()} por {event.source}")
+            alert = ResearchAlert(
+                tenant_id=tenant_id, company_id=company.id, severity="medium", status="open",
+                alert_type="tracked_news", title=title,
+                message=(f"Artículo de {event.source}, {date_phrase}: {headline}. "
+                         "Revisa la fuente; la fecha de GDELT no es la fecha de publicación "
+                         "y el titular no confirma por sí solo los hechos."),
+                fingerprint=fp, channels=["in_app"], last_triggered_at=now,
+                metadata_={"news_event_id": event.id, "source_url": url, "source": event.source,
+                           "published_at": published.isoformat(), "matching": membership,
+                           "rule_version": VERSION, "date_source": date_source,
+                           "date_label": source_label, "source_headline": headline},
+            )
+            try:
+                # Savepoint protects the tenant-scoped unique fingerprint in a
+                # concurrent run; never redeliver an existing alert.
+                with db.begin_nested():
+                    db.add(alert)
+                    db.flush()
+            except IntegrityError:
+                stats["duplicates"] += 1
+                continue
+            db.commit()
+            NotificationService().dispatch(db, alert)
+            stats["created"] += 1
+        cursor = (candidates[-1].date, candidates[-1].id)
     return stats

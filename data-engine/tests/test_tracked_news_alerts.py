@@ -40,7 +40,7 @@ def _setup(db):
 
 def _news(db, tenant, company, title, url, *, published=NOW - timedelta(hours=2), metadata=None):
     row = NewsEvent(tenant_id=tenant.id, company_id=company.id, title=title, source="publisher.example",
-                    url=url, date=published, metadata_=metadata if metadata is not None else {"date_source": "source", "connector": "rss"})
+                    url=url, date=published, metadata_=metadata if metadata is not None else {"date_source": "source", "connector": "rss", "source_headline": title})
     db.add(row)
     db.commit()
     return row
@@ -96,7 +96,7 @@ def test_no_tenant_context_fails_closed(db):
 def test_gdelt_first_seen_is_not_claimed_as_publication_date(db):
     tenant, _, company, _ = _setup(db)
     _news(db, tenant, company, "ASTS ITU filing", "https://publisher.example/itu",
-          metadata={"connector": "gdelt", "date_source": "source"})
+          metadata={"connector": "gdelt", "date_source": "source", "source_headline": "ASTS ITU filing"})
     db.info["tenant_id"] = tenant.id
     assert evaluate(db, now=NOW)["created"] == 1
     alert = db.scalar(select(ResearchAlert))
@@ -112,3 +112,75 @@ def test_manual_or_unattributed_news_does_not_auto_alert(db):
     db.info["tenant_id"] = tenant.id
     assert evaluate(db, now=NOW)["created"] == 0
     assert db.scalar(select(ResearchAlert)) is None
+
+
+def test_500_ineligible_articles_do_not_hide_recent_real_headline(db):
+    tenant, _, company, _ = _setup(db)
+    db.info["tenant_id"] = tenant.id
+    db.add_all([
+        NewsEvent(tenant_id=tenant.id, company_id=company.id, title="ASTS filing from snippet",
+                  source="publisher.example", url=f"https://publisher.example/boring-{i}",
+                  date=NOW-timedelta(hours=40)+timedelta(seconds=i),
+                  metadata_={"date_source": "source", "connector": "rss", "source_headline": "Company update"})
+        for i in range(525)
+    ])
+    db.add(NewsEvent(tenant_id=tenant.id, company_id=company.id,
+                     title="ASTS filing ITU from title and summary", source="publisher.example",
+                     url="https://publisher.example/actual-itu", date=NOW-timedelta(hours=1),
+                     metadata_={"date_source": "gdelt_first_seen", "connector": "gdelt",
+                                "source_headline": "ASTS ITU filing submitted"}))
+    db.commit()
+    result = evaluate(db, now=NOW, limit=100)
+    assert result["created"] == 1
+    alert = db.scalar(select(ResearchAlert))
+    assert "ASTS ITU filing submitted" in alert.title
+    assert alert.metadata_["source_headline"] == "ASTS ITU filing submitted"
+
+
+def test_eligible_snippet_cannot_promote_innocuous_source_headline(db):
+    tenant, _, company, _ = _setup(db)
+    db.info["tenant_id"] = tenant.id
+    db.add(NewsEvent(tenant_id=tenant.id, company_id=company.id,
+                     title="ASTS update: filing ITU in snippet", source="publisher.example",
+                     url="https://publisher.example/summary-only", date=NOW-timedelta(hours=1),
+                     metadata_={"date_source": "gdelt_first_seen", "connector": "gdelt",
+                                "source_headline": "ASTS company update"}))
+    db.commit()
+    assert evaluate(db, now=NOW)["created"] == 0
+
+
+def test_actual_feed_ingestion_preserves_headline_before_alert_gate(db, monkeypatch):
+    from app.schemas import NewsIngestResponse
+    from app.services.connectors.base import ConnectorItem, ConnectorResult
+    from app.services.feed_ingestion_service import FeedIngestionService
+    from app.services.news_service import NewsService
+
+    tenant, _, company, _ = _setup(db)
+    db.info["tenant_id"] = tenant.id
+
+    def ingest_stub(self, session, items, default_source="feed"):
+        # Exercise actual FeedIngestionService mapping and source-headline
+        # enrichment; isolate expensive thesis/LLM side effects in NewsService.
+        for item in items:
+            session.add(NewsEvent(tenant_id=tenant.id, company_id=company.id,
+                                  title=f"{company.ticker} {item.title} {item.text}",
+                                  source=item.source, url=item.url, date=item.published_at,
+                                  metadata_={"date_source": "source"}))
+        session.commit()
+        return NewsIngestResponse(status="ingested", received=len(items), created=len(items),
+                                  skipped_duplicates=0, requires_update=0, events=[])
+
+    monkeypatch.setattr(NewsService, "ingest_news_items", ingest_stub)
+    result = ConnectorResult(source="gdelt", items=[
+        ConnectorItem(source="publisher.example", title="Company update", summary="New ITU filing",
+                      url="https://publisher.example/no", ticker="ASTS", published_at=NOW-timedelta(hours=2)),
+        ConnectorItem(source="publisher.example", title="ASTS ITU filing submitted", summary="Company update",
+                      url="https://publisher.example/yes", ticker="ASTS", published_at=NOW-timedelta(hours=1)),
+    ])
+    FeedIngestionService().ingest_news_result(db, result, ticker="ASTS")
+    rows = db.scalars(select(NewsEvent).order_by(NewsEvent.id)).all()
+    assert [r.metadata_["source_headline"] for r in rows] == ["Company update", "ASTS ITU filing submitted"]
+    assert evaluate(db, now=NOW)["created"] == 1
+    alert = db.scalar(select(ResearchAlert))
+    assert alert.metadata_["source_url"] == "https://publisher.example/yes"
+    assert "Company update" not in alert.title
