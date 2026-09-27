@@ -171,11 +171,12 @@ def test_reconcile_recovers_lost_row_beyond_eligibility_window(db):
     assert session.scalar(select(AlertAnalysis)) is None
     # la reconciliación sí: no depende de la elegibilidad del evento
     stats = reconcile_missing_analyses(session)
-    assert stats == {"examined": 1, "queued": 1, "unqueueable": 0}
+    assert stats == {"examined": 1, "queued": 1, "unqueueable": 0, "excluded_no_data": 0}
     row = session.scalar(select(AlertAnalysis))
     assert row and row.status == "pending" and row.alert_id == alert.id
     # idempotente
-    assert reconcile_missing_analyses(session) == {"examined": 0, "queued": 0, "unqueueable": 0}
+    assert reconcile_missing_analyses(session) == {
+        "examined": 0, "queued": 0, "unqueueable": 0, "excluded_no_data": 0}
 
 
 def test_reconcile_stays_honest_without_original_headline(db):
@@ -195,5 +196,47 @@ def test_reconcile_stays_honest_without_original_headline(db):
     session.add(alert)
     session.commit()
     stats = reconcile_missing_analyses(session)
-    assert stats == {"examined": 1, "queued": 0, "unqueueable": 1}
+    # sin titular original no es candidata: el filtro SQL la excluye del lote
+    # para que no ocupe sitio cada hora; el gate sigue como autoridad
+    assert stats == {"examined": 0, "queued": 0, "unqueueable": 0, "excluded_no_data": 1}
     assert session.scalar(select(AlertAnalysis)) is None
+
+
+def test_reconcile_unqueueable_backlog_cannot_starve_valid_alert(db):
+    from app.services.alert_analysis_service import reconcile_missing_analyses
+
+    session, tenants, company = db
+    for i in range(60):
+        legacy = NewsEvent(tenant_id=tenants[0].id, company_id=company.id,
+                           title=f"legacy {i}", source="Publisher",
+                           url="https://publisher.example/legacy", date=NOW,
+                           metadata_={"connector": "rss", "date_source": "source"})
+        session.add(legacy)
+        session.flush()
+        session.add(ResearchAlert(tenant_id=tenants[0].id, company_id=company.id,
+                                  severity="medium", status="open", alert_type="tracked_news",
+                                  title="t", message="m", fingerprint=f"fp-legacy-{i}",
+                                  channels=["in_app"], last_triggered_at=NOW,
+                                  metadata_={"news_event_id": legacy.id}))
+    valid = NewsEvent(tenant_id=tenants[0].id, company_id=company.id,
+                      title="valid headline", source="Publisher",
+                      url="https://publisher.example/valid", date=NOW,
+                      metadata_={"connector": "rss", "date_source": "source",
+                                 "source_headline": "ASTS valid headline"})
+    session.add(valid)
+    session.flush()
+    valid_alert = ResearchAlert(tenant_id=tenants[0].id, company_id=company.id,
+                                severity="medium", status="open", alert_type="tracked_news",
+                                title="t", message="m", fingerprint="fp-valid",
+                                channels=["in_app"], last_triggered_at=NOW,
+                                metadata_={"news_event_id": valid.id})
+    session.add(valid_alert)
+    session.commit()
+    assert valid_alert.id > max(
+        a.id for a in session.scalars(select(ResearchAlert).where(ResearchAlert.id != valid_alert.id)))
+    # 60 inencolables delante por ID y limit=50: la válida debe examinarse igual
+    stats = reconcile_missing_analyses(session, limit=50)
+    assert stats["examined"] == 1 and stats["queued"] == 1
+    assert stats["excluded_no_data"] == 60
+    row = session.scalar(select(AlertAnalysis))
+    assert row and row.alert_id == valid_alert.id and row.status == "pending"

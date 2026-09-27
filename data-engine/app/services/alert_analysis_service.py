@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import AlertAnalysis, NewsEvent, ResearchAlert
@@ -57,27 +57,57 @@ def reconcile_missing_analyses(db: Session, *, limit: int = 50) -> dict:
     eligibility filter, so a lost row whose event aged out would never be
     recovered. queue_analysis remains the honest gate: no event, no valid
     URL, or no original headline means no row.
+
+    The candidate SELECT pre-filters in SQL the rows that can never pass
+    that gate (no matching event, no http(s) URL, no non-empty source
+    headline). Without the filter, permanently unqueueable rows would sit
+    at the head of every hourly batch by ID order and starve any queueable
+    alert behind them. queue_analysis stays the authoritative check: the
+    shapes the SQL approximation cannot express (URL without host or with
+    userinfo, non-string JSON headline, leading non-space whitespace) pass
+    the filter, fail the gate and are counted as unqueueable. Connectors
+    store normalized URLs, so the approximation gap is not exercised by
+    any ingestion path.
     """
     tenant_id = db.info.get("tenant_id")
     if tenant_id is None:
         raise ValueError("Tenant context required")
-    missing = db.scalars(
-        select(ResearchAlert)
+    if db.get_bind().dialect.name == "postgresql":
+        id_match = cast(NewsEvent.id, String) == ResearchAlert.metadata_["news_event_id"].as_string()
+    else:  # SQLite: json_extract devuelve el entero nativo; texto malformado no coincide ni rompe
+        id_match = NewsEvent.id == ResearchAlert.metadata_["news_event_id"]
+    url_norm = func.lower(func.trim(NewsEvent.url))
+    queueable_event = (
+        select(NewsEvent.id)
         .where(
-            ResearchAlert.tenant_id == tenant_id,
-            ResearchAlert.alert_type == "tracked_news",
-            ~select(AlertAnalysis.id)
-            .where(
-                AlertAnalysis.tenant_id == tenant_id,
-                AlertAnalysis.alert_id == ResearchAlert.id,
-                AlertAnalysis.version == VERSION,
-            )
-            .exists(),
+            id_match,
+            NewsEvent.company_id == ResearchAlert.company_id,
+            or_(url_norm.like("http://%"), url_norm.like("https://%")),
+            func.length(func.trim(NewsEvent.url)) >= 8,
+            func.length(func.trim(NewsEvent.metadata_["source_headline"].as_string())) > 0,
         )
-        .order_by(ResearchAlert.id)
-        .limit(limit)
+        .exists()
+    )
+    base_filters = (
+        ResearchAlert.tenant_id == tenant_id,
+        ResearchAlert.alert_type == "tracked_news",
+        ~select(AlertAnalysis.id)
+        .where(
+            AlertAnalysis.tenant_id == tenant_id,
+            AlertAnalysis.alert_id == ResearchAlert.id,
+            AlertAnalysis.version == VERSION,
+        )
+        .exists(),
+    )
+    missing = db.scalars(
+        select(ResearchAlert).where(*base_filters, queueable_event)
+        .order_by(ResearchAlert.id).limit(limit)
     ).all()
-    stats = {"examined": len(missing), "queued": 0, "unqueueable": 0}
+    excluded = db.scalar(
+        select(func.count(ResearchAlert.id)).where(*base_filters, ~queueable_event)
+    ) or 0
+    stats = {"examined": len(missing), "queued": 0, "unqueueable": 0,
+             "excluded_no_data": excluded}
     for alert in missing:
         try:
             row = queue_analysis(db, alert)
