@@ -882,6 +882,32 @@ def refresh_rss_feeds(
 
 
 @dramatiq.actor(max_retries=1, min_backoff=30_000)
+def analyze_tracked_news_alert(alert_id: int, *, tenant_id: int | None = None,
+                               user_id: str | None = None) -> dict[str, Any]:
+    """Idempotent attributed-headline baseline, never a verified claim."""
+    from app.services.alert_analysis_service import analyze_alert
+
+    db = _session(tenant_id, user_id)
+    lease_key = f"analyze_tracked_news_alert:{tenant_id}:{alert_id}"
+    try:
+        lease = acquire_job_lease(lease_key, ttl_seconds=300, redis_url=_lease_redis_url())
+    except Exception:
+        db.close()
+        raise
+    if lease is None:
+        db.close()
+        return {"status": "skipped", "reason": "lease_held", "alert_id": alert_id}
+    try:
+        return analyze_alert(db, alert_id)
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error("analyze_tracked_news_alert", exc, alert_id=alert_id)
+    finally:
+        release_job_lease(lease_key, lease, redis_url=_lease_redis_url())
+        db.close()
+
+
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
 def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
     """Evaluate persisted, cited news for one tenant; no upstream request."""
     from app.services.tracked_news_alerts import evaluate
@@ -899,7 +925,23 @@ def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | No
         db.close()
         return {"actor": "dispatch_tracked_news_alerts", "status": "skipped", "reason": "lease_held"}
     try:
-        return {"actor": "dispatch_tracked_news_alerts", **evaluate(db)}
+        result = evaluate(db)
+        # A broker outage between alert commit and send leaves a pending row.
+        # Requeue a bounded backlog on the next normal dispatch cycle.
+        from sqlalchemy import select
+
+        from app.models import AlertAnalysis
+        from app.services.alert_analysis_service import VERSION
+
+        pending = db.scalars(select(AlertAnalysis).where(
+            AlertAnalysis.tenant_id == tenant_id, AlertAnalysis.version == VERSION,
+            AlertAnalysis.status == "pending",
+        ).order_by(AlertAnalysis.id).limit(20)).all()
+        enqueued = 0
+        for row in pending:
+            analyze_tracked_news_alert.send(row.alert_id, tenant_id=tenant_id, user_id=user_id)
+            enqueued += 1
+        return {"actor": "dispatch_tracked_news_alerts", **result, "analysis_enqueued": enqueued}
     except Exception as exc:
         _rollback(db)
         return _handle_actor_error("dispatch_tracked_news_alerts", exc, tenant_id=tenant_id)
