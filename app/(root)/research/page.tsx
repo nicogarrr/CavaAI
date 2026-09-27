@@ -12,6 +12,7 @@ import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { Panel } from '@/components/ui/panel';
 import { Stat } from '@/components/ui/stat';
+import { sectorIndustryLine } from '@/lib/sector-display';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -126,7 +127,7 @@ function CompanyCard({ row }: { row: CompanyRow }) {
     const health = snapshot?.research_health;
     const thesis = snapshot?.latest_thesis ?? null;
 
-    const sectorLine = `${company.sector || 'Sector sin dato'}${company.industry ? ` · ${company.industry}` : ''}`;
+    const sectorLine = sectorIndustryLine(company.sector, company.industry);
 
     return (
         <li>
