@@ -41,7 +41,7 @@ void test('las tarjetas pintan n/d con nota al pie y los textos declaran las neu
     assert.match(cards, /categoryDisplay\(pick, key\)/);
     assert.match(cards, /display\.kind === 'neutral'/);
     assert.match(cards, /n\/d\*/);
-    assert.match(cards, /entra neutral \(50\) en el score y no discrimina entre picks/);
+    assert.match(cards, /entra neutral \(50\) en el score y no discrimina entre los picks actuales/);
     assert.match(cards, /entran neutras \(50\)/);
     assert.ok(!cards.includes('aún no (v1)'), 'la caja ya no contradice el mecanismo real');
 
@@ -79,7 +79,7 @@ void test('el filtro de orden deshabilita las categorías neutras de todo el run
     const filters: string = readFileSync(new URL('../components/proPicks/EnhancedProPicksFilters.tsx', import.meta.url), 'utf8');
     assert.match(filters, /disabled=\{neutralSorts\.includes\('momentum'\)\}/);
     assert.match(filters, /disabled=\{neutralSorts\.includes\('value'\)\}/);
-    assert.match(filters, /\(n\/d en este run\)/);
+    assert.match(filters, /\(n\/d en estos resultados\)/);
 });
 
 void test('allNeutralCategory: true solo si TODOS los picks son neutros en la categoría', async () => {

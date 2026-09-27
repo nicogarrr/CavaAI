@@ -161,7 +161,8 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                     <p className="text-xs text-gray-400 leading-relaxed">
                         El embudo v1 puntúa las métricas de calidad y crecimiento ya
                         persistidas de todo el universo (SEC + ESEF) y las ordena por
-                        percentiles. Valoración y momentum no discriminan en v1: la
+                        percentiles. En los picks actuales sin datos, valoración y
+                        momentum no discriminan: la
                         valoración necesita CFROI y WACC y el momentum series de
                         precios, y esos datos aún no cubren todo el universo, así que
                         entran neutras (50) en el score y se muestran n/d en las
@@ -172,7 +173,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                             <div>✓ Análisis fundamental (calidad y crecimiento)</div>
                             <div>✓ Análisis de salud financiera</div>
                             <div>✓ Ranking por percentiles del universo</div>
-                            <div>~ Valoración y momentum: neutras en v1 (faltan CFROI/WACC y series de precios para todo el universo)</div>
+                            <div>~ Valoración y momentum: neutras en los picks actuales sin datos (faltan CFROI/WACC y series de precios para todo el universo)</div>
                         </div>
                     </div>
                 </Card>
@@ -345,7 +346,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                                     </div>
                                     {(['value', 'momentum', 'profitability'] as const).some((key) => categoryDisplay(pick, key).kind === 'neutral') && (
                                         <div className="text-[10px] leading-4 text-gray-500 mb-2">
-                                            * Sin datos para puntuarla en v1: entra neutral (50) en el score y no discrimina entre picks.
+                                            * Sin datos para puntuarla: entra neutral (50) en el score y no discrimina entre los picks actuales.
                                         </div>
                                     )}
 

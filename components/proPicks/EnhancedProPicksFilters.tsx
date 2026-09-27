@@ -166,10 +166,10 @@ export default function EnhancedProPicksFilters({ filters, neutralSorts = [], on
             <SelectContent>
               <SelectItem value="score">Score General</SelectItem>
               <SelectItem disabled={neutralSorts.includes('momentum')} value="momentum">
-                Momentum{neutralSorts.includes('momentum') ? ' (n/d en este run)' : ''}
+                Momentum{neutralSorts.includes('momentum') ? ' (n/d en estos resultados)' : ''}
               </SelectItem>
               <SelectItem disabled={neutralSorts.includes('value')} value="value">
-                Valor{neutralSorts.includes('value') ? ' (n/d en este run)' : ''}
+                Valor{neutralSorts.includes('value') ? ' (n/d en estos resultados)' : ''}
               </SelectItem>
               <SelectItem value="growth">Crecimiento</SelectItem>
               <SelectItem value="profitability">Rentabilidad</SelectItem>

@@ -64,7 +64,8 @@ export default async function ProPicksPage() {
                     computarla (rentabilidad, crecimiento, caja y salud
                     financiera se derivan de los filings persistidos) y
                     publica aquí la selección del último run con su fecha de
-                    datos en cada tarjeta. Valoración y momentum hoy entran
+                    datos en cada tarjeta. En los picks actuales sin datos,
+                    valoración y momentum entran
                     neutras (50) y se marcan n/d en las tarjetas: la
                     valoración necesita CFROI y WACC por empresa y el
                     momentum series de precios, y esos datos aún no cubren
