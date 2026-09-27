@@ -399,10 +399,10 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                         <InlineSectionError message={portfolioError} onRetry={retry} />
                     ) : portfolioSummary && portfolioSummary.holdings.length > 0 ? (
                         <div className="space-y-5">
-                            <div className="flex flex-col min-[420px]:flex-row min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
+                            <div className="flex flex-col min-[420px]:flex-row min-[420px]:flex-wrap min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
                                 <div className="min-w-0">
                                     <p className="text-sm text-gray-400">Valor Total Estimado</p>
-                                    <p className="text-2xl sm:text-3xl font-bold text-white mt-1 break-words">{formatMoney(portfolioSummary.totalValue, portfolioSummary.baseCurrency)}</p>
+                                    <p className="mt-1 break-words text-xl font-bold text-white sm:text-2xl xl:text-3xl">{formatMoney(portfolioSummary.totalValue, portfolioSummary.baseCurrency)}</p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>
