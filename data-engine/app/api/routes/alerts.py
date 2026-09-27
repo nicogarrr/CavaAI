@@ -134,8 +134,15 @@ def _safe_http_url(value: object) -> str | None:
     en la frontera de salida en lugar de llegar al cliente."""
     if not isinstance(value, str) or not value.strip():
         return None
-    parsed = urlparse(value.strip())
-    if parsed.scheme in ("http", "https") and parsed.netloc:
+    try:
+        parsed = urlparse(value.strip())
+        hostname = parsed.hostname
+    except ValueError:
+        # URL malformada («https://[broken/path»): una alerta asi no puede
+        # tumbar el GET /api/alerts entero con un 500. El acceso a
+        # .hostname tambien puede lanzar ValueError (corchetes IPv6 rotos).
+        return None
+    if parsed.scheme in ("http", "https") and hostname:
         return value.strip()
     return None
 

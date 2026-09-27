@@ -180,6 +180,9 @@ def test_list_alerts_resolves_source_url(db):
         "notaurl",
         "",
         "ftp://example.com/doc",
+        "https://[broken/path",
+        "https://@/bad",
+        "https://:443/path",
     ],
 )
 def test_list_alerts_source_url_rejects_unsafe_schemes(db, bad_url):
