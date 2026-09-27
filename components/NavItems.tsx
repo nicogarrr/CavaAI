@@ -44,7 +44,7 @@ function ItemLink({item, pathname}: {item: NavItem; pathname: string}) {
                 href={item.href}
                 prefetch
                 aria-current={active ? 'page' : undefined}
-                className={classes(branchActive)}
+                className={classes(active, 'text-base', branchActive)}
             >
                 {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 shrink-0" />}
                 <span className="truncate">{item.label}</span>
@@ -70,13 +70,17 @@ function ItemLink({item, pathname}: {item: NavItem; pathname: string}) {
 }
 
 /** Mismo tratamiento activo que en desktop: barra teal, no solo un fondo. */
-function classes(active: boolean, size = 'text-base') {
+function classes(active: boolean, size = 'text-base', branch = false) {
     return [
         'relative flex min-h-11 items-center gap-2 rounded-lg px-2 py-2 transition-colors',
         size,
         active
             ? 'bg-gray-800/70 text-gray-100 before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-teal-400'
-            : 'text-gray-400 hover:bg-gray-800/70 hover:text-teal-300',
+            : branch
+              // Rama con la pagina actual debajo: texto claro sin fondo ni
+              // barra; el padre no es un segundo destino activo (F283).
+              ? 'text-gray-100 hover:bg-gray-800/70 hover:text-teal-300'
+              : 'text-gray-400 hover:bg-gray-800/70 hover:text-teal-300',
     ].join(' ')
 }
 
