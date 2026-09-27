@@ -888,11 +888,25 @@ def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | No
 
     db = _session(tenant_id, user_id)
     try:
+        lease = acquire_job_lease(
+            f"dispatch_tracked_news_alerts:{tenant_id}",
+            ttl_seconds=900, redis_url=_lease_redis_url(),
+        )
+    except Exception:
+        db.close()
+        raise
+    if lease is None:
+        db.close()
+        return {"actor": "dispatch_tracked_news_alerts", "status": "skipped", "reason": "lease_held"}
+    try:
         return {"actor": "dispatch_tracked_news_alerts", **evaluate(db)}
     except Exception as exc:
         _rollback(db)
         return _handle_actor_error("dispatch_tracked_news_alerts", exc, tenant_id=tenant_id)
     finally:
+        release_job_lease(
+            f"dispatch_tracked_news_alerts:{tenant_id}", lease, redis_url=_lease_redis_url(),
+        )
         db.close()
 
 
