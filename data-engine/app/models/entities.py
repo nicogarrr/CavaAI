@@ -429,6 +429,24 @@ class DocumentChunk(TenantOwnedMixin, Base, TimestampMixin):
     document: Mapped[Document] = relationship(back_populates="chunks")
 
 
+class PrimarySourceRecord(TenantOwnedMixin, Base, TimestampMixin):
+    """Tenant-bound news-to-official-document link, versioned by URL and bytes."""
+
+    __tablename__ = "primary_source_records"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "news_event_id", "final_url", "checksum",
+                         name="uq_primary_source_event_url_hash"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    news_event_id: Mapped[int] = mapped_column(ForeignKey("news_events.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    requested_url: Mapped[str] = mapped_column(String(2000))
+    final_url: Mapped[str] = mapped_column(String(2000))
+    checksum: Mapped[str] = mapped_column(String(64))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reference_kind: Mapped[str] = mapped_column(String(80))
+
+
 class FinancialFact(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "financial_facts"
     __table_args__ = (
