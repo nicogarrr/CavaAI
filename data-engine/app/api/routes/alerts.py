@@ -158,9 +158,10 @@ def list_alerts(
     now = datetime.now(UTC)
     statement = select(ResearchAlert)
     if ticker:
-        company = db.scalar(
-            select(Company).where(Company.ticker == ticker.upper())
-        )
+        # F313: mismo criterio de identidad que /api/alerts/rules (que sí
+        # usa resolve_company): el alias europeo SAN.MC resuelve SAN; el
+        # match literal devolvía 404 para la misma entidad.
+        company = resolve_company(db, ticker)
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
         statement = statement.where(ResearchAlert.company_id == company.id)
