@@ -10,4 +10,9 @@ test('F324: el badge de conector no se sale de la tarjeta a 768px', () => {
     assert.match(page, /flex min-w-0 items-center gap-2/);
     assert.match(page, /break-words font-semibold text-gray-200">\{meta\?\.label \?\? key\}/);
     assert.match(page, /shrink-0 rounded-full border px-2 py-0\.5/);
+    // Reapertura: a 768px el badge seguia solapando la etiqueta (12px) porque
+    // el span no podia encoger por debajo de su contenido. flex-wrap deja
+    // caer el badge a su propia linea y min-w-0 permite el corte de texto.
+    assert.match(page, /flex flex-wrap items-start justify-between gap-3/);
+    assert.match(page, /min-w-0 break-words font-semibold text-gray-200/);
 });
