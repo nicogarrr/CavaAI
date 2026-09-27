@@ -20,7 +20,12 @@ export const REVIEW_STATUS_LABELS: Record<string, string> = {
     unavailable: 's/d',
 };
 
-/** Métricas del registro de semántica del backend (metric_semantics.py). */
+/**
+ * Métricas del backend: unión del registro de semántica
+ * (metric_semantics.py) y de FORECAST_METRICS
+ * (fundamental_model_repository.py), que es la que puebla
+ * ExpectationReview.metric vía forecast.metric.
+ */
 export const EXPECTATION_METRIC_LABELS: Record<string, string> = {
     revenue: 'Ingresos',
     gross_profit: 'Beneficio bruto',
@@ -29,6 +34,7 @@ export const EXPECTATION_METRIC_LABELS: Record<string, string> = {
     net_income: 'Beneficio neto',
     operating_cash_flow: 'Flujo de caja operativo',
     free_cash_flow: 'Flujo de caja libre',
+    fcf_per_share: 'FCF por acción',
     fcf_margin: 'Margen FCF',
     roic: 'ROIC',
     net_debt: 'Deuda neta',

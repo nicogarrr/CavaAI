@@ -21,6 +21,7 @@ import {
 const COMPONENT = 'components/research/FundamentalModelPanels.tsx';
 const SEMANTICS_PY = 'data-engine/app/services/metric_semantics.py';
 const REVIEW_PY = 'data-engine/app/services/fundamental_review_service.py';
+const REPOSITORY_PY = 'data-engine/app/services/fundamental_model_repository.py';
 
 /** Claves métricas del registro Python: líneas `"clave": MetricSemantics(`. */
 function backendMetricKeys(): string[] {
@@ -46,6 +47,14 @@ void test('el backend emite solo estados con etiqueta en español', () => {
     }
 });
 
+/** Métricas de FORECAST_METRICS: pueblan ExpectationReview.metric vía forecast.metric. */
+function forecastMetricKeys(): string[] {
+    const source = readFileSync(REPOSITORY_PY, 'utf8');
+    const block = source.match(/FORECAST_METRICS = \(([^)]*)\)/);
+    assert.ok(block, 'sonda: FORECAST_METRICS localizable en el repositorio');
+    return [...block[1].matchAll(/"([a-z_]+)"/g)].map((match) => match[1]);
+}
+
 void test('todas las métricas del registro Python tienen etiqueta en español', () => {
     const metrics = backendMetricKeys();
     assert.ok(metrics.length >= 15, `sonda: se extraen las métricas del registro (${metrics.length})`);
@@ -55,12 +64,21 @@ void test('todas las métricas del registro Python tienen etiqueta en español',
     }
 });
 
+void test('todas las métricas de FORECAST_METRICS tienen etiqueta en español', () => {
+    const metrics = forecastMetricKeys();
+    assert.ok(metrics.includes('fcf_per_share'), 'sonda: fcf_per_share presente en FORECAST_METRICS');
+    for (const metric of metrics) {
+        assert.ok(EXPECTATION_METRIC_LABELS[metric], `métrica de forecast sin etiqueta: ${metric}`);
+    }
+});
+
 void test('las etiquetas funcionan: conocida traduce, desconocida no se oculta', () => {
     assert.equal(reviewStatusLabel('pending_actual'), 'a la espera de resultados');
     assert.equal(reviewStatusLabel('outside_tolerance'), 'fuera de tolerancia');
     assert.equal(reviewStatusLabel('estado_nuevo_del_backend'), 'estado_nuevo_del_backend', 'estado desconocido se muestra, nunca se oculta');
     assert.equal(reviewStatusLabel(null), 's/d');
     assert.equal(expectationMetricLabel('capital_expenditure'), 'CapEx');
+    assert.equal(expectationMetricLabel('fcf_per_share'), 'FCF por acción');
     assert.equal(expectationMetricLabel('fcf_margin'), 'Margen FCF');
     assert.equal(expectationMetricLabel('metrica_nueva'), 'metrica nueva', 'métrica desconocida se humaniza');
     assert.equal(expectationMetricLabel(undefined), 's/d');
