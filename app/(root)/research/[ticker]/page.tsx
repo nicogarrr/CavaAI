@@ -369,9 +369,12 @@ function MetricsGrid({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {metrics.map((metric) => (
         <div className="rounded-lg border border-gray-800 p-4" key={`${metric.metric}-${metric.period}-${metric.definition_version}`}>
+          {/* F320: el nombre de métrica es un token largo irrompible
+              (net_debt_to_ebitda): sin min-w-0/break-all empujaba el badge
+              fuera de la tarjeta a 768px. */}
           <div className="flex items-center justify-between gap-3">
-            <span className="font-medium text-gray-200">{metric.metric}</span>
-            <Badge variant="outline">{label(metric.status)}</Badge>
+            <span className="min-w-0 break-all font-medium text-gray-200">{metric.metric}</span>
+            <Badge className="shrink-0" variant="outline">{label(metric.status)}</Badge>
           </div>
           <div className="mt-2 text-xl text-teal-300">{metricValue(metric.value, metric.unit)}</div>
           <div className="mt-2 text-xs text-gray-500">{metric.period} · {metric.definition_version}</div>
