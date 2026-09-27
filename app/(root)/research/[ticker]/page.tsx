@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getProfile } from '@/lib/actions/finnhub.actions';
 import { resolveUnknownListingIdentity } from '@/lib/research/unknown-listing';
+import { drainRejection } from '@/lib/research/drain-rejection';
 import { cache } from 'react';
 import {
   ArrowLeft,
@@ -523,6 +524,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const marketPromise = activeView === 'overview' ? getCompanyMarketSnapshot(ticker) : undefined;
   // MOAT V2: solo lectura del score persistido; su fallo degrada a omitir el panel.
   const moatPromise = activeView === 'overview' ? getMoatQualityScore(ticker) : undefined;
+  // En master-miss estas dos promesas no se consumen: el manejador se adjunta
+  // EN CREACIÓN, porque un .catch posterior deja ventana de unhandledRejection
+  // si rechazan durante los awaits intermedios. La propagación al consumidor
+  // no cambia (el catch devuelve una promesa nueva que se descarta).
+  drainRejection(marketPromise);
+  drainRejection(moatPromise);
   let snapshot: Awaited<typeof snapshotPromise>;
   try {
     snapshot = await snapshotPromise;
