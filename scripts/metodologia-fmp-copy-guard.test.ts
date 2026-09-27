@@ -15,7 +15,7 @@ test('F325: la metodología describe el uso real de FMP (solo US), no un retiro 
     // El copy no promete restriccion en la app ni cobertura universal
     // EDGAR/ESEF: FMP rechaza fuera de US y la cobertura regulatoria
     // depende del emisor.
-    assert.match(metodologia, /intenta el refresco con FMP en cualquier ticker/);
+    assert.match(metodologia, /La API acepta el refresco con FMP para cualquier emisor/);
     // No hay fallback automatico: EDGAR/ESEF son acciones separadas del
     // usuario, no una sustitucion.
     assert.match(metodologia, /No hay sustitución automática/);
