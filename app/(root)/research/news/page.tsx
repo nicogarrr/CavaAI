@@ -75,7 +75,10 @@ export default async function ResearchNewsPage() {
           <AlertTriangle aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Flujo de eventos</h2>
         </div>
-        <div aria-label="Flujo de eventos de noticias" className="overflow-x-auto" role="region" tabIndex={0}>
+        {/* F176: sin contain, Chrome propaga el overflow horizontal de la
+            tabla al documento entero (zoom-out y recorte en movil) aunque la
+            region ya scrolla por dentro; layout+paint lo contiene aqui. */}
+        <div aria-label="Flujo de eventos de noticias" className="overflow-x-auto [contain:layout_paint]" role="region" tabIndex={0}>
           <table className="w-full min-w-[1080px] text-left text-sm">
             <caption className="sr-only">Eventos de noticias clasificados por materialidad, con impacto sobre la cartera y si exigen actualización</caption>
             <thead className="text-xs uppercase text-gray-500">
