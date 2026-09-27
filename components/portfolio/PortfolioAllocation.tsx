@@ -11,7 +11,9 @@ import { COLORS, buildAllocationSlices, CASH_SLICE_SYMBOL, type AllocationSlice 
 const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChart'), {
     ssr: false,
     loading: () => (
-        <div className="h-[250px] w-[250px] animate-pulse rounded-full border border-gray-800 bg-gray-900/40" aria-label="Cargando distribución" role="status" />
+        // h-full/w-full: el placeholder hereda el tamaño del wrapper
+        // (200px bajo sm, 250px desde sm); fijo a 250 desbordaba a 360px.
+        <div className="h-full w-full animate-pulse rounded-full border border-gray-800 bg-gray-900/40" aria-label="Cargando distribución" role="status" />
     ),
 });
 
