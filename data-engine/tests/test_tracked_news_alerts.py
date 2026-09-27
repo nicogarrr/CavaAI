@@ -91,3 +91,15 @@ def test_no_unknown_date_url_or_untracked_and_cooldown(db):
 def test_no_tenant_context_fails_closed(db):
     with pytest.raises(ValueError):
         evaluate(db, now=NOW)
+
+
+def test_gdelt_first_seen_is_not_claimed_as_publication_date(db):
+    tenant, _, company, _ = _setup(db)
+    _news(db, tenant, company, "ASTS ITU filing", "https://publisher.example/itu",
+          metadata={"connector": "gdelt", "date_source": "source"})
+    db.info["tenant_id"] = tenant.id
+    assert evaluate(db, now=NOW)["created"] == 1
+    alert = db.scalar(select(ResearchAlert))
+    assert "detectada por GDELT" in alert.message
+    assert "publicó el" not in alert.message
+    assert alert.metadata_["date_source"] == "gdelt_first_seen"

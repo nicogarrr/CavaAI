@@ -86,9 +86,14 @@ def evaluate(db: Session, *, now: datetime | None = None, limit: int = 500) -> d
         stats["examined"] += 1
         url = _valid_source_url(event.url)
         published = _aware(event.date)
-        # A fallback ingestion timestamp is NOT an article publication date.
+        # GDELT `seendate` is first-seen, not the publisher's publication
+        # date. Both are usable recency evidence, but NEVER conflate them.
+        provenance = event.metadata_ or {}
+        date_source = provenance.get("date_source")
+        if provenance.get("connector") == "gdelt" and date_source == "source":
+            date_source = "gdelt_first_seen"  # pre-fix GDELT rows
         if (not url or not (event.source or "").strip() or
-                (event.metadata_ or {}).get("date_source") != "source" or
+                date_source not in {"source", "gdelt_first_seen"} or
                 published < since or published > now or not EVENT_TERMS.search(event.title or "")):
             stats["unverified_skips"] += 1
             continue
@@ -116,15 +121,20 @@ def evaluate(db: Session, *, now: datetime | None = None, limit: int = 500) -> d
                 continue
         membership = [kind for kind, match in (("cartera", company.id in held), ("watchlist", company.id in watched)) if match]
         title = f"Noticia sobre {company.ticker}: {event.title}"[:300]
+        source_label = "detectada por GDELT" if date_source == "gdelt_first_seen" else "fechada por la fuente"
+        date_phrase = (f"detectada por GDELT el {published.date().isoformat()}" if date_source == "gdelt_first_seen"
+                       else f"fechada el {published.date().isoformat()} por {event.source}")
         alert = ResearchAlert(
             tenant_id=tenant_id, company_id=company.id, severity="medium", status="open",
             alert_type="tracked_news", title=title,
-            message=(f"{event.source} publicó el {published.date().isoformat()}: "
-                     f"{event.title}. Revisa la fuente; el titular no confirma por sí solo los hechos."),
+            message=(f"Artículo de {event.source}, {date_phrase}: {event.title}. "
+                     "Revisa la fuente; la fecha de GDELT no es la fecha de publicación "
+                     "y el titular no confirma por sí solo los hechos."),
             fingerprint=fp, channels=["in_app"], last_triggered_at=now,
             metadata_={"news_event_id": event.id, "source_url": url, "source": event.source,
                        "published_at": published.isoformat(), "matching": membership,
-                       "rule_version": VERSION, "date_source": "source"},
+                       "rule_version": VERSION, "date_source": date_source,
+                       "date_label": source_label},
         )
         try:
             # Savepoint protects the tenant-scoped unique fingerprint in a
