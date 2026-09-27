@@ -105,3 +105,25 @@ const TIPOS_INSTRUMENTO: Record<string, string> = {
 export function etiquetaTipoInstrumento(value: string): string {
   return TIPOS_INSTRUMENTO[value] ?? value;
 }
+
+/** Etiqueta ES de los temas macro GDELT (espejo de las claves de
+ *  MACRO_GDELT_QUERIES en data-engine/app/services/macro_news.py; si se
+ *  anade un tema hay que mapearlo aqui — el fallback muestra la clave). */
+const TEMAS_MACRO: Record<string, string> = {
+  gold_central_banks: 'Oro y bancos centrales',
+  interest_rates: 'Tipos de interés',
+  commodities: 'Materias primas',
+  trucking_freight: 'Transporte y logística',
+  ai_investment: 'Inversión en IA',
+  hormuz_oil: 'Petróleo y Ormuz',
+  energy: 'Energía',
+  semiconductors: 'Semiconductores',
+  dollar_fx: 'Dólar y divisas',
+  inflation: 'Inflación',
+  china_supply_chains: 'Cadenas de suministro de China',
+  us_trade_policy: 'Política comercial de EE. UU.',
+};
+
+export function etiquetaTemaMacro(value: string): string {
+  return TEMAS_MACRO[value] ?? value;
+}

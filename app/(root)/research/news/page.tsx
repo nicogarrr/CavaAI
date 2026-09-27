@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
 import { formatPercent, NA } from '@/lib/format';
-import { etiquetaTierFuente, etiquetaTipoEvento } from "@/lib/labels";
+import { etiquetaTemaMacro, etiquetaTierFuente, etiquetaTipoEvento } from "@/lib/labels";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -38,8 +38,26 @@ const IMPACT_LABELS: Record<string, string> = {
   neutral: 'neutro',
 };
 
-export default async function ResearchNewsPage() {
+type PageProps = { searchParams: Promise<{ lane?: string }> };
+
+const CARRILES = [
+  { key: null, label: 'Todas', href: '/research/news' },
+  { key: 'empresa', label: 'Empresas', href: '/research/news?lane=empresa' },
+  { key: 'macro', label: 'Macro', href: '/research/news?lane=macro' },
+] as const;
+
+export default async function ResearchNewsPage({ searchParams }: PageProps) {
+  const query = await searchParams;
+  const lane = query.lane === 'macro' || query.lane === 'empresa' ? query.lane : null;
   const events = await getResearchNews();
+  // Filtro sobre la ventana que sirve la API (ultimos 100 eventos).
+  // 'empresa' = atribuida a una empresa real (ticker presente); un evento
+  // sin ticker que tampoco es macro solo aparece en 'Todas'.
+  const filtered = lane === 'macro'
+    ? events.filter((event) => event.news_lane === 'macro')
+    : lane === 'empresa'
+      ? events.filter((event) => event.ticker !== null)
+      : events;
   const requireUpdate = events.filter((e) => e.requires_update).length;
   const highMateriality = events.filter((e) => e.materiality_score >= 7).length;
 
@@ -59,7 +77,7 @@ export default async function ResearchNewsPage() {
             </Link>
           </Button>
         }
-        description="Eventos de noticias clasificados por materialidad e impacto sobre posiciones de cartera."
+        description="Eventos de noticias clasificados por materialidad. Los de empresa muestran impacto sobre posiciones de cartera; el carril macro GDELT no tiene vínculo directo con posiciones."
         kicker="Inteligencia de mercado"
         title="Eventos de noticias"
       />
@@ -75,6 +93,28 @@ export default async function ResearchNewsPage() {
           <AlertTriangle aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Flujo de eventos</h2>
         </div>
+        <nav aria-label="Filtrar por carril" className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+          {CARRILES.map((option) => {
+            const active = lane === option.key;
+            return (
+              <Link
+                aria-current={active ? 'page' : undefined}
+                className={`rounded-full border px-3 py-1 ${
+                  active
+                    ? 'border-teal-500 bg-teal-950/60 font-semibold text-teal-300'
+                    : 'border-gray-800 text-gray-400 hover:text-gray-200'
+                }`}
+                href={option.href}
+                key={option.label}
+              >
+                {option.label}
+              </Link>
+            );
+          })}
+          <span className="text-gray-500">
+            Mostrando {filtered.length} de {events.length}
+          </span>
+        </nav>
         {/* F176: sin contain, Chrome propaga el overflow horizontal de la
             tabla al documento entero (zoom-out y recorte en movil) aunque la
             region ya scrolla por dentro; layout+paint lo contiene aqui. */}
@@ -95,7 +135,7 @@ export default async function ResearchNewsPage() {
               </tr>
             </thead>
             <tbody>
-              {events.map((event) => {
+              {filtered.map((event) => {
                 const materialityColor =
                   event.materiality_score >= 7
                     ? 'text-red-400'
@@ -124,11 +164,21 @@ export default async function ResearchNewsPage() {
                       ) : (
                         <span className="text-gray-500">—</span>
                       )}
+                      {event.news_lane === 'macro' ? (
+                        <div className="mt-1">
+                          <span className="rounded-full bg-indigo-950/60 px-2 py-0.5 text-xs font-semibold text-indigo-300">
+                            macro{event.macro_theme ? ` · ${etiquetaTemaMacro(event.macro_theme)}` : ''}
+                          </span>
+                        </div>
+                      ) : null}
                     </th>
                     <td className="py-3 text-gray-400">
                       <div>{event.date.split('T')[0]}</div>
                       {event.date_source === 'ingested_at_fallback' ? (
                         <div className="mt-1 text-xs text-gray-500">fecha de ingesta · la fuente no da fecha</div>
+                      ) : null}
+                      {event.date_source === 'gdelt_first_seen' ? (
+                        <div className="mt-1 text-xs text-gray-500">primera detección de GDELT · no es la fecha de publicación</div>
                       ) : null}
                     </td>
                     <td className="max-w-[360px] py-3 text-gray-300">
@@ -179,6 +229,13 @@ export default async function ResearchNewsPage() {
                       className="rounded-none border-0 p-6"
                       title="Sin eventos de noticias todavía."
                     />
+                  </td>
+                </tr>
+              ) : null}
+              {events.length > 0 && !filtered.length ? (
+                <tr>
+                  <td className="p-6 text-center text-sm text-gray-500" colSpan={9}>
+                    Sin eventos en este carril dentro de los últimos {events.length} cargados.
                   </td>
                 </tr>
               ) : null}
