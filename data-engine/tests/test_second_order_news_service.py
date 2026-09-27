@@ -145,3 +145,65 @@ def test_llm_request_pins_free_model_even_with_paid_override(monkeypatch):
     result, _ = asyncio.run(service._extract_with_llm("Una noticia general"))
     assert result.themes == []
     assert captured[0].model == "space-bunny-free"
+
+
+def _company_db(*companies):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    db.info["tenant_id"] = "tenant-test"
+    db.add_all(companies)
+    db.commit()
+    return db
+
+
+def _mk_company(ticker, sector=None, industry=None, tags=None):
+    return Company(ticker=ticker, name=f"{ticker} Co", exchange="NYSE", currency="USD",
+                   sector=sector, industry=industry, company_type="holding",
+                   valuation_model="unassigned", special_sources=[], special_risks=[],
+                   factor_tags=tags or [])
+
+
+def test_prefilter_keeps_accented_sector_match():
+    """Exposure sin tilde debe encontrar Company.sector con tilde: el filtro
+    SQL no puede excluir filas que la normalización Python emparejaría."""
+    db = _company_db(_mk_company("ELEC", sector="Electrificación"))
+    try:
+        matches = service._matching_companies(db, "Electrificacion")
+        assert [c.ticker for c in matches] == ["ELEC"]
+    finally:
+        db.close()
+
+
+def test_prefilter_keeps_accented_factor_tag_match():
+    db = _company_db(_mk_company("TAGS", sector="Other", tags=["Gestión logística"]))
+    try:
+        matches = service._matching_companies(db, "gestion logistica")
+        assert [c.ticker for c in matches] == ["TAGS"]
+        # Y el cotejo Python confirma la igualdad normalizada exacta.
+        confirmed = [c for c in matches
+                     if any(service._normalized(v) == service._normalized("gestion logistica")
+                            for _, v in service._company_exposures(c))]
+        assert [c.ticker for c in confirmed] == ["TAGS"]
+    finally:
+        db.close()
+
+
+def test_prefilter_is_superset_of_python_match():
+    """Propiedad: toda empresa que Python emparejaría queda dentro del
+    prefilter SQL (sin exclusiones por tilde/puntuación ni por límite)."""
+    db = _company_db(
+        _mk_company("ACC", sector="Electrificación"),
+        _mk_company("PUN", industry="Oil & Gas"),
+        _mk_company("OUT", sector="Consumer Staples"),
+    )
+    try:
+        for exposure in ("Electrificacion", "oil   gas"):
+            norm = service._normalized(exposure)
+            expected = [c.ticker for c in db.query(Company).all()
+                        if any(service._normalized(v) == norm
+                               for _, v in service._company_exposures(c))]
+            got = {c.ticker for c in service._matching_companies(db, exposure)}
+            assert set(expected) <= got, (exposure, expected, got)
+    finally:
+        db.close()

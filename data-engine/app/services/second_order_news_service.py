@@ -173,22 +173,58 @@ def _candidate(company: Company, theme: Theme, field: str, value: str,
     }
 
 
+# Accent folding replicated in SQL so the prefilter sees the same alphabet
+# as _normalized (NFKD -> ascii-ignore) for the Spanish Latin-1 set
+# (á é í ó ú ü ñ). Two encodings are folded: real characters (Postgres JSONB
+# renders UTF-8) and the \uXXXX escapes that SQLite's JSON serializer emits
+# for non-ASCII text inside JSON columns. Exotic accents outside this set are
+# not folded in SQL; they simply miss the prefilter, which the module never
+# relies on for correctness claims beyond the declared coverage.
+_SQL_FOLD_GROUPS = (("á", "a"), ("é", "e"), ("í", "i"),
+                    ("ó", "o"), ("ú", "u"), ("ü", "u"), ("ñ", "n"))
+_SQL_FOLD_ESCAPES = (("\\u00e1", "a"), ("\\u00e9", "e"), ("\\u00ed", "i"),
+                     ("\\u00f3", "o"), ("\\u00fa", "u"), ("\\u00fc", "u"),
+                     ("\\u00f1", "n"))
+
+
+def _sql_fold(column):
+    expr = func.lower(column)
+    for ch, base in _SQL_FOLD_GROUPS:
+        expr = func.replace(expr, ch, base)
+    for esc, base in _SQL_FOLD_ESCAPES:
+        expr = func.replace(expr, esc, base)
+    return expr
+
+
 def _matching_companies(db: Session, exposure: str) -> list[Company]:
     """Prefilter in SQL, then confirm normalized metadata matches in Python.
 
-    Factor tags are JSON across SQLite/Postgres; a quoted JSON string is an
-    index-independent, bounded prefilter rather than loading the full universe.
+    The prefilter is a proven superset of the Python check: Python accepts a
+    company only when _normalized(field) == _normalized(exposure), and every
+    [a-z0-9]+ token of the normalized exposure then appears verbatim as an
+    alnum run inside the accent-folded lowercase field (normalization only
+    turns punctuation into spaces; it never removes or merges alnum chars).
+    Matching ANY token in ANY folded field therefore keeps every exact match.
+
+    No LIMIT before Python validation: an early cap could drop a real match
+    behind loose token hits. The result is still selective in practice (the
+    alternative was loading the whole universe); the candidate cap applies
+    after validation.
     """
-    value = exposure.strip().lower()
-    if not value:
+    exposure_norm = _normalized(exposure)
+    if not exposure_norm:
         return []
-    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    predicate = or_(
-        func.lower(Company.sector) == value,
-        func.lower(Company.industry) == value,
-        cast(Company.factor_tags, String).ilike(f'%"{escaped}"%', escape="\\"),
-    )
-    return db.scalars(select(Company).where(predicate).order_by(Company.ticker).limit(100)).all()
+    token_predicates = [
+        or_(
+            _sql_fold(Company.sector).like(f"%{token}%"),
+            _sql_fold(Company.industry).like(f"%{token}%"),
+            _sql_fold(cast(Company.factor_tags, String)).like(f"%{token}%"),
+        )
+        for token in exposure_norm.split()
+    ]
+    return db.scalars(
+        select(Company).where(or_(*token_predicates)).order_by(Company.ticker)
+    ).all()
 
 
 def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False) -> dict:
