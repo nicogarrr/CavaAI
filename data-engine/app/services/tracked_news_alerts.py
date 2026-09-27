@@ -92,7 +92,9 @@ def evaluate(db: Session, *, now: datetime | None = None, limit: int = 500) -> d
         date_source = provenance.get("date_source")
         if provenance.get("connector") == "gdelt" and date_source == "source":
             date_source = "gdelt_first_seen"  # pre-fix GDELT rows
+        # Only trusted ingestion connectors, not arbitrary manual inputs.
         if (not url or not (event.source or "").strip() or
+                provenance.get("connector") not in {"gdelt", "rss", "ir", "sec"} or
                 date_source not in {"source", "gdelt_first_seen"} or
                 published < since or published > now or not EVENT_TERMS.search(event.title or "")):
             stats["unverified_skips"] += 1

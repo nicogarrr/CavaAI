@@ -40,7 +40,7 @@ def _setup(db):
 
 def _news(db, tenant, company, title, url, *, published=NOW - timedelta(hours=2), metadata=None):
     row = NewsEvent(tenant_id=tenant.id, company_id=company.id, title=title, source="publisher.example",
-                    url=url, date=published, metadata_=metadata if metadata is not None else {"date_source": "source"})
+                    url=url, date=published, metadata_=metadata if metadata is not None else {"date_source": "source", "connector": "rss"})
     db.add(row)
     db.commit()
     return row
@@ -103,3 +103,12 @@ def test_gdelt_first_seen_is_not_claimed_as_publication_date(db):
     assert "detectada por GDELT" in alert.message
     assert "publicó el" not in alert.message
     assert alert.metadata_["date_source"] == "gdelt_first_seen"
+
+
+def test_manual_or_unattributed_news_does_not_auto_alert(db):
+    tenant, _, company, _ = _setup(db)
+    _news(db, tenant, company, "ASTS ITU filing", "https://publisher.example/manual",
+          metadata={"date_source": "source"})
+    db.info["tenant_id"] = tenant.id
+    assert evaluate(db, now=NOW)["created"] == 0
+    assert db.scalar(select(ResearchAlert)) is None
