@@ -560,6 +560,11 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               title: 'No pudimos comprobar este ticker',
               description: `${ticker} no está en la cobertura verificada de CavaAI y el proveedor de mercado no está disponible para comprobarlo. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo; inténtalo de nuevo más tarde.`,
             };
+    // market/moat se lanzaron en paralelo antes de conocer el snapshot y en
+    // master-miss no se consumen: se drenan con catch para que un rechazo del
+    // proveedor no quede sin manejar (caveat del auditor en #508).
+    void marketPromise?.catch(() => null);
+    void moatPromise?.catch(() => null);
     return (
       <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px] space-y-6">

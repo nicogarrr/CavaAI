@@ -81,6 +81,13 @@ void test('la página pinta los tres estados sin 404, sin CTA y sin panel fuera 
     assert.ok(!branch.includes('getResearchCompanyBasics'), 'sin segunda consulta al master: el 404 del snapshot ya es la señal');
 });
 
+void test('en master-miss las promesas de mercado/moat se drenan y no quedan rechazos sin manejar', () => {
+    const page = readFileSync(PAGE, 'utf8');
+    const missBranch = page.slice(page.indexOf('if (!snapshot)'), page.indexOf('const company = snapshot.company'));
+    assert.match(missBranch, /void marketPromise\?\.catch\(\(\) => null\)/, 'marketPromise se drena en master-miss');
+    assert.match(missBranch, /void moatPromise\?\.catch\(\(\) => null\)/, 'moatPromise se drena en master-miss');
+});
+
 void test('el diseño anti-homónimos sigue intacto en el snapshot de mercado', () => {
     const marketModule: string = readFileSync(new URL('../lib/actions/market-workspace.actions.ts', import.meta.url), 'utf8');
     assert.match(marketModule, /if \(!quoteSymbol\) \{/, 'quoteSymbolFor null debe seguir cortando antes del proveedor');
