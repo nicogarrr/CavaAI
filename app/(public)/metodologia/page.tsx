@@ -234,8 +234,9 @@ export default function MetodologiaPage() {
         <p className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/20 p-4 text-sm leading-6 text-amber-200">
           <strong>FMP solo cubre mercado US:</strong> el plan gratuito de Financial Modeling Prep quedó limitado a
           compañías US (sus endpoints antiguos responden &laquo;Legacy Endpoint&raquo; o 402 fuera de ese mercado).
-          La app intenta el refresco con FMP en cualquier ticker, pero fuera de US el proveedor lo rechaza; en ese
-          caso se recurre a SEC EDGAR o ESEF cuando el emisor reporta a alguna de las dos, y si ninguna fuente
+          La app intenta el refresco con FMP en cualquier ticker, pero fuera de US el proveedor lo rechaza y el
+          refresco falla con aviso. No hay sustitución automática: si el emisor reporta a SEC EDGAR o ESEF,
+          puedes lanzar tú el refresco desde esas fuentes (acción separada en la ficha); y si ninguna fuente
           cubre al emisor, los financieros se muestran como no disponibles en lugar de estimarse.
           Los precios vienen de Finnhub y Yahoo Finance.
         </p>

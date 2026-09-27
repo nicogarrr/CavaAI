@@ -16,6 +16,10 @@ test('F325: la metodología describe el uso real de FMP (solo US), no un retiro 
     // EDGAR/ESEF: FMP rechaza fuera de US y la cobertura regulatoria
     // depende del emisor.
     assert.match(metodologia, /intenta el refresco con FMP en cualquier ticker/);
-    assert.match(metodologia, /cuando el emisor reporta a alguna de las dos/);
+    // No hay fallback automatico: EDGAR/ESEF son acciones separadas del
+    // usuario, no una sustitucion.
+    assert.match(metodologia, /No hay sustitución automática/);
+    assert.match(metodologia, /acción separada/);
     assert.doesNotMatch(metodologia, /el resto se sirve de SEC EDGAR y ESEF/);
+    assert.doesNotMatch(metodologia, /se recurre a SEC EDGAR o ESEF/);
 });
