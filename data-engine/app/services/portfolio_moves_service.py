@@ -43,9 +43,8 @@ def build_digest(db: Session, as_of: date, generated_at: datetime | None = None)
                         previous_date=prior.date.isoformat(), price_change_pct=round(float(change_pct), 4),
                         price_source=current.source, previous_price_source=prior.source,
                         price_ids=[prior.id, current.id])
-            # GDELT ingestion stores the actual article domain as NewsEvent.source.
-            # Its connector identity is not persisted, so label these only as
-            # dated, sourced related articles, not verified GDELT or catalysts.
+            # GDELT articles retain publisher domain as source and independently
+            # carry connector provenance; neither proximity nor coverage proves cause.
             start = datetime.combine(as_of, time.min, tzinfo=UTC)
             end = start + timedelta(days=1)
             news = db.scalars(select(NewsEvent).where(
@@ -53,8 +52,8 @@ def build_digest(db: Session, as_of: date, generated_at: datetime | None = None)
                 NewsEvent.url.is_not(None),
             ).order_by(desc(NewsEvent.date)).limit(5)).all()
             item["related_news"] = [{"id": row.id, "title": row.title, "url": row.url,
-                                    "source": row.source, "published_at": row.date.isoformat()}
-                                   for row in news]
+                                    "source": row.source, "connector": "gdelt", "published_at": row.date.isoformat()}
+                                   for row in news if (row.metadata_ or {}).get("connector") == "gdelt"]
         else:
             item["missing"] = ["cierre fechado" if not current else "cierre anterior"]
         items.append(item)

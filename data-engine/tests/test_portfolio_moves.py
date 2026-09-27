@@ -35,7 +35,7 @@ def test_tenant_digest_missing_and_news_are_not_causal(db):
     db.add_all((MarketPrice(company_id=company.id, date=date(2026, 9, 23), close=Decimal("10"), source="feed"),
                 MarketPrice(company_id=company.id, date=date(2026, 9, 24), close=Decimal("11"), source="feed")))
     db.add(NewsEvent(tenant_id=first.id, company_id=company.id, date=datetime(2026, 9, 24, 8, tzinfo=UTC),
-                     title="Related article", source="example.com", url="https://example.com/a"))
+                     title="Related article", source="example.com", url="https://example.com/a", metadata_={"connector": "gdelt"}))
     db.add(NewsEvent(tenant_id=second.id, company_id=company.id, date=datetime(2026, 9, 24, 8, tzinfo=UTC),
                      title="Private other tenant", source="example.com", url="https://example.com/b"))
     db.commit()

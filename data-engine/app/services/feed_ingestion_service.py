@@ -172,11 +172,25 @@ class FeedIngestionService:
             )
             for item in result.items
         ]
+        # Record existing IDs before ingestion: a duplicate URL previously
+        # ingested through RSS must not be relabeled as a GDELT result.
+        urls = {item.url for item in result.items if item.url} if result.source == "gdelt" else set()
+        if urls:
+            from sqlalchemy import select
+
+            from app.models import NewsEvent
+
+            prior_ids = set(db.scalars(select(NewsEvent.id).where(NewsEvent.url.in_(urls))).all())
         response = NewsService().ingest_news_items(
             db,
             news_items,
             default_source=result.source,
         )
+        if urls:
+            for event in db.scalars(select(NewsEvent).where(NewsEvent.url.in_(urls))).all():
+                if event.id not in prior_ids:
+                    event.metadata_ = {**(event.metadata_ or {}), "connector": "gdelt"}
+            db.commit()
         payload = response.model_dump(mode="json")
         payload["source"] = result.source
         payload["connector_errors"] = list(result.errors)
