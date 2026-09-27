@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getProfile } from '@/lib/actions/finnhub.actions';
 import { resolveUnknownListingIdentity } from '@/lib/research/unknown-listing';
+import { drainRejection } from '@/lib/research/drain-rejection';
 import { cache } from 'react';
 import {
   ArrowLeft,
@@ -523,6 +524,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const marketPromise = activeView === 'overview' ? getCompanyMarketSnapshot(ticker) : undefined;
   // MOAT V2: solo lectura del score persistido; su fallo degrada a omitir el panel.
   const moatPromise = activeView === 'overview' ? getMoatQualityScore(ticker) : undefined;
+  // En master-miss estas dos promesas no se consumen: el manejador se adjunta
+  // EN CREACIÓN, porque un .catch posterior deja ventana de unhandledRejection
+  // si rechazan durante los awaits intermedios. La propagación al consumidor
+  // no cambia (el catch devuelve una promesa nueva que se descarta).
+  drainRejection(marketPromise);
+  drainRejection(moatPromise);
   let snapshot: Awaited<typeof snapshotPromise>;
   try {
     snapshot = await snapshotPromise;
@@ -560,11 +567,6 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               title: 'No pudimos comprobar este ticker',
               description: `${ticker} no está en la cobertura verificada de CavaAI y el proveedor de mercado no está disponible para comprobarlo. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo; inténtalo de nuevo más tarde.`,
             };
-    // market/moat se lanzaron en paralelo antes de conocer el snapshot y en
-    // master-miss no se consumen: se drenan con catch para que un rechazo del
-    // proveedor no quede sin manejar (caveat del auditor en #508).
-    void marketPromise?.catch(() => null);
-    void moatPromise?.catch(() => null);
     return (
       <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px] space-y-6">

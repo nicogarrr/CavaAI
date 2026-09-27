@@ -81,11 +81,34 @@ void test('la página pinta los tres estados sin 404, sin CTA y sin panel fuera 
     assert.ok(!branch.includes('getResearchCompanyBasics'), 'sin segunda consulta al master: el 404 del snapshot ya es la señal');
 });
 
-void test('en master-miss las promesas de mercado/moat se drenan y no quedan rechazos sin manejar', () => {
+void test('el drenaje se adjunta EN CREACIÓN, antes de cualquier await intermedio', () => {
     const page: string = readFileSync(new URL('../app/(root)/research/[ticker]/page.tsx', import.meta.url), 'utf8');
-    const missBranch = page.slice(page.indexOf('if (!snapshot)'), page.indexOf('const company = snapshot.company'));
-    assert.match(missBranch, /void marketPromise\?\.catch\(\(\) => null\)/, 'marketPromise se drena en master-miss');
-    assert.match(missBranch, /void moatPromise\?\.catch\(\(\) => null\)/, 'moatPromise se drena en master-miss');
+    const created = page.indexOf('const marketPromise =');
+    const drainedMarket = page.indexOf('drainRejection(marketPromise)');
+    const drainedMoat = page.indexOf('drainRejection(moatPromise)');
+    const firstAwait = page.indexOf('snapshot = await snapshotPromise');
+    assert.ok(created > -1 && drainedMarket > created && drainedMoat > created, 'drenaje tras crear las promesas');
+    assert.ok(drainedMarket < firstAwait && drainedMoat < firstAwait, 'drenaje ANTES del primer await: sin ventana de unhandledRejection');
+});
+
+void test('drainRejection: sin unhandledRejection aunque nadie consuma, y el consumidor sigue recibiendo el error', async () => {
+    const { drainRejection } = await import('../lib/research/drain-rejection.ts');
+    let unhandled = 0;
+    const listener = () => {
+        unhandled += 1;
+    };
+    process.on('unhandledRejection', listener);
+    try {
+        drainRejection(Promise.reject(new Error('proveedor caído')));
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(unhandled, 0, 'ningún rechazo queda sin manejar');
+        const consumida = Promise.reject(new Error('el consumidor la ve'));
+        drainRejection(consumida);
+        await assert.rejects(consumida, /el consumidor la ve/, 'la propagación al consumidor no cambia');
+    } finally {
+        process.off('unhandledRejection', listener);
+    }
 });
 
 void test('el diseño anti-homónimos sigue intacto en el snapshot de mercado', () => {
