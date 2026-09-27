@@ -126,6 +126,8 @@ function CompanyCard({ row }: { row: CompanyRow }) {
     const health = snapshot?.research_health;
     const thesis = snapshot?.latest_thesis ?? null;
 
+    const sectorLine = `${company.sector || 'Sector sin dato'}${company.industry ? ` · ${company.industry}` : ''}`;
+
     return (
         <li>
             <Link
@@ -134,11 +136,12 @@ function CompanyCard({ row }: { row: CompanyRow }) {
             >
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="text-base font-semibold text-gray-100">{company.ticker}</span>
-                    <span className="min-w-0 line-clamp-1 text-sm text-gray-400">{company.name}</span>
+                    {/* line-clamp trunca visualmente: el title devuelve el texto
+                        completo al usuario visual (hover), no solo al lector de pantalla. */}
+                    <span className="min-w-0 line-clamp-1 text-sm text-gray-400" title={company.name}>{company.name}</span>
                 </div>
-                <p className="mt-1 line-clamp-1 text-xs text-gray-500">
-                    {company.sector || 'Sector sin dato'}
-                    {company.industry ? ` · ${company.industry}` : ''}
+                <p className="mt-1 line-clamp-1 text-xs text-gray-500" title={sectorLine}>
+                    {sectorLine}
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                     {unreadable ? (
