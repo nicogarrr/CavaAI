@@ -12,6 +12,7 @@ import {
     type DataRecord,
 } from '@/components/data/RecordViews';
 import { getTaxHoldings, getTaxReport, regenerateTaxReport } from '@/lib/actions/taxes.actions';
+import { recordDetailKey } from '@/components/taxes/record-detail-key';
 import { formatUserDateTime, formatMoney, NA } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
@@ -223,7 +224,7 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
                 </select>
             </div>
             <RecordDetail
-                key={reportKey}
+                key={recordDetailKey(year, reportKey)}
                 title={`Reporte Fiscal ${year}`}
                 description="Resumen orientativo del ejercicio — no apto para declarar sin la validación de un asesor fiscal"
                 icon={<FileText className="h-5 w-5 text-teal-400" />}

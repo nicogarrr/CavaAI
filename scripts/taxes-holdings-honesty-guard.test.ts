@@ -25,6 +25,17 @@ test('los null de importes pasan como None, nunca como 0 inventado', () => {
     assert.ok(!/unrealized_pnl_base or 0/.test(backend), 'unrealized_pnl_base or 0 fabrica un 0 desde null');
 });
 
-test('F94: el reporte se resincroniza al cambiar de ejercicio', () => {
-    assert.match(view, /useEffect\(\(\) => \{\s*setReport\(initialReport\);\s*\}, \[year, initialReport\]\)/);
+test('F94: RecordDetail se remonta al cambiar de ejercicio (key con year)', () => {
+    // RecordDetail tiene useState propio sin resync: la key fuerza remount.
+    assert.match(view, /key=\{recordDetailKey\(year, reportKey\)\}/);
+    // y el estado local de TaxesView también se resincroniza con las props
+    assert.match(view, /setReport\(initialReport\)/);
+});
+
+test('F94: la key cambia con el ejercicio aunque reportKey no cambie', async () => {
+    // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
+    const { recordDetailKey } = await import('../components/taxes/record-detail-key.ts');
+    assert.notEqual(recordDetailKey(2025, 0), recordDetailKey(2026, 0));
+    assert.notEqual(recordDetailKey(2026, 0), recordDetailKey(2026, 1));
+    assert.equal(recordDetailKey(2026, 0), '2026-0');
 });
