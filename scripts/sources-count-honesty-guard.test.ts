@@ -26,7 +26,7 @@ void test('la cabecera usa el total real de /documents/count, no el tamano de pa
         'la cabecera no puede contar con el tamano de pagina',
     );
     const actions = source('lib/actions/research.actions.ts');
-    assert.ok(actions.includes("'/api/sources/documents/count'"), 'la accion pide el total al backend');
+    assert.ok(actions.includes('`/api/sources/documents/count${countQuery}`'), 'la accion pide el total al backend (con el mismo filtro que el listado, F131)');
 });
 
 void test('si /count no responde el total es desconocido, nunca un 0 fingido (F154)', () => {
@@ -36,7 +36,7 @@ void test('si /count no responde el total es desconocido, nunca un 0 fingido (F1
         'fallback { total: 0 } pinta «0 documentos» con la tabla poblada (backend antiguo sin /count)',
     );
     assert.ok(
-        actions.includes("getJson<{ total: number } | null>('/api/sources/documents/count', null)"),
+        actions.includes('getJson<{ total: number } | null>(`/api/sources/documents/count${countQuery}`, null)'),
         'el fallback honesto es null (total desconocido)',
     );
     const page = source('app/(root)/research/sources/page.tsx');
@@ -52,8 +52,9 @@ void test('si /count no responde el total es desconocido, nunca un 0 fingido (F1
 
 void test('la tabla declara cuando esta truncada', () => {
     const page = source('app/(root)/research/sources/page.tsx');
-    assert.ok(page.includes('documentsTotal > documents.length'), 'condicion de truncado presente');
-    assert.ok(page.includes('más recientes de'), 'copy honesto de truncado');
+    assert.ok(page.includes('(pageInfo?.pages ?? 1) > 1'), 'condicion de paginacion presente');
+    assert.ok(page.includes('`Mostrando ${formatNumber(pageInfo?.from ?? 0'), 'el rango visible se declara (X-Y de N), no solo el total');
+    assert.ok(page.includes('por fecha de publicación; los documentos sin fecha van al final.'), 'copy honesto del orden');
 });
 
 void test('/documents/count se registra antes que /documents/{document_id} (FastAPI casa en orden)', () => {

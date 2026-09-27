@@ -11,13 +11,25 @@ import {
   importResearchSource,
 } from '@/lib/actions/research.actions';
 import { formatDate, formatNumber, NA } from '@/lib/format';
+import { firstSearchParam, normalizeSourcesTicker, sourcesHref } from '@/lib/research/sources-inventory';
 import { auditScoreText, auditStatusLabel } from '@/lib/audit-status-copy';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function ResearchSourcesPage() {
-  const { documents, audits, documentsTotal } = await getResearchSources();
+export default async function ResearchSourcesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ ticker?: string | string[]; page?: string | string[] }>;
+}) {
+  const params = (await searchParams) ?? {};
+  // Claves repetidas (?ticker=A&ticker=B) llegan como array: primer valor.
+  const ticker = normalizeSourcesTicker(firstSearchParam(params.ticker));
+  const requestedPage = Number(firstSearchParam(params.page)) || 1;
+  const { documents, audits, documentsTotal, pageInfo } = await getResearchSources({
+    ticker: ticker || undefined,
+    page: Number.isFinite(requestedPage) && requestedPage > 0 ? Math.floor(requestedPage) : 1,
+  });
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -37,9 +49,11 @@ export default async function ResearchSourcesPage() {
         </div>
         <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
           {documentsTotal !== null
-            ? `${formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos`
+            ? ticker
+              ? `${formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos de ${ticker}`
+              : `${formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos`
             : `${formatNumber(documents.length, { maximumFractionDigits: 0 })} documentos en esta página`}{' '}
-          · {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías
+          · {formatNumber(audits.length, { maximumFractionDigits: 0 })} auditorías{ticker ? ' (global)' : ''}
         </div>
       </header>
 
@@ -186,11 +200,33 @@ export default async function ResearchSourcesPage() {
           <FileText aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Documentos</h2>
         </div>
-        {documentsTotal !== null && documentsTotal > documents.length ? (
+        <form action="/research/sources" className="mb-4 flex flex-wrap items-center gap-2" method="get">
+          <label className="sr-only" htmlFor="sources-ticker">
+            Filtrar por ticker
+          </label>
+          <Input
+            className="w-full max-w-xs border-gray-800 bg-black/30 text-gray-200"
+            defaultValue={ticker}
+            id="sources-ticker"
+            name="ticker"
+            placeholder="Filtrar por ticker (p. ej. AAPL)"
+            type="search"
+          />
+          <Button size="sm" type="submit" variant="outline">
+            Filtrar
+          </Button>
+          {ticker ? (
+            <Link className="text-sm text-teal-300 hover:text-teal-200" href="/research/sources">
+              Quitar filtro
+            </Link>
+          ) : null}
+        </form>
+        {documentsTotal !== null && (pageInfo?.pages ?? 1) > 1 ? (
           <p className="mb-4 text-sm text-gray-500">
-            Mostrando los {formatNumber(documents.length, { maximumFractionDigits: 0 })} más recientes de{' '}
-            {formatNumber(documentsTotal, { maximumFractionDigits: 0 })} por fecha de publicación; los
-            documentos sin fecha van al final.
+            {ticker
+              ? `Mostrando ${formatNumber(pageInfo?.from ?? 0, { maximumFractionDigits: 0 })}-${formatNumber(pageInfo?.to ?? 0, { maximumFractionDigits: 0 })} de ${formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos de ${ticker}`
+              : `Mostrando ${formatNumber(pageInfo?.from ?? 0, { maximumFractionDigits: 0 })}-${formatNumber(pageInfo?.to ?? 0, { maximumFractionDigits: 0 })} de ${formatNumber(documentsTotal, { maximumFractionDigits: 0 })}`}{' '}
+            por fecha de publicación; los documentos sin fecha van al final.
           </p>
         ) : null}
         <div aria-label="Documentos importados" className="overflow-x-auto" role="region" tabIndex={0}>
@@ -230,16 +266,52 @@ export default async function ResearchSourcesPage() {
               {!documents.length ? (
                 <tr>
                   <td className="py-6 text-center text-gray-500" colSpan={6}>
-                    <p>Sin documentos importados.</p>
-                    <span className="mt-2 block text-xs text-gray-500">
-                      Usa los formularios de arriba para subir tu primer documento o ingerir una URL.
-                    </span>
+                    {ticker ? (
+                      <p>
+                        Sin documentos de {ticker}.{' '}
+                        <Link className="text-teal-300 hover:text-teal-200" href="/research/sources">
+                          Quitar el filtro
+                        </Link>{' '}
+                        para ver el inventario completo.
+                      </p>
+                    ) : (
+                      <>
+                        <p>Sin documentos importados.</p>
+                        <span className="mt-2 block text-xs text-gray-500">
+                          Usa los formularios de arriba para subir tu primer documento o ingerir una URL.
+                        </span>
+                      </>
+                    )}
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
+        {pageInfo && pageInfo.pages > 1 ? (
+          <nav aria-label="Paginación de documentos" className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            {pageInfo.page > 1 ? (
+              <Link
+                className="rounded-lg border border-gray-700 px-3 py-1.5 text-gray-200 transition hover:border-teal-700"
+                href={sourcesHref(ticker, pageInfo.page - 1)}
+              >
+                Anterior
+              </Link>
+            ) : null}
+            <span className="text-xs text-gray-500">
+              Página {formatNumber(pageInfo.page, { maximumFractionDigits: 0 })} de{' '}
+              {formatNumber(pageInfo.pages, { maximumFractionDigits: 0 })}
+            </span>
+            {pageInfo.page < pageInfo.pages ? (
+              <Link
+                className="rounded-lg border border-gray-700 px-3 py-1.5 text-gray-200 transition hover:border-teal-700"
+                href={sourcesHref(ticker, pageInfo.page + 1)}
+              >
+                Siguiente
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
       </section>
     </main>
   );
