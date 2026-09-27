@@ -241,3 +241,67 @@ def test_list_alerts_source_url_accepts_absolute_http(db):
 
     result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
     assert result[0].source_url == good
+
+
+def test_list_alerts_over_http_serves_rows_and_sanitizes():
+    """F172: el endpoint HTTP real GET /api/alerts responde 200 con las filas
+    (regresión: un helper mal insertado entre el decorador y list_alerts
+    dejaba el listado roto aunque la llamada directa pasara) y expone
+    source_url ya sanitizado."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.routes import alerts as alerts_module
+    from app.core.database import get_db
+    from app.models.entities import NewsEvent
+
+    # TestClient sirve la app en otro hilo: StaticPool comparte la unica
+    # conexion entre hilos (con :memory: cada conexion seria una BD vacia).
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    session.info["tenant_id"] = "tenant-test"
+    db = session
+
+    company = Company(
+        ticker="AAPL", name="Apple", exchange="NASDAQ", currency="USD",
+        sector="Tech", industry="Tech", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.flush()
+    event = NewsEvent(
+        company_id=company.id, title="t",
+        url="https://www.sec.gov/Archives/edgar/data/1/0001.htm",
+    )
+    db.add(event)
+    db.flush()
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="filing", severity="medium",
+        title="http-ok", message="m", fingerprint="fp-http-ok",
+        channels=["in_app"], status="open", metadata_={"news_event_id": event.id},
+    ))
+    db.add(ResearchAlert(
+        company_id=company.id, alert_type="insider", severity="medium",
+        title="http-bad", message="m", fingerprint="fp-http-bad",
+        channels=["in_app"], status="open", metadata_={"source_url": "javascript:alert(1)"},
+    ))
+    db.commit()
+
+    app = FastAPI()
+    app.include_router(alerts_module.router, prefix="/api/alerts")
+    def _override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = _override_db
+    client = TestClient(app)
+
+    response = client.get("/api/alerts")
+    assert response.status_code == 200, response.text
+    rows = {row["title"]: row for row in response.json()}
+    assert rows["http-ok"]["source_url"] == event.url
+    assert rows["http-bad"]["source_url"] is None

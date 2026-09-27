@@ -127,7 +127,6 @@ def _snooze_expired(snoozed_until: datetime | None, now: datetime) -> bool:
     return value <= now
 
 
-@router.get("", response_model=list[ResearchAlertOut])
 def _safe_http_url(value: object) -> str | None:
     """Solo una URL absoluta http/https con host puede salir como enlace: el
     valor acaba en el href de un <a target="_blank"> y NewsEvent.url acepta
@@ -141,6 +140,7 @@ def _safe_http_url(value: object) -> str | None:
     return None
 
 
+@router.get("", response_model=list[ResearchAlertOut])
 def list_alerts(
     ticker: str | None = None,
     status: str | None = None,
