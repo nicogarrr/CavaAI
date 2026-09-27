@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 
 import { formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import { exchangeDisplayName } from '@/lib/exchangeName';
 
 import { Badge } from '@/components/ui/badge';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
@@ -38,7 +39,7 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                               <Badge variant="outline">{snapshot.ticker}</Badge>
                           </div>
                           <p className="mt-1 text-sm text-gray-500">
-                              {[snapshot.exchange, snapshot.currency].filter(Boolean).join(' · ') || 'Metadatos de mercado no disponibles'}
+                              {[exchangeDisplayName(snapshot.exchange), snapshot.currency].filter(Boolean).join(' · ') || 'Metadatos de mercado no disponibles'}
                           </p>
                       </div>
                       <div className="sm:ml-auto sm:text-right">
