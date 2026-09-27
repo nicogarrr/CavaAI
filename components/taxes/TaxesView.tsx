@@ -19,6 +19,7 @@ import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 import { onTheFlyReportNote } from '@/lib/taxes/report-note';
+import { TAX_HOLDING_MONEY_COLUMNS, formatHoldingMoney } from '@/lib/taxes/holding-money';
 
 interface TaxesViewProps {
     initialHoldings: DataRecord[];
@@ -270,6 +271,12 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
                     currency: 'Divisa',
                 }}
                 emptyMessage="Aún no hay posiciones con datos fiscales. Cuando compres valores aparecerán aquí."
+                formatColumns={Object.fromEntries(
+                    TAX_HOLDING_MONEY_COLUMNS.map((column) => [
+                        column,
+                        (value: unknown, record: DataRecord) => formatHoldingMoney(value, record.currency),
+                    ]),
+                )}
                 linkColumns={{ ticker: (record) => researchHrefFor(record) }}
                 footer={
                     <Button
