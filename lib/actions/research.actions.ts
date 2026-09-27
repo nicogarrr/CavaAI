@@ -111,7 +111,11 @@ type ResearchPeerComparison = {
       peer_median: string | null;
       peer_average: string | null;
       peer_sample_size: number;
+      // F153: valores atipicos etiquetados por el motor - visibles con su
+      // etiqueta, excluidos de la mediana/promedio.
+      excluded_atypical?: Array<{ ticker: string; value: string | null; atypical: string | null }>;
       target_value: string | null;
+      target_atypical?: string | null;
       target_vs_peer_median: string | null;
     }
   >;
@@ -130,6 +134,7 @@ type ResearchPeerComparison = {
         period: string;
         confidence: string;
         source_fact_ids: number[];
+        atypical?: string | null;
       }
     >;
   }>;
