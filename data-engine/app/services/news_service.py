@@ -60,6 +60,8 @@ class NewsService:
         ticker: str | None = None,
         published_at: datetime | None = None,
         connector: str | None = None,
+        date_source_label: str | None = None,
+        source_headline: str | None = None,
     ) -> ManualNewsResponse:
         company = self._company_for_item(db, text, ticker)
         # Gate Jev (3): duplicate/noise con confianza >= 0.85 -> via ligera:
@@ -123,11 +125,18 @@ class NewsService:
         # Tipo de noticia con Jev (earnings/filing/macro/opinion): 1 llamada
         # best-effort (~$0.042/MTok in) guardada en metadata. Sin
         # TYPESAFE_API_KEY o ante error, la noticia se ingiere sin `jev_doc_type`.
-        news_metadata: dict = {
-            # Procedencia de la fecha: sin published_at la UI no debe dar la
-            # fecha de ingesta como si fuera la de la fuente.
-            "date_source": "source" if published_at else "ingested_at_fallback",
-        }
+        # El conector puede declarar la semántica real de su published_at
+        # (p.ej. GDELT seendate = primera detección, no publicación). Sin
+        # published_at la fecha es la de ingesta y NUNCA se promociona a una
+        # fecha de fuente o de primera detección.
+        date_source = "ingested_at_fallback"
+        if published_at:
+            date_source = date_source_label or "source"
+        news_metadata: dict = {"date_source": date_source}
+        # Titular original de la fuente (antes del prefijo de ticker F175),
+        # guardado en la creación para que las alertas muestren el titular real.
+        if source_headline:
+            news_metadata["source_headline"] = source_headline
         # Procedencia del conector en la MISMA transacción de creación: si se
         # etiqueta después (segundo commit), una caída entre ambos deja
         # noticias nuevas sin connector y la reingesta las trata como previas.
@@ -261,6 +270,7 @@ class NewsService:
         items: list[NewsFeedItem],
         default_source: str = "feed",
         connector: str | None = None,
+        date_source_label: str | None = None,
     ) -> NewsIngestResponse:
         created_events: list[ManualNewsResponse] = []
         skipped_duplicates = 0
@@ -289,6 +299,8 @@ class NewsService:
                     ticker=item.ticker,
                     published_at=item.published_at,
                     connector=connector,
+                    date_source_label=date_source_label,
+                    source_headline=item.title[:500] if item.title else None,
                 )
             )
 
