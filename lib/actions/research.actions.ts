@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { AppError, ExternalAPIError, ValidationError, getErrorMessage } from '@/lib/types/errors';
+import { sourcesPageInfo } from '@/lib/research/sources-inventory';
 import { researchRequest } from '@/lib/research/client';
 import { paginateAll } from '@/lib/paginate-all';
 import type { components } from '@/lib/research/openapi.generated';
@@ -996,21 +997,35 @@ export async function askResearchCompanyChat(
   );
 }
 
-export async function getResearchSources() {
+export async function getResearchSources(options: { ticker?: string; page?: number } = {}) {
   // La lista de documentos pagina (50): el total real viene de /count para
   // no presentar el tamano de pagina como si fuera el inventario (F131).
   // Si /count no responde (backend antiguo), el total es DESCONOCIDO (null):
   // mostrar 0 con la tabla poblada seria falso (F154).
-  const [documents, audits, documentsCount] = await Promise.all([
-    getJson<ResearchSourceDocument[]>('/api/sources/documents', []),
+  // El filtro por ticker se pasa a AMBOS endpoints: el total y la pagina
+  // deben hablar del mismo subconjunto. La pagina se acota con el total:
+  // una pagina fuera de rango cae en la ultima, nunca en una vacia (F131).
+  const countQuery = options.ticker ? `?ticker=${encodeURIComponent(options.ticker)}` : '';
+  const documentsCount = await getJson<{ total: number } | null>(`/api/sources/documents/count${countQuery}`, null);
+  const documentsTotal = documentsCount?.total ?? null;
+  const requested = options.page && options.page > 0 ? Math.floor(options.page) : 1;
+  // Sin total no hay forma honesta de acotar: se pide la pagina tal cual.
+  const pageInfo = documentsTotal === null ? null : sourcesPageInfo(documentsTotal, requested);
+  const effectivePage = pageInfo?.page ?? requested;
+  const params = new URLSearchParams();
+  if (options.ticker) params.set('ticker', options.ticker);
+  if (effectivePage > 1) params.set('page', String(effectivePage));
+  const documentsQuery = params.size ? `?${params.toString()}` : '';
+  const [documents, audits] = await Promise.all([
+    getJson<ResearchSourceDocument[]>(`/api/sources/documents${documentsQuery}`, []),
     getJson<ResearchSourceAudit[]>('/api/sources/audits', []),
-    getJson<{ total: number } | null>('/api/sources/documents/count', null),
   ]);
 
   return {
     documents,
     audits,
-    documentsTotal: documentsCount?.total ?? null,
+    documentsTotal,
+    pageInfo,
   };
 }
 
