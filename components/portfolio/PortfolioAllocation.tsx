@@ -11,7 +11,9 @@ import { COLORS, buildAllocationSlices, CASH_SLICE_SYMBOL, type AllocationSlice 
 const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChart'), {
     ssr: false,
     loading: () => (
-        <div className="h-[250px] w-[250px] animate-pulse rounded-full border border-gray-800 bg-gray-900/40" aria-label="Cargando distribución" role="status" />
+        // h-full/w-full: el placeholder hereda el tamaño del wrapper
+        // (200px bajo sm, 250px desde sm); fijo a 250 desbordaba a 360px.
+        <div className="h-full w-full animate-pulse rounded-full border border-gray-800 bg-gray-900/40" aria-label="Cargando distribución" role="status" />
     ),
 });
 
@@ -57,9 +59,9 @@ export default function PortfolioAllocation({ holdings, totalValue, cash, baseCu
             </div>
 
             {/* Contenido: Pie Chart + Leyenda */}
-            <div className="flex-1 flex items-center justify-between">
+            <div className="flex-1 flex flex-col items-center justify-center gap-6 sm:flex-row sm:justify-between">
                 {/* Pie Chart - Más grande */}
-                <div className="relative w-[250px] h-[250px] flex-shrink-0">
+                <div className="relative h-[200px] w-[200px] flex-shrink-0 sm:h-[250px] sm:w-[250px]">
                     <PortfolioAllocationChart chartData={chartData} currency={baseCurrency} />
 
                     {/* Centro del Donut */}
@@ -72,7 +74,7 @@ export default function PortfolioAllocation({ holdings, totalValue, cash, baseCu
                 </div>
 
                 {/* Leyenda lateral - Pegada a la derecha */}
-                <div className="space-y-3 overflow-y-auto max-h-[250px] min-w-[140px]">
+                <div className="max-h-[250px] w-full min-w-0 space-y-3 overflow-y-auto sm:w-auto sm:min-w-[140px]">
                     {chartData.map((item, index) => (
                         <div key={item.symbol} className="flex items-center justify-between gap-6">
                             <div className="flex items-center gap-2">
