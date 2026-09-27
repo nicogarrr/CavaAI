@@ -39,7 +39,10 @@ FINNHUB_INDUSTRY_TO_SECTOR: dict[str, str] = {
     "Building": "Industrials",
     "Chemicals": "Materials",
     "Commercial Services & Supplies": "Industrials",
-    "Communications": "Communication Services",
+    # Finnhub "Communications" es la industria GICS Communications Equipment
+    # (CSCO, ANET, JNPR, FFIV...), sector Information Technology - no
+    # Communication Services (los servicios llegan como Telecom/Telecommunication).
+    "Communications": "Information Technology",
     "Construction": "Industrials",
     "Consumer products": "Consumer Staples",
     "Distributors": "Consumer Discretionary",
