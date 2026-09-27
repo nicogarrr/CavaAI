@@ -14,6 +14,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
 import type { InsiderFilingsResult, InsiderSignalsResult } from '@/lib/actions/insider.actions';
 import { getInsiderSignals } from '@/lib/actions/insider.actions';
+import { analyzedCountCopy, degradedCopy } from '@/lib/insider-status-copy';
 import { toast } from 'sonner';
 
 interface InsiderSignalsViewProps {
@@ -172,29 +173,33 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                     No se pudieron cargar las señales de {initialTicker}. Reintenta más tarde.
                 </p>
             ) : initialResult.status === 'unavailable' ? (
-                <p className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
-                    {initialTicker}: {formatRecordValue(initialResult.reason ?? initialResult.status)}
-                    {' — no es un emisor SEC estadounidense.'}
-                </p>
+                <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
+                    <p>
+                        {initialTicker}: no hay señales insider públicas — no es un emisor SEC
+                        estadounidense o no constan Form 4 registrados.
+                    </p>
+                    {typeof initialResult.reason === 'string' && initialResult.reason ? (
+                        <p className="mt-2 text-xs text-amber-300/80">
+                            Detalle técnico: {formatRecordValue(initialResult.reason)}
+                        </p>
+                    ) : null}
+                </div>
             ) : initialResult.status === 'degraded' ? (
                 // F234: «AAPL: degraded» a pelo no decía nada. El backend ya
                 // devuelve cuántos Form 4 se escanearon y cuántos fallaron:
                 // un estado técnico se explica con sus números, nunca con la
                 // palabra cruda. Y se deja claro que no es un «sin actividad».
-                <p className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
-                    {initialResult.reason ? (
-                        <>
-                            {initialTicker}: {formatRecordValue(initialResult.reason)}
-                        </>
-                    ) : (
-                        <>
-                            {initialTicker}: SEC EDGAR no devolvió ningún Form 4 legible (
-                            {countText(initialResult.filings_failed)} con error de{' '}
-                            {countText(initialResult.filings_scanned)} escaneados). Es un fallo de
-                            lectura, no una ausencia de actividad insider. Reintenta más tarde.
-                        </>
-                    )}
-                </p>
+                <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
+                    <p>
+                        {degradedCopy(initialTicker, initialResult, countText).header} Es un fallo
+                        de lectura, no una ausencia de actividad insider. Reintenta más tarde.
+                    </p>
+                    {degradedCopy(initialTicker, initialResult, countText).detail ? (
+                        <p className="mt-2 text-xs text-amber-300/80">
+                            Detalle técnico: {degradedCopy(initialTicker, initialResult, countText).detail}
+                        </p>
+                    ) : null}
+                </div>
             ) : (
                 // ok y partial: las señales parseadas son reales; partial las
                 // muestra con su aviso de cobertura incompleta.
@@ -209,8 +214,8 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                     ) : null}
                     {signals.length === 0 ? (
                         <p className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
-                            {initialTicker}: {t('insider.noSignals')}
-                            ({countText(initialResult.filings_scanned)} analizados).
+                            {initialTicker}: {t('insider.noSignals')}(
+                            {analyzedCountCopy(initialResult.status, initialResult, countText)}).
                         </p>
                     ) : (
                 <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
