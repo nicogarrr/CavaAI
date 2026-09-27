@@ -443,6 +443,28 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                     </div>
                                     <p className="mt-2 text-sm break-words text-gray-200">{item.title}</p>
                                     <p className="mt-1 text-xs break-words text-gray-400">{item.message}</p>
+                                    {(item.ticker || item.sourceUrl) && (
+                                        <span className="mt-2 inline-flex flex-wrap gap-3">
+                                            {item.ticker && (
+                                                <Link
+                                                    className="inline-flex min-h-[44px] items-center text-xs text-teal-400 hover:text-teal-300 hover:underline"
+                                                    href={`/research/${item.ticker}`}
+                                                >
+                                                    Abrir investigación de {item.ticker}
+                                                </Link>
+                                            )}
+                                            {item.sourceUrl && (
+                                                <a
+                                                    className="inline-flex min-h-[44px] items-center text-xs text-teal-400 hover:text-teal-300 hover:underline"
+                                                    href={item.sourceUrl}
+                                                    rel="noopener noreferrer"
+                                                    target="_blank"
+                                                >
+                                                    Abrir documento fuente
+                                                </a>
+                                            )}
+                                        </span>
+                                    )}
                                 </article>
                             ))}
                             <p className="text-xs text-gray-500">

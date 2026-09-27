@@ -12,6 +12,7 @@ from app.models import (
     ResearchReview,
     ThesisChange,
 )
+from app.services.review_copy import change_type_label, claim_status_label
 
 
 def _severity(materiality_score: int, negative: bool = False) -> str:
@@ -102,7 +103,7 @@ class ReviewAlertService:
         return self.create_review(
             db,
             review_type=change.change_type,
-            title=f"Review required: {change.change_type.replace('_', ' ')}",
+            title=f"Revisión necesaria: {change_type_label(change.change_type)}",
             summary=change.summary,
             company_id=change.company_id,
             materiality_score=change.materiality_score,
@@ -119,7 +120,7 @@ class ReviewAlertService:
         return self.create_review(
             db,
             review_type=f"claim_{relation}",
-            title=f"Claim classified as {relation}",
+            title=f"Afirmación clasificada como {claim_status_label(relation)}",
             summary=summary,
             company_id=claim.company_id,
             materiality_score=claim.materiality_score,

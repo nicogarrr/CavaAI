@@ -15,6 +15,7 @@ from app.services.claim_scope import live_claims
 from app.services.moat_service import MoatService
 from app.services.peer_analysis_service import PeerAnalysisService
 from app.services.review_alert_service import ReviewAlertService
+from app.services.review_copy import claim_status_label
 from app.services.valuation_service import ValuationService
 
 SEVERITY_PENALTY = {
@@ -60,7 +61,7 @@ class RedTeamService:
                     self._finding(
                         "high",
                         "unsupported_material_claim",
-                        f"Material claim has no linked evidence: {claim.statement}",
+                        f"Afirmación material sin evidencia vinculada: {claim.statement}",
                         claim_id=claim.id,
                     )
                 )
@@ -77,7 +78,7 @@ class RedTeamService:
                         and claim.materiality_score >= 8
                         else "high",
                         f"claim_{claim.status}",
-                        f"Claim is {claim.status}: {claim.statement}",
+                        f"Afirmación {claim_status_label(claim.status)}: {claim.statement}",
                         claim_id=claim.id,
                     )
                 )
@@ -88,7 +89,7 @@ class RedTeamService:
                     self._finding(
                         "medium",
                         "missing_falsification_test",
-                        f"No explicit invalidation condition: {claim.statement}",
+                        f"Sin condición de invalidación explícita: {claim.statement}",
                         claim_id=claim.id,
                     )
                 )
@@ -112,9 +113,9 @@ class RedTeamService:
                         "high",
                         "source_audit_failed",
                         (
-                            "Source audit failed with coverage "
-                            f"{latest_audit.source_coverage_score}: "
-                            f"{len(unsupported)} unsupported, {len(conflicts)} conflicts."
+                            "La auditoría de fuentes falló con puntuación de respaldo "
+                            f"de afirmaciones {latest_audit.source_coverage_score}/100: "
+                            f"{len(unsupported)} sin respaldo, {len(conflicts)} conflictos."
                         ),
                         source_audit_id=latest_audit.id,
                         required_fixes=latest_audit.required_fixes,
@@ -129,8 +130,10 @@ class RedTeamService:
                         "medium",
                         "source_audit_blocked",
                         (
-                            "Source audit blocked downstream with coverage "
-                            f"{latest_audit.source_coverage_score} and no unsupported claims: "
+                            "Auditoría de fuentes bloqueada aguas abajo (puntuación de respaldo "
+                            f"de afirmaciones {latest_audit.source_coverage_score}/100, sin "
+                            "afirmaciones sin respaldo; el bloqueo puede deberse a la traza "
+                            "u otros requisitos): "
                             f"{'; '.join(latest_audit.required_fixes or [])[:300]}"
                         ),
                         source_audit_id=latest_audit.id,
@@ -144,7 +147,7 @@ class RedTeamService:
                 self._finding(
                     "high",
                     "valuation_not_publishable",
-                    "Valuation is not publishable because required inputs are missing.",
+                    "La valoración no se puede publicar porque faltan datos necesarios.",
                     missing_inputs=valuation.get("missing_inputs", []),
                 )
             )
@@ -164,7 +167,7 @@ class RedTeamService:
                 self._finding(
                     "high",
                     "returns_below_cost_of_capital",
-                    f"ROIC {roic.value} is below WACC {wacc.value}.",
+                    f"ROIC {roic.value} por debajo del WACC {wacc.value}.",
                     roic_metric_id=roic.id,
                     wacc_metric_id=wacc.id,
                 )
@@ -176,7 +179,7 @@ class RedTeamService:
                 self._finding(
                     "medium",
                     "moat_unproven",
-                    "No moat category has sufficient sourced evidence.",
+                    "Ninguna categoría de foso reúne suficiente evidencia con fuentes.",
                 )
             )
 
@@ -207,7 +210,7 @@ class RedTeamService:
         strongest = (
             findings[0]["message"]
             if findings
-            else "No evidence-backed bear case was identified; this may reflect insufficient coverage rather than low risk."
+            else "No se identificó un caso bajista respaldado por evidencia; puede deberse a cobertura insuficiente, no a poco riesgo."
         )
         run.status = "completed"
         run.score = score
@@ -267,7 +270,7 @@ class RedTeamService:
                 ReviewAlertService().create_review(
                     db,
                     review_type="red_team",
-                    title=f"Red-team findings for {company.ticker}",
+                    title=f"Hallazgos del red team sobre {company.ticker}",
                     summary=strongest,
                     company_id=company.id,
                     materiality_score=10 - min(5, score // 20),
@@ -317,7 +320,7 @@ class RedTeamService:
         if disadvantage.get("statement"):
             return disadvantage["statement"]
         return (
-            f"{disadvantage.get('dimension')} trails peer median: "
-            f"{disadvantage.get('target_value')} vs "
+            f"{disadvantage.get('dimension')} por debajo de la mediana de comparables: "
+            f"{disadvantage.get('target_value')} frente a "
             f"{disadvantage.get('peer_median')}."
         )
