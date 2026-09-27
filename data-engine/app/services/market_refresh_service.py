@@ -25,6 +25,24 @@ from app.services.propicks_price_service import yahoo_symbol
 from app.services.risk_service import RiskService
 from app.services.screener_service import ScreenerService
 
+_US_EXCHANGE_TOKENS = ("NYSE", "NEW YORK", "NASDAQ", "AMEX", "OTC", "BATS", "ARCA")
+
+
+def _us_listed(company: Company) -> bool:
+    """Solo los listados US pueden cotizar via FMP/Finnhub con el ticker
+    pelado: ambos resuelven el simbolo en bolsas americanas y para un emisor
+    no-US devuelven el gemelo equivocado - otro emisor (ALM->Almonty) o el
+    ADR en USD del mismo emisor (ASML) - y el precio se guarda bajo la
+    identidad y divisa del master. Divisa no-USD => fuera. Bolsa US conocida
+    => dentro. UNKNOWN con USD (o sin datos) => dentro, el caso mayoritario
+    del universo US importado en bulk."""
+    exchange = str(getattr(company, "exchange", "") or "").upper()
+    currency = str(getattr(company, "currency", "") or "").upper()
+    if currency and currency != "USD":
+        return False
+    if any(token in exchange for token in _US_EXCHANGE_TOKENS):
+        return True
+    return exchange in ("", "UNKNOWN")
 
 @dataclass(frozen=True)
 class PriceObservation:
@@ -96,6 +114,13 @@ class PublicPriceProvider:
     async def _one(
         self, company: Company, as_of: date
     ) -> tuple[Company, PriceObservation | None, dict | None]:
+        if not _us_listed(company):
+            # Sin precio antes que el precio del gemelo americano: la ruta
+            # Yahoo (simbolo con sufijo de bolsa) cubre los mercados no-US.
+            return company, None, {
+                "ticker": company.ticker,
+                "reason": "non_us_listing",
+            }
         errors = []
         if self.fmp.configured():
             try:
@@ -200,7 +225,11 @@ class YahooIntradayPriceProvider:
     async def fetch(
         self, companies: list[Company], *, as_of: date
     ) -> tuple[dict[str, PriceObservation], list[dict]]:
-        yahoo_by_ticker = {company.ticker: yahoo_symbol(company) for company in companies}
+        yahoo_by_ticker = {
+            company.ticker: symbol
+            for company in companies
+            if (symbol := yahoo_symbol(company)) is not None
+        }
         ticker_by_yahoo = {symbol: ticker for ticker, symbol in yahoo_by_ticker.items()}
         try:
             latest = await asyncio.to_thread(self.fetcher, sorted(ticker_by_yahoo))

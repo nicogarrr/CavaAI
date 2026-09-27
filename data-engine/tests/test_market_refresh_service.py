@@ -269,3 +269,88 @@ def test_fmp_profile_is_never_used_for_prices():
     assert error is None
     assert observation is not None
     assert observation.source == "FMP"
+
+
+def test_non_us_company_never_gets_a_bare_ticker_us_quote():
+    """ALM es Almirall (BME, EUR); Finnhub/FMP con el ticker pelado devuelven
+    Almonty (ALM en Nasdaq). Ese precio NUNCA puede guardarse bajo Almirall."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+
+    async def fmp_quote(_ticker):
+        return [{"price": 13.72, "timestamp": 1_800_000_000}]
+
+    async def finnhub_quote(_ticker):
+        return {"c": 13.72, "t": 1_800_000_000}
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: True, quote=finnhub_quote)
+    company = SimpleNamespace(ticker="ALM", exchange="BME", currency="EUR")
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert observation is None
+    assert error is not None
+    assert error["reason"] == "non_us_listing"
+
+
+def test_adr_is_not_the_amsterdam_listing():
+    """ASML cotiza en Euronext Amsterdam en EUR; la quote pelada es el ADR
+    Nasdaq en USD. La bolsa contiene «NYSE» pero la divisa manda: fuera."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+
+    async def fmp_quote(_ticker):
+        return [{"price": 1743.94, "timestamp": 1_800_000_000}]
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+    company = SimpleNamespace(
+        ticker="ASML", exchange="NYSE EURONEXT - EURONEXT AMSTERDAM", currency="EUR"
+    )
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert observation is None
+    assert error is not None
+    assert error["reason"] == "non_us_listing"
+
+
+def test_us_and_unknown_usd_companies_keep_us_quotes():
+    """NASDAQ/USD y UNKNOWN/USD (bulk import US) siguen cotizando en US."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+    ts = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
+
+    async def fmp_quote(_ticker):
+        return [{"price": 210.5, "timestamp": ts}]
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+
+    for exchange, currency in (
+        ("NASDAQ NMS - GLOBAL MARKET", "USD"),
+        ("NEW YORK STOCK EXCHANGE, INC.", "USD"),  # literal de prod: sin «NYSE»
+        ("NYSE MKT LLC", "USD"),
+        ("UNKNOWN", "USD"),
+        ("", ""),
+    ):
+        company = SimpleNamespace(ticker="AAPL", exchange=exchange, currency=currency)
+        _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+        assert error is None, (exchange, currency)
+        assert observation is not None, (exchange, currency)
+
+
+def test_unknown_exchange_with_eur_is_not_a_us_listing():
+    """UNKNOWN+EUR: sin evidencia de listado US, no arriesgar el gemelo."""
+    provider = PublicPriceProvider.__new__(PublicPriceProvider)
+
+    async def fmp_quote(_ticker):
+        return [{"price": 10.0, "timestamp": 1_800_000_000}]
+
+    provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
+    provider.finnhub = SimpleNamespace(configured=lambda: False)
+    company = SimpleNamespace(ticker="XYZ", exchange="UNKNOWN", currency="EUR")
+
+    _, observation, error = asyncio.run(provider._one(company, date(2026, 9, 26)))
+
+    assert observation is None
+    assert error is not None
+    assert error["reason"] == "non_us_listing"

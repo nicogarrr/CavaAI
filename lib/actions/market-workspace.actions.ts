@@ -3,6 +3,7 @@
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { getCandles, getProfile, getStockQuote } from '@/lib/actions/finnhub.actions';
+import { quoteSymbolFor } from '@/lib/market/quote-symbol';
 
 export type CompanyMarketSnapshot = {
     ticker: string;
@@ -61,11 +62,28 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
     }
     const to = Math.floor(Date.now() / 1000);
     const from = to - 366 * 24 * 60 * 60;
-    const [profile, quote, candles, researchCompany] = await Promise.all([
-        getProfile(normalized),
-        getStockQuote(normalized),
-        getCandles(normalized, from, to, 'D', 900),
-        getResearchCompanyBasics(normalized),
+    // El master primero: su bolsa/divisa deciden el símbolo de cotización.
+    const researchCompany = await getResearchCompanyBasics(normalized);
+    const quoteSymbol = quoteSymbolFor(researchCompany, normalized);
+    if (!quoteSymbol) {
+        // Sin identidad de listado verificada (master inaccesible) o sin
+        // correspondencia de bolsa validada: cotización NO disponible. Un
+        // fallo transitorio del master nunca abre la vía del ticker desnudo,
+        // que puede devolver el precio de otro emisor (ALM->Almonty).
+        return {
+            ticker: normalized,
+            name: researchCompany?.name || normalized,
+            exchange: researchCompany?.exchange || null,
+            currency: researchCompany?.currency || null,
+            quote: { price: null, change: null, changePercent: null, open: null, high: null, low: null, previousClose: null },
+            history: [],
+            status: 'unavailable',
+        };
+    }
+    const [profile, quote, candles] = await Promise.all([
+        getProfile(quoteSymbol),
+        getStockQuote(quoteSymbol),
+        getCandles(quoteSymbol, from, to, 'D', 900),
     ]);
     const history = candles.s === 'ok'
         ? candles.t.map((timestamp, index) => ({
@@ -77,9 +95,12 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
     const price = quote?.c && quote.c > 0 ? quote.c : history.at(-1)?.close ?? null;
     return {
         ticker: normalized,
-        name: profile?.name || researchCompany?.name || normalized,
-        exchange: profile?.exchange || researchCompany?.exchange || null,
-        currency: profile?.currency || researchCompany?.currency || null,
+        // La identidad la pone el master (curado); el perfil del proveedor
+        // solo rellena huecos - nunca puede rebautizar la ficha con el
+        // gemelo americano del ticker.
+        name: researchCompany?.name || profile?.name || normalized,
+        exchange: researchCompany?.exchange || profile?.exchange || null,
+        currency: researchCompany?.currency || profile?.currency || null,
         quote: {
             price,
             change: quote?.d ?? null,

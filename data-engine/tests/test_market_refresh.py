@@ -41,7 +41,7 @@ def _company(ticker: str) -> Company:
     return Company(
         ticker=ticker,
         name=f"{ticker} Co",
-        exchange="TEST",
+        exchange="NASDAQ",
         currency="USD",
         sector="Test",
         industry="Test",
