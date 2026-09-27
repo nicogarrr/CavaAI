@@ -201,7 +201,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
 
         <div className="rounded-xl border border-gray-800 bg-[#101010] p-5">
           <div className="mb-4 flex items-center gap-2"><Library aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Colecciones por defecto</h2></div>
-          <p className="mb-4 text-sm text-gray-400">Instala las colecciones base (calidad compounders, operaciones, macro) para tener dónde ingestar sin crear nada a mano.</p>
+          <p className="mb-4 text-sm text-gray-400">Instala las colecciones base (calidad compounders, operaciones, macro) para tener dónde ingerir sin crear nada a mano.</p>
           <MutationForm action={installKnowledgeDefaults} successMessage="Colecciones por defecto listas">
             <Button className="h-11 w-full sm:w-fit" type="submit"><Library aria-hidden="true" className="h-4 w-4" />Instalar por defecto</Button>
           </MutationForm>
