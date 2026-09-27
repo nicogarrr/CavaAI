@@ -5,9 +5,11 @@ binding may turn one into a tenant's ticker alert. BR date != publication date.
 """
 from __future__ import annotations
 
+import base64
+import json
 import re
 from dataclasses import dataclass
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 
 from lxml import html
 
@@ -16,6 +18,7 @@ from app.services.public_fetch import fetch_public_url
 
 LIST_URL = "https://www.itu.int/ITU-R/space/asreceived/Publication/AsReceived"
 DETAIL_PATH = "/ITU-R/space/asreceived/Publication/DisplayPublication/"
+TABLE_URL = "https://www.itu.int/ITU-R/space/asreceived/Publication/GetPublicationTable"
 COLUMNS = ["Reference", "NTC ID", "Adm.", "Network Org.", "Station/Satellite Name",
            "Long. Nom.", "BR Registry Date", "Type of submission", "Reg", "Act. Code"]
 
@@ -35,8 +38,8 @@ class ITUCandidate:
     date_source: str = "br_registry_date_not_publication"
 
 
-def parse_listing(raw: bytes, *, max_rows: int = 30) -> list[ITUCandidate]:
-    if len(raw) > 1024 * 1024 or not 1 <= max_rows <= 30:
+def _parse_page(raw: bytes, *, skip: int, take: int = 30) -> tuple[list[ITUCandidate], int]:
+    if len(raw) > 1024 * 1024 or skip < 0 or take != 30:
         raise ValueError("ITU listing exceeds bounded parser limits")
     tree = html.fromstring(raw)
     tables = tree.xpath("//table[@id='publication-table']")
@@ -46,12 +49,19 @@ def parse_listing(raw: bytes, *, max_rows: int = 30) -> list[ITUCandidate]:
     headings = [" ".join(th.itertext()).strip() for th in table.xpath("./thead/tr/th")]
     if headings != COLUMNS:
         raise ValueError("ITU listing headings changed")
+    try:
+        paging = json.loads(table.get("data-paging") or "")
+        total = int(table.get("data-total-items") or "")
+    except (ValueError, TypeError):
+        raise ValueError("ITU listing pagination missing") from None
+    if paging != {"Skip": skip, "Take": take} or total < skip or total > 100_000:
+        raise ValueError("ITU listing pagination does not match request")
     rows = table.xpath("./tbody/tr")
-    if not rows or len(rows) > 30:
+    if (not rows and skip < total) or len(rows) != min(take, max(0, total - skip)):
         raise ValueError("ITU listing page row count unexpected")
     candidates = []
     seen = set()
-    for row in rows[:max_rows]:
+    for row in rows:
         sid = row.get("data-submission-id") or ""
         cells = [" ".join(cell.itertext()).strip() for cell in row.xpath("./td")]
         if len(cells) != len(COLUMNS) or not re.fullmatch(r"\d{1,12}", sid):
@@ -68,15 +78,53 @@ def parse_listing(raw: bytes, *, max_rows: int = 30) -> list[ITUCandidate]:
             type_of_submission=submission, act_code=act,
             detail_url=urljoin(LIST_URL, f"{DETAIL_PATH}{sid}"),
         ))
-    return candidates
+    return candidates, total
 
 
-def discover_itu_notices(*, max_rows: int = 30) -> list[ITUCandidate]:
+def parse_listing(raw: bytes, *, max_rows: int = 30) -> list[ITUCandidate]:
+    if not 1 <= max_rows <= 30:
+        raise ValueError("Initial ITU page limit must be between 1 and 30")
+    candidates, _ = _parse_page(raw, skip=0)
+    return candidates[:max_rows]
+
+
+def _page_url(skip: int) -> str:
+    # Confirmed against the site's table.component.js: `publication-table.p`
+    # carries base64(JSON{Skip,Take}). Plain Skip/Take query keys are ignored.
+    payload = base64.b64encode(json.dumps({"Skip": skip, "Take": 30},
+                                          separators=(",", ":")).encode()).decode()
+    return f"{TABLE_URL}?publication-table.p={quote(payload, safe='')}"
+
+
+def discover_itu_notices(*, max_pages: int = 20) -> tuple[list[ITUCandidate], dict]:
+    """Traverse the bounded current listing; report partial coverage honestly."""
+    if not 1 <= max_pages <= 20:
+        raise ValueError("ITU scan allows 1-20 pages")
     raw, mime, final_url = fetch_public_url(LIST_URL, max_bytes=1024 * 1024,
                                              timeout=20, allowed_url=_official)
     if final_url != LIST_URL or (mime or "").split(";", 1)[0].lower() != "text/html":
         raise ValueError("Unexpected ITU listing response")
-    return parse_listing(raw, max_rows=max_rows)
+    first, initial_total = _parse_page(raw, skip=0)
+    candidates = list(first)
+    seen = {item.submission_id for item in first}
+    pages = 1
+    for skip in range(30, initial_total, 30):
+        if pages >= max_pages:
+            break
+        url = _page_url(skip)
+        page, page_mime, page_url = fetch_public_url(url, max_bytes=1024 * 1024,
+                                                     timeout=20, allowed_url=_official)
+        if (page_url != url or (page_mime or "").split(";", 1)[0].lower() != "text/html"):
+            raise ValueError("Unexpected ITU page response")
+        rows, page_total = _parse_page(page, skip=skip)
+        if page_total != initial_total or any(item.submission_id in seen for item in rows):
+            raise ValueError("ITU listing changed during pagination; retry next cycle")
+        seen.update(item.submission_id for item in rows)
+        candidates.extend(rows)
+        pages += 1
+    coverage = {"seen": len(candidates), "reported_total": initial_total,
+                "pages": pages, "complete": len(candidates) == initial_total}
+    return candidates, coverage
 
 
 def persist_unassigned_notices(db, candidates: list[ITUCandidate], *, observed_at=None) -> dict:
@@ -91,7 +139,7 @@ def persist_unassigned_notices(db, candidates: list[ITUCandidate], *, observed_a
     if tenant_id is None:
         raise ValueError("Tenant context required")
     observed_at = observed_at or datetime.now(UTC)
-    if observed_at.tzinfo is None or len(candidates) > 30:
+    if observed_at.tzinfo is None or len(candidates) > 600:
         raise ValueError("Aware first-seen time and bounded candidate set required")
     created = 0
     seen_batch: set[str] = set()

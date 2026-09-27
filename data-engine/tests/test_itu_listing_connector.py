@@ -29,13 +29,39 @@ def test_malformed_identity_fails_closed():
         parse_listing(html.tostring(tree))
 
 
-def test_discovery_requires_exact_list_url_and_mime(monkeypatch):
+def test_discovery_reports_partial_coverage_and_detects_duplicate_page(monkeypatch):
     from app.services import itu_listing_connector as module
-    monkeypatch.setattr(module, "fetch_public_url", lambda *a, **kw: (FIXTURE.read_bytes(), "text/html", LIST_URL))
-    assert discover_itu_notices(max_rows=10)
-    monkeypatch.setattr(module, "fetch_public_url", lambda *a, **kw: (FIXTURE.read_bytes(), "text/html", "https://www.itu.int/other"))
+
+    def fetch(url, **kwargs):
+        return FIXTURE.read_bytes(), "text/html", url
+
+    monkeypatch.setattr(module, "fetch_public_url", fetch)
+    notices, coverage = discover_itu_notices(max_pages=1)
+    assert len(notices) == 30 and coverage == {"seen": 30, "reported_total": 517,
+                                               "pages": 1, "complete": False}
+    with pytest.raises(ValueError, match="pagination"):
+        discover_itu_notices(max_pages=2)
+    monkeypatch.setattr(module, "fetch_public_url", lambda url, **kw: (FIXTURE.read_bytes(), "text/html", "https://www.itu.int/other"))
     with pytest.raises(ValueError, match="Unexpected"):
         discover_itu_notices()
+
+
+def test_real_second_page_uses_site_encoded_paging_and_unique_ids(monkeypatch):
+    from app.services import itu_listing_connector as module
+    page2 = (Path(__file__).parent / "fixtures" / "itu" / "asreceived-page2.html").read_bytes()
+    assert hashlib.sha256(page2).hexdigest() == "021691ed892522e9204658fe5d83f95e9780e019f3e0fd1a809ca55a1376ec71"
+    requested = []
+
+    def fetch(url, **kwargs):
+        requested.append(url)
+        return (FIXTURE.read_bytes() if url == LIST_URL else page2), "text/html", url
+
+    monkeypatch.setattr(module, "fetch_public_url", fetch)
+    notices, coverage = discover_itu_notices(max_pages=2)
+    assert coverage == {"seen": 60, "reported_total": 517, "pages": 2, "complete": False}
+    assert len({notice.submission_id for notice in notices}) == 60
+    assert requested[1] == module._page_url(30)
+    assert "publication-table.p=" in requested[1]
 
 
 def test_persist_registry_candidates_without_ticker_or_alerts():
