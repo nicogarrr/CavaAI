@@ -16,6 +16,12 @@ export type VolumeStats = {
 const WINDOW = 20;
 
 export function volumeTrendStats(volumes: (number | null)[]): VolumeStats | null {
+    // Política de huecos: las ventanas COMPACTAN sesiones conocidas en vez
+    // de usar bloques cronológicos. Coherente con ignorar huecos, con una
+    // consecuencia aceptada: una racha reciente de null basa la estadística
+    // en sesiones más antiguas. Alternativa descartada (ventanas
+    // cronológicas): cualquier hueco en la ventana rompería la estadística
+    // de mercados con volumen irregular.
     const known = volumes.filter((volume): volume is number => volume !== null);
     // Una ventana reciente COMPLETA de sesiones conocidas como mínimo: con
     // menos, cualquier media aparenta una precisión que el dato no tiene.
