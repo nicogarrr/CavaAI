@@ -92,3 +92,16 @@ describe('F215: búsqueda con estado explícito', () => {
     assert.ok(add.includes('searchError'), 'debe tener estado de error visible');
   });
 });
+
+describe('F322: el diagnóstico del motor no se presenta como badges primarios', () => {
+    const page = readFileSync('app/(root)/search/page.tsx', 'utf8');
+
+    it('los pares crudos de retrieval van en un details «Detalles técnicos»', () => {
+        assert.match(page, /<summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-200">Detalles técnicos de la búsqueda<\/summary>/);
+    });
+
+    it('la puntuación del reranker no se etiqueta como «posición»', () => {
+        assert.doesNotMatch(page, />posición \{/);
+        assert.match(page, />puntuación \{/);
+    });
+});
