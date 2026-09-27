@@ -68,7 +68,7 @@ describe('alerts history traceability guard (F146)', () => {
             route.includes('desc(func.coalesce(ResearchAlert.last_triggered_at, ResearchAlert.created_at))'),
             'list_alerts debe ordenar por ultimo disparo real (fallback legacy created_at)',
         );
-        const migration = readSource('data-engine/alembic/versions/0036_research_alert_last_triggered_at.py');
+        const migration = readSource('data-engine/alembic/versions/0036_alert_last_triggered_at.py');
         assert.ok(
             !migration.includes('UPDATE research_alerts SET last_triggered_at'),
             'el backfill created_at -> last_triggered_at afirmaria una hora de ultimo disparo desconocida',

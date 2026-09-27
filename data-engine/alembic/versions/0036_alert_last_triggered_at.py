@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0036_research_alert_last_triggered_at"
+revision = "0036_alert_last_triggered_at"
 down_revision = "0035_market_price_adjclose_null"
 branch_labels = None
 depends_on = None
