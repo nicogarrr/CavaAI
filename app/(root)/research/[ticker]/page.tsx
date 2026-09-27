@@ -22,6 +22,7 @@ import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
 import { missingLayerAction, missingLayerLabel } from '@/lib/research/missing-layer-guidance';
+import { metricLabel } from '@/lib/research/metric-labels';
 import { MoatPanel } from '@/components/research/MoatPanel';
 import {
   DecisionAndRealityPanel,
@@ -172,6 +173,8 @@ const STATUS_LABELS: Record<string, string> = {
   refuted: 'refutada',
   open: 'abierta',
   available: 'disponible',
+  ok: 'disponible',
+  unavailable: 'no disponible',
   partial: 'parcial',
   missing: 'faltante',
   blocked: 'bloqueada',
@@ -284,7 +287,7 @@ function FactCard({ fact }: { fact: ResearchFact }) {
   return (
     <div className="rounded-lg border border-gray-800 p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-gray-200">{fact.metric}</span>
+        <span className="font-medium text-gray-200">{metricLabel(fact.metric)}</span>
         <span className="text-sm font-semibold text-teal-300">{metricValue(fact.value, fact.unit)}</span>
       </div>
       <div className="mt-1.5 flex flex-wrap gap-2 text-xs text-gray-500">
@@ -343,7 +346,7 @@ function FactTable({ facts, refreshLabel }: { facts: ResearchFact[]; refreshLabe
         <tbody>
           {facts.map((fact) => (
             <tr key={fact.id} className="text-gray-300">
-              <th className="border-b border-gray-900 py-2 text-left text-sm font-medium" scope="row">{fact.metric}</th>
+              <th className="border-b border-gray-900 py-2 text-left text-sm font-medium" scope="row">{metricLabel(fact.metric)}</th>
               <td className="border-b border-gray-900 py-2">{fact.period}</td>
               <td className="border-b border-gray-900 py-2 text-right">{metricValue(fact.value, fact.unit)}</td>
               <td className="border-b border-gray-900 py-2 text-right text-xs text-gray-500">{label(fact.source_type)}</td>
@@ -373,7 +376,7 @@ function MetricsGrid({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
               (net_debt_to_ebitda): sin min-w-0/break-all empujaba el badge
               fuera de la tarjeta a 768px. */}
           <div className="flex items-center justify-between gap-3">
-            <span className="min-w-0 break-all font-medium text-gray-200">{metric.metric}</span>
+            <span className="min-w-0 break-all font-medium text-gray-200">{metricLabel(metric.metric)}</span>
             <Badge className="shrink-0" variant="outline">{label(metric.status)}</Badge>
           </div>
           <div className="mt-2 text-xl text-teal-300">{metricValue(metric.value, metric.unit)}</div>
