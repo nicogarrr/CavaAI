@@ -19,12 +19,18 @@ type FileUploadInputProps = Omit<ComponentPropsWithoutRef<'input'>, 'type' | 'on
 export function FileUploadInput({ maxMB = MAX_UPLOAD_MB, className, id, name, ...props }: FileUploadInputProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  // F142: el texto del input file nativo («Choose File / No file chosen»)
+  // lo fija el idioma del NAVEGADOR, no el de la app - en una interfaz
+  // española se veía en inglés. El control real queda sr-only y el
+  // disparador visible es nuestro, en español, con el nombre del archivo.
+  const [fileName, setFileName] = useState<string | null>(null);
   const tooBig = warning !== null;
   const inputId = id ?? name ?? 'file-upload';
   const warningId = `${inputId}-limite`;
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    setFileName(file?.name ?? null);
     if (!file) {
       setWarning(null);
       event.target.setCustomValidity('');
@@ -102,9 +108,21 @@ export function FileUploadInput({ maxMB = MAX_UPLOAD_MB, className, id, name, ..
         type="file"
         aria-invalid={tooBig}
         aria-describedby={warningId}
-        className={cn(className, warning ? 'border-red-500' : null)}
+        className="sr-only"
         onChange={handleChange}
       />
+      <div className="flex min-h-[44px] items-center gap-3">
+        <label
+          htmlFor={inputId}
+          className={cn(
+            'inline-flex cursor-pointer items-center rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm font-medium text-gray-200 hover:border-gray-500 hover:text-white',
+            warning ? 'border-red-500' : null,
+          )}
+        >
+          Elegir archivo
+        </label>
+        <span className="truncate text-sm text-gray-400">{fileName ?? 'Ningún archivo seleccionado'}</span>
+      </div>
       {warning ? (
         <p id={warningId} role="alert" className="mt-1 text-xs text-red-400">
           {warning} El envío está bloqueado hasta que elijas un archivo válido.
