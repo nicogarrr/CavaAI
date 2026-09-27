@@ -51,10 +51,12 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
   const lane = query.lane === 'macro' || query.lane === 'empresa' ? query.lane : null;
   const events = await getResearchNews();
   // Filtro sobre la ventana que sirve la API (ultimos 100 eventos).
+  // 'empresa' = atribuida a una empresa real (ticker presente); un evento
+  // sin ticker que tampoco es macro solo aparece en 'Todas'.
   const filtered = lane === 'macro'
     ? events.filter((event) => event.news_lane === 'macro')
     : lane === 'empresa'
-      ? events.filter((event) => event.news_lane !== 'macro')
+      ? events.filter((event) => event.ticker !== null)
       : events;
   const requireUpdate = events.filter((e) => e.requires_update).length;
   const highMateriality = events.filter((e) => e.materiality_score >= 7).length;
@@ -75,7 +77,7 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
             </Link>
           </Button>
         }
-        description="Eventos de noticias clasificados por materialidad e impacto sobre posiciones de cartera."
+        description="Eventos de noticias clasificados por materialidad. Los de empresa muestran impacto sobre posiciones de cartera; el carril macro GDELT no tiene vínculo directo con posiciones."
         kicker="Inteligencia de mercado"
         title="Eventos de noticias"
       />
@@ -174,6 +176,9 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                       <div>{event.date.split('T')[0]}</div>
                       {event.date_source === 'ingested_at_fallback' ? (
                         <div className="mt-1 text-xs text-gray-500">fecha de ingesta · la fuente no da fecha</div>
+                      ) : null}
+                      {event.date_source === 'gdelt_first_seen' ? (
+                        <div className="mt-1 text-xs text-gray-500">primera detección de GDELT · no es la fecha de publicación</div>
                       ) : null}
                     </td>
                     <td className="max-w-[360px] py-3 text-gray-300">
