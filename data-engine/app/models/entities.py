@@ -462,6 +462,27 @@ class AlertAnalysis(TenantOwnedMixin, Base, TimestampMixin):
     result: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class ITUNotice(TenantOwnedMixin, Base, TimestampMixin):
+    """Unassigned official registry candidate, never a company mapping by name."""
+
+    __tablename__ = "itu_notices"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "submission_id", name="uq_itu_notice_submission"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    submission_id: Mapped[str] = mapped_column(String(20))
+    reference: Mapped[str] = mapped_column(String(40))
+    notice_id: Mapped[str] = mapped_column(String(40))
+    satellite_name: Mapped[str] = mapped_column(String(500))
+    br_registry_date: Mapped[str] = mapped_column(String(20))
+    submission_type: Mapped[str] = mapped_column(String(120))
+    act_code: Mapped[str] = mapped_column(String(10))
+    detail_url: Mapped[str] = mapped_column(String(1000))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
 class FinancialFact(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "financial_facts"
     __table_args__ = (
