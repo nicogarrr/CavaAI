@@ -1,0 +1,68 @@
+/**
+ * Etiquetas en español para las métricas canónicas del backend (F321).
+ *
+ * Cobertura: claves de FinancialFact (ingesta SEC/ESEF/FMP + derivadas en
+ * financial_ingestion_service.py) y de CalculatedMetric
+ * (metric_calculation_service.py). La ficha las mostraba en snake_case crudo
+ * («net_debt_to_ebitda»). Si el backend añade una clave nueva, el fallback
+ * la humaniza (guiones bajos -> espacios) en vez de ocultarla.
+ */
+export const METRIC_LABELS: Record<string, string> = {
+    // Hechos canónicos (financial_ingestion_service.py)
+    revenue: 'Ingresos',
+    gross_profit: 'Beneficio bruto',
+    operating_income: 'Resultado de explotación',
+    income_before_tax: 'Beneficio antes de impuestos',
+    income_tax_expense: 'Gasto por impuesto sobre beneficios',
+    interest_expense: 'Gastos financieros',
+    net_income: 'Beneficio neto',
+    ebitda: 'EBITDA',
+    eps_diluted: 'BPA diluido',
+    shares_diluted: 'Acciones diluidas (media)',
+    total_assets: 'Activos totales',
+    total_liabilities: 'Pasivos totales',
+    total_equity: 'Patrimonio neto',
+    total_debt: 'Deuda total',
+    net_debt: 'Deuda neta',
+    cash_and_equivalents: 'Efectivo y equivalentes',
+    goodwill: 'Fondo de comercio',
+    intangible_assets: 'Activos intangibles',
+    operating_lease_liabilities: 'Pasivos por arrendamientos operativos',
+    operating_cash_flow: 'Flujo de caja operativo',
+    capital_expenditure: 'Inversión de capital (CapEx)',
+    depreciation_amortization: 'Depreciación y amortización',
+    free_cash_flow: 'Flujo de caja libre',
+    dividends_paid: 'Dividendos pagados',
+    common_stock_repurchased: 'Recompra de acciones propias',
+    fcf_margin: 'Margen FCF',
+    gross_margin: 'Margen bruto',
+    operating_margin: 'Margen operativo',
+    net_margin: 'Margen neto',
+    effective_tax_rate: 'Tipo impositivo efectivo',
+    debt_to_equity: 'Deuda / patrimonio',
+    revenue_growth: 'Crecimiento de ingresos',
+    // Métricas calculadas (metric_calculation_service.py)
+    roic: 'ROIC',
+    roic_adjusted: 'ROIC ajustado',
+    roe: 'ROE',
+    roa: 'ROA',
+    fcf_conversion: 'Conversión de FCF',
+    net_debt_to_ebitda: 'Deuda neta / EBITDA',
+    asset_life: 'Vida útil media de los activos',
+    gross_investment: 'Inversión bruta',
+    inflation_adjusted_gross_cash_flow: 'Flujo de caja bruto ajustado por inflación',
+    non_depreciating_assets: 'Activos no depreciables',
+    terminal_non_depreciating_assets: 'Activos no depreciables (terminal)',
+    fcf_margin_5y: 'Margen FCF (5 años)',
+    net_margin_5y: 'Margen neto (5 años)',
+    wacc: 'WACC',
+    cfroi: 'CFROI',
+    cfroi_approx: 'CFROI aproximado',
+};
+
+/** Etiqueta en español de una métrica; humaniza la clave si es desconocida. */
+export function metricLabel(metric: string): string {
+    const known = METRIC_LABELS[metric];
+    if (known) return known;
+    return metric.replaceAll('_', ' ');
+}
