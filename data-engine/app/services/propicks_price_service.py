@@ -29,12 +29,53 @@ MIN_BARS_12M = 200
 METRIC_VERSION = "v1"
 
 
-def yahoo_symbol(company: Company) -> str:
-    """Ticker Yahoo: BME cotiza con sufijo .MC; el resto va en crudo."""
+# Sufijo Yahoo por bolsa del master: sin el, Yahoo resuelve el listado US por
+# defecto y devuelve el gemelo americano (ALM->Almonty) o el ADR (ASML).
+_US_EXCHANGE_TOKENS = ("NYSE", "NEW YORK", "NASDAQ", "AMEX", "OTC", "BATS", "ARCA")
+
+
+_EXCHANGE_YAHOO_SUFFIX = {
+    "BME": ".MC",
+    "BOLSA DE MADRID": ".MC",
+    "NYSE EURONEXT - EURONEXT AMSTERDAM": ".AS",
+    "TORONTO STOCK EXCHANGE": ".TO",
+    "SWISS EXCHANGE": ".SW",
+    # XETRA -> .DE verificado contra Yahoo chart API 2026-09-27: SAP.DE =
+    # exchange GER, divisa EUR, ~185,92 EUR (el ADR NYSE:SAP son ~210 USD).
+    "XETRA": ".DE",
+}
+
+
+def yahoo_symbol(company: Company) -> str | None:
+    """Ticker Yahoo del LISTADO REAL, o None si no hay simbolo seguro.
+
+    Yahoo resuelve el ticker pelado en la linea US: para un emisor no-US
+    devuelve el gemelo americano (TSM/TWSE -> ADR NYSE en USD guardado como
+    TWD) o un homonimo (EUR sin bolsa conocida con sufijo .MC adivinado).
+    Regla: bolsa mapeada -> sufijo; divisa USD -> ticker pelado (la USD es
+    evidencia de linea americana: bulk import UNKNOWN, NYSE, NASDAQ, OTC);
+    cualquier otra cosa -> None, y los consumidores (worker intradia y
+    refresh propicks) omiten el simbolo: «sin precio» antes que el precio
+    de otro instrumento."""
     ticker = (company.ticker or "").strip()
-    if (company.currency or "").upper() == "EUR" and "." not in ticker:
-        return f"{ticker}.MC"
-    return ticker
+    if not ticker:
+        return None
+    if "." in ticker:
+        return ticker
+    exchange = (getattr(company, "exchange", "") or "").strip().upper()
+    currency = (getattr(company, "currency", "") or "").strip().upper()
+    suffix = _EXCHANGE_YAHOO_SUFFIX.get(exchange)
+    if suffix:
+        return f"{ticker}{suffix}"
+    us_exchange = not exchange or exchange == "UNKNOWN" or any(
+        token in exchange for token in _US_EXCHANGE_TOKENS
+    )
+    if currency == "USD" and us_exchange:
+        # La USD es evidencia de linea americana (bulk import UNKNOWN, NYSE,
+        # NASDAQ, OTC). Bolsa conocida no-US con USD (SHEL LSE/USD): la linea
+        # US no es el instrumento que declara la bolsa -> None.
+        return ticker
+    return None
 
 
 @dataclass(frozen=True)
@@ -235,7 +276,7 @@ def refresh_propicks_prices(
     companies = latest_run_top_companies(db, top_n=top_n)
     if not companies:
         return {"status": "skipped", "reason": "no completed propick run", "companies": 0}
-    symbols = {yahoo_symbol(c): c for c in companies}
+    symbols = {s: c for c in companies if (s := yahoo_symbol(c)) is not None}
     history = fetcher(list(symbols), period=period)
     bars_written = 0
     covered: list[Company] = []
