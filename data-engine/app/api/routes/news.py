@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import Company, NewsEvent
 from app.schemas import ManualNewsRequest, ManualNewsResponse, NewsIngestRequest, NewsIngestResponse
-from app.services.materiality_service import MaterialityService
 from app.services.news_service import NewsService
 from app.services.second_order_news_service import analyze_second_order
 
@@ -30,20 +29,13 @@ def news_events(db: Session = Depends(get_db)) -> list[dict]:
         .order_by(desc(NewsEvent.date))
         .limit(100)
     ).all()
-    materiality = MaterialityService()
     events = []
     for event, company in rows:
-        # Solo lectura: sin Jev (evita N llamadas externas; el score
-        # persistido en ingesta ya incluye el ajuste Jev).
-        assessment = materiality.assess_news(
-            db,
-            company,
-            event.summary or event.title,
-            event.source,
-            event.url,
-            use_jev=False,
-            published_at=event.date,
-        )
+        # Solo lo persistido en ingesta (F314): recomputar por peticion
+        # costaba una evaluacion por noticia y podia divergir de lo
+        # persistido. Eventos legacy sin assessment persistido -> nulls
+        # honestos (la UI los muestra como N/D).
+        persisted = (event.metadata_ or {}).get("assessment") or {}
         events.append(
             {
                 "id": event.id,
@@ -60,12 +52,12 @@ def news_events(db: Session = Depends(get_db)) -> list[dict]:
                 # Carril macro GDELT (#564): None en eventos de empresa.
                 "news_lane": (event.metadata_ or {}).get("news_lane"),
                 "macro_theme": (event.metadata_ or {}).get("macro_theme"),
-                "source_tier": assessment.source_tier,
-                "source_trust_score": assessment.source_trust_score,
-                "portfolio_weight": assessment.portfolio_weight,
-                "materiality_reasons": assessment.reasons,
-                "source_policy": assessment.source_policy,
-                "model_route": assessment.model_route,
+                "source_tier": persisted.get("source_tier"),
+                "source_trust_score": persisted.get("source_trust_score"),
+                "portfolio_weight": persisted.get("portfolio_weight"),
+                "materiality_reasons": persisted.get("materiality_reasons"),
+                "source_policy": persisted.get("source_policy"),
+                "model_route": persisted.get("model_route"),
             }
         )
     return events
