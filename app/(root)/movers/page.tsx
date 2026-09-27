@@ -32,33 +32,33 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
     return <p className="text-sm text-gray-500">Sin datos todavía — en cuanto haya precios registrados aparecerán aquí.</p>;
   }
   return (
-    <div aria-label={caption} className="overflow-x-auto" role="region" tabIndex={0}>
+    <div aria-label={caption} className="scroll-affordance-x overflow-x-auto [contain:layout_paint]" role="region" tabIndex={0}>
       <table className="w-full text-left text-sm">
         <caption className="sr-only">{caption}</caption>
         <thead className="text-xs uppercase text-gray-500">
           <tr>
-            <th className="border-b border-gray-800 py-2 pr-3" scope="col">Empresa</th>
-            <th className="border-b border-gray-800 px-3 py-2 text-right" scope="col">Precio</th>
-            <th className="border-b border-gray-800 px-3 py-2 text-right" scope="col">Cambio</th>
-            <th className="border-b border-gray-800 py-2 pl-3 text-right" scope="col">Volumen</th>
+            <th className="border-b border-gray-800 py-2 pr-2" scope="col">Empresa</th>
+            <th className="border-b border-gray-800 px-2 py-2 text-right" scope="col">Precio</th>
+            <th className="border-b border-gray-800 px-2 py-2 text-right" scope="col">Cambio</th>
+            <th className="border-b border-gray-800 py-2 pl-2 text-right" scope="col">Volumen</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr className="border-b border-gray-900" key={row.ticker}>
-              <th className="py-3 pr-3 text-left text-sm font-normal" scope="row">
+              <th className="py-3 pr-2 text-left text-sm font-normal" scope="row">
                 <Link className="font-semibold text-teal-300 hover:text-teal-200" href={`/research/${row.ticker}`}>
                   {row.ticker}
                 </Link>
                 {row.name && row.name.trim().toUpperCase() !== row.ticker.trim().toUpperCase() ? (
-                  <div className="max-w-28 truncate text-xs text-gray-500" title={row.name}>{row.name}</div>
+                  <div className="max-w-20 truncate text-xs text-gray-500" title={row.name}>{row.name}</div>
                 ) : null}
               </th>
-              <td className="py-3 px-3 text-right whitespace-nowrap text-gray-300">{formatPrice(row.price, safeCurrency(row.currency))}</td>
-              <td className={`py-3 px-3 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
+              <td className="py-3 px-2 text-right whitespace-nowrap text-gray-300">{formatPrice(row.price, safeCurrency(row.currency))}</td>
+              <td className={`py-3 px-2 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
               </td>
-              <td className="py-3 pl-3 text-right whitespace-nowrap text-gray-400">{row.volume === null ? '—' : formatCompact(row.volume, { maximumFractionDigits: 1 })}</td>
+              <td className="py-3 pl-2 text-right whitespace-nowrap text-gray-400">{row.volume === null ? '—' : formatCompact(row.volume, { maximumFractionDigits: 1 })}</td>
             </tr>
           ))}
         </tbody>
