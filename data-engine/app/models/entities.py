@@ -447,6 +447,21 @@ class PrimarySourceRecord(TenantOwnedMixin, Base, TimestampMixin):
     reference_kind: Mapped[str] = mapped_column(String(80))
 
 
+class AlertAnalysis(TenantOwnedMixin, Base, TimestampMixin):
+    """Immutable result versions per alert; status moves pending to a final state."""
+
+    __tablename__ = "alert_analyses"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "alert_id", "version", name="uq_alert_analysis_version"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alert_id: Mapped[int] = mapped_column(ForeignKey("research_alerts.id", ondelete="CASCADE"), index=True)
+    news_event_id: Mapped[int] = mapped_column(ForeignKey("news_events.id"), index=True)
+    version: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(40))
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class FinancialFact(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "financial_facts"
     __table_args__ = (

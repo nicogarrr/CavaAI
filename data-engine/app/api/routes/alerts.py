@@ -239,6 +239,16 @@ def list_alerts(
     return result
 
 
+@router.get("/{alert_id}/analysis")
+def get_alert_analysis(alert_id: int, db: Session = Depends(get_db)) -> dict:
+    from app.services.alert_analysis_service import read_analysis
+
+    try:
+        return read_analysis(db, alert_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/{alert_id}/action", response_model=ResearchAlertOut)
 def action_alert(
     alert_id: int,
