@@ -186,7 +186,8 @@ export default async function ResearchSourcesPage() {
         {documentsTotal > documents.length ? (
           <p className="mb-4 text-sm text-gray-500">
             Mostrando los {formatNumber(documents.length, { maximumFractionDigits: 0 })} más recientes de{' '}
-            {formatNumber(documentsTotal, { maximumFractionDigits: 0 })}.
+            {formatNumber(documentsTotal, { maximumFractionDigits: 0 })} por fecha de publicación; los
+            documentos sin fecha van al final.
           </p>
         ) : null}
         <div aria-label="Documentos importados" className="overflow-x-auto" role="region" tabIndex={0}>
@@ -209,7 +210,9 @@ export default async function ResearchSourcesPage() {
                   <td className="py-3 text-gray-300">{document.title}</td>
                   <td className="py-3 text-gray-400">{document.source_type}</td>
                   <td className="py-3 text-gray-400">{document.source_tier}</td>
-                  <td className="py-3 text-gray-500">{formatDate(document.published_at, undefined, NA)}</td>
+                  <td className="py-3 text-gray-500">
+                    {document.published_at ? formatDate(document.published_at, undefined, NA) : 'sin fecha'}
+                  </td>
                   <td className="py-3 text-gray-500">
                     {document.source_url ? (
                       <a className="text-teal-300 hover:text-teal-200" href={document.source_url} rel="noreferrer" target="_blank">
