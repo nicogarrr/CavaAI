@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.models import MarketObservation, MarketRegimeSnapshot
 from app.services.market_observation_service import FRED_SERIES
+from app.services.market_regime_quant import observed_hmm, portfolio_beta, top_ten_concentration
 
-MODEL_VERSION = "macro-context-v1"
+MODEL_VERSION = "macro-context-hmm-v2"
 
 
 def build_snapshot(db: Session, as_of: date, generated_at: datetime | None = None) -> MarketRegimeSnapshot:
@@ -57,7 +58,12 @@ def build_snapshot(db: Session, as_of: date, generated_at: datetime | None = Non
     coverage = (
         "unavailable" if not evidence_ids else "ok" if len(evidence_ids) == len(FRED_SERIES) else "partial"
     )
-    checksum = hashlib.sha256(json.dumps(metrics, sort_keys=True).encode()).hexdigest()
+    hmm = observed_hmm(db, as_of, generated_at)
+    metrics["hmm"] = {key: value for key, value in hmm.items() if key != "probabilities"}
+    probabilities = hmm.get("probabilities", {})
+    # No complete point-in-time constituent/capitalization feed is configured.
+    metrics["top_ten_sp500"] = top_ten_concentration(set(), {}, as_of)
+    checksum = hashlib.sha256(json.dumps({"metrics": metrics, "probabilities": probabilities}, sort_keys=True).encode()).hexdigest()
     previous = db.scalar(
         select(MarketRegimeSnapshot).where(
             MarketRegimeSnapshot.snapshot_date == as_of,
@@ -72,7 +78,7 @@ def build_snapshot(db: Session, as_of: date, generated_at: datetime | None = Non
         model_version=MODEL_VERSION,
         input_hash=checksum,
         metrics=metrics,
-        probabilities={},
+        probabilities=probabilities,
         evidence_ids=evidence_ids,
         coverage=coverage,
         generated_at=generated_at,
@@ -107,5 +113,6 @@ def latest_snapshot(db: Session) -> dict:
         "model_version": snapshot.model_version,
         "metrics": snapshot.metrics,
         "probabilities": snapshot.probabilities,
-        "note": "Contexto macro observado. Régimen probabilístico aún sin datos.",
+        "portfolio_beta": portfolio_beta(db, snapshot.snapshot_date),
+        "note": "Probabilidades filtradas sin etiqueta económica; métricas faltantes indican sin datos.",
     }
