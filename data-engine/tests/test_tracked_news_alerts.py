@@ -158,14 +158,22 @@ def test_actual_feed_ingestion_preserves_headline_before_alert_gate(db, monkeypa
     tenant, _, company, _ = _setup(db)
     db.info["tenant_id"] = tenant.id
 
-    def ingest_stub(self, session, items, default_source="feed"):
-        # Exercise actual FeedIngestionService mapping and source-headline
-        # enrichment; isolate expensive thesis/LLM side effects in NewsService.
+    def ingest_stub(self, session, items, default_source="feed", connector=None,
+                    date_source_label=None):
+        # Exercise actual FeedIngestionService mapping and creation-time
+        # provenance/headline enrichment; isolate expensive thesis/LLM side
+        # effects in NewsService.
         for item in items:
+            metadata = {"date_source": (date_source_label or "source") if item.published_at
+                        else "ingested_at_fallback"}
+            if connector:
+                metadata["connector"] = connector
+            if item.title:
+                metadata["source_headline"] = item.title[:500]
             session.add(NewsEvent(tenant_id=tenant.id, company_id=company.id,
                                   title=f"{company.ticker} {item.title} {item.text}",
                                   source=item.source, url=item.url, date=item.published_at,
-                                  metadata_={"date_source": "source"}))
+                                  metadata_=metadata))
         session.commit()
         return NewsIngestResponse(status="ingested", received=len(items), created=len(items),
                                   skipped_duplicates=0, requires_update=0, events=[])
