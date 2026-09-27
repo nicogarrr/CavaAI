@@ -115,7 +115,7 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: 'Analisis',
+    title: 'Análisis',
     items: [
       {
         href: '/research',
@@ -143,7 +143,7 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: 'Senales',
+    title: 'Señales',
     items: [
       { href: '/watchlist', label: 'Watchlist', icon: Star },
       { href: '/movers', label: 'Movers', icon: TrendingUp },
