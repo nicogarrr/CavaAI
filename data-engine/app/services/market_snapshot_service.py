@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import MarketObservation, MarketRegimeSnapshot
 from app.services.market_observation_service import FRED_SERIES
-from app.services.market_regime_quant import observed_hmm, portfolio_beta, top_ten_concentration
+from app.services.market_regime_quant import observed_hmm, top_ten_concentration
 
 MODEL_VERSION = "macro-context-hmm-v2"
 
@@ -63,15 +63,12 @@ def build_snapshot(db: Session, as_of: date, generated_at: datetime | None = Non
     probabilities = hmm.get("probabilities", {})
     # No complete point-in-time constituent/capitalization feed is configured.
     metrics["top_ten_sp500"] = top_ten_concentration(set(), {}, as_of)
-    # Beta fijada en el snapshot: las posiciones no tienen dimensión histórica,
-    # así que una respuesta auditable exige persistir el cálculo con su corte
-    # en vez de recalcularlo en cada GET con la cartera del momento.
-    beta = portfolio_beta(db, as_of)
+    # La beta de cartera NO va en el snapshot global: el builder corre con
+    # sesión sin tenant y portfolio_beta mezclaría posiciones de todos los
+    # tenants (fuga). Marcador honesto hasta la beta tenant-scoped.
     metrics["portfolio_beta"] = {
-        **beta,
-        "as_of": as_of.isoformat(),
-        "computed_at": generated_at.isoformat(),
-        "method": "beta 63/252 vs S&P 500 con cierres ajustados emparejados; posiciones del tenant en el momento del snapshot",
+        "status": "no_disponible",
+        "reason": "beta por tenant pendiente de aislamiento por tenant; el snapshot macro es global y no mezcla carteras",
     }
     checksum = hashlib.sha256(json.dumps({"metrics": metrics, "probabilities": probabilities}, sort_keys=True).encode()).hexdigest()
     previous = db.scalar(
@@ -125,7 +122,7 @@ def latest_snapshot(db: Session) -> dict:
         "probabilities": snapshot.probabilities,
         "portfolio_beta": snapshot.metrics.get(
             "portfolio_beta",
-            {"status": "sin datos", "reason": "snapshot sin beta persistida"},
+            {"status": "no_disponible", "reason": "beta por tenant no expuesta hasta aislamiento por tenant"},
         ),
         "note": "Probabilidades filtradas sin etiqueta económica; métricas faltantes indican sin datos.",
     }
