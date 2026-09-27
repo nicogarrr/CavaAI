@@ -218,7 +218,7 @@ def _fetch_yahoo_candles(
         o: list[float] = []
         h: list[float] = []
         l: list[float] = []
-        v: list[float] = []
+        v: list[float | None] = []
         for index, close in enumerate(closes_raw):
             if close is None:
                 continue
@@ -228,7 +228,10 @@ def _fetch_yahoo_candles(
             o.append(float(opens_raw[index]) if opens_raw[index] is not None else close)
             h.append(float(highs_raw[index]) if highs_raw[index] is not None else close)
             l.append(float(lows_raw[index]) if lows_raw[index] is not None else close)
-            v.append(float(volumes_raw[index]) if volumes_raw and volumes_raw[index] is not None else 0.0)
+            # F318: volumen desconocido = None (la UI muestra N/D y el
+            # análisis técnico lo ignora), nunca un 0.0 fabricado que se
+            # presenta como dato conocido y arrastra las medias a 0/0.
+            v.append(float(volumes_raw[index]) if volumes_raw and volumes_raw[index] is not None else None)
         if not c:
             return None
         return {"s": "ok", "c": c, "t": t, "o": o, "h": h, "l": l, "v": v}

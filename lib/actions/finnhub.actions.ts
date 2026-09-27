@@ -15,10 +15,11 @@ import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 // convertiria en un Server Action invocable por HTTP con una URL arbitraria
 // (SSRF). Ver lib/upstream/finnhub.ts.
 import { fetchJSON, redactUrl } from '@/lib/upstream/finnhub';
+import { volumeTrendStats } from '@/lib/market/volume-trend';
 
 const FINNHUB_BASE_URL = env.FINNHUB_BASE_URL;
 
-export type FinnhubCandles = { s: 'ok' | 'no_data'; c: number[]; t: number[]; o: number[]; h: number[]; l: number[]; v: number[] };
+export type FinnhubCandles = { s: 'ok' | 'no_data'; c: number[]; t: number[]; o: number[]; h: number[]; l: number[]; v: (number | null)[] };
 
 export async function getCandles(symbol: string, from: number, to: number, resolution: 'D' | 'W' | 'M' | '60' = 'D', revalidateSeconds = 1800): Promise<FinnhubCandles> {
     await requireAuthenticatedUser();
@@ -337,15 +338,11 @@ export async function getTechnicalAnalysis(symbol: string, days = 252): Promise<
         if (changePercent > 3) trend = 'up';
         else if (changePercent < -3) trend = 'down';
 
-        // Análisis de volumen
-        const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
-        const previousAvgVolume = volumes.slice(-40, -20).reduce((a, b) => a + b, 0) / 20;
-        let volumeTrend: 'increasing' | 'decreasing' | 'stable' = 'stable';
-        const volumeChangePercent = ((avgVolume - previousAvgVolume) / previousAvgVolume) * 100;
-        if (volumeChangePercent > 10) volumeTrend = 'increasing';
-        else if (volumeChangePercent < -10) volumeTrend = 'decreasing';
+        // Análisis de volumen: solo sesiones con volumen CONOCIDO (F318);
+        // con huecos o datos insuficientes no se aparenta estadística.
+        const volumeStats = volumeTrendStats(volumes);
 
-        return { support, resistance, trend, avgVolume, volumeTrend };
+        return { support, resistance, trend, avgVolume: volumeStats?.avgVolume, volumeTrend: volumeStats?.volumeTrend ?? undefined };
     } catch (error) {
         console.error('Error calculating technical analysis for', symbol, error);
         return null;
