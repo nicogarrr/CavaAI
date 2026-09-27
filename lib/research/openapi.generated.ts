@@ -3709,6 +3709,11 @@ export interface components {
         CompanySnapshotOut: {
             company: components["schemas"]["CompanyOut"];
             counts: components["schemas"]["SnapshotCountsOut"];
+            /**
+             * In Portfolio
+             * @default false
+             */
+            in_portfolio: boolean;
             latest_thesis?: components["schemas"]["SnapshotThesisSummaryOut"] | null;
             model_summary?: components["schemas"]["SnapshotModelSummaryOut"] | null;
             /** Recent Changes */

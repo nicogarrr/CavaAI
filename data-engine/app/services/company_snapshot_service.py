@@ -11,6 +11,7 @@ from app.models import (
     Document,
     FinancialFact,
     FundamentalModelVersion,
+    Position,
     ResearchAlert,
     ResearchReview,
     ThesisChange,
@@ -21,6 +22,31 @@ from app.schemas import CompanySnapshotOut
 
 
 class CompanySnapshotService:
+    @staticmethod
+    def _held_company_ids(db: Session, company_ids: list[int]) -> set[int]:
+        """company_ids con posicion viva (cantidad > 0) del tenant actual.
+
+        La tenencia es por tenant y vive en ``positions``;
+        ``companies.company_type`` es una etiqueta estatica fijada en el
+        alta de la ficha (F143). Sin tenant en la sesion no se afirma
+        tenencia. El filtro de tenant es explicito: los criterios de carga
+        no alcanzan consultas de agregacion.
+        """
+        tenant_id = db.info.get("tenant_id")
+        if tenant_id is None or not company_ids:
+            return set()
+        return set(
+            db.scalars(
+                select(Position.company_id)
+                .where(
+                    Position.tenant_id == tenant_id,
+                    Position.company_id.in_(company_ids),
+                    Position.quantity > 0,
+                )
+                .distinct()
+            ).all()
+        )
+
     """Build the small workspace bootstrap exclusively from persisted rows.
 
     This service deliberately contains no calculator, model builder, graph
@@ -56,7 +82,16 @@ class CompanySnapshotService:
             ).all()
         )
         counts = self._counts(db, company.id)
-        return self._assemble(company, thesis, model, valuation_model, recent_changes, counts)
+        held = self._held_company_ids(db, [company.id])
+        return self._assemble(
+            company,
+            thesis,
+            model,
+            valuation_model,
+            recent_changes,
+            counts,
+            in_portfolio=company.id in held,
+        )
 
     def build_many(
         self, db: Session, companies: list[Company]
@@ -103,6 +138,7 @@ class CompanySnapshotService:
         )
         changes = self._recent_changes_many(db, company_ids)
         counts = self._counts_many(db, company_ids)
+        held = self._held_company_ids(db, company_ids)
         return {
             company.id: self._assemble(
                 company,
@@ -111,6 +147,7 @@ class CompanySnapshotService:
                 valuations.get(company.id),
                 changes.get(company.id, []),
                 counts[company.id],
+                in_portfolio=company.id in held,
             )
             for company in companies
         }
@@ -211,6 +248,7 @@ class CompanySnapshotService:
         valuation_model: ValuationModel | None,
         recent_changes: list[ThesisChange],
         counts: dict[str, int],
+        in_portfolio: bool = False,
     ) -> CompanySnapshotOut:
         missing: list[str] = []
         if counts["documents"] == 0:
@@ -297,6 +335,7 @@ class CompanySnapshotService:
         return CompanySnapshotOut.model_validate(
             {
                 "company": company,
+                "in_portfolio": in_portfolio,
                 "latest_thesis": thesis_summary,
                 "valuation_summary": {
                     "model_id": valuation_model.id if valuation_model else None,
