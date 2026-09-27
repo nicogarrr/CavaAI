@@ -207,12 +207,21 @@ class CompanySnapshotService:
     def _counts_many(db: Session, company_ids: list[int]) -> dict[int, dict[str, int]]:
         """Los 8 conteos por empresa: una query GROUP BY por tabla, no por empresa."""
 
+        # F315: with_loader_criteria no alcanza a los agregados
+        # (func.count() select_from): TODAS las entidades tenant-owned se
+        # filtran explicitamente, no solo documents. Company es global y
+        # compartida entre tenants; sin este filtro un snapshot sumaba los
+        # facts/metrics/claims/versions/reviews/alerts de otros tenants.
+        tenant_id = db.info.get("tenant_id")
+
         def grouped(entity: type, *extra_where) -> dict[int, int]:
             stmt = (
                 select(entity.company_id, func.count())
                 .where(entity.company_id.in_(company_ids), *extra_where)
                 .group_by(entity.company_id)
             )
+            if tenant_id is not None:
+                stmt = stmt.where(entity.tenant_id == tenant_id)
             return {int(cid): int(n) for cid, n in db.execute(stmt).all()}
 
         facts = grouped(FinancialFact)
@@ -232,7 +241,6 @@ class CompanySnapshotService:
         # select_from): sin filtro explícito una empresa compartida entre
         # tenants sumaría los documentos de todos. Mismo patrón que
         # /documents/count.
-        tenant_id = db.info.get("tenant_id")
         if tenant_id is not None:
             documents_stmt = documents_stmt.where(Document.tenant_id == tenant_id)
         documents = {int(cid): int(n) for cid, n in db.execute(documents_stmt).all()}
@@ -402,50 +410,36 @@ class CompanySnapshotService:
         )
         if tenant_id is not None:
             documents_subquery = documents_subquery.where(Document.tenant_id == tenant_id)
+
+        # F315: las 7 entidades tenant-owned se cuentan con filtro de
+        # tenant explícito (los agregados no heredan with_loader_criteria);
+        # Company es global y compartida entre tenants.
+        def scoped_count(entity: type, *extra_where):
+            stmt = (
+                select(func.count())
+                .select_from(entity)
+                .where(entity.company_id == company_id, *extra_where)
+            )
+            if tenant_id is not None:
+                stmt = stmt.where(entity.tenant_id == tenant_id)
+            return stmt.scalar_subquery()
+
         row = db.execute(
             select(
-                select(func.count())
-                .select_from(FinancialFact)
-                .where(FinancialFact.company_id == company_id)
-                .scalar_subquery()
-                .label("facts"),
-                select(func.count())
-                .select_from(CalculatedMetric)
-                .where(CalculatedMetric.company_id == company_id)
-                .scalar_subquery()
-                .label("calculated_metrics"),
+                scoped_count(FinancialFact).label("facts"),
+                scoped_count(CalculatedMetric).label("calculated_metrics"),
                 documents_subquery.scalar_subquery().label("documents"),
-                select(func.count())
-                .select_from(Claim)
-                .where(Claim.company_id == company_id)
-                .scalar_subquery()
-                .label("claims"),
-                select(func.count())
-                .select_from(ThesisVersion)
-                .where(ThesisVersion.company_id == company_id)
-                .scalar_subquery()
-                .label("thesis_versions"),
-                select(func.count())
-                .select_from(FundamentalModelVersion)
-                .where(FundamentalModelVersion.company_id == company_id)
-                .scalar_subquery()
-                .label("model_versions"),
-                select(func.count())
-                .select_from(ResearchReview)
-                .where(
-                    ResearchReview.company_id == company_id,
+                scoped_count(Claim).label("claims"),
+                scoped_count(ThesisVersion).label("thesis_versions"),
+                scoped_count(FundamentalModelVersion).label("model_versions"),
+                scoped_count(
+                    ResearchReview,
                     ResearchReview.status.in_(["open", "in_progress"]),
-                )
-                .scalar_subquery()
-                .label("open_reviews"),
-                select(func.count())
-                .select_from(ResearchAlert)
-                .where(
-                    ResearchAlert.company_id == company_id,
+                ).label("open_reviews"),
+                scoped_count(
+                    ResearchAlert,
                     ResearchAlert.status.in_(["open", "snoozed"]),
-                )
-                .scalar_subquery()
-                .label("open_alerts"),
+                ).label("open_alerts"),
             )
         ).one()
         return {
