@@ -90,8 +90,10 @@ def evaluate(db: Session, *, now: datetime | None = None, limit: int = 500) -> d
         # date. Both are usable recency evidence, but NEVER conflate them.
         provenance = event.metadata_ or {}
         date_source = provenance.get("date_source")
+        # Old GDELT rows say `source` even though seendate is first-seen,
+        # not publication. The fallback marker remains ineligible.
         if provenance.get("connector") == "gdelt" and date_source == "source":
-            date_source = "gdelt_first_seen"  # pre-fix GDELT rows
+            date_source = "gdelt_first_seen"
         # Only trusted ingestion connectors, not arbitrary manual inputs.
         if (not url or not (event.source or "").strip() or
                 provenance.get("connector") not in {"gdelt", "rss", "ir", "sec"} or
