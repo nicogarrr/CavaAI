@@ -12,3 +12,13 @@ test('F280: el header de /portfolio apila título y acciones hasta lg', () => {
     assert.match(tabs, /flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between/);
     assert.doesNotMatch(tabs, /gap-4 mb-6 sm:flex-row/);
 });
+
+const summary = readFileSync('components/portfolio/PortfolioSummary.tsx', 'utf8');
+
+test('F328: los importes del resumen se escalan a 360px en vez de recortarse', () => {
+    // La grid-cols-2 a 360px deja cada tarjeta en ~164px y overflow-hidden
+    // recortaba el importe (~21.5px): text-base -> text-lg -> text-2xl.
+    const escalados = summary.match(/text-base min-\[420px\]:text-lg sm:text-2xl font-bold/g) ?? [];
+    assert.equal(escalados.length, 4);
+    assert.doesNotMatch(summary, /text-xl sm:text-2xl font-bold/);
+});
