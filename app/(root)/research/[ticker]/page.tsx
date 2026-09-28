@@ -374,7 +374,7 @@ function MetricsGrid({ metrics }: { metrics: ResearchCalculatedMetric[] }) {
     );
   }
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {metrics.map((metric) => (
         <div className="rounded-lg border border-gray-800 p-4" key={`${metric.metric}-${metric.period}-${metric.definition_version}`}>
           {/* F320: el nombre de métrica es un token largo irrompible
@@ -436,7 +436,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
   if (notPublishable) {
     return (
       <div className="space-y-3">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Stat label={modelPriceLabel} value={formatMoney(valuation.current_price, currency)} />
         </div>
         <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-4 text-sm text-amber-200">
@@ -449,7 +449,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
           {missingInputs.length ? <p className="mt-2 text-xs">Entradas faltantes: {missingInputs.join(', ')}.</p> : null}
           {engineNotice ? <p className="mt-2 text-xs text-amber-200/70">Nota del motor: {engineNotice}</p> : null}
         </div>
-        <div className="grid gap-4 opacity-60 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 opacity-60 sm:grid-cols-3">
           <Stat label="Bear (orientación)" value={formatMoney(valuation.bear_value, currency)} />
           <Stat label="Base (orientación)" value={formatMoney(valuation.base_value, currency)} />
           <Stat label="Bull (orientación)" value={formatMoney(valuation.bull_value, currency)} />
@@ -464,7 +464,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
   }
   return (
     <div className="space-y-3">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label={modelPriceLabel} value={formatMoney(valuation.current_price, currency)} />
         <Stat label="Bear" value={formatMoney(valuation.bear_value, currency)} />
         <Stat label="Base" value={formatMoney(valuation.base_value, currency)} />
@@ -492,7 +492,7 @@ function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel
   const opportunity = model.market_opportunity;
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Stat label="TAM (mercado total)" value={metricValue(opportunity.top_down.tam.value, opportunity.top_down.tam.unit)} />
         <Stat label="SAM (mercado atendible)" value={metricValue(opportunity.top_down.sam.value, opportunity.top_down.sam.unit)} />
         <Stat label="SOM (mercado obtenible)" value={metricValue(opportunity.top_down.som.value, opportunity.top_down.som.unit)} />
@@ -647,7 +647,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     // que las dos pestañas parecieran la misma.
     content = (
       <div className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Stat label="Salud del research" value={`${snapshot.research_health.score}/100`} />
           <Stat label="Hechos" value={snapshot.counts.facts} />
           <Stat label="Afirmaciones" value={snapshot.counts.claims} />
@@ -658,7 +658,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           +10 afirmaciones. Sin tesis la nota se topa en 59; sin afirmaciones,
           en 69. Una nota alta sin tesis ni afirmaciones sería falsa seguridad.
         </p>
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <Panel title="Última tesis">
             {snapshot.latest_thesis ? (
               <>
@@ -790,7 +790,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           density="compact"
           title="Por dónde seguir"
         >
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               ['Modelo a largo plazo', 'model'],
               ['Oportunidad de mercado', 'market-opportunity'],
@@ -885,7 +885,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         </Panel>
         <Panel title="Secciones de tesis específicas de la empresa" collapsible="mobile">
           {data.sections.length ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {data.sections.map((section) => (
                 <div className="rounded-lg border border-gray-800 p-4" key={section.id}>
                   <div className="flex justify-between gap-3"><h3 className="font-medium text-gray-200">{section.title}</h3><Badge variant="outline">{label(section.status)}</Badge></div>
@@ -945,7 +945,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             )}
           </div>
         </Panel>
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <Panel title="Revisiones abiertas"><div className="space-y-2">{data.reviews.length ? data.reviews.map((review) => <div className="rounded-lg border border-gray-800 p-3 text-sm text-gray-300" key={review.id}>{review.title}</div>) : <EmptyState title="Sin revisiones abiertas." />}</div></Panel>
           <Panel title="Alertas"><div className="space-y-2">{data.alerts.length ? data.alerts.map((alert) => <div className="rounded-lg border border-gray-800 p-3 text-sm" key={alert.id}><Badge variant="outline">{label(alert.severity)}</Badge><p className="mt-2 text-gray-300">{alert.message}</p></div>) : <EmptyState title="Sin alertas." />}</div></Panel>
         </div>
@@ -994,7 +994,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-5">
         <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Evaluación del foso refrescada"><Button type="submit" variant="outline"><ShieldCheck className="mr-2 h-4 w-4" />Reevaluar evidencia</Button></MutationForm>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {moat?.moats.length ? moat.moats.map((item) => {
             const definition = moatDefinition(item.type);
             return (
@@ -1023,7 +1023,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <Panel title="Conjunto de comparables"><p className="text-sm text-gray-300">{peers.comparison?.basis ? (PEERS_BASIS_LABELS[peers.comparison.basis] ?? peers.comparison.basis) : 'Sin conjunto de comparables'} · {peers.comparison?.peer_count ?? 0} comparables</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
-        <Panel title="Métricas comparables"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Objetivo {value.target_value ?? 'desconocido'}{value.target_atypical ? ' (atípico: posible ganancia no operativa)' : ''} · mediana {value.peer_median ?? 'desconocida'} · n={value.peer_sample_size}</div>{(value.excluded_atypical ?? []).length > 0 ? <div className="mt-1 text-xs text-amber-300/80">Fuera de la mediana: {(value.excluded_atypical ?? []).map((ex) => `${ex.ticker} ${ex.value ?? 's/d'}`).join(', ')} - lectura atípica verificable, no benchmark</div> : null}</div>)}</div></Panel>
+        <Panel title="Métricas comparables"><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{Object.entries(peers.comparison?.benchmarks ?? {}).map(([metric, value]) => <div className="rounded-lg border border-gray-800 p-3" key={metric}><div className="text-sm text-gray-200">{metric}</div><div className="mt-2 text-xs text-gray-500">Objetivo {value.target_value ?? 'desconocido'}{value.target_atypical ? ' (atípico: posible ganancia no operativa)' : ''} · mediana {value.peer_median ?? 'desconocida'} · n={value.peer_sample_size}</div>{(value.excluded_atypical ?? []).length > 0 ? <div className="mt-1 text-xs text-amber-300/80">Fuera de la mediana: {(value.excluded_atypical ?? []).map((ex) => `${ex.ticker} ${ex.value ?? 's/d'}`).join(', ')} - lectura atípica verificable, no benchmark</div> : null}</div>)}</div></Panel>
         <Panel title="Ventajas y desventajas"><p className="text-sm text-gray-400">{peers.analysis?.methodology ? (PEERS_METHODOLOGY_ES[peers.analysis.methodology] ?? peers.analysis.methodology) : 'Sin análisis de comparables persistido.'}</p><p className="mt-3 text-xs text-amber-300">{peers.analysis?.insufficient_data.join(', ')}</p></Panel>
       </div>
     );
@@ -1033,9 +1033,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     const documents = await getResearchDocumentsWorkspace(ticker, false);
     content = (
       <div className="space-y-6">
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Panel title="Sube una fuente primaria"><MutationForm action={importResearchDocumentFile} className="grid gap-3" successMessage="Documento subido"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><FileUploadInput name="file" required /><Button type="submit">Subir</Button></MutationForm></Panel>
-          <Panel title="Importar desde una URL"><MutationForm action={importResearchDocumentUrl} className="grid gap-3" successMessage="Documento importado"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><Input name="url" type="url" placeholder="https://..." required /><Input name="source_type" placeholder="sec_filing / investor_relations" defaultValue="url" /><Button type="submit">Importar</Button></MutationForm></Panel>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <Panel title="Sube una fuente primaria"><MutationForm action={importResearchDocumentFile} className="grid grid-cols-1 gap-3" successMessage="Documento subido"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><FileUploadInput name="file" required /><Button type="submit">Subir</Button></MutationForm></Panel>
+          <Panel title="Importar desde una URL"><MutationForm action={importResearchDocumentUrl} className="grid grid-cols-1 gap-3" successMessage="Documento importado"><input type="hidden" name="ticker" value={ticker} /><Input name="title" placeholder="Título del documento" required /><Input name="url" type="url" placeholder="https://..." required /><Input name="source_type" placeholder="sec_filing / investor_relations" defaultValue="url" /><Button type="submit">Importar</Button></MutationForm></Panel>
         </div>
         {/* F249: las fichas enlazan a la fuente primaria cuando el
             documento tiene source_url (filings SEC la traen); sin URL la
