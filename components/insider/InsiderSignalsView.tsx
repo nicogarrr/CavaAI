@@ -74,7 +74,18 @@ function signalKey(signal: DataRecord): string {
     const subject = Array.isArray(signal.insiders)
         ? `${String(signal.ticker ?? '')}:${signal.insiders.join('|')}`
         : `${String(signal.insider ?? '')}:${String(signal.source_url ?? '')}`;
-    return `${type}|${subject}|${date}|${form}|${formatRecordValue(signal.detail)}`;
+    // Identidad por transaccion: dos compras codigo P del mismo insider en la
+    // misma fecha (lotes distintos, mismo o distinto fichero) NO comparten
+    // clave. accession+line es la identidad estable del backend; shares/price/
+    // value (campos de ejecucion) cubren respuestas antiguas sin esos campos.
+    const execution = [
+        String(signal.accession_number ?? ''),
+        String(signal.tx_line ?? ''),
+        String(signal.shares ?? ''),
+        String(signal.price ?? ''),
+        String(signal.value ?? ''),
+    ].join(':');
+    return `${type}|${subject}|${date}|${form}|${execution}|${formatRecordValue(signal.detail)}`;
 }
 
 export default function InsiderSignalsView({ initialTicker, initialResult, initialFilings }: InsiderSignalsViewProps) {
