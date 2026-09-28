@@ -51,6 +51,9 @@ cur = db.cursor()
 tenant = cur.execute("SELECT id FROM tenants WHERE external_id = ?", ("${apiUser}",)).fetchone()
 company = cur.execute("SELECT id FROM companies WHERE ticker = ?", ("${ticker}",)).fetchone()
 assert company, "company ${ticker} no encontrada"
+# Idempotente: un retry de Playwright reejecuta la semilla y el INSERT
+# duplicado chocaba con la UNIQUE (tenant, company, version).
+cur.execute("DELETE FROM thesis_versions WHERE company_id = ?", (company[0],))
 cur.execute(
     "INSERT INTO thesis_versions (tenant_id, company_id, version, status, thesis_markdown, executive_summary, rating, data_confidence_score, source_coverage_score, red_team_score, valuation_risk_score, created_at, updated_at) VALUES (?, ?, 1, 'published', '# T', 'resumen', 'watch', 0, 0, 0, 0, datetime('now'), datetime('now'))",
     (tenant[0] if tenant else None, company[0]),
@@ -62,22 +65,31 @@ db.close()
 }
 
 test("el índice ordena tesis > cartera > watchlist > resto", async ({ page, request }) => {
-  await post(request, "/api/companies/ensure", { ticker: "E2EAAA", name: "E2E Alpha Corp" });
-  await post(request, "/api/companies/ensure", { ticker: "E2EMID", name: "E2E Middle Corp" });
-  await post(request, "/api/companies/ensure", { ticker: "E2ETES", name: "E2E Tesis Corp" });
-  await post(request, "/api/companies/ensure", { ticker: "E2EZZZ", name: "E2E Zulu Corp" });
+  // Prefijo exclusivo E2EREL: otros specs siembran E2E* en el tenant
+  // compartido (methodology-disclosure compra E2EMD1-3) y un filtro E2E
+  // generico recoge sus tickers y rompe la asercion de orden.
+  await post(request, "/api/companies/ensure", { ticker: "E2EREL4", name: "E2E Rel Alpha Corp" });
+  await post(request, "/api/companies/ensure", { ticker: "E2EREL3", name: "E2E Rel Middle Corp" });
+  await post(request, "/api/companies/ensure", { ticker: "E2EREL1", name: "E2E Rel Tesis Corp" });
+  await post(request, "/api/companies/ensure", { ticker: "E2EREL2", name: "E2E Rel Zulu Corp" });
   await post(request, "/api/portfolio/transactions", {
-    ticker: "E2EZZZ", action: "buy", quantity: 1, price: 100, trade_date: "2026-01-15", currency: "USD", fees: 0,
+    ticker: "E2EREL2", action: "buy", quantity: 1, price: 100, trade_date: "2026-01-15", currency: "USD", fees: 0,
   });
-  await post(request, "/api/watchlist", { symbol: "E2EMID" });
-  seedThesis("E2ETES");
+  await post(request, "/api/watchlist", { symbol: "E2EREL3" });
+  seedThesis("E2EREL1");
 
-  await page.goto("/research?q=E2E");
+  await page.goto("/research?q=E2EREL");
   await expect(page.getByRole("heading", { name: "Índice de research", level: 1 })).toBeVisible({ timeout: 60_000 });
 
-  const tickers = await page.locator("ul li a .text-base").allTextContents();
-  const e2eTickers = tickers.map((t) => t.trim()).filter((t) => t.startsWith("E2E"));
-  expect(e2eTickers).toEqual(["E2ETES", "E2EZZZ", "E2EMID", "E2EAAA"]);
+  // La membresia (cartera/watchlist) puede tardar unos segundos en ser
+  // visible para el indice; se relee con reload en vez de fallar a la
+  // primera pasada.
+  await expect(async () => {
+    await page.reload();
+    const tickers = await page.locator("ul li a .text-base").allTextContents();
+    const relTickers = tickers.map((t) => t.trim()).filter((t) => t.startsWith("E2EREL"));
+    expect(relTickers).toEqual(["E2EREL1", "E2EREL2", "E2EREL3", "E2EREL4"]);
+  }).toPass({ timeout: 60_000, intervals: [3_000, 5_000, 10_000] });
 
   await page.screenshot({ path: "test-results/research-relevance.png" });
 });
