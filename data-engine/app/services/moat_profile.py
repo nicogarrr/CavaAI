@@ -32,9 +32,11 @@ def financial_quality_profile(company: Company) -> tuple[str, str]:
         return "cyclical", "Etiqueta cíclica o de materias primas registrada."
     if "growth" in tags or "growth" in kind or "speculative" in tags or "speculative" in model:
         return "growth", "Etiqueta de crecimiento o escenario especulativo registrada."
-    if kind or model:
-        return "mature", "Perfil operativo general; no equivale a demostrar madurez ni foso."
-    return "unknown", "No consta clasificación suficiente de la empresa."
+    # Creation/import paths seed these placeholders before company enrichment.
+    # A placeholder in either field cannot establish an operating profile.
+    if kind in {"", "research_candidate", "unknown", "unassigned"} or model in {"", "unassigned", "unknown"}:
+        return "unknown", "No consta clasificación suficiente de la empresa."
+    return "mature", "Perfil operativo general; no equivale a demostrar madurez ni foso."
 
 
 # Metrics below are not a validated proxy for moat in these profiles.

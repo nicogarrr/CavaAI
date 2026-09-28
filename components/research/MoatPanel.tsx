@@ -90,21 +90,33 @@ export function MoatPanel({ metric, company }: { metric: MoatScoreMetric; compan
     ['mining', 'commodity'].some((term) => kind.includes(term));
   const growth = tags.includes('growth') || kind.includes('growth') ||
     tags.includes('speculative') || model.includes('speculative');
-  const unknown = !kind && !model;
+  const unknown = ['', 'research_candidate', 'unknown', 'unassigned'].includes(kind) ||
+    ['', 'unassigned', 'unknown'].includes(model);
   const historicalScoreNotComparable = earlyStage || financial || cyclical || growth || unknown;
   const profileLabel = earlyStage ? 'Etapa temprana / antes de caja recurrente' :
     financial ? 'Financiera' : cyclical ? 'Cíclica o materias primas' :
     growth ? 'Crecimiento / expansión' : 'Etapa no clasificada';
-  const evidenceToReview = earlyStage ?
+  const telecomEarlyStage = earlyStage && (
+    tags.includes('telecom') || company.sector.toLowerCase().includes('communication') ||
+    company.sector.toLowerCase().includes('telecom')
+  );
+  const evidenceToReview = telecomEarlyStage ?
     'Licencias o espectro, despliegue real de la red, contratos verificables y financiación necesaria.' :
+    earlyStage ? 'Hitos operativos verificables, acuerdos comerciales, necesidad de financiación y barreras específicas del negocio.' :
     financial ? 'Coste de financiación, calidad de activos, retención y ventajas regulatorias documentadas.' :
     cyclical ? 'Coste relativo a competidores, reservas y rentabilidad a través de ciclos completos.' :
     growth ? 'Retención de clientes, costes de cambio y economía unitaria verificada.' :
     'Identifica el tipo de empresa y contrasta ventajas competitivas con fuentes primarias.';
+  const traceMatchesCurrentProfile = trace.profile === (
+    earlyStage ? 'early_stage' : financial ? 'financial' : cyclical ? 'cyclical' :
+    growth ? 'growth' : unknown ? 'unknown' : 'mature'
+  );
   if (trace.score_comparable === false || historicalScoreNotComparable) {
     return <div className="space-y-3 text-sm leading-6 text-gray-300">
       <p className="font-semibold text-amber-300">No evaluable con los 8 umbrales generales</p>
-      <p>Perfil: {trace.profile_label ?? profileLabel}. {trace.profile_reason ?? 'Clasificación basada en el tipo, sector o etiquetas de esta empresa.'}</p>
+      <p>Perfil actual: {historicalScoreNotComparable ? profileLabel : 'Negocio operativo (perfil general)'}.
+        {' '}{traceMatchesCurrentProfile ? trace.profile_reason : 'Clasificación basada en el tipo, sector o etiquetas actuales de esta empresa.'}</p>
+      {!traceMatchesCurrentProfile && trace.profile ? <p className="text-amber-300">El perfil guardado es anterior a la clasificación actual; recalcula las métricas antes de interpretar una puntuación.</p> : null}
       <p>En esta etapa o tipo de empresa, pérdidas, reinversión y rentabilidad histórica no prueban ni descartan un foso. No mostramos 0/8: hace falta evidencia verificable de barreras, contratos, costes de cambio o ventajas frente a competidores.</p>
       <p><span className="font-medium text-gray-100">Qué evidencia mirar: </span>{evidenceToReview} No se puntúa sin fuentes.</p>
       <p className="text-xs text-gray-500">Los datos financieros siguen disponibles como métricas individuales. El perfil no es una calificación de foso.</p>

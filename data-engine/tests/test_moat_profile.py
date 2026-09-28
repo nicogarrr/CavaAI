@@ -27,3 +27,14 @@ def test_financial_cyclical_growth_mature_and_unknown_profiles():
     assert financial_quality_profile(company(factor_tags=["growth"]))[0] == "growth"
     assert financial_quality_profile(company())[0] == "mature"
     assert financial_quality_profile(company(company_type="", valuation_model=""))[0] == "unknown"
+
+
+def test_company_creation_placeholders_are_not_mature():
+    for kind, model in [
+        ("research_candidate", "standard_dcf"),
+        ("standard", "unassigned"),
+        ("research_candidate", "unassigned"),
+    ]:
+        assert financial_quality_profile(company(
+            company_type=kind, valuation_model=model,
+        ))[0] == "unknown"

@@ -1725,10 +1725,12 @@ class MetricCalculationService:
                 {**check, "passed": None, "reason": "not_applicable_to_profile"}
                 for check in checks
             ]
+        # Assemble the complete trace before the single upsert. JSON columns do
+        # not track mutations of a dictionary already assigned to an ORM row.
         result = self._quality_score_result(
             db,
             company,
-            persist,
+            False,
             "quality_moat_score_v2",
             "MARCO_NICO_V2 (V1 + cfroi/owner earnings/capex; umbrales delegados por Nico 2026-09-25)",
             checks,
