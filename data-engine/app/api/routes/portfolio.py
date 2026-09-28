@@ -23,6 +23,7 @@ from app.services.portfolio_ledger_service import (
 )
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 from app.services.risk_service import RiskService
+from app.services.tax_report_service import CASH_UNIT_QUANTITIES
 from app.services.tearsheet_service import TearsheetService
 
 router = APIRouter()
@@ -455,6 +456,7 @@ def transactions(
 def create_transaction(
     payload: PortfolioTransactionInput, db: Session = Depends(get_db)
 ) -> dict:
+    _reject_noncanonical_cash_row(payload)
     service = PortfolioLedgerService()
     try:
         transaction = service.create_transaction(
@@ -488,6 +490,31 @@ def create_transaction(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _reject_noncanonical_cash_row(payload: PortfolioTransactionInput) -> None:
+    """400 for a cash row that breaks the ledger's cash convention.
+
+    ``PortfolioTransactionInput`` is shared by buy/sell and cash verbs, but a
+    cash row stores the AMOUNT in ``price`` with ``quantity`` 0 or 1 (the
+    shape ``PortfolioLedgerService`` documents and the IBKR importer writes:
+    ``quantity=1, price=amount``). ``{"action": "dividend", "quantity": 100,
+    "price": "0.25"}`` is therefore ambiguous - 25 units at 0,25 (6,25) or a
+    25 dividend typed as a per-share amount - and the tax report, the
+    attribution and XIRR used to disagree by 100x on it. Reject it instead of
+    storing a figure that feeds a filed tax return.
+    """
+    if payload.action in {"buy", "sell"}:
+        return
+    if payload.quantity not in CASH_UNIT_QUANTITIES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Action '{payload.action}' is a cash movement: put the amount in "
+                "'price' and use quantity 0 or 1 (quantity "
+                f"{payload.quantity} is ambiguous)"
+            ),
+        )
+
+
 @router.put("/transactions/{transaction_id}")
 def update_transaction(
     transaction_id: int,
@@ -497,6 +524,20 @@ def update_transaction(
     transaction = db.get(Transaction, transaction_id)
     if not transaction or transaction.action not in {"buy", "sell"}:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    # Defence in depth: there is no DB CHECK constraint on Transaction.action,
+    # and the input model also allows dividend/interest/fee/cash_misc.
+    # rebuild_position replays ONLY buy/sell, so accepting a cash action here
+    # would drop the leg from the replay, delete the position and answer 200 -
+    # silently destroying the buy/sell the user was editing. This mirrors the
+    # validation create_transaction performs for the same stored action.
+    if payload.action not in {"buy", "sell"}:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only buy/sell transactions can be updated; create a separate "
+                f"cash transaction for '{payload.action}'"
+            ),
+        )
     service = PortfolioLedgerService()
     original_company_id = transaction.company_id
     company = service.ensure_company(db, payload.ticker)
