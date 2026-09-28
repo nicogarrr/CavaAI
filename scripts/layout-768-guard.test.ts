@@ -8,8 +8,9 @@ const landing = readFileSync('components/landing/PublicLanding.tsx', 'utf8');
 test('F289: el texto del banner de /portfolio salta a su propia fila antes de colapsar', () => {
     // flex-1 sin basis dejaba al <p> con ~50px en 768px (sidebar + dos enlaces):
     // con basis-60 el navegador lo envuelve a una fila completa por debajo de
-    // 240px en vez de comprimirlo.
-    assert.match(tabs, /<p className="min-w-0 flex-1 basis-60 text-sm text-gray-400">/);
+    // 240px en vez de comprimirlo. (El copy pasó a subtítulo de una línea en
+    // el quick win UX 2; las clases de layout que importan son las mismas.)
+    assert.match(tabs, /<p className="min-w-0 flex-1 basis-60 text-sm font-medium text-gray-300">/);
 });
 
 test('F285: los CTAs del hero envuelven en sm en vez de desbordar a 768px', () => {
