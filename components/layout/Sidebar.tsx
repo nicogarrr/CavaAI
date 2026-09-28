@@ -45,7 +45,10 @@ export default function Sidebar({ collapsed: initiallyCollapsed }: { collapsed: 
                 {collapsed ? <ChevronsRight aria-hidden="true" className="h-5 w-5" /> : <ChevronsLeft aria-hidden="true" className="h-5 w-5" />}
             </button>
 
-            <nav className="scrollbar-hide-default flex-1 overflow-y-auto px-2 pb-4" aria-label="Navegación principal">
+            <nav
+                className="scrollbar-hide-default min-h-0 flex-1 overflow-y-auto px-2 pb-4"
+                aria-label="Navegación principal"
+            >
                 <ul className="flex flex-col">
                     {NAV_SECTIONS.map((section) => {
                         const showTitle = showsNavSectionTitle(section);
@@ -76,7 +79,10 @@ export default function Sidebar({ collapsed: initiallyCollapsed }: { collapsed: 
             {/* Pie del menu: SOLO destinos que no estan en el arbol. /plan y
                 /help salen de aqui (quick win UX 3): ya tienen entrada en
                 NAV_SECTIONS y duplicaban «Mi plan» y «Ayuda» en el mismo
-                sidebar. /security no esta en el arbol: se queda. */}
+                sidebar. /security no esta en el arbol: se queda.
+                El nav lleva min-h-0: sin el, un hijo flex no encoge por
+                debajo de su contenido, el aside superaba h-dvh y este pie
+                quedaba inalcanzable bajo el fold en viewports bajos. */}
             <div className="border-t border-gray-700/50 p-2">
                 <ul className="flex flex-col gap-1">
                     <li>

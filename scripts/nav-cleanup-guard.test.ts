@@ -44,3 +44,11 @@ test('«Vista de mercado» pasa a «Mercado»', () => {
     assert.ok(!constants.includes('Vista de mercado'), 'queda el nombre antiguo');
     assert.match(constants, /\{ href: '\/screener', label: 'Mercado', icon: LineChart \}/);
 });
+
+test('el árbol del sidebar encoge con min-h-0: el pie queda alcanzable', () => {
+    // Sin min-h-0 en un flex-col, el nav no encoge por debajo de su
+    // contenido: el aside supera h-dvh y el pie (Seguridad) cae bajo el
+    // fold sin scroll interno en viewports bajos.
+    const sidebar = readFileSync('components/layout/Sidebar.tsx', 'utf8');
+    assert.match(sidebar, /min-h-0 flex-1 overflow-y-auto/);
+});
