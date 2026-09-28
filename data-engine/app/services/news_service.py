@@ -257,7 +257,7 @@ class NewsService:
                 impact_direction=assessment.impact_direction,
                 materiality_score=materiality_score,
                 summary=(
-                    f"Material news requires thesis review: {summary}. "
+                    f"Noticia material que requiere revisión de la tesis: {summary}. "
                     f"{semantic_impact.summary if semantic_impact else ''}"
                 ).strip(),
                 affected_claim_ids=(semantic_impact.affected_claim_ids if semantic_impact else []),

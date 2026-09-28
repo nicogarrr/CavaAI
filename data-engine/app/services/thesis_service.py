@@ -24,6 +24,7 @@ from app.models import (
 from app.services.claim_scope import supersede_claims_of
 from app.services.company_resolver import resolve_company
 from app.services.long_term_model_service import LongTermModelService
+from app.services.number_format import format_compact_es
 from app.services.source_auditor import SourceAuditor
 from app.services.source_hierarchy_service import classify_source
 from app.services.valuation_service import ValuationService
@@ -34,6 +35,30 @@ from app.valuation.moat_framework import empty_moat_framework
 logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "thesis-render-v2"
+
+# Etiquetas es-ES de las métricas que alimentan claims visibles. El fallback
+# humaniza el código (guiones bajos a espacios) sin exponerlo tal cual.
+_METRIC_LABELS_ES = {
+    "revenue": "ingresos",
+    "free_cash_flow": "flujo de caja libre",
+    "net_debt": "deuda neta",
+    "shares_diluted": "acciones diluidas",
+    "fcf_margin": "margen de FCF",
+}
+
+
+def _metric_claim_statement(ticker: str, metric: str, fact: FinancialFact) -> str:
+    """Texto del claim de una métrica, en español y con la cifra formateada.
+
+    Antes: "RKLB revenue is 200966000000.000000 for FY2025." (inglés y valor
+    crudo de la columna Numeric(24, 6)). La unidad solo se muestra cuando es
+    una divisa ISO (USD, EUR...); unidades como "shares" no aportan.
+    """
+    label = _METRIC_LABELS_ES.get(metric, metric.replace("_", " "))
+    value = format_compact_es(fact.value) or str(fact.value)
+    unit = fact.unit if fact.unit and len(fact.unit) == 3 and fact.unit.isupper() else None
+    amount = f"{value} {unit}" if unit else value
+    return f"{ticker}: {label} de {amount} ({fact.period})."
 
 
 class ThesisService:
@@ -617,7 +642,7 @@ class ThesisService:
                     "object": float(fact.value),
                     "unit": fact.unit,
                     "period": fact.period,
-                    "claim": f"{company.ticker} {metric} is {fact.value} for {fact.period}.",
+                    "claim": _metric_claim_statement(company.ticker, metric, fact),
                     "source_id": fact.source_id,
                     "source_type": fact.source_type,
                     "source_document_id": fact.source_id,
