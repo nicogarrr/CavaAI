@@ -5,6 +5,7 @@ import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import type { PopularStocksResult } from '@/lib/popular-stocks-loader';
 import { cache } from 'react';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
+import { mapBackendYahooQuote, sanitizeFinnhubQuote, type SanitizedQuote } from '@/lib/market/quote-freshness';
 
 import { env } from '@/lib/env';
 import { TIMEOUTS } from '@/lib/constants';
@@ -423,7 +424,8 @@ export async function getStockFinancialData(symbol: string): Promise<{
         }
 
         // Start all requests in parallel
-        const quotePromise = fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null);
+        // F358: cotizacion validada por su timestamp (stale-while-error de la Data Cache).
+        const quotePromise = fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).then(sanitizeFinnhubQuote).catch(() => null);
         const profilePromise = fetchJSON<FinnhubProfile2>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 86400).catch(() => null);
         const metricsPromise = fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 86400).catch(() => ({ metric: {} }));
         const newsPromise = getCompanyNews(symbol, 10).catch(() => []);
@@ -543,7 +545,7 @@ export async function getStockFinancialDataLight(symbol: string): Promise<{
 
         // Only fetch essential data - no news, events, peers etc.
         const [quote, profile, metrics, priceTarget] = await Promise.all([
-            fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null),
+            fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).then(sanitizeFinnhubQuote).catch(() => null), // F358: validada por timestamp
             fetchJSON<FinnhubProfile2>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 86400).catch(() => null),
             fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 86400).catch(() => ({ metric: {} })),
             fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/price-target?symbol=${encodeURIComponent(symbol)}&token=${token}`, 86400).catch(() => null),
@@ -739,7 +741,7 @@ export const getPopularStocks = cache(async (): Promise<PopularStocksResult> => 
 });
 
 // Helper para obtener solo la cotización (más ligero que getStockFinancialData)
-export async function getStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
+export async function getStockQuote(symbol: string): Promise<StockQuote | null> {
     await requireAuthenticatedUser();
     // Caché corta en memoria (45s): quote se llama en bucle (watchlist,
     // screener, oportunidades) y el dato es idéntico dentro de la ventana.
@@ -751,16 +753,23 @@ export async function getStockQuote(symbol: string): Promise<{ c: number; d: num
     );
 }
 
-async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
+/** F358: cotizacion con frescura validada; la logica vive en el modulo
+ * puro lib/market/quote-freshness (testeable con node --test). */
+export type StockQuote = SanitizedQuote;
+
+async function fetchStockQuote(symbol: string): Promise<StockQuote | null> {
     // Try Finnhub first
     try {
         const token = env.FINNHUB_API_KEY;
         if (token) {
             const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`;
             const data = await fetchJSON<any>(url, 60);
-            // Verify we got valid data (Finnhub returns all zeros for invalid symbols)
-            if (data && (data.c > 0 || data.pc > 0)) {
-                return data;
+            // Verify we got valid data (Finnhub returns all zeros for invalid
+            // symbols) y fresca (F358: la Data Cache sirve el ultimo valor
+            // bueno indefinidamente bajo 429 sostenidos - stale-while-error).
+            const quote = sanitizeFinnhubQuote(data);
+            if (quote) {
+                return quote;
             }
         }
     } catch {
@@ -784,8 +793,13 @@ async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; 
             });
             if (response.ok) {
                 const data = await response.json();
-                if (data && (data.c > 0 || data.pc > 0)) {
-                    return data;
+                // Provenance Yahoo (cierres diarios, SIN timestamp de la
+                // vela exacta): NUNCA se pinta como cotizacion en vivo y NO se
+                // le atribuye la fecha de otra serie (F358, exigencia del
+                // auditor) - el consumidor rotula "precio de fecha desconocida".
+                const yahooQuote = mapBackendYahooQuote(data);
+                if (yahooQuote) {
+                    return yahooQuote;
                 }
             }
         } catch (error) {
