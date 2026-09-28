@@ -1,0 +1,37 @@
+# El sync resuelve CIK via company_tickers.json y sube companyfacts +
+# Tickers vigilados por el mirror SEC->HF (universo CavaAI que lee SEC).
+# submissions + historicos. Mantener al dia con el universo de tenants.
+AA
+AAL
+AKAM
+BALL
+BPOP
+BRT
+CBOE
+CMP
+CPRT
+CSR
+DTE
+DUK
+EYPT
+FOR
+HAL
+HRL
+J
+JBHT
+JEF
+LHX
+MS
+MYGN
+NCLH
+NEE
+OMER
+PACB
+TJX
+TLYS
+VFC
+VMRK
+WFC
+WYNN
+XEL
+ZWS

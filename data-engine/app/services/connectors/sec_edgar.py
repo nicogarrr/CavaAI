@@ -12,7 +12,12 @@ us-gaap de 10-K (anual) y 10-Q (trimestral).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
+import re
+import time
+from contextvars import ContextVar
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +104,35 @@ def _snapshot_path_for(url: str) -> Path | None:
     return None
 
 
+def _mirror_path_for(url: str) -> str | None:
+    """Path del documento dentro del dataset mirror, o None si esa URL de la
+    SEC no tiene equivalente en el mirror."""
+    if url == TICKER_MAP_URL:
+        return "company_tickers.json"
+    match = re.search(
+        r"(?:companyfacts|submissions)/(CIK\d{10}(?:-submissions-\d+)?)\.json$", url
+    )
+    if not match:
+        return None
+    kind = "companyfacts" if "companyfacts" in url else "submissions"
+    return f"{kind}/{match.group(1)}.json"
+
+
+def _mirror_url_for(url: str) -> str | None:
+    """URL del mirror HF para una URL de la SEC, o None si no hay mirror.
+
+    Mismo layout que el snapshot local: companyfacts/CIK##########.json,
+    submissions/CIK##########(-submissions-NNN)?.json, company_tickers.json.
+    """
+    from app.core.config import get_settings
+
+    dataset = get_settings().sec_hf_mirror_dataset
+    path = _mirror_path_for(url)
+    if not dataset or path is None:
+        return None
+    return f"https://huggingface.co/datasets/{dataset}/resolve/main/{path}"
+
+
 def _read_snapshot(path: Path | None) -> dict[str, Any] | None:
     if path is None or not path.exists():
         return None
@@ -124,7 +158,9 @@ async def _get_json(
     snapshot = _read_snapshot(_snapshot_path_for(url))
     if snapshot is not None:
         return snapshot
+    mirror_url = _mirror_url_for(url)
     headers = default_headers(user_agent)
+    direct_error: Exception | None = None
     delay = base_delay
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
@@ -147,6 +183,13 @@ async def _get_json(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
+            # La SEC bloquea las IPs de datacenter con 403: el mirror HF
+            # sirve el mismo JSON oficial. 404 en la SEC no se enmascara:
+            # un documento inexistente lo es tambien en el mirror, pero el
+            # 403 es un fallo de transporte, no de dato.
+            if response.status_code in {401, 403} and mirror_url is not None:
+                direct_error = exc
+                break
             raise RuntimeError(
                 f"SEC EDGAR request failed ({response.status_code} {url})"
             ) from exc
@@ -155,9 +198,121 @@ async def _get_json(
         if not isinstance(data, dict):
             raise RuntimeError(f"SEC EDGAR returned non-object JSON ({url})")
         return data
-    raise RuntimeError(
-        f"SEC EDGAR rate-limited (429 {url}) after {max_retries} retries"
-    ) from last_error
+    if direct_error is None:
+        raise RuntimeError(
+            f"SEC EDGAR rate-limited (429 {url}) after {max_retries} retries"
+        ) from last_error
+    return await mirror_get_json(url, direct_error=direct_error)
+
+
+MIRROR_MAX_AGE = timedelta(hours=48)
+_MANIFEST_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_MANIFEST_TTL_SECONDS = 300.0
+_MIRROR_SERVES: ContextVar[list[dict[str, Any]] | None] = ContextVar(
+    "cavaai_mirror_serves", default=None
+)
+
+
+def drain_mirror_serves() -> list[dict[str, Any]]:
+    """Servicios de mirror de ESTA corrida (la ingesta los declara en su
+    resultado: que se sirvio del mirror y de que fecha de sync).
+
+    ContextVar por corrida: dos ingestas concurrentes nunca se mezclan ni se
+    pierden registros de procedencia. La corrida llama a drain al inicio para
+    abrir su registro y al final para recogerlo."""
+    serves = _MIRROR_SERVES.get()
+    _MIRROR_SERVES.set([])
+    return list(serves) if serves else []
+
+
+def _record_mirror_serve(entry: dict[str, Any]) -> None:
+    serves = _MIRROR_SERVES.get()
+    if serves is not None:
+        serves.append(entry)
+
+
+async def _mirror_manifest(dataset: str) -> dict[str, Any]:
+    """Manifest del mirror con frescura verificada. Cache de 5 minutos: la
+    ingesta pide varios documentos por emisor y el manifest no cambia entre
+    ellas. Fail closed: sin manifest valido o con synced_at > 48h, el mirror
+    entero se considera caducado y NO se sirve dato viejo como fresco."""
+    now = time.monotonic()
+    cached = _MANIFEST_CACHE.get(dataset)
+    if cached and now - cached[0] < _MANIFEST_TTL_SECONDS:
+        return cached[1]
+    manifest_url = f"https://huggingface.co/datasets/{dataset}/resolve/main/manifest.json"
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        response = await client.get(manifest_url)
+    response.raise_for_status()
+    manifest = response.json()
+    if not isinstance(manifest, dict):
+        raise RuntimeError(f"Mirror HF manifest no es objeto JSON ({manifest_url})")
+    synced_raw = manifest.get("synced_at")
+    try:
+        synced_at = datetime.fromisoformat(str(synced_raw).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Mirror HF sin synced_at valido ({synced_raw!r}): fail closed"
+        ) from exc
+    age = datetime.now(UTC) - synced_at
+    if age > MIRROR_MAX_AGE:
+        raise RuntimeError(
+            f"Mirror HF caducado: synced_at {synced_raw} tiene {age.days} dias "
+            f"(max {MIRROR_MAX_AGE}). Fail closed: no se sirve dato viejo como fresco."
+        )
+    _MANIFEST_CACHE[dataset] = (now, manifest)
+    return manifest
+
+
+async def mirror_get_json(url: str, *, direct_error: Exception | None = None) -> dict[str, Any]:
+    """Lee el documento SEC desde el mirror HF (dataset publico, sin
+    credenciales). Error claro si no hay mirror configurado, el manifest
+    esta caducado o el mirror no tiene el documento: nunca se enmascara un
+    fallo de dato como de transporte."""
+    mirror_url = _mirror_url_for(url)
+    if mirror_url is None:
+        raise RuntimeError(
+            f"SEC bloqueada y sin mirror HF configurado ({url})"
+        ) from direct_error
+    from app.core.config import get_settings
+
+    manifest = await _mirror_manifest(get_settings().sec_hf_mirror_dataset or "")
+    # Integridad: un manifest fresco no basta. El documento pedido debe estar
+    # declarado en manifest["files"] (un archivo huerfano de un sync anterior
+    # no se sirve) y su sha1 debe casar con el declarado (una subida parcial
+    # que dejo mezcla de versiones no se sirve). Fail closed en ambos casos.
+    path = _mirror_path_for(url)
+    declared_files = manifest.get("files")
+    declared_hash = declared_files.get(path) if isinstance(declared_files, dict) else None
+    if declared_hash is None:
+        raise RuntimeError(
+            f"Mirror HF: {path} no esta declarado en el manifest "
+            f"(fail closed: no se sirve un documento sin proveniencia declarada)"
+        ) from direct_error
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as mirror_client:
+        mirror_response = await mirror_client.get(mirror_url)
+    try:
+        mirror_response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"SEC bloqueada ({direct_error}) y mirror HF sin el documento "
+            f"({mirror_response.status_code} {mirror_url})"
+        ) from exc
+    raw = mirror_response.content
+    actual_hash = hashlib.sha1(raw).hexdigest()
+    if actual_hash != declared_hash:
+        raise RuntimeError(
+            f"Mirror HF: sha1 de {path} no casa con el manifest "
+            f"({actual_hash} != {declared_hash}): fail closed, posible "
+            f"mezcla de versiones de un sync parcial"
+        ) from direct_error
+    import json as _json
+
+    data = _json.loads(raw)
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Mirror HF returned non-object JSON ({mirror_url})")
+    _record_mirror_serve({"url": url, "synced_at": manifest.get("synced_at")})
+    return data
 
 
 def _manifest_cik(ticker: str) -> str | None:

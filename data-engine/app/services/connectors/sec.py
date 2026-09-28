@@ -71,7 +71,15 @@ class SECClient:
         snapshot = sec_edgar.read_snapshot_for(url)
         if snapshot is not None:
             return snapshot
-        return (await self._get(url)).json()
+        try:
+            return (await self._get(url)).json()
+        except httpx.HTTPStatusError as exc:
+            # La SEC bloquea IPs de datacenter con 403: el mirror HF sirve el
+            # mismo JSON oficial. Un 404 de la SEC es un fallo de DATO y
+            # nunca se enmascara como fallo de transporte.
+            if exc.response is not None and exc.response.status_code in {401, 403}:
+                return await sec_edgar.mirror_get_json(url, direct_error=exc)
+            raise
 
     async def ticker_map(self) -> dict:
         return await self._get_json(self.ticker_map_url)
