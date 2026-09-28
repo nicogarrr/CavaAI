@@ -83,6 +83,16 @@ test('sin divisa verificada no se muestra precio (nunca USD asumido)', () => {
     assert.match(actions, /currency: researchCompany\?\.currency \|\| profile\?\.currency \|\| null/);
 });
 
+test('la variación omite ausencias: línea entera fuera si faltan ambos', () => {
+    // Con change y changePercent ausentes (fallback a cierre de vela) NO se
+    // pinta «N/D · N/D» bajo el precio: la línea entera se omite y cada valor
+    // presente se muestra solo, con separador condicional.
+    assert.match(component, /quote\.change != null \|\| quote\.changePercent != null \? \(/);
+    assert.match(component, /\.filter\(Boolean\)\s*\.join\(' · '\)/);
+    assert.ok(!/\{' · '\}/.test(component), 'queda un separador incondicional');
+    assert.ok(!/N\/D/.test(component), 'la cabecera no debe pintar placeholders N/D');
+});
+
 test('el precio de cierre se rotula con fecha y el sparkline muestra su rango', () => {
     // Fallback a vela: la variación del proveedor no describe ese cierre.
     assert.match(actions, /const change = quoteLive \? quote\?\.d \?\? null : null;/);

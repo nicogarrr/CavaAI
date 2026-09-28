@@ -1,4 +1,4 @@
-import { formatMarketDate, formatMoney, formatNumber, formatPercent, isValidCurrencyCode, NA } from '@/lib/format';
+import { formatMarketDate, formatMoney, formatNumber, formatPercent, isValidCurrencyCode } from '@/lib/format';
 import { SPARK_HEIGHT, SPARK_WIDTH, sparklinePoints } from '@/lib/sparkline';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 
@@ -35,15 +35,20 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                     <div className="text-2xl font-bold text-gray-100 sm:text-3xl">
                         {formatMoney(quote.price, currency)}
                     </div>
-                    <div className={positive ? 'text-sm text-teal-300' : 'text-sm text-red-300'}>
-                        {quote.change == null
-                            ? NA
-                            : formatNumber(quote.change, { signDisplay: 'always', maximumFractionDigits: 2 })}
-                        {' · '}
-                        {quote.changePercent == null
-                            ? NA
-                            : formatPercent(quote.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
-                    </div>
+                    {quote.change != null || quote.changePercent != null ? (
+                        <div className={positive ? 'text-sm text-teal-300' : 'text-sm text-red-300'}>
+                            {[
+                                quote.change != null
+                                    ? formatNumber(quote.change, { signDisplay: 'always', maximumFractionDigits: 2 })
+                                    : null,
+                                quote.changePercent != null
+                                    ? formatPercent(quote.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })
+                                    : null,
+                            ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                        </div>
+                    ) : null}
                 </>
             ) : null}
             {points && firstDate && lastDate ? (
