@@ -472,7 +472,20 @@ class IBKRImportService:
                     # discriminator, so the tax report declared the gross and
                     # never credited the retention.
                     action = "withholding"
-                elif "dividend" in type_attr:
+                elif "dividend" in type_attr or any(
+                    token in type_attr
+                    for token in (
+                        "lieu",
+                        "return of capital",
+                        "capital return",
+                        "lending",
+                        "substitute payment",
+                    )
+                ):
+                    # Pagos especiales (payment in lieu, return of capital,
+                    # stock lending): llegan al informe como "dividend" para
+                    # NO perderse, y allí el detector de tipos originales los
+                    # excluye de las sumas ordinarias (revisión manual).
                     action = "dividend"
                 elif "interest" in type_attr:
                     action = "interest"

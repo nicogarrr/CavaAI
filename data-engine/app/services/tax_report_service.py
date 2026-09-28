@@ -59,6 +59,11 @@ from app.models import (
     Transaction,
 )
 from app.services.portfolio_fx_service import PortfolioFXService
+from app.services.tax_irpf_filing import (
+    SPECIAL_PAYMENT_TOKENS,
+    build_casillas,
+    build_double_taxation,
+)
 
 FIFO_METHOD = "fifo"
 AVERAGE_METHOD = "average"
@@ -104,6 +109,7 @@ def _new_cash_bucket(ticker: str, transaction) -> dict:
         "missing_fx": False,
         "unattributed": False,
         "payments": [],
+        "special_payments": [],
     }
 
 
@@ -119,6 +125,23 @@ def _unattributed_label(transaction) -> str:
         if str(key).lower() in {"symbol", "underlyingsymbol"} and value:
             return f"UNATTRIBUTED:{str(value).strip().upper()}"
     return f"UNATTRIBUTED:{transaction.currency or '???'}:{transaction.action or '?'}"
+
+
+def _raw_action_label(transaction) -> str:
+    """Tipo ORIGINAL del bróker para el detector de pagos especiales.
+
+    IBKR guarda el ``type`` del CashTransaction ("Dividends", "Payment In
+    Lieu Of Dividends", "Withholding Tax"...) en ``Transaction.raw_payload``;
+    la acción normalizada colapsa variantes a "dividend" y haría invisible un
+    payment in lieu o un return of capital. Fail-closed: el tipo original
+    manda cuando existe; si no hay payload, se usa la acción normalizada.
+    """
+    payload = transaction.raw_payload or {}
+    if isinstance(payload, dict):
+        original = payload.get("type") or payload.get("transactionType")
+        if original:
+            return str(original)
+    return transaction.action
 
 
 class TaxReportService:
@@ -203,24 +226,40 @@ class TaxReportService:
                         {
                             "date": transaction.trade_date.isoformat(),
                             "type": "withholding",
+                            "raw_action": _raw_action_label(transaction),
                             "amount_native": _money(withheld),
                             "amount_base": _money(abs(amount_base)) if amount_base is not None else None,
                         }
                     )
                 else:
-                    bucket["dividends_native"] += amount_native
-                    if amount_base is not None:
-                        bucket["dividends_base"] += amount_base
-                    else:
-                        bucket["missing_fx"] = True
-                    bucket["payments"].append(
-                        {
-                            "date": transaction.trade_date.isoformat(),
-                            "type": "dividend",
-                            "amount_native": _money(amount_native),
-                            "amount_base": _money(amount_base),
-                        }
+                    raw_label = _raw_action_label(transaction)
+                    special = any(
+                        token in raw_label.lower()
+                        for token in SPECIAL_PAYMENT_TOKENS
                     )
+                    payment_row = {
+                        "date": transaction.trade_date.isoformat(),
+                        "type": "special" if special else "dividend",
+                        "raw_action": raw_label,
+                        "amount_native": _money(amount_native),
+                        "amount_base": _money(amount_base),
+                    }
+                    bucket["payments"].append(payment_row)
+                    if special:
+                        # Payment in lieu / return of capital / stock lending:
+                        # NO es dividendo ordinario. Queda fuera de las sumas
+                        # (casilla 0029 y deducción 0588) y se lista para
+                        # revisión manual: clasificarlo como ordinario sería
+                        # inventar un tratamiento fiscal.
+                        bucket["special_payments"].append(payment_row)
+                        if amount_base is None:
+                            bucket["missing_fx"] = True
+                    else:
+                        bucket["dividends_native"] += amount_native
+                        if amount_base is not None:
+                            bucket["dividends_base"] += amount_base
+                        else:
+                            bucket["missing_fx"] = True
                 continue
 
             if action in {"interest", "fee", "cash_misc"}:
@@ -496,6 +535,8 @@ class TaxReportService:
                         "quantity": float(transaction.quantity),
                         "proceeds_native": _money(entry["proceeds_native"]),
                         "cost_native": _money(entry["cost_native"]),
+                        "proceeds_base": _money(entry["proceeds_native"] * rate) if rate is not None else None,
+                        "cost_base": _money(entry["cost_native"] * rate) if rate is not None else None,
                         "gain_native": _money(computable_native),
                         "gain_base": _money(computable_base) if computable_base is not None else None,
                         "raw_gain_native": _money(entry["gain_native"]),
@@ -527,6 +568,7 @@ class TaxReportService:
                     "missing_fx": bucket["missing_fx"],
                     "unattributed": bucket.get("unattributed", False),
                     "payments": bucket["payments"],
+                    "special_payments": bucket["special_payments"],
                 }
             )
 
@@ -610,11 +652,59 @@ class TaxReportService:
             ),
         }
 
-        return {
+        data = {
             "summary": summary,
             "dividends": sorted(dividends, key=lambda d: d["ticker"]),
             "realized": sorted(realized, key=lambda d: d["ticker"]),
             "misc": sorted(misc_rows, key=lambda d: d["date"]),
+        }
+        data["filing"] = self._build_filing(db, fiscal_year, data)
+        return data
+
+    def _build_filing(self, db: Session, fiscal_year: int, data: dict) -> dict:
+        """Capa de declaracion IRPF (casillas Modelo 100 + doble imposicion).
+
+        Deriva de los agregados del informe; nunca inventa cifras: si falta
+        FX o el pais del emisor, el bloque afectado queda en None o en
+        ``manual_review``. El pais de retencion se aproxima con
+        ``Company.domicile_country`` (limitacion documentada en
+        ``tax_irpf_filing``).
+        """
+        summary0 = data.get("summary") or {}
+        if (summary0.get("base_currency") or "EUR") != "EUR":
+            # Las casillas del Modelo 100 son importes en EUR: con la cartera
+            # en otra divisa base no se publican cifras bajo rótulos IRPF.
+            return {
+                "available": False,
+                "reason": (
+                    "La cartera no usa EUR como divisa base: las casillas del "
+                    "Modelo 100 y la deducción 0588 son importes en euros y "
+                    "no se publican cifras en otra divisa. Cambia la divisa "
+                    "base de la cartera a EUR para obtener la capa de "
+                    "declaración."
+                ),
+            }
+        tickers = {
+            b["ticker"]
+            for b in (data.get("dividends") or []) + (data.get("realized") or [])
+            if not str(b.get("ticker", "")).startswith("UNATTRIBUTED:")
+        }
+        country_by_ticker: dict[str, str | None] = {}
+        if tickers:
+            for company in db.scalars(
+                select(Company).where(Company.ticker.in_(sorted(tickers)))
+            ):
+                country_by_ticker[company.ticker] = company.domicile_country
+        return {
+            "available": True,
+            "casillas": build_casillas(
+                data.get("dividends") or [], data.get("realized") or [], fiscal_year
+            ),
+            "double_taxation": build_double_taxation(
+                data.get("dividends") or [],
+                country_by_ticker,
+                fiscal_year,
+            ),
         }
 
     def get_report(self, db: Session, fiscal_year: int) -> dict:
@@ -631,7 +721,7 @@ class TaxReportService:
             ).order_by(TaxReport.updated_at.desc())
         )
         if report is not None:
-            return {
+            data = {
                 "summary": report.summary,
                 "dividends": report.dividends,
                 "realized": report.realized,
@@ -639,6 +729,11 @@ class TaxReportService:
                 "generated_at": report.generated_at.isoformat() if report.generated_at else None,
                 "persisted": True,
             }
+            # La capa de declaracion se calcula al leer (no se persiste): es
+            # presentacion derivada de los mismos agregados, siempre al dia
+            # con el mapeo normativo vigente en el codigo.
+            data["filing"] = self._build_filing(db, fiscal_year, data)
+            return data
         data = self.compute_report(db, fiscal_year)
         data["generated_at"] = None
         data["persisted"] = False
