@@ -36,7 +36,7 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                         </p>
                     ) : quote.priceKind === 'close' ? (
                         <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                            Último cierre disponible
+                            Precio de fecha desconocida
                         </p>
                     ) : null}
                     <div className="text-2xl font-bold text-gray-100 sm:text-3xl">

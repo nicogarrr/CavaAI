@@ -108,9 +108,19 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
     // mezcla con el cierre de vela.
     const change = quoteUsable ? quote?.d ?? null : null;
     const changePercent = quoteUsable ? quote?.dp ?? null : null;
-    // Fecha del cierre: del timestamp de la cotización si lo hay (Finnhub);
-    // el fallback Yahoo no trae fecha, pero es la sesión de la última vela.
-    const priceAsOf = quoteLive ? null : quote?.t ? sessionDateEt(quote.t) : lastClose?.date ?? null;
+    // Fecha del cierre: SOLO del timestamp de la propia cotización
+    // (Finnhub). El fallback Yahoo no trae fecha de vela: NO se le atribuye
+    // la de otra serie (la de getCandles podria no ser la del c) - queda
+    // null y la cabecera rotula "precio de fecha desconocida" (F358,
+    // exigencia del auditor). El fallback a vela (sin cotización) sí fecha
+    // con su propia vela, que es el mismo dato que se muestra.
+    const priceAsOf = quoteLive
+        ? null
+        : quoteUsable
+          ? quote?.t
+            ? sessionDateEt(quote.t)
+            : null
+          : lastClose?.date ?? null;
     return {
         ticker: normalized,
         // La identidad la pone el master (curado); el perfil del proveedor

@@ -5,7 +5,7 @@ import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import type { PopularStocksResult } from '@/lib/popular-stocks-loader';
 import { cache } from 'react';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
-import { classifyQuoteKind } from '@/lib/market/quote-freshness';
+import { mapBackendYahooQuote, sanitizeFinnhubQuote, type SanitizedQuote } from '@/lib/market/quote-freshness';
 
 import { env } from '@/lib/env';
 import { TIMEOUTS } from '@/lib/constants';
@@ -753,34 +753,9 @@ export async function getStockQuote(symbol: string): Promise<StockQuote | null> 
     );
 }
 
-export type StockQuote = {
-    c: number; d: number; dp: number; h: number; l: number; o: number; pc: number;
-    /** Timestamp (epoch s) del proveedor; null en el fallback Yahoo (sin fecha). */
-    t: number | null;
-    /**
-     * F358: 'live' = sesion US en curso; 'close' = ultimo cierre fechado
-     * (noche, finde, pre-market o fallback Yahoo de cierres diarios). Una
-     * cotizacion 'stale' NUNCA se devuelve: se rechaza en origen para que
-     * ningun consumidor la pinte como actual.
-     */
-    kind: 'live' | 'close';
-};
-
-/**
- * F358: valida una cotizacion Finnhub por su propio timestamp antes de
- * aceptarla. Con errores sostenidos del proveedor (429 por cuota, F357) la
- * Data Cache de Next sirve el ultimo valor bueno INDEFINIDAMENTE
- * (stale-while-error): el fetch resuelve 200 con el dato viejo y el error
- * nunca llega al catch. La unica senal de frescura es `t` (semantica de
- * sesion US en lib/market/quote-freshness). null = miss honesto.
- */
-function sanitizeFinnhubQuote(data: any): StockQuote | null {
-    if (!data || !(data.c > 0 || data.pc > 0)) return null;
-    const t = typeof data.t === 'number' && Number.isFinite(data.t) ? data.t : 0;
-    const kind = classifyQuoteKind(t);
-    if (kind === 'stale') return null;
-    return { c: data.c, d: data.d, dp: data.dp, h: data.h, l: data.l, o: data.o, pc: data.pc, t, kind };
-}
+/** F358: cotizacion con frescura validada; la logica vive en el modulo
+ * puro lib/market/quote-freshness (testeable con node --test). */
+export type StockQuote = SanitizedQuote;
 
 async function fetchStockQuote(symbol: string): Promise<StockQuote | null> {
     // Try Finnhub first
@@ -818,11 +793,13 @@ async function fetchStockQuote(symbol: string): Promise<StockQuote | null> {
             });
             if (response.ok) {
                 const data = await response.json();
-                if (data && (data.c > 0 || data.pc > 0)) {
-                    // Provenance Yahoo (cierres diarios, sin timestamp): NUNCA
-                    // se pinta como cotizacion en vivo (F358) - es un cierre
-                    // fechado aunque la fecha exacta no viaje en esta respuesta.
-                    return { ...data, t: null, kind: 'close' as const };
+                // Provenance Yahoo (cierres diarios, SIN timestamp de la
+                // vela exacta): NUNCA se pinta como cotizacion en vivo y NO se
+                // le atribuye la fecha de otra serie (F358, exigencia del
+                // auditor) - el consumidor rotula "precio de fecha desconocida".
+                const yahooQuote = mapBackendYahooQuote(data);
+                if (yahooQuote) {
+                    return yahooQuote;
                 }
             }
         } catch (error) {

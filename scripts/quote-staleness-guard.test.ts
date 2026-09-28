@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const finnhubActions = readFileSync('lib/actions/finnhub.actions.ts', 'utf8');
+const freshness = readFileSync('lib/market/quote-freshness.ts', 'utf8');
 const marketWorkspace = readFileSync('lib/actions/market-workspace.actions.ts', 'utf8');
 const watchlistActions = readFileSync('lib/actions/watchlist.actions.ts', 'utf8');
 const headerQuote = readFileSync('components/research/CompanyHeaderQuote.tsx', 'utf8');
@@ -17,22 +18,23 @@ const proPicks = readFileSync('lib/actions/proPicks.actions.ts', 'utf8');
 // El comportamiento temporal se prueba en scripts/quote-freshness.test.ts;
 // aqui se blinda que TODAS las rutas de cotizacion pasan por el filtro.
 test('F358: toda cotizacion Finnhub se valida por su timestamp (sanitizeFinnhubQuote)', () => {
-    assert.match(finnhubActions, /function sanitizeFinnhubQuote/, 'existe el filtro');
-    assert.match(finnhubActions, /classifyQuoteKind\(t\)/, 'clasifica por semantica de sesion');
-    assert.match(finnhubActions, /if \(kind === 'stale'\) return null/, 'stale se rechaza en origen');
+    assert.match(freshness, /export function sanitizeFinnhubQuote/, 'existe el filtro (modulo puro, testeable)');
+    assert.match(freshness, /classifyQuoteKind\(t, nowMs\)/, 'clasifica por semantica de sesion');
+    assert.match(freshness, /if \(kind === 'stale'\) return null/, 'stale se rechaza en origen');
     const uses = finnhubActions.match(/\.then\(sanitizeFinnhubQuote\)/g) ?? [];
     assert.ok(uses.length >= 2, 'getStockFinancialData y su variante Light tambien pasan por el filtro (ruta ProPicks)');
     assert.match(finnhubActions, /const quote = sanitizeFinnhubQuote\(data\)/, 'fetchStockQuote pasa por el filtro');
 });
 
 test('F358: el fallback Yahoo (sin timestamp) se marca siempre como cierre, nunca live', () => {
-    assert.match(finnhubActions, /kind: 'close' as const/, 'Yahoo = cierre fechado');
+    assert.match(freshness, /t: null, kind: 'close'/, 'Yahoo = cierre fechado SIN fecha atribuida');
+    assert.match(finnhubActions, /mapBackendYahooQuote\(data\)/, 'fetchStockQuote mapea Yahoo por el filtro puro');
 });
 
 test('F358: los consumidores etiquetan el cierre fechado y no lo pintan actual', () => {
     assert.match(marketWorkspace, /sessionDateEt\(quote\.t\)/, 'la ficha research fecha el cierre');
     assert.match(marketWorkspace, /priceKind: quoteLive \? 'live' : price !== null \? 'close' : null/, 'priceKind propagado');
-    assert.match(headerQuote, /Último cierre disponible/, 'cabecera rotula cierre sin fecha');
+    assert.match(headerQuote, /Precio de fecha desconocida/, 'cabecera rotula fecha desconocida sin atribuir otra serie');
     assert.match(watchlistActions, /priceAsOf = priceKind === 'close'/, 'watchlist fecha el cierre');
 });
 

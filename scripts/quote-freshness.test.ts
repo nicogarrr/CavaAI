@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 // @ts-expect-error -- node --test (--experimental-strip-types) exige la extension .ts
 // en runtime; tsc la prohibe (TS5097). El supresor vive solo en este test.
-import { classifyQuoteKind, sessionDateEt } from '../lib/market/quote-freshness.ts';
+import { classifyQuoteKind, mapBackendYahooQuote, sanitizeFinnhubQuote, sessionDateEt } from '../lib/market/quote-freshness.ts';
 
 // F358: pruebas de comportamiento de la semantica de frescura de
 // cotizaciones (sesion US, America/New_York, lun-vie 9:30-16:00).
@@ -44,4 +44,35 @@ test('timestamp roto o futuro es stale', () => {
 
 test('sessionDateEt fecha el cierre en dia ET', () => {
     assert.equal(sessionDateEt(t('2026-10-02T20:00:00Z')), '2026-10-02');
+});
+
+test('Yahoo real: la respuesta del backend se mapea a close SIN fecha (no se inventa)', () => {
+    // Shape real del backend routes/market.py (_fetch_yahoo_quote): c/d/dp de
+    // la ultima vela diaria, SIN timestamp de vela.
+    const backendPayload = { c: 36.43, d: -0.44, dp: -1.19, h: 36.81, l: 36.2, o: 36.64, pc: 36.87 };
+    const mapped = mapBackendYahooQuote(backendPayload);
+    assert.ok(mapped);
+    assert.equal(mapped.kind, 'close');
+    assert.equal(mapped.t, null);
+    assert.equal(mapped.c, 36.43);
+    // Ceros/invalidos -> miss honesto.
+    assert.equal(mapBackendYahooQuote({ c: 0, pc: 0 }), null);
+    assert.equal(mapBackendYahooQuote(null), null);
+});
+
+test('F358 real: sanitizeFinnhubQuote rechaza la cache de ayer y acepta la fresca', () => {
+    const nowMs = now('2026-09-30T15:00:00Z'); // miercoles en sesion
+    const stalePayload = { c: 36.87, d: 0.24, dp: 0.66, h: 37, l: 36.5, o: 36.6, pc: 36.63, t: t('2026-09-29T19:30:00Z') };
+    assert.equal(sanitizeFinnhubQuote(stalePayload, nowMs), null); // cache 429 de ayer: NO cuela
+    const freshPayload = { ...stalePayload, c: 36.4, t: t('2026-09-30T14:50:00Z') };
+    const fresh = sanitizeFinnhubQuote(freshPayload, nowMs);
+    assert.ok(fresh);
+    assert.equal(fresh.kind, 'live');
+    assert.equal(fresh.c, 36.4);
+    // Finde: cierre del viernes = close fechado, no rechazo.
+    const fridayClose = sanitizeFinnhubQuote({ ...stalePayload, t: t('2026-10-02T20:00:00Z') }, now('2026-10-03T22:00:00Z'));
+    assert.ok(fridayClose);
+    assert.equal(fridayClose.kind, 'close');
+    // Ceros de simbolo invalido -> miss.
+    assert.equal(sanitizeFinnhubQuote({ c: 0, pc: 0, t: t('2026-09-30T14:50:00Z') }, nowMs), null);
 });
