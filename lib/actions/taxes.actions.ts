@@ -25,3 +25,15 @@ export async function regenerateTaxReport(fiscalYear: number): Promise<TaxRecord
         method: 'POST',
     });
 }
+
+/** GET /api/taxes/modelo720/{fiscal_year}/thresholds — umbrales 720 por categoría (tri-estado) */
+export async function getModelo720Thresholds(fiscalYear: number): Promise<TaxRecord> {
+    await requireAuthenticatedUser();
+    return researchRequest<TaxRecord>(`/api/taxes/modelo720/${assertYear(fiscalYear, 'fiscalYear')}/thresholds`);
+}
+
+/** GET /api/taxes/modelo720/{fiscal_year}/file — fichero 720 (ayuda de cómputo) */
+export async function getModelo720File(fiscalYear: number): Promise<TaxRecord> {
+    await requireAuthenticatedUser();
+    return researchRequest<TaxRecord>(`/api/taxes/modelo720/${assertYear(fiscalYear, 'fiscalYear')}/file`);
+}
