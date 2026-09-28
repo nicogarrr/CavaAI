@@ -144,3 +144,49 @@ def test_falls_back_to_latest_close_then_none(db):
     db.add(other)
     db.commit()
     assert _position_price(db, other.id) is None
+
+
+def test_price_as_of_from_latest_close(db):
+    """F348: el precio del modelo declara su fecha (ultimo cierre en DB)."""
+    from app.services.valuation_service import _position_price_as_of
+    company = _company(db)
+    db.add_all([
+        MarketPrice(
+            company_id=company.id, date=date(2026, 9, 20),
+            open=Decimal("90"), high=Decimal("95"), low=Decimal("89"),
+            close=Decimal("94"), adj_close=Decimal("94"), source="Finnhub",
+        ),
+        MarketPrice(
+            company_id=company.id, date=date(2026, 9, 22),
+            open=Decimal("100"), high=Decimal("101"), low=Decimal("99"),
+            close=Decimal("100"), adj_close=Decimal("100"), source="Finnhub",
+        ),
+    ])
+    db.commit()
+    assert _position_price_as_of(db, company.id) == "2026-09-22"
+
+
+def test_price_as_of_nunca_es_el_updated_at_de_la_posicion(db):
+    """F348: el mark de la posicion no tiene fecha propia; updated_at es la
+    ultima modificacion de la fila (una reconstruccion por transaccion nueva
+    conserva el precio viejo pero mueve updated_at). Jamas se rotula el
+    precio con esa fecha: None honesto aunque la fila se acabe de tocar."""
+    from app.services.valuation_service import _position_price_as_of
+    company = _company(db)
+    pos = Position(company_id=company.id, quantity=Decimal("1"), market_price=Decimal("100"))
+    db.add(pos)
+    db.commit()
+    # Simula la reconstruccion del auditor: nueva transaccion dias despues,
+    # precio conservado, fila modificada -> updated_at se mueve.
+    pos.quantity = Decimal("5")
+    db.commit()
+    db.refresh(pos)
+    assert float(pos.market_price) == 100.0
+    assert _position_price_as_of(db, company.id) is None
+
+
+def test_price_as_of_none_without_price(db):
+    """F348: sin precio no hay fecha (None honesto, nunca fabricada)."""
+    from app.services.valuation_service import _position_price_as_of
+    company = _company(db)
+    assert _position_price_as_of(db, company.id) is None
