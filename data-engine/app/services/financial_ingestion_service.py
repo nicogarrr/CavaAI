@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.errors import redact_secrets
@@ -14,7 +14,7 @@ from app.services.connectors import esef as esef_connector
 from app.services.connectors import fred as fred_connector
 from app.services.connectors import sec_edgar as sec_edgar_connector
 from app.services.connectors.fmp import FMPClient
-from app.services.connectors.sec import SECClient
+from app.services.connectors.sec import ANNUAL_REPORT_FORMS, SECClient
 from app.services.fact_chunk_service import sync_company_fact_chunks
 
 MetricSpec = tuple[str, str, str]
@@ -299,7 +299,7 @@ def _collect_by_concept(
     periods: set[str],
     min_span: int | None,
     max_span: int | None,
-    modal_month: str | None = None,
+    annual_anchors: dict[str, str] | None = None,
 ) -> dict[str, dict[str, dict[str, Any]]]:
     """Newest ``filed`` fact per concept and period, before any merging.
 
@@ -329,11 +329,23 @@ def _collect_by_concept(
                 if not min_span <= span <= max_span:
                     continue
                 # The duration check alone is not enough: the ~365-day TTM
-                # rows that close on a quarter end pass it. Only the issuer's
-                # current fiscal close month enters an annual fact (recent
-                # era, F353; TTM rows never close on it, F28).
-                if modal_month and _normalized_fiscal_month(entry.get("end") or "") != modal_month:
-                    continue
+                # rows that close on a quarter end pass it. An annual fact
+                # only enters anchored to its own annual filing (F353): the
+                # entry's `accn` must resolve to a 10-K (o variante) in
+                # submissions AND close on the same month that filing
+                # declares on its cover. A TTM row inside a 10-K fails the
+                # month check even though its accn is valid; a coherent TTM
+                # series cannot move the anchor because the anchor is a
+                # declared cover date, not a mode over facts. Fail closed:
+                # without a linkable anchor, no annual fact enters.
+                if annual_anchors is not None:
+                    accn = str(entry.get("accn") or "")
+                    report_date = annual_anchors.get(accn)
+                    if not report_date:
+                        continue
+                    entry_month = _normalized_fiscal_month(str(entry.get("end") or ""))
+                    if entry_month is None or entry_month != _normalized_fiscal_month(report_date):
+                        continue
             end = str(entry.get("end") or "")
             if not end:
                 continue
@@ -539,8 +551,24 @@ def _normalized_fiscal_month(end: str) -> str | None:
     return f"{month or 12:02d}"
 
 
+def _current_fiscal_month_from_anchors(anchors: dict[str, str]) -> str | None:
+    """Mes vigente de cierre de ejercicio segun los ~5 filings anuales mas
+    recientes (sus reportDate normalizados). Solo etiqueta trimestres; la
+    admision anual va por ancla de filing por hecho, nunca por esta moda."""
+    if not anchors:
+        return None
+    recent = sorted(anchors.values(), reverse=True)[:5]
+    months = [m for m in (_normalized_fiscal_month(d) for d in recent) if m]
+    if not months:
+        return None
+    return Counter(months).most_common(1)[0][0]
+
+
 def _modal_fiscal_end_month(us_gaap: dict[str, Any]) -> str | None:
-    """Mes modal de cierre de ejercicio a partir de los hechos de flujo
+    """Fallback de etiquetado trimestral cuando no hay submissions: la
+    admision anual NUNCA usa esta moda (es envenenable con ruido TTM;
+    F353 la sustituyo por anclas de filing). Mes modal de cierre de
+    ejercicio a partir de los hechos de flujo
     anuales candidatos (300-380 dias, fp=FY, 10-K/20-F). Los acumulados TTM de
     ~365 dias que cierran en fin de trimestre (caso real AA/AAL: revenue
     2019-04-01 -> 2020-03-31 etiquetado FY) pasan el filtro de duracion, pero
@@ -704,13 +732,57 @@ class FinancialIngestionService:
 
         us_gaap = facts_data.get("facts", {}).get("us-gaap", {})
 
+        # Evidencia de calendario a nivel de filing (submissions). Fail
+        # closed: sin anclas no entra NINGUN hecho anual (la cobertura
+        # parcial queda visible en el resultado); los trimestres siguen su
+        # flujo normal. Nunca se sustituye por una moda de hechos: esa moda
+        # es envenenable con ruido TTM y una fecha de portada de 10-K no.
+        try:
+            annual_anchors = await sec.annual_report_anchors(cik)
+        except Exception:  # noqa: BLE001 - fail closed anual, no romper trimestres
+            annual_anchors = {}
+
         document = self._source_document_sec(db, company, ticker)
-        self._replace_sec_data(db, company, document)
 
         facts_imported = 0
         cash_restricted_years: set[int] = set()
         concept_usage: dict[str, dict[str, Any]] = {}
-        modal_fy_month = _modal_fiscal_end_month(us_gaap)
+        # La moda SOLO etiqueta trimestres (los 10-Q no declaran su cierre de
+        # ejercicio por hecho); la admision anual va por ancla de filing.
+        modal_fy_month = _current_fiscal_month_from_anchors(
+            annual_anchors
+        ) or _modal_fiscal_end_month(us_gaap)
+
+        # Pre-computo anual (funciones puras sobre companyfacts), ANTES del
+        # replace, para que el borrado sea selectivo por (metric, period):
+        # solo se reescriben los ejercicios que este import re-autoriza
+        # (un restatement machaca la cifra vieja) y se conservan los FY
+        # validos que ya no son re-anclables (p.ej. calendario anterior
+        # cuyos filings salieron de la ventana de submissions).
+        annual_by_metric: dict[str, dict[str, dict[str, Any]]] = {}
+        restated_fy_keys: list[tuple[str, str]] = []
+        for metric, concepts, unit in SEC_METRIC_MAP:
+            xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
+            by_end = _merge_for_metric(
+                _collect_by_concept(
+                    us_gaap,
+                    concepts,
+                    xbrl_unit_key,
+                    forms=ANNUAL_REPORT_FORMS,
+                    periods={"FY"},
+                    min_span=300,
+                    max_span=380,
+                    annual_anchors=annual_anchors,
+                ),
+                metric,
+            )
+            if by_end:
+                annual_by_metric[metric] = by_end
+                restated_fy_keys.extend((metric, f"{end}:FY") for end in by_end)
+
+        self._replace_sec_data(
+            db, company, document, restated_fy_keys=restated_fy_keys
+        )
 
         for metric, concepts, unit in SEC_METRIC_MAP:
             xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
@@ -778,23 +850,14 @@ class FinancialIngestionService:
             # el `filed` mas reciente, pero DENTRO de cada tag: comparar tags
             # distintos entre si es lo que descartaba una de las partes de
             # `intangible_assets` en vez de sumarlas.
-            by_end = _merge_for_metric(
-                _collect_by_concept(
-                    us_gaap,
-                    concepts,
-                    xbrl_unit_key,
-                    forms={"10-K", "20-F"},
-                    periods={"FY"},
-                    min_span=300,
-                    max_span=380,
-                    modal_month=modal_fy_month,
-                ),
-                metric,
-            )
+            by_end = annual_by_metric.get(metric) or {}
             if by_end:
+                # Cap de historia anual: ~2 eras completas (un emisor con
+                # cambio de calendario conserva su era anterior anclada; la
+                # cobertura real queda en fy_periods del resultado).
                 annual_sorted = sorted(
                     by_end.values(), key=lambda e: str(e["end"]), reverse=True
-                )[:10]
+                )[:20]
                 for entry in annual_sorted:
                     val = _decimal(entry.get("val"))
                     if val is None:
@@ -909,6 +972,11 @@ class FinancialIngestionService:
             free_data = {"status": "unavailable", "recent_filings": [], "macro": None}
         document.metadata_ = {**(document.metadata_ or {}), "free_data": free_data}
         # Chunks RAG desde los hechos persistidos (ver refresh_from_esef).
+        fy_periods = sorted({period for _m, period in restated_fy_keys}, reverse=True)
+        document.metadata_ = {
+            **(document.metadata_ or {}),
+            "fy_periods": fy_periods,
+        }
         sync_company_fact_chunks(db, company)
         db.commit()
 
@@ -921,6 +989,8 @@ class FinancialIngestionService:
             "cik": cik,
             "conflicts": conflicts,
             "free_data": free_data,
+            "fy_periods": fy_periods,
+            "annual_anchored_filings": len(annual_anchors),
         }
 
     async def refresh_from_esef(self, db: Session, company: Company) -> dict[str, Any]:
@@ -1412,8 +1482,15 @@ class FinancialIngestionService:
             )
         )
 
-    def _replace_sec_data(self, db: Session, company: Company, document: Document) -> None:
-        """Delete only the facts THIS document wrote.
+    def _replace_sec_data(
+        self,
+        db: Session,
+        company: Company,
+        document: Document,
+        *,
+        restated_fy_keys: list[tuple[str, str]] | None = None,
+    ) -> None:
+        """Delete only the facts THIS document re-authors.
 
         The filter used to be ``source_type == "SEC"``, which is not an
         ownership boundary: ``kpi_extraction_service.approve()`` writes
@@ -1422,6 +1499,16 @@ class FinancialIngestionService:
         with its own document. A fundamentals refresh therefore deleted
         reviewer-approved values with no trace, and left the two services
         fighting over the same rows.
+
+        The delete is selective (F353): quarterly rows are always re-authored
+        by the new import, but an annual FY row is only deleted when the new
+        import re-authors that exact ``(metric, period)`` - so a restated
+        figure overwrites the old one, while valid FY rows the new import
+        cannot re-anchor (e.g. a previous fiscal calendar whose filings fell
+        out of the submissions window) are preserved with values and
+        provenance intact. Facts from other documents, sources or tenants
+        are never touched. Running the same import twice is idempotent:
+        the same keys are deleted and re-inserted.
         """
         tenant_id = db.info.get("tenant_id")
         tenant_filter = (
@@ -1429,11 +1516,25 @@ class FinancialIngestionService:
             if tenant_id is not None
             else FinancialFact.tenant_id.is_(None)
         )
+        conditions = [
+            FinancialFact.fiscal_quarter != "FY",
+            FinancialFact.fiscal_quarter.is_(None),
+            # Las derivadas (FCF, margenes, crecimiento, deuda neta) se
+            # recalculan en cada import a partir de las reportadas - nuevas
+            # y preservadas - asi que siempre se re-autorizan; sin esta
+            # condicion un segundo refresh las duplicaria.
+            FinancialFact.is_reported.is_(False),
+        ]
+        if restated_fy_keys:
+            conditions.append(
+                tuple_(FinancialFact.metric, FinancialFact.period).in_(restated_fy_keys)
+            )
         db.execute(
             delete(FinancialFact).where(
                 FinancialFact.company_id == company.id,
                 FinancialFact.source_id == document.id,
                 tenant_filter,
+                or_(*conditions),
             )
         )
         db.flush()
