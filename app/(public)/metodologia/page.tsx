@@ -378,14 +378,17 @@ export default function MetodologiaPage() {
           <ShieldCheck className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Marco de calidad (MOAT)</h2>
           <Badge className="sm:ml-auto" variant="outline">
-            8 checks
+            Hasta 8 criterios
           </Badge>
         </div>
         <p className="mb-4 text-sm leading-6 text-gray-400">
-          El marco puntúa cada empresa con 8 checks trazables; cada uno declara su valor y su
-          umbral, y un check sin datos queda como no evaluable, nunca como superado. Los cinco
-          primeros son el marco original (V1); los tres últimos (V2, sept 2026) miran la caja y
-          la disciplina de capital con criterios estándar del value investing.
+          Estos ocho criterios describen calidad financiera histórica, no demuestran por sí solos
+          un foso competitivo. Solo se puntúan en el perfil operativo general y con datos
+          suficientes. Para empresas en etapa temprana o de crecimiento, financieras y cíclicas,
+          no se muestra un 0/8 engañoso: el resultado es «no evaluable con estos umbrales».
+          El perfil se basa en tipo, sector y etiquetas registrados, no en el ticker ni en pérdidas
+          de un año. Cada valor subyacente permanece accesible como métrica individual. La
+          evaluación del foso exige evidencia verificable por separado; su ausencia no equivale a cero.
         </p>
         <ul className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
           {[

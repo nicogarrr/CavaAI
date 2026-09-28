@@ -698,6 +698,80 @@ def test_capex_to_da_5y_uses_absolute_capex():
         cleanup_metric_test_artifacts()
 
 
+def test_early_stage_moat_quality_is_not_spurious_zero_of_eight():
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        company.company_type = "space_telecom_pre_fcf"
+        company.factor_tags = ["space", "pre_fcf"]
+        for year in [2021, 2022, 2023, 2024, 2025]:
+            add_fact(db, company, "revenue", "4400000", f"FY{year}", year)
+            add_fact(db, company, "net_income", "-50000000", f"FY{year}", year)
+            add_fact(db, company, "free_cash_flow", "-80000000", f"FY{year}", year)
+            add_fact(db, company, "total_assets", "100000000", f"FY{year}", year)
+            add_fact(db, company, "total_equity", "100000000", f"FY{year}", year)
+        db.commit()
+        result = MetricCalculationService().calculate(db, company, "quality_moat_score_v2", persist=True)
+        assert result.status == "unavailable"
+        assert result.value is None
+        assert result.calculation_trace["profile"] == "early_stage"
+        assert result.calculation_trace["checks_evaluable"] == 0
+        assert result.calculation_trace["score_comparable"] is False
+        assert all(check["passed"] is None for check in result.calculation_trace["checks"])
+        assert any(check["value"] is not None for check in result.calculation_trace["checks"])
+        db.commit()
+        stored = db.scalar(select(CalculatedMetric).where(
+            CalculatedMetric.company_id == company.id,
+            CalculatedMetric.metric == "quality_moat_score_v2",
+        ))
+        assert stored.calculation_trace["profile"] == "early_stage"
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
+def test_quality_profile_transition_updates_persisted_trace_same_period():
+    """Regression: mature -> pre-FCF must replace JSON trace on an existing row."""
+    cleanup_metric_test_artifacts()
+    db = SessionLocal()
+    try:
+        company = create_test_company(db)
+        add_quality_year_facts(db, company, [2021, 2022, 2023, 2024, 2025])
+        db.commit()
+        service = MetricCalculationService()
+        mature = service.calculate(db, company, "quality_moat_score_v2", persist=True)
+        assert mature.calculation_trace["profile"] == "mature"
+        assert mature.calculation_trace["score_comparable"] is True
+        mature_id = mature.id
+        mature_period = mature.period
+        db.commit()
+        db.expire_all()
+
+        company = db.get(Company, company.id)
+        company.company_type = "space_telecom_pre_fcf"
+        company.factor_tags = ["space", "pre_fcf"]
+        updated = service.calculate(db, company, "quality_moat_score_v2", persist=True)
+        assert updated.id == mature_id
+        assert updated.period == mature_period
+        assert updated.status == "unavailable"
+        assert updated.calculation_trace["score_comparable"] is False
+        db.commit()
+        db.expunge_all()
+
+        stored = db.get(CalculatedMetric, mature_id)
+        assert stored is not None
+        assert stored.period == mature_period
+        assert stored.status == "unavailable"
+        assert stored.calculation_trace["profile"] == "early_stage"
+        assert stored.calculation_trace["score_comparable"] is False
+        assert stored.calculation_trace["checks_evaluable"] == 0
+        assert all(c["passed"] is None for c in stored.calculation_trace["checks"])
+    finally:
+        db.close()
+        cleanup_metric_test_artifacts()
+
+
 def test_quality_moat_score_v2_full_pass_and_partial():
     cleanup_metric_test_artifacts()
     db = SessionLocal()
