@@ -70,10 +70,12 @@ def _fragment_templates(
     base = valuation.get("base_value")
     mos = valuation.get("margin_of_safety")
     if price is not None and base is not None and mos is not None:
-        direction = "por encima del" if mos < 0 else "por debajo del"
+        # MoS = base/price - 1 (valuation/engines/base.py): se nombra
+        # explicitamente. Describirlo como distancia precio/base usaria el
+        # denominador equivocado.
         fragments["valoracion_posicion"] = (
-            f"{company.name} cotiza a {price:.2f} {currency}, un {abs(mos) * 100:.0f}% "
-            f"{direction} escenario base ({base:.2f} {currency})."
+            f"{company.name} cotiza a {price:.2f} {currency} frente a un escenario "
+            f"base de {base:.2f} {currency} (margen de seguridad del {mos:.0%})."
         )
     growth = (valuation.get("reverse_dcf") or {}).get("required_revenue_growth")
     if growth is not None:
@@ -116,10 +118,17 @@ def _fragment_templates(
 
 
 def _mandatory_ids(fragments: dict[str, str], valuation: dict) -> set[str]:
-    """Fragmentos que TODA seleccion valida debe incluir."""
+    """Fragmentos que TODA seleccion valida debe incluir.
+
+    El nucleo de valoracion es obligatorio cuando existe: el resumen de una
+    tesis no puede quedarse en noticias o expectativas sin precio/base. Los
+    titulares son complemento, nunca sustituto.
+    """
     mandatory: set[str] = set()
     if "caveat_insufficient" in fragments:
         mandatory.add("caveat_insufficient")
+    if "valoracion_posicion" in fragments:
+        mandatory.add("valoracion_posicion")
     if valuation.get("status") == "partial" and "caveat_parcial" in fragments:
         mandatory.add("caveat_parcial")
     return mandatory
@@ -137,10 +146,16 @@ def _validated_selection(
         return None
     if not _mandatory_ids(fragments, valuation).issubset(fragment_ids):
         return None
-    has_titular = any(fid.startswith("titular_") for fid in fragment_ids)
+    titular_positions = [
+        i for i, fid in enumerate(fragment_ids) if fid.startswith("titular_")
+    ]
+    has_titular = bool(titular_positions)
     has_caveat_titulares = "caveat_titulares" in fragment_ids
-    # Sin titular citado no se anade la coletilla; con titular es obligatoria.
+    # Sin titular citado no se anade la coletilla; con titular es obligatoria
+    # y debe ir DESPUES de todos los titulares (cierra la lectura, no la abre).
     if has_titular != has_caveat_titulares:
+        return None
+    if has_titular and fragment_ids.index("caveat_titulares") < max(titular_positions):
         return None
     if not has_titular and not any(
         fid in fragment_ids

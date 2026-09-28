@@ -94,9 +94,11 @@ def _spy_budget(monkeypatch):
 
 
 def test_templates_are_correct_by_construction():
+    # MoS = base/price - 1: se nombra explicitamente, sin distancia
+    # precio/base (que usaria el denominador equivocado: 215%, no 68%).
     assert FRAGMENTS["valoracion_posicion"] == (
-        "Meta Platforms cotiza a 336.56 USD, un 68% por encima del escenario "
-        "base (106.85 USD)."
+        "Meta Platforms cotiza a 336.56 USD frente a un escenario base de "
+        "106.85 USD (margen de seguridad del -68%)."
     )
     assert FRAGMENTS["expectativas_mercado"] == (
         "El mercado descuenta un crecimiento de ingresos del 35.0% anual."
@@ -230,3 +232,23 @@ def test_budget_recorded_even_when_selection_discarded(db, monkeypatch):
         provider=_FakeProvider(["inventado"]))
     assert result == "base"
     assert calls == [{"workflow": "thesis_narrative", "commit": False}]
+
+
+def test_valuation_core_is_mandatory(db, monkeypatch):
+    # Sin el nucleo de valoracion (precio/base/MoS), la seleccion no puede
+    # sustituir el executive_summary: noticias o expectativas no bastan.
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    for ids in (["titular_0", "caveat_titulares"], ["expectativas_mercado"]):
+        result = narrative.maybe_narrative(
+            db, _company(), VALUATION, HYPOTHESIS, NEWS, "base",
+            provider=_FakeProvider(ids))
+        assert result == "base"
+
+
+def test_caveat_titulares_must_come_after_headlines(db, monkeypatch):
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    result = narrative.maybe_narrative(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, "base",
+        provider=_FakeProvider(
+            ["valoracion_posicion", "caveat_titulares", "titular_0"]))
+    assert result == "base"
