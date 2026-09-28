@@ -147,7 +147,11 @@ db.close()
     await expect(
       page.getByText("Esto no es recomendacion de inversion (semilla e2e)."),
     ).toBeVisible();
-    await page.screenshot({ path: "test-results/analisis-narrativo.png" });
+    const narrativePanel = page.getByLabel("Análisis narrativo");
+    await narrativePanel.scrollIntoViewIfNeeded();
+    await narrativePanel.screenshot({
+      path: "test-results/analisis-narrativo.png",
+    });
 
     // Caso oculto: sin narrative_sections la seccion no aparece (honesto).
     await page.goto("/research/MSFT?view=thesis");
