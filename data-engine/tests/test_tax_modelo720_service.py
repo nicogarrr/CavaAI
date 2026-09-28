@@ -483,3 +483,102 @@ def test_current_position_without_snapshot_is_unvalued(db):
 
     assert any(u["ticker"] == "AAPL" for u in result["unvalued"])
     assert result["categories"]["valores"]["status"] == "desconocido"
+
+
+def test_multiportfolio_different_snapshot_dates_sum(db):
+    # Contraejemplo del auditor: AAPL 30k al 30/12 en A + AAPL 25k al 31/12
+    # en B. Sin portfolio en el GROUP BY, A quedaba eclipsada (25k
+    # "por_debajo"); la suma por declarante es 55k.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
+    other = Portfolio(tenant_id=tenant.id, name="Other", base_currency="EUR")
+    db.add(other)
+    db.flush()
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 30), 30000)
+    _position_row(db, tenant, other, c)
+    _position_snapshot(db, tenant, other, c, date(2025, 12, 31), 25000)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    assert result["categories"]["valores"]["total_base"] == 55000.0
+    assert result["categories"]["valores"]["exceeds"] is True
+
+
+def test_non_eur_portfolio_is_not_summed_as_eur(db):
+    # La mera presencia de una cartera USD invalida la categoría: solo la
+    # parte EUR se muestra (informativa) y queda no concluyente.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE", "US5949181045": "IE"})
+    other = Portfolio(tenant_id=tenant.id, name="Dollar", base_currency="USD")
+    db.add(other)
+    db.flush()
+    c1 = _company(db, tenant, "AAPL", isin="US0378331005")
+    c2 = _company(db, tenant, "MSFT", isin="US5949181045")
+    _position_row(db, tenant, portfolio, c1)
+    _position_snapshot(db, tenant, portfolio, c1, date(2025, 12, 31), 40000)
+    _position_row(db, tenant, other, c2)
+    _position_snapshot(db, tenant, other, c2, date(2025, 12, 31), 30000)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    valores = result["categories"]["valores"]
+    assert valores["total_base"] == 40000.0  # solo la cartera EUR
+    assert valores["exceeds"] is None
+    assert valores["status"] == "desconocido"
+    assert any("no EUR" in r for r in valores["reasons"])
+
+
+def test_sold_position_of_non_eur_portfolio_still_invalidates(db):
+    # La posición de la cartera USD existía al 31/12/2025 y se vendió
+    # después (fila viva quantity=0): sigue invalidando la categoría.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
+    other = Portfolio(tenant_id=tenant.id, name="Dollar", base_currency="USD")
+    db.add(other)
+    db.flush()
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 30000)
+    _position_row(db, tenant, other, c)
+    db.query(Position).filter_by(portfolio_id=other.id).one().quantity = Decimal("0")
+    _position_snapshot(db, tenant, other, c, date(2025, 12, 31), 30000)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    valores = result["categories"]["valores"]
+    assert valores["exceeds"] is None
+    assert valores["status"] == "desconocido"
+
+
+def test_multiportfolio_cash_is_not_conclusive(db):
+    # cash_balances no registra portfolio_id: con dos carteras, un saldo
+    # global podría contarse dos veces -> cuentas no concluyente.
+    tenant, portfolio = _seed(db, custody={"cash:EUR": "IE"})
+    other = Portfolio(tenant_id=tenant.id, name="Second", base_currency="EUR")
+    db.add(other)
+    db.flush()
+    _cash_balance_row(db, tenant, "EUR")
+    _cash_snapshot(db, tenant, portfolio, "EUR", 60000, 1)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    cuentas = result["categories"]["cuentas"]
+    assert cuentas["exceeds"] is None
+    assert cuentas["status"] == "desconocido"
+    assert any("atribuibles" in r for r in cuentas["reasons"])
+
+
+def test_legacy_snapshot_without_provenance_is_unknown(db):
+    # Un snapshot heredado sin clave 'missing_pricing' no prueba que su
+    # precio tuviera la fecha de captura: no autentica el 31/12.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 60000)
+    db.query(PortfolioDailySnapshot).one().metadata_ = {}  # heredado
+    db.commit()
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    valores = result["categories"]["valores"]
+    assert valores["status"] == "desconocido"
+    assert any("provenance" in s["reason"] for s in result["stale_snapshots"])

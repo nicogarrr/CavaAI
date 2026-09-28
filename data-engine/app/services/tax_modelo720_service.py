@@ -468,44 +468,6 @@ class Modelo720Service:
         # Cobertura: una posición/saldo ACTUAL sin ningún snapshot a cierre
         # es invisible para el chequeo si solo miramos snapshots. Listarla
         # como sin valorar: el total nunca la silencia.
-        # Las carteras con base distinta de EUR no se suman como si fueran
-        # EUR: sus partidas quedan fuera con la razón explícita.
-        non_eur_ids = {p.id for p in non_eur_portfolios}
-        if non_eur_ids:
-            names = ", ".join(
-                f"{p.name} ({p.base_currency})" for p in non_eur_portfolios
-            )
-            for position in db.scalars(
-                select(Position).where(Position.portfolio_id.in_(non_eur_ids))
-            ):
-                if not position.quantity or Decimal(str(position.quantity)) == 0:
-                    continue
-                company = db.get(Company, position.company_id)
-                ticker = company.ticker if company else f"company-{position.company_id}"
-                unvalued.append({
-                    "ticker": ticker,
-                    "snapshot_date": None,
-                    "reason": (
-                        f"Cartera con base no EUR ({names}): sin FX oficial a "
-                        "31/12 no hay conversión fiable; fuera del total."
-                    ),
-                })
-            for balance in db.scalars(
-                select(CashBalance).where(CashBalance.tenant_id == portfolio.tenant_id)
-            ):
-                # Los saldos no llevan cartera: solo se evaluaron si hubo
-                # snapshot en cartera EUR; con cartera no EUR en el tenant
-                # el neteo por divisa ya no es validable.
-                if balance.currency and balance.balance and Decimal(str(balance.balance)) > 0:
-                    unvalued.append({
-                        "ticker": f"cash-{balance.currency}",
-                        "snapshot_date": None,
-                        "reason": (
-                            f"Hay carteras con base no EUR ({names}): el neteo "
-                            "de saldos por divisa no es validable en EUR; "
-                            "fuera del total."
-                        ),
-                    })
         covered_companies = {p.company_id for p in positions}
         for position in db.scalars(
             select(Position).where(Position.portfolio_id.in_(portfolio_ids))
@@ -598,6 +560,39 @@ class Modelo720Service:
             cuentas_total, cuentas_max_date,
             stale=stale_c, huecos=bool(huecos_c), q4_missing=True,
         )
+        if non_eur_portfolios:
+            # La mera presencia de carteras no EUR invalida la categoría:
+            # posiciones VENDIDAS de esas carteras no dejan fila viva y sin
+            # FX oficial a 31/12 no hay conversión fiable. El total mostrado
+            # es SOLO la parte EUR, informativo.
+            names = ", ".join(
+                f"{p.name} ({p.base_currency})" for p in non_eur_portfolios
+            )
+            valores_exceeds, valores_status = None, "desconocido"
+            valores_reasons = valores_reasons + [
+                f"Hay carteras con base no EUR ({names}): sus valores "
+                "(incluidos los vendidos durante el ejercicio, que ya no "
+                "dejan fila) no son convertibles a EUR a 31/12 sin FX "
+                "oficial. El total mostrado es solo la parte EUR; la "
+                "categoría no es concluyente."
+            ]
+            cuentas_exceeds, cuentas_status = None, "desconocido"
+            cuentas_reasons = cuentas_reasons + [
+                f"Hay carteras con base no EUR ({names}): sus saldos no son "
+                "convertibles a EUR a 31/12 sin FX oficial. La categoría no "
+                "es concluyente."
+            ]
+        if len(tenant_portfolios) > 1 and cash_rows and cuentas_status != "desconocido":
+            # cash_balances no lleva portfolio_id: en multiportfolio los
+            # saldos no son atribuibles por cartera y un saldo global único
+            # podría contarse dos veces (una captura por cartera).
+            cuentas_exceeds, cuentas_status = None, "desconocido"
+            cuentas_reasons = cuentas_reasons + [
+                "Los saldos de efectivo no son atribuibles por cartera "
+                "(cash_balances no registra portfolio_id): con varias "
+                "carteras no se puede descartar duplicación de un mismo "
+                "saldo global. La categoría no es concluyente."
+            ]
         if cuentas_status == "supera":
             # Los saldos importados se agrupan por DIVISA, no por cuenta
             # real: sin identificador de cuenta no se puede validar el neteo
@@ -677,7 +672,9 @@ def _notas() -> list[str]:
         "CAPTURA (provenance del snapshot), no la de las filas vivas ni la "
         "de captura del snapshot.",
         "La obligación es por declarante: se agregan todas las carteras "
-        "del tenant.",
+        "del tenant. Los saldos de efectivo no son atribuibles por cartera "
+        "(limitación del esquema): en multiportfolio la categoría de "
+        "cuentas queda no concluyente.",
         "El umbral se evalúa en EUR: con divisa base distinta de EUR la "
         "categoría queda 'desconocido' (sin conversión oficial a 31/12).",
         "Cuentas: falta el saldo medio del 4.º trimestre, así que el "
