@@ -145,6 +145,27 @@ export default function ThesisMemo({
 
       <p className="text-sm leading-6 text-gray-300">{thesis.executive_summary}</p>
 
+      {thesis.narrative_sections && thesis.narrative_sections.length > 0 ? (
+        <section
+          aria-label="Análisis narrativo"
+          className="space-y-4 rounded-lg border border-gray-800 bg-gray-900/40 p-4"
+        >
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Análisis narrativo
+          </h3>
+          {thesis.narrative_sections.map((section, index) => (
+            <div key={`${section.titulo}-${index}`} className="space-y-2">
+              <h4 className="text-sm font-semibold text-gray-200">{section.titulo}</h4>
+              {section.parrafos.map((parrafo, pIndex) => (
+                <p key={pIndex} className="text-sm leading-6 text-gray-300">
+                  {parrafo}
+                </p>
+              ))}
+            </div>
+          ))}
+        </section>
+      ) : null}
+
       <section className="rounded-lg border border-teal-900/60 bg-teal-950/10 p-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-teal-300">Hipótesis</h3>
         <p className="mt-2 text-sm leading-6 text-gray-200">

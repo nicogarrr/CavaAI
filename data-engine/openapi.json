@@ -3726,6 +3726,27 @@
         "title": "MemoryItemOut",
         "type": "object"
       },
+      "NarrativeSectionOut": {
+        "properties": {
+          "parrafos": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Parrafos",
+            "type": "array"
+          },
+          "titulo": {
+            "title": "Titulo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "titulo",
+          "parrafos"
+        ],
+        "title": "NarrativeSectionOut",
+        "type": "object"
+      },
       "NewsFeedItem": {
         "properties": {
           "published_at": {
@@ -6290,6 +6311,20 @@
               }
             ],
             "title": "Margin Of Safety"
+          },
+          "narrative_sections": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NarrativeSectionOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrative Sections"
           },
           "rating": {
             "title": "Rating",

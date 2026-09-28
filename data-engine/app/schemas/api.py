@@ -269,6 +269,11 @@ class ThesisGenerateRequest(BaseModel):
     request_id: str | None = Field(default=None, min_length=8, max_length=64)
 
 
+class NarrativeSectionOut(BaseModel):
+    titulo: str
+    parrafos: list[str]
+
+
 class ThesisOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -294,6 +299,8 @@ class ThesisOut(BaseModel):
     catalysts: list | None = None
     invalidation_criteria: list | None = None
     scenario_probabilities: dict | None = None
+    # Null en versiones anteriores a la capa narrativa o sin seleccion valida.
+    narrative_sections: list[NarrativeSectionOut] | None = None
     stale: bool = False
     latest_data_at: datetime | None = None
     created_at: datetime
