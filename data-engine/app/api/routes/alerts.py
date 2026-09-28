@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 from urllib.parse import urlparse
@@ -199,9 +200,9 @@ def list_alerts(
     # mutarlas dejaba la sesion sucia y cualquier commit posterior del mismo
     # request podia flushear una escritura desde un GET.
     company_ids = {alert.company_id for alert in alerts if alert.company_id is not None}
-    tickers = (
+    companies = (
         {
-            company.id: company.ticker
+            company.id: company
             for company in db.scalars(select(Company).where(Company.id.in_(company_ids)))
         }
         if company_ids
@@ -215,23 +216,32 @@ def list_alerts(
         for alert in alerts
         if alert.metadata_ and alert.metadata_.get("news_event_id")
     }
-    news_urls = (
-        {
-            event.id: safe_url
-            for event in db.scalars(select(NewsEvent).where(NewsEvent.id.in_(news_ids)))
-            if (safe_url := _safe_http_url(event.url)) is not None
-        }
-        if news_ids
-        else {}
+    news_events = (
+        {event.id: event for event in db.scalars(select(NewsEvent).where(NewsEvent.id.in_(news_ids)))}
+        if news_ids else {}
     )
     result: list[ResearchAlertOut] = []
     for alert in alerts:
         out = ResearchAlertOut.model_validate(alert)
-        out.ticker = tickers.get(alert.company_id)
+        company = companies.get(alert.company_id)
+        out.ticker = company.ticker if company else None
+        out.company_name = company.name if company else None
         metadata = alert.metadata_ or {}
-        out.source_url = _safe_http_url(metadata.get("source_url")) or news_urls.get(
-            metadata.get("news_event_id")
+        event = news_events.get(metadata.get("news_event_id"))
+        out.source_url = _safe_http_url(metadata.get("source_url")) or (
+            _safe_http_url(event.url) if event else None
         )
+        if event:
+            # Document type only from a specific form token in the source
+            # headline, never from an arbitrary model summary or SEC domain.
+            headline = (event.metadata_ or {}).get("source_headline")
+            if isinstance(headline, str):
+                match = re.search(r"\b(10-K|10-Q|8-K|20-F|6-K)\b", headline, re.IGNORECASE)
+                out.event_form = match.group(1).upper() if match else None
+            source = (event.metadata_ or {}).get("date_source")
+            if source in ("source", "gdelt_first_seen"):
+                out.event_date = event.date
+                out.event_date_source = source
         if alert.status == "snoozed" and _snooze_expired(alert.snoozed_until, now):
             out.status = "open"
             out.snoozed_until = None

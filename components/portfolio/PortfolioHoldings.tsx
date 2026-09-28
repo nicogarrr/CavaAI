@@ -137,26 +137,6 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                           </Badge>
                         </dd>
                       </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <dt className="text-gray-500">Fiscal</dt>
-                        <dd>
-                          {holding.fiscalBucket ? (
-                            <Badge
-                              variant="outline"
-                              className={
-                                holding.fiscalBucket === 'largo_plazo'
-                                  ? 'border-blue-700 text-blue-300'
-                                  : 'border-amber-700 text-amber-300'
-                              }
-                            >
-                              {holding.fiscalBucket === 'largo_plazo' ? 'Largo plazo' : 'Corto plazo'}
-                              {holding.holdingDays !== null ? ` · ${holding.holdingDays}d` : ''}
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-gray-500">{NA}</span>
-                          )}
-                        </dd>
-                      </div>
                     </dl>
                   </div>
                 );
@@ -173,10 +153,10 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                 </div>
               )}
             </div>
-            {/* Escritorio: tabla completa */}
+            {/* Escritorio: la acción se despliega junto al símbolo, sin columna propia. */}
             <div className="hidden overflow-x-auto md:block">
             <Table regionLabel="Posiciones de la cartera">
-              <TableCaption className="sr-only">Posiciones abiertas de la cartera: símbolo, cantidad, precio medio, precio actual, valor, ganancia o pérdida y régimen fiscal.</TableCaption>
+              <TableCaption className="sr-only">Posiciones abiertas: símbolo, cantidad, precio medio, precio actual, valor y ganancia o pérdida. Eliminar una posición está en el menú de cada símbolo.</TableCaption>
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-gray-700">
                   <TableHead className="text-gray-400">Símbolo</TableHead>
@@ -185,8 +165,7 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                   <TableHead className="text-right text-gray-400">Actual</TableHead>
                   <TableHead className="text-right text-gray-400">Valor</TableHead>
                   <TableHead className="text-right text-gray-400">G/P</TableHead>
-                  <TableHead className="text-center text-gray-400">Fiscal</TableHead>
-                  <TableHead className="text-center text-gray-400">Acciones</TableHead>
+
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -195,12 +174,15 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                   return (
                     <TableRow key={holding.symbol} className="border-gray-700 hover:bg-gray-800/50">
                       <TableCell>
-                        <Link
-                          href={`/research/${holding.symbol}`}
-                          className="font-mono font-bold text-teal-400 hover:text-teal-300 transition-colors"
-                        >
-                          {holding.symbol}
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          <Link href={`/research/${holding.symbol}`} className="font-mono font-bold text-teal-400 hover:text-teal-300 transition-colors">{holding.symbol}</Link>
+                          <details className="relative">
+                            <summary className="min-h-9 cursor-pointer rounded px-2 py-2 text-xs text-gray-400 hover:text-gray-100" aria-label={`Opciones de ${holding.symbol}`}>Opciones</summary>
+                            <div className="mt-1 min-w-36 rounded-md border border-gray-700 bg-gray-900 p-1 shadow-xl">
+                              <Button variant="ghost" size="sm" onClick={() => handleDelete(holding.symbol)} disabled={deleting === holding.symbol} aria-busy={deleting === holding.symbol} className="min-h-10 w-full justify-start gap-2 text-red-300" aria-label={`Eliminar ${holding.symbol} de la cartera`}><Trash2 aria-hidden="true" className="h-4 w-4" />Eliminar posición</Button>
+                            </div>
+                          </details>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right text-gray-300">
                         {formatNumber(holding.quantity, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -227,50 +209,6 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                           </Badge>
                         </div>
                       </TableCell>
-                      <TableCell className="text-center">
-                        {holding.fiscalBucket ? (
-                          <div className="flex flex-col items-center gap-1">
-                            <Badge
-                              variant="outline"
-                              className={
-                                holding.fiscalBucket === 'largo_plazo'
-                                  ? 'border-blue-700 text-blue-300'
-                                  : 'border-amber-700 text-amber-300'
-                              }
-                              title={
-                                holding.firstBuyDate
-                                  ? `En cartera desde ${holding.firstBuyDate}`
-                                  : undefined
-                              }
-                            >
-                              {holding.fiscalBucket === 'largo_plazo' ? 'Largo plazo' : 'Corto plazo'}
-                            </Badge>
-                            {holding.holdingDays !== null && (
-                              <span className="text-xs text-gray-500">{holding.holdingDays}d</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-500" title="Sin historial de compra registrado">
-                            {NA}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(holding.symbol)}
-                          disabled={deleting === holding.symbol}
-                          aria-busy={deleting === holding.symbol}
-                          className="text-red-400 hover:text-red-300 hover:bg-red-950/20"
-                          title="Eliminar posición completa"
-                          // `title` no se expone de forma fiable en tactil ni en
-                          // varios lectores: el nombre accesible va en aria-label.
-                          aria-label={`Eliminar ${holding.symbol} de la cartera`}
-                        >
-                          <Trash2 aria-hidden="true" className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -286,8 +224,7 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                       {format(cash, cashCurrency)}
                     </TableCell>
                     <TableCell className="text-right text-gray-500">{NA}</TableCell>
-                    <TableCell className="text-center text-gray-500">{NA}</TableCell>
-                    <TableCell className="text-center" />
+
                   </TableRow>
                 )}
               </TableBody>

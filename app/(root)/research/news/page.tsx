@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, Minus, TrendingDown, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
@@ -10,9 +10,9 @@ import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
 import { getTickerContext } from '@/lib/actions/ticker-context.actions';
 import { TickerContextBadges } from '@/components/common/TickerContextBadges';
-import { formatPercent, NA } from '@/lib/format';
+import { NA } from '@/lib/format';
 import { newsDisplayTitle } from '@/lib/news-display';
-import { etiquetaTemaMacro, etiquetaTierFuente, etiquetaTipoEvento } from "@/lib/labels";
+import { etiquetaTemaMacro, etiquetaTipoEvento } from "@/lib/labels";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -26,20 +26,6 @@ async function submitIngestFeed(formData: FormData): Promise<void> {
   'use server';
   await ingestResearchNewsFeed(formData);
 }
-
-function pct(value: number | null | undefined) {
-  return formatPercent(value ?? null, { digits: 1 }, NA);
-}
-
-/** El icono de impacto es el único dato de la celda: se oculta y se deja el
- *  nombre en texto para que un lector de pantalla no lea un glifo suelto. */
-const IMPACT_LABELS: Record<string, string> = {
-  up: 'alcista',
-  positive: 'alcista',
-  down: 'bajista',
-  negative: 'bajista',
-  neutral: 'neutro',
-};
 
 type PageProps = { searchParams: Promise<{ lane?: string }> };
 
@@ -124,19 +110,15 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
             tabla al documento entero (zoom-out y recorte en movil) aunque la
             region ya scrolla por dentro; layout+paint lo contiene aqui. */}
         <div aria-label="Flujo de eventos de noticias" className="scroll-affordance-x overflow-x-auto [contain:layout_paint]" role="region" tabIndex={0}>
-          <table className="w-full min-w-[1080px] text-left text-sm">
-            <caption className="sr-only">Eventos de noticias clasificados por materialidad, con impacto sobre la cartera y si exigen actualización</caption>
+          <table className="w-full min-w-[650px] text-left text-sm">
+            <caption className="sr-only">Eventos de noticias con materialidad y detalles de la fuente por fila</caption>
             <thead className="text-xs uppercase text-gray-500">
               <tr>
                 <th className="border-b border-gray-800 py-2" scope="col">Ticker</th>
                 <th className="border-b border-gray-800 py-2" scope="col">Fecha</th>
                 <th className="border-b border-gray-800 py-2" scope="col">Titular</th>
-                <th className="border-b border-gray-800 py-2" scope="col">Fuente</th>
-                <th className="border-b border-gray-800 py-2" scope="col">Tipo</th>
-                <th className="border-b border-gray-800 py-2 text-right" scope="col">Peso al evaluar</th>
                 <th className="border-b border-gray-800 py-2 text-center" scope="col">Materialidad</th>
-                <th className="border-b border-gray-800 py-2 text-center" scope="col">Impacto</th>
-                <th className="border-b border-gray-800 py-2 text-center" scope="col">¿Actualizar?</th>
+                <th className="border-b border-gray-800 py-2" scope="col">Estado y detalle</th>
               </tr>
             </thead>
             <tbody>
@@ -147,14 +129,6 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                     : event.materiality_score >= 4
                       ? 'text-amber-400'
                       : 'text-gray-500';
-
-                const dir = event.impact_direction.toLowerCase();
-                const DirectionIcon =
-                  dir === 'up' || dir === 'positive'
-                    ? TrendingUp
-                    : dir === 'down' || dir === 'negative'
-                      ? TrendingDown
-                      : Minus;
 
                 return (
                   <tr key={event.id} className="border-b border-gray-900 last:border-0">
@@ -194,7 +168,7 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                       ) : null}
                     </td>
                     <td className="max-w-[360px] py-3 text-gray-300">
-                      <div className="truncate">
+                      <div className="break-words">
                         {event.url ? (
                           <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
                             {newsDisplayTitle(event.title, event.ticker, event.headline_from_source)}
@@ -204,38 +178,26 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                         )}
                       </div>
                     </td>
-                    <td className="py-3 text-gray-400">
-                      <div>{event.source}</div>
-                      <div className="mt-1 text-xs text-gray-500">{event.source_tier ? etiquetaTierFuente(event.source_tier) : 'tier desconocido'}</div>
-                    </td>
-                    <td className="py-3 text-gray-400">{etiquetaTipoEvento(event.event_type)}</td>
-                    <td className="py-3 text-right text-gray-400">{pct(event.portfolio_weight)}</td>
                     <td className="py-3 text-center">
-                      <span className={`font-semibold ${materialityColor}`}>
-                        {event.materiality_score}
-                      </span>
+                      <span className={`font-semibold ${materialityColor}`}>{event.materiality_score}</span>
                     </td>
-                    <td className="py-3 text-center">
-                      <DirectionIcon aria-hidden="true" className="inline-block h-4 w-4 text-gray-400" />
-                      <span className="sr-only">{IMPACT_LABELS[dir] ?? dir}</span>
-                    </td>
-                    <td className="py-3 text-center">
-                      {event.requires_update ? (
-                        <span className="rounded-full bg-red-950/60 px-2 py-0.5 text-xs font-semibold text-red-400">
-                          urgente
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs text-gray-500">
-                          ok
-                        </span>
-                      )}
+                    <td className="py-3 text-gray-300">
+                      {event.requires_update ? <span className="rounded-full bg-amber-950/60 px-2 py-0.5 text-xs text-amber-300">Revisar</span> : <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs text-gray-400">Sin revisión pendiente</span>}
+                      <details className="mt-2 max-w-xs text-xs text-gray-400">
+                        <summary className="min-h-10 cursor-pointer py-2 text-teal-300">Ver contexto</summary>
+                        <dl className="mt-1 space-y-1 break-words rounded-md border border-gray-800 p-2">
+                          <div><dt className="inline font-medium">Fuente: </dt><dd className="inline">{event.source || NA}</dd></div>
+                          <div><dt className="inline font-medium">Tipo: </dt><dd className="inline">{etiquetaTipoEvento(event.event_type)}</dd></div>
+                          {event.news_lane === 'macro' && event.macro_theme ? <div><dt className="inline font-medium">Tema: </dt><dd className="inline">{etiquetaTemaMacro(event.macro_theme)}</dd></div> : null}
+                        </dl>
+                      </details>
                     </td>
                   </tr>
                 );
               })}
               {!events.length ? (
                 <tr>
-                  <td className="p-0" colSpan={9}>
+                  <td className="p-0" colSpan={5}>
                     <EmptyState
                       action={<EmptyLink href="/research/sources">Importa una fuente o analiza una noticia manual</EmptyLink>}
                       className="rounded-none border-0 p-6"
@@ -246,7 +208,7 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
               ) : null}
               {events.length > 0 && !filtered.length ? (
                 <tr>
-                  <td className="p-6 text-center text-sm text-gray-500" colSpan={9}>
+                  <td className="p-6 text-center text-sm text-gray-500" colSpan={5}>
                     Sin eventos en este carril dentro de los últimos {events.length} cargados.
                   </td>
                 </tr>

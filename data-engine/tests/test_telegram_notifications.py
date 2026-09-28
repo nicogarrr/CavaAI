@@ -173,3 +173,18 @@ def test_telegram_429_fails_honestly_without_retry_storm(monkeypatch):
     assert delivery["error"] == "HTTPStatusError"
     assert _RateLimitedClient.attempts == 1
     assert "rotated-test-token" not in str(result)
+
+
+def test_news_telegram_uses_source_metadata_without_machine_trace():
+    from app.services.notification_service import NotificationService
+    text = NotificationService._telegram_text({
+        "severity": "high", "title": "Review required: news material update",
+        "message": "No structural thesis node matched", "company_name": "Visa", "ticker": "V",
+        "type": "news_material_update", "source_headline": "V 8-K filed 2025-10-28",
+        "event_date": datetime(2025, 10, 28, tzinfo=UTC), "event_date_source": "source",
+        "source_url": "https://www.sec.gov/x", "alert_id": 1, "company_id": 1,
+    })
+    assert text.startswith("Visa · 8-K · 28/10/2025")
+    assert "Documento 8-K asociado a Visa" in text
+    assert "Abrir documento: https://www.sec.gov/x" in text
+    assert "No structural thesis" not in text
