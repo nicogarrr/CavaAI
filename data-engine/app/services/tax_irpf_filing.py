@@ -376,3 +376,141 @@ def build_double_taxation(
             "ISIN por valor se podrá verificar por prefijo.",
         ],
     }
+
+
+# --- Compensación de pérdidas de ejercicios anteriores (art. 49 LIRPF) ------
+#
+# Mecánica verificada en el anexo del Modelo 100 de la Orden HAC/277/2026
+# (BOE-A-2026-7041, pág. 19, "Base imponible del ahorro"):
+#   1. Saldo neto del año en GyP del ahorro (0424 si positivo): las pérdidas
+#      de los 4 ejercicios anteriores se integran primero aquí, hasta su
+#      importe (Renta 2025: 0439/0440/0441/0442 para 2021/2022/2023/2024).
+#   2. El resto se aplica contra el saldo neto positivo de rendimientos del
+#      capital mobiliario (0429) con el límite CONJUNTO del 25% de 0429
+#      (Renta 2025: 0453/0454/0455/0448, junto con la 0446).
+#   3. Lo que quede sigue arrastrando a los ejercicios siguientes (máx. 4).
+CARRYFORWARD_WINDOW_YEARS = 4
+CROSS_COMPENSATION_LIMIT = Decimal("0.25")
+
+# Renta 2025: ejercicio de origen → (casilla integración en 0424, casilla
+# resto al 25% de 0429). Solo verificado para la declaración de 2025.
+_CASILLAS_PRIOR_2025 = {
+    2021: ("0439", "0453"),
+    2022: ("0440", "0454"),
+    2023: ("0441", "0455"),
+    2024: ("0442", "0448"),
+}
+
+
+def build_loss_compensation(
+    prior_year_nets: list[dict],
+    current_gyp_net_base: Decimal | None,
+    current_rcm_net_base: Decimal | None,
+    fiscal_year: int,
+) -> dict:
+    """Compensación de saldos negativos de los 4 ejercicios anteriores.
+
+    ``prior_year_nets``: lista de ``{"year", "net_gyp_base", "incomplete"}``
+    con el resultado neto COMPUTABLE de cada ejercicio previo según el libro
+    (ganancias menos pérdidas del ahorro; None si no se pudo convertir).
+
+    Honestidad:
+    - Los saldos previos salen del libro tal cual; si parte ya se compensó
+      en declaraciones presentadas, el importe correcto es el del anexo C.3
+      de la última declaración: se avisa en ``notas`` y nunca se ajusta a la
+      baja silenciosamente.
+    - Si un ejercicio previo tiene FX incompleto, su saldo se excluye y se
+      marca: compensar una cifra parcial minoraría impuestos con datos
+      incompletos.
+    """
+    window_start = fiscal_year - CARRYFORWARD_WINDOW_YEARS
+    pending = []  # ejercicios con saldo negativo aprovechable, más antiguo primero
+    excluded = []
+    for entry in sorted(prior_year_nets, key=lambda e: e["year"]):
+        year = entry["year"]
+        if year < window_start or year >= fiscal_year:
+            continue  # fuera de la ventana de 4 ejercicios (expirado o futuro)
+        if entry.get("incomplete") or entry.get("net_gyp_base") is None:
+            excluded.append({
+                "year": year,
+                "reason": "Ejercicio con conversión de divisa incompleta: saldo no aprovechable en este informe.",
+            })
+            continue
+        net = Decimal(str(entry["net_gyp_base"]))
+        if net < 0:
+            casillas = _CASILLAS_PRIOR_2025.get(year) if fiscal_year == 2025 else None
+            pending.append({
+                "year": year,
+                "pending": abs(net),
+                "casilla_integracion": casillas[0] if casillas else None,
+                "casilla_resto": casillas[1] if casillas else None,
+            })
+
+    incomplete = False
+    saldo_gyp = None
+    if current_gyp_net_base is not None:
+        saldo_gyp = max(Decimal("0"), Decimal(str(current_gyp_net_base)))
+    else:
+        incomplete = True
+    saldo_rcm = None
+    if current_rcm_net_base is not None:
+        saldo_rcm = max(Decimal("0"), Decimal(str(current_rcm_net_base)))
+    else:
+        incomplete = True
+
+    # 1) Integración en el saldo de GyP del año (hasta su importe).
+    remaining_capacity = saldo_gyp if saldo_gyp is not None else Decimal("0")
+    for item in pending:
+        take = min(item["pending"], remaining_capacity)
+        item["applied_gyp"] = take
+        item["pending"] -= take
+        remaining_capacity -= take
+    applied_gyp_total = sum((i["applied_gyp"] for i in pending), Decimal("0"))
+
+    # 2) Resto contra rendimientos del capital mobiliario, límite 25%.
+    cross_limit = (
+        (saldo_rcm * CROSS_COMPENSATION_LIMIT)
+        if saldo_rcm is not None else Decimal("0")
+    )
+    remaining_cross = cross_limit
+    for item in pending:
+        take = min(item["pending"], remaining_cross)
+        item["applied_rcm"] = take
+        item["pending"] -= take
+        remaining_cross -= take
+    applied_rcm_total = sum((i["applied_rcm"] for i in pending), Decimal("0"))
+
+    return {
+        "basis": "art-49-lirpf" + ("+orden-hac-277-2026" if fiscal_year == 2025 else ""),
+        "window_years": CARRYFORWARD_WINDOW_YEARS,
+        "prior_losses": [
+            {
+                "year": i["year"],
+                "pending_start_base": _money(i["pending"] + i["applied_gyp"] + i["applied_rcm"]),
+                "applied_to_gains_base": _money(i["applied_gyp"]),
+                "applied_to_income_base": _money(i["applied_rcm"]),
+                "remaining_base": _money(i["pending"]),
+                "casilla_integracion": i["casilla_integracion"],
+                "casilla_resto": i["casilla_resto"],
+            }
+            for i in pending
+        ],
+        "excluded_years": excluded,
+        "current_gyp_net_base": None if saldo_gyp is None else _money(saldo_gyp),
+        "current_rcm_net_base": None if saldo_rcm is None else _money(saldo_rcm),
+        "applied_to_gains_total_base": _money(applied_gyp_total),
+        "cross_limit_base": _money(cross_limit),
+        "applied_to_income_total_base": _money(applied_rcm_total),
+        "remaining_to_carry_base": _money(sum((i["pending"] for i in pending), Decimal("0"))),
+        "incomplete": incomplete,
+        "notas": [
+            "Saldos previos calculados SOLO con las operaciones del libro: si "
+            "hubo pérdidas en otros brokers o ya compensadas en declaraciones "
+            "presentadas, el importe correcto es el del anexo C.3 de tu última "
+            "declaración (Renta Web lo arrastra automáticamente).",
+            "El límite del 25% sobre rendimientos del capital mobiliario es "
+            "conjunto con la compensación del propio ejercicio (casilla 0446 "
+            "en Renta 2025); aquí se reserva entero al arrastre por no "
+            "computar saldos negativos de rendimientos del año en curso.",
+        ],
+    }

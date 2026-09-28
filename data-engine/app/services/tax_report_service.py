@@ -63,6 +63,7 @@ from app.services.tax_irpf_filing import (
     SPECIAL_PAYMENT_TOKENS,
     build_casillas,
     build_double_taxation,
+    build_loss_compensation,
 )
 
 FIFO_METHOD = "fifo"
@@ -151,7 +152,7 @@ class TaxReportService:
         self.fx = PortfolioFXService()
         self.settings = get_settings()
 
-    def compute_report(self, db: Session, fiscal_year: int) -> dict:
+    def compute_report(self, db: Session, fiscal_year: int, include_filing: bool = True) -> dict:
         # SOLO lectura: sin portfolio persistido se usa la divisa por defecto;
         # crearlo aqui convertia cualquier GET del informe en una escritura.
         portfolio = self.fx.portfolio(db)
@@ -658,7 +659,8 @@ class TaxReportService:
             "realized": sorted(realized, key=lambda d: d["ticker"]),
             "misc": sorted(misc_rows, key=lambda d: d["date"]),
         }
-        data["filing"] = self._build_filing(db, fiscal_year, data)
+        if include_filing:
+            data["filing"] = self._build_filing(db, fiscal_year, data)
         return data
 
     def _build_filing(self, db: Session, fiscal_year: int, data: dict) -> dict:
@@ -695,6 +697,19 @@ class TaxReportService:
                 select(Company).where(Company.ticker.in_(sorted(tickers)))
             ):
                 country_by_ticker[company.ticker] = company.domicile_country
+        summary = data.get("summary") or {}
+        # Saldos netos de los 4 ejercicios anteriores, recalculados en
+        # memoria sin la capa filing (evita recursion y dobles calculos).
+        prior_year_nets = []
+        for prior_year in range(fiscal_year - 4, fiscal_year):
+            prior_summary = self.compute_report(
+                db, prior_year, include_filing=False
+            )["summary"]
+            prior_year_nets.append({
+                "year": prior_year,
+                "net_gyp_base": prior_summary.get("total_realized_gain_base"),
+                "incomplete": prior_summary.get("incomplete_fx", False),
+            })
         return {
             "available": True,
             "casillas": build_casillas(
@@ -703,6 +718,14 @@ class TaxReportService:
             "double_taxation": build_double_taxation(
                 data.get("dividends") or [],
                 country_by_ticker,
+                fiscal_year,
+            ),
+            "loss_compensation": build_loss_compensation(
+                prior_year_nets,
+                None if summary.get("total_realized_gain_base") is None
+                else Decimal(str(summary["total_realized_gain_base"])),
+                None if summary.get("total_dividends_base") is None
+                else Decimal(str(summary["total_dividends_base"])),
                 fiscal_year,
             ),
         }
