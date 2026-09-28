@@ -106,7 +106,9 @@ def test_fallback_a_mirror_hf_en_403(monkeypatch):
         async def __aenter__(self): return self
         async def __aexit__(self, *a): return False
         async def get(self, url, headers=None):
-            if "sec.gov" in url:
+            from urllib.parse import urlparse
+            host = urlparse(url).hostname or ""
+            if host == "sec.gov" or host.endswith(".sec.gov"):
                 return _Resp({}, status=403)
             if url.endswith("/manifest.json"):
                 from datetime import UTC, datetime
