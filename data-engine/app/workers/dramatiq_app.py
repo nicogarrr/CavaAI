@@ -416,12 +416,13 @@ def backfill_document_kpis() -> dict[str, Any]:
     """
     import time
 
-    from sqlalchemy import Integer, cast, func, select
+    from sqlalchemy import Integer, cast, func, or_, select
 
     from app.models import Document
 
     client = _redis_client()
-    capacity = kpi_queue_max_pending() - kpi_queue_depth(client)
+    depth = kpi_queue_depth(client)
+    capacity = kpi_queue_max_pending() - depth
     if capacity <= 0:
         return {"actor": "backfill_document_kpis", "status": "skipped", "reason": "queue_full"}
     queued = 0
@@ -435,9 +436,22 @@ def backfill_document_kpis() -> dict[str, Any]:
             attempts_expr = cast(
                 Document.metadata_[(KPI_DEFERRED_KEY, "attempts")].as_string(), Integer
             )
-            queued_expr = cast(
-                Document.metadata_[(KPI_DEFERRED_KEY, "queued_at")].as_string(), Integer
-            )
+            queued_raw = Document.metadata_[(KPI_DEFERRED_KEY, "queued_at")]
+            queued_expr = cast(queued_raw.as_string(), Integer)
+            # Regla anti-duplicado definitiva (auditor, bounce 3): un doc YA
+            # encolado solo se reencola cuando la cola esta VACIA (depth == 0):
+            # si hay mensajes en vuelo no se puede distinguir "perdido" de
+            # "esperando", y reenviar pagaria llamadas LLM duplicadas aunque
+            # el lease haya expirado (un backlog largo retiene mensajes mas
+            # que el lease). Los nunca enviados (queued_at NULL) siempre son
+            # elegibles.
+            if depth == 0:
+                lease_filter = or_(
+                    queued_raw.is_(None),
+                    func.coalesce(queued_expr, 0) < now - kpi_defer_lease_seconds(),
+                )
+            else:
+                lease_filter = queued_raw.is_(None)
             pending = db.scalars(
                 select(Document)
                 .where(
@@ -446,10 +460,7 @@ def backfill_document_kpis() -> dict[str, Any]:
                     # docs antiguos agotados llenaria el LIMIT en cada corrida
                     # y ningun diferido elegible se reencolaria jamas.
                     func.coalesce(attempts_expr, 0) < KPI_DEFER_MAX_ATTEMPTS,
-                    # Lease: un doc ya encolado no se reselecciona hasta que
-                    # expira (extraccion lenta o espera en cola); si no, el
-                    # scheduler de 5 min pagaria llamadas LLM duplicadas.
-                    func.coalesce(queued_expr, 0) < now - kpi_defer_lease_seconds(),
+                    lease_filter,
                 )
                 .order_by(Document.created_at)
                 .limit(capacity - queued)

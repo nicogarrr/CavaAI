@@ -93,12 +93,12 @@ class TestBackfillFunctional:
         db.commit()
         return doc
 
-    def _run_backfill(self, db):
+    def _run_backfill(self, db, depth=0):
         with (
             patch.object(workers, "tenant_contexts", return_value=[(1, "u")]),
             patch.object(workers, "_session", return_value=db),
             patch.object(workers, "_redis_client", return_value=None),
-            patch.object(workers, "kpi_queue_depth", return_value=0),
+            patch.object(workers, "kpi_queue_depth", return_value=depth),
             patch.object(workers, "kpi_queue_max_pending", return_value=10),
             patch.object(workers.extract_document_kpis, "send") as send,
         ):
@@ -143,3 +143,28 @@ class TestBackfillFunctional:
         result, send = self._run_backfill(db)
         assert result["queued"] == 1
         send.assert_called_once_with(eligible_id, tenant_id=1, user_id="u")
+
+
+    def test_backlog_holds_expired_lease_but_empty_queue_requeues(self) -> None:
+        """Backlog > lease con mensaje aun pendiente: NO se duplica.
+
+        Solo cuando la cola queda vacia (mensaje perdido/fallido) el
+        diferido vuelve a ser elegible.
+        """
+        import datetime as dt
+
+        db = self._db()
+        self._doc(
+            db,
+            "stuck",
+            {"attempts": 1, "queued_at": 1},  # lease largamente expirado
+            dt.datetime(2026, 1, 1),
+        )
+        # Mensaje aun en vuelo (depth > 0): no reencola aunque el lease expiro.
+        result1, send1 = self._run_backfill(db, depth=3)
+        assert result1["queued"] == 0
+        assert send1.call_count == 0
+        # Cola vacia: el mensaje se perdio o fallo; reencolar es seguro.
+        result2, send2 = self._run_backfill(db, depth=0)
+        assert result2["queued"] == 1
+        assert send2.call_count == 1
