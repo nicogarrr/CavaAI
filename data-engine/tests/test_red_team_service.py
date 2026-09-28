@@ -68,7 +68,22 @@ def test_run_flags_unsupported_material_and_unfalsifiable_claims(db):
     assert run.status == "completed"
     types = {finding["type"] for finding in run.findings}
     assert "unsupported_material_claim" in types
-    assert "missing_falsification_test" in types
+    # Un claim, un hallazgo: los motivos se fusionan en un solo finding con
+    # el statement una sola vez (el rastro conserva todos los tipos).
+    assert "missing_falsification_test" not in types
+    merged = [
+        finding
+        for finding in run.findings
+        if finding["type"] == "unsupported_material_claim"
+    ]
+    assert merged
+    assert merged[0]["trace"].get("merged_types") == [
+        "unsupported_material_claim",
+        "missing_falsification_test",
+    ]
+    assert merged[0]["message"].count("Moat keeps expanding") == 1
+    assert "sin evidencia vinculada" in merged[0]["message"]
+    assert "invalidación" in merged[0]["message"]
     # Empty valuation is never publishable: the attack must say so.
     assert "valuation_not_publishable" in types
 

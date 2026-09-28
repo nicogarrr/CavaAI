@@ -56,14 +56,15 @@ class RedTeamService:
         claims = live_claims(db, company, thesis=thesis)
         findings: list[dict] = []
         for claim in claims:
+            # Un claim, un hallazgo: si varias reglas disparan sobre la misma
+            # afirmación se fusionan en un solo hallazgo, para que el cuerpo
+            # de la alerta no repita el statement por cada motivo (bug visto
+            # con RKLB: "revenue" y "shares_diluted" duplicados). El tipo es
+            # el de mayor severidad y el rastro conserva todos los motivos.
+            reasons: list[tuple[str, str, str]] = []
             if claim.materiality_score >= 7 and not claim.evidence:
-                findings.append(
-                    self._finding(
-                        "high",
-                        "unsupported_material_claim",
-                        f"Afirmación material sin evidencia vinculada: {claim.statement}",
-                        claim_id=claim.id,
-                    )
+                reasons.append(
+                    ("high", "unsupported_material_claim", "material sin evidencia vinculada")
                 )
             if claim.status in {
                 "contradicted",
@@ -71,26 +72,34 @@ class RedTeamService:
                 "stale",
                 "uncertain",
             }:
-                findings.append(
-                    self._finding(
+                reasons.append(
+                    (
                         "critical"
                         if claim.status == "contradicted"
                         and claim.materiality_score >= 8
                         else "high",
                         f"claim_{claim.status}",
-                        f"Afirmación {claim_status_label(claim.status)}: {claim.statement}",
-                        claim_id=claim.id,
+                        f"clasificada como {claim_status_label(claim.status)}",
                     )
                 )
             if claim.materiality_score >= 7 and not (
                 claim.metadata_ or {}
             ).get("invalidation_conditions"):
+                reasons.append(
+                    ("medium", "missing_falsification_test", "sin condición de invalidación explícita")
+                )
+            if reasons:
+                severity, finding_type, _ = max(
+                    reasons, key=lambda item: SEVERITY_PENALTY[item[0]]
+                )
+                detail = "; ".join(reason for _, _, reason in reasons)
                 findings.append(
                     self._finding(
-                        "medium",
-                        "missing_falsification_test",
-                        f"Sin condición de invalidación explícita: {claim.statement}",
+                        severity,
+                        finding_type,
+                        f"Afirmación {detail}: {claim.statement}",
                         claim_id=claim.id,
+                        merged_types=[item[1] for item in reasons] if len(reasons) > 1 else None,
                     )
                 )
 
@@ -194,6 +203,17 @@ class RedTeamService:
                     claim_id=disadvantage.get("claim_id"),
                 )
             )
+
+        # Dedupe defensivo por texto: claims históricos duplicados con el
+        # mismo statement no imprimen dos veces la misma línea.
+        seen_messages: set[str] = set()
+        unique_findings: list[dict] = []
+        for finding in findings:
+            if finding["message"] in seen_messages:
+                continue
+            seen_messages.add(finding["message"])
+            unique_findings.append(finding)
+        findings = unique_findings
 
         findings.sort(
             key=lambda item: SEVERITY_PENALTY[item["severity"]],

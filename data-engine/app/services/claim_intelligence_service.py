@@ -18,6 +18,7 @@ from app.models import (
     ThesisChange,
 )
 from app.services.review_alert_service import ReviewAlertService
+from app.services.review_copy import claim_status_label
 from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_change_types import claim_change_type
 
@@ -749,8 +750,8 @@ class ClaimIntelligenceService:
                 impact_direction="negative" if status in {"contradicted", "stale"} else "mixed",
                 materiality_score=claim.materiality_score,
                 summary=(
-                    f"Automatic evidence classified claim as {status}: "
-                    f"{claim.statement[:220]}"
+                    f"La evidencia automática clasificó la afirmación como "
+                    f"{claim_status_label(status)}: {claim.statement[:220]}"
                 ),
                 affected_claim_ids=[claim.id],
                 affected_metrics=[],

@@ -161,6 +161,22 @@ export function formatCompact(
 }
 
 /**
+ * Compacta cifras crudas largas incrustadas en texto libre de alertas.
+ * Los mensajes persistidos antes del formateo en origen traen el valor de la
+ * columna Numeric(24, 6) tal cual ("200966000000.000000"); en la tarjeta se
+ * muestran compactos ("200,97 mil M"). Solo tokens de 7+ dígitos seguidos
+ * con decimales opcionales; nunca inventa divisa (la unidad no viaja en el
+ * texto), así que el resultado no lleva símbolo monetario.
+ */
+export function formatAlertMessageText(text: string): string {
+  return text.replace(/\d{7,}(?:\.\d+)?/g, (token) => {
+    const value = Number(token);
+    if (!Number.isFinite(value)) return token;
+    return formatCompact(value);
+  });
+}
+
+/**
  * Porcentaje en español. Por defecto `value` es ratio (0.15 -> 15,0 %);
  * con `fromRatio: false` ya viene en tanto por ciento (15 -> 15,0 %).
  */

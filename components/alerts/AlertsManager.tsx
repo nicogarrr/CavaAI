@@ -28,7 +28,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
 import { isNextRedirectError } from '@/lib/types/errors';
-import { formatDate, formatUserDateTime } from '@/lib/format';
+import { formatAlertMessageText, formatDate, formatUserDateTime } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { reviewResearchExpectations } from '@/lib/actions/research.actions';
 
@@ -454,7 +454,7 @@ function AlertsManager() {
                                             : `Creada ${formatUserDateTime(item.createdAt)}`}
                                     </time>
                                 </div>
-                                <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{item.message}</p>
+                                <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{formatAlertMessageText(item.message)}</p>
                                 {(item.ticker || item.sourceUrl) && (
                                     <span className="mt-1 inline-flex flex-wrap gap-3">
                                         {item.ticker && (
