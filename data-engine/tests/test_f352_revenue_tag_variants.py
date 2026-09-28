@@ -155,7 +155,7 @@ def test_contrato_lista_tags_revenue_ambos_servicios():
     from app.services.financial_ingestion_service import SEC_METRIC_MAP
     from app.services.thesis_evidence_service import SEC_EVIDENCE_TAGS
 
-    main_tags = dict((m, tags) for m, tags, _ in SEC_METRIC_MAP)["revenue"]
+    main_tags = {m: tags for m, tags, _unit in SEC_METRIC_MAP}["revenue"]
     evidence_tags, _unit = SEC_EVIDENCE_TAGS["revenue"]
     assert main_tags == evidence_tags
     assert "RevenueFromContractWithCustomerIncludingAssessedTax" in main_tags
