@@ -4,6 +4,7 @@ import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { getCandles, getProfile, getStockQuote } from '@/lib/actions/finnhub.actions';
 import { marketHistoryStatus } from '@/lib/market/history-status';
+import { sessionDateEt } from '@/lib/market/quote-freshness';
 import { quoteSymbolFor } from '@/lib/market/quote-symbol';
 import { e2eMarketFixture, isE2EMarketFixtureEnabled } from '@/lib/e2e-market-fixture';
 
@@ -24,6 +25,10 @@ export type CompanyMarketSnapshot = {
         // fallback al último cierre de vela -> la fecha de esa vela, para
         // que la cabecera la rotule y no parezca precio actual.
         priceAsOf: string | null;
+        // F358: frescura del precio: 'live' = sesión en curso; 'close' =
+        // último cierre fechado (con fecha en priceAsOf si se conoce). Un
+        // cierre NUNCA se pinta como cotización actual.
+        priceKind: 'live' | 'close' | null;
     };
     history: Array<{ date: string; close: number; volume: number | null }>;
     status: 'available' | 'partial' | 'unavailable';
@@ -73,7 +78,7 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
             name: researchCompany?.name || normalized,
             exchange: researchCompany?.exchange || null,
             currency: researchCompany?.currency || null,
-            quote: { price: null, change: null, changePercent: null, open: null, high: null, low: null, previousClose: null, priceAsOf: null },
+            quote: { price: null, change: null, changePercent: null, open: null, high: null, low: null, previousClose: null, priceAsOf: null, priceKind: null },
             history: [],
             status: 'unavailable',
         };
@@ -91,14 +96,21 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
         })).filter((point) => Number.isFinite(point.close))
         : [];
     const livePrice = quote?.c;
-    const quoteLive = typeof livePrice === 'number' && livePrice > 0;
+    // F358: solo se acepta cotización con frescura validada en origen
+    // (sanitizeFinnhubQuote; el fallback Yahoo llega marcado como cierre).
+    const quoteKind = quote?.kind === 'live' || quote?.kind === 'close' ? quote.kind : null;
+    const quoteUsable = typeof livePrice === 'number' && livePrice > 0 && quoteKind !== null;
+    const quoteLive = quoteUsable && quoteKind === 'live';
     const lastClose = history.at(-1) ?? null;
-    const price = quoteLive ? livePrice : lastClose?.close ?? null;
-    // Fallback a cierre de vela: la variación del proveedor describe la
-    // cotización en vivo, no ese cierre; se omite para no mezclar fuentes.
-    const change = quoteLive ? quote?.d ?? null : null;
-    const changePercent = quoteLive ? quote?.dp ?? null : null;
-    const priceAsOf = quoteLive ? null : lastClose?.date ?? null;
+    const price = quoteUsable ? livePrice : lastClose?.close ?? null;
+    // La variación del proveedor describe ESA cotización (misma fuente y
+    // payload, en vivo o en cierre fechado); sin cotización usable NO se
+    // mezcla con el cierre de vela.
+    const change = quoteUsable ? quote?.d ?? null : null;
+    const changePercent = quoteUsable ? quote?.dp ?? null : null;
+    // Fecha del cierre: del timestamp de la cotización si lo hay (Finnhub);
+    // el fallback Yahoo no trae fecha, pero es la sesión de la última vela.
+    const priceAsOf = quoteLive ? null : quote?.t ? sessionDateEt(quote.t) : lastClose?.date ?? null;
     return {
         ticker: normalized,
         // La identidad la pone el master (curado); el perfil del proveedor
@@ -116,6 +128,7 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
             low: quote?.l ?? null,
             previousClose: quote?.pc ?? null,
             priceAsOf,
+            priceKind: quoteLive ? 'live' : price !== null ? 'close' : null,
         },
         history,
         // La insignia del historial describe la serie (F161): sin velas es

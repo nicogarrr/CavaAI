@@ -5,6 +5,7 @@ import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import type { PopularStocksResult } from '@/lib/popular-stocks-loader';
 import { cache } from 'react';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
+import { classifyQuoteKind } from '@/lib/market/quote-freshness';
 
 import { env } from '@/lib/env';
 import { TIMEOUTS } from '@/lib/constants';
@@ -423,7 +424,8 @@ export async function getStockFinancialData(symbol: string): Promise<{
         }
 
         // Start all requests in parallel
-        const quotePromise = fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null);
+        // F358: cotizacion validada por su timestamp (stale-while-error de la Data Cache).
+        const quotePromise = fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).then(sanitizeFinnhubQuote).catch(() => null);
         const profilePromise = fetchJSON<FinnhubProfile2>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 86400).catch(() => null);
         const metricsPromise = fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 86400).catch(() => ({ metric: {} }));
         const newsPromise = getCompanyNews(symbol, 10).catch(() => []);
@@ -543,7 +545,7 @@ export async function getStockFinancialDataLight(symbol: string): Promise<{
 
         // Only fetch essential data - no news, events, peers etc.
         const [quote, profile, metrics, priceTarget] = await Promise.all([
-            fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).catch(() => null),
+            fetchJSON<any>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 60).then(sanitizeFinnhubQuote).catch(() => null), // F358: validada por timestamp
             fetchJSON<FinnhubProfile2>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 86400).catch(() => null),
             fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 86400).catch(() => ({ metric: {} })),
             fetchJSON<any>(`${FINNHUB_BASE_URL}/stock/price-target?symbol=${encodeURIComponent(symbol)}&token=${token}`, 86400).catch(() => null),
@@ -739,7 +741,7 @@ export const getPopularStocks = cache(async (): Promise<PopularStocksResult> => 
 });
 
 // Helper para obtener solo la cotización (más ligero que getStockFinancialData)
-export async function getStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
+export async function getStockQuote(symbol: string): Promise<StockQuote | null> {
     await requireAuthenticatedUser();
     // Caché corta en memoria (45s): quote se llama en bucle (watchlist,
     // screener, oportunidades) y el dato es idéntico dentro de la ventana.
@@ -751,34 +753,48 @@ export async function getStockQuote(symbol: string): Promise<{ c: number; d: num
     );
 }
 
-// F358: edad maxima aceptable de una cotizacion Finnhub antes de
-// tratarla como obsoleta (24h en segundos).
-const STALE_QUOTE_MAX_AGE_SECONDS = 24 * 3600;
+export type StockQuote = {
+    c: number; d: number; dp: number; h: number; l: number; o: number; pc: number;
+    /** Timestamp (epoch s) del proveedor; null en el fallback Yahoo (sin fecha). */
+    t: number | null;
+    /**
+     * F358: 'live' = sesion US en curso; 'close' = ultimo cierre fechado
+     * (noche, finde, pre-market o fallback Yahoo de cierres diarios). Una
+     * cotizacion 'stale' NUNCA se devuelve: se rechaza en origen para que
+     * ningun consumidor la pinte como actual.
+     */
+    kind: 'live' | 'close';
+};
 
-async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
+/**
+ * F358: valida una cotizacion Finnhub por su propio timestamp antes de
+ * aceptarla. Con errores sostenidos del proveedor (429 por cuota, F357) la
+ * Data Cache de Next sirve el ultimo valor bueno INDEFINIDAMENTE
+ * (stale-while-error): el fetch resuelve 200 con el dato viejo y el error
+ * nunca llega al catch. La unica senal de frescura es `t` (semantica de
+ * sesion US en lib/market/quote-freshness). null = miss honesto.
+ */
+function sanitizeFinnhubQuote(data: any): StockQuote | null {
+    if (!data || !(data.c > 0 || data.pc > 0)) return null;
+    const t = typeof data.t === 'number' && Number.isFinite(data.t) ? data.t : 0;
+    const kind = classifyQuoteKind(t);
+    if (kind === 'stale') return null;
+    return { c: data.c, d: data.d, dp: data.dp, h: data.h, l: data.l, o: data.o, pc: data.pc, t, kind };
+}
+
+async function fetchStockQuote(symbol: string): Promise<StockQuote | null> {
     // Try Finnhub first
     try {
         const token = env.FINNHUB_API_KEY;
         if (token) {
             const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`;
             const data = await fetchJSON<any>(url, 60);
-            // Verify we got valid data (Finnhub returns all zeros for invalid symbols)
-            if (data && (data.c > 0 || data.pc > 0)) {
-                // F358: con errores sostenidos del proveedor (429 por cuota,
-                // F357) la Data Cache de Next sirve el ultimo valor bueno
-                // INDEFINIDAMENTE (stale-while-error): el fetch resuelve 200
-                // con la cotizacion de AYER y el error nunca llega al catch
-                // (BN mostraba 36,87 del cierre previo como actual con el
-                // +0,66% de la sesion anterior). La unica senal de frescura
-                // es el timestamp `t` de la propia cotizacion: si supera la
-                // tolerancia se trata como miss y cae al fallback (backend
-                // Yahoo) o a null honesto. 24h cubre noche y finde sin
-                // rechazar datos correctos de mercado cerrado.
-                const quoteTs = typeof data.t === 'number' && Number.isFinite(data.t) ? data.t : 0;
-                const ageSeconds = Math.floor(Date.now() / 1000) - quoteTs;
-                if (quoteTs > 0 && ageSeconds <= STALE_QUOTE_MAX_AGE_SECONDS) {
-                    return data;
-                }
+            // Verify we got valid data (Finnhub returns all zeros for invalid
+            // symbols) y fresca (F358: la Data Cache sirve el ultimo valor
+            // bueno indefinidamente bajo 429 sostenidos - stale-while-error).
+            const quote = sanitizeFinnhubQuote(data);
+            if (quote) {
+                return quote;
             }
         }
     } catch {
@@ -803,7 +819,10 @@ async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; 
             if (response.ok) {
                 const data = await response.json();
                 if (data && (data.c > 0 || data.pc > 0)) {
-                    return data;
+                    // Provenance Yahoo (cierres diarios, sin timestamp): NUNCA
+                    // se pinta como cotizacion en vivo (F358) - es un cierre
+                    // fechado aunque la fecha exacta no viaje en esta respuesta.
+                    return { ...data, t: null, kind: 'close' as const };
                 }
             }
         } catch (error) {

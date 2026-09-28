@@ -34,6 +34,8 @@ interface WatchlistStock {
     changePercent: number | null;
     marketCap: number | null;
     peRatio: number | null;
+    priceKind: 'live' | 'close' | null;
+    priceAsOf: string | null;
     addedAt: Date;
 }
 
@@ -54,6 +56,8 @@ export default async function WatchlistPage() {
                     price: data.price,
                     change: data.change,
                     changePercent: data.changePercent,
+                    priceKind: data.priceKind,
+                    priceAsOf: data.priceAsOf,
                     currency: data.currency,
                     marketCap: data.marketCap,
                     peRatio: data.peRatio,
@@ -67,6 +71,8 @@ export default async function WatchlistPage() {
                     price: null,
                     change: null,
                     changePercent: null,
+                    priceKind: null,
+                    priceAsOf: null,
                     currency: null,
                     marketCap: null,
                     peRatio: null,
@@ -165,6 +171,9 @@ export default async function WatchlistPage() {
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">Precio</dt>
                                         <dd className="truncate font-mono text-sm font-medium text-gray-200">{formatPriceCell(stock.price, stock.currency)}</dd>
+                                        {stock.priceKind === 'close' ? (
+                                            <dd className="truncate text-[10px] text-gray-500">{stock.priceAsOf ? `Cierre ${stock.priceAsOf}` : 'Último cierre'}</dd>
+                                        ) : null}
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">Market Cap</dt>
@@ -239,6 +248,9 @@ export default async function WatchlistPage() {
                                         </TableCell>
                                         <TableCell className="text-right font-mono font-medium text-gray-200">
                                             {formatPriceCell(stock.price, stock.currency)}
+                                            {stock.priceKind === 'close' ? (
+                                                <div className="text-[10px] font-normal text-gray-500">{stock.priceAsOf ? `Cierre ${stock.priceAsOf}` : 'Último cierre'}</div>
+                                            ) : null}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {stock.changePercent === null ? (
