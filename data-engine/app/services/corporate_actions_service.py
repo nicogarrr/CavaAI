@@ -4,8 +4,12 @@ Splits / reverse splits change share count while preserving the economic
 value of a position. To keep the FIFO tax ledger coherent we adjust:
 
 - the open Position (quantity x ratio, average cost / ratio),
-- every Transaction strictly before the effective date (quantity x ratio,
-  price / ratio) so historical reports and realized gains stay correct.
+- every share-denominated Transaction (buy/sell) strictly before the effective
+  date (quantity x ratio, price / ratio) so historical reports and realized
+  gains stay correct. Cash movements (dividend, withholding, interest, fee,
+  cash_misc) are NEVER rescaled: they store a money amount in ``price``, not a
+  per-share price, so dividing them would shrink a EUR 100 dividend to EUR 25
+  and the tax report would declare the divided figure.
 
 Ticker changes and mergers update the company identity; merger value
 exchange (shares of the acquirer) must be entered as a manual transaction
@@ -96,29 +100,49 @@ class CorporateActionService:
             )
             if position is not None:
                 position.quantity = (position.quantity * ratio).quantize(Decimal("0.000001"))
-                if position.average_cost:
+                if position.average_cost is not None:
                     position.average_cost = (position.average_cost / ratio).quantize(
                         Decimal("0.000001")
                     )
-                if position.market_price:
+                if position.market_price is not None:
                     position.market_price = (position.market_price / ratio).quantize(
                         Decimal("0.000001")
                     )
-                position.market_value = position.quantity * position.market_price
-                position.cost_basis_native = position.quantity * position.average_cost
+                if position.market_price is not None:
+                    position.market_value = position.quantity * position.market_price
+                if position.average_cost is not None:
+                    position.cost_basis_native = position.quantity * position.average_cost
+                # The base-currency columns are left untouched ON PURPOSE: a
+                # split preserves money (quantity x price and cost basis are
+                # unchanged), so market_value_base, cost_basis_base,
+                # unrealized_pnl_base, realized_pnl_base and fx_rate already
+                # hold exactly the values a rebuild would write. A
+                # PortfolioLedgerService.rebuild_position replay is therefore
+                # not run here: it would re-derive the holding from EVERY
+                # buy/sell leg (including legs already quoted post-split)
+                # instead of rescaling the open position, and it would rewind
+                # position.as_of to the last leg's trade date, making a
+                # freshly priced position look stale.
 
+            # Share-denominated legs only. Cash rows keep their amount in
+            # `price` (quantity 0 or 1 is legitimate for cash, see
+            # PortfolioLedgerService and the IBKR importer which writes
+            # quantity=1, price=amount): rescaling them would divide a EUR
+            # 100 dividend into EUR 25 and a EUR 9.95 commission into EUR
+            # 2.49, and the tax report would declare the divided figure.
             transactions = db.scalars(
                 select(Transaction).where(
                     Transaction.company_id == action.company_id,
                     Transaction.trade_date < action.effective_date,
+                    Transaction.action.in_(("buy", "sell")),
                 )
             ).all()
             for transaction in transactions:
-                if transaction.quantity:
+                if transaction.quantity is not None:
                     transaction.quantity = (
                         transaction.quantity * ratio
                     ).quantize(Decimal("0.000001"))
-                if transaction.price:
+                if transaction.price is not None:
                     transaction.price = (transaction.price / ratio).quantize(
                         Decimal("0.000001")
                     )
