@@ -32,4 +32,8 @@ test('los mensajes red-team del backend son españoles (red de regresión)', () 
     assert.match(redTeam, /La valoración no se puede publicar porque faltan datos necesarios/);
     assert.ok(!redTeam.includes('Valuation is not publishable'), 'inglés de vuelta en red-team');
     assert.ok(!redTeam.includes('Red-team findings for'), 'título de alerta en inglés');
+    // Fallback de falsification_tests visible en la ficha cuando ninguna
+    // afirmación material trae condiciones de invalidación.
+    assert.match(redTeam, /Define condiciones de invalidación explícitas y medibles/);
+    assert.ok(!redTeam.includes('Define explicit, measurable'), 'fallback de falsificación en inglés');
 });

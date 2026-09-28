@@ -266,7 +266,7 @@ class RedTeamService:
                 "invalidation_conditions", []
             )
         ] or [
-            "Define explicit, measurable invalidation conditions for every material thesis claim."
+"Define condiciones de invalidación explícitas y medibles para cada afirmación material de la tesis."
         ]
         run.trace = {
             **(run.trace or {}),
