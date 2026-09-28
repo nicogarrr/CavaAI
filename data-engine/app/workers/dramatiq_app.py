@@ -62,13 +62,46 @@ def _is_transient(exc: Exception) -> bool:
         # justo lo que Dramatiq deberia reintentar. max_retries quedaba muerto
         # para los unicos fallos para los que existe.
         status = _status_from_message(str(exc))
-    if status in (403, 429) and "sec.gov" in str(exc):
-        # F359: la SEC bloquea las IPs de OCI de forma permanente (403/429).
-        # Reintentar desde el worker del VM no tiene exito jamas y enveneno
-        # la cola default (5276 process_document acumulados, jobs de usuario
-        # hambreados). Fallo permanente -> resultado estructurado, sin retry.
+    if status == 403 and "sec.gov" in str(exc):
+        # F359: 403 de la SEC evidencia bloqueo de IP (OCI): permanente, sin
+        # reintento - reintentar enveneno la cola default (5276 mensajes).
         return False
+    if status == 429 and "sec.gov" in str(exc):
+        # F359: 429 de la SEC es rate limit y PUEDE ser temporal (Retry-After;
+        # el backoff del actor ya espacia los reintentos). Se reintenta de
+        # forma acotada hasta que salta el circuit breaker por origen.
+        # Degradacion documentada: con la IP de OCI bloqueada, la ingesta SEC
+        # pasa a fallo permanente tras la racha en vez de reintentar en bucle
+        # eterno, y se auto-recupera tras el cooldown si la SEC levanta el
+        # bloqueo.
+        return _sec_rate_limit_allows_retry()
     return status is not None and (status == 429 or status >= 500)
+
+
+# Circuit breaker por origen para el 429 de la SEC (F359): una racha de
+# _SEC_429_STREAK_LIMIT 429s dentro de _SEC_429_WINDOW_S abre el breaker
+# durante _SEC_429_COOLDOWN_S; abierto, los 429 SEC clasifican permanentes.
+_SEC_429_WINDOW_S = 600.0
+_SEC_429_STREAK_LIMIT = 5
+_SEC_429_COOLDOWN_S = 3600.0
+_sec_429_streak: list[float] = []
+_sec_429_open_until = 0.0
+
+
+def _sec_rate_limit_allows_retry(now: float | None = None) -> bool:
+    """429 SEC acotado: reintenta salvo breaker abierto o racha que lo abre."""
+    global _sec_429_open_until
+    current = time.monotonic() if now is None else now
+    if current < _sec_429_open_until:
+        return False
+    cutoff = current - _SEC_429_WINDOW_S
+    _sec_429_streak[:] = [ts for ts in _sec_429_streak if ts >= cutoff]
+    _sec_429_streak.append(current)
+    if len(_sec_429_streak) >= _SEC_429_STREAK_LIMIT:
+        _sec_429_open_until = current + _SEC_429_COOLDOWN_S
+        _sec_429_streak.clear()
+        return False
+    return True
 
 
 _STATUS_IN_TEXT = re.compile(r"\b(4\d\d|5\d\d)\b")

@@ -76,16 +76,39 @@ def _sec_error(status_code: int) -> httpx.HTTPStatusError:
     return httpx.HTTPStatusError(f"{kind} error '{status_code}' for url '{url}'", request=request, response=response)
 
 
-def test_sec_403_and_429_from_oci_blocked_ip_are_permanent():
-    """F359: la SEC bloquea las IPs de OCI de forma permanente. Un 403/429 de
-    sec.gov en el worker del VM no se cura reintentando: clasificarlo como
-    transitorio enveneno la cola default (5276 process_document acumulados
-    reintentando en bucle y hambreando los jobs de usuario)."""
+def _reset_sec_breaker():
+    import app.workers.dramatiq_app as workers
+
+    workers._sec_429_streak.clear()
+    workers._sec_429_open_until = 0.0
+
+
+def test_sec_403_from_oci_blocked_ip_is_permanent():
+    """F359: 403 de la SEC evidencia bloqueo de IP (OCI): permanente, sin
+    reintento. Reintentarlo enveneno la cola default (5276 mensajes)."""
     assert _is_transient(_sec_error(403)) is False
-    assert _is_transient(_sec_error(429)) is False
-    # El mensaje envuelto por el connector (sin .response) tambien se detecta.
-    wrapped = RuntimeError(f"SEC fetch failed: {_sec_error(429)}")
+    wrapped = RuntimeError(f"SEC fetch failed: {_sec_error(403)}")
     assert _is_transient(wrapped) is False
+
+
+def test_sec_429_retries_bounded_until_circuit_breaker_trips():
+    """F359: 429 de la SEC es rate limit potencialmente temporal: se reintenta
+    de forma acotada; una racha en ventana abre el circuit breaker por origen
+    y pasa a permanente durante el cooldown (auto-recupera despues)."""
+    import app.workers.dramatiq_app as workers
+
+    _reset_sec_breaker()
+    # Racha por debajo del limite: sigue siendo transitorio.
+    for _ in range(workers._SEC_429_STREAK_LIMIT - 1):
+        assert _is_transient(_sec_error(429)) is True
+    # La que alcanza el limite abre el breaker: permanente.
+    assert _is_transient(_sec_error(429)) is False
+    # Abierto, los siguientes tambien son permanentes sin tocar el contador.
+    assert _is_transient(_sec_error(429)) is False
+    # Tras el cooldown vuelve a permitir reintento.
+    workers._sec_429_open_until = 0.0
+    assert _is_transient(_sec_error(429)) is True
+    _reset_sec_breaker()
 
 
 def test_generic_429_and_5xx_stay_retryable():
