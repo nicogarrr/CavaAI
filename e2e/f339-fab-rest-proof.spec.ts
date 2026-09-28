@@ -34,6 +34,8 @@ function signedHeaders(method: string, path: string, body: Buffer) {
 }
 
 test("F339: el FAB queda oculto en reposo mientras la leyenda cruza su zona", async ({ page, request }) => {
+  test.skip(!process.env.E2E_UI_RUN, "Set E2E_UI_RUN=1 to run browser tests.");
+
   // Semilla: 6 posiciones para que el donut tenga leyenda real.
   const seeds = [
     { ticker: "GOOGL", quantity: 10, price: 150 },
