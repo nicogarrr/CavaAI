@@ -402,7 +402,10 @@ class ScreenerService:
             available = {name for name in used_names - missing if name in observations}
             confidence_values = [observations[name].confidence for name in available]
             dates = [observations[name].as_of for name in available if observations[name].as_of]
-            row: dict[str, Any] = {
+            # `entry`, not `row`: an annotated `row` here re-types the whole
+            # function-scope name that the ORM batch loops above already bound
+            # to CalculatedMetric / FinancialFact.
+            entry: dict[str, Any] = {
                 "company_id": company.id,
                 "ticker": company.ticker,
                 "name": company.name,
@@ -419,10 +422,10 @@ class ScreenerService:
                 "criteria": criterion_results,
             }
             if unevaluable_criteria:
-                row["unevaluable_criteria"] = sorted(unevaluable_criteria)
+                entry["unevaluable_criteria"] = sorted(unevaluable_criteria)
             if ranking_unevaluable is not None:
-                row["ranking_status"] = "unevaluable"
-            results.append(row)
+                entry["ranking_status"] = "unevaluable"
+            results.append(entry)
 
         def result_order(row: dict[str, Any]) -> tuple[Any, ...]:
             missing_rank = row["rank_value"] is None
