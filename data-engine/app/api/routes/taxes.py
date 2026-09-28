@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.services.tax_modelo720_file import Modelo720FileService
 from app.services.tax_modelo720_service import Modelo720Service
 from app.services.tax_report_service import TaxReportService, build_tax_summary_rows
 
@@ -62,3 +63,15 @@ def modelo720_thresholds(fiscal_year: int, db: Session = Depends(get_db)) -> dic
     """
     _validate_year(fiscal_year)
     return Modelo720Service().check_thresholds(db, fiscal_year)
+
+
+@router.get("/modelo720/{fiscal_year}/file")
+def modelo720_file(fiscal_year: int, db: Session = Depends(get_db)) -> dict:
+    """Fichero del Modelo 720 (500 bytes/registro, spec oficial AEAT).
+
+    Solo lectura. Requiere los datos del declarante en la metadata del
+    tenant (clave 'tax_declarant'); sin ellos devuelve available=false con
+    el motivo. AYUDA DE CÓMPUTO: revisar antes de presentar por TGVI Online.
+    """
+    _validate_year(fiscal_year)
+    return Modelo720FileService().generate(db, fiscal_year)
