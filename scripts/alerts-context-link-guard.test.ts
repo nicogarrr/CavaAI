@@ -8,16 +8,16 @@ test('F300: las tarjetas de alerta de /inicio enlazan al contexto de la alerta',
     // El enlace va a la investigación del ticker REAL del disparo (nunca una
     // ruta inventada): se pinta solo cuando item.ticker existe.
     assert.match(overview, /\{item\.ticker && \(/);
-    assert.match(overview, /href=\{`\/research\/\$\{item\.ticker\}`\}/);
-    assert.match(overview, /Abrir investigación de \{item\.ticker\}/);
+    assert.match(overview, /href=\{`\/research\/\$\{item\.ticker\}\?view=thesis`\}/);
+    assert.match(overview, /Revisar tesis de \{item\.ticker\}/);
 });
 
 test('F300: si hay documento fuente también se enlaza', () => {
     assert.match(overview, /\{item\.sourceUrl && \(/);
-    assert.match(overview, /Abrir documento fuente/);
+    assert.match(overview, /Abrir documento/);
 });
 
 test('F300: el enlace es alcanzable al tacto (min-h 44px)', () => {
-    const block = overview.slice(overview.indexOf('Abrir investigación de') - 600);
+    const block = overview.slice(overview.indexOf('Revisar tesis de') - 600);
     assert.match(block, /min-h-\[44px\]/);
 });

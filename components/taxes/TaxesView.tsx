@@ -288,11 +288,11 @@ export default function TaxesView({ initialHoldings, initialReport, initialThres
 
             <RecordList
                 title="Posiciones Fiscales"
-                description="Posiciones con base de coste, plusvalías latentes y retenciones"
+                description="Posiciones con base de coste y plusvalías latentes. La divisa base del informe es EUR; cada importe usa la divisa de su fila si consta."
                 icon={<Receipt className="h-5 w-5 text-teal-400" />}
                 records={initialHoldings}
                 fetchRecords={getTaxHoldings}
-                columns={['ticker', 'quantity', 'cost_basis', 'market_value', 'unrealized_pnl', 'currency']}
+                columns={['ticker', 'quantity', 'cost_basis', 'market_value', 'unrealized_pnl']}
                 columnLabels={{
                     ticker: 'Ticker',
                     quantity: 'Cantidad',

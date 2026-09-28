@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { getMarketIndices } from '@/lib/actions/market.actions';
 import { getSavedScreenerEngines, getScreenerStocksReal } from '@/lib/actions/screener.actions';
-import { formatCompact, formatNumber, formatPercent, formatPrice } from '@/lib/format';
+import { formatNumber, formatPercent, formatPrice } from '@/lib/format';
 import { etiquetaSector } from '@/lib/labels';
 import { t } from '@/lib/i18n/t';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +40,15 @@ const sectorEn = (value: string) =>
   SECTORES.some((s) => s.en === value) ? value : 'Information Technology';
 
 const sectorEs = (value: string) => etiquetaSector(value);
+
+// Los miles de millones se expresan en billones anglosajones (B),
+// no con la etiqueta "mil M" que ocupa media celda en el screener.
+function screenerMarketCap(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return 'N/D';
+  if (value >= 1e9) return `${formatNumber(value / 1e9, { maximumFractionDigits: 2 })} B US$`;
+  if (value >= 1e6) return `${formatNumber(value / 1e6, { maximumFractionDigits: 2 })} M US$`;
+  return `${formatNumber(value, { maximumFractionDigits: 0 })} US$`;
+}
 
 export default async function ScreenerPage({ searchParams }: { searchParams?: Promise<{ sector?: string }> }) {
   const sector = sectorEn((await searchParams)?.sector ?? 'Information Technology');
@@ -217,7 +226,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                         <td className="flex items-center justify-between gap-3 py-1 md:table-cell md:py-3 md:pr-4 md:text-right">
                           <span className="text-xs text-gray-500 md:hidden">Market Cap</span>
                           <span className="font-mono text-gray-300">
-                            {r.marketCap > 0 ? formatCompact(r.marketCap, { maximumFractionDigits: 1 }) : 'N/D'}
+                            {r.marketCap > 0 ? screenerMarketCap(r.marketCap) : 'N/D'}
                           </span>
                         </td>
                         <td className="mt-2 flex items-center justify-between gap-3 border-t border-gray-800/60 pt-3 md:table-cell md:mt-0 md:border-0 md:py-3 md:pt-3 md:text-right">
