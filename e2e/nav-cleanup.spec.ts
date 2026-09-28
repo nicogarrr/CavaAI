@@ -25,6 +25,12 @@ test("el menú ya no tiene duplicados ni Workflows", async ({ page }) => {
   await expect(dialog.getByText("Mi plan", { exact: true })).toHaveCount(0);
 
   await page.screenshot({ path: "test-results/nav-cleanup-drawer.png" });
+
+  // Primera pantalla no prueba posicion/legibilidad del final: captura
+  // tambien tras scroll al fondo del drawer (Plan/Ayuda visibles).
+  await dialog.getByRole("link", { name: "Ayuda", exact: true }).scrollIntoViewIfNeeded();
+  await expect(dialog.getByRole("link", { name: "Plan", exact: true })).toBeVisible();
+  await page.screenshot({ path: "test-results/nav-cleanup-drawer-bottom.png" });
 });
 
 test("el sidebar de escritorio muestra el nav limpio", async ({ page }) => {
@@ -45,4 +51,9 @@ test("el sidebar de escritorio muestra el nav limpio", async ({ page }) => {
   await expect(sidebar.getByRole("link", { name: "Seguridad", exact: true })).toHaveCount(1);
 
   await page.screenshot({ path: "test-results/nav-cleanup-sidebar-desktop.png" });
+
+  // Igual en desktop: captura del sidebar tras scroll al fondo, con el
+  // pie (Seguridad) y la zona de Plan/Ayuda visibles.
+  await sidebar.getByRole("link", { name: "Seguridad", exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "test-results/nav-cleanup-sidebar-bottom.png" });
 });
