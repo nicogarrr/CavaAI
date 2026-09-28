@@ -246,6 +246,19 @@ export default function MetodologiaPage() {
       </section>
 
       <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+        <h2 className="text-lg font-semibold text-gray-100">Señal orbital AST: semieje mayor</h2>
+        <p className="mt-2 text-sm leading-6 text-gray-400">Para cada objeto del grupo AST de CelesTrak calculamos el semieje mayor con
+          a = (μ / (2πn / 86.400)²)^(1/3), con μ terrestre = 398.600,4418 km³/s² y n en revoluciones al día.
+          Conservamos hasta 32 épocas distintas por ID NORAD. Comparamos solo una ventana de 24 a 72 horas
+          con al menos tres épocas separadas por dos horas. Una caída de 2 km o más invita a revisar fuentes,
+          no prueba despliegue, maniobra ni causa: la resistencia atmosférica, ajustes orbitales y revisiones
+          de elementos también pueden producir cambios. BSTAR y las derivadas del movimiento medio son
+          parámetros de ajuste, no telemetría independiente. La señal es exploratoria y no sustituye
+          una confirmación primaria. El catálogo se descarga cada seis horas, nunca se consulta en la vista;
+          después de 30 horas sin descarga válida se ocultan señal e historial hasta recuperar datos.</p>
+      </section>
+
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Calculator className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Motores de valoración</h2>
