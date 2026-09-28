@@ -84,7 +84,7 @@ def _seed_preexisting_rows(database_url: str) -> tuple[int, int]:
     """Siembra via ORM (0030 no anade columnas: el ORM vale sobre 0029)."""
     from sqlalchemy.orm import sessionmaker
 
-    from app.models.entities import Company, DecisionJournalEntry, ModelAlias, Tenant
+    from app.models.entities import DecisionJournalEntry, ModelAlias, Tenant
 
     engine = create_engine(database_url)
     session = sessionmaker(bind=engine)()
@@ -105,19 +105,25 @@ def _seed_preexisting_rows(database_url: str) -> tuple[int, int]:
                 supported_capabilities=["text"],
             )
         )
-        company = Company(
-            ticker="SEED30",
-            name="Seed Preexisting Co",
-            exchange="NASDAQ",
-            company_type="operating",
-            valuation_model="dcf",
+        # SQL explicito, no ORM: migraciones posteriores (p.ej. 0043) anaden
+        # columnas a companies y el INSERT del ORM las incluiria sobre el
+        # esquema 0029, que aun no las tiene.
+        session.execute(
+            text(
+                "INSERT INTO companies (ticker, name, exchange, currency, sector, industry,"
+                " company_type, valuation_model, special_sources, special_risks, factor_tags,"
+                " created_at, updated_at)"
+                " VALUES ('SEED30', 'Seed Preexisting Co', 'NASDAQ', 'USD', 'Unknown',"
+                " 'Unknown', 'operating', 'dcf', '[]', '[]', '[]',"
+                " '2024-05-01 00:00:00', '2024-05-01 00:00:00')"
+            )
         )
-        session.add(company)
         session.flush()
+        company_id = session.scalar(text("SELECT id FROM companies WHERE ticker='SEED30'"))
         session.add(
             DecisionJournalEntry(
                 tenant_id=db_tenant.id,
-                company_id=company.id,
+                company_id=company_id,
                 decision_date=date(2024, 5, 1),
                 decision="buy",
                 rationale="seeded before 0030",
