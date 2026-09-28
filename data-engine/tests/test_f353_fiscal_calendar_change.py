@@ -437,3 +437,87 @@ def test_mes_vigente_desde_anclas_recientes():
     assert _current_fiscal_month_from_anchors({}) is None
     # Un solo 10-K reciente (caso JEF tras el cambio) basta para etiquetar.
     assert _current_fiscal_month_from_anchors({"a": "2025-11-30"}) == "11"
+
+
+# --- Bounce 4: instantaneos tambien pasan la ancla ---
+
+def _instant(end, val, filed, form="10-K", accn=None):
+    """Hecho instantaneo (balance): sin start, fp FY."""
+    return {"fy": int(end[:4]), "fp": "FY", "form": form, "end": end,
+            "val": val, "filed": filed, "accn": accn or _accn(end[:4])}
+
+
+def test_instantaneos_sin_ancla_fail_closed(db):
+    """Assets con form 10-K, fp FY y accn ausente o desconocido NO entra,
+    igual que un flow: sin DEI no hay NINGUNA fila anual y fy_periods es [].
+    (Repro directo del bounce 4.)"""
+    facts = {"facts": {"us-gaap": {
+        "Assets": {"units": {"USD": [
+            _instant("2025-03-31", 700, "2025-05-01", accn="unknown"),
+            _instant("2025-12-31", 800, "2026-02-01"),
+            {k: v for k, v in _instant("2024-12-31", 750, "2025-02-01").items() if k != "accn"},
+        ]}},
+        "Revenues": {"units": {"USD": _years_cal(2024, 2025, 100)}},
+    }}}
+    company, result = _ingest(db, "INST", facts, {})
+    assert _fy_rows(db, company) == {}
+    assert not db.scalars(select(FinancialFact).where(
+        FinancialFact.company_id == company.id,
+        FinancialFact.fiscal_quarter == "FY",
+    )).first()
+    assert result["fy_periods"] == []
+    assert result["annual_anchored_filings"] == 0
+
+
+def test_instantaneos_anclados_entran_y_comparativas(db):
+    """Assets a cierre de ejercicio anclado a su 10-K entra; la comparativa
+    del mismo filing tambien; un instantaneo a cierre de trimestre dentro
+    del 10-K (mes distinto), no."""
+    accn = _accn(2025)
+    facts = {"facts": {"us-gaap": {
+        "Assets": {"units": {"USD": [
+            _instant("2025-12-31", 800, "2026-02-01", accn=accn),
+            _instant("2024-12-31", 750, "2026-02-01", accn=accn),
+            _instant("2025-09-30", 790, "2026-02-01", accn=accn),
+        ]}},
+    }}}
+    company, result = _ingest(db, "INST2", facts, _anchors([(accn, "2025-12-31")]))
+    assets = {f.period: f.value for f in db.scalars(select(FinancialFact).where(
+        FinancialFact.company_id == company.id,
+        FinancialFact.metric == "total_assets",
+        FinancialFact.fiscal_quarter == "FY",
+    ))}
+    assert assets == {"2025-12-31:FY": Decimal("800"), "2024-12-31:FY": Decimal("750")}
+    assert set(result["fy_periods"]) == set(assets)
+
+
+# --- Bounce 5: cap alineado con replace y reporte ---
+
+def test_mas_de_20_fy_cap_no_borra_ni_exagera(db):
+    """25 ejercicios anclados: entran los 20 mas recientes; fy_periods
+    declara exactamente esos 20 (no los 25); un FY viejo previamente
+    verificado fuera del cap NO se borra en el segundo refresh."""
+    rev = {"units": {"USD": _years_cal(2001, 2025, 100)}}
+    anchors = _anchors_for_years(2001, 2025, "12-31")
+    facts = {"facts": {"us-gaap": {"Revenues": rev}}}
+    company, result = _ingest(db, "CAP", facts, anchors)
+    periods = _fy_rows(db, company)
+    assert len(periods) == 20
+    assert max(periods) == "2025-12-31:FY"
+    assert min(periods) == "2006-12-31:FY"
+    assert result["fy_periods"] == sorted(periods.keys(), reverse=True)
+
+    # Simula un FY2005 verificado en un import anterior con ventana mayor.
+    doc = db.scalar(select(Document).where(
+        Document.company_id == company.id, Document.source_type == "SEC"))
+    db.add(FinancialFact(company_id=company.id, metric="revenue",
+                         value=Decimal("105"), unit="USD",
+                         period="2005-12-31:FY", fiscal_year=2005,
+                         fiscal_quarter="FY", source_id=doc.id,
+                         source_type="SEC", is_reported=True,
+                         confidence=Decimal("0.95")))
+    db.commit()
+    _ingest_second(db, company, facts, anchors)
+    despues = _fy_rows(db, company)
+    assert despues["2005-12-31:FY"] == Decimal("105")  # fuera del cap: preservado
+    assert len(despues) == 21

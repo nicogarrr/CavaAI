@@ -317,8 +317,28 @@ def _collect_by_concept(
             # claims: `fp="FY"` does not guarantee an annual duration, and the
             # year-to-date and TTM variants clear a duration check too. Instant
             # facts (balance sheet, no `start`) are not duration-filtered.
+            # An annual fact - flow OR instant - only enters anchored to its
+            # own annual filing (F353): the entry's `accn` must resolve to a
+            # 10-K (o variante) in submissions AND close on the same month
+            # that filing declares on its cover. A TTM row inside a 10-K
+            # fails the month check even though its accn is valid; a
+            # coherent TTM series cannot move the anchor because the anchor
+            # is a declared cover date, not a mode over facts. Fail closed
+            # for every annual row: without a linkable anchor, no annual
+            # fact enters (instant facts skip the duration check below, so
+            # the anchor check must live outside it).
+            if annual_anchors is not None:
+                accn = str(entry.get("accn") or "")
+                report_date = annual_anchors.get(accn)
+                if not report_date:
+                    continue
+                entry_month = _normalized_fiscal_month(str(entry.get("end") or ""))
+                if entry_month is None or entry_month != _normalized_fiscal_month(report_date):
+                    continue
             start = entry.get("start")
             if start and min_span is not None and max_span is not None:
+                # A flow fact (one WITH `start`) has to really span the
+                # period it claims; instant facts have no duration to check.
                 try:
                     span = (
                         date.fromisoformat(str(entry["end"]))
@@ -328,24 +348,6 @@ def _collect_by_concept(
                     continue
                 if not min_span <= span <= max_span:
                     continue
-                # The duration check alone is not enough: the ~365-day TTM
-                # rows that close on a quarter end pass it. An annual fact
-                # only enters anchored to its own annual filing (F353): the
-                # entry's `accn` must resolve to a 10-K (o variante) in
-                # submissions AND close on the same month that filing
-                # declares on its cover. A TTM row inside a 10-K fails the
-                # month check even though its accn is valid; a coherent TTM
-                # series cannot move the anchor because the anchor is a
-                # declared cover date, not a mode over facts. Fail closed:
-                # without a linkable anchor, no annual fact enters.
-                if annual_anchors is not None:
-                    accn = str(entry.get("accn") or "")
-                    report_date = annual_anchors.get(accn)
-                    if not report_date:
-                        continue
-                    entry_month = _normalized_fiscal_month(str(entry.get("end") or ""))
-                    if entry_month is None or entry_month != _normalized_fiscal_month(report_date):
-                        continue
             end = str(entry.get("end") or "")
             if not end:
                 continue
@@ -777,8 +779,16 @@ class FinancialIngestionService:
                 metric,
             )
             if by_end:
-                annual_by_metric[metric] = by_end
-                restated_fy_keys.extend((metric, f"{end}:FY") for end in by_end)
+                # El cap se aplica AQUI, no en la insercion: las claves del
+                # replace y el reporte de cobertura reflejan EXACTAMENTE lo
+                # insertado. Lo que queda fuera del cap no se borra: si ya
+                # estaba verificado en DB se preserva (borrarlo sin
+                # reinsertarlo perderia historia valida).
+                capped = dict(
+                    sorted(by_end.items(), key=lambda kv: str(kv[0]), reverse=True)[:20]
+                )
+                annual_by_metric[metric] = capped
+                restated_fy_keys.extend((metric, f"{end}:FY") for end in capped)
 
         self._replace_sec_data(
             db, company, document, restated_fy_keys=restated_fy_keys
@@ -852,12 +862,11 @@ class FinancialIngestionService:
             # `intangible_assets` en vez de sumarlas.
             by_end = annual_by_metric.get(metric) or {}
             if by_end:
-                # Cap de historia anual: ~2 eras completas (un emisor con
-                # cambio de calendario conserva su era anterior anclada; la
-                # cobertura real queda en fy_periods del resultado).
+                # Ya capeado en el pre-computo (~2 eras completas); la
+                # cobertura real queda en fy_periods del resultado.
                 annual_sorted = sorted(
                     by_end.values(), key=lambda e: str(e["end"]), reverse=True
-                )[:20]
+                )
                 for entry in annual_sorted:
                     val = _decimal(entry.get("val"))
                     if val is None:

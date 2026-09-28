@@ -182,7 +182,12 @@ def _with_anchors(payload, close_month):
                 accn = f"K{e.get('fy')}-{e.get('filed')}"
                 e["accn"] = accn
                 start, end = e.get("start"), str(e.get("end") or "")
-                if not start or len(end) < 10:
+                if len(end) < 10:
+                    continue
+                if not start:
+                    # Instantaneo (balance): ancla si cierra en el mes real.
+                    if end[5:7] == close_month:
+                        anchors[accn] = end
                     continue
                 try:
                     span = (date.fromisoformat(end) - date.fromisoformat(str(start))).days
