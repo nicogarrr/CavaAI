@@ -34,14 +34,18 @@ def db():
         yield session
 
 
-def _seed(db: Session, custody: bool = True, base_currency: str = "EUR"):
+def _seed(db: Session, custody: dict | None = None, base_currency: str = "EUR"):
+    """custody: mapa por partida {ISIN/ticker o 'cash:DIV': país ISO2}.
+
+    La custodia extranjera se DECLARA partida a partida (dictamen auditor):
+    la importación IBKR no acredita dónde está depositado cada valor, y un
+    país único para toda la cartera sería falso en carteras mixtas.
+    """
     tenant = Tenant(external_id="m720-test", name="M720 test")
     db.add(tenant)
     db.flush()
     if custody:
-        # Custodia extranjera DECLARADA por el tenant: la importación IBKR
-        # por sí sola no acredita dónde está depositado cada valor.
-        tenant.metadata_ = {"tax_declarant": {"custody_country": "IE"}}
+        tenant.metadata_ = {"tax_declarant": {"custody": custody}}
     portfolio = Portfolio(
         tenant_id=tenant.id, name="Main", base_currency=base_currency, is_default=True
     )
@@ -151,7 +155,7 @@ def _cash_snapshot(db, tenant, portfolio, currency, balance, fx, day=date(2025, 
 
 
 def test_thresholds_per_category_below(db):
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE", "cash:EUR": "IE"})
     c = _company(db, tenant, "AAPL", isin="US0378331005")
     _position_row(db, tenant, portfolio, c)
     _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 40000)
@@ -177,7 +181,7 @@ def test_thresholds_per_category_below(db):
 
 
 def test_thresholds_exceeds_valores_and_missing_isin(db):
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE", "MSFT": "IE"})
     c1 = _company(db, tenant, "AAPL", isin="US0378331005")
     c2 = _company(db, tenant, "MSFT")  # sin ISIN
     _position_row(db, tenant, portfolio, c1)
@@ -197,7 +201,7 @@ def test_thresholds_exceeds_valores_and_missing_isin(db):
 
 
 def test_unvalued_position_excluded_and_flagged(db):
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
     c1 = _company(db, tenant, "AAPL", isin="US0378331005")
     c2 = _company(db, tenant, "XYZ")
     _position_row(db, tenant, portfolio, c1)
@@ -217,7 +221,7 @@ def test_unvalued_position_excluded_and_flagged(db):
 
 
 def test_latest_snapshot_before_year_end_used(db):
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
     c = _company(db, tenant, "AAPL", isin="US0378331005")
     _position_row(db, tenant, portfolio, c)
     # Snapshot viejo (noviembre) y el de cierre: manda el más reciente ≤ 31/12.
@@ -231,7 +235,7 @@ def test_latest_snapshot_before_year_end_used(db):
 
 
 def test_cash_without_fx_is_unvalued(db):
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"cash:USD": "IE"})
     _cash_balance_row(db, tenant, "USD")
     _cash_snapshot(db, tenant, portfolio, "USD", 60000, None)
 
@@ -245,19 +249,22 @@ def test_cash_without_fx_is_unvalued(db):
 
 
 def test_cash_converted_with_fx_exceeds(db):
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"cash:USD": "IE"})
     _cash_balance_row(db, tenant, "USD")
     _cash_snapshot(db, tenant, portfolio, "USD", 60000, 0.9)
 
     result = Modelo720Service().check_thresholds(db, 2025)
 
+    # El total neto supera, pero sin identificador de cuenta real (los
+    # saldos se agrupan por divisa) no hay certeza positiva: no concluyente.
     assert result["categories"]["cuentas"]["total_base"] == 54000.0
-    assert result["categories"]["cuentas"]["exceeds"] is True
-    assert result["categories"]["cuentas"]["status"] == "supera"
+    assert result["categories"]["cuentas"]["exceeds"] is None
+    assert result["categories"]["cuentas"]["status"] == "desconocido"
+    assert any("cuenta real" in r for r in result["categories"]["cuentas"]["reasons"])
 
 
 def test_stale_snapshot_is_unknown_not_negative(db):
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
     c = _company(db, tenant, "AAPL", isin="US0378331005")
     _position_row(db, tenant, portfolio, c)
     # Último snapshot de junio: 184 días antes del cierre → no afirma nada.
@@ -273,7 +280,7 @@ def test_stale_snapshot_is_unknown_not_negative(db):
 
 
 def test_short_position_excluded_from_total(db):
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
     c = _company(db, tenant, "AAPL", isin="US0378331005")
     _position_row(db, tenant, portfolio, c)
     _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), -30000)
@@ -287,7 +294,7 @@ def test_short_position_excluded_from_total(db):
 
 
 def test_foreign_custody_unverified_excluded(db):
-    tenant, portfolio = _seed(db, custody=False)  # sin custodia declarada
+    tenant, portfolio = _seed(db)  # sin custodia declarada
     c = _company(db, tenant, "AAPL", isin="US0378331005")
     # Aunque la posición proceda de IBKR: importar del bróker NO acredita
     # dónde está depositado el valor (dictamen auditor).
@@ -301,7 +308,7 @@ def test_foreign_custody_unverified_excluded(db):
     assert valores["total_base"] == 0.0
     assert valores["exceeds"] is None
     assert valores["status"] == "desconocido"
-    assert valores["custody"] == "no_verificada"
+    assert valores["custody"] == "por_partida"
     assert result["foreign_unverified"][0]["ticker"] == "AAPL"
     assert result["incomplete"] is True
 
@@ -327,7 +334,7 @@ def test_non_eur_base_currency_is_unknown(db):
 def test_stale_partida_not_certified_by_recent_one(db):
     # Una posición al 31/12 NO certifica a otra con snapshot de junio:
     # la antigüedad se evalúa partida a partida (dictamen auditor).
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE", "US5949181045": "IE"})
     c1 = _company(db, tenant, "AAPL", isin="US0378331005")
     c2 = _company(db, tenant, "MSFT", isin="US5949181045")
     _position_row(db, tenant, portfolio, c1)
@@ -350,7 +357,7 @@ def test_stale_partida_not_certified_by_recent_one(db):
 def test_multiportfolio_snapshots_do_not_mix(db):
     # Sin filtro por portfolio, el snapshot reciente de OTRO portfolio
     # eclipsaba las partidas del activo (dictamen auditor).
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
     other = Portfolio(tenant_id=tenant.id, name="Other", base_currency="EUR")
     db.add(other)
     db.flush()
@@ -373,3 +380,72 @@ def test_no_snapshots_at_all_is_unknown(db):
     assert result["categories"]["valores"]["exceeds"] is None
     assert result["categories"]["valores"]["status"] == "desconocido"
     assert result["categories"]["cuentas"]["exceeds"] is None
+
+
+def test_exactly_50000_does_not_trigger(db):
+    # La norma dice EXCEDER 50.000 € (FAQ AEAT): 50.000 exactos no obligan.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 50000)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    assert result["categories"]["valores"]["exceeds"] is False
+    assert result["categories"]["valores"]["status"] == "por_debajo"
+
+
+def test_negative_cash_balances_net_against_positive(db):
+    # FAQ AEAT: los saldos negativos se NETEAN con los positivos.
+    tenant, portfolio = _seed(db, custody={"cash:USD": "IE", "cash:EUR": "IE"})
+    _cash_balance_row(db, tenant, "USD")
+    _cash_balance_row(db, tenant, "EUR")
+    _cash_snapshot(db, tenant, portfolio, "USD", 60000, 1)
+    _cash_snapshot(db, tenant, portfolio, "EUR", -20000, 1)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    assert result["categories"]["cuentas"]["total_base"] == 40000.0
+
+
+def test_stale_price_as_of_not_certified_by_fresh_snapshot(db):
+    # Un precio de junio arrastrado a un snapshot del 31/12 no afirma el
+    # valor a 31/12: manda el as_of del precio, no la fecha de captura.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    db.query(Position).one().as_of = date(2025, 6, 1)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 60000)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    valores = result["categories"]["valores"]
+    assert valores["exceeds"] is None
+    assert valores["status"] == "desconocido"
+    assert any(s["ticker"] == "AAPL" and s.get("price_as_of") for s in result["stale_snapshots"])
+
+
+def test_spanish_custody_is_not_foreign(db):
+    # "ES" nunca cuenta como extranjero: la partida va a domestic_assets.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "ES"})
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 60000)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    assert result["categories"]["valores"]["total_base"] == 0.0
+    assert result["domestic_assets"][0]["ticker"] == "AAPL"
+
+
+def test_current_position_without_snapshot_is_unvalued(db):
+    # Una posición actual sin snapshot a cierre no puede quedar invisible.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    # Sin snapshot para esta posición.
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    assert any(u["ticker"] == "AAPL" for u in result["unvalued"])
+    assert result["categories"]["valores"]["status"] == "desconocido"
