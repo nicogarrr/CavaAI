@@ -13,6 +13,7 @@ test("cabecera de la ficha con precio, variación y sparkline (desktop)", async 
   await expect(page.getByText("336,56 US$")).toBeVisible();
   await expect(page.getByText("+2,34")).toBeVisible();
   await expect(page.getByRole("img", { name: /Evolución del precio/ })).toBeVisible();
+  await expect(page.getByText("11 ago – 9 sept")).toBeVisible();
   await page.screenshot({ path: "test-results/header-quote-desktop.png" });
 });
 
