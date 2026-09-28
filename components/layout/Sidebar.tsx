@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronsLeft, ChevronsRight, CircleHelp, Settings, Target } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, Settings, Target } from 'lucide-react';
 import { isNavItemActive, NAV_SECTIONS, showsNavSectionTitle, type NavItem } from '@/lib/constants';
 
 export const SIDEBAR_COLLAPSED_COOKIE = 'cavaai:sidebar-collapsed';
@@ -14,7 +14,8 @@ export const SIDEBAR_COLLAPSED_COOKIE = 'cavaai:sidebar-collapsed';
  * que entre 640px y 767px no quede ninguna ventana sin navegacion primaria.
  *
  * Alturas y anchuras vienen de --shell-top / --sidebar-w (globals.css). El
- * aside se ancla a `top-0` con `h-dvh` y reserva el alto de la zona pegajosa
+ * aside se ancla a `top: --shell-top` con alto `100dvh - --shell-top` (con
+ * `h-dvh` a secas el pie quedaba bajo el fold a scroll 0) y la zona pegajosa
  * con `pt`: asi el borde superior nunca queda escondido bajo el header, y lo
  * mismo vale cuando el aviso de "sin conexion" aniade su propia altura.
  */
@@ -33,7 +34,7 @@ export default function Sidebar({ collapsed: initiallyCollapsed }: { collapsed: 
     return (
         <aside
             data-collapsed={collapsed || undefined}
-            className="sticky top-0 z-10 hidden h-dvh shrink-0 flex-col border-r border-gray-700/50 bg-gray-900 pt-[var(--shell-top)] transition-[width] duration-200 md:flex data-[collapsed]:w-[var(--sidebar-w-collapsed)] w-[var(--sidebar-w)]"
+            className="sticky top-[var(--shell-top)] z-10 hidden h-[calc(100dvh-var(--shell-top))] shrink-0 flex-col border-r border-gray-700/50 bg-gray-900 transition-[width] duration-200 md:flex data-[collapsed]:w-[var(--sidebar-w-collapsed)] w-[var(--sidebar-w)]"
         >
             <button
                 onClick={toggle}
@@ -45,7 +46,10 @@ export default function Sidebar({ collapsed: initiallyCollapsed }: { collapsed: 
                 {collapsed ? <ChevronsRight aria-hidden="true" className="h-5 w-5" /> : <ChevronsLeft aria-hidden="true" className="h-5 w-5" />}
             </button>
 
-            <nav className="scrollbar-hide-default flex-1 overflow-y-auto px-2 pb-4" aria-label="Navegación principal">
+            <nav
+                className="scrollbar-hide-default min-h-0 flex-1 overflow-y-auto px-2 pb-4"
+                aria-label="Navegación principal"
+            >
                 <ul className="flex flex-col">
                     {NAV_SECTIONS.map((section) => {
                         const showTitle = showsNavSectionTitle(section);
@@ -73,18 +77,17 @@ export default function Sidebar({ collapsed: initiallyCollapsed }: { collapsed: 
                 </ul>
             </nav>
 
-            {/* Pie del menu: destinos que no caben en el arbol pero deben ser
-                alcanzables sin conocer la URL. Antes /help no tenia entrada. */}
+            {/* Pie del menu: SOLO destinos que no estan en el arbol. /plan y
+                /help salen de aqui (quick win UX 3): ya tienen entrada en
+                NAV_SECTIONS y duplicaban «Mi plan» y «Ayuda» en el mismo
+                sidebar. /security no esta en el arbol: se queda.
+                El nav lleva min-h-0: sin el, un hijo flex no encoge por
+                debajo de su contenido, el aside superaba h-dvh y este pie
+                quedaba inalcanzable bajo el fold en viewports bajos. */}
             <div className="border-t border-gray-700/50 p-2">
                 <ul className="flex flex-col gap-1">
                     <li>
-                        <FooterLink href="/plan" icon={Target} label="Mi plan" pathname={pathname} collapsed={collapsed} />
-                    </li>
-                    <li>
                         <FooterLink href="/security" icon={Settings} label="Seguridad" pathname={pathname} collapsed={collapsed} />
-                    </li>
-                    <li>
-                        <FooterLink href="/help" icon={CircleHelp} label="Ayuda" pathname={pathname} collapsed={collapsed} />
                     </li>
                 </ul>
             </div>
