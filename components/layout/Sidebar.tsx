@@ -14,7 +14,8 @@ export const SIDEBAR_COLLAPSED_COOKIE = 'cavaai:sidebar-collapsed';
  * que entre 640px y 767px no quede ninguna ventana sin navegacion primaria.
  *
  * Alturas y anchuras vienen de --shell-top / --sidebar-w (globals.css). El
- * aside se ancla a `top-0` con `h-dvh` y reserva el alto de la zona pegajosa
+ * aside se ancla a `top: --shell-top` con alto `100dvh - --shell-top` (con
+ * `h-dvh` a secas el pie quedaba bajo el fold a scroll 0) y la zona pegajosa
  * con `pt`: asi el borde superior nunca queda escondido bajo el header, y lo
  * mismo vale cuando el aviso de "sin conexion" aniade su propia altura.
  */
@@ -33,7 +34,7 @@ export default function Sidebar({ collapsed: initiallyCollapsed }: { collapsed: 
     return (
         <aside
             data-collapsed={collapsed || undefined}
-            className="sticky top-0 z-10 hidden h-dvh shrink-0 flex-col border-r border-gray-700/50 bg-gray-900 pt-[var(--shell-top)] transition-[width] duration-200 md:flex data-[collapsed]:w-[var(--sidebar-w-collapsed)] w-[var(--sidebar-w)]"
+            className="sticky top-[var(--shell-top)] z-10 hidden h-[calc(100dvh-var(--shell-top))] shrink-0 flex-col border-r border-gray-700/50 bg-gray-900 transition-[width] duration-200 md:flex data-[collapsed]:w-[var(--sidebar-w-collapsed)] w-[var(--sidebar-w)]"
         >
             <button
                 onClick={toggle}

@@ -55,5 +55,14 @@ test("el sidebar de escritorio muestra el nav limpio", async ({ page }) => {
   // Igual en desktop: captura del sidebar tras scroll al fondo, con el
   // pie (Seguridad) y la zona de Plan/Ayuda visibles.
   await sidebar.getByRole("link", { name: "Seguridad", exact: true }).scrollIntoViewIfNeeded();
+  // El pie tiene que ser visible de verdad: bounding box entero dentro del
+  // viewport (con h-dvh a secas el aside desbordaba el alto del header y el
+  // pie caia bajo el fold a scroll 0).
+  const seguridadBox = await sidebar.getByRole("link", { name: "Seguridad", exact: true }).boundingBox();
+  const viewport = page.viewportSize();
+  expect(seguridadBox).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(seguridadBox!.y).toBeGreaterThanOrEqual(0);
+  expect(Math.ceil(seguridadBox!.y + seguridadBox!.height)).toBeLessThanOrEqual(viewport!.height);
   await page.screenshot({ path: "test-results/nav-cleanup-sidebar-bottom.png" });
 });

@@ -52,3 +52,11 @@ test('el árbol del sidebar encoge con min-h-0: el pie queda alcanzable', () => 
     const sidebar = readFileSync('components/layout/Sidebar.tsx', 'utf8');
     assert.match(sidebar, /min-h-0 flex-1 overflow-y-auto/);
 });
+
+test('el alto del aside descuenta la zona pegajosa (h-dvh a secas destierra el pie)', () => {
+    // Con h-dvh y top-0 el aside mide el viewport entero empezando debajo
+    // del header a scroll 0: sus ultimos --shell-top px caen bajo el fold.
+    // El alto correcto es 100dvh - --shell-top anclado a top: --shell-top.
+    assert.match(sidebar, /top-\[var\(--shell-top\)\]/);
+    assert.match(sidebar, /h-\[calc\(100dvh-var\(--shell-top\)\)\]/);
+});
