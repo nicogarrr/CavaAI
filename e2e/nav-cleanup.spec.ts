@@ -7,8 +7,16 @@ test.skip(!process.env.E2E_UI_RUN, "Set E2E_UI_RUN=1 to run browser tests.");
 
 test.use({ viewport: { width: 700, height: 900 } });
 
+// El indicador dev de Next («1 Issue», <nextjs-portal>) es chrome de
+// desarrollo, no UI de producto, y tapa el pie del sidebar en las capturas
+// (bottom-left fijo). Se oculta para que las capturas muestren solo la app.
+async function ocultarDevIndicator(page: import("@playwright/test").Page) {
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+}
+
 test("el menú ya no tiene duplicados ni Workflows", async ({ page }) => {
   await page.goto("/inicio");
+  await ocultarDevIndicator(page);
   const trigger = page.getByRole("button", { name: "Abrir menú de navegación" });
   await expect(trigger).toBeVisible();
   await trigger.click();
@@ -36,6 +44,7 @@ test("el menú ya no tiene duplicados ni Workflows", async ({ page }) => {
 test("el sidebar de escritorio muestra el nav limpio", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/inicio");
+  await ocultarDevIndicator(page);
 
   const sidebar = page.locator("aside");
   await expect(sidebar).toBeVisible();
