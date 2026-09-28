@@ -9,12 +9,12 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -85,12 +85,6 @@ _quote_cache: dict[str, dict] = {}
 _quote_cache_lock = threading.RLock()
 
 _YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
-
-# Ventana de ranking de /api/market/movers, en días naturales respecto del
-# último cierre disponible. Acota lo que la función de ventana debe leer; 10
-# días cubren de sobra los dos últimos cierres aunque caigan un puente largo.
-_MOVERS_LOOKBACK_DAYS = 10
-
 
 # Yahoo nombra las clases de acciones US con guion (BRK-B), no con punto
 # (BRK.B, convención de Finnhub y del master). Las bolsas no-US llevan
@@ -337,13 +331,15 @@ def market_movers(
     calcula entre los dos últimos cierres de cada compañía (nunca se asume
     caché caliente ni fechas globales).
     """
-    # La ventana de ranking está ACOTADA antes de la función de ventana. El
-    # `limit` de salida (1..25) no acota nada de lo que se lee: sin este suelo
-    # temporal, `row_number() over (partition by company_id order by date desc)`
-    # se evaluaba sobre TODAS las barras diarias jamás almacenadas de todas las
-    # compañías, y el `rn <= 2` se aplicaba después de escanearlas todas.
-    # MOVERS_LOOKBACK_DAYS cubre con holgura los dos últimos cierres (findes y
-    # festivos incluidos) respecto del último día disponible.
+    # Ventana POR COMPAÑÍA: los dos últimos cierres de cada una, sin suelo
+    # temporal global. Un corte global de N días expulsaba del universo a
+    # cualquier compañía con el último cierre más viejo que la ventana, y a
+    # otra con el último cierre dentro pero el anterior fuera le publicaba
+    # precio con variación null: dos resultados distintos del mismo hueco de
+    # datos. El contrato es "los dos últimos cierres de cada compañía".
+    # Coste acotado por índice (uq company_id+date): un max() por compañía en
+    # cada CTE y una lectura por clave; nunca un row_number sobre toda la
+    # historia.
     latest_day = db.scalar(select(func.max(MarketPrice.date)))
     if latest_day is None:
         return {
@@ -353,47 +349,56 @@ def market_movers(
             "losers": [],
             "most_active": [],
         }
-    window_start = latest_day - timedelta(days=_MOVERS_LOOKBACK_DAYS)
-    ranked = (
+    latest_pairs = (
         select(
-            MarketPrice.company_id,
-            MarketPrice.date,
-            MarketPrice.close,
-            MarketPrice.volume,
-            func.row_number()
-            .over(
-                partition_by=MarketPrice.company_id,
-                # NULLS LAST explícito: SQLite ordena los NULLs primero en ASC y
-                # Postgres los últimos; una fila sin fecha nunca debe ganar.
-                order_by=(MarketPrice.date.desc().nullslast(), desc(MarketPrice.id)),
-            )
-            .label("rn"),
+            MarketPrice.company_id.label("company_id"),
+            func.max(MarketPrice.date).label("last_date"),
         )
-        # El suelo temporal se aplica ANTES de la función de ventana: acota las
-        # filas que hay que leer, no sólo las que se devuelven.
-        .where(MarketPrice.date >= window_start)
-        .cte("ranked")
+        .group_by(MarketPrice.company_id)
+        .cte("movers_latest")
     )
-    rows = list(
-        db.execute(
-            select(
-                ranked.c.company_id,
-                ranked.c.date,
-                ranked.c.close,
-                ranked.c.volume,
-                Company.ticker,
-                Company.name,
-                Company.sector,
-                Company.currency,
-            )
-            .join(Company, Company.id == ranked.c.company_id)
-            .where(ranked.c.rn <= 2)
-        ).all()
+    previous_pairs = (
+        select(
+            MarketPrice.company_id.label("company_id"),
+            func.max(MarketPrice.date).label("prev_date"),
+        )
+        .join(
+            latest_pairs,
+            and_(
+                MarketPrice.company_id == latest_pairs.c.company_id,
+                MarketPrice.date < latest_pairs.c.last_date,
+            ),
+        )
+        .group_by(MarketPrice.company_id)
+        .cte("movers_previous")
     )
-    latest: dict[int, dict] = {}
-    previous: dict[int, dict] = {}
-    for company_id, day, close, volume, ticker, name, sector, currency in rows:
-        entry = {
+
+    def _rows_at(pair_cte, date_column) -> list:
+        return list(
+            db.execute(
+                select(
+                    MarketPrice.company_id,
+                    MarketPrice.date,
+                    MarketPrice.close,
+                    MarketPrice.volume,
+                    Company.ticker,
+                    Company.name,
+                    Company.sector,
+                    Company.currency,
+                )
+                .join(
+                    pair_cte,
+                    and_(
+                        MarketPrice.company_id == pair_cte.c.company_id,
+                        MarketPrice.date == date_column,
+                    ),
+                )
+                .join(Company, Company.id == MarketPrice.company_id)
+            ).all()
+        )
+
+    def _entry(day, close, volume, ticker, name, sector, currency) -> dict:
+        return {
             "ticker": ticker,
             "name": name,
             "sector": sector,
@@ -404,10 +409,17 @@ def market_movers(
             "volume": int(volume) if volume is not None else None,
             "date": day.isoformat() if day else None,
         }
-        if company_id not in latest:
-            latest[company_id] = entry
-        elif company_id not in previous:
-            previous[company_id] = entry
+
+    latest: dict[int, dict] = {}
+    for company_id, day, close, volume, ticker, name, sector, currency in _rows_at(
+        latest_pairs, latest_pairs.c.last_date
+    ):
+        latest[company_id] = _entry(day, close, volume, ticker, name, sector, currency)
+    previous: dict[int, dict] = {}
+    for company_id, day, close, volume, ticker, name, sector, currency in _rows_at(
+        previous_pairs, previous_pairs.c.prev_date
+    ):
+        previous[company_id] = _entry(day, close, volume, ticker, name, sector, currency)
     movers = []
     for company_id, last in latest.items():
         prev = previous.get(company_id)

@@ -25,7 +25,7 @@ import pytest
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 
-from app.api.routes.market import _MOVERS_LOOKBACK_DAYS, market_movers
+from app.api.routes.market import market_movers
 from app.core.database import Base
 from app.models import Company, FinancialFact, MarketPrice, Portfolio, Position, Tenant
 from app.services.connectors.ecb import ECBRates
@@ -104,12 +104,14 @@ def _seed_multi_year_prices(
     db.flush()
 
 
-def test_movers_window_is_bounded_before_the_window_function(db: Session):
+def test_movers_window_is_per_company_and_index_bounded(db: Session):
     company = _company("LONG")
     db.add(company)
     db.flush()
-    # Cinco años de barras diarias, con el penúltimo cierre DENTRO de la ventana.
-    _seed_multi_year_prices(db, company, days=1_800, end=AS_OF - timedelta(days=1))
+    # Cinco años de barras diarias, con el penúltimo cierre FUERA de
+    # cualquier ventana global de dias: el contrato (dos ultimos cierres
+    # por compania) exige que la variacion se calcule igual.
+    _seed_multi_year_prices(db, company, days=1_800, end=AS_OF - timedelta(days=400))
     db.add(
         MarketPrice(
             company_id=company.id,
@@ -126,28 +128,20 @@ def test_movers_window_is_bounded_before_the_window_function(db: Session):
     with statements as captured:
         out = market_movers(db, 10)
 
-    windowed = [s for s in captured if "row_number()" in s and "market_prices" in s]
-    assert windowed, "la consulta de movers debe usar la funcion de ventana"
-    sql = " ".join(windowed).lower()
-    # El suelo temporal va DENTRO de la fuente de la ventana de ranking: acota las
-    # filas leidas, no solo las devueltas.
-    assert "market_prices.date >=" in sql, (
-        "la ventana de ranking no esta acotada por fecha: vuelve a barrer toda la tabla"
-    )
-    assert "row_number() over (partition by market_prices.company_id" in sql
-    # El limite de salida se mantiene ademas del recorte de la ventana.
-    assert "rn <= ?" in sql
-    # Y el resultado sigue siendo correcto con cinco años de historia.
+    sql = " ".join(captured).lower()
+    # Sin row_number sobre toda la historia: la ventana es por compania via
+    # max(date) agregado (acotado por el indice company_id+date).
+    assert "row_number()" not in sql, "la ventana vuelve a barrer toda la tabla"
+    assert "max(market_prices.date)" in sql
+    # El resultado es correcto con cinco anos de historia y hueco >10 dias:
+    # la compania sigue en el universo y su variacion usa SUS dos ultimas
+    # barras ((2000 - (10+1799)) / (10+1799)).
     assert out["universe"] == 1
     assert out["as_of"] == AS_OF.isoformat()
-    assert out["gainers"][0]["ticker"] == "LONG"
+    gainer = out["gainers"][0]
+    assert gainer["ticker"] == "LONG"
+    assert gainer["change_pct"] is not None
     assert out["most_active"][0]["ticker"] == "LONG"
-
-
-def test_movers_lookback_window_is_defined_and_positive():
-    assert _MOVERS_LOOKBACK_DAYS >= 3, (
-        "una ventana menor no cubre los dos ultimos cierres en un puente largo"
-    )
 
 
 # --- 2. market_refresh: ultimo precio por compañía ---
