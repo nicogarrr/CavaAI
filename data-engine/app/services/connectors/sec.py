@@ -12,6 +12,10 @@ from app.core.config import get_settings
 from app.services.connectors import sec_edgar
 from app.services.connectors.base import ConnectorItem, ConnectorResult
 
+# Filings que declaran un cierre de ejercicio anual. Las enmiendas (10-K/A)
+# re-declaran el mismo cierre y sirven de ancla para valores re-expresados.
+ANNUAL_REPORT_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+
 
 class SECClient:
     submissions_url = "https://data.sec.gov/submissions"
@@ -86,6 +90,47 @@ class SECClient:
     async def submissions(self, cik: str) -> dict:
         padded = str(cik).zfill(10)
         return await self._get_json(f"{self.submissions_url}/CIK{padded}.json")
+
+    async def annual_report_anchors(self, cik: str) -> dict[str, str]:
+        """{accessionNumber: reportDate} de los filings anuales del emisor.
+
+        Es la evidencia de calendario fiscal a nivel de filing: cada 10-K
+        declara en portada el cierre del ejercicio que reporta. La ingesta
+        anual ancla cada hecho a su filing por `accn` en vez de inferir el
+        calendario por moda de hechos (una moda es envenenable con ruido TTM
+        coherentemente distribuido; una fecha de portada, no). Fusiona
+        `recent` con los ficheros historicos de submissions; si un fichero
+        historico falla se sigue con cobertura parcial (visible en el
+        resultado de la ingesta), nunca se sustituye por inferencia.
+        """
+        payload = await self.submissions(cik)
+        filings = payload.get("filings", {})
+        anchors: dict[str, str] = {}
+
+        def _absorb(recent: dict) -> None:
+            forms = recent.get("form", [])
+            accessions = recent.get("accessionNumber", [])
+            report_dates = recent.get("reportDate", [])
+            for index, accession in enumerate(accessions):
+                form = str(forms[index]) if index < len(forms) else ""
+                if form not in ANNUAL_REPORT_FORMS:
+                    continue
+                report_date = (
+                    str(report_dates[index]) if index < len(report_dates) else ""
+                )
+                if accession and report_date:
+                    anchors[str(accession)] = report_date
+
+        _absorb(filings.get("recent", {}))
+        for extra in filings.get("files", []) or []:
+            name = extra.get("name") if isinstance(extra, dict) else None
+            if not name:
+                continue
+            try:
+                _absorb(await self._get_json(f"{self.submissions_url}/{name}"))
+            except Exception:  # noqa: BLE001 - cobertura parcial > romper la ingesta
+                continue
+        return anchors
 
     async def company_facts(self, cik: str) -> dict:
         padded = str(cik).zfill(10)

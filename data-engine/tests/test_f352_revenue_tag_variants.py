@@ -8,6 +8,7 @@ anclados al pasado incluso tras un backfill completo. Casos reales (28/09/2026,
 """
 
 import asyncio
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -160,3 +161,61 @@ def test_contrato_lista_tags_revenue_ambos_servicios():
     assert main_tags == evidence_tags
     assert "RevenueFromContractWithCustomerIncludingAssessedTax" in main_tags
     assert "RegulatedAndUnregulatedOperatingRevenue" in main_tags
+
+
+def _with_anchors(payload, close_month):
+    """Plumbing de fixture para el filtro por ancla de filing (F353): asigna
+    accn por 10-K (fy+filed, compartido por las filas TTM/segmentos que
+    viajan en el mismo filing) y devuelve las anclas {accn: reportDate} de
+    los cierres reales (filas 300-380d del mes de cierre del emisor)."""
+    anchors = {}
+    for concept in payload["facts"]["us-gaap"].values():
+        for entries in concept["units"].values():
+            for e in entries:
+                if not str(e.get("form", "")).startswith(("10-K", "20-F")):
+                    continue
+                accn = f"K{e.get('fy')}-{e.get('filed')}"
+                e["accn"] = accn
+                start, end = e.get("start"), str(e.get("end") or "")
+                if len(end) < 10:
+                    continue
+                if not start:
+                    # Instantaneo (balance): ancla si cierra en el mes real.
+                    if end[5:7] == close_month:
+                        anchors[accn] = end
+                    continue
+                try:
+                    span = (date.fromisoformat(end) - date.fromisoformat(str(start))).days
+                except ValueError:
+                    continue
+                if 300 <= span <= 380 and end[5:7] == close_month:
+                    anchors[accn] = end
+    return payload, anchors
+
+
+def _anchor_fake(cls, close_month):
+    """Dota al fake de annual_report_anchors con cache compartida: el payload
+    que ve el servicio es el MISMO objeto anotado con accn."""
+    original = cls.company_facts
+
+    async def company_facts(self, cik):
+        payload = getattr(self, "_cached_payload", None)
+        if payload is None:
+            payload = await original(self, cik)
+            self._cached_payload = payload
+        return payload
+
+    async def annual_report_anchors(self, cik):
+        anchors = getattr(self, "_cached_anchors", None)
+        if anchors is None:
+            _, anchors = _with_anchors(await self.company_facts(cik), close_month)
+            self._cached_anchors = anchors
+        return anchors
+
+    cls.company_facts = company_facts
+    cls.annual_report_anchors = annual_report_anchors
+    return cls
+
+
+_anchor_fake(_FakeSECAKAM, "12")
+_anchor_fake(_FakeSECDTE, "12")
