@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models import AlertDelivery, ResearchAlert
+from app.models import AlertDelivery, Company, NewsEvent, ResearchAlert
 
 # Un claim 'sending' mas viejo que esto se considera abandonado (worker muerto
 # entre el envio y el commit del resultado) y vuelve a ser reclamable. Es el
@@ -29,7 +29,18 @@ class NotificationService:
         # Score Jev adjuntado por el emisor (alert_rule_service, best-effort):
         # sin TYPESAFE_API_KEY no hay `jev_urgency` y el texto sale sin línea Jev.
         jev_urgency = (alert.metadata_ or {}).get("jev_urgency") or {}
+        news_alert = alert.alert_type in ("tracked_news", "news_material_update")
+        company = (db.get(Company, alert.company_id) if news_alert and alert.company_id is not None
+                   and hasattr(db, "get") else None)
+        event_id = (alert.metadata_ or {}).get("news_event_id")
+        event = db.get(NewsEvent, event_id) if news_alert and event_id and hasattr(db, "get") else None
         payload = {
+            "company_name": company.name if company else None,
+            "ticker": company.ticker if company else None,
+            "source_url": (alert.metadata_ or {}).get("source_url") or (event.url if event else None),
+            "source_headline": (event.metadata_ or {}).get("source_headline") if event else None,
+            "event_date": event.date if event and (event.metadata_ or {}).get("date_source") in ("source", "gdelt_first_seen") else None,
+            "event_date_source": (event.metadata_ or {}).get("date_source") if event else None,
             "alert_id": alert.id,
             "tenant_id": alert.tenant_id,
             "company_id": alert.company_id,
@@ -348,14 +359,45 @@ class NotificationService:
 
     @staticmethod
     def _telegram_text(payload: dict) -> str:
+        import re
+        from urllib.parse import urlsplit
+
+        company = payload.get("company_name") or payload.get("ticker")
+        headline = payload.get("source_headline")
+        match = re.search(r"\b(10-K|10-Q|8-K|20-F|6-K)\b", headline, re.IGNORECASE) if isinstance(headline, str) else None
+        if company and (match or payload.get("type") in ("tracked_news", "news_material_update")):
+            kind = match.group(1).upper() if match else "Noticia"
+            date = payload.get("event_date")
+            if isinstance(date, datetime):
+                # Label a GDELT first-seen as detection, never publication.
+                date_label = date.strftime("%d/%m/%Y")
+                suffix = f" · {'detectada ' if payload.get('event_date_source') == 'gdelt_first_seen' else ''}{date_label}"
+            else:
+                suffix = ""
+            summary = (f"Documento {kind} asociado a {company}; revisa la fuente antes de cambiar la tesis."
+                       if match else f"Noticia sobre {company}; revisa la fuente antes de sacar conclusiones.")
+            text = f"{company} · {kind}{suffix}\n{summary}"
+            url = payload.get("source_url")
+            try:
+                parsed = urlsplit(url) if isinstance(url, str) else None
+                safe = bool(parsed and parsed.scheme in ("http", "https") and parsed.hostname
+                            and not parsed.username and not parsed.password)
+            except ValueError:
+                safe = False
+            ticker = payload.get("ticker")
+            if ticker and re.fullmatch(r"[A-Z0-9.\-]{1,20}", ticker):
+                text += f"\nVer tesis afectada: {ticker} (en la app)"
+            if safe:
+                text += f"\nAbrir documento: {url}"
+            # Plain-text delivery has no expandable detail; omit machine traces.
+            return text[:4090]
+        # Non-filing/non-news alerts retain their established delivery format.
         text = (
             f"[{payload['severity'].upper()}] {payload['title']}\n"
             f"{payload['message']}\n\n"
             f"Ticker/company id: {payload['company_id']}\n"
             f"Alert id: {payload['alert_id']}"
         )
-        # Urgencia Jev (1 llamada en el emisor, ~$0.042/MTok in): solo aparece
-        # si el emisor adjuntó `jev_urgency`; sin key no hay línea (fallback).
         jev = payload.get("jev_urgency") or {}
         if jev.get("label"):
             try:
@@ -363,7 +405,6 @@ class NotificationService:
             except (TypeError, ValueError):
                 conf = 0.0
             text += f"\nJev urgency: {jev['label']} (conf {conf:.2f})"
-        # Telegram's plain-text sendMessage limit is 4096 characters.
         return text[:4090]
 
     def _result(

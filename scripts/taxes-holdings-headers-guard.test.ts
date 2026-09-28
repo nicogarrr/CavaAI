@@ -5,14 +5,13 @@ import test from 'node:test';
 const taxes = readFileSync('components/taxes/TaxesView.tsx', 'utf8');
 const recordViews = readFileSync('components/data/RecordViews.tsx', 'utf8');
 
-test('F284: /taxes etiqueta las seis columnas fiscales en español', () => {
+test('F284: /taxes etiqueta las cinco columnas fiscales visibles en español', () => {
     for (const [key, label] of Object.entries({
         ticker: 'Ticker',
         quantity: 'Cantidad',
         cost_basis: 'Base de coste',
         market_value: 'Valor de mercado',
         unrealized_pnl: 'Plusvalía latente',
-        currency: 'Divisa',
     })) {
         assert.match(taxes, new RegExp(`${key}: '${label}'`), `falta etiqueta ${key}`);
     }

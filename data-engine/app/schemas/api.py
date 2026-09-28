@@ -648,6 +648,10 @@ class ResearchAlertOut(BaseModel):
     # alerta nace de un evento con fuente - antes solo habia /research/<ticker>
     # y el filing citado era inalcanzable desde la alerta.
     source_url: str | None = None
+    company_name: str | None = None
+    event_date: datetime | None = None
+    event_date_source: str | None = None
+    event_form: str | None = None
     acknowledged_at: datetime | None
     acknowledged_by: str | None
     snoozed_until: datetime | None

@@ -17,7 +17,7 @@ test('el backend devuelve las claves que la UI lista', () => {
     for (const key of ['"cost_basis"', '"market_value"', '"unrealized_pnl"', '"currency"']) {
         assert.ok(backend.includes(key), `falta ${key} en build_tax_summary_rows`);
     }
-    assert.match(view, /columns=\{\['ticker', 'quantity', 'cost_basis', 'market_value', 'unrealized_pnl', 'currency'\]\}/);
+    assert.match(view, /columns=\{\['ticker', 'quantity', 'cost_basis', 'market_value', 'unrealized_pnl'\]\}/);
 });
 
 test('los null de importes pasan como None, nunca como 0 inventado', () => {

@@ -31,7 +31,7 @@ function safeCurrency(currency: string | null | undefined): string {
 
 type TickerSets = { portfolioTickers: ReadonlySet<string>; watchlistTickers: ReadonlySet<string> };
 
-function MoversTable({ rows, caption, tickerSets }: { rows: MarketMover[]; caption: string; tickerSets: TickerSets }) {
+function MoversTable({ rows, caption, tickerSets, showVolume = false }: { rows: MarketMover[]; caption: string; tickerSets: TickerSets; showVolume?: boolean }) {
   if (!rows.length) {
     return <p className="text-sm text-gray-500">Sin datos todavía — en cuanto haya precios registrados aparecerán aquí.</p>;
   }
@@ -44,7 +44,7 @@ function MoversTable({ rows, caption, tickerSets }: { rows: MarketMover[]; capti
             <th className="border-b border-gray-800 py-2 pr-2" scope="col">Empresa</th>
             <th className="border-b border-gray-800 px-2 py-2 text-right" scope="col">Precio</th>
             <th className="border-b border-gray-800 px-2 py-2 text-right" scope="col">Cambio</th>
-            <th className="border-b border-gray-800 py-2 pl-2 text-right" scope="col">Volumen</th>
+            {showVolume ? <th className="border-b border-gray-800 py-2 pl-2 text-right" scope="col">Volumen</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -67,7 +67,7 @@ function MoversTable({ rows, caption, tickerSets }: { rows: MarketMover[]; capti
               <td className={`py-3 px-2 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
               </td>
-              <td className="py-3 pl-2 text-right whitespace-nowrap text-gray-400">{row.volume === null ? '—' : formatCompact(row.volume, { maximumFractionDigits: 1 })}</td>
+              {showVolume ? <td className="py-3 pl-2 text-right whitespace-nowrap text-gray-400">{row.volume === null ? '—' : formatCompact(row.volume, { maximumFractionDigits: 1 })}</td> : null}
             </tr>
           ))}
         </tbody>
@@ -136,7 +136,7 @@ export default async function MoversPage() {
               <Activity aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Más activas</h2>
             </div>
-            <MoversTable rows={movers.most_active} caption="Mayor volumen" tickerSets={tickerSets} />
+            <MoversTable rows={movers.most_active} caption="Mayor volumen" tickerSets={tickerSets} showVolume />
           </section>
         </div>
       )}

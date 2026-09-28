@@ -204,7 +204,7 @@ export default async function WatchlistPage() {
                                     <TableHead className="text-right text-gray-300">Cambio sesión</TableHead>
                                     <TableHead className="text-right text-gray-300">Market Cap</TableHead>
                                     <TableHead className="text-right text-gray-300">PER (TTM)</TableHead>
-                                    <TableHead className="text-right text-gray-300">Acciones</TableHead>
+
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -229,6 +229,13 @@ export default async function WatchlistPage() {
                                                     </div>
                                                 </div>
                                             </Link>
+                                            <details className="relative ml-2 inline-block align-middle">
+                                                <summary className="min-h-9 cursor-pointer rounded px-2 py-2 text-xs text-gray-400 hover:text-gray-100" aria-label={`Opciones de ${stock.symbol}`}>Opciones</summary>
+                                                <div className="mt-1 min-w-40 rounded-md border border-gray-700 bg-gray-900 p-1 shadow-xl">
+                                                    <Link href={`/research/${stock.symbol}`} className="block min-h-10 px-3 py-2 text-xs text-teal-300">Ver análisis</Link>
+                                                    <WatchlistRemoveButton symbol={stock.symbol} />
+                                                </div>
+                                            </details>
                                         </TableCell>
                                         <TableCell className="text-right font-mono font-medium text-gray-200">
                                             {formatPriceCell(stock.price, stock.currency)}
@@ -262,19 +269,7 @@ export default async function WatchlistPage() {
                                                 <span className="text-gray-500">{NA}</span>
                                             )}
                                         </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <WatchlistRemoveButton symbol={stock.symbol} />
-                                                <Link
-                                                    href={`/research/${stock.symbol}`}
-                                                    prefetch
-                                                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
-                                                    aria-label={`Ver ${stock.symbol}`}
-                                                >
-                                                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                                                </Link>
-                                            </div>
-                                        </TableCell>
+
                                     </TableRow>
                                 ))}
                             </TableBody>
