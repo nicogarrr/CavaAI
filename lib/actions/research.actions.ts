@@ -707,7 +707,7 @@ export async function getResearchSettings(): Promise<ResearchSettings> {
  * trabajo y latencia regalados en cada visita.
  */
 export async function getResearchDashboard() {
-  const [companies, portfolio, workflows, settings] = await Promise.all([
+  const [companies, portfolio, workflows, settings, thesisTickers] = await Promise.all([
     getAllResearchCompanies(),
     getJson<ResearchPortfolioSummary>('/api/portfolio/summary', {
       total_value: 0,
@@ -719,6 +719,7 @@ export async function getResearchDashboard() {
     }),
     getResearchWorkflows(),
     getResearchSettings(),
+    getResearchThesisTickers(),
   ]);
 
   return {
@@ -726,7 +727,26 @@ export async function getResearchDashboard() {
     portfolio,
     workflows,
     settings,
+    thesisTickers,
   };
+}
+
+/**
+ * Tickers con tesis en UNA query DISTINCT del backend (bucket «tesis» del
+ * orden del índice). null = lectura fallida: el índice degrada ese bucket
+ * (nunca afirma tesis inexistentes) y el resto de la página sigue igual.
+ * Un backend antiguo sin el endpoint (skew de despliegue) responde 404 y
+ * degrada igual.
+ */
+export async function getResearchThesisTickers(): Promise<string[] | null> {
+  try {
+    const payload = await getJson<{ tickers: string[] }>('/api/companies/thesis-tickers', {
+      tickers: [],
+    });
+    return payload.tickers;
+  } catch {
+    return null;
+  }
 }
 type ResearchCompanySnapshot = components['schemas']['CompanySnapshotOut'];
 

@@ -237,6 +237,17 @@ class CompanySnapshotOut(BaseModel):
     recent_changes: list[SnapshotRecentChangeOut] = Field(default_factory=list)
 
 
+class ThesisTickersOut(BaseModel):
+    """Tickers con al menos una ThesisVersion persistida.
+
+    Semantica identica a la del snapshot (``latest_thesis`` selecciona la
+    version mas reciente sin filtro de estado): sirve para ordenar el
+    indice de research sin descargar un snapshot por empresa.
+    """
+
+    tickers: list[str]
+
+
 class CompanySnapshotsBatchOut(BaseModel):
     """Respuesta del snapshot por lote del indice de research.
 
