@@ -66,16 +66,33 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
       const result = await refreshPortfolioHoldings(currentHoldings);
       if (!result.ok) {
         // La acción NO ha escrito ningún precio (p. ej. sin FINNHUB_API_KEY):
-        // un toast verde sería falso. Se dice qué símbolos no tienen cotización.
-        toast.error(`Ningún precio escrito: el proveedor no devolvió cotización para ${describeSymbols(result.skipped)}`);
+        // un toast verde sería falso. Se distingue "sin cotización" de
+        // "escritura fallida".
+        const parts: string[] = [];
+        if (result.skipped.length > 0) parts.push(`sin cotización: ${describeSymbols(result.skipped)}`);
+        if (result.failed.length > 0) parts.push(`escritura fallida: ${describeSymbols(result.failed)}`);
+        toast.error(`Ningún precio escrito (${parts.join('; ') || 'sin detalle'})`);
         return;
       }
       setCurrentHoldings(result.holdings);
       router.refresh();
+      const attempted = result.updated.length + result.skipped.length + result.failed.length;
+      if (result.failed.length > 0) {
+        // Parcial con escrituras fallidas: se dice qué se guardó y qué falló.
+        toast.error(
+          `${result.updated.length} de ${attempted} precios guardados; escritura fallida: ${describeSymbols(result.failed)}`,
+        );
+        return;
+      }
+      if (result.holdingsStale) {
+        // Los precios SÍ se grabaron; lo que falló fue releer el servidor.
+        toast.info('Precios guardados; no se pudo releer la cartera (recarga la página para verlos)');
+        return;
+      }
       if (result.skipped.length > 0) {
         // Parcial: se actualizó, pero no todo. El recuento lo declara.
         toast.info(
-          `${result.updated.length} de ${result.updated.length + result.skipped.length} precios actualizados; sin cotización: ${describeSymbols(result.skipped)}`,
+          `${result.updated.length} de ${attempted} precios actualizados; sin cotización: ${describeSymbols(result.skipped)}`,
         );
         return;
       }

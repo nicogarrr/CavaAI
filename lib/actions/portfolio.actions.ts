@@ -6,6 +6,7 @@ import { cachedFetch } from '@/lib/cache/memoryTTL';
 import { requestCache } from '@/lib/cache/requestCache';
 import { AuthorizationError, ValidationError } from '@/lib/types/errors';
 import { sumCashByCurrency } from '@/lib/portfolio-cash';
+import { partitionSettledRefreshes } from '@/lib/portfolio/refresh-settled';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
@@ -478,14 +479,24 @@ export type PortfolioPriceRefreshResult =
         updated: string[];
         /** Símbolos sin cotización del proveedor (sin clave, error o respuesta vacía). */
         skipped: string[];
+        /** Símbolos cuya ESCRITURA falló (red/5xx): ni escritos ni sin cotización. */
+        failed: string[];
         holdings: PortfolioHolding[];
+        /**
+         * true = la relectura tras escribir falló: los precios SÍ se grabaron
+         * pero `holdings` no refleja la escritura. Distinto de un fallo de
+         * escritura: aquí el dato está en el servidor.
+         */
+        holdingsStale?: boolean;
     }
     | {
         /** No se escribió ningún precio: no hay nada que actualizar. */
         ok: false;
         updated: [];
-        /** Todos los símbolos pedidos, todos sin cotización utilizable. */
+        /** Símbolos sin cotización utilizable. */
         skipped: string[];
+        /** Símbolos cuya escritura se intentó y falló. */
+        failed: string[];
     };
 
 /**
@@ -503,7 +514,11 @@ export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Pr
         throw new ValidationError('No hay posiciones que actualizar');
     }
 
-    const results = await Promise.all(
+    // allSettled, no Promise.all: con all, si A se guardaba y B fallaba, la
+    // promesa rechazaba ANTES de invalidar la caché - la escritura de A ya
+    // estaba en el servidor pero la UI seguía sirviendo la caché vieja y el
+    // usuario veía el error sin saber que algo sí se escribió.
+    const settled = await Promise.allSettled(
         symbols.map(async (symbol) => {
             const quote = await getQuote(symbol);
             if (!quote?.c) return { symbol, written: false };
@@ -514,33 +529,52 @@ export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Pr
             return { symbol, written: true };
         }),
     );
-    const updated = results.filter((result) => result.written).map((result) => result.symbol);
-    const skipped = results.filter((result) => !result.written).map((result) => result.symbol);
+    const { updated, skipped, failed } = partitionSettledRefreshes(symbols, settled);
 
     if (updated.length === 0) {
         // Sin clave de proveedor, o con el proveedor caído, el bucle entero se
         // salta. Decirlo (ok: false) es lo único honesto: devolver las
         // posiciones de entrada hacía que el toast afirmara una actualización
-        // que no ocurrió.
+        // que no ocurrió. Si hubo intentos de escritura fallidos, se declaran
+        // aparte: no es lo mismo "sin cotización" que "no se pudo escribir".
         // Los simbolos vienen de las posiciones del cliente: argumentos
         // separados y acotados, nunca interpolados en la cadena de formato
         // (CodeQL js/format-string). El log no necesita la lista entera.
         console.error(
             'refreshPortfolioHoldings: precios escritos 0 de',
-            skipped.length,
+            skipped.length + failed.length,
             `(FINNHUB_API_KEY ${FINNHUB_API_KEY ? 'configurada' : 'sin configurar'})`,
             'sin cotizacion:',
             skipped.slice(0, 20),
+            'escritura fallida:',
+            failed.slice(0, 20),
         );
-        return { ok: false, updated: [], skipped };
+        return { ok: false, updated: [], skipped, failed };
     }
 
+    // Con AL MENOS una escritura la caché queda obsoleta: invalidar SIEMPRE,
+    // aunque otras escrituras hayan fallado.
     invalidatePortfolioReads(user.id);
+    let refreshedHoldings: PortfolioHolding[];
+    let holdingsStale = false;
+    try {
+        refreshedHoldings = (await getPortfolioSummary(user.id)).holdings;
+    } catch (readError) {
+        // Escritura OK + relectura KO no es un fallo de actualización: los
+        // precios están grabados. Se declara la relectura fallida (con las
+        // posiciones de entrada como último dato conocido) en vez de lanzar
+        // un error que sugeriría que no se escribió nada.
+        console.error('refreshPortfolioHoldings: escritura OK, relectura fallida:', readError);
+        refreshedHoldings = holdings;
+        holdingsStale = true;
+    }
     return {
         ok: true,
         updated,
         skipped,
-        holdings: (await getPortfolioSummary(user.id)).holdings,
+        failed,
+        holdings: refreshedHoldings,
+        holdingsStale,
     };
 }
 

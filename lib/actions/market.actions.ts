@@ -54,8 +54,15 @@ export async function getMarketMovers(limit = 10): Promise<MarketMovers> {
     return empty;
   }
 }
+/** Resultado discriminado de índices: datos o error, nunca ambos mezclados. */
+export type MarketIndicesResult = {
+  data: MarketIndex[];
+  /** null = la petición se completó; distinto de null = falló (red/5xx/4xx). */
+  error: unknown;
+};
+
 /** Índices reales (S&P 500, Nasdaq, Bitcoin, Oro, Plata) desde el backend. */
-export async function getMarketIndices(): Promise<MarketIndex[]> {
+export async function getMarketIndicesResult(): Promise<MarketIndicesResult> {
   try {
     // Caché corta en memoria (45s): el dashboard y el screener llaman a esta
     // acción en cada render; el payload es idéntico dentro de la ventana.
@@ -67,12 +74,21 @@ export async function getMarketIndices(): Promise<MarketIndex[]> {
     // F152: normaliza la unidad en la frontera - las respuestas legacy sin
     // `unit` (caché antigua) se resuelven por símbolo conocido, no por «USD
     // por defecto» (eso volvía a pintar «US$» en el S&P 500).
-    return (payload.indices ?? []).map((item) => ({
+    const data = (payload.indices ?? []).map((item) => ({
       ...item,
       unit: marketIndexUnit(item.symbol, item.unit) ?? undefined,
     }));
+    return { data, error: null };
   } catch (error) {
+    // El fallo NO se pliega a `[]` en silencio: un [] no discrimina "backend
+    // caído" de "mercado sin datos" y la tarjeta terminaba infiriendo su
+    // estado de la petición vecina (screener).
     console.error('getMarketIndices error:', error);
-    return [];
+    return { data: [], error };
   }
+}
+
+/** Variante legacy solo-datos para consumidores que no discriminan el fallo. */
+export async function getMarketIndices(): Promise<MarketIndex[]> {
+  return (await getMarketIndicesResult()).data;
 }
