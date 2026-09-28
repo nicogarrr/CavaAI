@@ -170,6 +170,27 @@ class TestBackfillFunctional:
         assert send2.call_count == 1
 
 
+    def test_ordinary_doc_never_selected_ahead_of_deferred(self) -> None:
+        import datetime as dt
+
+        from app.models import Document
+
+        db = self._db()
+        # Doc ordinario (SIN flag) mas antiguo que el diferido: con el
+        # predicado crudo isnot(None), sqlite lo seleccionaria por JSON_QUOTE
+        # ('null' texto) y se comeria la unica plaza de capacidad (depth=9
+        # sobre max 10 -> capacity 1) por delante del diferido genuino.
+        ordinary = self._doc(db, "ordinario", None, dt.datetime(2026, 1, 1))
+        ordinary.metadata_ = {}
+        db.commit()
+        deferred = self._doc(db, "diferido", {"attempts": 0}, dt.datetime(2026, 1, 2))
+        ordinary_id, deferred_id = ordinary.id, deferred.id
+        result, send = self._run_backfill(db, depth=9)
+        assert result["queued"] == 1
+        send.assert_called_once_with(deferred_id, tenant_id=1, user_id="u")
+        ordinary_after = db.query(Document).filter_by(id=ordinary_id).one()
+        assert "kpi_deferred" not in (ordinary_after.metadata_ or {})
+
     def test_reservation_survives_later_send_failure(self) -> None:
         """Send 1 OK, send 2 explota: la reserva del 1 NO se revierte.
 

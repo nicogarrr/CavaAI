@@ -459,7 +459,14 @@ def backfill_document_kpis() -> dict[str, Any]:
             pending = db.scalars(
                 select(Document)
                 .where(
-                    Document.metadata_[KPI_DEFERRED_KEY].isnot(None),
+                    # Existencia del flag: .as_string().isnot(None) - el
+                    # predicado crudo .isnot(None) en sqlite pasa por
+                    # JSON_QUOTE y devuelve 'null' TEXTO para docs sin flag
+                    # (IS NOT NULL = True), lo que seleccionaria documentos
+                    # ordinarios: backfill les marcaria kpi_deferred y les
+                    # enviaria extraccion PAGADA nunca diferida, comiendose
+                    # el LIMIT por delante de los genuinos (auditor, bounce 6).
+                    Document.metadata_[KPI_DEFERRED_KEY].as_string().isnot(None),
                     # Agotados filtrados ANTES del LIMIT: si no, un bloque de
                     # docs antiguos agotados llenaria el LIMIT en cada corrida
                     # y ningun diferido elegible se reencolaria jamas.
