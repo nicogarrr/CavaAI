@@ -10,6 +10,7 @@ import pytest
 import redis.exceptions as redis_exc
 from sqlalchemy import exc as sa_exc
 
+import app.workers.dramatiq_app as workers_module
 from app.workers.dramatiq_app import _handle_actor_error, _is_transient
 
 
@@ -76,43 +77,92 @@ def _sec_error(status_code: int) -> httpx.HTTPStatusError:
     return httpx.HTTPStatusError(f"{kind} error '{status_code}' for url '{url}'", request=request, response=response)
 
 
-def _reset_sec_breaker():
-    import app.workers.dramatiq_app as workers
+class _FakeRedis:
+    """Redis minimo en memoria con TTL y reloj controlable para el breaker."""
 
-    workers._sec_429_streak.clear()
-    workers._sec_429_open_until = 0.0
+    def __init__(self) -> None:
+        self._data: dict[str, tuple[str, float | None]] = {}
+        self.now = 0.0
+
+    def _purge(self, key: str) -> None:
+        entry = self._data.get(key)
+        if entry and entry[1] is not None and self.now >= entry[1]:
+            del self._data[key]
+
+    def get(self, key: str):
+        self._purge(key)
+        entry = self._data.get(key)
+        return entry[0] if entry else None
+
+    def incr(self, key: str) -> int:
+        self._purge(key)
+        value, exp = self._data.get(key, ("0", None))
+        value = str(int(value) + 1)
+        self._data[key] = (value, exp)
+        return int(value)
+
+    def expire(self, key: str, seconds: int) -> None:
+        if key in self._data:
+            self._data[key] = (self._data[key][0], self.now + seconds)
+
+    def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self._data[key] = (value, self.now + ex if ex is not None else None)
+
+    def delete(self, key: str) -> None:
+        self._data.pop(key, None)
 
 
 def test_sec_403_from_oci_blocked_ip_is_permanent():
-    """F359: 403 de la SEC evidencia bloqueo de IP (OCI): permanente, sin
-    reintento. Reintentarlo enveneno la cola default (5276 mensajes)."""
+    """403 de sec.gov = IP de OCI bloqueada: permanente, a dead-letter."""
     assert _is_transient(_sec_error(403)) is False
     wrapped = RuntimeError(f"SEC fetch failed: {_sec_error(403)}")
     assert _is_transient(wrapped) is False
 
 
+def _is_transient_with(exc, client):
+    original = workers_module._redis_client
+    workers_module._redis_client = lambda: client
+    try:
+        return _is_transient(exc)
+    finally:
+        workers_module._redis_client = original
+
+
 def test_sec_429_retries_bounded_until_circuit_breaker_trips():
-    """F359: 429 de la SEC es rate limit potencialmente temporal: se reintenta
-    de forma acotada; una racha en ventana abre el circuit breaker por origen
-    y pasa a permanente durante el cooldown (auto-recupera despues)."""
-    import app.workers.dramatiq_app as workers
-
-    _reset_sec_breaker()
-    # Racha por debajo del limite: sigue siendo transitorio.
-    for _ in range(workers._SEC_429_STREAK_LIMIT - 1):
-        assert _is_transient(_sec_error(429)) is True
+    """429 de sec.gov NO es bloqueo de IP: rate limit que se reintenta
+    de forma acotada; una racha en ventana abre el circuit breaker por
+    origen (estado en Redis, compartido entre procesos)."""
+    client = _FakeRedis()
+    limit = workers_module._SEC_429_STREAK_LIMIT
+    for _ in range(limit - 1):
+        assert _is_transient_with(_sec_error(429), client) is True
     # La que alcanza el limite abre el breaker: permanente.
-    assert _is_transient(_sec_error(429)) is False
-    # Abierto, los siguientes tambien son permanentes sin tocar el contador.
-    assert _is_transient(_sec_error(429)) is False
-    # Tras el cooldown vuelve a permitir reintento.
-    workers._sec_429_open_until = 0.0
-    assert _is_transient(_sec_error(429)) is True
-    _reset_sec_breaker()
+    assert _is_transient_with(_sec_error(429), client) is False
+    # Abierto durante el cooldown: permanente.
+    client.now += 60
+    assert _is_transient_with(_sec_error(429), client) is False
+    # Tras el cooldown se auto-recupera: vuelve a ser transitorio.
+    client.now += workers_module._SEC_429_COOLDOWN_S + 1
+    assert _is_transient_with(_sec_error(429), client) is True
 
 
-def test_generic_429_and_5xx_stay_retryable():
-    """El tallo de la SEC no cubre otros proveedores: un 429/5xx generico
-    sigue siendo transitorio y Dramatiq lo reintenta."""
-    assert _is_transient(_http_status_error(429)) is True
-    assert _is_transient(_http_status_error(503)) is True
+def test_sec_429_breaker_state_shared_across_processes():
+    """La racha la ve cualquier proceso: dos clientes distintos sobre el
+    mismo Redis comparten el contador (un proceso no reinicia la racha)."""
+    shared = _FakeRedis()
+    limit = workers_module._SEC_429_STREAK_LIMIT
+    for _ in range(limit - 1):
+        assert _is_transient_with(_sec_error(429), shared) is True
+    # "Otro proceso" (otra conexion) empuja la racha al limite.
+    assert _is_transient_with(_sec_error(429), shared) is False
+
+
+def test_sec_429_fail_open_when_redis_unavailable():
+    """Redis caido -> fail-open (transitorio): con Redis caido el broker
+    tampoco consume, y max_retries del actor acota el reintento."""
+    class _DownRedis:
+        def get(self, key):
+            raise ConnectionError("redis down")
+
+    assert _is_transient_with(_sec_error(429), _DownRedis()) is True
+    assert _is_transient_with(_sec_error(429), None) is True

@@ -14,6 +14,11 @@ test('F359: la tesis va en cola dedicada consumida por un worker DEDICADO', () =
     // Servicio aparte con sus propios hilos: compartir proceso con
     // default/prices dejaba la tesis hambreada (exigencia del auditor).
     assert.match(compose, /worker-thesis:[\s\S]{0,900}"-Q", "thesis"/);
+  // F359: worker-thesis con limite de memoria realista (2G): el RSS real del
+  // worker general en prod es ~620MiB; 2G da >3x de margen y mantiene la suma
+  // de limites por debajo de un OOM con tesis + ingesta + KPI simultaneos.
+  const thesisBlock = compose.slice(compose.indexOf("worker-thesis:"));
+  assert.match(thesisBlock, /memory: 2G/);
     const workerCmd = compose.match(/worker:\n[\s\S]{0,200}command: \[[^\]]*\]/)?.[0] ?? '';
     assert.ok(workerCmd && !workerCmd.includes('thesis'), 'el worker general NO consume thesis');
 });

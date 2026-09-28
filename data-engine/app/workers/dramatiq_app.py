@@ -84,24 +84,39 @@ def _is_transient(exc: Exception) -> bool:
 _SEC_429_WINDOW_S = 600.0
 _SEC_429_STREAK_LIMIT = 5
 _SEC_429_COOLDOWN_S = 3600.0
-_sec_429_streak: list[float] = []
-_sec_429_open_until = 0.0
+# Estado del breaker en Redis (no en memoria del proceso): el contador es
+# atomico (INCR) y lo comparten TODOS los procesos que clasifican fallos SEC
+# (worker, worker-thesis, worker-kpis, backend), asi que "por origen" es un
+# freno global y no por proceso. Carrera benigna documentada: dos hilos pueden
+# cruzar el umbral a la vez; ambos hacen SET de la misma clave de apertura
+# (idempotente) y como mucho pasa un reintento extra, acotado por max_retries.
+_SEC_BREAKER_STREAK_KEY = "sec_breaker:429_streak"
+_SEC_BREAKER_OPEN_KEY = "sec_breaker:open"
 
 
-def _sec_rate_limit_allows_retry(now: float | None = None) -> bool:
-    """429 SEC acotado: reintenta salvo breaker abierto o racha que lo abre."""
-    global _sec_429_open_until
-    current = time.monotonic() if now is None else now
-    if current < _sec_429_open_until:
-        return False
-    cutoff = current - _SEC_429_WINDOW_S
-    _sec_429_streak[:] = [ts for ts in _sec_429_streak if ts >= cutoff]
-    _sec_429_streak.append(current)
-    if len(_sec_429_streak) >= _SEC_429_STREAK_LIMIT:
-        _sec_429_open_until = current + _SEC_429_COOLDOWN_S
-        _sec_429_streak.clear()
-        return False
-    return True
+def _sec_rate_limit_allows_retry(client=None) -> bool:
+    """429 SEC acotado: reintenta salvo breaker abierto o racha que lo abre.
+
+    Si Redis no responde se fail-open (transitorio): el broker de dramatiq es
+    el propio Redis, asi que con Redis caido no se estan consumiendo mensajes
+    de todas formas, y el reintento queda acotado por max_retries del actor.
+    """
+    try:
+        r = client if client is not None else _redis_client()
+        if r is None:
+            return True
+        if r.get(_SEC_BREAKER_OPEN_KEY):
+            return False
+        streak = r.incr(_SEC_BREAKER_STREAK_KEY)
+        if streak == 1:
+            r.expire(_SEC_BREAKER_STREAK_KEY, int(_SEC_429_WINDOW_S))
+        if streak >= _SEC_429_STREAK_LIMIT:
+            r.set(_SEC_BREAKER_OPEN_KEY, "1", ex=int(_SEC_429_COOLDOWN_S))
+            r.delete(_SEC_BREAKER_STREAK_KEY)
+            return False
+        return True
+    except Exception:
+        return True
 
 
 _STATUS_IN_TEXT = re.compile(r"\b(4\d\d|5\d\d)\b")
