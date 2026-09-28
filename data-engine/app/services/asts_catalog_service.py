@@ -9,6 +9,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models import ConnectorState
+from app.services.asts_orbit_service import append_history, orbit_signal
 from app.services.connectors.celestrak_ast import SOURCE_URL
 
 CONNECTOR = "celestrak_ast"
@@ -53,7 +54,10 @@ def persist_catalog(db: Session, catalog: list[dict], fetched_at: datetime) -> i
             feed_url=SOURCE_URL, company_id=None,
         )
         db.add(state)
-    state.metadata_ = {"satellites": catalog, "source": "celestrak", "source_url": SOURCE_URL,
+    previous = state.metadata_ if isinstance(state.metadata_, dict) else {}
+    history = append_history(previous.get("orbit_history"), catalog)
+    state.metadata_ = {"satellites": catalog, "orbit_history": history,
+                       "source": "celestrak", "source_url": SOURCE_URL,
                        "fetched_at": fetched_at.astimezone(UTC).isoformat()}
     state.last_started_at = fetched_at
     state.last_success_at = fetched_at
@@ -88,3 +92,41 @@ def read_catalog(db: Session, *, as_of: datetime | None = None) -> dict:
         "satellites": satellites if fresh else [], "count": len(satellites) if fresh else 0,
         "stale_snapshot_at": fetched_at.isoformat() if fetched_at and not fresh else None,
     }
+
+
+def read_orbit_history(db: Session, norad_cat_id: int, *, as_of: datetime | None = None) -> dict:
+    """Read only; stale catalog fails closed even if old history remains stored."""
+    catalog = read_catalog(db, as_of=as_of)
+    base = {"norad_cat_id": norad_cat_id, "source": "CelesTrak", "source_url": SOURCE_URL,
+            "cadence_hours": 6, "fetched_at": catalog["fetched_at"],
+            "status": "sin datos", "history": [], "signal": None,
+            "usage_note": "Señal exploratoria calculada sobre elementos orbitales. BSTAR y derivadas son parámetros de ajuste, no telemetría ni confirmación de despliegue."}
+    satellite = next((item for item in catalog["satellites"] if item["norad_cat_id"] == norad_cat_id), None)
+    if satellite is None:
+        return base
+    state = _state(db)
+    history = (state.metadata_ or {}).get("orbit_history", {}).get(str(norad_cat_id), []) if state else []
+    if not isinstance(history, list):
+        history = []
+    return {**base, "status": "disponible", "object_name": satellite["object_name"],
+            "epoch": satellite["epoch"], "history": history, "signal": orbit_signal(history)}
+
+
+def read_orbit_overview(db: Session, *, as_of: datetime | None = None) -> dict:
+    catalog = read_catalog(db, as_of=as_of)
+    base = {"status": catalog["status"], "source": "CelesTrak", "source_url": SOURCE_URL,
+            "cadence_hours": 6, "fetched_at": catalog["fetched_at"], "objects": [],
+            "usage_note": "Señal exploratoria calculada sobre elementos orbitales. BSTAR y derivadas son parámetros de ajuste, no telemetría ni confirmación de despliegue."}
+    if catalog["status"] != "disponible":
+        return base
+    state = _state(db)
+    history = (state.metadata_ or {}).get("orbit_history", {}) if state else {}
+    objects = []
+    for item in catalog["satellites"]:
+        samples = history.get(str(item["norad_cat_id"]), []) if isinstance(history, dict) else []
+        if not isinstance(samples, list):
+            samples = []
+        objects.append({"norad_cat_id": item["norad_cat_id"], "object_name": item["object_name"],
+                        "epoch": item["epoch"], "sma_km": samples[-1]["sma_km"] if samples else None,
+                        "signal": orbit_signal(samples), "history": samples})
+    return {**base, "objects": objects}
