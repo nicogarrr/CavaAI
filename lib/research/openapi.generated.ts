@@ -5156,11 +5156,19 @@ export interface components {
             channels: string[];
             /** Company Id */
             company_id: number | null;
+            /** Company Name */
+            company_name?: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Event Date */
+            event_date?: string | null;
+            /** Event Date Source */
+            event_date_source?: string | null;
+            /** Event Form */
+            event_form?: string | null;
             /** Fingerprint */
             fingerprint: string;
             /** Id */

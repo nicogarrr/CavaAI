@@ -53,6 +53,10 @@ void test('los componentes usan las etiquetas, no la cadena cruda', () => {
     const search = readFileSync('components/SearchCommand.tsx', 'utf8');
     assert.match(search, /etiquetaTipoInstrumento\(stock\.type\)/);
     const news = readFileSync('app/(root)/research/news/page.tsx', 'utf8');
-    assert.match(news, /etiquetaTierFuente\(event\.source_tier\)/);
+    // La tabla ya no muestra la columna de tier (SERIE 1): si vuelve a
+    // aparecer source_tier, debe pasar por la etiqueta, nunca crudo.
+    if (news.includes('event.source_tier')) {
+        assert.match(news, /etiquetaTierFuente\(event\.source_tier\)/, 'source_tier solo se muestra via etiquetaTierFuente, nunca crudo');
+    }
     assert.match(news, /etiquetaTipoEvento\(event\.event_type\)/);
 });

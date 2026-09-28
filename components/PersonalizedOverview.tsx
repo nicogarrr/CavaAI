@@ -28,6 +28,7 @@ import {
     type TriggeredAlertDelivery,
 } from '@/lib/actions/alerts.actions';
 import { alertCardDestination } from '@/lib/alerts/card-destination';
+import { alertCardCopy } from '@/lib/alerts/card-copy';
 import { t } from '@/lib/i18n/t';
 import { buildPortfolioInsight } from '@/lib/portfolio-insight';
 
@@ -469,6 +470,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 // relative z-10 y conserva su destino. Sin enlaces
                                 // anidados ni roles duplicados.
                                 const destination = alertCardDestination(item);
+                                const copy = alertCardCopy(item);
                                 return (
                                 <article
                                     className={`min-w-0 rounded-lg border p-3 ${destination ? 'relative border-gray-700/50 bg-gray-900/50 transition-colors hover:border-teal-700/60 hover:bg-gray-900' : 'border-gray-700/50 bg-gray-900/50'}`}
@@ -478,16 +480,17 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                         <Badge variant="outline">{SEVERITY_LABELS[item.severity] ?? item.severity}</Badge>
                                         <span className="text-xs text-gray-500">{formatUserDateTime(item.createdAt)}</span>
                                     </div>
-                                    <p className="mt-2 text-sm break-words text-gray-200">{item.title}</p>
-                                    <p className="mt-1 text-xs break-words text-gray-400">{item.message}</p>
+                                    <p className="mt-2 text-sm break-words font-semibold text-gray-100">{copy.heading}</p>
+                                    <p className="mt-1 text-sm break-words text-gray-300">{copy.summary}</p>
+                                    <details className="relative z-10 mt-2 break-words text-xs text-gray-400"><summary className="min-h-10 cursor-pointer py-2 text-teal-300">Detalle técnico</summary><p className="whitespace-pre-wrap">{copy.technical}</p></details>
                                     {(item.ticker || item.sourceUrl) && (
                                         <span className="mt-2 inline-flex flex-wrap gap-3">
                                             {item.ticker && (
                                                 <Link
                                                     className="inline-flex min-h-[44px] items-center text-xs text-teal-400 after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:text-teal-300 hover:underline"
-                                                    href={`/research/${item.ticker}`}
+                                                    href={`/research/${item.ticker}?view=thesis`}
                                                 >
-                                                    Abrir investigación de {item.ticker}
+                                                    Revisar tesis de {item.ticker}
                                                 </Link>
                                             )}
                                             {item.sourceUrl && (
@@ -497,7 +500,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                     rel="noopener noreferrer"
                                                     target="_blank"
                                                 >
-                                                    Abrir documento fuente
+                                                    Abrir documento
                                                 </a>
                                             )}
                                         </span>

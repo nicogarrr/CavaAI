@@ -18,7 +18,7 @@ import { alertCardDestination } from '../lib/alerts/card-destination.ts';
 void test('el destino principal prioriza la investigación del ticker', () => {
     assert.deepEqual(
         alertCardDestination({ ticker: 'AAPL', sourceUrl: 'https://sec.gov/x' }),
-        { href: '/research/AAPL', external: false },
+        { href: '/research/AAPL?view=thesis', external: false },
     );
     assert.deepEqual(
         alertCardDestination({ ticker: null, sourceUrl: 'https://sec.gov/x' }),
@@ -40,7 +40,7 @@ void test('la tarjeta estira exactamente un enlace y protege el secundario', () 
     assert.match(block, /destination \? 'relative border-gray-700\/50 bg-gray-900\/50 transition-colors hover:border-teal-700\/60 hover:bg-gray-900'/);
 
     // El enlace de investigación (siempre interno) va estirado.
-    const researchLink = block.slice(block.indexOf('Abrir investigación') - 400, block.indexOf('Abrir investigación'));
+    const researchLink = block.slice(block.indexOf('Revisar tesis de') - 400, block.indexOf('Revisar tesis de'));
     assert.match(researchLink, /after:absolute after:inset-0/);
 
     // El documento fuente va estirado SOLO cuando no hay ticker (es entonces

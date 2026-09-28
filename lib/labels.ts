@@ -46,6 +46,20 @@ const TIERS_FUENTE: Record<string, string> = {
   tier_unknown: 'Fuente sin clasificar',
 };
 
+/** Etiqueta ES de la direccion de impacto de una noticia (positive/negative/
+ *  neutral/mixed). Codigo futuro desconocido: se muestra crudo (honesto),
+ *  nunca inventado. */
+const DIRECCIONES_IMPACTO: Record<string, string> = {
+  positive: 'Positivo',
+  negative: 'Negativo',
+  neutral: 'Neutro',
+  mixed: 'Mixto',
+};
+
+export function etiquetaDireccionImpacto(value: string): string {
+  return DIRECCIONES_IMPACTO[value] ?? value;
+}
+
 export function etiquetaTierFuente(value: string): string {
   return TIERS_FUENTE[value] ?? value;
 }

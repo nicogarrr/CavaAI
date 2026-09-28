@@ -31,6 +31,7 @@ import { isNextRedirectError } from '@/lib/types/errors';
 import { formatDate, formatUserDateTime } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { reviewResearchExpectations } from '@/lib/actions/research.actions';
+import { alertCardCopy } from '@/lib/alerts/card-copy';
 
 const ALERT_TYPE_LABELS: Record<AlertType, string> = {
     price_above: t('alerts.types.priceAbove'),
@@ -443,7 +444,7 @@ function AlertsManager() {
                                 className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-3"
                             >
                                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                    <p className="text-sm font-medium text-gray-200">{item.title}</p>
+                                    <p className="text-sm font-medium text-gray-200">{alertCardCopy(item).heading}</p>
                                     <time
                                         className="text-xs text-gray-500"
                                         dateTime={item.triggeredAt ?? item.createdAt}
@@ -454,15 +455,16 @@ function AlertsManager() {
                                             : `Creada ${formatUserDateTime(item.createdAt)}`}
                                     </time>
                                 </div>
-                                <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{item.message}</p>
+                                <p className="mt-1 text-sm text-gray-300">{alertCardCopy(item).summary}</p>
+                                <details className="mt-2 text-xs text-gray-400"><summary className="min-h-10 cursor-pointer py-2 text-teal-300">Detalle técnico</summary><p className="whitespace-pre-wrap break-words">{alertCardCopy(item).technical}</p></details>
                                 {(item.ticker || item.sourceUrl) && (
                                     <span className="mt-1 inline-flex flex-wrap gap-3">
                                         {item.ticker && (
                                             <Link
                                                 className="text-xs text-teal-400 hover:text-teal-300 hover:underline"
-                                                href={`/research/${item.ticker}`}
+                                                href={`/research/${item.ticker}?view=thesis`}
                                             >
-                                                Abrir investigación de {item.ticker}
+                                                Revisar tesis de {item.ticker}
                                             </Link>
                                         )}
                                         {item.sourceUrl && (
@@ -472,7 +474,7 @@ function AlertsManager() {
                                                 rel="noopener noreferrer"
                                                 target="_blank"
                                             >
-                                                Abrir documento fuente
+                                                Abrir documento
                                             </a>
                                         )}
                                     </span>

@@ -308,3 +308,25 @@ def test_list_alerts_over_http_serves_rows_and_sanitizes():
     rows = {row["title"]: row for row in response.json()}
     assert rows["http-ok"]["source_url"] == event.url
     assert rows["http-bad"]["source_url"] is None
+
+
+def test_filing_card_fields_come_from_linked_source_not_alert_creation(db):
+    from app.models.entities import NewsEvent
+    company = Company(ticker="V", name="Visa", exchange="NYSE", currency="USD",
+                      company_type="holding", valuation_model="unassigned")
+    db.add(company); db.flush()
+    event = NewsEvent(tenant_id="tenant-test", company_id=company.id,
+                      title="8-K presentado ante SEC", source="SEC", url="https://www.sec.gov/x",
+                      summary="Documento", date=datetime(2025, 10, 28, tzinfo=UTC),
+                      metadata_={"date_source": "source", "source_headline": "V 8-K filed 2025-10-28"})
+    db.add(event); db.flush()
+    db.add(ResearchAlert(company_id=company.id, alert_type="news_material_update",
+                         severity="medium", title="Review required: news material update",
+                         message="No structural thesis node matched", fingerprint="visa-filing",
+                         channels=["in_app"], status="open", metadata_={"news_event_id": event.id}))
+    db.commit()
+    row = next(a for a in list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+               if a.fingerprint == "visa-filing")
+    assert row.company_name == "Visa" and row.event_form == "8-K"
+    assert row.event_date.date().isoformat() == "2025-10-28"
+    assert row.source_url == "https://www.sec.gov/x"

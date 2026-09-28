@@ -27,11 +27,11 @@ describe('alerts source link guard (F172)', () => {
     it('la tarjeta enlaza al documento fuente en pestaña nueva solo cuando existe', () => {
         const src = readSource('components/alerts/AlertsManager.tsx');
         assert.ok(src.includes('href={item.sourceUrl}'), 'enlace directo al documento fuente');
-        assert.ok(src.includes('Abrir documento fuente'), 'etiqueta del enlace al documento');
+        assert.ok(src.includes('Abrir documento'), 'etiqueta del enlace al documento');
         assert.ok(src.includes('target="_blank"'), 'documento externo en pestaña nueva');
         assert.ok(src.includes('item.sourceUrl &&'), 'el enlace solo se muestra con URL conocida');
         assert.ok(
-            src.includes('href={`/research/${item.ticker}`}'),
+            src.includes('href={`/research/${item.ticker}?view=thesis`}'),
             'el enlace a la investigación se conserva',
         );
     });

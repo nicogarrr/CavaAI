@@ -156,6 +156,10 @@ export interface TriggeredAlertDelivery {
     triggeredAt: string | null;
     /** URL del documento fuente (filing/noticia/Form 4) cuando el backend la conoce; null si no consta. */
     sourceUrl: string | null;
+    companyName: string | null;
+    eventDate: string | null;
+    eventDateSource: string | null;
+    eventForm: string | null;
     createdAt: string;
 }
 
@@ -171,6 +175,10 @@ type ResearchAlertRow = {
     ticker: string | null;
     last_triggered_at: string | null;
     source_url: string | null;
+    company_name?: string | null;
+    event_date?: string | null;
+    event_date_source?: string | null;
+    event_form?: string | null;
     created_at: string;
 };
 
@@ -192,6 +200,10 @@ export async function getRecentTriggeredAlerts(limit = 20): Promise<TriggeredAle
         // ultimo disparo y la UI etiqueta created_at como «Creada», no como disparo.
         triggeredAt: row.last_triggered_at ?? null,
         sourceUrl: row.source_url ?? null,
+        companyName: row.company_name ?? null,
+        eventDate: row.event_date ?? null,
+        eventDateSource: row.event_date_source ?? null,
+        eventForm: row.event_form ?? null,
         createdAt: row.created_at,
     }));
 }
