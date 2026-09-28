@@ -1,38 +1,57 @@
 """Saneado ONE-SHOT de titulares SEC persistidos en inglés (quick win UX 4).
 
 Contexto: la ingesta es insert-only con dedup por URL antes que por título,
-así que un deploy del conector NO reescribe NewsEvent.title de filas ya
-persistidas. Este script retitula SOLO esas filas históricas al formato
-español actual («{TICKER} {form} presentado ante la SEC», mismo resultado
-que compone la ingesta F175 para las nuevas).
+así que un deploy del conector NO reescribe las filas ya persistidas. Este
+script retitula SOLO esas filas históricas al formato español actual.
+
+Campos que muta (los TRES, o la fila queda contradictoria):
+- NewsEvent.title (visible en /research/news y tarjetas),
+- NewsEvent.summary (del que deriva el título y alimenta otras superficies),
+- metadata.source_headline (titular atribuido al SEC en la UI).
+Política de texto derivado: los originales NO se destruyen — quedan en
+metadata.sec_sanitize (con fecha) y en el backup JSON. No se finge
+reescribir hechos históricos: el titular que el SEC publicó en inglés
+sigue registrado; lo que cambia es el texto derivado que muestra la app.
 
 Seguridad (requisitos de revisión):
-- DRY-RUN por defecto: no escribe nada sin --apply explícito.
-- Match estricto: metadata.connector == "sec" AND url de sec.gov AND
-  patrón inglés conocido (fecha entre paréntesis, « filed » o doble
-  prefijo de ticker). Cualquier fila que no case los TRES criterios se
-  ignora y se reporta como fuera de alcance.
-- Colisiones: si ya existe otra fila de la misma compañía con el título
-  destino, la fila se SALTA y se reporta (nunca se fusionan ni borran).
-- Backup/rollback: --apply exige --backup ruta.json y vuelca
-  {id, tenant_id, title} ANTES de tocar nada; --rollback backup.json
-  restaura los títulos de ese archivo. Una única transacción; error =
-  rollback completo.
-- Ejecutarlo sobre la BD de producción es una decisión aparte que
-  requiere aprobación explícita del propietario con alcance y preview.
+- DRY-RUN por defecto en apply Y en rollback: nada escribe sin --apply.
+- Match estricto de origen: metadata.connector == "sec" AND
+  NewsEvent.source == "SEC" AND url https cuyo HOST está en la allowlist
+  SEC (www.sec.gov, sec.gov, data.sec.gov, efts.sec.gov) con ruta EDGAR
+  (/Archives/edgar/): «sec.gov.attacker.example» NO casa. La huella del
+  metadata sola no autentica origen.
+- Patrón inglés conocido en el título (fecha entre paréntesis, «filed» o
+  doble prefijo de ticker F175) y form por allowlist explícita de
+  formularios SEC («filing» si es irreconocible, nunca un form inventado).
+- Colisiones por tenant+compañía+título destino: se saltan y reportan.
+- Backup exclusivo y durable ANTES de tocar la BD: se crea con modo 'x'
+  (nunca sobrescribe), se fsync-ea y se renombra atómicamente.
+- --apply requiere --plan ruta.json: el dry-run escribe el plan revisado y
+  --apply compara CADA fila contra ese plan (título/summary/metadata
+  actuales == valores esperados); una fila que cambió desde el dry-run se
+  salta y se reporta, no se pisa. Una única transacción; error = rollback.
+- --rollback restaura con precondición (el título actual debe ser el que
+  escribió este plan); filas editadas después se saltan y se reportan.
+
+Ejecutarlo sobre la BD de producción es una decisión aparte que requiere
+aprobación explícita del propietario con alcance y preview del dry-run.
 
 Uso:
-    python -m scripts.retitle_sec_news_es                    # dry-run
-    python -m scripts.retitle_sec_news_es --apply --backup /tmp/sec-titles.json
-    python -m scripts.retitle_sec_news_es --rollback /tmp/sec-titles.json
+    python -m scripts.retitle_sec_news_es --plan /tmp/sec-plan.json   # dry-run
+    python -m scripts.retitle_sec_news_es --apply --plan /tmp/sec-plan.json --backup /tmp/sec.json
+    python -m scripts.retitle_sec_news_es --rollback /tmp/sec.json           # preview
+    python -m scripts.retitle_sec_news_es --rollback /tmp/sec.json --apply
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
+from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 from sqlalchemy import select
 
@@ -43,6 +62,7 @@ from app.models import Company, NewsEvent
 #   «COST 8-K (2026-09-24)», «8-K filed 2026-09-24», doble prefijo F175.
 _DATE_PARENS = re.compile(r"\(\d{4}-\d{2}-\d{2}\)\s*$")
 _FILED_EN = re.compile(r"\bfiled\b", re.IGNORECASE)
+
 # Allowlist explícita de formularios SEC: un regex amplio casaría con
 # cualquier token «LETRAS-dígito» y acabaría afirmando un form inventado.
 _KNOWN_FORMS = [
@@ -55,6 +75,22 @@ _KNOWN_FORMS = [
 _FORM = re.compile(
     r"\b(" + "|".join(re.escape(form) for form in _KNOWN_FORMS) + r")\b"
 )
+
+# Hosts SEC legítimos (EDGAR). «sec.gov.attacker.example» NO está aquí.
+_SEC_HOSTS = frozenset({"www.sec.gov", "sec.gov", "data.sec.gov", "efts.sec.gov"})
+_SEC_PATH_PREFIX = "/Archives/edgar/"
+
+
+def _is_sec_url(url: str | None) -> bool:
+    """Match estricto de origen SEC: https + host en allowlist + ruta EDGAR."""
+    if not url:
+        return False
+    parsed = urlparse(url)
+    return (
+        parsed.scheme == "https"
+        and (parsed.hostname or "") in _SEC_HOSTS
+        and parsed.path.startswith(_SEC_PATH_PREFIX)
+    )
 
 
 def _english_pattern(title: str) -> bool:
@@ -69,36 +105,52 @@ def _strip_ticker_prefixes(text: str, ticker: str) -> str:
     return pattern.sub("", text.strip())
 
 
-def _new_title(row: NewsEvent, ticker: str) -> str | None:
-    """Título destino o None si el form no se puede determinar con certeza."""
-    headline = (row.metadata_ or {}).get("source_headline") or row.title
+def _form_from(headline: str, ticker: str) -> str | None:
+    """Form del titular original, o None si no es determinable con certeza."""
     base = _strip_ticker_prefixes(headline, ticker)
     base = _DATE_PARENS.sub("", base).strip()
     base = re.sub(r"\bfiled\b", "", base, flags=re.IGNORECASE).strip()
     match = _FORM.search(base)
-    form = match.group(1) if match else None
-    if form is None and not _english_pattern(headline):
-        # Sin form reconocible y sin patrón inglés en el titular original:
-        # no tocar lo incierto.
+    return match.group(1) if match else None
+
+
+def _plan_row(row: NewsEvent, ticker: str) -> dict | None:
+    """Plan de saneado de una fila candidata, o None si no procede tocarla."""
+    headline = (row.metadata_ or {}).get("source_headline") or row.title
+    form = _form_from(headline, ticker)
+    if form is None and not _english_pattern(row.title):
+        # Sin form reconocible y sin patrón inglés: no tocar lo incierto.
         return None
-    # Form irreconocible en una fila SEC con patrón inglés claro: «filing»,
-    # el mismo fallback honesto del conector (nunca un form inventado).
-    title = f"{form or 'filing'} presentado ante la SEC"
-    if ticker:
-        title = f"{ticker} {title}"
-    return title
+    # «filing» si el form es irreconocible: el mismo fallback honesto del
+    # conector, nunca un form inventado.
+    new_headline = f"{form or 'filing'} presentado ante la SEC"
+    new_title = f"{ticker} {new_headline}" if ticker else new_headline
+    if new_title == row.title and new_headline == (row.metadata_ or {}).get("source_headline"):
+        return None  # ya saneada
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "expected": {
+            "title": row.title,
+            "summary": row.summary,
+            "source_headline": (row.metadata_ or {}).get("source_headline"),
+        },
+        "new": {"title": new_title, "summary": new_title, "source_headline": new_headline},
+    }
 
 
 def _candidates(db) -> list[tuple[NewsEvent, str]]:
     rows = db.scalars(
-        select(NewsEvent).where(NewsEvent.url.isnot(None))
+        select(NewsEvent).where(
+            NewsEvent.source == "SEC",
+            NewsEvent.url.isnot(None),
+        )
     ).all()
     out: list[tuple[NewsEvent, str]] = []
     for row in rows:
-        metadata = row.metadata_ or {}
-        if metadata.get("connector") != "sec":
+        if (row.metadata_ or {}).get("connector") != "sec":
             continue
-        if "sec.gov" not in (row.url or ""):
+        if not _is_sec_url(row.url):
             continue
         if not _english_pattern(row.title):
             continue
@@ -110,26 +162,101 @@ def _candidates(db) -> list[tuple[NewsEvent, str]]:
     return out
 
 
-def main() -> int:
+def _write_backup_durable(path: str, payload: list[dict]) -> None:
+    """Backup exclusivo ('x': nunca sobrescribe) y durable ANTES de la BD."""
+    tmp = f"{path}.tmp-{os.getpid()}"
+    # Exclusivo también el temporal: dos apply concurrentes no se pisan.
+    with open(tmp, "x", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+        fh.flush()
+        os.fsync(fh.fileno())
+    if os.path.exists(path):
+        os.unlink(tmp)
+        raise FileExistsError(f"el backup {path} ya existe: no se sobrescribe")
+    os.replace(tmp, path)
+    dir_fd = os.open(os.path.dirname(os.path.abspath(path)), os.O_DIRECTORY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
+def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
+    """Aplica el plan re-verificando cada fila; devuelve (aplicadas, saltadas)."""
+    applied = 0
+    skipped: list[int] = []
+    for item in planned:
+        row = db.get(NewsEvent, item["id"])
+        metadata = (row.metadata_ if row else None) or {}
+        current = {
+            "title": row.title if row else None,
+            "summary": row.summary if row else None,
+            "source_headline": metadata.get("source_headline"),
+        }
+        if row is None or row.tenant_id != item["tenant_id"] or current != item["expected"]:
+            # La fila cambió desde el plan revisado: no se pisa.
+            skipped.append(item["id"])
+            continue
+        row.title = item["new"]["title"]
+        row.summary = item["new"]["summary"]
+        row.metadata_ = {
+            **metadata,
+            "source_headline": item["new"]["source_headline"],
+            "sec_sanitize": {
+                "at": datetime.now(UTC).isoformat(),
+                "original": item["expected"],
+            },
+        }
+        applied += 1
+    return applied, skipped
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--apply", action="store_true", help="escribe los cambios (sin esto es dry-run)")
+    parser.add_argument("--plan", help="ruta JSON del plan; el dry-run la escribe y --apply la exige")
     parser.add_argument("--backup", help="ruta JSON de backup (obligatoria con --apply)")
-    parser.add_argument("--rollback", help="restaura títulos desde un backup JSON y termina")
-    args = parser.parse_args()
+    parser.add_argument("--rollback", help="restaura títulos desde un backup JSON (dry-run sin --apply)")
+    args = parser.parse_args(argv)
 
     db = SessionLocal()
     try:
         if args.rollback:
             with open(args.rollback, encoding="utf-8") as fh:
                 backup = json.load(fh)
-            restored = 0
+            restorable: list[dict] = []
+            skipped: list[int] = []
             for entry in backup:
                 row = db.get(NewsEvent, entry["id"])
-                if row is not None and row.tenant_id == entry["tenant_id"]:
-                    row.title = entry["title"]
-                    restored += 1
+                if (
+                    row is not None
+                    and row.tenant_id == entry["tenant_id"]
+                    and row.title == entry["new_title"]
+                ):
+                    restorable.append(entry)
+                else:
+                    # Precondición: solo se revierte lo que ESTE plan escribió
+                    # y nadie tocó después.
+                    skipped.append(entry["id"])
+            mode = "APPLY" if args.apply else "DRY-RUN"
+            print(f"[{mode}] rollback: {len(restorable)} reversibles, "
+                  f"{len(skipped)} saltadas (editadas tras el plan o ausentes): {skipped}")
+            if not args.apply:
+                print("dry-run: sin escrituras. Repite con --apply para revertir.")
+                return 0
+            for entry in restorable:
+                row = db.get(NewsEvent, entry["id"])
+                row.title = entry["old"]["title"]
+                row.summary = entry["old"]["summary"]
+                metadata = dict(row.metadata_ or {})
+                if entry["old"]["source_headline"] is None:
+                    metadata.pop("source_headline", None)
+                else:
+                    metadata["source_headline"] = entry["old"]["source_headline"]
+                metadata.pop("sec_sanitize", None)
+                row.metadata_ = metadata
             db.commit()
-            print(f"rollback: {restored} títulos restaurados desde {args.rollback}")
+            print(f"rollback aplicado: {len(restorable)} filas restauradas")
             return 0
 
         candidates = _candidates(db)
@@ -137,49 +264,61 @@ def main() -> int:
         collisions: list[dict] = []
         undetermined: list[int] = []
         for row, ticker in candidates:
-            new_title = _new_title(row, ticker)
-            if new_title is None or new_title == row.title:
+            plan = _plan_row(row, ticker)
+            if plan is None:
                 undetermined.append(row.id)
                 continue
             clash = db.scalar(
                 select(NewsEvent.id).where(
                     NewsEvent.tenant_id == row.tenant_id,
                     NewsEvent.company_id == row.company_id,
-                    NewsEvent.title == new_title,
+                    NewsEvent.title == plan["new"]["title"],
                     NewsEvent.id != row.id,
                 ).limit(1)
             )
             if clash is not None:
-                collisions.append({"id": row.id, "title": new_title, "clash_with": clash})
+                collisions.append({"id": row.id, "title": plan["new"]["title"], "clash_with": clash})
                 continue
-            planned.append({"id": row.id, "tenant_id": row.tenant_id,
-                            "old": row.title, "new": new_title})
+            planned.append(plan)
 
         mode = "APPLY" if args.apply else "DRY-RUN"
-        print(f"[{mode}] candidatas SEC+url+patrón inglés: {len(candidates)}")
-        print(f"[{mode}] a retitular: {len(planned)}; colisiones saltadas: {len(collisions)}; "
+        print(f"[{mode}] candidatas SEC estrictas (connector+source+url https EDGAR+patrón): {len(candidates)}")
+        print(f"[{mode}] a sanear: {len(planned)}; colisiones saltadas: {len(collisions)}; "
               f"sin form determinable o ya correctas: {len(undetermined)}")
         for item in planned:
-            print(f"  #{item['id']}: {item['old']!r} -> {item['new']!r}")
+            print(f"  #{item['id']}: {item['expected']['title']!r} -> {item['new']['title']!r}")
         for item in collisions:
             print(f"  COLISIÓN #{item['id']}: destino {item['title']!r} ya existe en #{item['clash_with']}")
 
         if not args.apply:
-            print("dry-run: sin escrituras. Repite con --apply --backup ruta.json para aplicar.")
+            if args.plan:
+                with open(args.plan, "w", encoding="utf-8") as fh:
+                    json.dump(planned, fh, ensure_ascii=False, indent=2)
+                print(f"plan escrito en {args.plan}: revísalo y repite con --apply --plan {args.plan} --backup ruta.json")
+            else:
+                print("dry-run: sin escrituras. Repite con --plan ruta.json para guardar el plan.")
             return 0
+        if not args.plan:
+            print("error: --apply exige --plan ruta.json generado por el dry-run revisado", file=sys.stderr)
+            return 2
         if not args.backup:
             print("error: --apply exige --backup ruta.json", file=sys.stderr)
             return 2
-        with open(args.backup, "w", encoding="utf-8") as fh:
-            json.dump([{"id": p["id"], "tenant_id": p["tenant_id"], "title": p["old"]}
-                       for p in planned], fh, ensure_ascii=False, indent=2)
-        print(f"backup escrito en {args.backup} ({len(planned)} filas)")
-        for item in planned:
-            row = db.get(NewsEvent, item["id"])
-            if row is not None:
-                row.title = item["new"]
+        with open(args.plan, encoding="utf-8") as fh:
+            reviewed_plan = json.load(fh)
+        backup_payload = [
+            {"id": p["id"], "tenant_id": p["tenant_id"],
+             "old": p["expected"], "new_title": p["new"]["title"]}
+            for p in reviewed_plan
+        ]
+        _write_backup_durable(args.backup, backup_payload)
+        print(f"backup durable escrito en {args.backup} ({len(reviewed_plan)} filas)")
+
+        applied, skipped = _apply_plan(db, reviewed_plan)
+        if skipped:
+            print(f"saltadas por cambio de estado desde el plan: {skipped}")
         db.commit()
-        print(f"aplicado: {len(planned)} títulos retitulados en UNA transacción")
+        print(f"aplicado: {applied} filas saneadas en UNA transacción")
         return 0
     except Exception:
         db.rollback()
