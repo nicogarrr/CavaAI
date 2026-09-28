@@ -26,6 +26,20 @@ SEVERITY_PENALTY = {
 }
 
 
+def _finding_types(finding: dict) -> set[str]:
+    """Tipos que cubre un hallazgo: el dominante más los fusionados.
+
+    Los derivados por categoría (broken_assumptions, missing_risks) deben
+    mirar todos los motivos fusionados, no solo ``finding["type"]``: si un
+    claim stale+unsupported fusiona bajo ``unsupported_material_claim``, el
+    motivo ``claim_stale`` sigue contando como supuesto roto.
+    """
+    types = {finding["type"]}
+    trace = finding.get("trace") or {}
+    merged = trace.get("merged_types") or []
+    return types | set(merged)
+
+
 class RedTeamService:
     prompt_version = "red-team-v1"
 
@@ -204,17 +218,6 @@ class RedTeamService:
                 )
             )
 
-        # Dedupe defensivo por texto: claims históricos duplicados con el
-        # mismo statement no imprimen dos veces la misma línea.
-        seen_messages: set[str] = set()
-        unique_findings: list[dict] = []
-        for finding in findings:
-            if finding["message"] in seen_messages:
-                continue
-            seen_messages.add(finding["message"])
-            unique_findings.append(finding)
-        findings = unique_findings
-
         findings.sort(
             key=lambda item: SEVERITY_PENALTY[item["severity"]],
             reverse=True,
@@ -239,8 +242,8 @@ class RedTeamService:
         run.broken_assumptions = [
             finding["message"]
             for finding in findings
-            if finding["type"]
-            in {
+            if _finding_types(finding)
+            & {
                 "claim_contradicted",
                 "claim_superseded",
                 "returns_below_cost_of_capital",
@@ -249,8 +252,8 @@ class RedTeamService:
         run.missing_risks = [
             finding["message"]
             for finding in findings
-            if finding["type"]
-            in {
+            if _finding_types(finding)
+            & {
                 "unsupported_material_claim",
                 "moat_unproven",
                 "peer_disadvantage",

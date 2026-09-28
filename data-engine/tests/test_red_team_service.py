@@ -105,6 +105,39 @@ def test_run_flags_unsupported_material_and_unfalsifiable_claims(db):
     assert review is not None
 
 
+def test_merged_claim_keeps_all_types_in_category_lists(db):
+    """Un claim contradicho+sin evidencia fusiona en un hallazgo, pero los
+    motivos fusionados no desaparecen de broken_assumptions ni de
+    missing_risks (regresión señalada en revisión)."""
+    company = _company(db)
+    _claim(
+        db, company,
+        statement="Revenue doubles every year",
+        status="contradicted", materiality_score=9,  # sin evidencia ni invalidación
+    )
+    run = RedTeamService().run(db, company)
+
+    merged = [
+        finding
+        for finding in run.findings
+        if "Revenue doubles every year" in finding["message"]
+    ]
+    assert len(merged) == 1, run.findings
+    finding = merged[0]
+    assert finding["type"] == "claim_contradicted"  # critical domina
+    assert finding["trace"].get("merged_types") == [
+        "unsupported_material_claim",
+        "claim_contradicted",
+        "missing_falsification_test",
+    ]
+    # Antes de la fusión había dos findings y el claim entraba en ambas
+    # listas; los derivados por categoría deben mirar los tipos fusionados:
+    # el motivo unsupported sigue contando como riesgo ausente aunque el
+    # tipo dominante del hallazgo sea claim_contradicted.
+    assert any("Revenue doubles every year" in item for item in run.broken_assumptions)
+    assert any("Revenue doubles every year" in item for item in run.missing_risks)
+
+
 def test_run_marks_contradicted_claims_as_broken_assumptions(db):
     company = _company(db)
     thesis = ThesisVersion(
