@@ -51,14 +51,24 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
     await requireAuthenticatedUser();
     const normalized = ticker.trim().toUpperCase();
     if (process.env.E2E_AUTH_BYPASS === '1' && process.env.NODE_ENV !== 'production') {
+        // Fixture E2E determinista (solo APP_ENV=test, nunca producción): sin
+        // ella la cabecera con cotización no tendría prueba visual real en CI.
+        const history = Array.from({ length: 40 }, (_, index) => ({
+            date: new Date(Date.UTC(2026, 7, 1 + index)).toISOString().slice(0, 10),
+            close: 300 + index * 0.9 + (index % 7),
+            volume: null,
+        }));
         return {
             ticker: normalized,
             name: normalized,
             exchange: null,
-            currency: null,
-            quote: { price: null, change: null, changePercent: null, open: null, high: null, low: null, previousClose: null },
-            history: [],
-            status: 'unavailable',
+            currency: 'USD',
+            quote: {
+                price: 336.56, change: 2.34, changePercent: 0.7,
+                open: 334.2, high: 337.1, low: 333.8, previousClose: 334.22,
+            },
+            history,
+            status: 'available',
         };
     }
     const to = Math.floor(Date.now() / 1000);

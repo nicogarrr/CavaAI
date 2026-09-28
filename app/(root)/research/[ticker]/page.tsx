@@ -21,6 +21,7 @@ import {
 import { MoatTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
+import { CompanyHeaderQuote } from '@/components/research/CompanyHeaderQuote';
 import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
 import { missingLayerAction, missingLayerLabel } from '@/lib/research/missing-layer-guidance';
 import { metricLabel } from '@/lib/research/metric-labels';
@@ -533,7 +534,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // market solo se consume en 'overview'; en el resto de vistas la promesa
   // ni se crea.
   const snapshotPromise = readSnapshot(ticker);
-  const marketPromise = activeView === 'overview' ? getCompanyMarketSnapshot(ticker) : undefined;
+  // La cabecera muestra precio + variación + sparkline en TODAS las vistas,
+  // así que market se lanza siempre; solo 'overview' lo consume en estricto
+  // (BackendOffline), el resto degrada a cabecera sin cotización.
+  const marketPromise = getCompanyMarketSnapshot(ticker);
   // MOAT V2: solo lectura del score persistido; su fallo degrada a omitir el panel.
   const moatPromise = activeView === 'overview' ? getMoatQualityScore(ticker) : undefined;
   // En master-miss estas dos promesas no se consumen: el manejador se adjunta
@@ -595,6 +599,15 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   }
 
   const company = snapshot.company;
+  // Cabecera con cotización: si el proveedor de mercado falla fuera de
+  // 'overview' la ficha sigue siendo útil; se omite el bloque, nunca se
+  // fabrica un precio.
+  let headerMarket: Awaited<ReturnType<typeof getCompanyMarketSnapshot>> | null = null;
+  try {
+    headerMarket = await marketPromise;
+  } catch {
+    headerMarket = null;
+  }
   // Estado "seguido" real del usuario para el botón seguir/dejar de seguir.
   const watchlist = await getWatchlist();
   const isFollowed = watchlist.some((item) => item.symbol.toUpperCase() === ticker);
@@ -604,7 +617,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     // marketPromise ya se lanzó en paralelo al snapshot más arriba.
     let market: Awaited<ReturnType<typeof getCompanyMarketSnapshot>>;
     try {
-      market = await (marketPromise ?? getCompanyMarketSnapshot(ticker));
+      market = await marketPromise;
     } catch (error) {
       if (isBackendUnavailableError(error)) {
         return <BackendOffline feature={`Datos de mercado de ${ticker}`} retryHref={`/research/${ticker}`} />;
@@ -1089,9 +1102,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       <div className="mx-auto max-w-[1600px]">
         <Link className="mb-5 inline-flex items-center text-sm text-gray-500 hover:text-gray-200" href="/research"><ArrowLeft className="mr-2 h-4 w-4" />Research</Link>
         <header className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-6">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3"><h1 className="text-2xl font-bold sm:text-3xl">{ticker}</h1>{exchangeDisplayName(company.exchange) ? <Badge variant="outline">{exchangeDisplayName(company.exchange)}</Badge> : null}<Badge variant="outline">{company.currency}</Badge></div>
-            <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {sectorIndustryLine(company.sector, company.industry)}</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3"><h1 className="text-2xl font-bold sm:text-3xl">{ticker}</h1>{exchangeDisplayName(company.exchange) ? <Badge variant="outline">{exchangeDisplayName(company.exchange)}</Badge> : null}<Badge variant="outline">{company.currency}</Badge></div>
+              <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {sectorIndustryLine(company.sector, company.industry)}</p>
+            </div>
+            {headerMarket ? <CompanyHeaderQuote snapshot={headerMarket} /> : null}
           </div>
           <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{holdingBadge}</span><Link className="inline-flex items-center gap-1 text-teal-300 transition hover:text-teal-200" href={`/research/assistant?mode=guide&ticker=${encodeURIComponent(ticker)}`}><BookOpen className="h-4 w-4" />Guía de investigación</Link><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
