@@ -707,9 +707,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 Ver la evaluación del foso
               </Link>
             }
-            title="Marco de calidad (MOAT)"
+            title="Calidad financiera según la empresa"
           >
-            <MoatPanel metric={moatScore} />
+            <MoatPanel company={company} metric={moatScore} />
           </Panel>
         ) : null}
         {/*
