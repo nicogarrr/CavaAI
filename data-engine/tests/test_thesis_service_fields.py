@@ -386,3 +386,23 @@ def test_fingerprint_cambia_con_provenance_sin_variar_facts():
         ):
             variante = [dict(base_news[0], **mutacion)]
             assert service._input_fingerprint(db, company, {}, {}, variante) != fp_base
+
+
+def test_fingerprint_cambia_con_render_version(monkeypatch):
+    # F341 aterrizaje: la redaccion de la hipotesis ES la salida. Con inputs
+    # identicos pero PROMPT_VERSION distinto, el fingerprint debe cambiar o
+    # generate() seguiria devolviendo la redaccion vieja ("68% por encima").
+    from app.services import thesis_service
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.info["tenant_id"] = "tenant-test"
+        company = _company()
+        db.add(company)
+        db.commit()
+        service = ThesisService()
+        fp_v3 = service._input_fingerprint(db, company, {}, {}, [])
+        monkeypatch.setattr(thesis_service, "PROMPT_VERSION", "thesis-render-v2")
+        fp_v2 = service._input_fingerprint(db, company, {}, {}, [])
+        assert fp_v3 != fp_v2

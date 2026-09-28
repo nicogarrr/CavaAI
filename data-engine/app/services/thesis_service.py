@@ -35,7 +35,7 @@ from app.valuation.moat_framework import empty_moat_framework
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "thesis-render-v2"
+PROMPT_VERSION = "thesis-render-v3"
 
 # Etiquetas es-ES de las métricas que alimentan claims visibles. El fallback
 # humaniza el código (guiones bajos a espacios) sin exponerlo tal cual.
