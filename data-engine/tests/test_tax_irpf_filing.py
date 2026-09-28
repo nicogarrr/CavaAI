@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, FXRate, Portfolio, Transaction
+from app.models.entities import Base, Company, FXRate, Portfolio, Tenant, Transaction
 from app.services.tax_irpf_filing import (
     CASILLAS_BASIS,
     build_casillas,
@@ -358,3 +358,202 @@ def test_import_special_payments_fail_closed(db):
     ]
     assert len(bucket["special_payments"]) == 2
     assert bucket["dividends_base"] == pytest.approx(45.0)
+# --- Compensación de pérdidas de ejercicios anteriores (art. 49 LIRPF) ------
+
+from app.services.tax_irpf_filing import build_loss_compensation  # noqa: E402
+
+
+def test_loss_compensation_same_category_first():
+    # Pérdida 2024 (-400) contra ganancia 2025 (+500): se integra entera en
+    # la 0442; no queda resto ni arrastre.
+    result = build_loss_compensation(
+        [{"year": 2024, "net_gyp_base": -400.0, "incomplete": False}],
+        Decimal("500"), Decimal("0"), 2025,
+    )
+    item = result["prior_losses"][0]
+    # Derivado del libro (sin anexo C.3 declarado): estimativo, sin casillas.
+    assert result["estimativo"] is True
+    assert item["source"] == "libro-estimativo"
+    assert item["casilla_integracion"] is None
+    assert "anexo C.3" in result["estimativo_reason"]
+    assert item["applied_to_gains_base"] == 400.0
+    assert item["applied_to_income_base"] == 0.0
+    assert item["remaining_base"] == 0.0
+    assert result["applied_to_gains_total_base"] == 400.0
+    assert result["remaining_to_carry_base"] == 0.0
+
+
+def test_loss_compensation_cross_25pct_limit():
+    # Pérdida 2023 (-1000), ganancia 2025 de solo 100: 900 de resto; con 200
+    # de dividendos el límite cruzado es 50 → se aplican 50 y arrastran 850.
+    result = build_loss_compensation(
+        [{"year": 2023, "net_gyp_base": -1000.0, "incomplete": False}],
+        Decimal("100"), Decimal("200"), 2025,
+    )
+    item = result["prior_losses"][0]
+    assert item["casilla_integracion"] is None  # estimativo (libro)
+    assert item["casilla_resto"] is None
+    assert item["applied_to_gains_base"] == 100.0
+    assert result["cross_limit_base"] == 50.0
+    assert result["cross_used_by_current_year_base"] == 0.0
+    assert item["applied_to_income_base"] == 50.0
+    assert item["remaining_base"] == 850.0
+    assert result["remaining_to_carry_base"] == 850.0
+
+
+def test_loss_compensation_oldest_year_first():
+    result = build_loss_compensation(
+        [
+            {"year": 2024, "net_gyp_base": -100.0, "incomplete": False},
+            {"year": 2022, "net_gyp_base": -100.0, "incomplete": False},
+        ],
+        Decimal("150"), Decimal("0"), 2025,
+    )
+    y2022, y2024 = result["prior_losses"]
+    assert y2022["applied_to_gains_base"] == 100.0   # el más antiguo se agota antes
+    assert y2024["applied_to_gains_base"] == 50.0
+    assert y2024["remaining_base"] == 50.0
+
+
+def test_loss_compensation_window_is_four_years():
+    # 2020 queda fuera de la ventana para la Renta 2025 (expirada).
+    result = build_loss_compensation(
+        [{"year": 2020, "net_gyp_base": -999.0, "incomplete": False}],
+        Decimal("500"), Decimal("0"), 2025,
+    )
+    assert result["prior_losses"] == []
+    assert result["applied_to_gains_total_base"] == 0.0
+
+
+def test_loss_compensation_incomplete_prior_year_excluded():
+    result = build_loss_compensation(
+        [{"year": 2024, "net_gyp_base": None, "incomplete": True}],
+        Decimal("500"), Decimal("0"), 2025,
+    )
+    assert result["prior_losses"] == []
+    assert result["excluded_years"][0]["year"] == 2024
+    assert result["applied_to_gains_total_base"] == 0.0
+
+
+def test_loss_compensation_no_casillas_outside_2025():
+    result = build_loss_compensation(
+        [{"year": 2023, "net_gyp_base": -100.0, "incomplete": False}],
+        Decimal("500"), Decimal("0"), 2024,
+    )
+    assert result["prior_losses"][0]["casilla_integracion"] is None
+    assert "orden-hac" not in result["basis"]
+
+
+def test_compute_report_loss_compensation_end_to_end(db):
+    _eur_portfolio(db)
+    c = _company(db, "OLD", country="ES")
+    # 2024: pérdida computable de 400 (sin recompra en ±2 meses).
+    _tx(db, c, date(2024, 2, 10), "buy", 10, 100, currency="EUR")
+    _tx(db, c, date(2024, 6, 1), "sell", 10, 60, currency="EUR")
+    # 2025: ganancia de 500.
+    _tx(db, c, date(2025, 3, 10), "buy", 10, 100, currency="EUR")
+    _tx(db, c, date(2025, 9, 1), "sell", 10, 150, currency="EUR")
+
+    report = TaxReportService().compute_report(db, 2025)
+    comp = report["filing"]["loss_compensation"]
+    assert comp["basis"] == "art-49-lirpf"
+    assert comp["estimativo"] is True
+    assert comp["prior_losses"][0]["year"] == 2024
+    assert comp["prior_losses"][0]["applied_to_gains_base"] == 400.0
+    assert comp["prior_losses"][0]["casilla_integracion"] is None
+    assert comp["applied_to_gains_total_base"] == 400.0
+    assert comp["remaining_to_carry_base"] == 0.0
+    # Y el informe de 2024 en sí sigue limpio (sin filing recursivo roto).
+    report_2024 = TaxReportService().compute_report(db, 2024)
+    assert report_2024["summary"]["total_realized_gain_base"] == -400.0
+
+
+def test_loss_compensation_declared_pending_publishes_casillas():
+    # Con los saldos del anexo C.3 declarados, la fuente es autoritativa y
+    # se publican las casillas del anexo (Renta 2025).
+    result = build_loss_compensation(
+        [{"year": 2024, "net_gyp_base": -400.0, "incomplete": False}],
+        Decimal("500"), Decimal("0"), 2025,
+        declared_pending={2024: Decimal("250")},
+    )
+    assert result["estimativo"] is False
+    assert result["basis"] == "art-49-lirpf+orden-hac-277-2026"
+    item = result["prior_losses"][0]
+    assert item["source"] == "anexo-c3-manual"
+    assert item["pending_start_base"] == 250.0
+    assert item["applied_to_gains_base"] == 250.0
+    assert item["remaining_base"] == 0.0
+    assert item["casilla_integracion"] == "0442"
+
+
+def test_loss_compensation_joint_25_limit_reserves_current_year():
+    # Ejemplo del dictamen: GyP 2025 = -100, dividendos 400, saldo previo
+    # 500. El límite del 25% (100) es CONJUNTO: la pérdida del propio
+    # ejercicio (0446) consume los 100 y el arrastre no cruza nada.
+    result = build_loss_compensation(
+        [{"year": 2024, "net_gyp_base": -500.0, "incomplete": False}],
+        Decimal("-100"), Decimal("400"), 2025,
+    )
+    assert result["cross_limit_base"] == 100.0
+    assert result["cross_used_by_current_year_base"] == 100.0
+    assert result["current_year_cross"]["negative_gyp_base"] == 100.0
+    assert result["current_year_cross"]["applied_to_income_base"] == 100.0
+    assert result["current_year_cross"]["casilla"] == "0446"
+    assert result["applied_to_gains_total_base"] == 0.0
+    assert result["applied_to_income_total_base"] == 0.0
+    assert result["remaining_to_carry_base"] == 500.0
+
+
+def _seed_loss_then_gain(db, portfolio_kwargs=None):
+    """Pérdida computable en 2024 (-400) y ganancia en 2025 (+500)."""
+    if portfolio_kwargs is None:
+        _eur_portfolio(db)
+    else:
+        db.add(Portfolio(name="Main", base_currency="EUR", is_default=True, **portfolio_kwargs))
+        db.commit()
+    c = _company(db, "OLD", country="ES")
+    _tx(db, c, date(2024, 2, 10), "buy", 10, 100, currency="EUR")
+    _tx(db, c, date(2024, 6, 1), "sell", 10, 60, currency="EUR")
+    _tx(db, c, date(2025, 3, 10), "buy", 10, 100, currency="EUR")
+    _tx(db, c, date(2025, 9, 1), "sell", 10, 150, currency="EUR")
+
+
+def test_declared_pending_from_tenant_metadata_publishes_casillas(db):
+    # Los saldos declarados (anexo C.3) viven en la metadata del TENANT:
+    # son datos fiscales personales, nunca configuración global del proceso.
+    tenant = Tenant(external_id="t-fiscal", name="Fiscal")
+    db.add(tenant)
+    db.flush()
+    db.info["tenant_id"] = tenant.id  # contexto de escritura del tenant
+    _seed_loss_then_gain(db, portfolio_kwargs={"tenant_id": tenant.id})
+    tenant.metadata_ = {"tax_prior_losses_pending": {"2024": "250"}}
+    db.commit()
+
+    report = TaxReportService().compute_report(db, 2025)
+    comp = report["filing"]["loss_compensation"]
+    assert comp["estimativo"] is False
+    prior = comp["prior_losses"][0]
+    assert prior["source"] == "anexo-c3-manual"
+    assert prior["pending_start_base"] == 250.0
+    assert prior["applied_to_gains_base"] == 250.0
+    assert prior["casilla_integracion"] == "0442"
+
+
+def test_declared_pending_from_other_tenant_does_not_leak(db):
+    # Otro tenant con saldos declarados NO contamina la declaración del
+    # tenant activo (aislamiento multiusuario).
+    other = Tenant(
+        external_id="t-otro",
+        name="Otro",
+        metadata_={"tax_prior_losses_pending": {"2024": "999"}},
+    )
+    db.add(other)
+    db.commit()
+    _seed_loss_then_gain(db)  # portfolio del tenant activo, sin metadata
+
+    report = TaxReportService().compute_report(db, 2025)
+    comp = report["filing"]["loss_compensation"]
+    assert comp["estimativo"] is True
+    assert comp["prior_losses"][0]["casilla_integracion"] is None
+    # El saldo es el del libro (-400), no los 999 declarados por otro tenant.
+    assert comp["prior_losses"][0]["pending_start_base"] == 400.0

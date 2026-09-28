@@ -103,8 +103,9 @@ def test_same_year_gains_and_losses_net_out(db):
 
 
 def test_no_automatic_carryforward_prior_year_loss_excluded(db):
-    """Límite honesto: el informe es por ejercicio; la pérdida de 2025
-    no minora el neto de 2026 (no existe arrastre automático)."""
+    """El SUMARIO es por ejercicio: la pérdida de 2025 no minora el neto de
+    2026. El arrastre (art. 49 LIRPF) vive en la capa `filing`
+    (loss_compensation, ver test_tax_irpf_filing.py), no en el sumario."""
     _eur_portfolio(db)
     c = _company(db, "OLD")
     _tx(db, c, date(2025, 2, 10), "buy", 10, 100, currency="EUR")
