@@ -33,7 +33,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { exchangeDisplayName } from '@/lib/exchangeName';
 import { auditScoreText, auditStatusLabel } from '@/lib/audit-status-copy';
-import { sectorIndustryLine } from '@/lib/sector-display';
+import { sectorIndustryLine } from '@/lib/labels';
 import { Button } from '@/components/ui/button';
 import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';

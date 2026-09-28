@@ -4801,6 +4801,11 @@ export interface components {
         };
         /** NewsFeedItem */
         NewsFeedItem: {
+            /**
+             * Headline From Source
+             * @default true
+             */
+            headline_from_source: boolean;
             /** Published At */
             published_at?: string | null;
             /**
