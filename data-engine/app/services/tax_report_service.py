@@ -93,6 +93,56 @@ DIVIDEND_ACTIONS = {"dividend", "div", "cash_dividend", "withholding"}
 SELL_ACTIONS = {"sell", "sold"}
 BUY_ACTIONS = {"buy", "bot", "b"}
 
+#: Movimientos de caja del ledger: nunca denominados en acciones. La forma
+#: canonica de la fila es el IMPORTE en ``price`` con ``quantity`` 0 o 1
+#: (``quantity=0`` es legitimo para caja; el importador IBKR escribe
+#: ``quantity=1, price=amount``). Antes el informe fiscal leia
+#: ``price or quantity`` y el resto de consumidores multiplicaban
+#: ``quantity * price``: una entrada manual ``{"dividend", 100, 0.25}`` (= 25)
+#: se declaraba como 0,25 en la declaration y como 25,00 en el XIRR, un
+#: error de 100x en una cifra que acaba en un impreso fiscal.
+CASH_LEDGER_ACTIONS = frozenset(
+    {"dividend", "div", "cash_dividend", "withholding", "interest", "fee", "cash_misc"}
+)
+#: Cantidades admitidas en una fila de caja bajo la convencion canonica.
+CASH_UNIT_QUANTITIES = (Decimal("0"), Decimal("1"))
+
+
+def is_cash_action(action: str | None) -> bool:
+    """True si la accion es un movimiento de caja (no buy/sell)."""
+    return (action or "").lower() in CASH_LEDGER_ACTIONS
+
+
+def cash_amount(transaction) -> Decimal:
+    """Importe de un movimiento de caja, con la convencion unica del ledger.
+
+    El importe vive en ``price``; ``quantity`` es 0 o 1 y NO multiplica. Se
+    comparan con ``is not None`` y no por verdad: un dividendo de ``0,00``
+    es un dividendo de cero, no un dividendo de ``quantity``. Si ``price``
+    viniera a None (fila historica corrupta) se cae a ``quantity`` antes que
+    declarar un 0 inventado.
+
+    Helper COMPARTIDO con ``portfolio_intelligence_service`` (``_xirr`` y la
+    atribucion de dividendos) para que el informe fiscal y la atribucion no
+    puedan discrepar sobre el mismo movimiento de caja.
+    """
+    price = getattr(transaction, "price", None)
+    if price is not None:
+        return Decimal(str(price))
+    quantity = getattr(transaction, "quantity", None)
+    return Decimal(str(quantity)) if quantity is not None else Decimal("0")
+
+
+def cash_quantity_is_canonical(transaction) -> bool:
+    """False si la fila de caja rompe la convencion (quantity fuera de {0, 1}).
+
+    Una fila asi es ambigua: 25 unidades a 0,25 (importe 6,25) o un dividendo
+    de 25 mal escrito. Se acepta el importe de ``price`` pero la fila se
+    marca para revision en vez de declararse en silencio.
+    """
+    quantity = getattr(transaction, "quantity", None)
+    return quantity is None or Decimal(str(quantity)) in CASH_UNIT_QUANTITIES
+
 
 def _money(value: Decimal | None) -> float | None:
     if value is None:
@@ -109,6 +159,7 @@ def _new_cash_bucket(ticker: str, transaction) -> dict:
         "withholding_native": Decimal("0"),
         "withholding_base": Decimal("0"),
         "missing_fx": False,
+        "ambiguous_cash": False,
         "unattributed": False,
         "payments": [],
         "special_payments": [],
@@ -173,6 +224,31 @@ class TaxReportService:
             .order_by(Transaction.trade_date, Transaction.id)
         ).all()
 
+        # Lote FX: UNA tabla por informe (anti N+1). Antes `self.fx.rate(...)`
+        # se llamaba una vez por cada fila de dividendo/retencion/otros y otra
+        # por cada venta, con 1-2 SELECT cada vez; y como `_build_filing`
+        # recalcula los cuatro ejercicios anteriores, un solo GET recorria el
+        # libro entero unas 5 veces. `rate_from_table` replica `rate` en
+        # memoria (mismo par, misma fecha maxima, mismo inverso).
+        fx_table = self.fx.fx_table(
+            db,
+            currencies={transaction.currency for transaction, _ in rows if transaction.currency},
+            base_currency=base_currency,
+            as_of_max=max(
+                (transaction.trade_date for transaction, _ in rows), default=end
+            ),
+        )
+
+        def resolve_rate(currency: str | None, as_of: date) -> Decimal | None:
+            return PortfolioFXService.rate_from_table(
+                fx_table,
+                quote_currency=currency or "",
+                base_currency=base_currency,
+                as_of=as_of,
+            )
+
+        inconsistent_cash: list[dict] = []
+
         dividends_by_company: dict[str, dict] = {}
         realized_by_company: dict[str, dict] = {}
         misc_rows: list[dict] = []
@@ -201,14 +277,23 @@ class TaxReportService:
             else:
                 ticker = company.ticker
             if action in DIVIDEND_ACTIONS or "dividend" in action or "withholding" in action:
-                rate = self.fx.rate(
-                    db,
-                    quote_currency=transaction.currency,
-                    base_currency=base_currency,
-                    as_of=transaction.trade_date,
-                )
-                gross = transaction.price if transaction.price else transaction.quantity
-                amount_native = gross
+                rate = resolve_rate(transaction.currency, transaction.trade_date)
+                amount_native = cash_amount(transaction)
+                ambiguous_cash_row = is_cash_action(action) and not cash_quantity_is_canonical(transaction)
+                if ambiguous_cash_row:
+                    inconsistent_cash.append(
+                        {
+                            "ticker": ticker,
+                            "date": transaction.trade_date.isoformat(),
+                            "action": action,
+                            "quantity": float(transaction.quantity or 0),
+                            # Valor crudo (price x quantity no canonica): es
+                            # un CANDIDATO a revisar, nunca un pago medido.
+                            "amount": _money(amount_native),
+                            "candidate": True,
+                            "currency": transaction.currency,
+                        }
+                    )
                 # Never convert at par: without a real FX rate the base
                 # amount is unknown and must stay None.
                 amount_base = amount_native * rate if rate is not None else None
@@ -219,20 +304,32 @@ class TaxReportService:
                     bucket["unattributed"] = True
                 if "withholding" in action or "tax" in action:
                     withheld = abs(amount_native)
-                    bucket["withholding_native"] += withheld
-                    if amount_base is not None:
-                        bucket["withholding_base"] += abs(amount_base)
+                    if ambiguous_cash_row:
+                        # Fila ambigua: NO entra en los agregados ni en las
+                        # casillas derivadas hasta resolverla (None +
+                        # manual_review, nunca un total con pinta de exacto).
+                        bucket["ambiguous_cash"] = True
                     else:
-                        bucket["missing_fx"] = True
-                    bucket["payments"].append(
-                        {
-                            "date": transaction.trade_date.isoformat(),
-                            "type": "withholding",
-                            "raw_action": _raw_action_label(transaction),
-                            "amount_native": _money(withheld),
-                            "amount_base": _money(abs(amount_base)) if amount_base is not None else None,
-                        }
-                    )
+                        bucket["withholding_native"] += withheld
+                        if amount_base is not None:
+                            bucket["withholding_base"] += abs(amount_base)
+                        else:
+                            bucket["missing_fx"] = True
+                    withholding_row = {
+                        "date": transaction.trade_date.isoformat(),
+                        "type": "withholding",
+                        "raw_action": _raw_action_label(transaction),
+                        "amount_native": _money(withheld),
+                        "amount_base": _money(abs(amount_base)) if amount_base is not None else None,
+                    }
+                    if ambiguous_cash_row:
+                        # Fila ambigua: la cifra derivada de price es un
+                        # candidato (lista de revision), no un pago medido.
+                        withholding_row["amount_native"] = None
+                        withholding_row["amount_base"] = None
+                        withholding_row["ambiguous"] = True
+                        withholding_row["manual_review"] = True
+                    bucket["payments"].append(withholding_row)
                 else:
                     raw_label = _raw_action_label(transaction)
                     special = any(
@@ -246,6 +343,14 @@ class TaxReportService:
                         "amount_native": _money(amount_native),
                         "amount_base": _money(amount_base),
                     }
+                    if ambiguous_cash_row:
+                        # La cifra cruda vive solo en inconsistent_cash como
+                        # candidato etiquetado; aqui seria una invencion
+                        # visible para cualquier consumidor/exportacion.
+                        payment_row["amount_native"] = None
+                        payment_row["amount_base"] = None
+                        payment_row["ambiguous"] = True
+                        payment_row["manual_review"] = True
                     bucket["payments"].append(payment_row)
                     if special:
                         # Payment in lieu / return of capital / stock lending:
@@ -257,29 +362,43 @@ class TaxReportService:
                         if amount_base is None:
                             bucket["missing_fx"] = True
                     else:
-                        bucket["dividends_native"] += amount_native
-                        if amount_base is not None:
-                            bucket["dividends_base"] += amount_base
+                        if ambiguous_cash_row:
+                            bucket["ambiguous_cash"] = True
                         else:
-                            bucket["missing_fx"] = True
+                            bucket["dividends_native"] += amount_native
+                            if amount_base is not None:
+                                bucket["dividends_base"] += amount_base
+                            else:
+                                bucket["missing_fx"] = True
                 continue
 
             if action in {"interest", "fee", "cash_misc"}:
-                rate = self.fx.rate(
-                    db,
-                    quote_currency=transaction.currency,
-                    base_currency=base_currency,
-                    as_of=transaction.trade_date,
-                )
-                amount = transaction.price or transaction.quantity
+                rate = resolve_rate(transaction.currency, transaction.trade_date)
+                amount = cash_amount(transaction)
+                ambiguous_cash_row = not cash_quantity_is_canonical(transaction)
+                if ambiguous_cash_row:
+                    inconsistent_cash.append(
+                        {
+                            "ticker": ticker,
+                            "date": transaction.trade_date.isoformat(),
+                            "action": action,
+                            "quantity": float(transaction.quantity or 0),
+                            "amount": _money(amount),
+                            "currency": transaction.currency,
+                        }
+                    )
+                # Fila ambigua: importes None + revision manual; nunca un
+                # importe aceptado en silencio.
                 misc_rows.append(
                     {
                         "date": transaction.trade_date.isoformat(),
                         "ticker": ticker,
                         "type": action,
-                        "amount_native": _money(amount),
-                        "amount_base": _money(amount * rate) if rate else None,
+                        "amount_native": None if ambiguous_cash_row else _money(amount),
+                        "amount_base": None if (ambiguous_cash_row or rate is None) else _money(amount * rate),
                         "currency": transaction.currency,
+                        "ambiguous": ambiguous_cash_row,
+                        "manual_review": ambiguous_cash_row,
                     }
                 )
                 continue
@@ -505,12 +624,7 @@ class TaxReportService:
                     and sale["qty_unblocked"] > 0
                     and sale["date"] + WASH_SALE_WINDOW > last_data_date
                 )
-                rate = self.fx.rate(
-                    db,
-                    quote_currency=transaction.currency,
-                    base_currency=base_currency,
-                    as_of=transaction.trade_date,
-                )
+                rate = resolve_rate(transaction.currency, transaction.trade_date)
                 if rate is not None:
                     computable_base = computable_native * rate
                     blocked_base = blocked_native * rate
@@ -564,10 +678,11 @@ class TaxReportService:
                     "ticker": bucket["ticker"],
                     "currency": bucket["currency"],
                     "dividends_native": _money(bucket["dividends_native"]),
-                    "dividends_base": None if bucket["missing_fx"] else _money(bucket["dividends_base"]),
+                    "dividends_base": None if (bucket["missing_fx"] or bucket["ambiguous_cash"]) else _money(bucket["dividends_base"]),
                     "withholding_native": _money(bucket["withholding_native"]),
-                    "withholding_base": None if bucket["missing_fx"] else _money(bucket["withholding_base"]),
+                    "withholding_base": None if (bucket["missing_fx"] or bucket["ambiguous_cash"]) else _money(bucket["withholding_base"]),
                     "missing_fx": bucket["missing_fx"],
+                    "ambiguous_cash": bucket["ambiguous_cash"],
                     "unattributed": bucket.get("unattributed", False),
                     "payments": bucket["payments"],
                     "special_payments": bucket["special_payments"],
@@ -595,7 +710,8 @@ class TaxReportService:
                 }
             )
 
-        dividend_incomplete = any(b["missing_fx"] for b in dividends)
+        dividend_ambiguous = any(b["ambiguous_cash"] for b in dividends)
+        dividend_incomplete = any(b["missing_fx"] for b in dividends) or dividend_ambiguous
         realized_incomplete = any(b["missing_fx"] for b in realized)
         incomplete_fx = dividend_incomplete or realized_incomplete
 
@@ -627,17 +743,21 @@ class TaxReportService:
             "wash_sale_window_open": sorted(
                 b["ticker"] for b in realized if b["wash_sale_window_open"]
             ),
-            "net_taxable_base": None if incomplete_fx else _money(total_dividends + total_gain),
+            "net_taxable_base": None if (incomplete_fx or dividend_ambiguous) else _money(total_dividends + total_gain),
             "dividend_count": len(dividends),
             "unattributed_tickers": sorted(
                 b["ticker"] for b in dividends if b.get("unattributed")
             ),
-            # Subtotal diagnóstico: si un bloque no atribuido además carece
-            # de FX, la suma quedaría por debajo sin avisar. None, nunca un
-            # parcial con pinta de exacto (misma regla que los totales).
+            # Subtotal diagnóstico: si un bloque no atribuido carece de FX o
+            # lleva cash ambiguo sin resolver, la suma quedaria por debajo
+            # sin avisar. None, nunca un parcial con pinta de exacto (misma
+            # regla que los totales).
             "unattributed_dividends_base": (
                 None
-                if any(b.get("unattributed") and b["missing_fx"] for b in dividends)
+                if any(
+                    b.get("unattributed") and (b["missing_fx"] or b["ambiguous_cash"])
+                    for b in dividends
+                )
                 else _money(
                     sum(
                         (
@@ -659,6 +779,17 @@ class TaxReportService:
                 {b["ticker"] for b in dividends if b["missing_fx"]}
                 | {b["ticker"] for b in realized if b["missing_fx"]}
             ),
+            # Movimientos de caja con `quantity` fuera de {0, 1}: el importe
+            # declarado sale de `price` (la convencion del ledger) pero la fila
+            # es ambigua y se lista para revision en vez de declararse en
+            # silencio. La creacion por API rechaza estas filas con un 400.
+            "inconsistent_cash_rows": inconsistent_cash,
+            # Filas de caja ambiguas (quantity fuera de {0,1}): bloquean los
+            # agregados y las casillas afectadas hasta resolverse.
+            "ambiguous_cash": sorted(
+                b["ticker"] for b in dividends if b["ambiguous_cash"]
+            ),
+            "manual_review": dividend_ambiguous,
         }
 
         data = {
