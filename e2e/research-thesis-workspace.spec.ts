@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
@@ -38,6 +39,31 @@ test.beforeAll(async () => {
     body,
   });
   if (!res.ok) throw new Error(`ensure MSFT fallo: ${res.status} ${await res.text()}`);
+
+  const pathNar = "/api/companies/ensure";
+  const bodyNar = JSON.stringify({ ticker: "E2ENAR", name: "E2E Narrative Corp" });
+  const tsNar = Math.floor(Date.now() / 1000).toString();
+  const nonceNar = randomUUID().replaceAll("-", "");
+  const hashNar = createHash("sha256").update(bodyNar).digest("hex");
+  const sigNar = createHmac("sha256", e2eResearchSecret)
+    .update(`e2e-api-tenant:e2e-api-user:${tsNar}:${nonceNar}:POST:${pathNar}:${hashNar}`)
+    .digest("hex");
+  const resNar = await fetch(`${uiBackendURL}${pathNar}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-CavaAI-Tenant": "e2e-api-tenant",
+      "X-CavaAI-User": "e2e-api-user",
+      "X-CavaAI-Timestamp": tsNar,
+      "X-CavaAI-Nonce": nonceNar,
+      "X-CavaAI-Method": "POST",
+      "X-CavaAI-Path": pathNar,
+      "X-CavaAI-Body-Hash": hashNar,
+      "X-CavaAI-Signature": sigNar,
+    },
+    body: bodyNar,
+  });
+  if (!resNar.ok) throw new Error(`ensure E2ENAR fallo: ${resNar.status} ${await resNar.text()}`);
 });
 
 test.describe("research thesis workspace", () => {
@@ -74,6 +100,60 @@ test.describe("research thesis workspace", () => {
         "el sistema no registra quién aprobó cada versión",
       ),
     ).toBeVisible();
+  });
+
+  test("memo renderiza la seccion Analisis narrativo persistida (y la oculta sin datos)", async ({
+    page,
+  }) => {
+    // Semilla directa en sqlite (tenant del bypass de navegador), idempotente:
+    // borra versiones previas de E2ENAR antes de insertar (retry-safe).
+    const sections = JSON.stringify([
+      {
+        titulo: "Lo que sabemos",
+        parrafos: [
+          "E2ENAR cotiza a 10.00 USD frente a un escenario base de 12.00 USD (margen de seguridad del 17%).",
+        ],
+      },
+      {
+        titulo: "Salvedad",
+        parrafos: ["Esto no es recomendacion de inversion (semilla e2e)."],
+      },
+    ]);
+    const pyScript = `
+import sqlite3
+db = sqlite3.connect("data-engine/cavaai_ui_e2e.db")
+cur = db.cursor()
+tenant = cur.execute("SELECT id FROM tenants WHERE external_id = ?", ("e2e-browser-user",)).fetchone()
+company = cur.execute("SELECT id FROM companies WHERE ticker = ?", ("E2ENAR",)).fetchone()
+assert company, "company E2ENAR no encontrada"
+cur.execute("DELETE FROM thesis_versions WHERE company_id = ?", (company[0],))
+cur.execute(
+    "INSERT INTO thesis_versions (tenant_id, company_id, version, status, thesis_markdown, executive_summary, rating, data_confidence_score, source_coverage_score, red_team_score, valuation_risk_score, narrative_sections, created_at, updated_at) VALUES (?, ?, 1, 'published', '# T', 'resumen ejecutivo semilla', 'watch', 0, 0, 0, 0, ?, datetime('now'), datetime('now'))",
+    (tenant[0] if tenant else None, company[0], SECTIONS_JSON),
+)
+db.commit()
+db.close()
+`.replace("SECTIONS_JSON", JSON.stringify(sections));
+    execFileSync("python3", ["-c", pyScript]);
+
+    await page.goto("/research/E2ENAR?view=thesis");
+    await expect(
+      page.getByRole("heading", { name: "Análisis narrativo" }),
+    ).toBeVisible();
+    await expect(page.getByText("Lo que sabemos")).toBeVisible();
+    await expect(
+      page.getByText("E2ENAR cotiza a 10.00 USD", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Esto no es recomendacion de inversion (semilla e2e)."),
+    ).toBeVisible();
+    await page.screenshot({ path: "test-results/analisis-narrativo.png" });
+
+    // Caso oculto: sin narrative_sections la seccion no aparece (honesto).
+    await page.goto("/research/MSFT?view=thesis");
+    await expect(
+      page.getByRole("heading", { name: "Análisis narrativo" }),
+    ).toHaveCount(0);
   });
 
   test("collapsible panels start collapsed on a 390px mobile viewport", async ({
