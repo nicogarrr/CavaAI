@@ -751,6 +751,10 @@ export async function getStockQuote(symbol: string): Promise<{ c: number; d: num
     );
 }
 
+// F358: edad maxima aceptable de una cotizacion Finnhub antes de
+// tratarla como obsoleta (24h en segundos).
+const STALE_QUOTE_MAX_AGE_SECONDS = 24 * 3600;
+
 async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; } | null> {
     // Try Finnhub first
     try {
@@ -760,7 +764,21 @@ async function fetchStockQuote(symbol: string): Promise<{ c: number; d: number; 
             const data = await fetchJSON<any>(url, 60);
             // Verify we got valid data (Finnhub returns all zeros for invalid symbols)
             if (data && (data.c > 0 || data.pc > 0)) {
-                return data;
+                // F358: con errores sostenidos del proveedor (429 por cuota,
+                // F357) la Data Cache de Next sirve el ultimo valor bueno
+                // INDEFINIDAMENTE (stale-while-error): el fetch resuelve 200
+                // con la cotizacion de AYER y el error nunca llega al catch
+                // (BN mostraba 36,87 del cierre previo como actual con el
+                // +0,66% de la sesion anterior). La unica senal de frescura
+                // es el timestamp `t` de la propia cotizacion: si supera la
+                // tolerancia se trata como miss y cae al fallback (backend
+                // Yahoo) o a null honesto. 24h cubre noche y finde sin
+                // rechazar datos correctos de mercado cerrado.
+                const quoteTs = typeof data.t === 'number' && Number.isFinite(data.t) ? data.t : 0;
+                const ageSeconds = Math.floor(Date.now() / 1000) - quoteTs;
+                if (quoteTs > 0 && ageSeconds <= STALE_QUOTE_MAX_AGE_SECONDS) {
+                    return data;
+                }
             }
         }
     } catch {
