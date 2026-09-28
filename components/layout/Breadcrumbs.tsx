@@ -24,6 +24,8 @@ const SUBROUTE_LABELS: Record<string, string> = {
   'driver-assumptions': 'Supuestos de drivers',
   'decision-lessons': 'Lecciones de decisiones',
   'management-credibility': 'Credibilidad de la directiva',
+  // Fuera del nav principal (quick win UX 3); la miga sigue legible.
+  'workflows': 'Workflows',
 };
 
 /** El dashboard vive en `/inicio` porque `/` es la landing pública. */
