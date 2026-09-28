@@ -191,7 +191,9 @@ def build_casillas(dividends: list[dict], realized: list[dict], fiscal_year: int
     dividends_total = sum(
         (Decimal(str(b["dividends_base"] or 0)) for b in dividends), Decimal("0")
     )
-    dividend_incomplete = any(b["missing_fx"] for b in dividends)
+    dividend_incomplete = any(
+        b["missing_fx"] or b.get("ambiguous_cash") for b in dividends
+    )
     special_tickers = sorted(
         b["ticker"] for b in dividends if b.get("special_payments")
     )
@@ -265,6 +267,12 @@ def build_double_taxation(
             manual_review.append({
                 "ticker": bucket["ticker"],
                 "reason": "Sin tipo de cambio para convertir el dividendo o la retención; no entra en la deducción.",
+            })
+            continue
+        if bucket.get("ambiguous_cash"):
+            manual_review.append({
+                "ticker": bucket["ticker"],
+                "reason": "Fila de caja ambigua (quantity fuera de {0, 1}) sin resolver; el bloque no entra en la deducción hasta revisarla.",
             })
             continue
         if not gross and not withheld:

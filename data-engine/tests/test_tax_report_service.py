@@ -110,8 +110,8 @@ def test_wash_sale_defers_loss_on_top_of_buy_fees(db):
 def test_dividend_and_withholding_grouped_per_company(db):
     _eur_portfolio(db)
     c = _company(db, "CCC")
-    _tx(db, c, date(2026, 4, 1), "dividend", 100, 100)
-    _tx(db, c, date(2026, 4, 1), "withholding", -19, 19)
+    _tx(db, c, date(2026, 4, 1), "dividend", 1, 100)
+    _tx(db, c, date(2026, 4, 1), "withholding", 1, 19)
     report = TaxReportService().compute_report(db, 2026)
     row = next(d for d in report["dividends"] if d["ticker"] == "CCC")
     assert row["dividends_base"] == 100.0
@@ -127,7 +127,7 @@ def test_foreign_dividend_converted_at_payment_date_rate(db):
     db.add(FXRate(base_currency="EUR", quote_currency="USD",
                   rate_date=date(2026, 5, 1), rate=Decimal("0.95"), source="test"))
     db.commit()
-    _tx(db, c, date(2026, 4, 15), "dividend", 100, 100, currency="USD")
+    _tx(db, c, date(2026, 4, 15), "dividend", 1, 100, currency="USD")
     report = TaxReportService().compute_report(db, 2026)
     row = next(d for d in report["dividends"] if d["ticker"] == "DDD")
     assert row["dividends_native"] == 100.0
@@ -137,7 +137,7 @@ def test_foreign_dividend_converted_at_payment_date_rate(db):
 def test_missing_fx_dividend_is_explicit_never_par(db):
     _eur_portfolio(db)
     c = _company(db, "EEE")
-    _tx(db, c, date(2026, 4, 15), "dividend", 100, 100, currency="USD")
+    _tx(db, c, date(2026, 4, 15), "dividend", 1, 100, currency="USD")
     report = TaxReportService().compute_report(db, 2026)
     row = next(d for d in report["dividends"] if d["ticker"] == "EEE")
     assert row["dividends_base"] is None
