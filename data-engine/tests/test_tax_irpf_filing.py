@@ -304,3 +304,57 @@ def test_filing_unavailable_when_portfolio_base_is_not_eur(db):
     filing = report["filing"]
     assert filing["available"] is False
     assert "EUR" in filing["reason"]
+
+
+# --- Integración importación IBKR → informe: pagos especiales (fail-closed) --
+
+PIL_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<FlexQueryResponse queryName="test">
+  <FlexStatements>
+    <FlexStatement accountId="U123456">
+      <OpenPosition symbol="AAPL" position="10" markPrice="180" positionValue="1800" costBasisPrice="150" currency="USD" reportDate="2025-12-31"/>
+      <CashTransaction type="Payment In Lieu Of Dividends" symbol="AAPL" trxID="PL1" amount="90" dateTime="2025-03-15" currency="USD"/>
+      <CashTransaction type="Return Of Capital" symbol="AAPL" trxID="RC1" amount="10" dateTime="2025-04-15" currency="USD"/>
+      <CashTransaction type="Dividends" symbol="AAPL" trxID="D1" amount="50" dateTime="2025-05-15" currency="USD"/>
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>"""
+
+
+def test_import_special_payments_fail_closed(db):
+    # Ruta real: Flex XML → importador → informe. El detector debe ver el
+    # type ORIGINAL de IBKR (raw_payload), no la acción normalizada.
+    from app.services.ibkr_import_service import IBKRImportService
+
+    _eur_portfolio(db)
+    IBKRImportService().import_flex_xml(db, PIL_XML)
+    _fx(db, "USD", date(2025, 3, 15), "0.9")
+    _fx(db, "USD", date(2025, 4, 15), "0.9")
+    _fx(db, "USD", date(2025, 5, 15), "0.9")
+
+    report = TaxReportService().compute_report(db, 2025)
+    filing = report["filing"]
+    assert filing["available"] is True
+
+    dt = filing["double_taxation"]
+    review = [m for m in dt["manual_review"] if m["ticker"] == "AAPL"]
+    assert review, "el bloque AAPL debe caer en revisión manual"
+    assert "lieu" in review[0]["reason"]
+    assert "return of capital" in review[0]["reason"]
+    # Nada de deducción automática para un bloque con pagos especiales.
+    assert dt["countries"] == []
+
+    # La 0029 solo recoge el dividendo ordinario (50 × 0,9 = 45): los pagos
+    # especiales no son ingresos íntegros de dividendos y se listan aparte.
+    casillas = filing["casillas"]
+    assert casillas["dividendos"]["0029_ingresos_integros"] == 45.0
+    assert casillas["dividendos"]["special_payment_tickers"] == ["AAPL"]
+
+    # Y el pago ordinario conserva el tipo original en el rastro.
+    bucket = next(b for b in report["dividends"] if b["ticker"] == "AAPL")
+    raw_types = sorted(p["raw_action"] for p in bucket["payments"])
+    assert raw_types == [
+        "Dividends", "Payment In Lieu Of Dividends", "Return Of Capital"
+    ]
+    assert len(bucket["special_payments"]) == 2
+    assert bucket["dividends_base"] == pytest.approx(45.0)

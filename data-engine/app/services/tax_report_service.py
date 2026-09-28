@@ -59,7 +59,11 @@ from app.models import (
     Transaction,
 )
 from app.services.portfolio_fx_service import PortfolioFXService
-from app.services.tax_irpf_filing import build_casillas, build_double_taxation
+from app.services.tax_irpf_filing import (
+    SPECIAL_PAYMENT_TOKENS,
+    build_casillas,
+    build_double_taxation,
+)
 
 FIFO_METHOD = "fifo"
 AVERAGE_METHOD = "average"
@@ -105,6 +109,7 @@ def _new_cash_bucket(ticker: str, transaction) -> dict:
         "missing_fx": False,
         "unattributed": False,
         "payments": [],
+        "special_payments": [],
     }
 
 
@@ -120,6 +125,23 @@ def _unattributed_label(transaction) -> str:
         if str(key).lower() in {"symbol", "underlyingsymbol"} and value:
             return f"UNATTRIBUTED:{str(value).strip().upper()}"
     return f"UNATTRIBUTED:{transaction.currency or '???'}:{transaction.action or '?'}"
+
+
+def _raw_action_label(transaction) -> str:
+    """Tipo ORIGINAL del bróker para el detector de pagos especiales.
+
+    IBKR guarda el ``type`` del CashTransaction ("Dividends", "Payment In
+    Lieu Of Dividends", "Withholding Tax"...) en ``Transaction.raw_payload``;
+    la acción normalizada colapsa variantes a "dividend" y haría invisible un
+    payment in lieu o un return of capital. Fail-closed: el tipo original
+    manda cuando existe; si no hay payload, se usa la acción normalizada.
+    """
+    payload = transaction.raw_payload or {}
+    if isinstance(payload, dict):
+        original = payload.get("type") or payload.get("transactionType")
+        if original:
+            return str(original)
+    return transaction.action
 
 
 class TaxReportService:
@@ -204,26 +226,40 @@ class TaxReportService:
                         {
                             "date": transaction.trade_date.isoformat(),
                             "type": "withholding",
-                            "raw_action": transaction.action,
+                            "raw_action": _raw_action_label(transaction),
                             "amount_native": _money(withheld),
                             "amount_base": _money(abs(amount_base)) if amount_base is not None else None,
                         }
                     )
                 else:
-                    bucket["dividends_native"] += amount_native
-                    if amount_base is not None:
-                        bucket["dividends_base"] += amount_base
-                    else:
-                        bucket["missing_fx"] = True
-                    bucket["payments"].append(
-                        {
-                            "date": transaction.trade_date.isoformat(),
-                            "type": "dividend",
-                            "raw_action": transaction.action,
-                            "amount_native": _money(amount_native),
-                            "amount_base": _money(amount_base),
-                        }
+                    raw_label = _raw_action_label(transaction)
+                    special = any(
+                        token in raw_label.lower()
+                        for token in SPECIAL_PAYMENT_TOKENS
                     )
+                    payment_row = {
+                        "date": transaction.trade_date.isoformat(),
+                        "type": "special" if special else "dividend",
+                        "raw_action": raw_label,
+                        "amount_native": _money(amount_native),
+                        "amount_base": _money(amount_base),
+                    }
+                    bucket["payments"].append(payment_row)
+                    if special:
+                        # Payment in lieu / return of capital / stock lending:
+                        # NO es dividendo ordinario. Queda fuera de las sumas
+                        # (casilla 0029 y deducción 0588) y se lista para
+                        # revisión manual: clasificarlo como ordinario sería
+                        # inventar un tratamiento fiscal.
+                        bucket["special_payments"].append(payment_row)
+                        if amount_base is None:
+                            bucket["missing_fx"] = True
+                    else:
+                        bucket["dividends_native"] += amount_native
+                        if amount_base is not None:
+                            bucket["dividends_base"] += amount_base
+                        else:
+                            bucket["missing_fx"] = True
                 continue
 
             if action in {"interest", "fee", "cash_misc"}:
@@ -532,6 +568,7 @@ class TaxReportService:
                     "missing_fx": bucket["missing_fx"],
                     "unattributed": bucket.get("unattributed", False),
                     "payments": bucket["payments"],
+                    "special_payments": bucket["special_payments"],
                 }
             )
 

@@ -192,6 +192,9 @@ def build_casillas(dividends: list[dict], realized: list[dict], fiscal_year: int
         (Decimal(str(b["dividends_base"] or 0)) for b in dividends), Decimal("0")
     )
     dividend_incomplete = any(b["missing_fx"] for b in dividends)
+    special_tickers = sorted(
+        b["ticker"] for b in dividends if b.get("special_payments")
+    )
 
     return {
         "available": True,
@@ -206,8 +209,12 @@ def build_casillas(dividends: list[dict], realized: list[dict], fiscal_year: int
             "incomplete": incomplete,
         },
         "dividendos": {
+            # Los pagos especiales (payment in lieu, return of capital,
+            # lending) NO entran en la 0029: no son dividendos ordinarios y
+            # su tratamiento difiere; se listan para revisión manual.
             "0029_ingresos_integros": None if dividend_incomplete else _money(dividends_total),
             "incomplete": dividend_incomplete,
+            "special_payment_tickers": special_tickers,
         },
         "notas": [
             "Todas las transmisiones del ledger se tratan como acciones "
