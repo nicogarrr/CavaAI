@@ -267,3 +267,17 @@ def test_no_valuation_core_returns_baseline_without_llm_call(db, monkeypatch):
         db, _company(), valuation, HYPOTHESIS, NEWS, "base", provider=provider)
     assert result == "base"
     assert provider.calls == 0
+
+
+def test_non_string_ids_fall_back_without_exception(db, monkeypatch):
+    # JSON valido con ids no-string: nunca TypeError, siempre capa 1.
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    for raw in (
+        json.dumps({"fragment_ids": [{"id": "valoracion_posicion"}]}),
+        json.dumps({"fragment_ids": [["valoracion_posicion"]]}),
+        json.dumps({"fragment_ids": [None]}),
+    ):
+        result = narrative.maybe_narrative(
+            db, _company(), VALUATION, HYPOTHESIS, NEWS, "base",
+            provider=_FakeProvider(raw_text=raw))
+        assert result == "base"

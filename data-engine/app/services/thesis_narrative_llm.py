@@ -140,6 +140,10 @@ def _validated_selection(
     """Fail-closed: devuelve los textos ordenados o None si algo no cuadra."""
     if not isinstance(fragment_ids, list) or not fragment_ids:
         return None
+    # Tipos primero: un id no-string (dict, lista) haria unhashable el set()
+    # y la excepcion escaparia de la generacion en vez de caer a la capa 1.
+    if any(not isinstance(fid, str) for fid in fragment_ids):
+        return None
     if len(fragment_ids) != len(set(fragment_ids)):
         return None
     if any(fid not in fragments for fid in fragment_ids):
@@ -264,7 +268,10 @@ def maybe_narrative(
         fragment_ids = parsed.get("fragment_ids") if isinstance(parsed, dict) else None
     except Exception:  # noqa: BLE001 - JSON invalido: capa 1
         return baseline
-    sentences = _validated_selection(fragment_ids, fragments, valuation)
-    if sentences is None:
+    try:
+        sentences = _validated_selection(fragment_ids, fragments, valuation)
+        if sentences is None:
+            return baseline
+        return " ".join(sentences)
+    except Exception:  # noqa: BLE001 - una seleccion patologica nunca rompe la generacion
         return baseline
-    return " ".join(sentences)
