@@ -2905,6 +2905,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/taxes/modelo720/{fiscal_year}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Modelo720 File
+         * @description Fichero del Modelo 720 (500 bytes/registro, spec oficial AEAT).
+         *
+         *     Solo lectura. Requiere los datos del declarante en la metadata del
+         *     tenant (clave 'tax_declarant'); sin ellos devuelve available=false con
+         *     el motivo. AYUDA DE CÓMPUTO: revisar antes de presentar por TGVI Online.
+         */
+        get: operations["modelo720_file_api_taxes_modelo720__fiscal_year__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/taxes/modelo720/{fiscal_year}/thresholds": {
         parameters: {
             query?: never;
@@ -13345,6 +13369,48 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    modelo720_file_api_taxes_modelo720__fiscal_year__file_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                fiscal_year: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
