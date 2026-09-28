@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,30 @@ def _snapshot_path_for(url: str) -> Path | None:
     return None
 
 
+def _mirror_url_for(url: str) -> str | None:
+    """URL del mirror HF para una URL de la SEC, o None si no hay mirror.
+
+    Mismo layout que el snapshot local: companyfacts/CIK##########.json,
+    submissions/CIK##########(-submissions-NNN)?.json, company_tickers.json.
+    """
+    from app.core.config import get_settings
+
+    dataset = get_settings().sec_hf_mirror_dataset
+    if not dataset:
+        return None
+    if url == TICKER_MAP_URL:
+        name = "company_tickers.json"
+    else:
+        match = re.search(
+            r"(?:companyfacts|submissions)/(CIK\d{10}(?:-submissions-\d+)?)\.json$", url
+        )
+        if not match:
+            return None
+        kind = "companyfacts" if "companyfacts" in url else "submissions"
+        name = f"{kind}/{match.group(1)}.json"
+    return f"https://huggingface.co/datasets/{dataset}/resolve/main/{name}"
+
+
 def _read_snapshot(path: Path | None) -> dict[str, Any] | None:
     if path is None or not path.exists():
         return None
@@ -124,7 +149,9 @@ async def _get_json(
     snapshot = _read_snapshot(_snapshot_path_for(url))
     if snapshot is not None:
         return snapshot
+    mirror_url = _mirror_url_for(url)
     headers = default_headers(user_agent)
+    direct_error: Exception | None = None
     delay = base_delay
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
@@ -147,6 +174,13 @@ async def _get_json(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
+            # La SEC bloquea las IPs de datacenter con 403: el mirror HF
+            # sirve el mismo JSON oficial. 404 en la SEC no se enmascara:
+            # un documento inexistente lo es tambien en el mirror, pero el
+            # 403 es un fallo de transporte, no de dato.
+            if response.status_code in {401, 403} and mirror_url is not None:
+                direct_error = exc
+                break
             raise RuntimeError(
                 f"SEC EDGAR request failed ({response.status_code} {url})"
             ) from exc
@@ -155,9 +189,24 @@ async def _get_json(
         if not isinstance(data, dict):
             raise RuntimeError(f"SEC EDGAR returned non-object JSON ({url})")
         return data
-    raise RuntimeError(
-        f"SEC EDGAR rate-limited (429 {url}) after {max_retries} retries"
-    ) from last_error
+    if direct_error is None:
+        raise RuntimeError(
+            f"SEC EDGAR rate-limited (429 {url}) after {max_retries} retries"
+        ) from last_error
+    # Fallback al mirror HF (sin credenciales: el dataset es publico).
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as mirror_client:
+        mirror_response = await mirror_client.get(mirror_url)
+    try:
+        mirror_response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"SEC bloqueada ({direct_error}) y mirror HF sin el documento "
+            f"({mirror_response.status_code} {mirror_url})"
+        ) from exc
+    data = mirror_response.json()
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Mirror HF returned non-object JSON ({mirror_url})")
+    return data
 
 
 def _manifest_cik(ticker: str) -> str | None:

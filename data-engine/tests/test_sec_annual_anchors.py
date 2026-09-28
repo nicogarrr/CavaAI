@@ -67,3 +67,57 @@ def test_fichero_historico_roto_es_cobertura_parcial_no_error():
         "CIK0000000001-submissions-001.json": RuntimeError("SEC 403"),
     })
     assert asyncio.run(client.annual_report_anchors("1")) == {"A1": "2025-12-31"}
+
+
+# --- Mirror HF como fallback de lectura (ban de IP de datacenter) ---
+
+def test_fallback_a_mirror_hf_en_403(monkeypatch):
+    from app.core.config import get_settings
+    from app.services.connectors import sec_edgar
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    get_settings.cache_clear()
+
+    payload = {"filings": {"recent": {}}}
+    llamadas = {}
+
+    class _Resp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return payload
+
+    class _MirrorClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url):
+            llamadas["url"] = url
+            return _Resp()
+
+    monkeypatch.setattr(sec_edgar.httpx, "AsyncClient", _MirrorClient)
+
+    class _H:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, headers=None):
+            if "sec.gov" in url:
+                class R403:
+                    status_code = 403
+                    headers = {}
+                    def raise_for_status(self):
+                        import httpx as _httpx
+                        raise _httpx.HTTPStatusError("403", request=None, response=None)
+                    def json(self): return {}
+                return R403()
+            llamadas["url"] = url
+            return _Resp()
+
+    monkeypatch.setattr(sec_edgar.httpx, "AsyncClient", _H)
+    data = asyncio.run(sec_edgar._get_json(
+        "https://data.sec.gov/submissions/CIK0000000001.json"))
+    assert data == payload
+    assert llamadas["url"].endswith(
+        "/datasets/nico/cavaai-sec-mirror/resolve/main/submissions/CIK0000000001.json")
+    get_settings.cache_clear()
