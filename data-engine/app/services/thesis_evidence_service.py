@@ -52,7 +52,7 @@ from app.services.connectors.ir import IRConnector
 # de preferencia (F133).
 SEC_EVIDENCE_TAGS: dict[str, tuple[list[str], str]] = {
     "revenue": (
-        ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"],
+        ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet", "RevenueFromContractWithCustomerIncludingAssessedTax", "RegulatedAndUnregulatedOperatingRevenue"],
         "USD",
     ),
     "shares_diluted": (
