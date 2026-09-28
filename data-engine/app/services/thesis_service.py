@@ -344,7 +344,6 @@ class ThesisService:
             catalysts=catalysts,
             invalidation_criteria=invalidation,
             scenario_probabilities=scenario_probabilities,
-            narrative_sections=narrative_sections,
         )
 
         def _dec(value) -> Decimal | None:

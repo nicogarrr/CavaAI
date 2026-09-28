@@ -101,7 +101,8 @@ def test_templates_are_correct_by_construction():
         "106.85 USD (margen de seguridad del -68%)."
     )
     assert FRAGMENTS["expectativas_mercado"] == (
-        "El mercado descuenta un crecimiento de ingresos del 35.0% anual."
+        "Con los supuestos de este DCF inverso, el precio actual exigiria "
+        "un crecimiento de ingresos del 35.0% anual."
     )
     assert FRAGMENTS["titular_0"] == (
         'TechCrunch publico el 2026-09-25 "Meta presenta Muse, su nuevo modelo".'
@@ -337,19 +338,24 @@ def _sections(valuation=VALUATION, news=NEWS):
 def test_section_templates_titles_and_slots():
     sections = _sections(VALUATION_PARTIAL, NEWS_WITH_GAPS)
     assert set(sections) == {
-        "lo_que_sabemos", "lo_que_cambio", "lo_que_descuenta", "no_sabemos",
+        "lo_que_sabemos", "hipotesis", "lo_que_cambio", "lo_que_descuenta",
+        "no_sabemos",
     }
     assert sections["lo_que_sabemos"]["titulo"] == "Lo que sabemos"
     assert sections["lo_que_cambio"]["titulo"] == "Lo que cambio"
-    assert sections["lo_que_descuenta"]["titulo"] == "Lo que descuenta el mercado"
+    assert sections["lo_que_descuenta"]["titulo"] == "Lo que exige el precio actual"
     assert sections["no_sabemos"]["titulo"] == "Lo que aun no sabemos"
     # Los parrafos salen de los mismos slots verificados de la capa resumen.
     assert sections["lo_que_sabemos"]["parrafos"][0] == FRAGMENTS["valoracion_posicion"]
+    # La hipotesis (interpretacion) no convive con los hechos: seccion propia.
+    assert all("Hipotesis" not in p for p in sections["lo_que_sabemos"]["parrafos"])
+    assert sections["hipotesis"]["parrafos"] == [HYPOTHESIS]
     # El caveat de titulares cierra siempre la seccion de noticias.
     assert sections["lo_que_cambio"]["parrafos"][-1] == FRAGMENTS["caveat_titulares"]
     # Hechos vs interpretacion con el numero como slot.
     assert any(
-        "margen de seguridad del -68% no es una prediccion" in p
+        "margen de seguridad del -68% (escenario base/precio - 1" in p
+        and "equivale al 32% del precio actual" in p
         for p in sections["lo_que_descuenta"]["parrafos"]
     )
 
@@ -440,3 +446,37 @@ def test_sections_without_facts_core_return_none(db, monkeypatch):
         db, _company(), valuation, HYPOTHESIS, NEWS, provider=provider)
     assert result is None
     assert provider.calls == 0
+
+
+def test_shared_budget_cap_within_one_generate(db, monkeypatch):
+    """Las dos capas LLM de un mismo generate comparten el cap diario.
+
+    Con SessionLocal(autoflush=False), registrar el consumo de la primera
+    capa con commit=False no bastaba: el SUM de can_spend de la segunda no
+    veia la fila pendiente. El flush explicito tras registrar cierra el
+    bypass; este test falla si se quita.
+    """
+    from types import SimpleNamespace as NS
+
+    from app.services.budget import BudgetController
+
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    controller = BudgetController()
+    controller.settings = NS(llm_daily_cap_eur=0.05, llm_monthly_cap_eur=1000.0)
+    controller.estimate_cost_eur = lambda *args: 0.04
+    monkeypatch.setattr(narrative, "BudgetController", lambda: controller)
+
+    # Primera capa (resumen): 0 + 0.02 estimado <= 0.05 -> gasta 0.04 real.
+    provider1 = _FakeProvider(list(FRAGMENTS))
+    summary = narrative.maybe_narrative(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, "base", provider=provider1)
+    assert summary != "base"
+    assert provider1.calls == 1
+
+    # Segunda capa (secciones): 0.04 registrado + 0.02 estimado > 0.05 -> NO
+    # puede gastar: fail-closed sin llamar al proveedor.
+    provider2 = _FakeSectionsProvider(list(_sections()))
+    result = narrative.maybe_narrative_sections(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, provider=provider2)
+    assert result is None
+    assert provider2.calls == 0

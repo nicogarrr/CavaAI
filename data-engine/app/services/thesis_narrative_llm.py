@@ -79,8 +79,11 @@ def _fragment_templates(
         )
     growth = (valuation.get("reverse_dcf") or {}).get("required_revenue_growth")
     if growth is not None:
+        # Es el crecimiento IMPLICITO del modelo con sus supuestos, no una
+        # expectativa observada del mercado: la atribucion va al DCF inverso.
         fragments["expectativas_mercado"] = (
-            f"El mercado descuenta un crecimiento de ingresos del {growth * 100:.1f}% anual."
+            "Con los supuestos de este DCF inverso, el precio actual exigiria "
+            f"un crecimiento de ingresos del {growth * 100:.1f}% anual."
         )
     if status == "partial":
         fragments["caveat_parcial"] = (
@@ -266,6 +269,11 @@ def maybe_narrative(
             response.usage.total_tokens,
             commit=False,
         )
+        # SessionLocal tiene autoflush=False: sin este flush, el can_spend
+        # de la siguiente llamada LLM del mismo generate (SUM en DB) no veria
+        # este consumo pendiente y el cap diario se podria saltar entre
+        # llamadas de una misma transaccion.
+        db.flush()
     except Exception:  # noqa: BLE001 - el registro contable no decide el contenido
         pass
     try:
@@ -337,12 +345,16 @@ def _section_templates(
         parrafos.append(fragments["caveat_parcial"])
     if "caveat_insufficient" in fragments:
         parrafos.append(fragments["caveat_insufficient"])
-    # La hipotesis es interpretacion, no hecho: solo acompana a una seccion
-    # que ya tenga hechos de valoracion; sola no crea "lo_que_sabemos".
-    if parrafos and hypothesis:
-        parrafos.append(f"Hipotesis de trabajo: {hypothesis}")
     if parrafos:
         sections["lo_que_sabemos"] = {"titulo": "Lo que sabemos", "parrafos": parrafos}
+
+    # La hipotesis es interpretacion, nunca convive con los hechos: seccion
+    # propia, opcional (no obligatoria en la seleccion).
+    if hypothesis:
+        sections["hipotesis"] = {
+            "titulo": "Hipotesis de trabajo",
+            "parrafos": [hypothesis],
+        }
 
     titulares = [v for k, v in sorted(fragments.items()) if k.startswith("titular_")]
     if titulares:
@@ -360,14 +372,17 @@ def _section_templates(
     if mos is not None and "valoracion_posicion" in fragments:
         # Hechos vs interpretacion: el patron es fijo, el numero es un slot.
         parrafos.append(
-            f"Un margen de seguridad del {mos:.0%} no es una prediccion de "
-            "revalorizacion ni de caida: es la distancia entre el precio "
-            "actual y el escenario base con los supuestos registrados en "
+            f"Un margen de seguridad del {mos:.0%} (escenario base/precio - 1: "
+            f"el escenario base equivale al {mos + 1:.0%} del precio actual) no "
+            "es una prediccion de revalorizacion ni de caida: es la relacion "
+            "entre precio y escenario base con los supuestos registrados en "
             "esta tesis."
         )
     if parrafos:
+        # Titulo coherente con el contenido: crecimiento IMPLICITO del modelo,
+        # no expectativas observadas del mercado.
         sections["lo_que_descuenta"] = {
-            "titulo": "Lo que descuenta el mercado",
+            "titulo": "Lo que exige el precio actual",
             "parrafos": parrafos,
         }
 
@@ -551,6 +566,11 @@ def maybe_narrative_sections(
             response.usage.total_tokens,
             commit=False,
         )
+        # SessionLocal tiene autoflush=False: sin este flush, el can_spend
+        # de la siguiente llamada LLM del mismo generate (SUM en DB) no veria
+        # este consumo pendiente y el cap diario se podria saltar entre
+        # llamadas de una misma transaccion.
+        db.flush()
     except Exception:  # noqa: BLE001 - el registro contable no decide el contenido
         pass
     try:
