@@ -191,7 +191,10 @@ def test_sec_substring_lookalike_domain_is_not_sec():
     generica (transitorio, sin breaker); un 403 lookalike, generico
     permanente (no por politica SEC)."""
     evil_429 = _http_error_for_url(429, "https://sec.gov.evil.example/x")
-    assert "sec.gov" in str(evil_429)  # el substring inseguro lo hubiera marcado SEC
+    # El mensaje nativo de httpx incluye la URL completa, asi que el host
+    # lookalike esta presente como texto: el chequeo por substring inseguro
+    # lo hubiera marcado SEC; el estructurado no (host exacto o .sec.gov).
+    assert evil_429.request.url.host == "sec.gov.evil.example"
     client = _FakeRedis()
     assert _is_transient_with(evil_429, client) is True
     assert client.get(workers_module._SEC_BREAKER_STREAK_KEY) is None
