@@ -27,6 +27,7 @@ from app.services.long_term_model_service import LongTermModelService
 from app.services.number_format import format_compact_es
 from app.services.source_auditor import SourceAuditor
 from app.services.source_hierarchy_service import classify_source
+from app.services.thesis_narrative_llm import maybe_narrative
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import MODEL_VERSION
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
@@ -321,6 +322,11 @@ class ThesisService:
         scenario_probabilities = self._scenario_probabilities(long_term_model)
 
         summary = self._card_summary(company, valuation, hypothesis, news_items)
+        # Capa 2 (opcional, THESIS_NARRATIVE_LLM_ENABLED=1): narrativa LLM
+        # verificada. Fail-closed: cualquier problema devuelve la capa 1.
+        summary = maybe_narrative(
+            db, company, valuation, hypothesis, news_items, summary
+        )
         thesis_markdown = self._render_markdown(
             company,
             valuation,
