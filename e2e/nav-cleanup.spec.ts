@@ -26,3 +26,23 @@ test("el menú ya no tiene duplicados ni Workflows", async ({ page }) => {
 
   await page.screenshot({ path: "test-results/nav-cleanup-drawer.png" });
 });
+
+test("el sidebar de escritorio muestra el nav limpio", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/inicio");
+
+  const sidebar = page.locator("aside");
+  await expect(sidebar).toBeVisible();
+
+  await expect(sidebar.getByRole("link", { name: "Mercado", exact: true })).toBeVisible();
+  await expect(sidebar.getByRole("link", { name: "Workflows", exact: true })).toHaveCount(0);
+
+  // Una sola entrada por destino en todo el sidebar (árbol + pie).
+  await expect(sidebar.getByRole("link", { name: "Plan", exact: true })).toHaveCount(1);
+  await expect(sidebar.getByRole("link", { name: "Mi plan", exact: true })).toHaveCount(0);
+  await expect(sidebar.getByRole("link", { name: "Ayuda", exact: true })).toHaveCount(1);
+  // El pie conserva lo que no está en el árbol.
+  await expect(sidebar.getByRole("link", { name: "Seguridad", exact: true })).toHaveCount(1);
+
+  await page.screenshot({ path: "test-results/nav-cleanup-sidebar-desktop.png" });
+});
