@@ -52,7 +52,9 @@ def test_hypothesis_below_base_with_reverse_dcf():
     }
     text = service._hypothesis(_company(), valuation)
     assert "150.00" in text and "200.00" in text
-    assert "25% por debajo" in text
+    # MoS = base/price - 1: se nombra explicitamente, sin distancia precio/base.
+    assert "margen de seguridad del 25%" in text
+    assert "por debajo" not in text
     assert "8.2% anual" in text
     assert "Apple" in text
 
@@ -65,8 +67,24 @@ def test_hypothesis_above_base_without_growth():
         "margin_of_safety": -0.25,
     }
     text = service._hypothesis(_company(), valuation)
-    assert "25% por encima" in text
+    assert "margen de seguridad del -25%" in text
+    assert "por encima" not in text
     assert "reverse DCF" not in text
+
+
+def test_hypothesis_no_false_price_base_distance():
+    # F341: con precio 336.56 y base 106.85 (MoS = -0.68), la distancia real
+    # precio/base es ~215%: afirmar "68% por encima" era falso.
+    service = ThesisService()
+    valuation = {
+        "current_price": 336.56,
+        "base_value": 106.85,
+        "margin_of_safety": -0.68,
+    }
+    text = service._hypothesis(_company(), valuation)
+    assert "margen de seguridad del -68%" in text
+    assert "68% por encima" not in text
+    assert "215%" not in text
 
 
 # -- catalysts ---------------------------------------------------------------------
@@ -296,7 +314,7 @@ def test_card_summary_is_readable_spanish_hypothesis():
     hypothesis = service._hypothesis(_company(), valuation)
     summary = service._card_summary(_company(), valuation, hypothesis)
     assert summary == hypothesis
-    assert "por encima del escenario base" in summary
+    assert "margen de seguridad del -68%" in summary
     assert "bucket" not in summary  # la jerga de motor no va a la tarjeta
 
 
@@ -368,3 +386,23 @@ def test_fingerprint_cambia_con_provenance_sin_variar_facts():
         ):
             variante = [dict(base_news[0], **mutacion)]
             assert service._input_fingerprint(db, company, {}, {}, variante) != fp_base
+
+
+def test_fingerprint_cambia_con_render_version(monkeypatch):
+    # F341 aterrizaje: la redaccion de la hipotesis ES la salida. Con inputs
+    # identicos pero PROMPT_VERSION distinto, el fingerprint debe cambiar o
+    # generate() seguiria devolviendo la redaccion vieja ("68% por encima").
+    from app.services import thesis_service
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.info["tenant_id"] = "tenant-test"
+        company = _company()
+        db.add(company)
+        db.commit()
+        service = ThesisService()
+        fp_v3 = service._input_fingerprint(db, company, {}, {}, [])
+        monkeypatch.setattr(thesis_service, "PROMPT_VERSION", "thesis-render-v2")
+        fp_v2 = service._input_fingerprint(db, company, {}, {}, [])
+        assert fp_v3 != fp_v2
