@@ -494,12 +494,13 @@ def backfill_document_kpis() -> dict[str, Any]:
                         document.id, tenant_id=tenant_id, user_id=user_id
                     )
                 except Exception:  # noqa: BLE001 - un send roto no frena el lote
-                    meta = dict(document.metadata_ or {})
-                    deferred = dict(meta.get(KPI_DEFERRED_KEY) or {})
-                    deferred.pop("queued_at", None)
-                    meta[KPI_DEFERRED_KEY] = deferred
-                    document.metadata_ = meta
-                    db.commit()
+                    # Resultado INCIERTO (auditor, bounce 5): un error de red
+                    # o timeout no prueba que el mensaje no entrase en Redis
+                    # (pudo aceptarse y perderse la respuesta). La reserva se
+                    # MANTIENE siempre; la reconciliacion la cubre la regla
+                    # depth==0 + lease expirado: si no entro de verdad, la
+                    # cola vaciara y se reencolara seguro; si entro, depth>0
+                    # lo protege de duplicados.
                     continue
                 queued += 1
         finally:

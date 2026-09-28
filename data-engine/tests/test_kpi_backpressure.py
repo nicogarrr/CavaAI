@@ -201,6 +201,20 @@ class TestBackfillFunctional:
         assert len(calls) == 2
 
         # Segunda pasada: hay un mensaje en vuelo (el primero) -> depth>0.
+        # El segundo conserva su reserva (send incierto): no se reencola.
         result2, send2 = self._run_backfill(db, depth=1)
-        assert result2["queued"] == 1
-        send2.assert_called_once_with(second_id, tenant_id=1, user_id="u")
+        assert result2["queued"] == 0
+        assert send2.call_count == 0
+        # Cola vacia pero lease sin expirar: tampoco (el mensaje pudo entrar).
+        result3, send3 = self._run_backfill(db, depth=0)
+        assert result3["queued"] == 0
+        assert send3.call_count == 0
+        # Cola vacia y lease expirado: el mensaje se perdio; reencola seguro.
+        from app.models import Document
+
+        d = db.query(Document).filter_by(id=second_id).one()
+        d.metadata_ = {"kpi_deferred": {"attempts": 1, "queued_at": 1}}
+        db.commit()
+        result4, send4 = self._run_backfill(db, depth=0)
+        assert result4["queued"] == 1
+        send4.assert_called_once_with(second_id, tenant_id=1, user_id="u")
