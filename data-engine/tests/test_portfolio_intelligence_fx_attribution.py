@@ -259,9 +259,11 @@ def test_xirr_excludes_ambiguous_cash_rows_and_declares_coverage(db):
     db.commit()
 
     value, meta = PortfolioIntelligenceService()._xirr(db, [(position, c)])
+    # XIRR sin un flujo de importe desconocido NO es la rentabilidad completa:
+    # None + estado explicito, nunca un "calculated" parcial.
+    assert value is None
+    assert meta["status"] == "incomplete_ambiguous_cash"
     assert meta["ambiguous_cash_excluded"] == 1
-    # El flujo ambiguo no esta dentro: 2 flujos (compra + valor final).
-    assert meta["cashflows"] == 2
 
 
 def test_attribution_ambiguous_dividends_leave_component_unknown(db):

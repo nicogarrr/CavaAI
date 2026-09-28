@@ -485,6 +485,15 @@ class PortfolioIntelligenceService:
                 net, sign = gross, 1
             amount = net * float(rate)
             cashflows.append((transaction.trade_date, sign * amount))
+        if ambiguous_cash_excluded:
+            # Un XIRR que excluye un flujo de importe desconocido NO es la
+            # rentabilidad completa: publicarlo como "calculated" mediria con
+            # una cifra que el informe fiscal bloquea. None + estado explicito.
+            return None, {
+                "status": "incomplete_ambiguous_cash",
+                "cashflows": len(cashflows),
+                "ambiguous_cash_excluded": ambiguous_cash_excluded,
+            }
         ending_value = sum(float(position.market_value_base or 0) for position, _ in positions)
         cash_rows = list(db.scalars(select(CashBalance)).all())
         # Lote FX: 1 query para todas las cajas (anti N+1).
