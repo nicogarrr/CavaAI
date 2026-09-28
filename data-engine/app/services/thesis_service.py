@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import desc, func, select
@@ -117,6 +117,7 @@ class ThesisService:
         company: Company,
         valuation: dict,
         long_term_model: dict,
+        news_items: list[dict] | None = None,
     ) -> str:
         documents = list(
             db.execute(
@@ -160,6 +161,16 @@ class ThesisService:
             "fundamental_model_status": long_term_model.get("status"),
             "missing_mandatory_drivers": long_term_model.get(
                 "missing_mandatory_drivers"
+            ),
+            # Una noticia nueva (aunque no cambie ningun fact financiero) es
+            # evidencia material: debe disparar una nueva version en generacion
+            # normal. Se incluye la identidad/procedencia del conjunto
+            # (id + titular original o resumen interno + fecha), nunca solo el
+            # recuento.
+            "news": sorted(
+                f"{item.get('id')}:{(item.get('source_headline') or item.get('title') or '')[:120]}:"
+                f"{item.get('date') or ''}"
+                for item in (news_items or [])
             ),
         }
         raw = json.dumps(payload, sort_keys=True, default=str)
@@ -256,7 +267,10 @@ class ThesisService:
             "missing_mandatory_drivers": missing_drivers,
         }
         valuation["long_term_model"] = long_term_model
-        fingerprint = self._input_fingerprint(db, company, valuation, long_term_model)
+        news_items = ((evidence.get("sources") or {}).get("news") or {}).get("items") or []
+        fingerprint = self._input_fingerprint(
+            db, company, valuation, long_term_model, news_items
+        )
 
         existing = self.latest(db, ticker)
         if existing and not force_new_version:
@@ -305,7 +319,6 @@ class ThesisService:
         invalidation = self._invalidation_criteria(company, valuation)
         scenario_probabilities = self._scenario_probabilities(long_term_model)
 
-        news_items = ((evidence.get("sources") or {}).get("news") or {}).get("items") or []
         summary = self._card_summary(company, valuation, hypothesis, news_items)
         thesis_markdown = self._render_markdown(
             company,
@@ -573,10 +586,14 @@ class ThesisService:
         El detalle de motor (bucket/engine) vive en el memo completo, no en
         la tarjeta.
 
-        Las noticias entran como TITULARES citados con medio y fecha (la
-        evidencia ya viene ordenada por materialidad y recencia): un titular
-        demuestra que el medio lo publico, no que sea cierto, y la tarjeta lo
-        presenta exactamente asi. Sin noticias ingeridas no se anade nada.
+        Las noticias entran como TITULARES citados VERBATIM solo cuando la
+        ingesta guardo el titular original del medio (source_headline); sin
+        el, el resumen compuesto por la app se presenta SIN comillas y sin
+        atribuirselo al medio. La fecha solo se imprime etiquetada segun su
+        procedencia (publicacion del medio, primer avistamiento GDELT o fecha
+        de ingesta) y "recientes" solo se afirma cuando hay una fecha de
+        publicacion real dentro de la ventana de recencia. Sin noticias
+        ingeridas no se anade nada.
         """
         base: str
         if valuation.get("status") == "insufficient_data":
@@ -594,20 +611,70 @@ class ThesisService:
         else:
             base = hypothesis
 
-        headlines: list[str] = []
+        quotes: list[str] = []
+        summaries: list[str] = []
+        has_recent_publication = False
         for item in (news_items or [])[:2]:
+            headline = item.get("source_headline")
+            headline = str(headline).strip() if isinstance(headline, str) else ""
             title = str(item.get("title") or "").strip()
-            if not title:
+            text = headline or title
+            if not text:
                 continue
-            if len(title) > 140:
-                title = title[:137].rstrip() + "..."
+            if len(text) > 140:
+                text = text[:137].rstrip() + "..."
             source = str(item.get("source") or "").strip()
-            date = str(item.get("date") or "").strip()
-            attribution = ", ".join(part for part in (source, date) if part)
-            headlines.append(f'"{title}" ({attribution})' if attribution else f'"{title}"')
-        if headlines:
-            base = f"{base} Titulares recientes: {'; '.join(headlines)}."
+            date_label = self._news_date_label(item)
+            attribution = ", ".join(part for part in (source, date_label) if part)
+            if headline:
+                # Cita verbatim: solo el titular que el medio publico.
+                quotes.append(f'"{text}" ({attribution})' if attribution else f'"{text}"')
+                if item.get("date_source") == "source" and self._news_is_recent(item):
+                    has_recent_publication = True
+            else:
+                # Resumen compuesto por la app: nunca entrecomillado ni
+                # atribuido como titular del medio.
+                summaries.append(f"{text} ({attribution})" if attribution else text)
+        if quotes:
+            label = (
+                "Titulares recientes"
+                if has_recent_publication
+                else "Ultimos titulares materiales"
+            )
+            base = f"{base} {label}: {'; '.join(quotes)}."
+        if summaries:
+            base = f"{base} Noticias relevantes: {'; '.join(summaries)}."
         return base
+
+    @staticmethod
+    def _news_date_label(item: dict) -> str | None:
+        """Etiqueta la fecha segun su procedencia; sin procedencia no se imprime."""
+        raw = str(item.get("date") or "").strip()
+        if not raw:
+            return None
+        day = raw[:10]
+        date_source = item.get("date_source")
+        if date_source == "source":
+            return f"publicado el {day}"
+        if date_source == "gdelt_first_seen":
+            return f"visto en GDELT el {day}"
+        if date_source == "ingested_at_fallback":
+            return f"fecha de ingesta {day}"
+        return None
+
+    @staticmethod
+    def _news_is_recent(item: dict, window_days: int = 30) -> bool:
+        """Recencia real: fecha de publicacion dentro de la ventana."""
+        raw = str(item.get("date") or "").strip()
+        if not raw:
+            return False
+        try:
+            published = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=UTC)
+        return (datetime.now(UTC) - published).days <= window_days
 
     def _build_claims(
         self,

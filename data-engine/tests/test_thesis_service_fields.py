@@ -6,7 +6,12 @@ derived deterministically from model data - never invented - and must
 degrade to honest "en formacion" states when inputs are missing.
 """
 
-from app.models.entities import Company
+from datetime import UTC, datetime
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.models.entities import Base, Company
 from app.services.thesis_service import ThesisService
 
 
@@ -168,21 +173,67 @@ def test_card_summary_partial_es_indicativo():
     assert "beta" in text
 
 
-def test_card_summary_anade_titulares_con_atribucion():
+def test_card_summary_anade_titulares_verbatim_con_atribucion():
     # Un titular demuestra que el medio lo publico, no que sea cierto: la
-    # tarjeta lo cita verbatim con medio y fecha, sin interpretarlo.
+    # tarjeta cita verbatim SOLO el titular original (source_headline), con
+    # medio y fecha etiquetada por procedencia.
     service = ThesisService()
     valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
+    today = datetime.now(UTC).date().isoformat()
     news = [
-        {"title": "Meta presenta Muse, su nuevo modelo", "source": "TechCrunch", "date": "2026-09-25"},
-        {"title": "RKLB retrasa su lanzamiento", "source": "SpaceNews", "date": "2026-09-24"},
-        {"title": "Tercero fuera del top-2", "source": "X", "date": "2026-09-23"},
+        {"title": "META Meta presenta Muse (resumen interno)",
+         "source_headline": "Meta presenta Muse, su nuevo modelo",
+         "source": "TechCrunch", "date": today, "date_source": "source"},
+        {"title": "RKLB retrasa (resumen interno)",
+         "source_headline": "RKLB retrasa su lanzamiento",
+         "source": "SpaceNews", "date": today, "date_source": "source"},
+        {"title": "Tercero fuera del top-2", "source_headline": "Tercero",
+         "source": "X", "date": today, "date_source": "source"},
     ]
     text = service._card_summary(_company(), valuation, "hipotesis", news)
     assert text.startswith("hipotesis Titulares recientes: ")
-    assert '"Meta presenta Muse, su nuevo modelo" (TechCrunch, 2026-09-25)' in text
-    assert '"RKLB retrasa su lanzamiento" (SpaceNews, 2026-09-24)' in text
+    assert f'"Meta presenta Muse, su nuevo modelo" (TechCrunch, publicado el {today})' in text
+    assert f'"RKLB retrasa su lanzamiento" (SpaceNews, publicado el {today})' in text
     assert "Tercero" not in text
+
+
+def test_card_summary_sin_titular_original_no_atribuye_cita():
+    # title es un resumen compuesto por la app: NUNCA se entrecomilla ni se
+    # presenta como titular del medio.
+    service = ThesisService()
+    valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
+    news = [
+        {"title": "Resumen compuesto por la app", "source": "GDELT",
+         "date": "2026-09-20", "date_source": "gdelt_first_seen"},
+    ]
+    text = service._card_summary(_company(), valuation, "hipotesis", news)
+    assert "Noticias relevantes: Resumen compuesto por la app (GDELT, visto en GDELT el 2026-09-20)." in text
+    assert '"Resumen' not in text
+    assert "Titulares" not in text
+
+
+def test_card_summary_fecha_antigua_no_dice_recientes():
+    # "Recientes" solo se afirma con una fecha de publicacion real dentro de
+    # la ventana; el top por materialidad sin limite de edad no es "reciente".
+    service = ThesisService()
+    valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
+    news = [
+        {"source_headline": "Titular viejo pero material", "title": "t",
+         "source": "Reuters", "date": "2020-01-15", "date_source": "source"},
+    ]
+    text = service._card_summary(_company(), valuation, "hipotesis", news)
+    assert "Ultimos titulares materiales: " in text
+    assert "recientes" not in text
+    assert "publicado el 2020-01-15" in text
+
+
+def test_card_summary_fecha_sin_procedencia_no_se_imprime_desnuda():
+    service = ThesisService()
+    valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
+    news = [{"source_headline": "H", "title": "t", "source": "X", "date": "2026-09-20"}]
+    text = service._card_summary(_company(), valuation, "hipotesis", news)
+    assert '"H" (X)' in text
+    assert "2026-09-20" not in text
 
 
 def test_card_summary_sin_noticias_no_inventa():
@@ -195,11 +246,11 @@ def test_card_summary_sin_noticias_no_inventa():
 def test_card_summary_titular_largo_se_trunca_y_sin_fecha_no_fabrica():
     service = ThesisService()
     valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
-    news = [{"title": "A" * 200, "source": "", "date": None}]
+    news = [{"source_headline": "A" * 200, "title": "t", "source": "", "date": None}]
     text = service._card_summary(_company(), valuation, "hipotesis", news)
     assert '...' in text
     assert "A" * 141 not in text
-    assert "(" not in text.split("Titulares recientes: ")[1]
+    assert "(" not in text.split("Ultimos titulares materiales: ")[1]
 
 
 # -- card summary (tarjeta "Ultima tesis") ---------------------------------------
@@ -236,3 +287,29 @@ def test_card_summary_partial_keeps_hypothesis_plus_caveat():
     assert summary.startswith("Hipotesis X.")
     assert "parcial-indicativa" in summary
     assert "shares_diluted" in summary
+
+
+# -- fingerprint: las noticias nuevas son evidencia material -------------------------
+
+def test_fingerprint_cambia_con_noticias_nuevas():
+    # Una noticia nueva sin cambio de facts DEBE cambiar el fingerprint:
+    # generate() crea una nueva version en generacion normal, no solo con
+    # force_new_version.
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.info["tenant_id"] = "tenant-test"
+        company = _company()
+        db.add(company)
+        db.commit()
+        service = ThesisService()
+        fp_sin = service._input_fingerprint(db, company, {}, {}, [])
+        news = [{"id": 1, "title": "resumen interno",
+                 "source_headline": "Meta presenta Muse", "date": "2026-09-25"}]
+        fp_con = service._input_fingerprint(db, company, {}, {}, news)
+        assert fp_con != fp_sin
+        # La identidad importa, no el recuento: otra noticia distinta tambien
+        # cambia el fingerprint.
+        otra = [{"id": 2, "title": "resumen interno 2",
+                 "source_headline": "Otro titular", "date": "2026-09-26"}]
+        assert service._input_fingerprint(db, company, {}, {}, otra) != fp_con
