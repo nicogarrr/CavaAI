@@ -74,7 +74,7 @@ export default function PortfolioAllocation({ holdings, totalValue, cash, baseCu
                 </div>
 
                 {/* Leyenda lateral - Pegada a la derecha */}
-                <div className="max-h-[250px] w-full min-w-0 space-y-3 overflow-y-auto sm:w-auto sm:min-w-[140px]">
+                <div id="portfolio-allocation-legend" className="max-h-[250px] w-full min-w-0 space-y-3 overflow-y-auto sm:w-auto sm:min-w-[140px]">
                     {chartData.map((item, index) => (
                         <div key={item.symbol} className="flex items-center justify-between gap-6">
                             <div className="flex items-center gap-2">

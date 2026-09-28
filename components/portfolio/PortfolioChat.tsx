@@ -55,26 +55,56 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
 
     /**
      * F339: a <md la burbuja fija (bottom-right) tapa la columna de porcentajes
-     * de la leyenda del donut de Distribución en cualquier punto de reposo del
-     * scroll. Se auto-oculta durante el scroll y reaparece ~600 ms tras parar;
-     * en desktop (md+) las clases md:* la mantienen siempre visible. El listener
-     * va en window con capture para enterarse también de scrolls en contenedores
-     * internos, y se limpia al desmontar.
+     * de la leyenda del donut de Distribución EN REPOSO: el solape importa con
+     * el scroll parado, no solo en movimiento. La burbuja se oculta (a) durante
+     * el scroll, reapareciendo ~600 ms tras parar, y (b) siempre que la leyenda
+     * intersecte su zona — incluido el reposo — hasta que deje de intersectarla.
+     * En desktop (md+) las clases md:* la mantienen siempre visible.
+     *
+     * La zona se calcula desde el viewport (banda de 96px abajo-derecha) y no
+     * desde el rect del propio botón: al ocultarse con translate-y-24 el rect
+     * saldría de la zona y la burbuja oscilaría ocultándose y reapareciendo.
+     * La leyenda se re-consulta por id en cada chequeo porque las tabs la
+     * montan y desmontan; los listeners usan capture para enterarse también de
+     * scrolls en contenedores internos y todo se limpia al desmontar.
      */
-    const [fabHidden, setFabHidden] = useState(false);
+    const [fabScrollHidden, setFabScrollHidden] = useState(false);
+    const [fabLegendBlocked, setFabLegendBlocked] = useState(false);
     useEffect(() => {
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const onScroll = () => {
-            setFabHidden(true);
-            if (timer !== undefined) clearTimeout(timer);
-            timer = setTimeout(() => setFabHidden(false), 600);
+        const checkLegendOverlap = () => {
+            const legend = document.getElementById('portfolio-allocation-legend');
+            if (!legend) {
+                setFabLegendBlocked(false);
+                return;
+            }
+            const rect = legend.getBoundingClientRect();
+            const zoneLeft = window.innerWidth - 96;
+            const zoneTop = window.innerHeight - 96;
+            setFabLegendBlocked(
+                rect.right > zoneLeft && rect.left < window.innerWidth &&
+                rect.bottom > zoneTop && rect.top < window.innerHeight
+            );
         };
+        const onScroll = () => {
+            setFabScrollHidden(true);
+            if (timer !== undefined) clearTimeout(timer);
+            timer = setTimeout(() => {
+                setFabScrollHidden(false);
+                checkLegendOverlap();
+            }, 600);
+            checkLegendOverlap();
+        };
+        checkLegendOverlap();
         window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+        window.addEventListener('resize', checkLegendOverlap, { passive: true });
         return () => {
             window.removeEventListener('scroll', onScroll, { capture: true });
+            window.removeEventListener('resize', checkLegendOverlap);
             if (timer !== undefined) clearTimeout(timer);
         };
     }, []);
+    const fabHidden = fabScrollHidden || fabLegendBlocked;
 
     async function handleSend() {
         if (!input.trim() || loading) return;
