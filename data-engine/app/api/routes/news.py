@@ -49,6 +49,9 @@ def news_events(db: Session = Depends(get_db)) -> list[dict]:
                 "impact_direction": event.impact_direction,
                 "requires_update": event.requires_update,
                 "date_source": (event.metadata_ or {}).get("date_source"),
+                # False solo en titulares de display generados por CavaAI
+                # (ausente en filas legacy = titular real de la fuente).
+                "headline_from_source": (event.metadata_ or {}).get("headline_from_source", True),
                 # Carril macro GDELT (#564): None en eventos de empresa.
                 "news_lane": (event.metadata_ or {}).get("news_lane"),
                 "macro_theme": (event.metadata_ or {}).get("macro_theme"),

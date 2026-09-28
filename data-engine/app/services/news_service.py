@@ -36,11 +36,26 @@ class NewsService:
                 return company
         return self.detect_ticker(db, text)
 
-    def _is_duplicate(self, db: Session, company: Company | None, text: str, url: str | None) -> bool:
+    def _is_duplicate(
+        self,
+        db: Session,
+        company: Company | None,
+        text: str,
+        url: str | None,
+        *,
+        title_is_identity: bool = True,
+    ) -> bool:
         if url:
             duplicate_url = db.scalar(select(NewsEvent.id).where(NewsEvent.url == url).limit(1))
             if duplicate_url:
                 return True
+        if not title_is_identity:
+            # Título de display generado por CavaAI (p.ej. «8-K presentado
+            # ante la SEC»): no identifica el evento — dos filings distintos
+            # del mismo form comparten título canónico. La identidad es la
+            # URL (o no hay dedup posible); casar por título aquí descartaría
+            # filings reales como falsos duplicados.
+            return False
         duplicate_title = db.scalar(
             select(NewsEvent.id)
             .where(
@@ -62,6 +77,7 @@ class NewsService:
         connector: str | None = None,
         date_source_label: str | None = None,
         source_headline: str | None = None,
+        headline_from_source: bool = True,
         news_lane: str | None = None,
         macro_theme: str | None = None,
         detect_company: bool = True,
@@ -138,6 +154,12 @@ class NewsService:
         # guardado en la creación para que las alertas muestren el titular real.
         if source_headline:
             news_metadata["source_headline"] = source_headline
+        # Procedencia del display: False = el título es texto generado por
+        # CavaAI (p.ej. «8-K presentado ante la SEC»), no verbatim de la
+        # fuente. La UI lo usa para no repetir el ticker (ya en su columna)
+        # al pintar el título.
+        if not headline_from_source:
+            news_metadata["headline_from_source"] = False
         # Procedencia del conector en la MISMA transacción de creación: si se
         # etiqueta después (segundo commit), una caída entre ambos deja
         # noticias nuevas sin connector y la reingesta las trata como previas.
@@ -345,7 +367,10 @@ class NewsService:
                 parts.insert(0, item.ticker)
             text = " ".join(part for part in parts if part)
             company = self._company_for_item(db, text, item.ticker) if detect_company else None
-            if self._is_duplicate(db, company, text, item.url):
+            if self._is_duplicate(
+                db, company, text, item.url,
+                title_is_identity=item.headline_from_source or not item.url,
+            ):
                 skipped_duplicates += 1
                 continue
             created_events.append(
@@ -361,6 +386,7 @@ class NewsService:
                     source_headline=(
                         item.title[:500] if item.title and item.headline_from_source else None
                     ),
+                    headline_from_source=item.headline_from_source,
                     news_lane=news_lane,
                     macro_theme=macro_theme,
                     detect_company=detect_company,

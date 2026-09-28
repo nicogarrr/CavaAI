@@ -124,8 +124,18 @@ def _plan_row(row: NewsEvent, ticker: str) -> dict | None:
     # conector, nunca un form inventado.
     new_headline = f"{form or 'filing'} presentado ante la SEC"
     new_title = f"{ticker} {new_headline}" if ticker else new_headline
-    if new_title == row.title and new_title == row.summary:
-        return None  # ya saneada
+    metadata = row.metadata_ or {}
+    old_headline = metadata.get("source_headline")
+    already_flagged = metadata.get("headline_from_source") is False
+    if new_title == row.title and new_title == row.summary and old_headline is None and already_flagged:
+        return None  # ya saneada (texto y procedencia)
+    # Procedencia histórica: el source_headline de estas filas NO es un
+    # titular publicado por la SEC — lo construía el conector viejo
+    # («COST 8-K (fecha)») y NewsService lo guardó como verbatim de la
+    # fuente. Preservar bytes no preserva procedencia: el plan lo RETIRA
+    # (queda en el backup para rollback) y marca headline_from_source=False
+    # para que los lectores de #574 dejen de atribuirlo a la SEC y la UI
+    # omita el prefijo de ticker del título de display.
     return {
         "id": row.id,
         "tenant_id": row.tenant_id,
@@ -133,8 +143,14 @@ def _plan_row(row: NewsEvent, ticker: str) -> dict | None:
         "expected": {
             "title": row.title,
             "summary": row.summary,
+            "source_headline": old_headline,
         },
-        "new": {"title": new_title, "summary": new_title},
+        "new": {
+            "title": new_title,
+            "summary": new_title,
+            "source_headline": None,
+            "headline_from_source": False,
+        },
     }
 
 
@@ -211,7 +227,11 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
         ):
             skipped.append(item["id"])
             continue
-        current = {"title": row.title, "summary": row.summary}
+        current = {
+            "title": row.title,
+            "summary": row.summary,
+            "source_headline": (row.metadata_ or {}).get("source_headline"),
+        }
         if current != item["expected"]:
             # La fila cambió desde el plan revisado: no se pisa.
             skipped.append(item["id"])
@@ -238,6 +258,13 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
         seen_destinations.add(destination)
         row.title = new_title
         row.summary = item["new"]["summary"]
+        # Procedencia: se retira el titular sintético atribuido a la SEC y
+        # se marca el display como generado por CavaAI. Nueva asignación del
+        # dict (no mutación in place) para que el cambio se registre.
+        new_metadata = dict(row.metadata_ or {})
+        new_metadata.pop("source_headline", None)
+        new_metadata["headline_from_source"] = False
+        row.metadata_ = new_metadata
         applied += 1
     return applied, skipped
 
@@ -259,8 +286,16 @@ def main(argv: list[str] | None = None) -> int:
             skipped: list[int] = []
             for entry in backup:
                 row = db.get(NewsEvent, entry["id"])
+                metadata = (row.metadata_ or {}) if row else {}
                 current_new = (
-                    {"title": row.title, "summary": row.summary} if row else None
+                    {
+                        "title": row.title,
+                        "summary": row.summary,
+                        "source_headline": metadata.get("source_headline"),
+                        "headline_from_source": metadata.get("headline_from_source"),
+                    }
+                    if row
+                    else None
                 )
                 if (
                     row is not None
@@ -282,6 +317,11 @@ def main(argv: list[str] | None = None) -> int:
                 row = db.get(NewsEvent, entry["id"])
                 row.title = entry["old"]["title"]
                 row.summary = entry["old"]["summary"]
+                restored_metadata = dict(row.metadata_ or {})
+                restored_metadata.pop("headline_from_source", None)
+                if entry["old"].get("source_headline") is not None:
+                    restored_metadata["source_headline"] = entry["old"]["source_headline"]
+                row.metadata_ = restored_metadata
             db.commit()
             print(f"rollback aplicado: {len(restorable)} filas restauradas")
             return 0

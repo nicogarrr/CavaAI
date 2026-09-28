@@ -79,6 +79,13 @@ def test_display_title_sec_no_se_persiste_como_source_headline(db):
     # ...y NUNCA en source_headline: no es el titular original de la fuente.
     assert "source_headline" not in (event.metadata_ or {})
     assert (event.metadata_ or {}).get("connector") == "sec"
+    # El flag de procedencia se persiste: la UI omite el prefijo de ticker.
+    assert (event.metadata_ or {}).get("headline_from_source") is False
+    # Y se expone en /api/news (legacy sin flag -> True).
+    from app.api.routes.news import news_events
+
+    payload = news_events(db)
+    assert payload[0]["headline_from_source"] is False
 
 
 def test_titular_real_de_fuente_si_se_conserva(db):
@@ -94,3 +101,44 @@ def test_titular_real_de_fuente_si_se_conserva(db):
     assert resp.created == 1
     event = db.scalars(select(NewsEvent)).one()
     assert (event.metadata_ or {}).get("source_headline") == "Apple beats estimates"
+
+def test_dos_filings_del_mismo_form_no_son_falsos_duplicados(db):
+    """Dos 8-K distintos (distinto accession/URL) comparten el título
+    canónico de display: la dedup NO puede casar por título sintético."""
+    payload = {
+        "filings": {
+            "recent": {
+                "accessionNumber": ["0000320193-26-000123", "0000320193-26-000456"],
+                "form": ["8-K", "8-K"],
+                "filingDate": ["2026-09-24", "2026-09-18"],
+                "reportDate": ["2026-09-20", "2026-09-15"],
+                "primaryDocument": ["current-report.htm", "current-report.htm"],
+            }
+        }
+    }
+
+    async def probe():
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=payload, request=request)
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            sec = SECClient(client=client, requests_per_second=10)
+            return await sec.recent_filings("320193", ticker="AAPL")
+
+    result = run_async(probe())
+    assert len(result.items) == 2
+    out = FeedIngestionService().ingest_news_result(db, result)
+    db.commit()
+    assert out["created"] == 2, "el segundo 8-K no es un duplicado del primero"
+    assert out["skipped_duplicates"] == 0
+    events = db.scalars(select(NewsEvent)).all()
+    assert len(events) == 2
+    # Mismo título canónico (la UI distingue por fecha/URL), identidad por URL.
+    assert {e.title for e in events} == {"AAPL 8-K presentado ante la SEC"}
+    assert len({e.url for e in events}) == 2
+
+    # Reingesta del MISMO payload: la URL sí es identidad -> duplicados.
+    out2 = FeedIngestionService().ingest_news_result(db, result)
+    db.commit()
+    assert out2["created"] == 0
+    assert out2["skipped_duplicates"] == 2
