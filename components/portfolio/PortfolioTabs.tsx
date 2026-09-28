@@ -178,12 +178,12 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                 <TabsContent value="resumen" className="mt-0">
                     {/* Salida cruzada a las otras dos páginas de riesgo: el
                         resumen es pesos y precio; el riesgo medido está en
-                        Inteligencia y las concentraciones en Exposiciones. */}
+                        Inteligencia y las concentraciones en Exposiciones.
+                        Sin frase de arquitectura: un subtítulo de una línea y
+                        los dos enlaces (quick win UX 2). */}
                     <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-gray-700/50 bg-surface-1 p-4">
-                        <p className="min-w-0 flex-1 basis-60 text-sm text-gray-400">
-                            El riesgo medido (TWR, XIRR, caída máxima, Sharpe, VaR y correlaciones) y las
-                            concentraciones por sector, país y divisa están fuera de la cartera: en su propia
-                            página, con su propia metodología.
+                        <p className="min-w-0 flex-1 basis-60 text-sm font-medium text-gray-300">
+                            Riesgo y exposiciones, en detalle:
                         </p>
                         <Link className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm text-gray-300 transition hover:border-teal-700 hover:text-teal-300 sm:min-h-0 sm:py-1.5" href="/portfolio/intelligence">
                             <Activity aria-hidden="true" className="h-4 w-4" /> Riesgo y rendimiento

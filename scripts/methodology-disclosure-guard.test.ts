@@ -41,6 +41,22 @@ test('risk deja una línea de orientación y colapsa alcance y límites', () => 
     assert.match(risk, /Esta página no calcula volatilidad, drawdown ni VaR/);
 });
 
+test('portfolio Resumen: banner sin frase de arquitectura, enlaces intactos', () => {
+    const tabs = readFileSync('components/portfolio/PortfolioTabs.tsx', 'utf8');
+    assert.ok(!tabs.includes('están fuera de la cartera: en su propia'), 'la app no se explica a sí misma en el banner');
+    assert.match(tabs, /Riesgo y exposiciones, en detalle:/);
+    // Los dos enlaces de navegación se mantienen.
+    assert.match(tabs, /href="\/portfolio\/intelligence"/);
+    assert.match(tabs, /href="\/risk"/);
+});
+
+test('risk: el kicker no duplica el H1', () => {
+    // Kicker «Cartera · Exposiciones» + H1 «Exposiciones de cartera» decían lo
+    // mismo dos veces seguidas; el kicker nombra solo la sección.
+    assert.match(risk, /<p className="text-sm font-semibold uppercase text-teal-300">Cartera<\/p>/);
+    assert.ok(!risk.includes('Cartera · Exposiciones'), 'kicker duplicado con el H1');
+});
+
 test('el backtesting colapsa su bloque Metodología', () => {
     assert.match(walkforward, /<MethodologyDisclosure title="Metodología del backtest">/);
     assert.match(walkforward, /Walk-forward mensual: cada corte usa únicamente precios de cierre anteriores/);
