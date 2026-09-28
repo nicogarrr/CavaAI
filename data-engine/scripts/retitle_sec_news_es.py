@@ -4,14 +4,19 @@ Contexto: la ingesta es insert-only con dedup por URL antes que por título,
 así que un deploy del conector NO reescribe las filas ya persistidas. Este
 script retitula SOLO esas filas históricas al formato español actual.
 
-Campos que muta (SOLO texto compuesto por CavaAI):
+Campos que muta (SOLO texto compuesto por CavaAI y procedencia mal marcada):
 - NewsEvent.title (visible en /research/news y tarjetas),
-- NewsEvent.summary (del que deriva el título y alimenta otras superficies).
-metadata.source_headline queda INMUTABLE: es el titular ORIGINAL atribuido
-al SEC (#574 lo preserva para citarlo verbatim) y sustituirlo por un texto
-creado por CavaAI haría que los lectores atribuyeran la traducción al SEC.
-Los títulos/resúmenes originales quedan en el backup JSON: se reescribe el
-texto compuesto que muestra la app, nunca la procedencia.
+- NewsEvent.summary (del que deriva el título y alimenta otras superficies),
+- metadata: RETIRA source_headline y marca headline_from_source=false.
+  El source_headline de estas filas NO es un titular publicado por la SEC
+  (el conector viejo lo construía, p.ej. «COST 8-K (fecha)»): conservarlo
+  haría que los lectores de #574 siguieran atribuyendo a la fuente un texto
+  creado por CavaAI. No se sustituye por nada: se retira y queda en el
+  backup. El flag marca el título de display como generado por CavaAI (la
+  UI omite entonces el prefijo de ticker duplicado).
+Títulos, resúmenes y AMBOS valores de metadata originales quedan en el
+backup JSON: el rollback restaura el estado previo exacto, no una
+aproximación.
 
 Seguridad (requisitos de revisión):
 - DRY-RUN por defecto en apply Y en rollback: nada escribe sin --apply.
@@ -23,7 +28,11 @@ Seguridad (requisitos de revisión):
 - Patrón inglés conocido en el título (fecha entre paréntesis, «filed» o
   doble prefijo de ticker F175) y form por allowlist explícita de
   formularios SEC («filing» si es irreconocible, nunca un form inventado).
-- Colisiones por tenant+compañía+título destino: se saltan y reportan.
+- Colisiones por tenant+compañía+título destino: se RELAJAN solo entre
+  filas SEC estrictas con URLs EDGAR canónicas distintas y no vacías (dos
+  8-K distintos comparten título de display por diseño; el dry-run las
+  lista explícitamente para revisión). URL igual, no verificable u origen
+  dudoso: se salta y se reporta. La comprobación se repite al aplicar.
 - Backup exclusivo y durable ANTES de tocar la BD: se crea con modo 'x'
   (nunca sobrescribe), se fsync-ea y se renombra atómicamente.
 - --apply requiere --plan ruta.json: el dry-run escribe el plan revisado y
@@ -144,6 +153,7 @@ def _plan_row(row: NewsEvent, ticker: str) -> dict | None:
             "title": row.title,
             "summary": row.summary,
             "source_headline": old_headline,
+            "headline_from_source": metadata.get("headline_from_source"),
         },
         "new": {
             "title": new_title,
@@ -196,6 +206,19 @@ def _write_backup_durable(path: str, payload: list[dict]) -> None:
         os.close(dir_fd)
 
 
+def _distinct_sec_filing(a: NewsEvent, b: NewsEvent) -> bool:
+    """True solo si ambas filas son SEC estrictas con URLs EDGAR canónicas
+    distintas y no vacías: dos filings distintos, no un duplicado."""
+    if not a.url or not b.url or a.url == b.url:
+        return False
+    for row in (a, b):
+        if row.source != "SEC" or (row.metadata_ or {}).get("connector") != "sec":
+            return False
+        if not _is_sec_url(row.url):
+            return False
+    return True
+
+
 def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
     """Aplica el plan re-verificando cada fila; devuelve (aplicadas, saltadas).
 
@@ -207,7 +230,7 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
     """
     applied = 0
     skipped: list[int] = []
-    seen_destinations: set[tuple] = set()
+    seen_destinations: dict[tuple, int] = {}
     for item in planned:
         row = db.get(NewsEvent, item["id"])
         if (
@@ -231,6 +254,7 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
             "title": row.title,
             "summary": row.summary,
             "source_headline": (row.metadata_ or {}).get("source_headline"),
+            "headline_from_source": (row.metadata_ or {}).get("headline_from_source"),
         }
         if current != item["expected"]:
             # La fila cambió desde el plan revisado: no se pisa.
@@ -238,24 +262,29 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
             continue
         # Colisión en el momento del apply: otra fila del mismo tenant+company
         # ya tiene el título destino (o es otra fila de este mismo plan con el
-        # mismo destino). Sin UNIQUE constraint, saltar en lugar de duplicar.
+        # mismo destino). Se relaja SOLO entre filas SEC estrictas con URLs
+        # EDGAR canónicas distintas y no vacías: dos filings distintos del
+        # mismo form comparten título de display por diseño. URL igual, no
+        # verificable u origen dudoso: se salta en lugar de duplicar.
         new_title = item["new"]["title"]
         clash = db.scalars(
-            select(NewsEvent.id).where(
+            select(NewsEvent).where(
                 NewsEvent.tenant_id == row.tenant_id,
                 NewsEvent.company_id == row.company_id,
                 NewsEvent.title == new_title,
                 NewsEvent.id != row.id,
             )
         ).first()
-        if clash is not None:
+        if clash is not None and not _distinct_sec_filing(row, clash):
             skipped.append(item["id"])
             continue
         destination = (row.tenant_id, row.company_id, new_title)
         if destination in seen_destinations:
-            skipped.append(item["id"])
-            continue
-        seen_destinations.add(destination)
+            other = db.get(NewsEvent, seen_destinations[destination])
+            if other is None or not _distinct_sec_filing(row, other):
+                skipped.append(item["id"])
+                continue
+        seen_destinations[destination] = row.id
         row.title = new_title
         row.summary = item["new"]["summary"]
         # Procedencia: se retira el titular sintético atribuido a la SEC y
@@ -318,8 +347,15 @@ def main(argv: list[str] | None = None) -> int:
                 row.title = entry["old"]["title"]
                 row.summary = entry["old"]["summary"]
                 restored_metadata = dict(row.metadata_ or {})
-                restored_metadata.pop("headline_from_source", None)
-                if entry["old"].get("source_headline") is not None:
+                # Restauración exacta de AMBOS valores: si el flag no
+                # existía antes se retira; si existía se devuelve su valor.
+                if entry["old"].get("headline_from_source") is None:
+                    restored_metadata.pop("headline_from_source", None)
+                else:
+                    restored_metadata["headline_from_source"] = entry["old"]["headline_from_source"]
+                if entry["old"].get("source_headline") is None:
+                    restored_metadata.pop("source_headline", None)
+                else:
                     restored_metadata["source_headline"] = entry["old"]["source_headline"]
                 row.metadata_ = restored_metadata
             db.commit()
@@ -330,6 +366,7 @@ def main(argv: list[str] | None = None) -> int:
         planned: list[dict] = []
         collisions: list[dict] = []
         undetermined: list[int] = []
+        shared: list[tuple[int, int, str]] = []
         planned_titles: dict[tuple, int] = {}
         for row, ticker in candidates:
             plan = _plan_row(row, ticker)
@@ -337,23 +374,33 @@ def main(argv: list[str] | None = None) -> int:
                 undetermined.append(row.id)
                 continue
             # Colisión INTRAPLAN: dos filas del mismo plan que convergen al
-            # mismo título no aparecen en la BD hasta el commit.
+            # mismo título no aparecen en la BD hasta el commit. Se relaja
+            # SOLO entre filings SEC distintos (URLs EDGAR canónicas
+            # distintas y no vacías): el dry-run las lista para revisión.
             plan_key = (row.tenant_id, row.company_id, plan["new"]["title"])
             if plan_key in planned_titles:
-                collisions.append({"id": row.id, "title": plan["new"]["title"],
-                                   "clash_with": planned_titles[plan_key]})
-                continue
-            clash = db.scalar(
-                select(NewsEvent.id).where(
-                    NewsEvent.tenant_id == row.tenant_id,
-                    NewsEvent.company_id == row.company_id,
-                    NewsEvent.title == plan["new"]["title"],
-                    NewsEvent.id != row.id,
-                ).limit(1)
-            )
-            if clash is not None:
-                collisions.append({"id": row.id, "title": plan["new"]["title"], "clash_with": clash})
-                continue
+                other = db.get(NewsEvent, planned_titles[plan_key])
+                if other is not None and _distinct_sec_filing(row, other):
+                    shared.append((planned_titles[plan_key], row.id, plan["new"]["title"]))
+                else:
+                    collisions.append({"id": row.id, "title": plan["new"]["title"],
+                                       "clash_with": planned_titles[plan_key]})
+                    continue
+            else:
+                clash = db.scalars(
+                    select(NewsEvent).where(
+                        NewsEvent.tenant_id == row.tenant_id,
+                        NewsEvent.company_id == row.company_id,
+                        NewsEvent.title == plan["new"]["title"],
+                        NewsEvent.id != row.id,
+                    ).limit(1)
+                ).first()
+                if clash is not None:
+                    if _distinct_sec_filing(row, clash):
+                        shared.append((clash.id, row.id, plan["new"]["title"]))
+                    else:
+                        collisions.append({"id": row.id, "title": plan["new"]["title"], "clash_with": clash.id})
+                        continue
             planned_titles[plan_key] = row.id
             planned.append(plan)
 
@@ -365,6 +412,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  #{item['id']}: {item['expected']['title']!r} -> {item['new']['title']!r}")
         for item in collisions:
             print(f"  COLISIÓN #{item['id']}: destino {item['title']!r} ya existe en #{item['clash_with']}")
+        if shared:
+            print(f"[{mode}] filas que compartirán título de display (filings SEC distintos; revisar):")
+            for first_id, second_id, title in shared:
+                print(f"  COMPARTIDO {title!r}: #{first_id} y #{second_id}")
 
         if not args.apply:
             if args.plan:

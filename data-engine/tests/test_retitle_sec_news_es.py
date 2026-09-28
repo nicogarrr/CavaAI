@@ -246,10 +246,28 @@ def test_apply_revalida_origen_al_aplicar(db_rows, tmp_path, capsys):
     assert "saltadas al aplicar por revalidación" in capsys.readouterr().out
 
 
-def test_colision_en_bd_se_salta(db_rows, tmp_path, capsys):
+def test_colision_en_bd_con_filing_sec_distinto_se_relaja(db_rows, tmp_path, capsys):
+    """Dos filings SEC distintos (URLs EDGAR distintas) comparten título de
+    display por diseño: el dry-run los lista y el apply sanea ambos."""
     db, company = db_rows
     _add_sec_row(db, company, "SEEDC 8-K presentado ante la SEC", "8-K presentado ante la SEC",
                  url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000002/y.htm")
+    vieja = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
+    plan = tmp_path / "plan.json"
+    main(["--plan", str(plan)])
+    out = capsys.readouterr().out
+    assert "COMPARTIDO" in out and "COLISIÓN" not in out
+    assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
+    db.expire_all()
+    assert db.get(NewsEvent, vieja.id).title == "SEEDC 8-K presentado ante la SEC"
+
+
+def test_colision_en_bd_con_fila_no_verificable_se_salta(db_rows, tmp_path, capsys):
+    """Clash con una fila cuyo origen no es verificable (URL fuera de la
+    allowlist EDGAR): se mantiene el skip fail-closed."""
+    db, company = db_rows
+    _add_sec_row(db, company, "SEEDC 8-K presentado ante la SEC", "8-K presentado ante la SEC",
+                 url="https://sec.gov.attacker.example/Archives/edgar/data/1/x.htm")
     vieja = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
     plan = tmp_path / "plan.json"
     main(["--plan", str(plan)])
@@ -259,13 +277,29 @@ def test_colision_en_bd_se_salta(db_rows, tmp_path, capsys):
     assert "COLISIÓN" in capsys.readouterr().out
 
 
-def test_colision_intraplan_se_detecta(db_rows, tmp_path, capsys):
+def test_colision_intraplan_entre_filings_distintos_se_lista(db_rows, tmp_path, capsys):
     db, company = db_rows
-    # Dos filas EN distintas que convergen al mismo título destino.
+    # Dos filings EN distintos (URLs EDGAR distintas) que convergen al mismo
+    # título destino: ambos entran al plan y el dry-run los lista para
+    # revisión.
     _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)",
                  url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/a.htm")
     _add_sec_row(db, company, "SEEDC SEEDC 8-K (2026-09-24)", "SEEDC SEEDC 8-K (2026-09-24)",
                  url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/b.htm")
+    plan = tmp_path / "plan.json"
+    assert main(["--plan", str(plan)]) == 0
+    out = capsys.readouterr().out
+    assert "COMPARTIDO" in out and "COLISIÓN" not in out
+    planned = json.loads(plan.read_text(encoding="utf-8"))
+    assert len(planned) == 2
+
+
+def test_colision_intraplan_misma_url_se_salta(db_rows, tmp_path, capsys):
+    db, company = db_rows
+    # Misma URL (o no verificable): duplicado sospechoso, skip fail-closed.
+    url = "https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/a.htm"
+    _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)", url=url)
+    _add_sec_row(db, company, "SEEDC SEEDC 8-K (2026-09-24)", "SEEDC SEEDC 8-K (2026-09-24)", url=url)
     plan = tmp_path / "plan.json"
     assert main(["--plan", str(plan)]) == 0
     out = capsys.readouterr().out
@@ -303,6 +337,23 @@ def test_rollback_con_precondicion_en_ambos_campos(db_rows, tmp_path, capsys):
     assert "saltadas" in capsys.readouterr().out
 
 
+def test_rollback_restaura_el_valor_previo_del_flag(db_rows, tmp_path):
+    """El rollback restaura AMBOS valores de metadata: una fila que tenía
+    headline_from_source=True antes del plan lo recupera (no se borra)."""
+    db, company = db_rows
+    row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
+    row.metadata_ = {**row.metadata_, "headline_from_source": True}
+    db.commit()
+    backup = _plan_and_apply(tmp_path)
+    db.expire_all()
+    assert db.get(NewsEvent, row.id).metadata_["headline_from_source"] is False
+    assert main(["--rollback", str(backup), "--apply"]) == 0
+    db.expire_all()
+    metadata = db.get(NewsEvent, row.id).metadata_
+    assert metadata["headline_from_source"] is True
+    assert metadata["source_headline"] == "SEEDC 8-K (2026-09-24)"
+
+
 def test_apply_salta_si_company_cambia_tras_el_plan(db_rows, tmp_path, capsys):
     db, company = db_rows
     row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
@@ -335,16 +386,17 @@ def test_colision_aparecida_tras_el_plan_se_salta(db_rows, tmp_path, capsys):
     plan = tmp_path / "plan.json"
     main(["--plan", str(plan)])
     # Entre la revisión del plan y el apply llega una fila nueva con el
-    # título destino (sin UNIQUE constraint, el duplicado entraría mudo).
+    # título destino y origen NO verificable: el apply la vuelve a comprobar
+    # y salta (la relajación solo cubre filings SEC distintos verificables).
     _add_sec_row(db, company, "SEEDC 8-K presentado ante la SEC", "8-K presentado ante la SEC",
-                 url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000003/z.htm")
+                 url="https://not-sec.example/Archives/edgar/data/1000000/z.htm")
     assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
     db.expire_all()
     assert db.get(NewsEvent, row.id).title == "SEEDC 8-K (2026-09-24)"  # intacta
     assert "saltadas al aplicar por revalidación" in capsys.readouterr().out
 
 
-def test_apply_plan_intraplan_mismo_destino_salta_la_segunda(db_rows):
+def test_apply_plan_intraplan_mismo_destino_aplica_filings_distintos(db_rows):
     db, company = db_rows
     a = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)",
                      url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/a.htm")
@@ -355,15 +407,18 @@ def test_apply_plan_intraplan_mismo_destino_salta_la_segunda(db_rows):
         return {
             "id": r.id, "tenant_id": r.tenant_id, "company_id": r.company_id,
             "expected": {"title": r.title, "summary": r.summary,
-                         "source_headline": r.metadata_["source_headline"]},
+                         "source_headline": r.metadata_["source_headline"],
+                         "headline_from_source": r.metadata_.get("headline_from_source")},
             "new": {"title": "SEEDC 8-K presentado ante la SEC",
                     "summary": "SEEDC 8-K presentado ante la SEC"},
         }
 
     applied, skipped = _apply_plan(db, [_entry(a), _entry(b)])
     db.commit()
-    assert applied == 1
-    assert skipped == [b.id]
+    # Dos filings SEC distintos (URLs EDGAR distintas): ambos se aplican y
+    # comparten título de display por diseño.
+    assert applied == 2
+    assert skipped == []
     db.expire_all()
     assert db.get(NewsEvent, a.id).title == "SEEDC 8-K presentado ante la SEC"
-    assert db.get(NewsEvent, b.id).title == "SEEDC SEEDC 8-K (2026-09-24)"
+    assert db.get(NewsEvent, b.id).title == "SEEDC 8-K presentado ante la SEC"
