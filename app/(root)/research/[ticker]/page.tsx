@@ -78,7 +78,7 @@ import ThesisApproveButton from '@/components/research/ThesisApproveButton';
 import CitationsList from '@/components/chat/CitationsList';
 import FollowButton from '@/components/screener/FollowButton';
 import ThesisGenerateButton from '@/components/research/ThesisGenerateButton';
-import { formatCompact, formatDate, formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
+import { formatCompact, formatDate, formatMarketDate, formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { glossary, moatGlossaryKey } from '@/lib/glossary';
 
 export const dynamic = 'force-dynamic';
@@ -426,11 +426,18 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
   const missingInputs = (valuation.missing_inputs ?? []).filter(Boolean);
   const engineNotice = typeof valuation.trace?.notice === 'string' ? valuation.trace.notice : null;
   const notPublishable = valuation.status !== 'ok' || valuation.publishable === false;
+  // F348: el precio del modelo es un snapshot persistido; el precio canónico
+  // (en vivo) es el de la cabecera. El del modelo se rotula con su fecha,
+  // nunca como precio actual.
+  const priceAsOf = typeof valuation.trace?.price_as_of === 'string' ? valuation.trace.price_as_of : null;
+  const modelPriceLabel = priceAsOf
+    ? `Precio del modelo al ${formatMarketDate(priceAsOf, { day: 'numeric', month: 'short' })}`
+    : 'Precio del modelo';
   if (notPublishable) {
     return (
       <div className="space-y-3">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat label="Precio actual" value={formatMoney(valuation.current_price, currency)} />
+          <Stat label={modelPriceLabel} value={formatMoney(valuation.current_price, currency)} />
         </div>
         <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-4 text-sm text-amber-200">
           <p className="font-semibold">Orientación del motor, no precio objetivo.</p>
@@ -458,7 +465,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
   return (
     <div className="space-y-3">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Precio actual" value={formatMoney(valuation.current_price, currency)} />
+        <Stat label={modelPriceLabel} value={formatMoney(valuation.current_price, currency)} />
         <Stat label="Bear" value={formatMoney(valuation.bear_value, currency)} />
         <Stat label="Base" value={formatMoney(valuation.base_value, currency)} />
         <Stat label="Bull" value={formatMoney(valuation.bull_value, currency)} />

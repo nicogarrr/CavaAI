@@ -131,6 +131,26 @@ def _position_price(db: Session, company_id: int) -> float | None:
     return None
 
 
+def _position_price_as_of(db: Session, company_id: int) -> str | None:
+    """Fecha (ISO) del precio que ``_position_price`` resuelve, con la misma
+    precedencia (posicion primero, ultimo cierre despues). None si no hay
+    precio o la fuente no declara fecha. La ficha lo usa para rotular el
+    precio del modelo con su fecha, nunca como precio actual."""
+    position = db.scalar(select(Position).where(Position.company_id == company_id).limit(1))
+    if position and position.market_price and float(position.market_price) > 0:
+        ts = getattr(position, "updated_at", None)
+        return ts.date().isoformat() if ts else None
+    market_price = db.scalar(
+        select(MarketPrice)
+        .where(MarketPrice.company_id == company_id)
+        .order_by(desc(MarketPrice.date))
+        .limit(1)
+    )
+    if market_price and market_price.close and float(market_price.close) > 0:
+        return market_price.date.isoformat()
+    return None
+
+
 class ValuationService:
     def value_company(
         self, db: Session, company: Company, *, as_of: date | None = None
@@ -182,6 +202,14 @@ class ValuationService:
                 result["trace"]["incomplete_without_price"] = True
         else:
             result["trace"]["price_status"] = "ok"
+
+        # El precio del modelo es un snapshot (posicion o ultimo cierre en
+        # DB), no la cotizacion en vivo: la ficha lo rotula con esta fecha.
+        # La fecha es best-effort: sin ella, None honesto (el precio ya esta).
+        try:
+            result["trace"]["price_as_of"] = _position_price_as_of(db, company.id)
+        except Exception:  # noqa: BLE001 - la fecha nunca rompe la valoracion
+            result["trace"]["price_as_of"] = None
 
         return result
 

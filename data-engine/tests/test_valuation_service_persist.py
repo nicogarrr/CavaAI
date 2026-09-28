@@ -144,3 +144,43 @@ def test_falls_back_to_latest_close_then_none(db):
     db.add(other)
     db.commit()
     assert _position_price(db, other.id) is None
+
+
+def test_price_as_of_from_latest_close(db):
+    """F348: el precio del modelo declara su fecha (ultimo cierre en DB)."""
+    from app.services.valuation_service import _position_price_as_of
+    company = _company(db)
+    db.add_all([
+        MarketPrice(
+            company_id=company.id, date=date(2026, 9, 20),
+            open=Decimal("90"), high=Decimal("95"), low=Decimal("89"),
+            close=Decimal("94"), adj_close=Decimal("94"), source="Finnhub",
+        ),
+        MarketPrice(
+            company_id=company.id, date=date(2026, 9, 22),
+            open=Decimal("100"), high=Decimal("101"), low=Decimal("99"),
+            close=Decimal("100"), adj_close=Decimal("100"), source="Finnhub",
+        ),
+    ])
+    db.commit()
+    assert _position_price_as_of(db, company.id) == "2026-09-22"
+
+
+def test_price_as_of_prefers_position_timestamp(db):
+    """F348: si el precio viene de la posicion, la fecha es la de la posicion."""
+    from app.services.valuation_service import _position_price_as_of
+    company = _company(db)
+    pos = Position(company_id=company.id, quantity=Decimal("1"), market_price=Decimal("150"))
+    db.add(pos)
+    db.commit()
+    db.refresh(pos)
+    as_of = _position_price_as_of(db, company.id)
+    assert as_of is not None
+    assert as_of == pos.updated_at.date().isoformat()
+
+
+def test_price_as_of_none_without_price(db):
+    """F348: sin precio no hay fecha (None honesto, nunca fabricada)."""
+    from app.services.valuation_service import _position_price_as_of
+    company = _company(db)
+    assert _position_price_as_of(db, company.id) is None
