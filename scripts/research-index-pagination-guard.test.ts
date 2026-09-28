@@ -82,8 +82,12 @@ void test('la página usa el helper y declara el contador honesto de lo visible'
     const page = readSource(PAGE);
     assert.match(page, /filterResearchIndex\(ordered, query\)/, 'filtra en servidor con el helper');
     assert.match(page, /paginateResearchIndex\(filtered, requestedPage\)/, 'pagina en servidor con el helper');
-    assert.match(page, /const detailed = slice\.rows\.slice\(0, THESIS_DETAIL_LIMIT\)/, 'el detalle se pide solo para la página visible');
-    assert.match(page, /THESIS_DETAIL_LIMIT = RESEARCH_INDEX_PAGE_SIZE/, 'toda tarjeta visible entra en el tope de detalle');
+    // Quick win UX 6: el orden por relevancia exige saber qué empresas
+    // tienen tesis, así que el detalle se pide para TODAS en lotes del
+    // tope del endpoint y las tarjetas visibles reutilizan ese mapa.
+    assert.match(page, /SNAPSHOT_BATCH_SIZE = 50/, 'lotes del tope del endpoint de snapshots');
+    assert.match(page, /Object\.assign\(\{\}, \.\.\.parts\.map\(\(part\) => part\.snapshots\)\)/, 'un solo mapa reutilizado por las tarjetas');
+    assert.ok(!page.includes('THESIS_DETAIL_LIMIT'), 'ya no hay recorte de detalle por página');
     assert.ok(!page.includes('pendiente'), 'desaparece el estado «pendiente»: ninguna tarjeta visible sale sin detalle por recorte');
     assert.match(page, /Mostrando \$\{formatNumber\(slice\.from\)\}-\$\{formatNumber\(slice\.to\)\} de \$\{formatNumber\(slice\.total\)\} empresas/, 'contador de lo visible');
     assert.match(page, /Mostrando \$\{formatNumber\(slice\.from\)\}-\$\{formatNumber\(slice\.to\)\} de \$\{formatNumber\(slice\.total\)\} coincidencias para «\$\{query\}»/, 'bajo filtro también se declara el rango visible');
