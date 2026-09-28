@@ -6,6 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.workers.dramatiq_app import (
+    backfill_document_kpis,
     consolidate_memory,
     dispatch_insider_alerts,
     dispatch_tracked_news_alerts,
@@ -144,6 +145,15 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         "interval",
         job_id="ir_refresh",
         hours=1,
+    )
+    # Backpressure KPI: recupera extracciones diferidas cuando la cola
+    # kpis vuelve a tener capacidad (ver backfill_document_kpis).
+    _register(
+        scheduler,
+        backfill_document_kpis.send,
+        "interval",
+        job_id="kpi_backfill",
+        minutes=5,
     )
     _register(
         scheduler,
