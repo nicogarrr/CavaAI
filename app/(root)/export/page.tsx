@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import ExportView from '@/components/export/ExportView';
+import ObsidianVaultCard from '@/components/export/ObsidianVaultCard';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export const metadata: Metadata = {
     title: 'Exportación',
-    description: 'Descarga el journal de decisiones de inversión de un año completo en CSV o JSON.',
+    description: 'Descarga el journal de decisiones de inversión en CSV o JSON, o tus tesis en un vault de Obsidian (.zip).',
 };
 
 export default async function ExportPage() {
@@ -17,12 +18,14 @@ export default async function ExportPage() {
                     <p className="text-sm font-semibold uppercase text-teal-300">Diario</p>
                     <h1 className="mt-1 text-3xl font-bold text-gray-100">Exportación</h1>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
-                        Descarga el journal de decisiones de inversión de un año completo en CSV o JSON.
+                        Descarga el journal de decisiones de inversión de un año completo en CSV o JSON, o tus tesis de cartera y watchlist en un vault de Obsidian (.zip).
                     </p>
                 </div>
             </header>
 
             <ExportView />
+
+            <ObsidianVaultCard />
         </main>
     );
 }
