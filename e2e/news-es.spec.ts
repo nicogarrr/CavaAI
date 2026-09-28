@@ -55,6 +55,17 @@ test("tarjetas de /research sin sector en inglés", async ({ page }) => {
 // no repite el ticker como prefijo — la UI muestra el título recortado y la
 // API expone el flag que lo gobierna.
 test("titular sintético SEC sin prefijo de ticker duplicado", async ({ page, request }) => {
+  // La API expone el ticker desde la empresa enlazada: sin ficha E2ESEC el
+  // evento sale con ticker null y la UI no recorta el prefijo (no sabe cuál).
+  const ensureBody = Buffer.from(
+    JSON.stringify({ ticker: "E2ESEC", name: "E2E SEC Corp" })
+  );
+  const ensure = await request.post(`${apiBase}/api/companies/ensure`, {
+    data: ensureBody,
+    headers: signedHeaders("POST", "/api/companies/ensure", ensureBody),
+  });
+  expect(ensure.status(), await ensure.text()).toBeLessThan(300);
+
   const url = `https://www.sec.gov/Archives/edgar/data/320193/e2e-strip-${Date.now()}.htm`;
   const payload = {
     source: "sec_filing",
