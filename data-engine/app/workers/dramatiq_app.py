@@ -915,6 +915,7 @@ def refresh_sec_filings(
         try:
             service = FeedIngestionService()
             processed = ingested = queued_documents = 0
+            skipped_documents = 0
             errors: list[dict] = []
             emitted: set[str] = set()
             companies = _companies(db, ticker)
@@ -942,23 +943,30 @@ def refresh_sec_filings(
                     if result.status != "error":
                         processed += 1
                     ingested += int(ingestion.get("created", 0))
-                    for item in result.items:
-                        if not item.url:
-                            continue
-                        fingerprint = _emit_fingerprint("process_document", company.ticker, item.url)
-                        if fingerprint in emitted:
-                            continue
-                        emitted.add(fingerprint)
-                        process_document.send(
-                            company.ticker,
-                            item.title,
-                            item.url,
-                            "SEC",
-                            item.published_at.isoformat() if item.published_at else None,
-                            tenant_id,
-                            user_id,
-                        )
-                        queued_documents += 1
+                    if settings.sec_document_jobs_enabled:
+                        for item in result.items:
+                            if not item.url:
+                                continue
+                            fingerprint = _emit_fingerprint("process_document", company.ticker, item.url)
+                            if fingerprint in emitted:
+                                continue
+                            emitted.add(fingerprint)
+                            process_document.send(
+                                company.ticker,
+                                item.title,
+                                item.url,
+                                "SEC",
+                                item.published_at.isoformat() if item.published_at else None,
+                                tenant_id,
+                                user_id,
+                            )
+                            queued_documents += 1
+                    else:
+                        # F359: la SEC bloquea la IP de OCI (403 permanente),
+                        # asi que los jobs de documento SEC siempre fallan.
+                        # No se emiten; la metadata sigue entrando por el
+                        # mirror HF. El contador deja visible la supresion.
+                        skipped_documents += sum(1 for item in result.items if item.url)
                 except Exception as exc:
                     _rollback(db)
                     errors.append(
@@ -975,6 +983,7 @@ def refresh_sec_filings(
                 "companies_processed": processed,
                 "news_ingested": ingested,
                 "documents_queued": queued_documents,
+                "documents_skipped_sec_blocked": skipped_documents,
                 "errors": errors,
             }
         finally:
