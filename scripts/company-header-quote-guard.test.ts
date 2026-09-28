@@ -93,6 +93,12 @@ test('la variación omite ausencias: línea entera fuera si faltan ambos', () =>
     assert.ok(!/N\/D/.test(component), 'la cabecera no debe pintar placeholders N/D');
 });
 
+test('el color del signo sigue al dato disponible (change ?? changePercent)', () => {
+    // Con change ausente y changePercent negativo, el porcentaje no puede
+    // salir en verde: el signo se deriva del primer valor presente.
+    assert.match(component, /quote\.change \?\? quote\.changePercent \?\? 0/);
+});
+
 test('el precio de cierre se rotula con fecha y el sparkline muestra su rango', () => {
     // Fallback a vela: la variación del proveedor no describe ese cierre.
     assert.match(actions, /const change = quoteLive \? quote\?\.d \?\? null : null;/);

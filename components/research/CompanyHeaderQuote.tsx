@@ -22,7 +22,10 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
     const points = sparklinePoints(sessions.map((point) => point.close));
     const firstDate = sessions[0]?.date ?? null;
     const lastDate = sessions[sessions.length - 1]?.date ?? null;
-    const positive = (quote.change ?? 0) >= 0;
+    // Signo coherente con el dato mostrado: si falta change, manda
+    // changePercent; sin ninguno, no hay linea de variacion que colorear.
+    const signBase = quote.change ?? quote.changePercent ?? 0;
+    const positive = signBase >= 0;
     return (
         <div className="sm:ml-auto sm:text-right">
             {showPrice ? (
