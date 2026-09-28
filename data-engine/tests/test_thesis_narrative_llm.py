@@ -252,3 +252,18 @@ def test_caveat_titulares_must_come_after_headlines(db, monkeypatch):
         provider=_FakeProvider(
             ["valoracion_posicion", "caveat_titulares", "titular_0"]))
     assert result == "base"
+
+
+def test_no_valuation_core_returns_baseline_without_llm_call(db, monkeypatch):
+    # status ok con current_price=None (posible en valuation_service): solo
+    # existiria expectativas_mercado, que afirmaria "El mercado descuenta..."
+    # sin mercado. Capa 1 intacta y ni siquiera se llama al proveedor.
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    valuation = {"status": "ok", "current_price": None, "base_value": None,
+                 "margin_of_safety": None, "missing_inputs": [],
+                 "reverse_dcf": {"required_revenue_growth": 0.35}}
+    provider = _FakeProvider(["expectativas_mercado"])
+    result = narrative.maybe_narrative(
+        db, _company(), valuation, HYPOTHESIS, NEWS, "base", provider=provider)
+    assert result == "base"
+    assert provider.calls == 0

@@ -225,6 +225,12 @@ def maybe_narrative(
     fragments = _fragment_templates(company, valuation, list(news_items or []))
     if not fragments:
         return baseline
+    if "caveat_insufficient" not in fragments and "valoracion_posicion" not in fragments:
+        # Sin nucleo de valoracion (status ok/draft pero sin precio/base/MoS:
+        # valuation_service admite current_price=None con status=ok) solo
+        # quedarian expectativas o titulares, que afirmarian cosas del mercado
+        # sin mercado. La capa 1 ya dice que faltan datos: no se sustituye.
+        return baseline
     provider = provider or create_llm_provider()
     if provider.name == "disabled":
         return baseline
