@@ -16,6 +16,7 @@ from app.models import CashBalance, Company, FinancialFact, MarketPrice, Positio
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.portfolio_ledger_service import BUY_ACTIONS, SELL_ACTIONS
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
+from app.services.tax_report_service import cash_amount, is_cash_action
 
 # Exchange -> listing-market country. Best-effort fallback only: the owning
 # fact is issuer domicile, and positions without a known exchange are grouped
@@ -173,7 +174,7 @@ class PortfolioIntelligenceService:
         beta, beta_trace = self._beta(db, portfolio_returns, cutoff)
         benchmark = self._benchmark_comparison(db, portfolio_returns, cutoff)
         exposures = self._exposures(rows, total_value, base_values)
-        attribution = self._attribution(db, rows, weights, price_series)
+        attribution = self._attribution(db, rows, weights, price_series, cutoff)
         ledger_contribution = self._ledger_contribution(db, rows, cutoff)
         complete_price_series = sum(len(series) >= 2 for series in price_series.values())
         return {
@@ -409,7 +410,16 @@ class PortfolioIntelligenceService:
             # turned a 20,00% money-weighted return into 25,00% with status
             # "calculated". Costs must reduce the return they are charged on.
             action = (transaction.action or "").lower()
-            gross = float(transaction.quantity) * float(transaction.price)
+            # Buy/sell are share-denominated (quantity x price); cash rows
+            # carry the amount in `price` with quantity 0 or 1, so they go
+            # through the shared helper: multiplying them by a 0/1 quantity
+            # made every quantity-0 dividend invisible to XIRR while the tax
+            # report declared it.
+            gross = (
+                cash_amount(transaction)
+                if is_cash_action(action)
+                else float(transaction.quantity) * float(transaction.price)
+            )
             fees = float(transaction.fees or 0)
             if action in BUY_ACTIONS:
                 net, sign = gross + fees, -1
@@ -810,16 +820,63 @@ class PortfolioIntelligenceService:
                 exposures["factors"][factor] += weight
         return {key: dict(value) for key, value in exposures.items()}
 
+    @staticmethod
+    def _period_fx_return(
+        fx_table: dict[tuple[str, str], list[tuple[date, Decimal]]],
+        position: Position,
+        base_currency: str,
+        cutoff: date,
+    ) -> float | None:
+        """Retorno FX del periodo de la divisa de cotizacion, no su nivel.
+
+        ``Position.fx_rate`` es el tipo de cambio SPOT a fecha ``as_of``: un
+        nivel, nunca una variacion. Restarle 1 fabricaba una contribucion
+        permanente (fx_rate 0,92 -> -8% de FX para siempre) y esa misma
+        cifra inventada se restaba del residuo ``multiple``. El componente
+        correcto es el retorno del periodo ``fx_ahora / fx_en_corte - 1``.
+
+        Si cualquiera de las dos patas no existe, el componente se queda en
+        None (desconocido): nunca se degrada a un nivel, porque un nivel
+        publicado como retorno es una cifra sin significado.
+        """
+        if position.fx_rate is None:
+            return None
+        rate_at_cutoff = PortfolioFXService.rate_from_table(
+            fx_table,
+            quote_currency=position.currency or "",
+            base_currency=base_currency,
+            as_of=cutoff,
+        )
+        if not rate_at_cutoff:
+            return None
+        return float(position.fx_rate) / float(rate_at_cutoff) - 1
+
     def _attribution(
         self,
         db: Session,
         rows: list[tuple[Position, Company]],
         weights: dict[int, float],
         price_series: dict[int, list[MarketPrice]],
+        cutoff: date,
     ) -> dict[str, Any]:
         positions = []
         totals = defaultdict(float)
         company_ids = [company.id for _, company in rows]
+        fx = PortfolioFXService()
+        base_currency = fx.base_currency(db)
+        # Lote FX: una tabla para todo el horizonte (anti N+1), resuelta en
+        # memoria igual que _ledger_contribution.
+        fx_table = (
+            fx.fx_table(
+                db,
+                currencies={position.currency for position, _ in rows if position.currency}
+                | {base_currency},
+                base_currency=base_currency,
+                as_of_max=date.today(),
+            )
+            if rows
+            else {}
+        )
         # Lote: 1 query de facts + 1 de dividendos para todas las posiciones
         # (anti N+1 por compañía en attribution).
         all_facts: dict[int, dict[str, list[FinancialFact]]] = defaultdict(lambda: defaultdict(list))
@@ -842,9 +899,7 @@ class PortfolioIntelligenceService:
                 )
             ).all():
                 if dividend.company_id is not None:
-                    all_dividends[dividend.company_id] += float(
-                        dividend.quantity * dividend.price
-                    )
+                    all_dividends[dividend.company_id] += float(cash_amount(dividend))
         for position, company in rows:
             prices = price_series.get(company.id, [])
             # El ratio exige AMBOS extremos ajustados: con historica ajustada
@@ -867,9 +922,10 @@ class PortfolioIntelligenceService:
                 if position.cost_basis_native and position.cost_basis_native > 0
                 else 0
             )
-            fx_component = (
-                float(position.fx_rate) - 1 if position.fx_rate is not None else 0
-            )
+            fx_component = self._period_fx_return(fx_table, position, base_currency, cutoff)
+            # El residuo se queda en None cuando el retorno total o el de FX
+            # son desconocidos: restar un componente no medido (o medir uno
+            # con un nivel) daria una cifra con apariencia de cierre.
             multiple = (
                 total_return
                 - (fundamental_growth or 0)
@@ -877,7 +933,7 @@ class PortfolioIntelligenceService:
                 - buybacks
                 + dilution
                 - fx_component
-                if total_return is not None
+                if total_return is not None and fx_component is not None
                 else None
             )
             components = {
@@ -896,6 +952,7 @@ class PortfolioIntelligenceService:
                     "ticker": company.ticker,
                     "weight": weights.get(company.id, 0),
                     "total_return": total_return,
+                    "fx_known": fx_component is not None,
                     "components": components,
                 }
             )

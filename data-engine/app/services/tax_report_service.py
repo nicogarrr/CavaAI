@@ -93,6 +93,56 @@ DIVIDEND_ACTIONS = {"dividend", "div", "cash_dividend", "withholding"}
 SELL_ACTIONS = {"sell", "sold"}
 BUY_ACTIONS = {"buy", "bot", "b"}
 
+#: Movimientos de caja del ledger: nunca denominados en acciones. La forma
+#: canonica de la fila es el IMPORTE en ``price`` con ``quantity`` 0 o 1
+#: (``quantity=0`` es legitimo para caja; el importador IBKR escribe
+#: ``quantity=1, price=amount``). Antes el informe fiscal leia
+#: ``price or quantity`` y el resto de consumidores multiplicaban
+#: ``quantity * price``: una entrada manual ``{"dividend", 100, 0.25}`` (= 25)
+#: se declaraba como 0,25 en la declaration y como 25,00 en el XIRR, un
+#: error de 100x en una cifra que acaba en un impreso fiscal.
+CASH_LEDGER_ACTIONS = frozenset(
+    {"dividend", "div", "cash_dividend", "withholding", "interest", "fee", "cash_misc"}
+)
+#: Cantidades admitidas en una fila de caja bajo la convencion canonica.
+CASH_UNIT_QUANTITIES = (Decimal("0"), Decimal("1"))
+
+
+def is_cash_action(action: str | None) -> bool:
+    """True si la accion es un movimiento de caja (no buy/sell)."""
+    return (action or "").lower() in CASH_LEDGER_ACTIONS
+
+
+def cash_amount(transaction) -> Decimal:
+    """Importe de un movimiento de caja, con la convencion unica del ledger.
+
+    El importe vive en ``price``; ``quantity`` es 0 o 1 y NO multiplica. Se
+    comparan con ``is not None`` y no por verdad: un dividendo de ``0,00``
+    es un dividendo de cero, no un dividendo de ``quantity``. Si ``price``
+    viniera a None (fila historica corrupta) se cae a ``quantity`` antes que
+    declarar un 0 inventado.
+
+    Helper COMPARTIDO con ``portfolio_intelligence_service`` (``_xirr`` y la
+    atribucion de dividendos) para que el informe fiscal y la atribucion no
+    puedan discrepar sobre el mismo movimiento de caja.
+    """
+    price = getattr(transaction, "price", None)
+    if price is not None:
+        return Decimal(str(price))
+    quantity = getattr(transaction, "quantity", None)
+    return Decimal(str(quantity)) if quantity is not None else Decimal("0")
+
+
+def cash_quantity_is_canonical(transaction) -> bool:
+    """False si la fila de caja rompe la convencion (quantity fuera de {0, 1}).
+
+    Una fila asi es ambigua: 25 unidades a 0,25 (importe 6,25) o un dividendo
+    de 25 mal escrito. Se acepta el importe de ``price`` pero la fila se
+    marca para revision en vez de declararse en silencio.
+    """
+    quantity = getattr(transaction, "quantity", None)
+    return quantity is None or Decimal(str(quantity)) in CASH_UNIT_QUANTITIES
+
 
 def _money(value: Decimal | None) -> float | None:
     if value is None:
@@ -173,6 +223,31 @@ class TaxReportService:
             .order_by(Transaction.trade_date, Transaction.id)
         ).all()
 
+        # Lote FX: UNA tabla por informe (anti N+1). Antes `self.fx.rate(...)`
+        # se llamaba una vez por cada fila de dividendo/retencion/otros y otra
+        # por cada venta, con 1-2 SELECT cada vez; y como `_build_filing`
+        # recalcula los cuatro ejercicios anteriores, un solo GET recorria el
+        # libro entero unas 5 veces. `rate_from_table` replica `rate` en
+        # memoria (mismo par, misma fecha maxima, mismo inverso).
+        fx_table = self.fx.fx_table(
+            db,
+            currencies={transaction.currency for transaction, _ in rows if transaction.currency},
+            base_currency=base_currency,
+            as_of_max=max(
+                (transaction.trade_date for transaction, _ in rows), default=end
+            ),
+        )
+
+        def resolve_rate(currency: str | None, as_of: date) -> Decimal | None:
+            return PortfolioFXService.rate_from_table(
+                fx_table,
+                quote_currency=currency or "",
+                base_currency=base_currency,
+                as_of=as_of,
+            )
+
+        inconsistent_cash: list[dict] = []
+
         dividends_by_company: dict[str, dict] = {}
         realized_by_company: dict[str, dict] = {}
         misc_rows: list[dict] = []
@@ -201,14 +276,19 @@ class TaxReportService:
             else:
                 ticker = company.ticker
             if action in DIVIDEND_ACTIONS or "dividend" in action or "withholding" in action:
-                rate = self.fx.rate(
-                    db,
-                    quote_currency=transaction.currency,
-                    base_currency=base_currency,
-                    as_of=transaction.trade_date,
-                )
-                gross = transaction.price if transaction.price else transaction.quantity
-                amount_native = gross
+                rate = resolve_rate(transaction.currency, transaction.trade_date)
+                amount_native = cash_amount(transaction)
+                if is_cash_action(action) and not cash_quantity_is_canonical(transaction):
+                    inconsistent_cash.append(
+                        {
+                            "ticker": ticker,
+                            "date": transaction.trade_date.isoformat(),
+                            "action": action,
+                            "quantity": float(transaction.quantity or 0),
+                            "amount": _money(amount_native),
+                            "currency": transaction.currency,
+                        }
+                    )
                 # Never convert at par: without a real FX rate the base
                 # amount is unknown and must stay None.
                 amount_base = amount_native * rate if rate is not None else None
@@ -265,20 +345,26 @@ class TaxReportService:
                 continue
 
             if action in {"interest", "fee", "cash_misc"}:
-                rate = self.fx.rate(
-                    db,
-                    quote_currency=transaction.currency,
-                    base_currency=base_currency,
-                    as_of=transaction.trade_date,
-                )
-                amount = transaction.price or transaction.quantity
+                rate = resolve_rate(transaction.currency, transaction.trade_date)
+                amount = cash_amount(transaction)
+                if not cash_quantity_is_canonical(transaction):
+                    inconsistent_cash.append(
+                        {
+                            "ticker": ticker,
+                            "date": transaction.trade_date.isoformat(),
+                            "action": action,
+                            "quantity": float(transaction.quantity or 0),
+                            "amount": _money(amount),
+                            "currency": transaction.currency,
+                        }
+                    )
                 misc_rows.append(
                     {
                         "date": transaction.trade_date.isoformat(),
                         "ticker": ticker,
                         "type": action,
                         "amount_native": _money(amount),
-                        "amount_base": _money(amount * rate) if rate else None,
+                        "amount_base": _money(amount * rate) if rate is not None else None,
                         "currency": transaction.currency,
                     }
                 )
@@ -505,12 +591,7 @@ class TaxReportService:
                     and sale["qty_unblocked"] > 0
                     and sale["date"] + WASH_SALE_WINDOW > last_data_date
                 )
-                rate = self.fx.rate(
-                    db,
-                    quote_currency=transaction.currency,
-                    base_currency=base_currency,
-                    as_of=transaction.trade_date,
-                )
+                rate = resolve_rate(transaction.currency, transaction.trade_date)
                 if rate is not None:
                     computable_base = computable_native * rate
                     blocked_base = blocked_native * rate
@@ -652,6 +733,11 @@ class TaxReportService:
                 {b["ticker"] for b in dividends if b["missing_fx"]}
                 | {b["ticker"] for b in realized if b["missing_fx"]}
             ),
+            # Movimientos de caja con `quantity` fuera de {0, 1}: el importe
+            # declarado sale de `price` (la convencion del ledger) pero la fila
+            # es ambigua y se lista para revision en vez de declararse en
+            # silencio. La creacion por API rechaza estas filas con un 400.
+            "inconsistent_cash_rows": inconsistent_cash,
         }
 
         data = {
