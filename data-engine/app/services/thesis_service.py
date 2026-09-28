@@ -495,16 +495,23 @@ class ThesisService:
             if required_growth is not None
             else ""
         )
+        # MoS = base/price - 1 (valuation/engines/base.py): se nombra
+        # explicitamente. Describirlo como distancia precio/base ("un X% por
+        # encima del escenario base") usaria el denominador equivocado: con
+        # precio 336.56 y base 106.85 diria "68% por encima" cuando el precio
+        # esta un ~215% por encima.
         if mos >= 0:
             return (
-                f"A {price:.2f}, el mercado valora {company.name} un {mos:.0%} por debajo "
-                f"del escenario base ({base:.2f}). Hipotesis: los fundamentales modelados "
-                f"son alcanzables y el mercado corrige ese descuento.{growth_txt}"
+                f"A {price:.2f}, {company.name} cotiza con un margen de seguridad "
+                f"del {mos:.0%} respecto al escenario base ({base:.2f}). Hipotesis: "
+                f"los fundamentales modelados son alcanzables y el mercado corrige "
+                f"ese descuento.{growth_txt}"
             )
         return (
-            f"A {price:.2f}, el mercado valora {company.name} un {abs(mos):.0%} por encima "
-            f"del escenario base ({base:.2f}). Hipotesis: el precio descuenta mas de lo "
-            f"que los fundamentales modelados soportan.{growth_txt}"
+            f"A {price:.2f}, {company.name} cotiza con un margen de seguridad "
+            f"del {mos:.0%} respecto al escenario base ({base:.2f}). Hipotesis: "
+            f"el precio descuenta mas de lo que los fundamentales modelados "
+            f"soportan.{growth_txt}"
         )
 
     def _catalysts(self, evidence: dict) -> list[dict]:
