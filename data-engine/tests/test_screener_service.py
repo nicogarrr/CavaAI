@@ -178,7 +178,11 @@ def test_ranking_dependencies_are_included_in_result_quality():
         missing_result = next(row for row in response["results"] if row["ticker"] == "MISS")
         assert complete_result["matched"] is True
         assert complete_result["coverage_percent"] == 100
-        assert missing_result["matched"] is False
+        # La formula de ranking ordena, no filtra: MISS cumple el unico criterio
+        # (roic 0.18 > 0.1) asi que entra en el screen, aunque no se pueda
+        # ordenar. La dependencia que falta se sigue declarando en la calidad
+        # del resultado (coverage 50, missing_fields) para no ocultarla.
+        assert missing_result["matched"] is True
         assert missing_result["coverage_percent"] == 50
         assert missing_result["missing_fields"] == ["quality_score"]
         assert response["results"][0]["ticker"] == "COMP"
