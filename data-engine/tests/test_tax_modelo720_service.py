@@ -34,12 +34,16 @@ def db():
         yield session
 
 
-def _seed(db: Session):
+def _seed(db: Session, custody: bool = True, base_currency: str = "EUR"):
     tenant = Tenant(external_id="m720-test", name="M720 test")
     db.add(tenant)
     db.flush()
+    if custody:
+        # Custodia extranjera DECLARADA por el tenant: la importación IBKR
+        # por sí sola no acredita dónde está depositado cada valor.
+        tenant.metadata_ = {"tax_declarant": {"custody_country": "IE"}}
     portfolio = Portfolio(
-        tenant_id=tenant.id, name="Main", base_currency="EUR", is_default=True
+        tenant_id=tenant.id, name="Main", base_currency=base_currency, is_default=True
     )
     db.add(portfolio)
     db.flush()
@@ -91,8 +95,8 @@ _PARENTS = {}
 
 
 def _parent_snapshot(db, tenant, portfolio, day):
-    # Un único snapshot padre por fecha (unique tenant+portfolio+fecha).
-    key = day
+    # Un único snapshot padre por portfolio+fecha (unique tenant+portfolio+fecha).
+    key = (portfolio.id, day)
     if key in _PARENTS:
         return _PARENTS[key]
     snap = PortfolioDailySnapshot(
@@ -283,9 +287,11 @@ def test_short_position_excluded_from_total(db):
 
 
 def test_foreign_custody_unverified_excluded(db):
-    tenant, portfolio = _seed(db)
+    tenant, portfolio = _seed(db, custody=False)  # sin custodia declarada
     c = _company(db, tenant, "AAPL", isin="US0378331005")
-    _position_row(db, tenant, portfolio, c, source="manual")  # sin origen extranjero
+    # Aunque la posición proceda de IBKR: importar del bróker NO acredita
+    # dónde está depositado el valor (dictamen auditor).
+    _position_row(db, tenant, portfolio, c, source="ibkr_flex")
     _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 60000)
 
     result = Modelo720Service().check_thresholds(db, 2025)
@@ -295,8 +301,70 @@ def test_foreign_custody_unverified_excluded(db):
     assert valores["total_base"] == 0.0
     assert valores["exceeds"] is None
     assert valores["status"] == "desconocido"
+    assert valores["custody"] == "no_verificada"
     assert result["foreign_unverified"][0]["ticker"] == "AAPL"
     assert result["incomplete"] is True
+
+
+def test_non_eur_base_currency_is_unknown(db):
+    # Umbral en EUR: un portfolio con base USD no se evalúa (60k USD podrían
+    # ser <50k EUR); sin FX oficial a 31/12 no hay conversión fiable.
+    tenant, portfolio = _seed(db, base_currency="USD")
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 60000)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    assert result["base_currency"] == "USD"
+    for cat in ("valores", "cuentas"):
+        assert result["categories"][cat]["exceeds"] is None
+        assert result["categories"][cat]["status"] == "desconocido"
+        assert result["categories"][cat]["total_base"] is None
+    assert result["incomplete"] is True
+
+
+def test_stale_partida_not_certified_by_recent_one(db):
+    # Una posición al 31/12 NO certifica a otra con snapshot de junio:
+    # la antigüedad se evalúa partida a partida (dictamen auditor).
+    tenant, portfolio = _seed(db)
+    c1 = _company(db, tenant, "AAPL", isin="US0378331005")
+    c2 = _company(db, tenant, "MSFT", isin="US5949181045")
+    _position_row(db, tenant, portfolio, c1)
+    _position_row(db, tenant, portfolio, c2)
+    _position_snapshot(db, tenant, portfolio, c1, date(2025, 12, 31), 10000)
+    _position_snapshot(db, tenant, portfolio, c2, date(2025, 6, 30), 45000)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    valores = result["categories"]["valores"]
+    # La partida de junio queda fuera del total y la categoría es
+    # desconocida: sin ella no se puede afirmar "por_debajo".
+    assert valores["total_base"] == 10000.0
+    assert valores["exceeds"] is None
+    assert valores["status"] == "desconocido"
+    assert result["stale_snapshots"][0]["ticker"] == "MSFT"
+    assert any("partida" in r.lower() or "snapshot" in r.lower() for r in valores["reasons"])
+
+
+def test_multiportfolio_snapshots_do_not_mix(db):
+    # Sin filtro por portfolio, el snapshot reciente de OTRO portfolio
+    # eclipsaba las partidas del activo (dictamen auditor).
+    tenant, portfolio = _seed(db)
+    other = Portfolio(tenant_id=tenant.id, name="Other", base_currency="EUR")
+    db.add(other)
+    db.flush()
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 30000)
+    # Mismo company, OTRO portfolio, 60k: no debe sumar al portfolio activo.
+    _position_row(db, tenant, other, c)
+    _position_snapshot(db, tenant, other, c, date(2025, 12, 31), 60000)
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    assert result["categories"]["valores"]["total_base"] == 30000.0
+    assert result["categories"]["valores"]["exceeds"] is False
 
 
 def test_no_snapshots_at_all_is_unknown(db):
