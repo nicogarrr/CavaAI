@@ -645,7 +645,7 @@ class ThesisService:
             label = (
                 "Titulares recientes"
                 if all_recent_publications
-                else "Ultimos titulares materiales"
+                else "Titulares materiales destacados"
             )
             base = f"{base} {label}: {'; '.join(quotes)}."
         if summaries:

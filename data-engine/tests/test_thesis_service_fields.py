@@ -222,7 +222,7 @@ def test_card_summary_fecha_antigua_no_dice_recientes():
          "source": "Reuters", "date": "2020-01-15", "date_source": "source"},
     ]
     text = service._card_summary(_company(), valuation, "hipotesis", news)
-    assert "Ultimos titulares materiales: " in text
+    assert "Titulares materiales destacados: " in text
     assert "recientes" not in text
     assert "publicado el 2020-01-15" in text
 
@@ -240,7 +240,7 @@ def test_card_summary_grupo_mixto_no_dice_recientes():
          "date": "2019-05-01", "date_source": "source"},
     ]
     text = service._card_summary(_company(), valuation, "hipotesis", news)
-    assert "Ultimos titulares materiales: " in text
+    assert "Titulares materiales destacados: " in text
     assert "recientes" not in text
 
 
@@ -253,7 +253,7 @@ def test_card_summary_fecha_futura_no_es_reciente():
     ]
     text = service._card_summary(_company(), valuation, "hipotesis", news)
     assert "recientes" not in text
-    assert "Ultimos titulares materiales: " in text
+    assert "Titulares materiales destacados: " in text
 
 
 def test_card_summary_fecha_sin_procedencia_no_se_imprime_desnuda():
@@ -279,7 +279,7 @@ def test_card_summary_titular_largo_se_trunca_y_sin_fecha_no_fabrica():
     text = service._card_summary(_company(), valuation, "hipotesis", news)
     assert '...' in text
     assert "A" * 141 not in text
-    assert "(" not in text.split("Ultimos titulares materiales: ")[1]
+    assert "(" not in text.split("Titulares materiales destacados: ")[1]
 
 
 # -- card summary (tarjeta "Ultima tesis") ---------------------------------------
