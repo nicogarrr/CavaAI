@@ -27,7 +27,7 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
     const signBase = quote.change ?? quote.changePercent ?? 0;
     const positive = signBase >= 0;
     return (
-        <div className="sm:ml-auto sm:text-right">
+        <div className="sm:ml-auto sm:text-right" data-testid="company-header-quote">
             {showPrice ? (
                 <>
                     {quote.priceAsOf ? (
