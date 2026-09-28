@@ -732,12 +732,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           {snapshot.recent_changes?.length ? (
             <ul className="space-y-2">
               {snapshot.recent_changes.slice(0, 3).map((change) => (
-                <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-gray-300" key={change.id}>
-                  <Badge variant="outline">{label(change.impact_direction)}</Badge>
-                  <span className="min-w-0 flex-1">{change.summary}</span>
-                  <span className="text-xs text-gray-500">
-                    materialidad {change.materiality_score} · {formatDate(change.created_at)}
-                  </span>
+                <li className="min-w-0 rounded-lg border border-gray-800/70 bg-black/20 p-3 text-sm text-gray-300" key={change.id}>
+                  <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Badge variant="outline">{label(change.impact_direction)}</Badge>
+                    <span className="text-xs text-gray-500">
+                      Materialidad {change.materiality_score} · {formatDate(change.created_at)}
+                    </span>
+                  </div>
+                  <p className="break-words leading-6 [overflow-wrap:anywhere]">{change.summary}</p>
                 </li>
               ))}
             </ul>
