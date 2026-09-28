@@ -90,10 +90,12 @@ def _snapshot_path_for(url: str) -> Path | None:
     root = Path(base)
     if url == TICKER_MAP_URL:
         return root / "company_tickers.json"
-    match = re.search(r"(?:companyfacts|submissions)/CIK(\d{10})\.json$", url)
+    match = re.search(
+        r"(?:companyfacts|submissions)/(CIK\d{10}(?:-submissions-\d+)?)\.json$", url
+    )
     if match:
         kind = "companyfacts" if "companyfacts" in url else "submissions"
-        return root / kind / f"CIK{match.group(1)}.json"
+        return root / kind / f"{match.group(1)}.json"
     return None
 
 
