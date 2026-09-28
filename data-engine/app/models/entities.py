@@ -137,6 +137,9 @@ class Company(Base, TimestampMixin):
     cik: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ir_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     domicile_country: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # ISIN del valor (12 caracteres), capturado del Flex XML de IBKR; lo
+    # necesita el Modelo 720 y verifica el país emisor por prefijo.
+    isin: Mapped[str | None] = mapped_column(String(12), nullable=True)
     company_type: Mapped[str] = mapped_column(String(80))
     valuation_model: Mapped[str] = mapped_column(String(120))
     special_sources: Mapped[list[str]] = mapped_column(JSON, default=list)
