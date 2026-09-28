@@ -100,9 +100,11 @@ test('el color del signo sigue al dato disponible (change ?? changePercent)', ()
 });
 
 test('el precio de cierre se rotula con fecha y el sparkline muestra su rango', () => {
-    // Fallback a vela: la variación del proveedor no describe ese cierre.
-    assert.match(actions, /const change = quoteLive \? quote\?\.d \?\? null : null;/);
-    assert.match(actions, /const priceAsOf = quoteLive \? null : lastClose\?\.date \?\? null;/);
+    // Sin cotización usable (fallback a vela) no se mezcla la variación del
+    // proveedor con ese cierre (F358: la variación solo acompaña a SU
+    // cotización, en vivo o en cierre fechado validado).
+    assert.match(actions, /const change = quoteUsable \? quote\?\.d \?\? null : null;/);
+    assert.match(actions, /const priceAsOf = quoteLive[\s\S]{0,200}lastClose\?\.date \?\? null;/);
     // Rótulo «Cierre del …» y rango de fechas del sparkline.
     assert.match(component, /Cierre del \{formatMarketDate\(quote\.priceAsOf/);
     assert.match(component, /\{formatMarketDate\(firstDate, SHORT_DATE\)\} – \{formatMarketDate\(lastDate, SHORT_DATE\)\}/);

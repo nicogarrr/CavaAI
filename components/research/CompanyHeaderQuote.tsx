@@ -34,6 +34,10 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                         <p className="text-[11px] uppercase tracking-wide text-gray-500">
                             Cierre del {formatMarketDate(quote.priceAsOf, SHORT_DATE)}
                         </p>
+                    ) : quote.priceKind === 'close' ? (
+                        <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                            Precio de fecha desconocida
+                        </p>
                     ) : null}
                     <div className="text-2xl font-bold text-gray-100 sm:text-3xl">
                         {formatMoney(quote.price, currency)}
