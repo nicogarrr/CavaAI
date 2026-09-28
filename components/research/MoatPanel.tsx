@@ -97,8 +97,7 @@ export function MoatPanel({ metric, company }: { metric: MoatScoreMetric; compan
     financial ? 'Financiera' : cyclical ? 'Cíclica o materias primas' :
     growth ? 'Crecimiento / expansión' : 'Etapa no clasificada';
   const telecomEarlyStage = earlyStage && (
-    tags.includes('telecom') || company.sector.toLowerCase().includes('communication') ||
-    company.sector.toLowerCase().includes('telecom')
+    tags.includes('telecom') || kind.includes('telecom')
   );
   const evidenceToReview = telecomEarlyStage ?
     'Licencias o espectro, despliegue real de la red, contratos verificables y financiación necesaria.' :
