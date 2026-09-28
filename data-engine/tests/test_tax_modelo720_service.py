@@ -111,6 +111,8 @@ def _parent_snapshot(db, tenant, portfolio, day):
         positions_value_base=Decimal("0"),
         cash_value_base=Decimal("0"),
         total_value_base=Decimal("0"),
+        # El servicio de snapshots siempre escribe la clave: provenance probada.
+        metadata_={"missing_pricing": []},
     )
     db.add(snap)
     db.flush()

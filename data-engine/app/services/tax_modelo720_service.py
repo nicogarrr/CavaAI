@@ -72,11 +72,18 @@ def _latest_snapshots_before(
     TODAS las carteras del tenant. La partición por empresa/divisa evita que
     el snapshot más reciente de una cartera eclipse las filas de otra.
     """
+    # Partición por (cartera, empresa/divisa): sin la cartera en el GROUP
+    # BY, el snapshot más reciente de UNA cartera eclipse la fila de OTRA
+    # (AAPL 30k al 30/12 en A + AAPL 25k al 31/12 en B = 55k, no 25k).
     latest_dates = (
-        select(partition_col, func.max(model.snapshot_date).label("max_date"))
+        select(
+            model.portfolio_id,
+            partition_col,
+            func.max(model.snapshot_date).label("max_date"),
+        )
         .where(model.snapshot_date <= year_end)
         .where(model.portfolio_id.in_(portfolio_ids))
-        .group_by(partition_col)
+        .group_by(model.portfolio_id, partition_col)
         .subquery()
     )
     return list(
@@ -85,7 +92,8 @@ def _latest_snapshots_before(
             .where(model.portfolio_id.in_(portfolio_ids))
             .join(
                 latest_dates,
-                (partition_col == latest_dates.c[0])
+                (model.portfolio_id == latest_dates.c.portfolio_id)
+                & (partition_col == latest_dates.c[1])
                 & (model.snapshot_date == latest_dates.c.max_date),
             )
         )
@@ -206,34 +214,69 @@ class Modelo720Service:
 
         # Carteras del DECLARANTE (la obligación del 720 es por declarante,
         # no por cartera): se agregan todas las del tenant.
-        portfolio_ids = [
-            p.id for p in db.scalars(
-                select(Portfolio).where(Portfolio.tenant_id == portfolio.tenant_id)
-            )
+        tenant_portfolios = list(db.scalars(
+            select(Portfolio).where(Portfolio.tenant_id == portfolio.tenant_id)
+        ))
+        # Gate EUR POR CARTERA: una cartera con base distinta de EUR no se
+        # suma como si fuera EUR (sin FX oficial a 31/12 no hay conversión
+        # fiable); sus partidas quedan fuera y la categoría, no concluyente.
+        eur_portfolio_ids = [
+            p.id for p in tenant_portfolios
+            if (p.base_currency or "").upper() == "EUR"
         ]
+        non_eur_portfolios = [
+            p for p in tenant_portfolios
+            if (p.base_currency or "").upper() != "EUR"
+        ]
+        portfolio_ids = eur_portfolio_ids
 
         # Provenance de valoración HISTÓRICA, ligada al snapshot original
         # (metadata_.missing_pricing del PortfolioDailySnapshot): las filas
         # listadas llevan la fecha del precio/saldo EN LA CAPTURA; las no
         # listadas tenían as_of == fecha del snapshot. El as_of de las filas
         # VIVAS no autentica el histórico (un refresh posterior lo reescribe).
-        def _historical_price_dates(rows, id_field: str) -> dict:
+        def _historical_price_dates(rows, id_field: str) -> tuple[dict, set]:
+            """(fechas históricas, snapshots padre SIN provenance probada).
+
+            El servicio de snapshots siempre escribe la clave
+            ``missing_pricing`` (aunque sea lista vacía): su AUSENCIA en un
+            snapshot heredado no prueba que as_of == fecha del snapshot.
+            """
             snap_ids = {r.portfolio_snapshot_id for r in rows}
             result: dict = {}
+            unproven: set = set()
             for parent in db.scalars(
                 select(PortfolioDailySnapshot).where(PortfolioDailySnapshot.id.in_(snap_ids))
             ) if snap_ids else []:
-                for entry in (parent.metadata_ or {}).get("missing_pricing") or []:
+                metadata = parent.metadata_ or {}
+                if "missing_pricing" not in metadata:
+                    unproven.add(parent.id)
+                    continue
+                for entry in metadata.get("missing_pricing") or []:
                     key = entry.get(id_field)
                     val = entry.get("valuation_date")
                     if key is not None and val:
                         result[(parent.id, key)] = val
-            return result
+            return result, unproven
 
         def _price_date_ok(
-            ticker: str, snap: date, historical: str | None
+            ticker: str, snap: date, historical: str | None,
+            *,
+            provenance_unproven: bool = False,
         ) -> bool:
             """True si la valoración afirma el cierre con fecha propia."""
+            if provenance_unproven:
+                stale_snapshots.append({
+                    "ticker": ticker,
+                    "snapshot_date": snap.isoformat(),
+                    "reason": (
+                        "Snapshot heredado sin provenance de valoración "
+                        "(sin clave 'missing_pricing' en su metadata): no "
+                        "consta la fecha del precio en la captura; fuera "
+                        "del total."
+                    ),
+                })
+                return False
             lag = (year_end - snap).days
             if lag > SNAPSHOT_MAX_LAG_DAYS:
                 stale_snapshots.append({
@@ -275,7 +318,9 @@ class Modelo720Service:
             db, PositionDailySnapshot, PositionDailySnapshot.company_id,
             year_end, portfolio_ids,
         )
-        position_price_dates = _historical_price_dates(positions, "company_id")
+        position_price_dates, position_unproven = _historical_price_dates(
+            positions, "company_id"
+        )
         company_ids = [p.company_id for p in positions]
         companies = {
             c.id: c
@@ -297,6 +342,7 @@ class Modelo720Service:
                 position_price_dates.get(
                     (position.portfolio_snapshot_id, position.company_id)
                 ),
+                provenance_unproven=position.portfolio_snapshot_id in position_unproven,
             ):
                 continue
             value_base = position.market_value_base
@@ -360,7 +406,9 @@ class Modelo720Service:
             db, CashDailySnapshot, CashDailySnapshot.currency,
             year_end, portfolio_ids,
         )
-        cash_price_dates = _historical_price_dates(cash_rows, "cash_currency")
+        cash_price_dates, cash_unproven = _historical_price_dates(
+            cash_rows, "cash_currency"
+        )
         cuentas_total = Decimal("0")
         cuentas_detail = []
         cuentas_max_date: date | None = None
@@ -376,6 +424,7 @@ class Modelo720Service:
                 ticker,
                 cash.snapshot_date,
                 cash_price_dates.get((cash.portfolio_snapshot_id, cash.currency)),
+                provenance_unproven=cash.portfolio_snapshot_id in cash_unproven,
             ):
                 continue
             if cash.fx_rate is None:
@@ -419,6 +468,44 @@ class Modelo720Service:
         # Cobertura: una posición/saldo ACTUAL sin ningún snapshot a cierre
         # es invisible para el chequeo si solo miramos snapshots. Listarla
         # como sin valorar: el total nunca la silencia.
+        # Las carteras con base distinta de EUR no se suman como si fueran
+        # EUR: sus partidas quedan fuera con la razón explícita.
+        non_eur_ids = {p.id for p in non_eur_portfolios}
+        if non_eur_ids:
+            names = ", ".join(
+                f"{p.name} ({p.base_currency})" for p in non_eur_portfolios
+            )
+            for position in db.scalars(
+                select(Position).where(Position.portfolio_id.in_(non_eur_ids))
+            ):
+                if not position.quantity or Decimal(str(position.quantity)) == 0:
+                    continue
+                company = db.get(Company, position.company_id)
+                ticker = company.ticker if company else f"company-{position.company_id}"
+                unvalued.append({
+                    "ticker": ticker,
+                    "snapshot_date": None,
+                    "reason": (
+                        f"Cartera con base no EUR ({names}): sin FX oficial a "
+                        "31/12 no hay conversión fiable; fuera del total."
+                    ),
+                })
+            for balance in db.scalars(
+                select(CashBalance).where(CashBalance.tenant_id == portfolio.tenant_id)
+            ):
+                # Los saldos no llevan cartera: solo se evaluaron si hubo
+                # snapshot en cartera EUR; con cartera no EUR en el tenant
+                # el neteo por divisa ya no es validable.
+                if balance.currency and balance.balance and Decimal(str(balance.balance)) > 0:
+                    unvalued.append({
+                        "ticker": f"cash-{balance.currency}",
+                        "snapshot_date": None,
+                        "reason": (
+                            f"Hay carteras con base no EUR ({names}): el neteo "
+                            "de saldos por divisa no es validable en EUR; "
+                            "fuera del total."
+                        ),
+                    })
         covered_companies = {p.company_id for p in positions}
         for position in db.scalars(
             select(Position).where(Position.portfolio_id.in_(portfolio_ids))
