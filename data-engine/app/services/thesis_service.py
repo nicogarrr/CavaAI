@@ -44,6 +44,11 @@ _METRIC_LABELS_ES = {
     "net_debt": "deuda neta",
     "shares_diluted": "acciones diluidas",
     "fcf_margin": "margen de FCF",
+    "revenue_growth": "crecimiento de ingresos",
+    "operating_cash_flow": "flujo de caja operativo",
+    "capital_expenditure": "gasto de capital (CapEx)",
+    "cash_and_equivalents": "efectivo y equivalentes",
+    "total_debt": "deuda total",
 }
 
 
@@ -54,7 +59,12 @@ def _metric_claim_statement(ticker: str, metric: str, fact: FinancialFact) -> st
     crudo de la columna Numeric(24, 6)). La unidad solo se muestra cuando es
     una divisa ISO (USD, EUR...); unidades como "shares" no aportan.
     """
-    label = _METRIC_LABELS_ES.get(metric, metric.replace("_", " "))
+    # El conjunto de métricas posibles es cerrado (DURATION_METRICS +
+    # INSTANT_METRICS del snapshot) y esta tabla lo cubre entero. Si llega una
+    # clave desconocida, se muestra como dato crudo entre comillas en vez de
+    # "humanizarla" a una frase en inglés dentro del texto en español.
+    label = _METRIC_LABELS_ES.get(metric) or f'dato "{metric}"'
+
     value = format_compact_es(fact.value) or str(fact.value)
     unit = fact.unit if fact.unit and len(fact.unit) == 3 and fact.unit.isupper() else None
     amount = f"{value} {unit}" if unit else value
