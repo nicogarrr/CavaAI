@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from math import pi, isfinite
+from math import isfinite, pi
 
 EARTH_MU_KM3_S2 = 398600.4418
 MAX_EPOCHS_PER_OBJECT = 32

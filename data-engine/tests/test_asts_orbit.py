@@ -6,9 +6,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.models.entities import Base, Tenant
-from app.services.asts_orbit_service import append_history, orbit_signal, sma_km
 from app.services.asts_catalog_service import persist_catalog, read_orbit_history, read_orbit_overview
+from app.services.asts_orbit_service import append_history, orbit_signal, sma_km
 from app.services.connectors.celestrak_ast import normalize_catalog
+
 NOW = datetime(2026, 9, 27, 17, 30, tzinfo=UTC)
 
 
