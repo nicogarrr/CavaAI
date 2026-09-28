@@ -121,3 +121,49 @@ def test_unknown_volume_is_null_and_out_of_most_active(db: Session):
     most_active_tickers = [row["ticker"] for row in out["most_active"]]
     assert "KVOL" in most_active_tickers
     assert "UVOL" not in most_active_tickers
+
+
+def test_company_with_last_close_older_than_10_days_stays_in_universe(db: Session):
+    """Ventana POR compania: un cierre global de N dias expulsaba a toda
+    compania con ultimo cierre viejo. El contrato es los DOS ULTIMOS
+    cierres de cada una, sin suelo temporal global."""
+    fresh = _company(db, "FRESH")
+    _price(db, fresh, date(2026, 9, 21), "100")
+    _price(db, fresh, date(2026, 9, 22), "101")
+    stale = _company(db, "STALE")
+    _price(db, stale, date(2026, 8, 20), "50")
+    _price(db, stale, date(2026, 8, 21), "55")
+
+    out = market_movers(db, 10)
+    tickers = {m["ticker"] for m in out["gainers"] + out["losers"] + out["most_active"]}
+    assert out["universe"] == 2
+    assert "STALE" in tickers
+    stale_mover = next(m for m in out["most_active"] if m["ticker"] == "STALE")
+    assert stale_mover["price"] == 55.0
+    assert stale_mover["change_pct"] == 10.0
+
+
+def test_gap_older_than_10_days_between_closes_still_computes_change(db: Session):
+    """Cierre dentro de cualquier ventana pero cierre anterior fuera: antes
+    salia con precio y variacion null. Ahora la variacion sale de SUS dos
+    ultimas barras, tengan la separacion que tengan."""
+    gapped = _company(db, "GAP")
+    _price(db, gapped, date(2026, 1, 10), "100")
+    _price(db, gapped, date(2026, 9, 22), "130")
+
+    out = market_movers(db, 10)
+    mover = next(m for m in out["gainers"] if m["ticker"] == "GAP")
+    assert mover["change_pct"] == 30.0
+
+
+def test_single_bar_company_keeps_null_change(db: Session):
+    """Una sola barra = sin cambio medible de verdad: None (la UI muestra -),
+    y no rompe el universo."""
+    one = _company(db, "ONE")
+    _price(db, one, date(2026, 9, 22), "42")
+
+    out = market_movers(db, 10)
+    assert out["universe"] == 1
+    assert out["gainers"] == [] and out["losers"] == []
+    mover = next(m for m in out["most_active"] if m["ticker"] == "ONE")
+    assert mover["change_pct"] is None
