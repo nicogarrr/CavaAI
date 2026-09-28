@@ -4,6 +4,8 @@ a filings anuales (10-K y variantes) y descarta ficheros que fallan con
 cobertura parcial (nunca rompe la ingesta)."""
 
 import asyncio
+import hashlib
+import json
 
 from app.services.connectors.sec import SECClient
 
@@ -80,15 +82,17 @@ def test_fallback_a_mirror_hf_en_403(monkeypatch):
     get_settings.cache_clear()
 
     payload = {"filings": {"recent": {}}}
+    payload_bytes = json.dumps(payload).encode()
     llamadas = {}
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
-    monkeypatch.setattr(sec_edgar, "_MIRROR_SERVES", [])
+    sec_edgar.drain_mirror_serves()
 
     class _Resp:
-        def __init__(self, data, status=200):
+        def __init__(self, data, status=200, content=None):
             self._data = data
             self.status_code = status
             self.headers = {}
+            self.content = content if content is not None else json.dumps(data).encode()
         def raise_for_status(self):
             if self.status_code >= 400:
                 import httpx as _httpx
@@ -106,9 +110,13 @@ def test_fallback_a_mirror_hf_en_403(monkeypatch):
                 return _Resp({}, status=403)
             if url.endswith("/manifest.json"):
                 from datetime import UTC, datetime
-                return _Resp({"tickers": {}, "synced_at": datetime.now(UTC).isoformat()})
+                return _Resp({
+                    "tickers": {},
+                    "synced_at": datetime.now(UTC).isoformat(),
+                    "files": {"submissions/CIK0000000001.json": hashlib.sha1(payload_bytes).hexdigest()},
+                })
             llamadas["url"] = url
-            return _Resp(payload)
+            return _Resp(payload, content=payload_bytes)
 
     monkeypatch.setattr(sec_edgar.httpx, "AsyncClient", _H)
     data = asyncio.run(sec_edgar._get_json(
@@ -138,14 +146,16 @@ def test_secclient_403_cae_al_mirror(monkeypatch):
 
     _mirror_env(monkeypatch)
     payload = {"cik": 1, "facts": {"us-gaap": {}}}
+    payload_bytes = json.dumps(payload).encode()
     llamadas = {}
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
-    monkeypatch.setattr(sec_edgar, "_MIRROR_SERVES", [])
+    sec_edgar.drain_mirror_serves()
 
     class _Resp:
-        def __init__(self, data):
+        def __init__(self, data, content=None):
             self._data = data
             self.status_code = 200
+            self.content = content if content is not None else json.dumps(data).encode()
         def raise_for_status(self): pass
         def json(self): return self._data
 
@@ -156,9 +166,13 @@ def test_secclient_403_cae_al_mirror(monkeypatch):
         async def get(self, url):
             if url.endswith("/manifest.json"):
                 from datetime import UTC, datetime
-                return _Resp({"tickers": {}, "synced_at": datetime.now(UTC).isoformat()})
+                return _Resp({
+                    "tickers": {},
+                    "synced_at": datetime.now(UTC).isoformat(),
+                    "files": {"companyfacts/CIK0000000001.json": hashlib.sha1(payload_bytes).hexdigest()},
+                })
             llamadas["url"] = url
-            return _Resp(payload)
+            return _Resp(payload, content=payload_bytes)
 
     monkeypatch.setattr(sec_edgar.httpx, "AsyncClient", _MirrorHTTP)
 
@@ -227,7 +241,7 @@ def test_mirror_caducado_fail_closed(monkeypatch):
     monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
     get_settings.cache_clear()
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
-    monkeypatch.setattr(sec_edgar, "_MIRROR_SERVES", [])
+    sec_edgar.drain_mirror_serves()
 
     class _Resp:
         def __init__(self, data):
@@ -264,7 +278,7 @@ def test_mirror_sin_synced_at_fail_closed(monkeypatch):
     monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
     get_settings.cache_clear()
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
-    monkeypatch.setattr(sec_edgar, "_MIRROR_SERVES", [])
+    sec_edgar.drain_mirror_serves()
 
     class _Resp:
         status_code = 200
@@ -286,4 +300,123 @@ def test_mirror_sin_synced_at_fail_closed(monkeypatch):
         raise AssertionError("debio fallar cerrado")
     except RuntimeError as e:
         assert "synced_at" in str(e)
+    get_settings.cache_clear()
+
+
+# --- Integridad del mirror: path declarado + sha1 verificado ---
+
+def _manifest_fresco(files):
+    from datetime import UTC, datetime
+    return {
+        "tickers": {},
+        "synced_at": datetime.now(UTC).isoformat(),
+        "files": files,
+    }
+
+
+def _resp(data, content=None):
+    class _Resp:
+        def __init__(self):
+            self._data = data
+            self.status_code = 200
+            self.headers = {}
+            self.content = content if content is not None else json.dumps(data).encode()
+        def raise_for_status(self): pass
+        def json(self): return self._data
+    return _Resp()
+
+
+def _mirror_http(monkeypatch, sec_edgar, manifest, documento, doc_bytes):
+    class _HTTP:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, headers=None):
+            if url.endswith("/manifest.json"):
+                return _resp(manifest)
+            if url.endswith(f"/{documento}"):
+                return _resp({}, content=doc_bytes)
+            raise AssertionError(f"URL inesperada: {url}")
+    monkeypatch.setattr(sec_edgar.httpx, "AsyncClient", _HTTP)
+
+
+def test_mirror_sha1_no_casa_fail_closed(monkeypatch):
+    """Sync parcial que deja mezcla de versiones: el manifest (fresco) declara
+    un sha1 y el archivo remoto tiene otro contenido. Fail closed: la mezcla
+    nuevo/viejo NUNCA se sirve."""
+    from app.core.config import get_settings
+    from app.services.connectors import sec_edgar
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    get_settings.cache_clear()
+    monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
+    sec_edgar.drain_mirror_serves()
+
+    doc = "submissions/CIK0000000001.json"
+    viejo = json.dumps({"filings": {"recent": {"old": True}}}).encode()
+    manifest = _manifest_fresco({doc: hashlib.sha1(b"contenido nuevo").hexdigest()})
+    _mirror_http(monkeypatch, sec_edgar, manifest, doc, viejo)
+
+    try:
+        asyncio.run(sec_edgar.mirror_get_json(
+            "https://data.sec.gov/submissions/CIK0000000001.json"))
+        raise AssertionError("debio fallar cerrado")
+    except RuntimeError as e:
+        assert "sha1" in str(e)
+    get_settings.cache_clear()
+
+
+def test_mirror_path_no_listado_fail_closed(monkeypatch):
+    """Archivo huerfano (existe en el dataset pero no declarado en el manifest
+    nuevo, p.ej. un ticker omitido): NO se sirve aunque el manifest sea fresco."""
+    from app.core.config import get_settings
+    from app.services.connectors import sec_edgar
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    get_settings.cache_clear()
+    monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
+    sec_edgar.drain_mirror_serves()
+
+    doc = "submissions/CIK0000000001.json"
+    contenido = json.dumps({"filings": {"recent": {}}}).encode()
+    # El manifest lista OTROS archivos, no el pedido.
+    manifest = _manifest_fresco({"companyfacts/CIK0000000099.json": "abc123"})
+    _mirror_http(monkeypatch, sec_edgar, manifest, doc, contenido)
+
+    try:
+        asyncio.run(sec_edgar.mirror_get_json(
+            "https://data.sec.gov/submissions/CIK0000000001.json"))
+        raise AssertionError("debio fallar cerrado")
+    except RuntimeError as e:
+        assert "no esta declarado" in str(e)
+    get_settings.cache_clear()
+
+
+def test_mirror_sirve_solo_si_hash_casa(monkeypatch):
+    """Camino feliz de integridad: path declarado + sha1 coincidente -> se
+    sirve, y la telemetria queda registrada en la corrida."""
+    from app.core.config import get_settings
+    from app.services.connectors import sec_edgar
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    get_settings.cache_clear()
+    monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
+    sec_edgar.drain_mirror_serves()
+
+    doc = "submissions/CIK0000000001.json"
+    payload = {"filings": {"recent": {"x": 1}}}
+    contenido = json.dumps(payload).encode()
+    manifest = _manifest_fresco({doc: hashlib.sha1(contenido).hexdigest()})
+    _mirror_http(monkeypatch, sec_edgar, manifest, doc, contenido)
+
+    data = asyncio.run(sec_edgar.mirror_get_json(
+        "https://data.sec.gov/submissions/CIK0000000001.json"))
+    assert data == payload
+    serves = sec_edgar.drain_mirror_serves()
+    assert len(serves) == 1
+    assert serves[0]["url"].endswith(doc)
+    assert serves[0]["synced_at"] == manifest["synced_at"]
     get_settings.cache_clear()

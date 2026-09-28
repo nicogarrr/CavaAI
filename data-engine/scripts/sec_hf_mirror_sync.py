@@ -41,7 +41,7 @@ def main() -> int:
     if not token or not dataset:
         print("Faltan HF_TOKEN o HF_DATASET", file=sys.stderr)
         return 2
-    from huggingface_hub import HfApi
+    from huggingface_hub import CommitOperationAdd, HfApi, hf_hub_download
 
     tickers = [t.strip().upper() for t in TICKERS_FILE.read_text().splitlines()
                if t.strip() and not t.startswith("#")]
@@ -86,21 +86,32 @@ def main() -> int:
             "files": {p: hashlib.sha1(c).hexdigest() for p, c in uploads.items()},
         }).encode()
 
-    # Subir solo lo que cambio (sha1 contra el estado remoto).
-    changed = 0
+    # Publicacion atomica: un unico commit con todos los ficheros cambiados
+    # y el manifest. Un sync a mitad NUNCA deja un manifest fresco declarando
+    # contenidos que aun no se subieron (el lector verifica sha1 por archivo).
+    # Delta contra los sha1 declarados en el manifest remoto anterior.
+    old_files: dict = {}
+    try:
+        old_manifest = hf_hub_download(
+            dataset, "manifest.json", repo_type="dataset", token=token)
+        old_files = json.loads(Path(old_manifest).read_text()).get("files", {})
+    except Exception:
+        old_files = {}
+    operations = []
     for path, content in sorted(uploads.items()):
         digest = hashlib.sha1(content).hexdigest()
-        try:
-            meta = api.get_paths_info(dataset, [path], repo_type="dataset")[0]
-            if meta and getattr(meta, "lfs", None) and meta.lfs.get("oid") == digest:
-                continue
-        except Exception:
-            pass
-        api.upload_file(path_or_fileobj=content, path_in_repo=path,
-                        repo_id=dataset, repo_type="dataset",
-                        commit_message=f"sync SEC {time.strftime('%Y-%m-%d %H:%M')} UTC ({path})")
-        changed += 1
-    print(f"Sincronizados {changed}/{len(uploads)} ficheros en {dataset}")
+        if path != "manifest.json" and old_files.get(path) == digest:
+            continue
+        operations.append(CommitOperationAdd(
+            path_in_repo=path, path_or_fileobj=content))
+    if operations:
+        api.create_commit(
+            repo_id=dataset, repo_type="dataset", operations=operations,
+            commit_message=(
+                f"sync SEC {time.strftime('%Y-%m-%d %H:%M')} UTC "
+                f"({len(operations)} ficheros)"))
+    print(f"Sincronizados {len(operations)}/{len(uploads)} ficheros en "
+          f"{dataset} (1 commit atomico)")
     return 0
 
 

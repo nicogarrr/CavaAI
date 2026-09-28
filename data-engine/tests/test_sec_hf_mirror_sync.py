@@ -57,22 +57,28 @@ class _FakeSECClient:
         raise AssertionError(f"URL inesperada: {url}")
 
 
+class _CommitOperationAdd:
+    """Sustituto de huggingface_hub.CommitOperationAdd para el test."""
+
+    def __init__(self, *, path_in_repo, path_or_fileobj):
+        self.path_in_repo = path_in_repo
+        self.path_or_fileobj = path_or_fileobj
+
+
 class _FakeHfApi:
     def __init__(self, token=None):
         self.uploads = {}
-        self.existing_oids = {}
+        self.commits = []
+        self.remote_manifest = None  # dict "files" ya publicado, o None
 
     def create_repo(self, *a, **k):
         self.created = True
 
-    def get_paths_info(self, dataset, paths, repo_type=None):
-        class Meta:
-            def __init__(self, oid):
-                self.lfs = {"oid": oid} if oid else None
-        return [Meta(self.existing_oids.get(p)) for p in paths]
-
-    def upload_file(self, *, path_or_fileobj, path_in_repo, **k):
-        self.uploads[path_in_repo] = path_or_fileobj
+    def create_commit(self, *, repo_id, repo_type, operations, commit_message):
+        # Un unico commit atomico por corrida.
+        self.commits.append(list(operations))
+        for op in operations:
+            self.uploads[op.path_in_repo] = op.path_or_fileobj
 
 
 @pytest.fixture
@@ -80,6 +86,18 @@ def fake_hf(monkeypatch):
     api = _FakeHfApi()
     module = types.ModuleType("huggingface_hub")
     module.HfApi = lambda token=None: api
+    module.CommitOperationAdd = _CommitOperationAdd
+
+    def _hf_hub_download(repo_id, filename, repo_type=None, token=None):
+        if api.remote_manifest is None:
+            raise FileNotFoundError("sin manifest remoto")
+        f = Path(api._tmpdir) / filename
+        f.write_text(json.dumps({"files": api.remote_manifest}))
+        return str(f)
+
+    import tempfile
+    api._tmpdir = tempfile.mkdtemp()
+    module.hf_hub_download = _hf_hub_download
     monkeypatch.setitem(sys.modules, "huggingface_hub", module)
     monkeypatch.setattr(sync.httpx, "Client", _FakeSECClient)
     monkeypatch.setattr(sync.time, "sleep", lambda *_a: None)
@@ -120,15 +138,18 @@ def test_sync_no_resube_lo_que_no_cambio(tmp_path, monkeypatch, fake_hf):
     monkeypatch.setenv("HF_TOKEN", "t")
     monkeypatch.setenv("HF_DATASET", "d")
     assert sync.main() == 0
-    # Segunda corrida: marca todos los sha1 como ya existentes.
+    assert len(fake_hf.commits) == 1  # publicacion atomica: un solo commit
+    # Segunda corrida: el manifest remoto declara los sha1 ya publicados.
     import hashlib
-    fake_hf.existing_oids = {
+    fake_hf.remote_manifest = {
         path: hashlib.sha1(content).hexdigest()
         for path, content in fake_hf.uploads.items()
+        if path != "manifest.json"
     }
     fake_hf.uploads = {}
     assert sync.main() == 0
-    assert fake_hf.uploads == {}
+    # Solo se republica el manifest (synced_at nuevo); los datos no cambian.
+    assert set(fake_hf.uploads) == {"manifest.json"}
 
 
 def test_sync_sin_credenciales_falla_cerrado(tmp_path, monkeypatch):

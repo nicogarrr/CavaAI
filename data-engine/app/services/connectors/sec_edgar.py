@@ -12,9 +12,11 @@ us-gaap de 10-K (anual) y 10-Q (trimestral).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import re
 import time
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -102,6 +104,20 @@ def _snapshot_path_for(url: str) -> Path | None:
     return None
 
 
+def _mirror_path_for(url: str) -> str | None:
+    """Path del documento dentro del dataset mirror, o None si esa URL de la
+    SEC no tiene equivalente en el mirror."""
+    if url == TICKER_MAP_URL:
+        return "company_tickers.json"
+    match = re.search(
+        r"(?:companyfacts|submissions)/(CIK\d{10}(?:-submissions-\d+)?)\.json$", url
+    )
+    if not match:
+        return None
+    kind = "companyfacts" if "companyfacts" in url else "submissions"
+    return f"{kind}/{match.group(1)}.json"
+
+
 def _mirror_url_for(url: str) -> str | None:
     """URL del mirror HF para una URL de la SEC, o None si no hay mirror.
 
@@ -111,19 +127,10 @@ def _mirror_url_for(url: str) -> str | None:
     from app.core.config import get_settings
 
     dataset = get_settings().sec_hf_mirror_dataset
-    if not dataset:
+    path = _mirror_path_for(url)
+    if not dataset or path is None:
         return None
-    if url == TICKER_MAP_URL:
-        name = "company_tickers.json"
-    else:
-        match = re.search(
-            r"(?:companyfacts|submissions)/(CIK\d{10}(?:-submissions-\d+)?)\.json$", url
-        )
-        if not match:
-            return None
-        kind = "companyfacts" if "companyfacts" in url else "submissions"
-        name = f"{kind}/{match.group(1)}.json"
-    return f"https://huggingface.co/datasets/{dataset}/resolve/main/{name}"
+    return f"https://huggingface.co/datasets/{dataset}/resolve/main/{path}"
 
 
 def _read_snapshot(path: Path | None) -> dict[str, Any] | None:
@@ -201,15 +208,27 @@ async def _get_json(
 MIRROR_MAX_AGE = timedelta(hours=48)
 _MANIFEST_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _MANIFEST_TTL_SECONDS = 300.0
-_MIRROR_SERVES: list[dict[str, Any]] = []
+_MIRROR_SERVES: ContextVar[list[dict[str, Any]] | None] = ContextVar(
+    "cavaai_mirror_serves", default=None
+)
 
 
 def drain_mirror_serves() -> list[dict[str, Any]]:
-    """Servicios de mirror desde la ultima llamada (la ingesta los declara
-    en su resultado: que se sirvio del mirror y de que fecha de sync)."""
-    serves = list(_MIRROR_SERVES)
-    _MIRROR_SERVES.clear()
-    return serves
+    """Servicios de mirror de ESTA corrida (la ingesta los declara en su
+    resultado: que se sirvio del mirror y de que fecha de sync).
+
+    ContextVar por corrida: dos ingestas concurrentes nunca se mezclan ni se
+    pierden registros de procedencia. La corrida llama a drain al inicio para
+    abrir su registro y al final para recogerlo."""
+    serves = _MIRROR_SERVES.get()
+    _MIRROR_SERVES.set([])
+    return list(serves) if serves else []
+
+
+def _record_mirror_serve(entry: dict[str, Any]) -> None:
+    serves = _MIRROR_SERVES.get()
+    if serves is not None:
+        serves.append(entry)
 
 
 async def _mirror_manifest(dataset: str) -> dict[str, Any]:
@@ -258,6 +277,18 @@ async def mirror_get_json(url: str, *, direct_error: Exception | None = None) ->
     from app.core.config import get_settings
 
     manifest = await _mirror_manifest(get_settings().sec_hf_mirror_dataset or "")
+    # Integridad: un manifest fresco no basta. El documento pedido debe estar
+    # declarado en manifest["files"] (un archivo huerfano de un sync anterior
+    # no se sirve) y su sha1 debe casar con el declarado (una subida parcial
+    # que dejo mezcla de versiones no se sirve). Fail closed en ambos casos.
+    path = _mirror_path_for(url)
+    declared_files = manifest.get("files")
+    declared_hash = declared_files.get(path) if isinstance(declared_files, dict) else None
+    if declared_hash is None:
+        raise RuntimeError(
+            f"Mirror HF: {path} no esta declarado en el manifest "
+            f"(fail closed: no se sirve un documento sin proveniencia declarada)"
+        ) from direct_error
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as mirror_client:
         mirror_response = await mirror_client.get(mirror_url)
     try:
@@ -267,10 +298,20 @@ async def mirror_get_json(url: str, *, direct_error: Exception | None = None) ->
             f"SEC bloqueada ({direct_error}) y mirror HF sin el documento "
             f"({mirror_response.status_code} {mirror_url})"
         ) from exc
-    data = mirror_response.json()
+    raw = mirror_response.content
+    actual_hash = hashlib.sha1(raw).hexdigest()
+    if actual_hash != declared_hash:
+        raise RuntimeError(
+            f"Mirror HF: sha1 de {path} no casa con el manifest "
+            f"({actual_hash} != {declared_hash}): fail closed, posible "
+            f"mezcla de versiones de un sync parcial"
+        ) from direct_error
+    import json as _json
+
+    data = _json.loads(raw)
     if not isinstance(data, dict):
         raise RuntimeError(f"Mirror HF returned non-object JSON ({mirror_url})")
-    _MIRROR_SERVES.append({"url": url, "synced_at": manifest.get("synced_at")})
+    _record_mirror_serve({"url": url, "synced_at": manifest.get("synced_at")})
     return data
 
 
