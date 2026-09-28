@@ -5,6 +5,8 @@ import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
 import { getMarketMovers, type MarketMover } from '@/lib/actions/market.actions';
 import { NA, formatCompact, formatPercent, formatPrice } from '@/lib/format';
 import BackendOffline from '@/components/system/BackendOffline';
+import { getTickerContext } from '@/lib/actions/ticker-context.actions';
+import { TickerContextBadges } from '@/components/common/TickerContextBadges';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 
 export const metadata: Metadata = {
@@ -27,7 +29,9 @@ function safeCurrency(currency: string | null | undefined): string {
   return currency && /^[A-Z]{3}$/.test(currency) ? currency : 'USD';
 }
 
-function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }) {
+type TickerSets = { portfolioTickers: ReadonlySet<string>; watchlistTickers: ReadonlySet<string> };
+
+function MoversTable({ rows, caption, tickerSets }: { rows: MarketMover[]; caption: string; tickerSets: TickerSets }) {
   if (!rows.length) {
     return <p className="text-sm text-gray-500">Sin datos todavía — en cuanto haya precios registrados aparecerán aquí.</p>;
   }
@@ -53,6 +57,11 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
                 {row.name && row.name.trim().toUpperCase() !== row.ticker.trim().toUpperCase() ? (
                   <div className="max-w-20 truncate text-xs text-gray-500" title={row.name}>{row.name}</div>
                 ) : null}
+                <TickerContextBadges
+                  portfolioTickers={tickerSets.portfolioTickers}
+                  ticker={row.ticker}
+                  watchlistTickers={tickerSets.watchlistTickers}
+                />
               </th>
               <td className="py-3 px-2 text-right whitespace-nowrap text-gray-300">{formatPrice(row.price, safeCurrency(row.currency))}</td>
               <td className={`py-3 px-2 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
@@ -68,15 +77,20 @@ function MoversTable({ rows, caption }: { rows: MarketMover[]; caption: string }
 }
 
 export default async function MoversPage() {
-  let movers;
+  let movers, tickerContext;
   try {
-    movers = await getMarketMovers(10);
+    [movers, tickerContext] = await Promise.all([getMarketMovers(10), getTickerContext()]);
   } catch (error) {
     if (isBackendUnavailableError(error)) {
       return <BackendOffline feature="Movers" retryHref="/movers" />;
     }
     throw error;
   }
+
+  const tickerSets = {
+    portfolioTickers: new Set(tickerContext.portfolioTickers),
+    watchlistTickers: new Set(tickerContext.watchlistTickers),
+  };
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -106,7 +120,7 @@ export default async function MoversPage() {
               <TrendingUp aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Subidas</h2>
             </div>
-            <MoversTable rows={movers.gainers} caption="Mayores subidas" />
+            <MoversTable rows={movers.gainers} caption="Mayores subidas" tickerSets={tickerSets} />
           </section>
 
           <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
@@ -114,7 +128,7 @@ export default async function MoversPage() {
               <TrendingDown aria-hidden="true" className="h-5 w-5 text-red-400" />
               <h2 className="font-semibold text-gray-100">Bajadas</h2>
             </div>
-            <MoversTable rows={movers.losers} caption="Mayores bajadas" />
+            <MoversTable rows={movers.losers} caption="Mayores bajadas" tickerSets={tickerSets} />
           </section>
 
           <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
@@ -122,7 +136,7 @@ export default async function MoversPage() {
               <Activity aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Más activas</h2>
             </div>
-            <MoversTable rows={movers.most_active} caption="Mayor volumen" />
+            <MoversTable rows={movers.most_active} caption="Mayor volumen" tickerSets={tickerSets} />
           </section>
         </div>
       )}
