@@ -19,6 +19,7 @@ from app.models import (
     FinancialFact,
     FundamentalDriver,
     ManagementPromise,
+    ThesisVersion,
 )
 from app.schemas import (
     CalculatedMetricOut,
@@ -29,6 +30,7 @@ from app.schemas import (
     CompanySnapshotsBatchOut,
     FinancialFactOut,
     FinancialRefreshResponse,
+    ThesisTickersOut,
 )
 from app.services.company_enrichment_service import CompanyEnrichmentService
 from app.services.company_resolver import resolve_companies, resolve_company
@@ -100,6 +102,24 @@ def company_snapshots_batch(
         snapshots={company.ticker: snapshots[company.id] for company in companies},
         missing=missing,
     )
+
+
+@router.get("/thesis-tickers", response_model=ThesisTickersOut)
+def thesis_tickers(db: Session = Depends(get_db)) -> ThesisTickersOut:
+    """Tickers con tesis en UNA query DISTINCT (orden del indice de research).
+
+    El indice ordena tesis > cartera > watchlist > resto; pedir un snapshot
+    por empresa solo para saber si tiene tesis eran ~13 queries agregadas
+    por lote de 50 en fan-out paralelo. La semantica replica la seleccion
+    del snapshot (cualquier ThesisVersion de la company, sin filtro de
+    estado), asi el bucket y la tarjeta nunca discrepan.
+    """
+    rows = db.scalars(
+        select(Company.ticker)
+        .where(Company.id.in_(select(ThesisVersion.company_id).distinct()))
+        .order_by(Company.ticker)
+    ).all()
+    return ThesisTickersOut(tickers=list(rows))
 
 
 @router.get("/{ticker}/kpi-registry", response_model=list[CompanyKPIOut])

@@ -17,6 +17,7 @@ import { Panel } from '@/components/ui/panel';
 import { Stat } from '@/components/ui/stat';
 import { sectorIndustryLine } from '@/lib/sector-display';
 import { sortCompaniesByRelevance } from '@/lib/research/relevance';
+import { fetchInBatches } from '@/lib/research/snapshots';
 import {
     filterResearchIndex,
     firstSearchParam,
@@ -208,7 +209,7 @@ export default async function ResearchPage({
         }
         throw error;
     }
-    const { companies, portfolio } = dashboard;
+    const { companies, portfolio, thesisTickers } = dashboard;
 
     // Contexto del usuario para el orden por relevancia. Degradación
     // honesta: una lectura fallida degrada su bucket a «resto», nunca
@@ -226,46 +227,18 @@ export default async function ResearchPage({
     );
     const watchlistTickers = new Set(watchlist.map((item) => item.symbol.trim().toUpperCase()));
 
-    // Snapshots de TODAS las empresas en lotes del tope del endpoint: el
-    // orden por relevancia necesita saber qué empresa tiene tesis, y las
-    // tarjetas de la página visible reutilizan el mismo mapa.
-    let snapshots: Awaited<ReturnType<typeof getResearchCompanySnapshots>> | null = null;
-    try {
-        if (companies.length) {
-            const parts = await Promise.all(
-                Array.from(
-                    { length: Math.ceil(companies.length / SNAPSHOT_BATCH_SIZE) },
-                    (_, index) => getResearchCompanySnapshots(
-                        companies
-                            .slice(index * SNAPSHOT_BATCH_SIZE, (index + 1) * SNAPSHOT_BATCH_SIZE)
-                            .map((company) => company.ticker),
-                    ),
-                ),
-            );
-            snapshots = {
-                snapshots: Object.assign({}, ...parts.map((part) => part.snapshots)),
-                missing: [
-                    ...new Set(
-                        parts
-                            .flatMap((part) => part.missing)
-                            .filter((ticker): ticker is string => Boolean(ticker)),
-                    ),
-                ],
-            };
-        }
-    } catch {
-        // La llamada batch que falla no puede tirar el índice entero: las
-        // empresas se listan igual y sus tarjetas se marcan como no leídas;
-        // sin snapshots, hasThesis es false y el orden degrada a
-        // cartera > watchlist > resto (nunca afirma tesis inexistentes).
-        snapshots = null;
-    }
-
     // Quick win UX 6: tesis > cartera > watchlist > resto; empate por
-    // ticker. Estable entre renders (los buckets son deterministas).
+    // ticker. Estable entre renders (los buckets son deterministas). La
+    // pertenencia al bucket «tesis» sale de UNA query DISTINCT del backend
+    // (/api/companies/thesis-tickers, misma semántica que latest_thesis del
+    // snapshot), no de un snapshot por empresa: con el universo completo
+    // eso eran decenas de llamadas batch en paralelo antes de paginar.
+    // thesisTickers null = lectura fallida: el bucket degrada sin afirmar
+    // tesis inexistentes.
+    const thesisSet = new Set(thesisTickers ?? []);
     const ordered = sortCompaniesByRelevance(
         companies,
-        (company) => snapshots?.snapshots[company.ticker]?.latest_thesis != null,
+        (company) => thesisSet.has(company.ticker.trim().toUpperCase()),
         portfolioTickers,
         watchlistTickers,
     );
@@ -279,12 +252,41 @@ export default async function ResearchPage({
     // materializa en el HTML.
     const filtered = filterResearchIndex(ordered, query);
     const slice = paginateResearchIndex(filtered, requestedPage);
-    const missing = new Set(snapshots?.missing ?? []);
+
+    // Snapshots SOLO de la página visible (rating/fecha de las tarjetas),
+    // en lotes con fallo aislado: un lote caído marca solo sus tarjetas
+    // como no leídas y conserva las demás (fetchInBatches, guard node).
+    const sliceTickers = slice.rows.map((company) => company.ticker);
+    const snapshotBatches = await fetchInBatches(
+        sliceTickers,
+        SNAPSHOT_BATCH_SIZE,
+        (batch) => getResearchCompanySnapshots(batch),
+    );
+    const snapshotsByTicker: Record<string, CompanySnapshot> = {};
+    const unreadableTickers = new Set<string>();
+    snapshotBatches.forEach((part, index) => {
+        const batchTickers = sliceTickers.slice(
+            index * SNAPSHOT_BATCH_SIZE,
+            (index + 1) * SNAPSHOT_BATCH_SIZE,
+        );
+        if (part === null) {
+            // Lote fallido: sus tarjetas se marcan no leídas, nunca se
+            // fabrican snapshots vacíos.
+            batchTickers.forEach((ticker) => unreadableTickers.add(ticker));
+            return;
+        }
+        for (const [ticker, snapshot] of Object.entries(part.snapshots)) {
+            snapshotsByTicker[ticker] = snapshot;
+        }
+        (part.missing ?? [])
+            .filter((ticker): ticker is string => Boolean(ticker))
+            .forEach((ticker) => unreadableTickers.add(ticker));
+    });
     const rows: CompanyRow[] = slice.rows.map((company): CompanyRow => {
-        if (snapshots === null || missing.has(company.ticker)) {
+        if (unreadableTickers.has(company.ticker)) {
             return { company, snapshot: null, unreadable: true };
         }
-        return { company, snapshot: snapshots.snapshots[company.ticker] ?? null, unreadable: false };
+        return { company, snapshot: snapshotsByTicker[company.ticker] ?? null, unreadable: false };
     });
 
     return (

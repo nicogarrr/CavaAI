@@ -10,6 +10,7 @@ import test from 'node:test';
 import { researchRelevanceKey, sortCompaniesByRelevance } from '../lib/research/relevance.ts';
 
 const page = readFileSync('app/(root)/research/page.tsx', 'utf8');
+const actions = readFileSync('lib/actions/research.actions.ts', 'utf8');
 
 test('los buckets de relevancia son tesis > cartera > watchlist > resto', () => {
     const portfolio = new Set(['COST']);
@@ -34,9 +35,10 @@ test('el orden es estable: bucket y luego ticker', () => {
 });
 
 test('la página degrada sin fabricar pertenencia ni tesis', () => {
-    // Sin snapshots: hasThesis es false para todas (nunca afirma tesis inexistentes).
-    assert.match(page, /snapshots = null;/);
-    assert.match(page, /snapshots\?\.snapshots\[company\.ticker\]\?\.latest_thesis != null/);
+    // Lectura de tesis fallida (null): el bucket queda vacío, nunca afirma
+    // tesis inexistentes.
+    assert.match(page, /new Set\(thesisTickers \?\? \[\]\)/);
+    assert.match(page, /thesisSet\.has\(company\.ticker\.trim\(\)\.toUpperCase\(\)\)/);
     // Lecturas de contexto degradan a vacío, no a badges/orden fabricados.
     assert.match(page, /getPortfolioSummary\(userId\)\.catch\(\(\) => null\)/);
     assert.match(page, /getWatchlist\(\)\.catch\(\(\) => \[\]/);
@@ -44,10 +46,27 @@ test('la página degrada sin fabricar pertenencia ni tesis', () => {
     assert.match(page, /holding\.quantity !== 0/);
 });
 
-test('los snapshots se piden en lotes del tope del endpoint y se reutilizan', () => {
-    assert.match(page, /SNAPSHOT_BATCH_SIZE = 50/);
-    // Una sola llamada al endpoint (dentro del mapa de lotes): las tarjetas
-    // reutilizan el mismo mapa, sin segunda llamada tras paginar.
-    assert.equal((page.match(/getResearchCompanySnapshots\(/g) ?? []).length, 1);
+test('el bucket tesis sale de UNA query DISTINCT, no de un snapshot por empresa', () => {
+    // Endpoint ligero del backend (misma semántica que latest_thesis del
+    // snapshot) consumido por el dashboard; la página NO ordena mirando
+    // snapshots de todas las empresas.
+    assert.match(actions, /\/api\/companies\/thesis-tickers/);
+    assert.doesNotMatch(page, /latest_thesis != null/);
     assert.match(page, /sortCompaniesByRelevance\(/);
+});
+
+test('los snapshots son solo de la página visible y un lote fallido se aísla', () => {
+    assert.match(page, /SNAPSHOT_BATCH_SIZE = 50/);
+    // El fetch de snapshots va DESPUÉS de filtrar y paginar: solo la página
+    // visible pide detalle.
+    assert.ok(
+        page.indexOf('paginateResearchIndex(filtered') < page.indexOf('fetchInBatches('),
+        'los snapshots se piden tras paginar',
+    );
+    assert.match(page, /fetchInBatches\(\s*sliceTickers,/);
+    // Una sola llamada al endpoint (dentro del helper de lotes).
+    assert.equal((page.match(/getResearchCompanySnapshots\(/g) ?? []).length, 1);
+    // El lote caído marca sus tarjetas como no leídas, nunca fabrica snapshots.
+    assert.match(page, /part === null/);
+    assert.match(page, /unreadableTickers\.add\(ticker\)/);
 });
