@@ -107,7 +107,12 @@ def test_sync_sube_layout_oficial_y_manifest(tmp_path, monkeypatch, fake_hf):
     }
     assert set(fake_hf.uploads) == esperado
     manifest = json.loads(fake_hf.uploads["manifest.json"])
-    assert manifest == {"tickers": {"XYZ": "0000000123"}}
+    assert manifest["tickers"] == {"XYZ": "0000000123"}
+    assert manifest["synced_at"].endswith("Z")
+    # proveniencia por archivo: sha1 de cada contenido oficial servido
+    import hashlib
+    assert manifest["files"]["companyfacts/CIK0000000123.json"] == hashlib.sha1(
+        fake_hf.uploads["companyfacts/CIK0000000123.json"]).hexdigest()
 
 
 def test_sync_no_resube_lo_que_no_cambio(tmp_path, monkeypatch, fake_hf):

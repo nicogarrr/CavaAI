@@ -716,6 +716,9 @@ class FinancialIngestionService:
         }
 
     async def refresh_from_sec(self, db: Session, company: Company) -> dict[str, Any]:
+        from app.services.connectors.sec_edgar import drain_mirror_serves
+
+        drain_mirror_serves()  # marca el inicio de ESTA corrida
         sec = SECClient()
         ticker = company.ticker.upper()
 
@@ -982,9 +985,19 @@ class FinancialIngestionService:
         document.metadata_ = {**(document.metadata_ or {}), "free_data": free_data}
         # Chunks RAG desde los hechos persistidos (ver refresh_from_esef).
         fy_periods = sorted({period for _m, period in restated_fy_keys}, reverse=True)
+        # Procedencia de transporte: si algo se sirvio del mirror HF (ban de
+        # IP), queda declarado con la fecha de sync del mirror.
+        mirror_serves = drain_mirror_serves()
+        mirror_info = None
+        if mirror_serves:
+            mirror_info = {
+                "documents": len(mirror_serves),
+                "synced_at": mirror_serves[-1].get("synced_at"),
+            }
         document.metadata_ = {
             **(document.metadata_ or {}),
             "fy_periods": fy_periods,
+            **({"mirror": mirror_info} if mirror_info else {}),
         }
         sync_company_fact_chunks(db, company)
         db.commit()
@@ -1000,6 +1013,7 @@ class FinancialIngestionService:
             "free_data": free_data,
             "fy_periods": fy_periods,
             "annual_anchored_filings": len(annual_anchors),
+            **({"mirror": mirror_info} if mirror_info else {}),
         }
 
     async def refresh_from_esef(self, db: Session, company: Company) -> dict[str, Any]:

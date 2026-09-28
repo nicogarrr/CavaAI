@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -193,7 +195,69 @@ async def _get_json(
         raise RuntimeError(
             f"SEC EDGAR rate-limited (429 {url}) after {max_retries} retries"
         ) from last_error
-    # Fallback al mirror HF (sin credenciales: el dataset es publico).
+    return await mirror_get_json(url, direct_error=direct_error)
+
+
+MIRROR_MAX_AGE = timedelta(hours=48)
+_MANIFEST_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_MANIFEST_TTL_SECONDS = 300.0
+_MIRROR_SERVES: list[dict[str, Any]] = []
+
+
+def drain_mirror_serves() -> list[dict[str, Any]]:
+    """Servicios de mirror desde la ultima llamada (la ingesta los declara
+    en su resultado: que se sirvio del mirror y de que fecha de sync)."""
+    serves = list(_MIRROR_SERVES)
+    _MIRROR_SERVES.clear()
+    return serves
+
+
+async def _mirror_manifest(dataset: str) -> dict[str, Any]:
+    """Manifest del mirror con frescura verificada. Cache de 5 minutos: la
+    ingesta pide varios documentos por emisor y el manifest no cambia entre
+    ellas. Fail closed: sin manifest valido o con synced_at > 48h, el mirror
+    entero se considera caducado y NO se sirve dato viejo como fresco."""
+    now = time.monotonic()
+    cached = _MANIFEST_CACHE.get(dataset)
+    if cached and now - cached[0] < _MANIFEST_TTL_SECONDS:
+        return cached[1]
+    manifest_url = f"https://huggingface.co/datasets/{dataset}/resolve/main/manifest.json"
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        response = await client.get(manifest_url)
+    response.raise_for_status()
+    manifest = response.json()
+    if not isinstance(manifest, dict):
+        raise RuntimeError(f"Mirror HF manifest no es objeto JSON ({manifest_url})")
+    synced_raw = manifest.get("synced_at")
+    try:
+        synced_at = datetime.fromisoformat(str(synced_raw).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Mirror HF sin synced_at valido ({synced_raw!r}): fail closed"
+        ) from exc
+    age = datetime.now(UTC) - synced_at
+    if age > MIRROR_MAX_AGE:
+        raise RuntimeError(
+            f"Mirror HF caducado: synced_at {synced_raw} tiene {age.days} dias "
+            f"(max {MIRROR_MAX_AGE}). Fail closed: no se sirve dato viejo como fresco."
+        )
+    _MANIFEST_CACHE[dataset] = (now, manifest)
+    return manifest
+
+
+async def mirror_get_json(url: str, *, direct_error: Exception | None = None) -> dict[str, Any]:
+    """Lee el documento SEC desde el mirror HF (dataset publico, sin
+    credenciales). Error claro si no hay mirror configurado, el manifest
+    esta caducado o el mirror no tiene el documento: nunca se enmascara un
+    fallo de dato como de transporte."""
+    mirror_url = _mirror_url_for(url)
+    if mirror_url is None:
+        raise RuntimeError(
+            f"SEC bloqueada y sin mirror HF configurado ({url})"
+        ) from direct_error
+    from app.core.config import get_settings
+
+    manifest = await _mirror_manifest(get_settings().sec_hf_mirror_dataset or "")
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as mirror_client:
         mirror_response = await mirror_client.get(mirror_url)
     try:
@@ -206,6 +270,7 @@ async def _get_json(
     data = mirror_response.json()
     if not isinstance(data, dict):
         raise RuntimeError(f"Mirror HF returned non-object JSON ({mirror_url})")
+    _MIRROR_SERVES.append({"url": url, "synced_at": manifest.get("synced_at")})
     return data
 
 

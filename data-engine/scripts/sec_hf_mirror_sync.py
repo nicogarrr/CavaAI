@@ -78,7 +78,13 @@ def main() -> int:
                 uploads[f"submissions/{name}"] = json.dumps(payload).encode()
                 time.sleep(RPS_DELAY)
             print(f"{ticker}: {len(uploads)} ficheros acumulados")
-        uploads["manifest.json"] = json.dumps({"tickers": manifest}).encode()
+        uploads["manifest.json"] = json.dumps({
+            "tickers": manifest,
+            "synced_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "source": "SEC EDGAR (companyfacts/submissions oficiales)",
+            # Proveniencia por archivo: sha1 del contenido oficial servido.
+            "files": {p: hashlib.sha1(c).hexdigest() for p, c in uploads.items()},
+        }).encode()
 
     # Subir solo lo que cambio (sha1 contra el estado remoto).
     changed = 0
