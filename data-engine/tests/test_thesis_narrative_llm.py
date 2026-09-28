@@ -281,3 +281,17 @@ def test_non_string_ids_fall_back_without_exception(db, monkeypatch):
             db, _company(), VALUATION, HYPOTHESIS, NEWS, "base",
             provider=_FakeProvider(raw_text=raw))
         assert result == "base"
+
+
+def test_provider_factory_error_falls_back(db, monkeypatch):
+    # Con el flag ON, una config de proveedor incompatible no puede romper
+    # la generacion: create_llm_provider lanza y se devuelve la capa 1.
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+
+    def _boom():
+        raise ValueError("llm_provider invalido")
+
+    monkeypatch.setattr(narrative, "create_llm_provider", _boom)
+    result = narrative.maybe_narrative(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, "base")
+    assert result == "base"

@@ -235,10 +235,15 @@ def maybe_narrative(
         # quedarian expectativas o titulares, que afirmarian cosas del mercado
         # sin mercado. La capa 1 ya dice que faltan datos: no se sustituye.
         return baseline
-    provider = provider or create_llm_provider()
+    try:
+        # La factoria lanza con una config de proveedor invalida: con el flag
+        # ON, eso no puede romper la generacion de tesis.
+        provider = provider or create_llm_provider()
+        budget = BudgetController()
+    except Exception:  # noqa: BLE001 - config rota: capa 1
+        return baseline
     if provider.name == "disabled":
         return baseline
-    budget = BudgetController()
     try:
         if not budget.can_spend(db, 0.02):
             return baseline
