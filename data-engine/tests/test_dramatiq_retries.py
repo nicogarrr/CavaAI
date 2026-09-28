@@ -113,7 +113,10 @@ class _FakeRedis:
 
 
 def test_sec_403_from_oci_blocked_ip_is_permanent():
-    """403 de sec.gov = IP de OCI bloqueada: permanente, a dead-letter."""
+    """403 de sec.gov = IP de OCI bloqueada: permanente. Semantica real:
+    no reintenta y el actor devuelve payload de error estructurado, asi que
+    Dramatiq hace ACK del mensaje (NO va a DLQ; el fallo queda en el
+    resultado del job)."""
     assert _is_transient(_sec_error(403)) is False
     wrapped = RuntimeError(f"SEC fetch failed: {_sec_error(403)}")
     assert _is_transient(wrapped) is False
