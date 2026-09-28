@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { seedMarketPrices } from "./fixtures/market-prices";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
 // Quick win UX 5: badges «En cartera / En watchlist» en eventos de noticias.
@@ -49,17 +50,21 @@ test("los eventos de noticias muestran En cartera / En watchlist", async ({ page
     ],
   });
 
-  // Movers: el universo se calcula desde market_prices local; la semilla
-  // firmada (endpoint test-only, 404 en produccion) pobla dos cierres por
-  // ticker para que COST suba (+10%) y NFLX baje (-10%).
-  await post(request, "/api/market/prices/seed", {
-    items: [
-      { ticker: "COST", date: "2026-09-24", close: 100, volume: 1000 },
-      { ticker: "COST", date: "2026-09-25", close: 110, volume: 2000 },
-      { ticker: "NFLX", date: "2026-09-24", close: 100, volume: 1000 },
-      { ticker: "NFLX", date: "2026-09-25", close: 90, volume: 3000 },
-    ],
-  });
+  // Movers: el universo se calcula desde market_prices (global) de la BD
+  // local. Las companias se provisionan por la via real (POST firmado
+  // /api/companies/ensure) y los cierres los escribe el fixture del test
+  // directamente en el sqlite local del backend (sin endpoint de
+  // aplicacion): COST sube (+10%) y NFLX baja (-10%).
+  await post(request, "/api/companies/ensure", { ticker: "COST", name: "Costco Wholesale" });
+  await post(request, "/api/companies/ensure", { ticker: "NFLX", name: "Netflix" });
+  seedMarketPrices("COST", [
+    { date: "2026-09-24", close: 100, volume: 1000 },
+    { date: "2026-09-25", close: 110, volume: 2000 },
+  ]);
+  seedMarketPrices("NFLX", [
+    { date: "2026-09-24", close: 100, volume: 1000 },
+    { date: "2026-09-25", close: 90, volume: 3000 },
+  ]);
 
   await page.goto("/research/news");
   await expect(page.getByRole("heading", { name: "Eventos de noticias", level: 1 })).toBeVisible({ timeout: 60_000 });
@@ -74,11 +79,16 @@ test("los eventos de noticias muestran En cartera / En watchlist", async ({ page
 
   await page.screenshot({ path: "test-results/ticker-badges-news.png" });
 
+  // La cache de movers es de 45s en el servidor de frontend: si otro test
+  // la calento antes de la semilla, recargamos hasta que expire.
   await page.goto("/movers");
   await expect(page.getByRole("heading", { name: "Movers", level: 1 })).toBeVisible({ timeout: 60_000 });
-  const costMover = page.getByRole("row", { name: /COST/ });
-  await expect(costMover.getByText("En cartera", { exact: true })).toBeVisible();
-  const nflxMover = page.getByRole("row", { name: /NFLX/ });
-  await expect(nflxMover.getByText("En watchlist", { exact: true })).toBeVisible();
+  await expect(async () => {
+    await page.reload();
+    const costMover = page.getByRole("row", { name: /COST/ });
+    await expect(costMover.getByText("En cartera", { exact: true })).toBeVisible();
+    const nflxMover = page.getByRole("row", { name: /NFLX/ });
+    await expect(nflxMover.getByText("En watchlist", { exact: true })).toBeVisible();
+  }).toPass({ timeout: 70_000, intervals: [5_000, 10_000, 15_000] });
   await page.screenshot({ path: "test-results/ticker-badges-movers.png" });
 });
