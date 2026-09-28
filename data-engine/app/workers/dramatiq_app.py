@@ -177,6 +177,16 @@ def kpi_queue_max_pending() -> int:
         return 500
 
 
+def kpi_defer_lease_seconds() -> int:
+    """Lease de un diferido re-encolado: expirado, el backfill puede reintentarlo."""
+    import os
+
+    try:
+        return max(60, int(os.getenv("KPI_DEFER_LEASE_SECONDS", "900")))
+    except ValueError:
+        return 900
+
+
 def kpi_queue_has_capacity(client=None) -> bool:
     """True si la cola kpis admite mas trabajo sin degradar la cadencia LLM."""
     return kpi_queue_depth(client) < kpi_queue_max_pending()
@@ -404,7 +414,9 @@ def backfill_document_kpis() -> dict[str, Any]:
     documento que falla siempre no reintente eternamente (queda visible con
     el flag puesto). La extraccion es idempotente por documento.
     """
-    from sqlalchemy import select
+    import time
+
+    from sqlalchemy import Integer, cast, func, select
 
     from app.models import Document
 
@@ -419,9 +431,26 @@ def backfill_document_kpis() -> dict[str, Any]:
             break
         db = _session(tenant_id, user_id)
         try:
+            now = int(time.time())
+            attempts_expr = cast(
+                Document.metadata_[(KPI_DEFERRED_KEY, "attempts")].as_string(), Integer
+            )
+            queued_expr = cast(
+                Document.metadata_[(KPI_DEFERRED_KEY, "queued_at")].as_string(), Integer
+            )
             pending = db.scalars(
                 select(Document)
-                .where(Document.metadata_[KPI_DEFERRED_KEY].isnot(None))
+                .where(
+                    Document.metadata_[KPI_DEFERRED_KEY].isnot(None),
+                    # Agotados filtrados ANTES del LIMIT: si no, un bloque de
+                    # docs antiguos agotados llenaria el LIMIT en cada corrida
+                    # y ningun diferido elegible se reencolaria jamas.
+                    func.coalesce(attempts_expr, 0) < KPI_DEFER_MAX_ATTEMPTS,
+                    # Lease: un doc ya encolado no se reselecciona hasta que
+                    # expira (extraccion lenta o espera en cola); si no, el
+                    # scheduler de 5 min pagaria llamadas LLM duplicadas.
+                    func.coalesce(queued_expr, 0) < now - kpi_defer_lease_seconds(),
+                )
                 .order_by(Document.created_at)
                 .limit(capacity - queued)
             ).all()
@@ -435,6 +464,7 @@ def backfill_document_kpis() -> dict[str, Any]:
                     exhausted += 1
                     continue
                 deferred["attempts"] = attempts + 1
+                deferred["queued_at"] = now
                 meta[KPI_DEFERRED_KEY] = deferred
                 document.metadata_ = meta
                 extract_document_kpis.send(

@@ -63,3 +63,83 @@ class TestBackfill:
             result = workers.backfill_document_kpis()
         assert result["status"] == "skipped"
         assert result["reason"] == "queue_full"
+
+
+class TestBackfillFunctional:
+    """Dos pasadas de backfill y agotados antiguos delante de elegibles."""
+
+    def _db(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from app.core.database import Base
+        from app.models import Document  # noqa: F401 - registra la tabla
+
+        engine = create_engine("sqlite://")
+        Base.metadata.create_all(engine, tables=[Document.__table__])
+        return sessionmaker(bind=engine)()
+
+    def _doc(self, db, title, deferred, created):
+        from app.models import Document
+
+        doc = Document(
+            title=title,
+            source_type="sec",
+            tenant_id=1,
+            metadata_={"kpi_deferred": deferred},
+            created_at=created,
+        )
+        db.add(doc)
+        db.commit()
+        return doc
+
+    def _run_backfill(self, db):
+        with (
+            patch.object(workers, "tenant_contexts", return_value=[(1, "u")]),
+            patch.object(workers, "_session", return_value=db),
+            patch.object(workers, "_redis_client", return_value=None),
+            patch.object(workers, "kpi_queue_depth", return_value=0),
+            patch.object(workers, "kpi_queue_max_pending", return_value=10),
+            patch.object(workers.extract_document_kpis, "send") as send,
+        ):
+            result = workers.backfill_document_kpis()
+        return result, send
+
+    def test_no_requeue_while_lease_active(self) -> None:
+        import datetime as dt
+
+        db = self._db()
+        self._doc(db, "d1", {"attempts": 0}, dt.datetime(2026, 1, 1))
+        result1, send1 = self._run_backfill(db)
+        assert result1["queued"] == 1
+        assert send1.call_count == 1
+        # Segunda pasada inmediata (scheduler 5 min): lease activo, no reencola.
+        result2, send2 = self._run_backfill(db)
+        assert result2["queued"] == 0
+        assert send2.call_count == 0
+        # Lease expirado: vuelve a ser elegible.
+        from app.models import Document
+
+        d = db.query(Document).one()
+        d.metadata_ = {"kpi_deferred": {"attempts": 1, "queued_at": 1}}
+        db.commit()
+        result3, send3 = self._run_backfill(db)
+        assert result3["queued"] == 1
+        assert send3.call_count == 1
+
+    def test_exhausted_old_docs_do_not_starve_eligible(self) -> None:
+        import datetime as dt
+
+        db = self._db()
+        for i in range(6):
+            self._doc(
+                db,
+                f"old{i}",
+                {"attempts": workers.KPI_DEFER_MAX_ATTEMPTS, "queued_at": 1},
+                dt.datetime(2026, 1, 1 + i),
+            )
+        eligible = self._doc(db, "new", {"attempts": 0}, dt.datetime(2026, 2, 1))
+        eligible_id = eligible.id  # la sesion se cierra dentro del actor
+        result, send = self._run_backfill(db)
+        assert result["queued"] == 1
+        send.assert_called_once_with(eligible_id, tenant_id=1, user_id="u")
