@@ -62,23 +62,71 @@ function CheckIcon({ passed }: { passed: boolean | null }) {
  * valor y umbral. Los checks sin datos quedan como no evaluables; nunca
  * cuentan como superados.
  */
-export function MoatPanel({ metric }: { metric: MoatScoreMetric }) {
+export function MoatPanel({ metric, company }: { metric: MoatScoreMetric; company: { company_type: string; sector: string; factor_tags: string[]; valuation_model: string } }) {
   const trace = metric.calculation_trace as {
     checks?: MoatCheck[];
     checks_evaluable?: number;
     checks_total?: number;
     score?: number;
+    profile?: string;
+    profile_label?: string;
+    profile_reason?: string;
+    score_comparable?: boolean;
   };
   const checks = trace.checks ?? [];
   const evaluable = trace.checks_evaluable ?? checks.filter((check) => check.passed !== null).length;
   const total = trace.checks_total ?? checks.length;
   const score = trace.score ?? checks.filter((check) => check.passed === true).length;
 
+  // Old persisted V2 rows may predate profile-aware backend recalculation.
+  // Fail closed on the company's explicit metadata even before the next refresh.
+  const kind = company.company_type.toLowerCase();
+  const tags = company.factor_tags.map((tag) => tag.toLowerCase());
+  const model = company.valuation_model.toLowerCase();
+  const earlyStage = kind.includes('pre_fcf') || kind.includes('pre_revenue') || tags.includes('pre_fcf');
+  const financial = ['bank', 'insurer', 'insurance', 'asset_manager'].some((term) => kind.includes(term)) ||
+    company.sector.toLowerCase() === 'financials';
+  const cyclical = tags.includes('cyclical') || tags.includes('commodities') ||
+    ['mining', 'commodity'].some((term) => kind.includes(term));
+  const growth = tags.includes('growth') || kind.includes('growth') ||
+    tags.includes('speculative') || model.includes('speculative');
+  const unknown = ['', 'research_candidate', 'unknown', 'unassigned'].includes(kind) ||
+    ['', 'unassigned', 'unknown'].includes(model);
+  const historicalScoreNotComparable = earlyStage || financial || cyclical || growth || unknown;
+  const profileLabel = earlyStage ? 'Etapa temprana / antes de caja recurrente' :
+    financial ? 'Financiera' : cyclical ? 'Cíclica o materias primas' :
+    growth ? 'Crecimiento / expansión' : 'Etapa no clasificada';
+  const telecomEarlyStage = earlyStage && (
+    tags.includes('telecom') || kind.includes('telecom')
+  );
+  const evidenceToReview = telecomEarlyStage ?
+    'Licencias o espectro, despliegue real de la red, contratos verificables y financiación necesaria.' :
+    earlyStage ? 'Hitos operativos verificables, acuerdos comerciales, necesidad de financiación y barreras específicas del negocio.' :
+    financial ? 'Coste de financiación, calidad de activos, retención y ventajas regulatorias documentadas.' :
+    cyclical ? 'Coste relativo a competidores, reservas y rentabilidad a través de ciclos completos.' :
+    growth ? 'Retención de clientes, costes de cambio y economía unitaria verificada.' :
+    'Identifica el tipo de empresa y contrasta ventajas competitivas con fuentes primarias.';
+  const traceMatchesCurrentProfile = trace.profile === (
+    earlyStage ? 'early_stage' : financial ? 'financial' : cyclical ? 'cyclical' :
+    growth ? 'growth' : unknown ? 'unknown' : 'mature'
+  );
+  if (trace.score_comparable === false || historicalScoreNotComparable) {
+    return <div className="space-y-3 text-sm leading-6 text-gray-300">
+      <p className="font-semibold text-amber-300">No evaluable con los 8 umbrales generales</p>
+      <p>Perfil actual: {historicalScoreNotComparable ? profileLabel : 'Negocio operativo (perfil general)'}.
+        {' '}{traceMatchesCurrentProfile ? trace.profile_reason : 'Clasificación basada en el tipo, sector o etiquetas actuales de esta empresa.'}</p>
+      {!traceMatchesCurrentProfile && trace.profile ? <p className="text-amber-300">El perfil guardado es anterior a la clasificación actual; recalcula las métricas antes de interpretar una puntuación.</p> : null}
+      <p>En esta etapa o tipo de empresa, pérdidas, reinversión y rentabilidad histórica no prueban ni descartan un foso. No mostramos 0/8: hace falta evidencia verificable de barreras, contratos, costes de cambio o ventajas frente a competidores.</p>
+      <p><span className="font-medium text-gray-100">Qué evidencia mirar: </span>{evidenceToReview} No se puntúa sin fuentes.</p>
+      <p className="text-xs text-gray-500">Los datos financieros siguen disponibles como métricas individuales. El perfil no es una calificación de foso.</p>
+    </div>;
+  }
+
   if (metric.status === 'unavailable' || checks.length === 0) {
     return (
       <p className="text-sm leading-6 text-gray-400">
-        Sin datos suficientes para evaluar el marco de calidad de esta empresa. Ningún check se
-        da por superado sin datos.
+        Sin datos suficientes para evaluar la calidad financiera de esta empresa. Ningún criterio se
+        da por superado sin datos. Esto no es un dictamen de foso competitivo.
       </p>
     );
   }
@@ -87,11 +135,11 @@ export function MoatPanel({ metric }: { metric: MoatScoreMetric }) {
     <div>
       <div className="mb-4 flex flex-wrap items-baseline gap-2">
         <span className="text-2xl font-semibold text-gray-100">
-          {score}/{total}
+          {score}/{evaluable}
         </span>
         <span className="text-sm text-gray-400">
-          checks superados
-          {evaluable < total ? ` (${evaluable} de ${total} evaluables)` : ''}
+          criterios financieros superados
+          {evaluable < total ? ` (${total - evaluable} sin datos)` : ''}
         </span>
         {metric.status === 'partial' ? (
           <span className="rounded-full border border-amber-800 bg-amber-950/40 px-2 py-0.5 text-xs text-amber-300">
@@ -117,8 +165,8 @@ export function MoatPanel({ metric }: { metric: MoatScoreMetric }) {
         ))}
       </ul>
       <p className="mt-3 text-xs leading-5 text-gray-500">
-        Marco V2 ({metric.definition_version}). Umbrales documentados en /metodologia. Los checks
-        sin datos no cuentan como superados.
+        Diagnóstico de calidad financiera para {trace.profile_label ?? 'perfil general'}, no una prueba de foso competitivo.
+        Marco V2 ({metric.definition_version}); los criterios sin datos no cuentan como superados. Consulta /metodologia.
       </p>
     </div>
   );
