@@ -27,6 +27,9 @@ test('F359: SEC 403 es permanente; 429 SEC se reintenta acotado con circuit brea
     assert.match(workers, /if status == 403 and "sec\.gov" in str\(exc\)/, '403 SEC = permanente');
     assert.match(workers, /if status == 429 and "sec\.gov" in str\(exc\)[\s\S]{0,600}_sec_rate_limit_allows_retry\(\)/, '429 SEC = breaker');
     assert.match(workers, /_SEC_429_STREAK_LIMIT = 5/);
-    assert.match(workers, /_sec_429_open_until = current \+ _SEC_429_COOLDOWN_S/, 'el breaker abre con cooldown');
+    // Estado en Redis (compartido entre procesos, INCR atomico), no en memoria.
+    assert.match(workers, /_SEC_BREAKER_OPEN_KEY = "sec_breaker:open"/, 'breaker abierto en Redis con TTL');
+    assert.match(workers, /r\.set\(_SEC_BREAKER_OPEN_KEY, "1", ex=int\(_SEC_429_COOLDOWN_S\)\)/, 'el breaker abre con cooldown');
+    assert.match(workers, /r\.incr\(_SEC_BREAKER_STREAK_KEY\)/, 'contador atomico compartido');
     assert.match(workers, /return status is not None and \(status == 429 or status >= 500\)/, '429/5xx generico sigue reintentable');
 });
