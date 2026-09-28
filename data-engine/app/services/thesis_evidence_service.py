@@ -559,6 +559,9 @@ class ThesisEvidenceService:
                     # titular publicado.
                     "source_headline": (r.metadata_ or {}).get("source_headline"),
                     "date_source": (r.metadata_ or {}).get("date_source"),
+                    # Marca persistida en ingesta: la narrativa la usa para
+                    # preguntar si hay version mas reciente del hecho.
+                    "requires_update": bool(r.requires_update),
                 }
                 for r in rows
             ],
