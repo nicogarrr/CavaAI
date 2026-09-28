@@ -6,6 +6,7 @@ from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
 from app.models import CalculatedMetric, Company, FinancialFact
+from app.services.moat_profile import NONCOMPARABLE_PROFILES, PROFILE_LABELS, financial_quality_profile
 
 MetricFormula = tuple[str, str, tuple[str, ...], str]
 
@@ -1715,15 +1716,39 @@ class MetricCalculationService:
             )
         component_results.append(capex_da_result)
 
-        return self._quality_score_result(
+        profile, profile_reason = financial_quality_profile(company)
+        if profile in NONCOMPARABLE_PROFILES:
+            # Do not turn losses/investment in an early-stage company, bank or
+            # cyclical business into a spurious zero-out-of-eight "moat".
+            # The computed components remain accessible as raw diagnostics.
+            checks = [
+                {**check, "passed": None, "reason": "not_applicable_to_profile"}
+                for check in checks
+            ]
+        # Assemble the complete trace before the single upsert. JSON columns do
+        # not track mutations of a dictionary already assigned to an ORM row.
+        result = self._quality_score_result(
             db,
             company,
-            persist,
+            False,
             "quality_moat_score_v2",
             "MARCO_NICO_V2 (V1 + cfroi/owner earnings/capex; umbrales delegados por Nico 2026-09-25)",
             checks,
             component_results,
         )
+        result.calculation_trace.update({
+            "profile": profile,
+            "profile_label": PROFILE_LABELS[profile],
+            "profile_reason": profile_reason,
+            "score_comparable": profile not in NONCOMPARABLE_PROFILES,
+            "interpretation": (
+                "Diagnóstico de calidad financiera; no demuestra un foso competitivo."
+                if profile not in NONCOMPARABLE_PROFILES else
+                "Estos umbrales generales no son pertinentes para este perfil. "
+                "El foso requiere evidencia cualitativa verificable."
+            ),
+        })
+        return self._persist_if_requested(db, company, result, persist)
 
     def _persist_if_requested(
         self,
