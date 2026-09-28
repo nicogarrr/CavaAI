@@ -51,24 +51,28 @@ def test_form_allowlist():
     assert _form_from("XYZ-9 weird (2026-09-24)", "") is None  # no inventa forms
 
 
-def test_plan_row():
+def test_plan_row_solo_texto_compuesto():
     row = SimpleNamespace(
-        id=1, tenant_id=None, title="COST COST 8-K (2026-09-24)",
+        id=1, tenant_id=None, company_id=7, title="COST COST 8-K (2026-09-24)",
         summary="COST COST 8-K (2026-09-24)",
         metadata_={"source_headline": "COST 8-K (2026-09-24)"},
     )
     plan = _plan_row(row, "COST")
-    assert plan["new"]["title"] == "COST 8-K presentado ante la SEC"
-    assert plan["new"]["source_headline"] == "8-K presentado ante la SEC"  # sin prefijo
-    assert plan["expected"]["title"] == "COST COST 8-K (2026-09-24)"
+    assert plan["new"] == {
+        "title": "COST 8-K presentado ante la SEC",
+        "summary": "COST 8-K presentado ante la SEC",
+    }
+    # Procedencia: el plan NO toca source_headline.
+    assert "source_headline" not in plan["new"]
+    assert "source_headline" not in plan["expected"]
     row_es = SimpleNamespace(
-        id=2, tenant_id=None, title="COST 8-K presentado ante la SEC",
+        id=2, tenant_id=None, company_id=7, title="COST 8-K presentado ante la SEC",
         summary="COST 8-K presentado ante la SEC",
         metadata_={"source_headline": "8-K presentado ante la SEC"},
     )
-    assert _plan_row(row_es, "COST") is None  # ya saneada: no se toca
+    assert _plan_row(row_es, "COST") is None
     row_otro = SimpleNamespace(
-        id=3, tenant_id=None, title="Apple anuncia resultados",
+        id=3, tenant_id=None, company_id=7, title="Apple anuncia resultados",
         summary="Apple anuncia resultados", metadata_={},
     )
     assert _plan_row(row_otro, "AAPL") is None
@@ -89,8 +93,8 @@ def db_rows():
             sector="Technology", industry="Software", company_type="tech",
             valuation_model="standard_dcf", special_sources=[], special_risks=[], factor_tags=[],
         ))
-    db.commit()
-    company = db.scalar(select(Company).where(Company.ticker == "SEEDC"))
+        db.commit()
+        company = db.scalar(select(Company).where(Company.ticker == "SEEDC"))
     yield db, company
     db.close()
 
@@ -109,7 +113,15 @@ def _add_sec_row(db, company, title, headline, url=SEC_URL, source="SEC", summar
     return row
 
 
-def test_dry_run_no_escribe(db_rows, tmp_path, capsys):
+def _plan_and_apply(tmp_path):
+    plan = tmp_path / "plan.json"
+    backup = tmp_path / "backup.json"
+    assert main(["--plan", str(plan)]) == 0
+    assert main(["--apply", "--plan", str(plan), "--backup", str(backup)]) == 0
+    return backup
+
+
+def test_dry_run_no_escribe(db_rows, capsys):
     db, company = db_rows
     row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
     assert main([]) == 0
@@ -128,44 +140,60 @@ def test_match_estricto_descarta_falsos_positivos(db_rows, capsys):
     _add_sec_row(db, company, "SEEDC S-1 (2026-01-15)", "SEEDC S-1 (2026-01-15)", source="manual")
     assert main([]) == 0
     out = capsys.readouterr().out
-    assert "candidatas SEC estrictas" in out and ": 0" in out.split("candidatas SEC estrictas")[1].splitlines()[0]
+    line = [l for l in out.splitlines() if "candidatas SEC estrictas" in l][0]
+    assert line.endswith(": 0")
 
 
-def test_apply_sanea_los_tres_campos_y_backup_durable(db_rows, tmp_path):
+def test_apply_sanea_texto_compuesto_y_conserva_procedencia(db_rows, tmp_path):
     db, company = db_rows
     row = _add_sec_row(db, company, "SEEDC SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
-    plan = tmp_path / "plan.json"
-    assert main(["--plan", str(plan)]) == 0
-    backup = tmp_path / "backup.json"
-    assert main(["--apply", "--plan", str(plan), "--backup", str(backup)]) == 0
+    backup = _plan_and_apply(tmp_path)
     db.expire_all()
     row = db.get(NewsEvent, row.id)
     assert row.title == "SEEDC 8-K presentado ante la SEC"
     assert row.summary == "SEEDC 8-K presentado ante la SEC"
-    assert row.metadata_["source_headline"] == "8-K presentado ante la SEC"
-    # Los originales quedan preservados (nunca se finge reescribir el histórico).
-    assert row.metadata_["sec_sanitize"]["original"]["title"] == "SEEDC SEEDC 8-K (2026-09-24)"
+    # Procedencia intacta: el titular original atribuido al SEC no se toca.
+    assert row.metadata_["source_headline"] == "SEEDC 8-K (2026-09-24)"
+    assert "sec_sanitize" not in row.metadata_
     payload = json.loads(backup.read_text(encoding="utf-8"))
     assert payload[0]["old"]["title"] == "SEEDC SEEDC 8-K (2026-09-24)"
+    assert payload[0]["new"]["summary"] == "SEEDC 8-K presentado ante la SEC"
     # Backup exclusivo: un segundo apply con la misma ruta falla ANTES de tocar BD.
     with pytest.raises(FileExistsError):
-        main(["--apply", "--plan", str(plan), "--backup", str(backup)])
+        main(["--apply", "--plan", str(tmp_path / "plan.json"), "--backup", str(backup)])
 
 
 def test_apply_salta_filas_cambiadas_desde_el_plan(db_rows, tmp_path, capsys):
     db, company = db_rows
     row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
     plan = tmp_path / "plan.json"
-    main(["--plan", str(plan)])  # dry-run: plan revisado
-    db.get(NewsEvent, row.id).title = "Editado por otra persona (2026-09-24)"
+    main(["--plan", str(plan)])
+    db.get(NewsEvent, row.id).summary = "Resumen editado por otra persona"
     db.commit()
     assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
     db.expire_all()
-    assert db.get(NewsEvent, row.id).title == "Editado por otra persona (2026-09-24)"
+    row = db.get(NewsEvent, row.id)
+    assert row.title == "SEEDC 8-K (2026-09-24)"
+    assert row.summary == "Resumen editado por otra persona"
     assert "saltadas por cambio de estado" in capsys.readouterr().out
 
 
-def test_colision_se_salta_y_reporta(db_rows, tmp_path, capsys):
+def test_apply_revalida_origen_al_aplicar(db_rows, tmp_path, capsys):
+    db, company = db_rows
+    row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
+    plan = tmp_path / "plan.json"
+    main(["--plan", str(plan)])
+    # La fila deja de ser SEC entre la revisión del plan y el apply.
+    stale = db.get(NewsEvent, row.id)
+    stale.source = "manual"
+    db.commit()
+    assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
+    db.expire_all()
+    assert db.get(NewsEvent, row.id).title == "SEEDC 8-K (2026-09-24)"
+    assert "saltadas por cambio de estado" in capsys.readouterr().out
+
+
+def test_colision_en_bd_se_salta(db_rows, tmp_path, capsys):
     db, company = db_rows
     _add_sec_row(db, company, "SEEDC 8-K presentado ante la SEC", "8-K presentado ante la SEC",
                  url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000002/y.htm")
@@ -178,23 +206,41 @@ def test_colision_se_salta_y_reporta(db_rows, tmp_path, capsys):
     assert "COLISIÓN" in capsys.readouterr().out
 
 
-def test_rollback_con_precondicion(db_rows, tmp_path, capsys):
+def test_colision_intraplan_se_detecta(db_rows, tmp_path, capsys):
+    db, company = db_rows
+    # Dos filas EN distintas que convergen al mismo título destino.
+    _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)",
+                 url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/a.htm")
+    _add_sec_row(db, company, "SEEDC SEEDC 8-K (2026-09-24)", "SEEDC SEEDC 8-K (2026-09-24)",
+                 url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/b.htm")
+    plan = tmp_path / "plan.json"
+    assert main(["--plan", str(plan)]) == 0
+    out = capsys.readouterr().out
+    assert "COLISIÓN" in out
+    planned = json.loads(plan.read_text(encoding="utf-8"))
+    assert len(planned) == 1  # solo una entra al plan; la otra se reporta
+
+
+def test_rollback_con_precondicion_en_ambos_campos(db_rows, tmp_path, capsys):
     db, company = db_rows
     row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
-    plan = tmp_path / "plan.json"
-    main(["--plan", str(plan)])
-    backup = tmp_path / "b.json"
-    main(["--apply", "--plan", str(plan), "--backup", str(backup)])
+    backup = _plan_and_apply(tmp_path)
     # Rollback en dry-run: preview sin escrituras.
     assert main(["--rollback", str(backup)]) == 0
     db.expire_all()
     assert db.get(NewsEvent, row.id).title == "SEEDC 8-K presentado ante la SEC"
     assert "DRY-RUN" in capsys.readouterr().out
-    # Una edición posterior bloquea la reversión de ESA fila.
-    db.get(NewsEvent, row.id).title = "Edición posterior"
-    db.commit()
+    # Rollback real restaura title y summary.
     assert main(["--rollback", str(backup), "--apply"]) == 0
     db.expire_all()
-    assert db.get(NewsEvent, row.id).title == "Edición posterior"
-    out = capsys.readouterr().out
-    assert "saltadas" in out
+    row = db.get(NewsEvent, row.id)
+    assert row.title == "SEEDC 8-K (2026-09-24)"
+    assert row.summary == "SEEDC 8-K (2026-09-24)"
+    # Una edición posterior SOLO en summary también bloquea la reversión.
+    main(["--apply", "--plan", str(tmp_path / "plan.json"), "--backup", str(tmp_path / "b2.json")])
+    db.get(NewsEvent, row.id).summary = "editado después"
+    db.commit()
+    assert main(["--rollback", str(tmp_path / "b2.json"), "--apply"]) == 0
+    db.expire_all()
+    assert db.get(NewsEvent, row.id).summary == "editado después"
+    assert "saltadas" in capsys.readouterr().out

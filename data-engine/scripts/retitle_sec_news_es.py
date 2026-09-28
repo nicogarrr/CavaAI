@@ -4,14 +4,14 @@ Contexto: la ingesta es insert-only con dedup por URL antes que por título,
 así que un deploy del conector NO reescribe las filas ya persistidas. Este
 script retitula SOLO esas filas históricas al formato español actual.
 
-Campos que muta (los TRES, o la fila queda contradictoria):
+Campos que muta (SOLO texto compuesto por CavaAI):
 - NewsEvent.title (visible en /research/news y tarjetas),
-- NewsEvent.summary (del que deriva el título y alimenta otras superficies),
-- metadata.source_headline (titular atribuido al SEC en la UI).
-Política de texto derivado: los originales NO se destruyen — quedan en
-metadata.sec_sanitize (con fecha) y en el backup JSON. No se finge
-reescribir hechos históricos: el titular que el SEC publicó en inglés
-sigue registrado; lo que cambia es el texto derivado que muestra la app.
+- NewsEvent.summary (del que deriva el título y alimenta otras superficies).
+metadata.source_headline queda INMUTABLE: es el titular ORIGINAL atribuido
+al SEC (#574 lo preserva para citarlo verbatim) y sustituirlo por un texto
+creado por CavaAI haría que los lectores atribuyeran la traducción al SEC.
+Los títulos/resúmenes originales quedan en el backup JSON: se reescribe el
+texto compuesto que muestra la app, nunca la procedencia.
 
 Seguridad (requisitos de revisión):
 - DRY-RUN por defecto en apply Y en rollback: nada escribe sin --apply.
@@ -50,7 +50,6 @@ import json
 import os
 import re
 import sys
-from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -125,17 +124,17 @@ def _plan_row(row: NewsEvent, ticker: str) -> dict | None:
     # conector, nunca un form inventado.
     new_headline = f"{form or 'filing'} presentado ante la SEC"
     new_title = f"{ticker} {new_headline}" if ticker else new_headline
-    if new_title == row.title and new_headline == (row.metadata_ or {}).get("source_headline"):
+    if new_title == row.title and new_title == row.summary:
         return None  # ya saneada
     return {
         "id": row.id,
         "tenant_id": row.tenant_id,
+        "company_id": row.company_id,
         "expected": {
             "title": row.title,
             "summary": row.summary,
-            "source_headline": (row.metadata_ or {}).get("source_headline"),
         },
-        "new": {"title": new_title, "summary": new_title, "source_headline": new_headline},
+        "new": {"title": new_title, "summary": new_title},
     }
 
 
@@ -187,26 +186,26 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
     skipped: list[int] = []
     for item in planned:
         row = db.get(NewsEvent, item["id"])
-        metadata = (row.metadata_ if row else None) or {}
-        current = {
-            "title": row.title if row else None,
-            "summary": row.summary if row else None,
-            "source_headline": metadata.get("source_headline"),
-        }
-        if row is None or row.tenant_id != item["tenant_id"] or current != item["expected"]:
+        if row is None or row.tenant_id != item["tenant_id"]:
+            skipped.append(item["id"])
+            continue
+        # Revalida el origen al aplicar: el plan revisado no es un chequeo
+        # permanente de que la fila sigue siendo una fila SEC estricta.
+        metadata = row.metadata_ or {}
+        if (
+            row.source != "SEC"
+            or metadata.get("connector") != "sec"
+            or not _is_sec_url(row.url)
+        ):
+            skipped.append(item["id"])
+            continue
+        current = {"title": row.title, "summary": row.summary}
+        if current != item["expected"]:
             # La fila cambió desde el plan revisado: no se pisa.
             skipped.append(item["id"])
             continue
         row.title = item["new"]["title"]
         row.summary = item["new"]["summary"]
-        row.metadata_ = {
-            **metadata,
-            "source_headline": item["new"]["source_headline"],
-            "sec_sanitize": {
-                "at": datetime.now(UTC).isoformat(),
-                "original": item["expected"],
-            },
-        }
         applied += 1
     return applied, skipped
 
@@ -228,10 +227,13 @@ def main(argv: list[str] | None = None) -> int:
             skipped: list[int] = []
             for entry in backup:
                 row = db.get(NewsEvent, entry["id"])
+                current_new = (
+                    {"title": row.title, "summary": row.summary} if row else None
+                )
                 if (
                     row is not None
                     and row.tenant_id == entry["tenant_id"]
-                    and row.title == entry["new_title"]
+                    and current_new == entry["new"]
                 ):
                     restorable.append(entry)
                 else:
@@ -248,13 +250,6 @@ def main(argv: list[str] | None = None) -> int:
                 row = db.get(NewsEvent, entry["id"])
                 row.title = entry["old"]["title"]
                 row.summary = entry["old"]["summary"]
-                metadata = dict(row.metadata_ or {})
-                if entry["old"]["source_headline"] is None:
-                    metadata.pop("source_headline", None)
-                else:
-                    metadata["source_headline"] = entry["old"]["source_headline"]
-                metadata.pop("sec_sanitize", None)
-                row.metadata_ = metadata
             db.commit()
             print(f"rollback aplicado: {len(restorable)} filas restauradas")
             return 0
@@ -263,10 +258,18 @@ def main(argv: list[str] | None = None) -> int:
         planned: list[dict] = []
         collisions: list[dict] = []
         undetermined: list[int] = []
+        planned_titles: dict[tuple, int] = {}
         for row, ticker in candidates:
             plan = _plan_row(row, ticker)
             if plan is None:
                 undetermined.append(row.id)
+                continue
+            # Colisión INTRAPLAN: dos filas del mismo plan que convergen al
+            # mismo título no aparecen en la BD hasta el commit.
+            plan_key = (row.tenant_id, row.company_id, plan["new"]["title"])
+            if plan_key in planned_titles:
+                collisions.append({"id": row.id, "title": plan["new"]["title"],
+                                   "clash_with": planned_titles[plan_key]})
                 continue
             clash = db.scalar(
                 select(NewsEvent.id).where(
@@ -279,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
             if clash is not None:
                 collisions.append({"id": row.id, "title": plan["new"]["title"], "clash_with": clash})
                 continue
+            planned_titles[plan_key] = row.id
             planned.append(plan)
 
         mode = "APPLY" if args.apply else "DRY-RUN"
@@ -308,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
             reviewed_plan = json.load(fh)
         backup_payload = [
             {"id": p["id"], "tenant_id": p["tenant_id"],
-             "old": p["expected"], "new_title": p["new"]["title"]}
+             "old": p["expected"], "new": p["new"]}
             for p in reviewed_plan
         ]
         _write_backup_durable(args.backup, backup_payload)
