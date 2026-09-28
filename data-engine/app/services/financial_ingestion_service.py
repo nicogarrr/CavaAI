@@ -299,7 +299,7 @@ def _collect_by_concept(
     periods: set[str],
     min_span: int | None,
     max_span: int | None,
-    modal_month: str | None = None,
+    accepted_months: set[str] | None = None,
 ) -> dict[str, dict[str, dict[str, Any]]]:
     """Newest ``filed`` fact per concept and period, before any merging.
 
@@ -330,8 +330,9 @@ def _collect_by_concept(
                     continue
                 # The duration check alone is not enough: the ~365-day TTM
                 # rows that close on a quarter end pass it. Only the issuer's
-                # modal fiscal close month enters an annual fact.
-                if modal_month and str(entry.get("end") or "")[5:7] != modal_month:
+                # accepted fiscal close months enter an annual fact (current
+                # calendar + previous one after a calendar change, F353).
+                if accepted_months and _normalized_fiscal_month(entry.get("end") or "") not in accepted_months:
                     continue
             end = str(entry.get("end") or "")
             if not end:
@@ -523,18 +524,51 @@ def _fiscal_quarter_from_end(end: str, modal_fy_month: str | None) -> str | None
         quarter = 4
     return f"Q{quarter}"
 
+def _normalized_fiscal_month(end: str) -> str | None:
+    """Mes de cierre fiscal normalizado: los ejercicios de 52/53 semanas que
+    cierran en la primera semana de un mes pertenecen convencionalmente al mes
+    anterior (VFC cierra el sabado mas cercano al 31 de marzo: 2023-04-01,
+    2024-03-30, 2025-03-29 son todos "marzo"). Sin esa normalizacion el drift
+    cruzando un cambio de mes parte la moda y deja fuera ejercicios validos.
+    """
+    try:
+        d = date.fromisoformat(str(end))
+    except (TypeError, ValueError):
+        return None
+    month = d.month - 1 if d.day <= 7 else d.month
+    return f"{month or 12:02d}"
+
+
 def _modal_fiscal_end_month(us_gaap: dict[str, Any]) -> str | None:
-    """Mes modal de cierre de ejercicio a partir de TODOS los hechos de flujo
+    """Mes modal de cierre de ejercicio a partir de los hechos de flujo
     anuales candidatos (300-380 dias, fp=FY, 10-K/20-F). Los acumulados TTM de
     ~365 dias que cierran en fin de trimestre (caso real AA/AAL: revenue
     2019-04-01 -> 2020-03-31 etiquetado FY) pasan el filtro de duracion, pero
-    su mes de cierre es minoritario frente al del ejercicio real. Modalidad por
-    MES (no por dia exacto) para absorber el drift de ejercicios de 52/53
-    semanas (AAPL cierra el ultimo sabado de septiembre: 09-25, 09-26, 09-28).
+    su mes de cierre es minoritario frente al del ejercicio real.
+
+    F353: la moda se computa sobre la VENTANA RECIENTE (ultimos ~5 anos de
+    cierres anuales), no sobre toda la historia. Emisores que cambian de
+    calendario fiscal (casos reales 28/09/2026: BRT Sep->Dec, ZWS Mar->Dec,
+    CSR Abr->Dec, JEF Dic->Nov, CMP Dic->Sep, EYPT/MYGN/LHX Jun->Dic, FOR
+    Dic->Sep, VFC Dic->Mar/Abr) quedaban congelados en el ano del cambio
+    porque la historia vieja ganaba la moda y el filtro rechazaba los
+    ejercicios nuevos. La ventana reciente adopta el calendario actual; la
+    historia solo desempata, asi la proteccion anti-TTM de F28 sigue
+    vigente (los TTM no cambian de mes: el ejercicio real reciente sigue
+    ganando la moda). Mes normalizado (primeros 7 dias = mes anterior) para
+    absorber el drift de 52/53 semanas cruzando cambio de mes.
     Devuelve None si no hay candidatos de flujo (emisor sin historia anual).
     """
-    counts: Counter[str] = Counter()
-    latest_end: dict[str, str] = {}
+    pairs = _fiscal_annual_pairs(us_gaap)
+    if not pairs:
+        return None
+    return _recent_fiscal_mode(pairs)
+
+
+def _fiscal_annual_pairs(us_gaap: dict[str, Any]) -> list[tuple[str, str]]:
+    """Pares (mes normalizado, end) de todos los hechos de flujo anuales
+    candidatos (300-380 dias, fp=FY, 10-K/20-F) sobre todo SEC_METRIC_MAP."""
+    pairs: list[tuple[str, str]] = []
     for _metric, concepts, unit in SEC_METRIC_MAP:
         xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
         for concept in concepts:
@@ -554,14 +588,45 @@ def _modal_fiscal_end_month(us_gaap: dict[str, Any]) -> str | None:
                 end = str(e.get("end") or "")
                 if len(end) < 7:
                     continue
-                month = end[5:7]
-                counts[month] += 1
-                if end > latest_end.get(month, ""):
-                    latest_end[month] = end
-    if not counts:
+                month = _normalized_fiscal_month(end)
+                if month is not None:
+                    pairs.append((month, end))
+    return pairs
+
+
+def _recent_fiscal_mode(pairs: list[tuple[str, str]]) -> str:
+    """Moda sobre la ventana reciente (ultimos ~5 anos de cierres); a empate,
+    el mes con el cierre mas reciente (el calendario vigente)."""
+    max_year = max(int(end[:4]) for _month, end in pairs)
+    counts_recent: Counter[str] = Counter()
+    latest_end: dict[str, str] = {}
+    for month, end in pairs:
+        if end > latest_end.get(month, ""):
+            latest_end[month] = end
+        if int(end[:4]) >= max_year - 5:
+            counts_recent[month] += 1
+    pool = counts_recent or Counter(m for m, _e in pairs)
+    return max(pool, key=lambda m: (pool[m], latest_end.get(m, "")))
+
+
+def _accepted_fiscal_months(us_gaap: dict[str, Any]) -> set[str] | None:
+    """Meses de cierre aceptados para hechos anuales: el calendario vigente
+    (moda reciente) Y el anterior (moda historica) si difieren. Tras un
+    cambio de calendario fiscal (F353) la historia del calendario viejo es
+    legitima y no debe perderse; el anti-TTM de F28 sigue vigente porque los
+    acumulados TTM cierran en meses que nunca fueron moda en ninguna era.
+    None si no hay candidatos (sin filtro)."""
+    pairs = _fiscal_annual_pairs(us_gaap)
+    if not pairs:
         return None
-    # Empate: gana el mes con el cierre mas reciente (ejercicio actual).
-    return max(counts, key=lambda m: (counts[m], latest_end.get(m, "")))
+    counts_all: Counter[str] = Counter()
+    latest_end: dict[str, str] = {}
+    for month, end in pairs:
+        counts_all[month] += 1
+        if end > latest_end.get(month, ""):
+            latest_end[month] = end
+    historical = max(counts_all, key=lambda m: (counts_all[m], latest_end.get(m, "")))
+    return {_recent_fiscal_mode(pairs), historical}
 
 
 class FinancialIngestionService:
@@ -741,7 +806,7 @@ class FinancialIngestionService:
                     periods={"FY"},
                     min_span=300,
                     max_span=380,
-                    modal_month=modal_fy_month,
+                    accepted_months=_accepted_fiscal_months(us_gaap),
                 ),
                 metric,
             )
