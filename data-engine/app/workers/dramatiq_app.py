@@ -141,6 +141,47 @@ def _session(tenant_id: int | None, user_id: str | None):
     return db
 
 
+KPI_QUEUE_NAME = "kpis"
+KPI_DEFERRED_KEY = "kpi_deferred"
+KPI_DEFER_MAX_ATTEMPTS = 5
+
+
+def _redis_client():
+    """Cliente redis corto para sondas de cola; None si no hay URL configurada."""
+    import redis as _redis
+
+    url = _lease_redis_url()
+    if not url:
+        return None
+    return _redis.from_url(url, socket_connect_timeout=2, socket_timeout=2)
+
+
+def kpi_queue_depth(client=None) -> int:
+    """Pendientes en la cola kpis; 0 si la sonda falla (fail-open a encolar)."""
+    try:
+        client = client or _redis_client()
+        if client is None:
+            return 0
+        return int(client.hlen(f"dramatiq:{KPI_QUEUE_NAME}.msgs"))
+    except Exception:  # noqa: BLE001 - la sonda nunca rompe la ingesta
+        return 0
+
+
+def kpi_queue_max_pending() -> int:
+    """Tope de pendientes KPI antes de frenar la fuente (backpressure)."""
+    import os
+
+    try:
+        return max(1, int(os.getenv("KPI_QUEUE_MAX_PENDING", "500")))
+    except ValueError:
+        return 500
+
+
+def kpi_queue_has_capacity(client=None) -> bool:
+    """True si la cola kpis admite mas trabajo sin degradar la cadencia LLM."""
+    return kpi_queue_depth(client) < kpi_queue_max_pending()
+
+
 def tenant_contexts() -> list[tuple[int, str]]:
     """Return explicit tenant/user pairs for scheduler fan-out."""
     from sqlalchemy import select
@@ -319,7 +360,7 @@ def reset_local_leases() -> None:
     _local_leases.clear()
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name="kpis")
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=KPI_QUEUE_NAME)
 def extract_document_kpis(
     document_id: int,
     *,
@@ -336,6 +377,10 @@ def extract_document_kpis(
         if document is None:
             raise ValueError(f"Document {document_id} was not found")
         candidates = _run(KPIExtractionService().extract_document(db, document))
+        meta = dict(document.metadata_ or {})
+        if meta.pop(KPI_DEFERRED_KEY, None) is not None:
+            document.metadata_ = meta
+            db.commit()
         return {
             "status": "ok",
             "document_id": document_id,
@@ -347,6 +392,65 @@ def extract_document_kpis(
         return _handle_actor_error("extract_document_kpis", exc, document_id=document_id)
     finally:
         db.close()
+
+
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
+def backfill_document_kpis() -> dict[str, Any]:
+    """Re-encola extracciones KPI diferidas por backpressure, mas antiguas primero.
+
+    La ingesta marca document.metadata_["kpi_deferred"] cuando frena la
+    fuente; aqui se recuperan hasta el tope de la cola. Cada re-encolado
+    incrementa el contador y se para en KPI_DEFER_MAX_ATTEMPTS para que un
+    documento que falla siempre no reintente eternamente (queda visible con
+    el flag puesto). La extraccion es idempotente por documento.
+    """
+    from sqlalchemy import select
+
+    from app.models import Document
+
+    client = _redis_client()
+    capacity = kpi_queue_max_pending() - kpi_queue_depth(client)
+    if capacity <= 0:
+        return {"actor": "backfill_document_kpis", "status": "skipped", "reason": "queue_full"}
+    queued = 0
+    exhausted = 0
+    for tenant_id, user_id in tenant_contexts():
+        if queued >= capacity:
+            break
+        db = _session(tenant_id, user_id)
+        try:
+            pending = db.scalars(
+                select(Document)
+                .where(Document.metadata_[KPI_DEFERRED_KEY].isnot(None))
+                .order_by(Document.created_at)
+                .limit(capacity - queued)
+            ).all()
+            for document in pending:
+                if queued >= capacity:
+                    break
+                meta = dict(document.metadata_ or {})
+                deferred = dict(meta.get(KPI_DEFERRED_KEY) or {})
+                attempts = int(deferred.get("attempts") or 0)
+                if attempts >= KPI_DEFER_MAX_ATTEMPTS:
+                    exhausted += 1
+                    continue
+                deferred["attempts"] = attempts + 1
+                meta[KPI_DEFERRED_KEY] = deferred
+                document.metadata_ = meta
+                extract_document_kpis.send(
+                    document.id, tenant_id=tenant_id, user_id=user_id
+                )
+                queued += 1
+            db.commit()
+        finally:
+            db.close()
+    return {
+        "actor": "backfill_document_kpis",
+        "status": "ok",
+        "queued": queued,
+        "exhausted": exhausted,
+        "capacity": capacity,
+    }
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)

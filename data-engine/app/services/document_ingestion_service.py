@@ -205,17 +205,30 @@ class DocumentIngestionService:
             and db.info.get("user_id")
         ):
             try:
-                from app.workers.dramatiq_app import extract_document_kpis
-
-                message = extract_document_kpis.send(
-                    document.id,
-                    tenant_id=int(db.info["tenant_id"]),
-                    user_id=str(db.info["user_id"]),
+                from app.workers.dramatiq_app import (
+                    KPI_DEFERRED_KEY,
+                    extract_document_kpis,
+                    kpi_queue_has_capacity,
                 )
-                kpi_extraction = {
-                    "status": "queued",
-                    "message_id": str(message.message_id),
-                }
+
+                if not kpi_queue_has_capacity():
+                    # Backpressure: la cola kpis llego al tope; se frena la
+                    # fuente y backfill_document_kpis lo recupera despues.
+                    meta = dict(document.metadata_ or {})
+                    meta.setdefault(KPI_DEFERRED_KEY, {"attempts": 0})
+                    document.metadata_ = meta
+                    db.commit()
+                    kpi_extraction = {"status": "deferred_backpressure"}
+                else:
+                    message = extract_document_kpis.send(
+                        document.id,
+                        tenant_id=int(db.info["tenant_id"]),
+                        user_id=str(db.info["user_id"]),
+                    )
+                    kpi_extraction = {
+                        "status": "queued",
+                        "message_id": str(message.message_id),
+                    }
             except Exception as exc:
                 kpi_extraction = {
                     "status": "queue_unavailable",
