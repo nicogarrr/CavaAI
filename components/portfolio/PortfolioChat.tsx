@@ -53,6 +53,29 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
         return () => document.removeEventListener('keydown', onKeyDown);
     }, [isOpen]);
 
+    /**
+     * F339: a <md la burbuja fija (bottom-right) tapa la columna de porcentajes
+     * de la leyenda del donut de Distribución en cualquier punto de reposo del
+     * scroll. Se auto-oculta durante el scroll y reaparece ~600 ms tras parar;
+     * en desktop (md+) las clases md:* la mantienen siempre visible. El listener
+     * va en window con capture para enterarse también de scrolls en contenedores
+     * internos, y se limpia al desmontar.
+     */
+    const [fabHidden, setFabHidden] = useState(false);
+    useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const onScroll = () => {
+            setFabHidden(true);
+            if (timer !== undefined) clearTimeout(timer);
+            timer = setTimeout(() => setFabHidden(false), 600);
+        };
+        window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+        return () => {
+            window.removeEventListener('scroll', onScroll, { capture: true });
+            if (timer !== undefined) clearTimeout(timer);
+        };
+    }, []);
+
     async function handleSend() {
         if (!input.trim() || loading) return;
 
@@ -83,7 +106,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                 aria-label="Abrir asistente de cartera"
                 // `viewportFit: "cover"` + barra de inicio de iOS: sin el inset la
                 // burbuja queda bajo la barra en modo standalone.
-                className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-14 w-14 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 text-white z-50 animate-in zoom-in duration-300"
+                className={`fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-14 w-14 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 text-white z-50 animate-in zoom-in duration-300 transition-all ${fabHidden ? 'translate-y-24 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto' : ''}`}
             >
                 <Brain aria-hidden="true" className="h-8 w-8" />
             </Button>
