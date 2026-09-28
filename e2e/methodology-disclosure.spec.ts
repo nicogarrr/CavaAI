@@ -32,10 +32,13 @@ function signedHeaders(method: string, path: string, body: Buffer) {
 }
 
 async function seedPositions(request: import("@playwright/test").APIRequestContext) {
+  // Tickers sinteticos exclusivos de esta spec: el tenant e2e es
+  // compartido y comprar COST/NFLX aqui convertia esos tickers en
+  // «En cartera» para la spec de badges (colision de semillas).
   const seeds = [
-    { ticker: "COST", quantity: 5, price: 900 },
-    { ticker: "NFLX", quantity: 4, price: 700 },
-    { ticker: "TSLA", quantity: 6, price: 250 },
+    { ticker: "E2EMD1", quantity: 5, price: 900 },
+    { ticker: "E2EMD2", quantity: 4, price: 700 },
+    { ticker: "E2EMD3", quantity: 6, price: 250 },
   ];
   for (const s of seeds) {
     const body = Buffer.from(JSON.stringify({

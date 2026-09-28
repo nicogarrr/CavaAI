@@ -8,6 +8,8 @@ import { Stat } from '@/components/ui/stat';
 import { Textarea } from '@/components/ui/textarea';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
+import { getTickerContext } from '@/lib/actions/ticker-context.actions';
+import { TickerContextBadges } from '@/components/common/TickerContextBadges';
 import { formatPercent, NA } from '@/lib/format';
 import { etiquetaTemaMacro, etiquetaTierFuente, etiquetaTipoEvento } from "@/lib/labels";
 
@@ -49,7 +51,9 @@ const CARRILES = [
 export default async function ResearchNewsPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const lane = query.lane === 'macro' || query.lane === 'empresa' ? query.lane : null;
-  const events = await getResearchNews();
+  const [events, tickerContext] = await Promise.all([getResearchNews(), getTickerContext()]);
+  const portfolioTickers = new Set(tickerContext.portfolioTickers);
+  const watchlistTickers = new Set(tickerContext.watchlistTickers);
   // Filtro sobre la ventana que sirve la API (ultimos 100 eventos).
   // 'empresa' = atribuida a una empresa real (ticker presente); un evento
   // sin ticker que tampoco es macro solo aparece en 'Todas'.
@@ -164,6 +168,13 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                       ) : (
                         <span className="text-gray-500">—</span>
                       )}
+                      {event.ticker ? (
+                        <TickerContextBadges
+                          portfolioTickers={portfolioTickers}
+                          ticker={event.ticker}
+                          watchlistTickers={watchlistTickers}
+                        />
+                      ) : null}
                       {event.news_lane === 'macro' ? (
                         <div className="mt-1">
                           <span className="rounded-full bg-indigo-950/60 px-2 py-0.5 text-xs font-semibold text-indigo-300">
