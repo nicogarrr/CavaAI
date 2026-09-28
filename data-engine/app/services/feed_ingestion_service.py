@@ -172,6 +172,7 @@ class FeedIngestionService:
                 url=item.url,
                 source=item.source or result.source,
                 published_at=item.published_at,
+                headline_from_source=item.headline_from_source,
             )
             for item in result.items
         ]

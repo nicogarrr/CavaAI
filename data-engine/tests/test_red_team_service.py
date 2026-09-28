@@ -93,7 +93,7 @@ def test_run_flags_unsupported_material_and_unfalsifiable_claims(db):
     assert any("Moat keeps expanding" in item for item in run.missing_risks)
     # No invalidation conditions anywhere: honest fallback test instruction.
     assert run.falsification_tests == [
-        "Define explicit, measurable invalidation conditions for every material thesis claim."
+"Define condiciones de invalidación explícitas y medibles para cada afirmación material de la tesis."
     ]
     # Findings trigger an open red-team review for the user.
     review = db.scalar(

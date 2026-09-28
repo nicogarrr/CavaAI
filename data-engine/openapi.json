@@ -3749,6 +3749,11 @@
       },
       "NewsFeedItem": {
         "properties": {
+          "headline_from_source": {
+            "default": true,
+            "title": "Headline From Source",
+            "type": "boolean"
+          },
           "published_at": {
             "anyOf": [
               {

@@ -11,6 +11,7 @@ import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/li
 import { getTickerContext } from '@/lib/actions/ticker-context.actions';
 import { TickerContextBadges } from '@/components/common/TickerContextBadges';
 import { formatPercent, NA } from '@/lib/format';
+import { newsDisplayTitle } from '@/lib/news-display';
 import { etiquetaTemaMacro, etiquetaTierFuente, etiquetaTipoEvento } from "@/lib/labels";
 
 export const dynamic = 'force-dynamic';
@@ -196,10 +197,10 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                       <div className="truncate">
                         {event.url ? (
                           <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
-                            {event.title}
+                            {newsDisplayTitle(event.title, event.ticker, event.headline_from_source)}
                           </a>
                         ) : (
-                          event.title
+                          newsDisplayTitle(event.title, event.ticker, event.headline_from_source)
                         )}
                       </div>
                     </td>

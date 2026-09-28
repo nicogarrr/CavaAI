@@ -15,7 +15,7 @@ import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { Panel } from '@/components/ui/panel';
 import { Stat } from '@/components/ui/stat';
-import { sectorIndustryLine } from '@/lib/sector-display';
+import { sectorIndustryLine } from '@/lib/labels';
 import { sortCompaniesByRelevance } from '@/lib/research/relevance';
 import { fetchInBatches } from '@/lib/research/snapshots';
 import {
