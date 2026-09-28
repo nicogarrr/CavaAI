@@ -143,17 +143,18 @@ class SECClient:
                     url = self.filing_document_url(cik, str(accession), str(primary_document))
                 filing_date = self._column(recent, "filingDate", index)
                 report_date = self._column(recent, "reportDate", index)
-                title = f"{ticker.upper() + ' ' if ticker else ''}{form or 'SEC filing'}"
-                if report_date:
-                    title = f"{title} ({report_date})"
+                # Titular en español, sin ticker ni fecha: la UI los muestra
+                # en campos propios (columna ticker, fecha del evento) y el
+                # titular no debe repetirlos (quick win UX 4). El summary
+                # queda vacío: la frase ES ya es el titular; un resumen
+                # adicional duplicaría el texto en la ingesta de noticias.
+                title = f"{form or 'filing'} presentado ante la SEC"
                 items.append(
                     ConnectorItem(
                         source="SEC",
                         title=title,
                         url=url,
-                        summary=(
-                            f"SEC {form or 'filing'} filed {filing_date or 'on an unknown date'}"
-                        ),
+                        summary="",
                         published_at=self._filing_datetime(filing_date),
                         ticker=ticker.upper() if ticker else None,
                         item_type="filing",
