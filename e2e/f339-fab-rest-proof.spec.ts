@@ -9,6 +9,10 @@ test.use({
   isMobile: true,
 });
 
+// A nivel de archivo: en el job de API (sin E2E_UI_RUN) el fixture `page`
+// lanzaría el navegador antes de cualquier skip dentro del cuerpo del test.
+test.skip(!process.env.E2E_UI_RUN, "Set E2E_UI_RUN=1 to run browser tests.");
+
 const apiSecret = process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
 const apiUser = "e2e-browser-user"; // el bypass E2E firma tenant=user.id
 const apiBase = "http://127.0.0.1:8100";
@@ -34,7 +38,6 @@ function signedHeaders(method: string, path: string, body: Buffer) {
 }
 
 test("F339: el FAB queda oculto en reposo mientras la leyenda cruza su zona", async ({ page, request }) => {
-  test.skip(!process.env.E2E_UI_RUN, "Set E2E_UI_RUN=1 to run browser tests.");
 
   // Semilla: 6 posiciones para que el donut tenga leyenda real.
   const seeds = [
