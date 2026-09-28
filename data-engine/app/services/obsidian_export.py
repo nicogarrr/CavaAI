@@ -125,23 +125,29 @@ def build_obsidian_zip(ticker: str, notes: list[Note]) -> bytes:
 def find_mentions(text: str, candidates: dict[str, str]) -> set[str]:
     """Tickers candidatos mencionados literalmente en el texto.
 
-    Solo enlaza menciones literales (ticker en mayúsculas como token propio o
-    nombre completo de la empresa): nunca infiere relaciones que el texto no
-    afirma. Los tickers de un carácter y los nombres ambiguos (<6 letras o
-    "Unknown") no enlazan para no fabricar falsos positivos.
+    Solo enlaza menciones literales con límites de palabra completos en ambos
+    lados: el ticker como token propio (ni subcadena ni prefijo de otro
+    identificador: "RKLB-OTHER" o "BRK.B" no mencionan a RKLB/BRK) o el
+    nombre completo de la empresa ("Banco Santanderino" no menciona a Banco
+    Santander). Nunca infiere relaciones que el texto no afirma. Los tickers
+    de un carácter y los nombres ambiguos (<6 letras o "Unknown") no enlazan
+    para no fabricar falsos positivos.
     """
     if not text:
         return set()
     found: set[str] = set()
-    lowered = text.lower()
     for ticker, name in candidates.items():
         if len(ticker) < 2 or not _TICKER_PATTERN.fullmatch(ticker):
             continue
-        if re.search(rf"(?<![A-Za-z0-9.]){re.escape(ticker)}(?![A-Za-z0-9])", text):
+        if re.search(rf"(?<![A-Za-z0-9.\-]){re.escape(ticker)}(?![A-Za-z0-9.\-])", text):
             found.add(ticker)
             continue
         clean = name.strip()
-        if len(clean) >= 6 and clean.lower() != "unknown" and clean.lower() in lowered:
+        if (
+            len(clean) >= 6
+            and clean.lower() != "unknown"
+            and re.search(rf"(?<!\w){re.escape(clean)}(?!\w)", text, re.IGNORECASE)
+        ):
             found.add(ticker)
     return found
 

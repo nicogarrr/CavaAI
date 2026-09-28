@@ -196,6 +196,14 @@ def test_find_mentions_solo_literales():
     assert find_mentions("Banco Santander sube un 3%.", candidates) == {"SAN"}
     # Minúsculas no son mención de ticker; "san" sola no enlaza SAN.
     assert find_mentions("el banco san roque", {"SAN": ""}) == set()
+    # Subcadena de un nombre distinto NO enlaza (límite de palabra completo).
+    assert find_mentions("La empresa Banco Santanderino no existe.", {"SAN": "Banco Santander"}) == set()
+    # Prefijo de otro identificador NO enlaza: guion y punto son adyacentes.
+    assert find_mentions("RKLB-OTHER despega", {"RKLB": "Rocket Lab USA"}) == set()
+    assert find_mentions("RKLB.OTHER despega", {"RKLB": "Rocket Lab USA"}) == set()
+    # Menciones literales reales siguen enlazando en ambos modos.
+    assert find_mentions("RKLB despega tras el filing.", {"RKLB": "Rocket Lab USA"}) == {"RKLB"}
+    assert find_mentions("BRK.B cae un 2%.", {"BRK": "Berkshire", "BRK.B": "Berkshire B"}) == {"BRK.B"}
     # Tickers de un carácter y nombres cortos/ambigus no enlazan.
     assert find_mentions("A subió", candidates) == set()
     assert find_mentions("", candidates) == set()
