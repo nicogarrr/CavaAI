@@ -464,7 +464,7 @@ function AlertsManager() {
                                                 className="text-xs text-teal-400 hover:text-teal-300 hover:underline"
                                                 href={`/research/${item.ticker}?view=thesis`}
                                             >
-                                                Ver tesis afectada: {item.ticker}
+                                                Revisar tesis de {item.ticker}
                                             </Link>
                                         )}
                                         {item.sourceUrl && (

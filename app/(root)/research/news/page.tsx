@@ -10,9 +10,9 @@ import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
 import { getTickerContext } from '@/lib/actions/ticker-context.actions';
 import { TickerContextBadges } from '@/components/common/TickerContextBadges';
-import { NA } from '@/lib/format';
+import { formatPercent, NA } from '@/lib/format';
 import { newsDisplayTitle } from '@/lib/news-display';
-import { etiquetaTemaMacro, etiquetaTipoEvento } from "@/lib/labels";
+import { etiquetaDireccionImpacto, etiquetaTemaMacro, etiquetaTierFuente, etiquetaTipoEvento } from "@/lib/labels";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -188,6 +188,10 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                         <dl className="mt-1 space-y-1 break-words rounded-md border border-gray-800 p-2">
                           <div><dt className="inline font-medium">Fuente: </dt><dd className="inline">{event.source || NA}</dd></div>
                           <div><dt className="inline font-medium">Tipo: </dt><dd className="inline">{etiquetaTipoEvento(event.event_type)}</dd></div>
+                          {/* Datos decisionales reubicados (SERIE 1, auditoria): nunca crudos, nulos etiquetados "sin datos". */}
+                          <div><dt className="inline font-medium">Tier de fuente: </dt><dd className="inline">{event.source_tier ? etiquetaTierFuente(event.source_tier) : NA}</dd></div>
+                          <div><dt className="inline font-medium">Impacto: </dt><dd className="inline">{event.impact_direction ? etiquetaDireccionImpacto(event.impact_direction) : NA}</dd></div>
+                          <div><dt className="inline font-medium">Peso en cartera: </dt><dd className="inline">{event.portfolio_weight != null ? formatPercent(event.portfolio_weight, { digits: 1 }) : NA}</dd></div>
                           {event.news_lane === 'macro' && event.macro_theme ? <div><dt className="inline font-medium">Tema: </dt><dd className="inline">{etiquetaTemaMacro(event.macro_theme)}</dd></div> : null}
                         </dl>
                       </details>

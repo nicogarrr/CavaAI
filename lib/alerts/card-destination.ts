@@ -12,7 +12,9 @@ export function alertCardDestination(item: {
     sourceUrl?: string | null;
 }): AlertCardDestination | null {
     if (item.ticker) {
-        return { href: `/research/${item.ticker}`, external: false };
+        // Mismo destino que el CTA visible: la vista de tesis de la ficha.
+        // La copia promete tesis; mandar al overview seria un destino desalineado.
+        return { href: `/research/${item.ticker}?view=thesis`, external: false };
     }
     if (item.sourceUrl) {
         return { href: item.sourceUrl, external: true };

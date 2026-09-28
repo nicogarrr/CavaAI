@@ -490,7 +490,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                                     className="inline-flex min-h-[44px] items-center text-xs text-teal-400 after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:text-teal-300 hover:underline"
                                                     href={`/research/${item.ticker}?view=thesis`}
                                                 >
-                                                    Ver tesis afectada: {item.ticker}
+                                                    Revisar tesis de {item.ticker}
                                                 </Link>
                                             )}
                                             {item.sourceUrl && (

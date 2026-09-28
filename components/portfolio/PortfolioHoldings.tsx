@@ -137,6 +137,28 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                           </Badge>
                         </dd>
                       </div>
+                      {/* Dato decisional fiscal reubicado (SERIE 1, auditoría): accesible por fila, nulo honesto. */}
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-gray-500">Fiscal</dt>
+                        <dd>
+                          {holding.fiscalBucket ? (
+                            <Badge
+                              variant="outline"
+                              className={
+                                holding.fiscalBucket === 'largo_plazo'
+                                  ? 'border-blue-700 text-blue-300'
+                                  : 'border-amber-700 text-amber-300'
+                              }
+                            >
+                              {holding.fiscalBucket === 'largo_plazo' ? 'Largo plazo' : 'Corto plazo'}
+                              {holding.holdingDays !== null ? ` · ${holding.holdingDays}d` : ''}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-gray-500" title="Sin historial de compra registrado">{NA}</span>
+                          )}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2"><dt className="text-gray-500">En cartera desde</dt><dd className="text-gray-200">{holding.firstBuyDate ?? NA}</dd></div>
                     </dl>
                   </div>
                 );
@@ -179,6 +201,18 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                           <details className="relative">
                             <summary className="min-h-9 cursor-pointer rounded px-2 py-2 text-xs text-gray-400 hover:text-gray-100" aria-label={`Opciones de ${holding.symbol}`}>Opciones</summary>
                             <div className="mt-1 min-w-36 rounded-md border border-gray-700 bg-gray-900 p-1 shadow-xl">
+                              {/* Dato decisional fiscal reubicado (SERIE 1, auditoría): sin columna propia, accesible aquí. */}
+                              <div className="border-b border-gray-800 px-2 py-1.5 text-xs">
+                                {holding.fiscalBucket ? (
+                                  <span className={holding.fiscalBucket === 'largo_plazo' ? 'text-blue-300' : 'text-amber-300'}>
+                                    {holding.fiscalBucket === 'largo_plazo' ? 'Largo plazo' : 'Corto plazo'}
+                                    {holding.holdingDays !== null ? ` · ${holding.holdingDays}d` : ''}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-500" title="Sin historial de compra registrado">Fiscal: {NA}</span>
+                                )}
+                                <span className="block text-gray-500">En cartera desde: {holding.firstBuyDate ?? NA}</span>
+                              </div>
                               <Button variant="ghost" size="sm" onClick={() => handleDelete(holding.symbol)} disabled={deleting === holding.symbol} aria-busy={deleting === holding.symbol} className="min-h-10 w-full justify-start gap-2 text-red-300" aria-label={`Eliminar ${holding.symbol} de la cartera`}><Trash2 aria-hidden="true" className="h-4 w-4" />Eliminar posición</Button>
                             </div>
                           </details>

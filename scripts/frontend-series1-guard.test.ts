@@ -30,3 +30,19 @@ test('volume belongs to most-active movers only and screener has units', () => {
   assert.match(screener, /B US\$/);
   assert.match(screener, /screenerMarketCap\(r.marketCap\)/);
 });
+
+test('decisional fields removed from columns stay reachable in row detail (auditoria SERIE 1)', () => {
+  const news = read('app/(root)/research/news/page.tsx');
+  // El expander "Ver contexto" conserva tier, impacto y peso con etiqueta; nunca desaparecen.
+  for (const row of ['Tier de fuente', 'Impacto', 'Peso en cartera']) assert.match(news, new RegExp(`<dt className="inline font-medium">${row}: `));
+  assert.match(news, /etiquetaTierFuente\(event\.source_tier\)/);
+  assert.match(news, /etiquetaDireccionImpacto\(event\.impact_direction\)/);
+  assert.match(news, /formatPercent\(event\.portfolio_weight/);
+
+  const portfolio = read('components/portfolio/PortfolioHoldings.tsx');
+  // fiscalBucket/holdingDays/firstBuyDate fuera de columnas, pero accesibles en tarjeta móvil y menú Opciones.
+  assert.match(portfolio, /holding\.fiscalBucket === 'largo_plazo'/);
+  assert.match(portfolio, /holding\.holdingDays !== null/);
+  assert.match(portfolio, /En cartera desde: \{holding\.firstBuyDate \?\? NA\}/);
+  assert.match(portfolio, /Sin historial de compra registrado/);
+});
