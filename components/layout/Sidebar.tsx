@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronsLeft, ChevronsRight, CircleHelp, Settings, Target } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, Settings, Target } from 'lucide-react';
 import { isNavItemActive, NAV_SECTIONS, showsNavSectionTitle, type NavItem } from '@/lib/constants';
 
 export const SIDEBAR_COLLAPSED_COOKIE = 'cavaai:sidebar-collapsed';
@@ -73,18 +73,14 @@ export default function Sidebar({ collapsed: initiallyCollapsed }: { collapsed: 
                 </ul>
             </nav>
 
-            {/* Pie del menu: destinos que no caben en el arbol pero deben ser
-                alcanzables sin conocer la URL. Antes /help no tenia entrada. */}
+            {/* Pie del menu: SOLO destinos que no estan en el arbol. /plan y
+                /help salen de aqui (quick win UX 3): ya tienen entrada en
+                NAV_SECTIONS y duplicaban «Mi plan» y «Ayuda» en el mismo
+                sidebar. /security no esta en el arbol: se queda. */}
             <div className="border-t border-gray-700/50 p-2">
                 <ul className="flex flex-col gap-1">
                     <li>
-                        <FooterLink href="/plan" icon={Target} label="Mi plan" pathname={pathname} collapsed={collapsed} />
-                    </li>
-                    <li>
                         <FooterLink href="/security" icon={Settings} label="Seguridad" pathname={pathname} collapsed={collapsed} />
-                    </li>
-                    <li>
-                        <FooterLink href="/help" icon={CircleHelp} label="Ayuda" pathname={pathname} collapsed={collapsed} />
                     </li>
                 </ul>
             </div>

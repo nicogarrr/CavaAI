@@ -25,7 +25,6 @@ import {
   Star,
   Target,
   TrendingUp,
-  Workflow,
   Landmark,
     Users,
 } from 'lucide-react';
@@ -124,7 +123,6 @@ export const NAV_SECTIONS: NavSection[] = [
         children: [
           { href: '/research/news', label: 'Noticias', icon: Newspaper },
           { href: '/research/sources', label: 'Fuentes', icon: Library },
-          { href: '/research/workflows', label: 'Workflows', icon: Workflow },
           { href: '/research/settings', label: 'Ajustes', icon: Settings },
         ],
       },
@@ -132,7 +130,7 @@ export const NAV_SECTIONS: NavSection[] = [
         href: '/screeners',
         label: 'Screeners',
         icon: Filter,
-        children: [{ href: '/screener', label: 'Vista de mercado', icon: LineChart }],
+        children: [{ href: '/screener', label: 'Mercado', icon: LineChart }],
       },
       {
         href: '/knowledge',
@@ -154,16 +152,18 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    // Un solo destino: sin titulo de seccion visible (showsNavSectionTitle),
+    // se acabo el duplicado «Mi plan»/«Plan» (quick win UX 3).
     title: 'Mi plan',
-    items: [
-      { href: '/plan', label: 'Plan', icon: Target },
-      { href: '/export', label: 'Exportar', icon: Download },
-    ],
+    items: [{ href: '/plan', label: 'Plan', icon: Target }],
   },
   {
     title: 'Sistema',
     // /security vive en el menu del avatar y /screener como hijo de Screeners.
-    items: [{ href: '/help', label: 'Ayuda', icon: CircleHelp }],
+    items: [
+      { href: '/export', label: 'Exportar', icon: Download },
+      { href: '/help', label: 'Ayuda', icon: CircleHelp },
+    ],
   },
 ];
 
