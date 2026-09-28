@@ -103,7 +103,10 @@ def test_zws_cambio_marzo_a_diciembre(db):
     rev = {"units": {"USD":
         _years(2017, 2020, "04-01", "03-31", 1_800_000_000)
         + _years_cal(2021, 2023, 1_200_000_000)}}
-    company = _ingest(db, "ZWS", {"facts": {"us-gaap": {"Revenues": rev}}})
+    op = {"units": {"USD":
+        _years(2017, 2020, "04-01", "03-31", 300_000_000)
+        + _years_cal(2021, 2023, 200_000_000)}}
+    company = _ingest(db, "ZWS", {"facts": {"us-gaap": {"Revenues": rev, "OperatingIncomeLoss": op}}})
     periods = _fy_revenues(db, company)
     assert periods["2023-12-31:FY"] == Decimal(str(1_200_000_000 + 2023))
     assert periods["2020-03-31:FY"] == Decimal(str(1_800_000_000 + 2020))
@@ -116,7 +119,10 @@ def test_csr_cambio_abril_a_diciembre(db):
     rev = {"units": {"USD":
         _years(2012, 2018, "05-01", "04-30", 80_000_000)
         + _years_cal(2019, 2025, 200_000_000)}}
-    company = _ingest(db, "CSR", {"facts": {"us-gaap": {"Revenues": rev}}})
+    op = {"units": {"USD":
+        _years(2012, 2018, "05-01", "04-30", 20_000_000)
+        + _years_cal(2019, 2025, 60_000_000)}}
+    company = _ingest(db, "CSR", {"facts": {"us-gaap": {"Revenues": rev, "OperatingIncomeLoss": op}}})
     periods = _fy_revenues(db, company)
     assert periods["2025-12-31:FY"] == Decimal(str(200_000_000 + 2025))
     assert max(periods) == "2025-12-31:FY"
@@ -127,7 +133,10 @@ def test_jef_cambio_diciembre_a_noviembre(db):
     rev = {"units": {"USD":
         _years_cal(2013, 2019, 10_000_000_000)
         + _years(2020, 2025, "12-01", "11-30", 5_000_000_000)}}
-    company = _ingest(db, "JEF", {"facts": {"us-gaap": {"Revenues": rev}}})
+    op = {"units": {"USD":
+        _years_cal(2013, 2019, 2_000_000_000)
+        + _years(2020, 2025, "12-01", "11-30", 1_000_000_000)}}
+    company = _ingest(db, "JEF", {"facts": {"us-gaap": {"Revenues": rev, "OperatingIncomeLoss": op}}})
     periods = _fy_revenues(db, company)
     assert periods["2025-11-30:FY"] == Decimal(str(5_000_000_000 + 2025))
     assert max(periods) == "2025-11-30:FY"
@@ -191,3 +200,33 @@ def test_moda_sin_cambio_de_calendario_estable():
 def test_moda_sin_candidatos_devuelve_none():
     assert _modal_fiscal_end_month({"Revenues": {"units": {"USD": []}}}) is None
     assert _modal_fiscal_end_month({}) is None
+
+
+def test_adversarial_ttm_dominante_no_reabre_f28(db):
+    """Hallazgo del auditor: Revenues con 14 cierres reales Dic 2012-2025
+    (1/ano) + DOS copias de TTM Mar por ano 2012-2019 (16 > 14 en la historia
+    agregada). La segunda moda global aceptaria Mar y los TTM entrarian como
+    FY. Con eras: Mar no es era legitima (se solapa con la era Dic vigente y
+    solo toca 1 concept) -> los TTM siguen fuera."""
+    real = _years_cal(2012, 2025, 100)
+    ttm = []
+    for y in range(2012, 2020):
+        ttm.append(_fy(f"{y - 1}-04-01", f"{y}-03-31", 999, f"{y + 1}-02-01"))
+        ttm.append(_fy(f"{y - 1}-04-01", f"{y}-03-31", 998, f"{y + 1}-03-01"))
+    rev = {"units": {"USD": real + ttm}}
+    company = _ingest(db, "ADV", {"facts": {"us-gaap": {"Revenues": rev}}})
+    periods = _fy_revenues(db, company)
+    assert periods["2025-12-31:FY"] == Decimal(str(100 + 2025))
+    assert not any(p.endswith("-03-31:FY") for p in periods), periods
+
+
+def test_era_anterior_exige_dos_concepts(db):
+    """Un calendario anterior visible en UN solo concept no basta: la
+    diversidad de concepts es la senal de cierres reales de ejercicio."""
+    rev = {"units": {"USD":
+        _years(2015, 2018, "04-01", "03-31", 50)
+        + _years_cal(2019, 2023, 60)}}
+    company = _ingest(db, "ONE", {"facts": {"us-gaap": {"Revenues": rev}}})
+    periods = _fy_revenues(db, company)
+    assert periods["2023-12-31:FY"] == Decimal(str(60 + 2023))
+    assert "2018-03-31:FY" not in periods

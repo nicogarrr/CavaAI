@@ -611,22 +611,88 @@ def _recent_fiscal_mode(pairs: list[tuple[str, str]]) -> str:
 
 def _accepted_fiscal_months(us_gaap: dict[str, Any]) -> set[str] | None:
     """Meses de cierre aceptados para hechos anuales: el calendario vigente
-    (moda reciente) Y el anterior (moda historica) si difieren. Tras un
-    cambio de calendario fiscal (F353) la historia del calendario viejo es
-    legitima y no debe perderse; el anti-TTM de F28 sigue vigente porque los
-    acumulados TTM cierran en meses que nunca fueron moda en ninguna era.
+    (moda reciente) y, solo si hay evidencia real de cambio de calendario,
+    el inmediatamente anterior (F353). La historia pre-cambio es legitima y
+    no debe perderse al re-importar.
+
+    El calendario anterior se deriva de una ERA temporal contigua de
+    cierres, nunca de una segunda moda global: el ruido TTM (acumulados de
+    ~365 dias etiquetados fp=FY que F28 excluye) puede superar en numero a
+    los cierres reales en la historia agregada y ganaria esa segunda moda,
+    reabriendo el hueco de F28. Una era legitima exige tres condiciones:
+    (1) >= 3 anos contiguos en los que el mes es pluralidad anual; (2) la
+    era termina antes de que empiece la era vigente (un calendario anterior
+    no se solapa en el tiempo con el actual; el ruido TTM si); (3) >= 2
+    concepts XBRL distintos cierran ese mes en la era (los cierres reales
+    de ejercicio tocan muchas partidas; las anomalias TTM son localizadas).
     None si no hay candidatos (sin filtro)."""
-    pairs = _fiscal_annual_pairs(us_gaap)
-    if not pairs:
+    triples: list[tuple[str, int, str]] = []
+    for _metric, concepts, unit in SEC_METRIC_MAP:
+        xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
+        for concept in concepts:
+            entries = us_gaap.get(concept, {}).get("units", {}).get(xbrl_unit_key, [])
+            for e in entries:
+                if e.get("fp") != "FY" or e.get("form") not in {"10-K", "20-F"}:
+                    continue
+                start = e.get("start")
+                if not start:
+                    continue
+                try:
+                    span = (date.fromisoformat(str(e["end"])) - date.fromisoformat(str(start))).days
+                except (TypeError, ValueError):
+                    continue
+                if not 300 <= span <= 380:
+                    continue
+                end = str(e.get("end") or "")
+                if len(end) < 7:
+                    continue
+                month = _normalized_fiscal_month(end)
+                if month is not None:
+                    triples.append((month, int(end[:4]), concept))
+    if not triples:
         return None
-    counts_all: Counter[str] = Counter()
-    latest_end: dict[str, str] = {}
-    for month, end in pairs:
-        counts_all[month] += 1
-        if end > latest_end.get(month, ""):
-            latest_end[month] = end
-    historical = max(counts_all, key=lambda m: (counts_all[m], latest_end.get(m, "")))
-    return {_recent_fiscal_mode(pairs), historical}
+
+    pairs = [(month, f"{year:04d}-01-01") for month, year, _c in triples]
+    current = _recent_fiscal_mode(pairs)
+    accepted = {current}
+
+    # Pluralidad por ano (a empate, el mes con mas cierres ese ano; luego
+    # cualquiera - el desempate fino no cambia las eras en la practica).
+    by_year: dict[int, Counter[str]] = {}
+    concepts_by_month_year: dict[tuple[str, int], set[str]] = {}
+    for month, year, concept in triples:
+        by_year.setdefault(year, Counter())[month] += 1
+        concepts_by_month_year.setdefault((month, year), set()).add(concept)
+    plurality = {y: c.most_common(1)[0][0] for y, c in by_year.items()}
+    years = sorted(plurality)
+    max_year = years[-1]
+
+    # Eras: tramos contiguos de anos con la misma pluralidad.
+    eras: list[tuple[str, int, int]] = []  # (mes, ano_inicio, ano_fin)
+    start = years[0]
+    prev = years[0]
+    cur_month = plurality[years[0]]
+    for y in years[1:]:
+        if y != prev + 1 or plurality[y] != cur_month:
+            eras.append((cur_month, start, prev))
+            start = y
+            cur_month = plurality[y]
+        prev = y
+    eras.append((cur_month, start, prev))
+
+    current_start = next(s for m, s, e in eras if e == max_year)
+    previous = [
+        (m, s, e) for m, s, e in eras
+        if e < current_start and e - s + 1 >= 3 and m != current
+    ]
+    if previous:
+        month, era_start, era_end = previous[-1]
+        era_concepts: set[str] = set()
+        for y in range(era_start, era_end + 1):
+            era_concepts |= concepts_by_month_year.get((month, y), set())
+        if len(era_concepts) >= 2:
+            accepted.add(month)
+    return accepted
 
 
 class FinancialIngestionService:
