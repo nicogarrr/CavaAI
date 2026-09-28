@@ -319,6 +319,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/thesis-tickers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Thesis Tickers
+         * @description Tickers con tesis en UNA query DISTINCT (orden del indice de research).
+         *
+         *     El indice ordena tesis > cartera > watchlist > resto; pedir un snapshot
+         *     por empresa solo para saber si tiene tesis eran ~13 queries agregadas
+         *     por lote de 50 en fan-out paralelo. La semantica replica la seleccion
+         *     del snapshot (cualquier ThesisVersion de la company, sin filtro de
+         *     estado), asi el bucket y la tarjeta nunca discrepan.
+         */
+        get: operations["thesis_tickers_api_companies_thesis_tickers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{ticker}": {
         parameters: {
             query?: never;
@@ -5653,6 +5679,18 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * ThesisTickersOut
+         * @description Tickers con al menos una ThesisVersion persistida.
+         *
+         *     Semantica identica a la del snapshot (``latest_thesis`` selecciona la
+         *     version mas reciente sin filtro de estado): sirve para ordenar el
+         *     indice de research sin descargar un snapshot por empresa.
+         */
+        ThesisTickersOut: {
+            /** Tickers */
+            tickers: string[];
+        };
         /** UniversalSearchRequest */
         UniversalSearchRequest: {
             /** Collection Id */
@@ -6546,6 +6584,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompanySnapshotsBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    thesis_tickers_api_companies_thesis_tickers_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThesisTickersOut"];
                 };
             };
             /** @description Validation Error */

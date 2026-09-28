@@ -51,6 +51,7 @@ from app.schemas.api import (
     ThesisOut,
     ThesisSectionCreate,
     ThesisSectionOut,
+    ThesisTickersOut,
     ValuationResponse,
 )
 
@@ -65,6 +66,7 @@ __all__ = [
     "ClaimOut",
     "CompanySnapshotOut",
     "CompanySnapshotsBatchOut",
+    "ThesisTickersOut",
     "CompanyOut",
     "CompanyKPIOut",
     "ContradictionScanRequest",
