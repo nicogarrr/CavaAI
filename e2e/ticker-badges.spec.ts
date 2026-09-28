@@ -45,8 +45,11 @@ test("los eventos de noticias muestran En cartera / En watchlist", async ({ page
   await post(request, "/api/watchlist", { symbol: "NFLX" });
   await post(request, "/api/news/ingest", {
     items: [
-      { ticker: "COST", title: `COST expands warehouses ${marker}`, text: "COST announced new warehouses.", source: "e2e", url: "https://e2e.invalid/cost" },
-      { ticker: "NFLX", title: `NFLX raises prices ${marker}`, text: "NFLX announced a price change.", source: "e2e", url: "https://e2e.invalid/nflx" },
+      // URL única por marcador: una URL fija hacía que el REINTENTO de la
+      // spec re-ingiriera la misma URL con marcador nuevo y la dedup por URL
+      // la saltara — la fila esperada nunca aparecía en el reintento.
+      { ticker: "COST", title: `COST expands warehouses ${marker}`, text: "COST announced new warehouses.", source: "e2e", url: `https://e2e.invalid/cost-${marker}` },
+      { ticker: "NFLX", title: `NFLX raises prices ${marker}`, text: "NFLX announced a price change.", source: "e2e", url: `https://e2e.invalid/nflx-${marker}` },
     ],
   });
 
@@ -69,13 +72,19 @@ test("los eventos de noticias muestran En cartera / En watchlist", async ({ page
   await page.goto("/research/news");
   await expect(page.getByRole("heading", { name: "Eventos de noticias", level: 1 })).toBeVisible({ timeout: 60_000 });
 
+  // La semilla va por API firmada directa al backend: la caché server-side
+  // del frontend (memoryTTL ~15s sobre watchlist/posiciones) no se entera
+  // hasta expirar. toPass + reload cubre esa ventana (mismo patrón que la
+  // caché de movers) sin depender de timing.
   const costRow = page.getByRole("row", { name: new RegExp(`COST expands warehouses ${marker}`) });
-  await expect(costRow.getByText("En cartera", { exact: true })).toBeVisible();
-  await expect(costRow.getByText("En watchlist", { exact: true })).toHaveCount(0);
-
   const nflxRow = page.getByRole("row", { name: new RegExp(`NFLX raises prices ${marker}`) });
-  await expect(nflxRow.getByText("En watchlist", { exact: true })).toBeVisible();
-  await expect(nflxRow.getByText("En cartera", { exact: true })).toHaveCount(0);
+  await expect(async () => {
+    await page.reload();
+    await expect(costRow.getByText("En cartera", { exact: true })).toBeVisible();
+    await expect(costRow.getByText("En watchlist", { exact: true })).toHaveCount(0);
+    await expect(nflxRow.getByText("En watchlist", { exact: true })).toBeVisible();
+    await expect(nflxRow.getByText("En cartera", { exact: true })).toHaveCount(0);
+  }).toPass({ intervals: [5_000, 10_000, 15_000], timeout: 45_000 });
 
   await page.screenshot({ path: "test-results/ticker-badges-news.png" });
 
