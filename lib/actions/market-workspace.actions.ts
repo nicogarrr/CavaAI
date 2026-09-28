@@ -5,6 +5,7 @@ import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { getCandles, getProfile, getStockQuote } from '@/lib/actions/finnhub.actions';
 import { marketHistoryStatus } from '@/lib/market/history-status';
 import { quoteSymbolFor } from '@/lib/market/quote-symbol';
+import { e2eMarketFixture, isE2EMarketFixtureEnabled } from '@/lib/e2e-market-fixture';
 
 export type CompanyMarketSnapshot = {
     ticker: string;
@@ -19,6 +20,10 @@ export type CompanyMarketSnapshot = {
         high: number | null;
         low: number | null;
         previousClose: number | null;
+        // Fecha del dato mostrado como precio: cotización en vivo -> null;
+        // fallback al último cierre de vela -> la fecha de esa vela, para
+        // que la cabecera la rotule y no parezca precio actual.
+        priceAsOf: string | null;
     };
     history: Array<{ date: string; close: number; volume: number | null }>;
     status: 'available' | 'partial' | 'unavailable';
@@ -50,16 +55,8 @@ export async function getResearchCompanyBasics(ticker: string): Promise<Research
 export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyMarketSnapshot> {
     await requireAuthenticatedUser();
     const normalized = ticker.trim().toUpperCase();
-    if (process.env.E2E_AUTH_BYPASS === '1' && process.env.NODE_ENV !== 'production') {
-        return {
-            ticker: normalized,
-            name: normalized,
-            exchange: null,
-            currency: null,
-            quote: { price: null, change: null, changePercent: null, open: null, high: null, low: null, previousClose: null },
-            history: [],
-            status: 'unavailable',
-        };
+    if (isE2EMarketFixtureEnabled(process.env, normalized)) {
+        return e2eMarketFixture(normalized);
     }
     const to = Math.floor(Date.now() / 1000);
     const from = to - 366 * 24 * 60 * 60;
@@ -76,7 +73,7 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
             name: researchCompany?.name || normalized,
             exchange: researchCompany?.exchange || null,
             currency: researchCompany?.currency || null,
-            quote: { price: null, change: null, changePercent: null, open: null, high: null, low: null, previousClose: null },
+            quote: { price: null, change: null, changePercent: null, open: null, high: null, low: null, previousClose: null, priceAsOf: null },
             history: [],
             status: 'unavailable',
         };
@@ -93,7 +90,15 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
             volume: candles.v[index] ?? null,
         })).filter((point) => Number.isFinite(point.close))
         : [];
-    const price = quote?.c && quote.c > 0 ? quote.c : history.at(-1)?.close ?? null;
+    const livePrice = quote?.c;
+    const quoteLive = typeof livePrice === 'number' && livePrice > 0;
+    const lastClose = history.at(-1) ?? null;
+    const price = quoteLive ? livePrice : lastClose?.close ?? null;
+    // Fallback a cierre de vela: la variación del proveedor describe la
+    // cotización en vivo, no ese cierre; se omite para no mezclar fuentes.
+    const change = quoteLive ? quote?.d ?? null : null;
+    const changePercent = quoteLive ? quote?.dp ?? null : null;
+    const priceAsOf = quoteLive ? null : lastClose?.date ?? null;
     return {
         ticker: normalized,
         // La identidad la pone el master (curado); el perfil del proveedor
@@ -104,12 +109,13 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
         currency: researchCompany?.currency || profile?.currency || null,
         quote: {
             price,
-            change: quote?.d ?? null,
-            changePercent: quote?.dp ?? null,
+            change,
+            changePercent,
             open: quote?.o ?? null,
             high: quote?.h ?? null,
             low: quote?.l ?? null,
             previousClose: quote?.pc ?? null,
+            priceAsOf,
         },
         history,
         // La insignia del historial describe la serie (F161): sin velas es
