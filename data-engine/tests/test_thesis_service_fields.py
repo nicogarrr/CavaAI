@@ -227,6 +227,35 @@ def test_card_summary_fecha_antigua_no_dice_recientes():
     assert "publicado el 2020-01-15" in text
 
 
+def test_card_summary_grupo_mixto_no_dice_recientes():
+    # Un titular viejo entre dos citados contamina la etiqueta del grupo:
+    # no se puede llamar "recientes" al conjunto.
+    service = ThesisService()
+    valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
+    today = datetime.now(UTC).date().isoformat()
+    news = [
+        {"source_headline": "Fresco", "title": "t1", "source": "A",
+         "date": today, "date_source": "source"},
+        {"source_headline": "Viejo", "title": "t2", "source": "B",
+         "date": "2019-05-01", "date_source": "source"},
+    ]
+    text = service._card_summary(_company(), valuation, "hipotesis", news)
+    assert "Ultimos titulares materiales: " in text
+    assert "recientes" not in text
+
+
+def test_card_summary_fecha_futura_no_es_reciente():
+    service = ThesisService()
+    valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
+    news = [
+        {"source_headline": "Del futuro", "title": "t", "source": "X",
+         "date": "2999-01-01", "date_source": "source"},
+    ]
+    text = service._card_summary(_company(), valuation, "hipotesis", news)
+    assert "recientes" not in text
+    assert "Ultimos titulares materiales: " in text
+
+
 def test_card_summary_fecha_sin_procedencia_no_se_imprime_desnuda():
     service = ThesisService()
     valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
@@ -313,3 +342,29 @@ def test_fingerprint_cambia_con_noticias_nuevas():
         otra = [{"id": 2, "title": "resumen interno 2",
                  "source_headline": "Otro titular", "date": "2026-09-26"}]
         assert service._input_fingerprint(db, company, {}, {}, otra) != fp_con
+
+
+def test_fingerprint_cambia_con_provenance_sin_variar_facts():
+    # Una correccion de fecha (ingested_at_fallback -> source), de medio o de
+    # titular mas alla del char 120 cambia la cita mostrada: debe cambiar el
+    # fingerprint aunque facts, id y fecha sean identicos.
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.info["tenant_id"] = "tenant-test"
+        company = _company()
+        db.add(company)
+        db.commit()
+        service = ThesisService()
+        base_news = [{"id": 7, "title": "r", "source_headline": "Titular",
+                      "date": "2026-09-25", "date_source": "ingested_at_fallback",
+                      "source": "GDELT", "url": "https://e.com/a"}]
+        fp_base = service._input_fingerprint(db, company, {}, {}, base_news)
+        for mutacion in (
+            {"date_source": "source"},
+            {"source": "Reuters"},
+            {"url": "https://e.com/b"},
+            {"source_headline": "Titular con cola distinta mas alla del char 120"},
+        ):
+            variante = [dict(base_news[0], **mutacion)]
+            assert service._input_fingerprint(db, company, {}, {}, variante) != fp_base

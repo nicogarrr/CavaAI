@@ -164,12 +164,13 @@ class ThesisService:
             ),
             # Una noticia nueva (aunque no cambie ningun fact financiero) es
             # evidencia material: debe disparar una nueva version en generacion
-            # normal. Se incluye la identidad/procedencia del conjunto
-            # (id + titular original o resumen interno + fecha), nunca solo el
-            # recuento.
+            # normal. Se incluye la identidad y la procedencia COMPLETA de cada
+            # noticia (id, titular integro, fecha con su procedencia, medio y
+            # url): una correccion de atribucion tambien regenera la narrativa.
             "news": sorted(
-                f"{item.get('id')}:{(item.get('source_headline') or item.get('title') or '')[:120]}:"
-                f"{item.get('date') or ''}"
+                f"{item.get('id')}:{item.get('source_headline') or item.get('title') or ''}"
+                f":{item.get('date') or ''}:{item.get('date_source') or ''}"
+                f":{item.get('source') or ''}:{item.get('url') or ''}"
                 for item in (news_items or [])
             ),
         }
@@ -613,7 +614,7 @@ class ThesisService:
 
         quotes: list[str] = []
         summaries: list[str] = []
-        has_recent_publication = False
+        all_recent_publications = True
         for item in (news_items or [])[:2]:
             headline = item.get("source_headline")
             headline = str(headline).strip() if isinstance(headline, str) else ""
@@ -629,16 +630,21 @@ class ThesisService:
             if headline:
                 # Cita verbatim: solo el titular que el medio publico.
                 quotes.append(f'"{text}" ({attribution})' if attribution else f'"{text}"')
-                if item.get("date_source") == "source" and self._news_is_recent(item):
-                    has_recent_publication = True
+                if not (
+                    item.get("date_source") == "source" and self._news_is_recent(item)
+                ):
+                    all_recent_publications = False
             else:
                 # Resumen compuesto por la app: nunca entrecomillado ni
                 # atribuido como titular del medio.
                 summaries.append(f"{text} ({attribution})" if attribution else text)
         if quotes:
+            # "Recientes" solo si TODOS los citados son publicaciones reales
+            # dentro de la ventana (0..30 dias); un solo titular viejo o de
+            # procedencia no-publicacion rebaja la etiqueta del grupo.
             label = (
                 "Titulares recientes"
-                if has_recent_publication
+                if all_recent_publications
                 else "Ultimos titulares materiales"
             )
             base = f"{base} {label}: {'; '.join(quotes)}."
@@ -674,7 +680,10 @@ class ThesisService:
             return False
         if published.tzinfo is None:
             published = published.replace(tzinfo=UTC)
-        return (datetime.now(UTC) - published).days <= window_days
+        delta_days = (datetime.now(UTC) - published).days
+        # Una fecha FUTURA no es una publicacion reciente: se rechaza igual
+        # que una demasiado vieja.
+        return 0 <= delta_days <= window_days
 
     def _build_claims(
         self,
