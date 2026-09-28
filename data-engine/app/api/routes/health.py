@@ -25,7 +25,7 @@ from fastapi import APIRouter
 from sqlalchemy import text
 
 from app.core.config import get_settings
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, schema_migration_issues
 
 router = APIRouter(tags=["health"])
 
@@ -130,9 +130,14 @@ async def health() -> dict:
         asyncio.to_thread(_scheduler_status),
         asyncio.to_thread(_git_version),
     )
+    # Esquema a medio migrar = degradado aunque SELECT 1 responda: la sonda
+    # de BD no ve las columnas que faltan. Solo la CLASE del error se expone
+    # (nunca texto de excepción, puede llevar SQL y rutas).
+    schema_issues = schema_migration_issues()
     return {
-        "status": "ok" if database == "ok" else "degraded",
+        "status": "degraded" if database != "ok" or schema_issues else "ok",
         "database": database,
         "scheduler": scheduler,
         "version": version,
+        "schema": schema_issues,
     }
