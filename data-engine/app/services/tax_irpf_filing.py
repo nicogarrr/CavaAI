@@ -407,44 +407,77 @@ def build_loss_compensation(
     current_gyp_net_base: Decimal | None,
     current_rcm_net_base: Decimal | None,
     fiscal_year: int,
+    declared_pending: dict[int, Decimal] | None = None,
 ) -> dict:
     """Compensación de saldos negativos de los 4 ejercicios anteriores.
 
     ``prior_year_nets``: lista de ``{"year", "net_gyp_base", "incomplete"}``
-    con el resultado neto COMPUTABLE de cada ejercicio previo según el libro
-    (ganancias menos pérdidas del ahorro; None si no se pudo convertir).
+    con el resultado neto COMPUTABLE de cada ejercicio previo según el libro.
+    ``declared_pending``: saldos pendientes a 1 de enero por ejercicio de
+    origen, copiados del ANEXO C.3 de la última declaración presentada
+    (fuente manual autoritativa).
+
+    Mecánica (anexo del Modelo 100, Orden HAC/277/2026, pág. 19):
+      1. El saldo neto negativo del PROPIO ejercicio (0425) cruza primero
+         contra rendimientos del capital mobiliario (0429) como casilla 0446,
+         dentro del límite CONJUNTO del 25% de 0429.
+      2. Los saldos negativos de ejercicios anteriores se integran en el
+         saldo positivo de GyP del año (0424; Renta 2025: 0439-0442).
+      3. Su resto cruza contra 0429 SOLO con la capacidad del 25% que quede
+         tras la 0446 (Renta 2025: 0453/0454/0455/0448): el límite es
+         conjunto, como imprime el BOE.
+      4. Lo que quede sigue arrastrando (máx. 4 ejercicios).
 
     Honestidad:
-    - Los saldos previos salen del libro tal cual; si parte ya se compensó
-      en declaraciones presentadas, el importe correcto es el del anexo C.3
-      de la última declaración: se avisa en ``notas`` y nunca se ajusta a la
-      baja silenciosamente.
-    - Si un ejercicio previo tiene FX incompleto, su saldo se excluye y se
-      marca: compensar una cifra parcial minoraría impuestos con datos
-      incompletos.
+    - Los saldos pendientes REALES los fija la última declaración presentada
+      (anexo C.3), no el libro: puede haber compensaciones ya aplicadas u
+      orígenes fuera del libro. Con ``declared_pending`` la fuente es
+      ``anexo-c3-manual`` y se publican casillas. Sin él, los saldos se
+      derivan del libro y se etiquetan ``estimativo=True`` SIN casillas: una
+      estimación no es trasladable a la declaración.
+    - Ejercicio previo con FX incompleto → excluido y marcado.
     """
     window_start = fiscal_year - CARRYFORWARD_WINDOW_YEARS
-    pending = []  # ejercicios con saldo negativo aprovechable, más antiguo primero
+    estimativo = declared_pending is None
+    pending = []
     excluded = []
-    for entry in sorted(prior_year_nets, key=lambda e: e["year"]):
-        year = entry["year"]
-        if year < window_start or year >= fiscal_year:
-            continue  # fuera de la ventana de 4 ejercicios (expirado o futuro)
-        if entry.get("incomplete") or entry.get("net_gyp_base") is None:
-            excluded.append({
-                "year": year,
-                "reason": "Ejercicio con conversión de divisa incompleta: saldo no aprovechable en este informe.",
-            })
-            continue
-        net = Decimal(str(entry["net_gyp_base"]))
-        if net < 0:
+    if declared_pending is not None:
+        # Fuente autoritativa: lo declarado (anexo C.3). Los ejercicios sin
+        # entrada se tratan como saldo cero declarado.
+        for year in sorted(declared_pending):
+            if year < window_start or year >= fiscal_year:
+                continue
+            amount = Decimal(str(declared_pending[year]))
+            if amount <= 0:
+                continue
             casillas = _CASILLAS_PRIOR_2025.get(year) if fiscal_year == 2025 else None
             pending.append({
                 "year": year,
-                "pending": abs(net),
+                "pending": amount,
+                "source": "anexo-c3-manual",
                 "casilla_integracion": casillas[0] if casillas else None,
                 "casilla_resto": casillas[1] if casillas else None,
             })
+    else:
+        for entry in sorted(prior_year_nets, key=lambda e: e["year"]):
+            year = entry["year"]
+            if year < window_start or year >= fiscal_year:
+                continue  # fuera de la ventana de 4 ejercicios (expirado)
+            if entry.get("incomplete") or entry.get("net_gyp_base") is None:
+                excluded.append({
+                    "year": year,
+                    "reason": "Ejercicio con conversión de divisa incompleta: saldo no aprovechable en este informe.",
+                })
+                continue
+            net = Decimal(str(entry["net_gyp_base"]))
+            if net < 0:
+                pending.append({
+                    "year": year,
+                    "pending": abs(net),
+                    "source": "libro-estimativo",
+                    "casilla_integracion": None,
+                    "casilla_resto": None,
+                })
 
     incomplete = False
     saldo_gyp = None
@@ -458,7 +491,24 @@ def build_loss_compensation(
     else:
         incomplete = True
 
-    # 1) Integración en el saldo de GyP del año (hasta su importe).
+    # Límite cruzado conjunto: 25% del saldo neto positivo de rendimientos
+    # del capital mobiliario (0429), compartido con la casilla 0446.
+    cross_limit = (
+        (saldo_rcm * CROSS_COMPENSATION_LIMIT)
+        if saldo_rcm is not None else Decimal("0")
+    )
+
+    # 0) La pérdida del PROPIO ejercicio (0425 → 0446) consume primero el
+    # límite conjunto: si no se reserva, se duplica la compensación.
+    current_negative = (
+        abs(Decimal(str(current_gyp_net_base)))
+        if current_gyp_net_base is not None and current_gyp_net_base < 0
+        else Decimal("0")
+    )
+    applied_0446 = min(current_negative, cross_limit)
+    remaining_cross = cross_limit - applied_0446
+
+    # 1) Integración de saldos previos en el saldo de GyP del año (0424).
     remaining_capacity = saldo_gyp if saldo_gyp is not None else Decimal("0")
     for item in pending:
         take = min(item["pending"], remaining_capacity)
@@ -467,12 +517,7 @@ def build_loss_compensation(
         remaining_capacity -= take
     applied_gyp_total = sum((i["applied_gyp"] for i in pending), Decimal("0"))
 
-    # 2) Resto contra rendimientos del capital mobiliario, límite 25%.
-    cross_limit = (
-        (saldo_rcm * CROSS_COMPENSATION_LIMIT)
-        if saldo_rcm is not None else Decimal("0")
-    )
-    remaining_cross = cross_limit
+    # 2) Resto contra rendimientos con la capacidad del 25% NO usada por 0446.
     for item in pending:
         take = min(item["pending"], remaining_cross)
         item["applied_rcm"] = take
@@ -481,11 +526,21 @@ def build_loss_compensation(
     applied_rcm_total = sum((i["applied_rcm"] for i in pending), Decimal("0"))
 
     return {
-        "basis": "art-49-lirpf" + ("+orden-hac-277-2026" if fiscal_year == 2025 else ""),
+        "basis": "art-49-lirpf" + ("+orden-hac-277-2026" if fiscal_year == 2025 and not estimativo else ""),
         "window_years": CARRYFORWARD_WINDOW_YEARS,
+        "estimativo": estimativo,
+        "estimativo_reason": (
+            "Saldos derivados SOLO del libro: no reflejan compensaciones ya "
+            "aplicadas en declaraciones presentadas ni orígenes fuera del "
+            "libro. NO trasladable a casillas. Introduce los saldos del "
+            "anexo C.3 de tu última declaración (setting "
+            "TAX_PRIOR_LOSSES_PENDING_JSON) para publicar casillas."
+            if estimativo else None
+        ),
         "prior_losses": [
             {
                 "year": i["year"],
+                "source": i["source"],
                 "pending_start_base": _money(i["pending"] + i["applied_gyp"] + i["applied_rcm"]),
                 "applied_to_gains_base": _money(i["applied_gyp"]),
                 "applied_to_income_base": _money(i["applied_rcm"]),
@@ -496,21 +551,28 @@ def build_loss_compensation(
             for i in pending
         ],
         "excluded_years": excluded,
-        "current_gyp_net_base": None if saldo_gyp is None else _money(saldo_gyp),
+        "current_gyp_net_base": None if saldo_gyp is None and current_gyp_net_base is None else _money(Decimal(str(current_gyp_net_base))),
         "current_rcm_net_base": None if saldo_rcm is None else _money(saldo_rcm),
+        "current_year_cross": {
+            "negative_gyp_base": _money(current_negative),
+            "applied_to_income_base": _money(applied_0446),
+            "casilla": "0446" if fiscal_year == 2025 else None,
+        },
         "applied_to_gains_total_base": _money(applied_gyp_total),
         "cross_limit_base": _money(cross_limit),
+        "cross_used_by_current_year_base": _money(applied_0446),
         "applied_to_income_total_base": _money(applied_rcm_total),
         "remaining_to_carry_base": _money(sum((i["pending"] for i in pending), Decimal("0"))),
         "incomplete": incomplete,
         "notas": [
-            "Saldos previos calculados SOLO con las operaciones del libro: si "
-            "hubo pérdidas en otros brokers o ya compensadas en declaraciones "
-            "presentadas, el importe correcto es el del anexo C.3 de tu última "
-            "declaración (Renta Web lo arrastra automáticamente).",
+            "Los saldos pendientes reales los fija la última declaración "
+            "presentada (anexo C.3); Renta Web los arrastra automáticamente. "
+            "Si difieren del libro, manda lo declarado.",
             "El límite del 25% sobre rendimientos del capital mobiliario es "
-            "conjunto con la compensación del propio ejercicio (casilla 0446 "
-            "en Renta 2025); aquí se reserva entero al arrastre por no "
-            "computar saldos negativos de rendimientos del año en curso.",
+            "CONJUNTO entre la pérdida del propio ejercicio (0446) y el "
+            "arrastre de ejercicios anteriores (0453-0455/0448 en Renta 2025): "
+            "aquí se reserva primero la 0446.",
+            "No se computan saldos negativos de rendimientos del capital "
+            "mobiliario (dividendos IBKR no los generan en la práctica).",
         ],
     }

@@ -43,6 +43,7 @@ The report follows Spanish IRPF conventions:
 
 from __future__ import annotations
 
+import json
 from collections import deque
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -710,6 +711,22 @@ class TaxReportService:
                 "net_gyp_base": prior_summary.get("total_realized_gain_base"),
                 "incomplete": prior_summary.get("incomplete_fx", False),
             })
+        # Saldos pendientes declarados (anexo C.3 de la última declaración):
+        # fuente autoritativa para los saldos de ejercicios anteriores. Sin
+        # este input los saldos se derivan del libro y se etiquetan como
+        # estimación NO trasladable a casillas (ver build_loss_compensation).
+        declared_pending = None
+        raw_declared = (self.settings.tax_prior_losses_pending_json or "").strip()
+        if raw_declared:
+            try:
+                parsed = json.loads(raw_declared)
+                declared_pending = {
+                    int(year): Decimal(str(amount))
+                    for year, amount in parsed.items()
+                    if Decimal(str(amount)) > 0
+                }
+            except (ValueError, TypeError, ArithmeticError):
+                declared_pending = None
         return {
             "available": True,
             "casillas": build_casillas(
@@ -727,6 +744,7 @@ class TaxReportService:
                 None if summary.get("total_dividends_base") is None
                 else Decimal(str(summary["total_dividends_base"])),
                 fiscal_year,
+                declared_pending=declared_pending,
             ),
         }
 

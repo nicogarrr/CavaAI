@@ -85,6 +85,19 @@ class Settings(BaseSettings):
     # (test_settings_hermeticity) en vez de forbid global.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    tax_prior_losses_pending_json: str = Field(
+        default="",
+        validation_alias="TAX_PRIOR_LOSSES_PENDING_JSON",
+        description=(
+            "Saldos negativos pendientes de compensar a 1 de enero, por "
+            "ejercicio de origen, copiados del ANEXO C.3 de la última "
+            "declaración de IRPF presentada: JSON {\"2022\": 300.0, "
+            "\"2023\": 150.0}. Fuente autoritativa de la compensación de "
+            "pérdidas (art. 49 LIRPF); sin este valor los saldos se derivan "
+            "del libro y se etiquetan como estimación no trasladable a "
+            "casillas."
+        ),
+    )
     app_env: str = "local"
     app_name: str = "CavaAI Research Engine"
     api_prefix: str = "/api"

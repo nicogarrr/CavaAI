@@ -371,7 +371,11 @@ def test_loss_compensation_same_category_first():
         Decimal("500"), Decimal("0"), 2025,
     )
     item = result["prior_losses"][0]
-    assert item["casilla_integracion"] == "0442"
+    # Derivado del libro (sin anexo C.3 declarado): estimativo, sin casillas.
+    assert result["estimativo"] is True
+    assert item["source"] == "libro-estimativo"
+    assert item["casilla_integracion"] is None
+    assert "anexo C.3" in result["estimativo_reason"]
     assert item["applied_to_gains_base"] == 400.0
     assert item["applied_to_income_base"] == 0.0
     assert item["remaining_base"] == 0.0
@@ -387,10 +391,11 @@ def test_loss_compensation_cross_25pct_limit():
         Decimal("100"), Decimal("200"), 2025,
     )
     item = result["prior_losses"][0]
-    assert item["casilla_integracion"] == "0441"
-    assert item["casilla_resto"] == "0455"
+    assert item["casilla_integracion"] is None  # estimativo (libro)
+    assert item["casilla_resto"] is None
     assert item["applied_to_gains_base"] == 100.0
     assert result["cross_limit_base"] == 50.0
+    assert result["cross_used_by_current_year_base"] == 0.0
     assert item["applied_to_income_base"] == 50.0
     assert item["remaining_base"] == 850.0
     assert result["remaining_to_carry_base"] == 850.0
@@ -451,12 +456,49 @@ def test_compute_report_loss_compensation_end_to_end(db):
 
     report = TaxReportService().compute_report(db, 2025)
     comp = report["filing"]["loss_compensation"]
-    assert comp["basis"] == "art-49-lirpf+orden-hac-277-2026"
+    assert comp["basis"] == "art-49-lirpf"
+    assert comp["estimativo"] is True
     assert comp["prior_losses"][0]["year"] == 2024
     assert comp["prior_losses"][0]["applied_to_gains_base"] == 400.0
-    assert comp["prior_losses"][0]["casilla_integracion"] == "0442"
+    assert comp["prior_losses"][0]["casilla_integracion"] is None
     assert comp["applied_to_gains_total_base"] == 400.0
     assert comp["remaining_to_carry_base"] == 0.0
     # Y el informe de 2024 en sí sigue limpio (sin filing recursivo roto).
     report_2024 = TaxReportService().compute_report(db, 2024)
     assert report_2024["summary"]["total_realized_gain_base"] == -400.0
+
+
+def test_loss_compensation_declared_pending_publishes_casillas():
+    # Con los saldos del anexo C.3 declarados, la fuente es autoritativa y
+    # se publican las casillas del anexo (Renta 2025).
+    result = build_loss_compensation(
+        [{"year": 2024, "net_gyp_base": -400.0, "incomplete": False}],
+        Decimal("500"), Decimal("0"), 2025,
+        declared_pending={2024: Decimal("250")},
+    )
+    assert result["estimativo"] is False
+    assert result["basis"] == "art-49-lirpf+orden-hac-277-2026"
+    item = result["prior_losses"][0]
+    assert item["source"] == "anexo-c3-manual"
+    assert item["pending_start_base"] == 250.0
+    assert item["applied_to_gains_base"] == 250.0
+    assert item["remaining_base"] == 0.0
+    assert item["casilla_integracion"] == "0442"
+
+
+def test_loss_compensation_joint_25_limit_reserves_current_year():
+    # Ejemplo del dictamen: GyP 2025 = -100, dividendos 400, saldo previo
+    # 500. El límite del 25% (100) es CONJUNTO: la pérdida del propio
+    # ejercicio (0446) consume los 100 y el arrastre no cruza nada.
+    result = build_loss_compensation(
+        [{"year": 2024, "net_gyp_base": -500.0, "incomplete": False}],
+        Decimal("-100"), Decimal("400"), 2025,
+    )
+    assert result["cross_limit_base"] == 100.0
+    assert result["cross_used_by_current_year_base"] == 100.0
+    assert result["current_year_cross"]["negative_gyp_base"] == 100.0
+    assert result["current_year_cross"]["applied_to_income_base"] == 100.0
+    assert result["current_year_cross"]["casilla"] == "0446"
+    assert result["applied_to_gains_total_base"] == 0.0
+    assert result["applied_to_income_total_base"] == 0.0
+    assert result["remaining_to_carry_base"] == 500.0
