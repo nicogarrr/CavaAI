@@ -606,4 +606,3 @@ class Modelo720FileService:
         )
         assert len(r) == RECORD_LEN, f"detalle C: {len(r)} bytes"
         return r
-
