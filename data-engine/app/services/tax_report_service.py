@@ -59,6 +59,7 @@ from app.models import (
     Transaction,
 )
 from app.services.portfolio_fx_service import PortfolioFXService
+from app.services.tax_irpf_filing import build_casillas, build_double_taxation
 
 FIFO_METHOD = "fifo"
 AVERAGE_METHOD = "average"
@@ -496,6 +497,8 @@ class TaxReportService:
                         "quantity": float(transaction.quantity),
                         "proceeds_native": _money(entry["proceeds_native"]),
                         "cost_native": _money(entry["cost_native"]),
+                        "proceeds_base": _money(entry["proceeds_native"] * rate) if rate is not None else None,
+                        "cost_base": _money(entry["cost_native"] * rate) if rate is not None else None,
                         "gain_native": _money(computable_native),
                         "gain_base": _money(computable_base) if computable_base is not None else None,
                         "raw_gain_native": _money(entry["gain_native"]),
@@ -610,11 +613,50 @@ class TaxReportService:
             ),
         }
 
-        return {
+        data = {
             "summary": summary,
             "dividends": sorted(dividends, key=lambda d: d["ticker"]),
             "realized": sorted(realized, key=lambda d: d["ticker"]),
             "misc": sorted(misc_rows, key=lambda d: d["date"]),
+        }
+        data["filing"] = self._build_filing(db, fiscal_year, data)
+        return data
+
+    def _build_filing(self, db: Session, fiscal_year: int, data: dict) -> dict:
+        """Capa de declaracion IRPF (casillas Modelo 100 + doble imposicion).
+
+        Deriva de los agregados del informe; nunca inventa cifras: si falta
+        FX o el pais del emisor, el bloque afectado queda en None o en
+        ``manual_review``. El pais de retencion se aproxima con
+        ``Company.domicile_country`` (limitacion documentada en
+        ``tax_irpf_filing``).
+        """
+        tickers = {
+            b["ticker"]
+            for b in (data.get("dividends") or []) + (data.get("realized") or [])
+            if not str(b.get("ticker", "")).startswith("UNATTRIBUTED:")
+        }
+        country_by_ticker: dict[str, str | None] = {}
+        if tickers:
+            for company in db.scalars(
+                select(Company).where(Company.ticker.in_(sorted(tickers)))
+            ):
+                country_by_ticker[company.ticker] = company.domicile_country
+        summary = data.get("summary") or {}
+        net_base = summary.get("net_taxable_base")
+        total_savings_base = (
+            Decimal(str(net_base)) if net_base is not None and net_base > 0 else None
+        )
+        return {
+            "casillas": build_casillas(
+                data.get("dividends") or [], data.get("realized") or [], fiscal_year
+            ),
+            "double_taxation": build_double_taxation(
+                data.get("dividends") or [],
+                country_by_ticker,
+                fiscal_year,
+                total_savings_base=total_savings_base,
+            ),
         }
 
     def get_report(self, db: Session, fiscal_year: int) -> dict:
@@ -631,7 +673,7 @@ class TaxReportService:
             ).order_by(TaxReport.updated_at.desc())
         )
         if report is not None:
-            return {
+            data = {
                 "summary": report.summary,
                 "dividends": report.dividends,
                 "realized": report.realized,
@@ -639,6 +681,11 @@ class TaxReportService:
                 "generated_at": report.generated_at.isoformat() if report.generated_at else None,
                 "persisted": True,
             }
+            # La capa de declaracion se calcula al leer (no se persiste): es
+            # presentacion derivada de los mismos agregados, siempre al dia
+            # con el mapeo normativo vigente en el codigo.
+            data["filing"] = self._build_filing(db, fiscal_year, data)
+            return data
         data = self.compute_report(db, fiscal_year)
         data["generated_at"] = None
         data["persisted"] = False
