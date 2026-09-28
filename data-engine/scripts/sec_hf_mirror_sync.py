@@ -6,7 +6,7 @@ SEC el companyfacts, el submissions y sus ficheros historicos, y sube al
 dataset HF solo lo que cambio (comparando bytes). El dataset es PUBLICO:
 la ingesta lo lee sin credenciales; solo el sync necesita HF_TOKEN (write).
 
-Uso: HF_TOKEN=... HF_DATASET=usuario/cavaai-sec-mirror python scripts/sec_hf_mirror_sync.py
+Uso: HF_TOKEN=... HF_DATASET=usuario/cavaai-sec-mirror python data-engine/scripts/sec_hf_mirror_sync.py
 """
 from __future__ import annotations
 

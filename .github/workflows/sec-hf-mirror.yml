@@ -23,4 +23,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_MIRROR_TOKEN }}
           HF_DATASET: ${{ vars.HF_MIRROR_DATASET }}
-        run: python scripts/sec_hf_mirror_sync.py
+        run: python data-engine/scripts/sec_hf_mirror_sync.py
