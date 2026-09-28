@@ -155,6 +155,7 @@ def _plan_row(row: NewsEvent, ticker: str) -> dict | None:
         "expected": {
             "title": row.title,
             "summary": row.summary,
+            "url": row.url,
             "source_headline": old_headline,
             "headline_from_source": metadata.get("headline_from_source"),
         },
@@ -276,9 +277,12 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
         ):
             skipped.append(item["id"])
             continue
+        # La URL fija la identidad del filing: si cambió entre preview y
+        # apply (aunque sea otra URL EDGAR válida), el plan ya no aplica.
         current = {
             "title": row.title,
             "summary": row.summary,
+            "url": row.url,
             "source_headline": (row.metadata_ or {}).get("source_headline"),
             "headline_from_source": (row.metadata_ or {}).get("headline_from_source"),
         }

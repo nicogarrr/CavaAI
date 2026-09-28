@@ -55,7 +55,7 @@ def test_form_allowlist():
 def test_plan_row_solo_texto_compuesto():
     row = SimpleNamespace(
         id=1, tenant_id=None, company_id=7, title="COST COST 8-K (2026-09-24)",
-        summary="COST COST 8-K (2026-09-24)",
+        summary="COST COST 8-K (2026-09-24)", url=SEC_URL,
         metadata_={"source_headline": "COST 8-K (2026-09-24)"},
     )
     plan = _plan_row(row, "COST")
@@ -75,7 +75,7 @@ def test_plan_row_solo_texto_compuesto():
     # SEC: el plan sanea SOLO la procedencia (title/summary quedan igual).
     row_es = SimpleNamespace(
         id=2, tenant_id=None, company_id=7, title="COST 8-K presentado ante la SEC",
-        summary="COST 8-K presentado ante la SEC",
+        summary="COST 8-K presentado ante la SEC", url=SEC_URL,
         metadata_={"source_headline": "8-K presentado ante la SEC"},
     )
     plan_es = _plan_row(row_es, "COST")
@@ -86,7 +86,7 @@ def test_plan_row_solo_texto_compuesto():
     # Y la fila ya saneada por completo (texto y procedencia) no se toca.
     row_ok = SimpleNamespace(
         id=3, tenant_id=None, company_id=7, title="COST 8-K presentado ante la SEC",
-        summary="COST 8-K presentado ante la SEC",
+        summary="COST 8-K presentado ante la SEC", url=SEC_URL,
         metadata_={"headline_from_source": False},
     )
     assert _plan_row(row_ok, "COST") is None
@@ -371,6 +371,22 @@ def test_rollback_con_precondicion_en_ambos_campos(db_rows, tmp_path, capsys):
     assert "saltadas" in capsys.readouterr().out
 
 
+def test_apply_salta_si_la_url_cambia_tras_el_plan(db_rows, tmp_path):
+    """La URL fija la identidad del filing: cambiada por otra URL EDGAR
+    válida entre preview y apply, el plan ya no se aplica."""
+    db, company = db_rows
+    row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
+    plan = tmp_path / "plan.json"
+    main(["--plan", str(plan)])
+    db.get(NewsEvent, row.id).url = (
+        "https://www.sec.gov/Archives/edgar/data/1000000/0000950000000009/otra.htm"
+    )
+    db.commit()
+    assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
+    db.expire_all()
+    assert db.get(NewsEvent, row.id).title == "SEEDC 8-K (2026-09-24)"  # intacta
+
+
 def test_rollback_restaura_el_valor_previo_del_flag(db_rows, tmp_path):
     """El rollback restaura AMBOS valores de metadata: una fila que tenía
     headline_from_source=True antes del plan lo recupera (no se borra)."""
@@ -440,7 +456,7 @@ def test_apply_plan_intraplan_mismo_destino_aplica_filings_distintos(db_rows):
     def _entry(r):
         return {
             "id": r.id, "tenant_id": r.tenant_id, "company_id": r.company_id,
-            "expected": {"title": r.title, "summary": r.summary,
+            "expected": {"title": r.title, "summary": r.summary, "url": r.url,
                          "source_headline": r.metadata_["source_headline"],
                          "headline_from_source": r.metadata_.get("headline_from_source")},
             "new": {"title": "SEEDC 8-K presentado ante la SEC",
