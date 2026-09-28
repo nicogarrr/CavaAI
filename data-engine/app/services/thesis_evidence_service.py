@@ -547,11 +547,18 @@ class ThesisEvidenceService:
             "source": "news pipeline (NewsEvent)",
             "items": [
                 {
+                    "id": r.id,
                     "title": r.title,
                     "date": r.date.isoformat() if r.date else None,
                     "source": r.source,
                     "materiality": r.materiality_score,
                     "url": r.url,
+                    # Titular original publicado por el medio (si el conector lo
+                    # guardo): es lo unico citable verbatim. `title` es un
+                    # resumen compuesto por la app y NUNCA se presenta como
+                    # titular publicado.
+                    "source_headline": (r.metadata_ or {}).get("source_headline"),
+                    "date_source": (r.metadata_ or {}).get("date_source"),
                 }
                 for r in rows
             ],
