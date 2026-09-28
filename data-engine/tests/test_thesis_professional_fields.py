@@ -24,7 +24,8 @@ def test_hypothesis_below_base_value() -> None:
         "reverse_dcf": {"required_revenue_growth": 0.12},
     }
     hypothesis = service._hypothesis(_company(), valuation)
-    assert "por debajo" in hypothesis
+    # MoS = base/price - 1: se nombra explicitamente (F341).
+    assert "margen de seguridad del 20%" in hypothesis
     assert "100.00" in hypothesis
     assert "12.0%" in hypothesis
 
@@ -33,7 +34,7 @@ def test_hypothesis_above_base_value() -> None:
     service = ThesisService()
     valuation = {"current_price": 120.0, "base_value": 100.0, "margin_of_safety": -0.2}
     hypothesis = service._hypothesis(_company(), valuation)
-    assert "por encima" in hypothesis
+    assert "margen de seguridad del -20%" in hypothesis
     assert "descuenta mas" in hypothesis
 
 
