@@ -32,8 +32,8 @@ describe('alerts history traceability guard (F146)', () => {
     it('la tarjeta enlaza a la investigación cuando hay ticker', () => {
         const src = readSource('components/alerts/AlertsManager.tsx');
         assert.ok(
-            src.includes('href={`/research/${item.ticker}`}'),
-            'el historial debe enlazar a /research/[ticker] cuando la alerta tiene ticker',
+            src.includes('href={`/research/${item.ticker}?view=thesis`}'),
+            'el historial debe enlazar a la investigacion del ticker (pestaña tesis) cuando la alerta tiene ticker',
         );
         assert.ok(src.includes('item.ticker &&'), 'el enlace solo se muestra con ticker presente (nunca inventado)');
     });
@@ -55,7 +55,7 @@ describe('alerts history traceability guard (F146)', () => {
         const schema = readSource('data-engine/app/schemas/api.py');
         const route = readSource('data-engine/app/api/routes/alerts.py');
         assert.ok(schema.includes('ticker: str | None = None'), 'ResearchAlertOut debe exponer ticker');
-        assert.ok(route.includes('out.ticker = tickers.get(alert.company_id)'), 'list_alerts debe resolver el ticker');
+        assert.ok(route.includes('out.ticker = company.ticker if company else None'), 'list_alerts debe resolver el ticker');
         assert.ok(schema.includes('last_triggered_at: datetime | None'), 'ResearchAlertOut debe exponer last_triggered_at');
         const model = readSource('data-engine/app/models/entities.py');
         assert.ok(model.includes('last_triggered_at'), 'ResearchAlert debe persistir last_triggered_at');
