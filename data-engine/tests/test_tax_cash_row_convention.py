@@ -264,3 +264,56 @@ def test_unattributed_subtotal_none_with_ambiguous_unattributed_bucket(db: Sessi
     assert row["ambiguous_cash"] is True
     assert row["dividends_base"] is None
     assert report["summary"]["unattributed_dividends_base"] is None
+
+
+def test_ambiguous_dividend_payments_carry_null_amounts(db: Session):
+    """payments[] of an ambiguous row must not carry the invented figure:
+    amounts are None with ambiguous/manual_review markers, and the raw value
+    only lives in the review list as a labelled CANDIDATE."""
+    _eur_portfolio(db)
+    company = _company(db, "AMBP")
+    _tx(db, company, date(2026, 4, 1), "dividend", 100, "0.25")
+
+    report = TaxReportService().compute_report(db, YEAR)
+    row = next(d for d in report["dividends"] if d["ticker"] == "AMBP")
+    payments = row["payments"]
+    assert len(payments) == 1
+    payment = payments[0]
+    assert payment["amount_native"] is None
+    assert payment["amount_base"] is None
+    assert payment["ambiguous"] is True
+    assert payment["manual_review"] is True
+    # Ningun consumidor/exportacion ve el 0.25 inventado como pago medido.
+    flagged = report["summary"]["inconsistent_cash_rows"]
+    assert flagged[0]["candidate"] is True
+    assert flagged[0]["amount"] == 0.25
+
+
+def test_ambiguous_withholding_payment_carry_null_amounts(db: Session):
+    _eur_portfolio(db)
+    company = _company(db, "AMBWP")
+    _tx(db, company, date(2026, 4, 1), "withholding", 100, "0.15")
+
+    report = TaxReportService().compute_report(db, YEAR)
+    row = next(d for d in report["dividends"] if d["ticker"] == "AMBWP")
+    payment = next(p for p in row["payments"] if p["type"] == "withholding")
+    assert payment["amount_native"] is None
+    assert payment["amount_base"] is None
+    assert payment["ambiguous"] is True
+    assert payment["manual_review"] is True
+    flagged = report["summary"]["inconsistent_cash_rows"]
+    assert flagged[0]["candidate"] is True
+
+
+def test_canonical_payments_keep_measured_amounts(db: Session):
+    """Scope check: canonical rows still publish measured payment amounts."""
+    _eur_portfolio(db)
+    company = _company(db, "OKP")
+    _tx(db, company, date(2026, 4, 1), "dividend", 0, "10.00")
+
+    report = TaxReportService().compute_report(db, YEAR)
+    row = next(d for d in report["dividends"] if d["ticker"] == "OKP")
+    payment = row["payments"][0]
+    assert payment["amount_native"] == 10.0
+    assert payment["amount_base"] == 10.0
+    assert "ambiguous" not in payment

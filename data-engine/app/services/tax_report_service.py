@@ -287,7 +287,10 @@ class TaxReportService:
                             "date": transaction.trade_date.isoformat(),
                             "action": action,
                             "quantity": float(transaction.quantity or 0),
+                            # Valor crudo (price x quantity no canonica): es
+                            # un CANDIDATO a revisar, nunca un pago medido.
                             "amount": _money(amount_native),
+                            "candidate": True,
                             "currency": transaction.currency,
                         }
                     )
@@ -312,15 +315,21 @@ class TaxReportService:
                             bucket["withholding_base"] += abs(amount_base)
                         else:
                             bucket["missing_fx"] = True
-                    bucket["payments"].append(
-                        {
-                            "date": transaction.trade_date.isoformat(),
-                            "type": "withholding",
-                            "raw_action": _raw_action_label(transaction),
-                            "amount_native": _money(withheld),
-                            "amount_base": _money(abs(amount_base)) if amount_base is not None else None,
-                        }
-                    )
+                    withholding_row = {
+                        "date": transaction.trade_date.isoformat(),
+                        "type": "withholding",
+                        "raw_action": _raw_action_label(transaction),
+                        "amount_native": _money(withheld),
+                        "amount_base": _money(abs(amount_base)) if amount_base is not None else None,
+                    }
+                    if ambiguous_cash_row:
+                        # Fila ambigua: la cifra derivada de price es un
+                        # candidato (lista de revision), no un pago medido.
+                        withholding_row["amount_native"] = None
+                        withholding_row["amount_base"] = None
+                        withholding_row["ambiguous"] = True
+                        withholding_row["manual_review"] = True
+                    bucket["payments"].append(withholding_row)
                 else:
                     raw_label = _raw_action_label(transaction)
                     special = any(
@@ -334,6 +343,14 @@ class TaxReportService:
                         "amount_native": _money(amount_native),
                         "amount_base": _money(amount_base),
                     }
+                    if ambiguous_cash_row:
+                        # La cifra cruda vive solo en inconsistent_cash como
+                        # candidato etiquetado; aqui seria una invencion
+                        # visible para cualquier consumidor/exportacion.
+                        payment_row["amount_native"] = None
+                        payment_row["amount_base"] = None
+                        payment_row["ambiguous"] = True
+                        payment_row["manual_review"] = True
                     bucket["payments"].append(payment_row)
                     if special:
                         # Payment in lieu / return of capital / stock lending:

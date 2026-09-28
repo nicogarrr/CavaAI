@@ -234,3 +234,58 @@ def test_fx_start_anchors_to_first_price_bar_not_generic_cutoff(db):
     fx = out["positions"][0]["components"]["fx"]
     assert fx == pytest.approx(1.10 / 0.90 - 1)
     assert fx != pytest.approx(1.10 / 0.80 - 1)
+
+
+def test_xirr_excludes_ambiguous_cash_rows_and_declares_coverage(db):
+    """A historical non-canonical cash row (qty 100 x price 0.25) must not
+    enter XIRR as a certain cashflow: it is excluded and the exclusion is
+    declared in the meta."""
+    _eur_portfolio(db)
+    c = _company(db, "XAMB")
+    position = _position(db, c, as_of=date(2026, 6, 1), fx_rate="0.95")
+    position.market_value_base = Decimal("209")
+    db.commit()
+    db.add(Transaction(
+        company_id=c.id, trade_date=date(2026, 1, 15), action="buy",
+        quantity=Decimal("10"), price=Decimal("100"), fees=Decimal("0"),
+        currency="USD", raw_payload={},
+    ))
+    db.add(Transaction(
+        company_id=c.id, trade_date=date(2026, 3, 15), action="dividend",
+        quantity=Decimal("100"), price=Decimal("0.25"), fees=Decimal("0"),
+        currency="USD", raw_payload={},
+    ))
+    _fx(db, date(2026, 1, 1), "0.90")
+    db.commit()
+
+    value, meta = PortfolioIntelligenceService()._xirr(db, [(position, c)])
+    assert meta["ambiguous_cash_excluded"] == 1
+    # El flujo ambiguo no esta dentro: 2 flujos (compra + valor final).
+    assert meta["cashflows"] == 2
+
+
+def test_attribution_ambiguous_dividends_leave_component_unknown(db):
+    """Non-canonical dividend row: the dividends component of that company
+    is unknown (None), the aggregate declares incompleteness, and the
+    residual multiple is not fabricated by subtracting an invented figure."""
+    _eur_portfolio(db)
+    c = _company(db, "ATTRAMB")
+    p = _position(db, c, as_of=date(2026, 6, 1), fx_rate="0.95")
+    prices = _prices(db, c, [(date(2026, 1, 2), 100), (date(2026, 6, 1), 110)])
+    _fx(db, date(2026, 1, 1), "0.90")
+    _fx(db, date(2026, 6, 1), "0.99")
+    db.add(Transaction(
+        company_id=c.id, trade_date=date(2026, 3, 15), action="dividend",
+        quantity=Decimal("100"), price=Decimal("0.25"), fees=Decimal("0"),
+        currency="USD", raw_payload={},
+    ))
+    db.commit()
+
+    svc = PortfolioIntelligenceService()
+    out = svc._attribution(db, [(p, c)], {c.id: 1.0}, {c.id: prices}, CUTOFF)
+    position = out["positions"][0]
+    assert position["dividends_known"] is False
+    assert position["components"]["dividends"] is None
+    assert position["components"]["multiple"] is None
+    assert out["portfolio_components"]["dividends"] is None
+    assert "dividends" in out["incomplete_components"]

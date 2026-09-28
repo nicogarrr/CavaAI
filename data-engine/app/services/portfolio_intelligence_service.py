@@ -16,7 +16,11 @@ from app.models import CashBalance, Company, FinancialFact, MarketPrice, Positio
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.portfolio_ledger_service import BUY_ACTIONS, SELL_ACTIONS
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
-from app.services.tax_report_service import cash_amount, is_cash_action
+from app.services.tax_report_service import (
+    cash_amount,
+    cash_quantity_is_canonical,
+    is_cash_action,
+)
 
 # Exchange -> listing-market country. Best-effort fallback only: the owning
 # fact is issuer domicile, and positions without a known exchange are grouped
@@ -423,6 +427,7 @@ class PortfolioIntelligenceService:
         fx = PortfolioFXService()
         base = fx.base_currency(db)
         cashflows: list[tuple[date, float]] = []
+        ambiguous_cash_excluded = 0
         all_transactions = list(db.scalars(select(Transaction).order_by(Transaction.trade_date)).all())
         # Lote FX: 1 query para todos los flujos (anti N+1 por transacción).
         flow_table = fx.fx_table(
@@ -455,6 +460,13 @@ class PortfolioIntelligenceService:
             # cash_amount devuelve Decimal: sin float() el net*float(rate) de
             # mas abajo era Decimal*float -> TypeError y GET /intelligence
             # entera caia con cualquier fila cash con FX.
+            # Fila cash historica no canonica (quantity distinta de 0/1):
+            # cash_amount daria price*quantity como dato cierto mientras el
+            # informe fiscal la bloquea. Se excluye del XIRR y se declara la
+            # cobertura; incluirla mediría una cifra inventada.
+            if is_cash_action(action) and not cash_quantity_is_canonical(transaction):
+                ambiguous_cash_excluded += 1
+                continue
             gross = (
                 float(cash_amount(transaction))
                 if is_cash_action(action)
@@ -489,7 +501,11 @@ class PortfolioIntelligenceService:
         if ending_value:
             cashflows.append((date.today(), ending_value))
         if len(cashflows) < 2 or not any(value < 0 for _, value in cashflows):
-            return None, {"status": "insufficient_cashflows", "cashflows": len(cashflows)}
+            return None, {
+                "status": "insufficient_cashflows",
+                "cashflows": len(cashflows),
+                "ambiguous_cash_excluded": ambiguous_cash_excluded,
+            }
         origin = min(day for day, _ in cashflows)
 
         def npv(rate: float) -> float:
@@ -500,7 +516,11 @@ class PortfolioIntelligenceService:
 
         low, high = -0.9999, 10.0
         if npv(low) * npv(high) > 0:
-            return None, {"status": "no_xirr_root", "cashflows": len(cashflows)}
+            return None, {
+                "status": "no_xirr_root",
+                "cashflows": len(cashflows),
+                "ambiguous_cash_excluded": ambiguous_cash_excluded,
+            }
         for _ in range(200):
             middle = (low + high) / 2
             if abs(npv(middle)) < 1e-8:
@@ -513,6 +533,7 @@ class PortfolioIntelligenceService:
             "status": "calculated",
             "method": "bisection_xirr",
             "cashflows": len(cashflows),
+            "ambiguous_cash_excluded": ambiguous_cash_excluded,
         }
 
     @staticmethod
@@ -968,6 +989,7 @@ class PortfolioIntelligenceService:
             ).all():
                 all_facts[fact.company_id][fact.metric].append(fact)
         all_dividends: dict[int, float] = defaultdict(float)
+        ambiguous_dividends: set[int] = set()
         if company_ids:
             for dividend in db.scalars(
                 select(Transaction).where(
@@ -975,8 +997,16 @@ class PortfolioIntelligenceService:
                     Transaction.action == "dividend",
                 )
             ).all():
-                if dividend.company_id is not None:
-                    all_dividends[dividend.company_id] += float(cash_amount(dividend))
+                if dividend.company_id is None:
+                    continue
+                if not cash_quantity_is_canonical(dividend):
+                    # Fila historica no canonica: el importe derivado de
+                    # price es candidato (revision fiscal), no dato cierto.
+                    # El componente de dividendos de la compania queda
+                    # desconocido y la incompletitud se propaga al total.
+                    ambiguous_dividends.add(dividend.company_id)
+                    continue
+                all_dividends[dividend.company_id] += float(cash_amount(dividend))
         for position, company in rows:
             prices = price_series.get(company.id, [])
             # El ratio exige AMBOS extremos ajustados: con historica ajustada
@@ -993,11 +1023,14 @@ class PortfolioIntelligenceService:
             share_change = self._series_change(by_metric.get("shares_diluted", []))
             dilution = max(share_change or 0, 0)
             buybacks = max(-(share_change or 0), 0)
+            dividends_known = company.id not in ambiguous_dividends
             dividends = all_dividends.get(company.id, 0.0)
             dividend_return = (
-                dividends / float(position.cost_basis_native)
-                if position.cost_basis_native and position.cost_basis_native > 0
-                else 0
+                (dividends / float(position.cost_basis_native))
+                if dividends_known
+                and position.cost_basis_native
+                and position.cost_basis_native > 0
+                else (0.0 if dividends_known else None)
             )
             period_start = prices[0].date if prices else cutoff
             period_end = prices[-1].date if prices else cutoff
@@ -1014,7 +1047,9 @@ class PortfolioIntelligenceService:
                 - buybacks
                 + dilution
                 - fx_component
-                if total_return is not None and fx_component is not None
+                if total_return is not None
+                and fx_component is not None
+                and dividend_return is not None
                 else None
             )
             components = {
@@ -1043,6 +1078,7 @@ class PortfolioIntelligenceService:
                     "weight": weights.get(company.id, 0),
                     "total_return": total_return,
                     "fx_known": fx_component is not None,
+                    "dividends_known": dividends_known,
                     "components": components,
                 }
             )
