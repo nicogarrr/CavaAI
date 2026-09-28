@@ -158,17 +158,80 @@ def test_ambiguous_cash_row_is_rejected_at_creation(db: Session):
         )
 
 
-def test_ambiguous_cash_row_is_flagged_not_mis_scaled(db: Session):
-    """A row already in the ledger is declared with the canonical `price`
-    amount, and the ambiguity is surfaced for a human instead of being hidden."""
+def test_ambiguous_cash_row_blocks_aggregates_and_casillas(db: Session):
+    """A row already in the ledger is flagged for review AND blocked out of
+    every aggregate and derived casilla until resolved: a warning alone still
+    published a total with an authoritative look."""
     _eur_portfolio(db)
     company = _company(db, "AMB")
-    _tx(db, company, date(2026, 4, 1), "dividend", 100, "0.25")
+    # 2025: el unico ejercicio con mapeo de casillas verificado.
+    _tx(db, company, date(2025, 4, 1), "dividend", 100, "0.25")
 
-    report = TaxReportService().compute_report(db, YEAR)
+    report = TaxReportService().compute_report(db, 2025)
     row = next(d for d in report["dividends"] if d["ticker"] == "AMB")
-    assert row["dividends_native"] == 0.25  # not 25.0, not 100 * 0.25
-    flagged = report["summary"]["inconsistent_cash_rows"]
+    # The ambiguous amount never reaches the declared sums.
+    assert row["dividends_native"] == 0.0
+    assert row["dividends_base"] is None
+    assert row["ambiguous_cash"] is True
+    summary = report["summary"]
+    assert summary["total_dividends_base"] is None
+    assert summary["net_taxable_base"] is None
+    assert summary["ambiguous_cash"] == ["AMB"]
+    assert summary["manual_review"] is True
+    flagged = summary["inconsistent_cash_rows"]
     assert [item["ticker"] for item in flagged] == ["AMB"]
     assert flagged[0]["quantity"] == 100.0
     assert flagged[0]["action"] == "dividend"
+    # Modelo 100: casilla 0029 blocked too.
+    casillas = report["filing"]["casillas"]
+    assert casillas["dividendos"]["0029_ingresos_integros"] is None
+    assert casillas["dividendos"]["incomplete"] is True
+
+
+def test_ambiguous_withholding_blocks_deduction(db: Session):
+    """An ambiguous withholding row pushes its block to manual_review in the
+    0588 double-taxation deduction instead of being credited in silence."""
+    _eur_portfolio(db)
+    company = _company(db, "AMBW")
+    company.domicile_country = "US"
+    db.commit()
+    _tx(db, company, date(2026, 4, 1), "withholding", 100, "0.15")
+
+    report = TaxReportService().compute_report(db, YEAR)
+    row = next(d for d in report["dividends"] if d["ticker"] == "AMBW")
+    assert row["withholding_native"] == 0.0
+    assert row["withholding_base"] is None
+    assert row["ambiguous_cash"] is True
+    double_tax = report["filing"]["double_taxation"]
+    review = [item["ticker"] for item in double_tax["manual_review"]]
+    assert "AMBW" in review
+
+
+def test_ambiguous_misc_row_is_marked_with_null_amounts(db: Session):
+    """Interest/fee/cash_misc ambiguous rows surface with null amounts and a
+    manual_review marker, never an accepted amount."""
+    _eur_portfolio(db)
+    company = _company(db, "AMBM")
+    _tx(db, company, date(2026, 4, 1), "fee", 25, "0.25")
+
+    report = TaxReportService().compute_report(db, YEAR)
+    row = next(m for m in report["misc"] if m["ticker"] == "AMBM")
+    assert row["amount_native"] is None
+    assert row["amount_base"] is None
+    assert row["ambiguous"] is True
+    assert row["manual_review"] is True
+    flagged = report["summary"]["inconsistent_cash_rows"]
+    assert [item["ticker"] for item in flagged] == ["AMBM"]
+
+
+def test_unambiguous_rows_still_aggregate(db: Session):
+    """The block is scoped to ambiguous rows: canonical cash still declares."""
+    _eur_portfolio(db)
+    company = _company(db, "OKD")
+    _tx(db, company, date(2026, 4, 1), "dividend", 0, "10.00")
+
+    report = TaxReportService().compute_report(db, YEAR)
+    row = next(d for d in report["dividends"] if d["ticker"] == "OKD")
+    assert row["dividends_base"] == 10.0
+    assert report["summary"]["total_dividends_base"] == 10.0
+    assert report["summary"]["manual_review"] is False
