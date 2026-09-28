@@ -115,6 +115,7 @@ def test_sync_sube_layout_oficial_y_manifest(tmp_path, monkeypatch, fake_hf):
     _tickers_file(tmp_path, monkeypatch)
     monkeypatch.setenv("HF_TOKEN", "t")
     monkeypatch.setenv("HF_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_USER_AGENT", "CavaAI research nicoiglesiasgarcia10@gmail.com")
     assert sync.main() == 0
     esperado = {
         "company_tickers.json",
@@ -137,6 +138,7 @@ def test_sync_no_resube_lo_que_no_cambio(tmp_path, monkeypatch, fake_hf):
     _tickers_file(tmp_path, monkeypatch)
     monkeypatch.setenv("HF_TOKEN", "t")
     monkeypatch.setenv("HF_DATASET", "d")
+    monkeypatch.setenv("SEC_USER_AGENT", "CavaAI research nicoiglesiasgarcia10@gmail.com")
     assert sync.main() == 0
     assert len(fake_hf.commits) == 1  # publicacion atomica: un solo commit
     # Segunda corrida: el manifest remoto declara los sha1 ya publicados.
@@ -157,3 +159,17 @@ def test_sync_sin_credenciales_falla_cerrado(tmp_path, monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HF_DATASET", raising=False)
     assert sync.main() == 2
+
+
+def test_sync_ua_placeholder_falla_cerrado(tmp_path, monkeypatch, fake_hf):
+    """SEC banea User-Agent placeholder (example.com/.local) con 403: el sync
+    falla cerrado ANTES de tocar la red si el contacto no es real."""
+    _tickers_file(tmp_path, monkeypatch)
+    monkeypatch.setenv("HF_TOKEN", "t")
+    monkeypatch.setenv("HF_DATASET", "d")
+    for ua_malo in ("", "CavaAI/0.1 contact@example.com",
+                    "CavaAI research contact@cavaai.local",
+                    "sin-arroba"):
+        monkeypatch.setenv("SEC_USER_AGENT", ua_malo)
+        assert sync.main() == 2
+    assert not fake_hf.uploads  # no llego a subir nada

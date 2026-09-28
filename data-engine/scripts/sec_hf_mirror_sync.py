@@ -19,9 +19,22 @@ from pathlib import Path
 
 import httpx
 
-SEC_UA = "CavaAI Research research@cavaai.example"
 TICKERS_FILE = Path(__file__).with_name("sec_mirror_tickers.txt")
 RPS_DELAY = 0.15  # ~6-7 req/s, bajo el limite de la SEC (10/s)
+
+# La SEC pide un User-Agent con contacto REAL y banea placeholders con 403.
+# El valor llega por env (SEC_USER_AGENT); fail closed si falta o es
+# placeholder: mejor un sync que no corre que un ban por UA inventado.
+_PLACEHOLDER_MARKERS = ("example.com", ".example", ".local")
+
+
+def resolve_sec_ua() -> str | None:
+    ua = os.environ.get("SEC_USER_AGENT", "").strip()
+    if not ua or "@" not in ua:
+        return None
+    if any(marker in ua for marker in _PLACEHOLDER_MARKERS):
+        return None
+    return ua
 
 
 def sec_get(client: httpx.Client, url: str) -> dict:
@@ -41,6 +54,14 @@ def main() -> int:
     if not token or not dataset:
         print("Faltan HF_TOKEN o HF_DATASET", file=sys.stderr)
         return 2
+    sec_ua = resolve_sec_ua()
+    if sec_ua is None:
+        print(
+            "SEC_USER_AGENT falta o es placeholder (la SEC banea "
+            "example.com/.local con 403): fail closed antes de tocar la red",
+            file=sys.stderr,
+        )
+        return 2
     from huggingface_hub import CommitOperationAdd, HfApi, hf_hub_download
 
     tickers = [t.strip().upper() for t in TICKERS_FILE.read_text().splitlines()
@@ -50,7 +71,7 @@ def main() -> int:
 
     uploads: dict[str, bytes] = {}
     with httpx.Client(
-        headers={"User-Agent": SEC_UA, "Accept-Encoding": "gzip, deflate"},
+        headers={"User-Agent": sec_ua, "Accept-Encoding": "gzip, deflate"},
         timeout=60, follow_redirects=True,
     ) as client:
         mapping = sec_get(client, "https://www.sec.gov/files/company_tickers.json")
