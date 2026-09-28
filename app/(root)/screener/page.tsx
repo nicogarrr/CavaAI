@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
-import { getMarketIndices } from '@/lib/actions/market.actions';
+import { getMarketIndicesResult } from '@/lib/actions/market.actions';
 import { getSavedScreenerEngines, getScreenerStocksReal } from '@/lib/actions/screener.actions';
 import { formatNumber, formatPercent, formatPrice } from '@/lib/format';
 import { etiquetaSector } from '@/lib/labels';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
+import { indicesCardState } from '@/lib/market/indices-card-state';
 import { t } from '@/lib/i18n/t';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,12 +57,15 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
   // Screener (backend) e índices (backend) son independientes: en paralelo
   // en vez de en serie. El flag distingue "backend caído" (reintentar) de
   // "filtro sin resultados" (cambiar de sector).
-  const [screenerResult, indices, engineScreens] = await Promise.all([
+  const [screenerResult, indicesResult, engineScreens] = await Promise.all([
     getScreenerStocksReal({ sector, limit: 25 }).then(
-      (rows) => ({ rows, backendDown: false }),
-      () => ({ rows: [] as Awaited<ReturnType<typeof getScreenerStocksReal>>, backendDown: true }),
+      (rows) => ({ rows, error: null as unknown }),
+      (error: unknown) => ({ rows: [] as Awaited<ReturnType<typeof getScreenerStocksReal>>, error }),
     ),
-    getMarketIndices().catch(() => []),
+    // Resultado discriminado PROPIO (datos/error): la tarjeta de índices no
+    // infiere su estado de la petición vecina (screener). Cada llamada puede
+    // fallar de forma independiente (caché, ruta, proveedor).
+    getMarketIndicesResult(),
     // Motor de análisis (POST /api/screeners/run ad-hoc y filtros guardados):
     // si cae, la tabla Finnhub de abajo queda como lectura offline.
     getSavedScreenerEngines().then(
@@ -68,9 +73,16 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
       () => ({ screens: [] as Awaited<ReturnType<typeof getSavedScreenerEngines>>, engineDown: true }),
     ),
   ]);
-  const { rows, backendDown } = screenerResult;
+  const { rows, error: screenerError } = screenerResult;
+  const backendDown = screenerError !== null;
   // Un indice sin precio real (fallo del proveedor) no se pinta como $0.00.
-  const validIndices = indices.filter((i) => i.price > 0);
+  const validIndices = indicesResult.data.filter((i) => i.price > 0);
+  // «Desconectado» solo lo decide el error PROPIO de índices (5xx o sin red
+  // según el helper común, no un 4xx): antes se miraba el fallo del screener,
+  // así una ruta caída apagaba la tarjeta de la otra y viceversa. Con la
+  // petición de índices completada y la lista vacía, «Sin datos de índices»
+  // es la lectura honesta.
+  const indicesState = indicesCardState(validIndices.length, indicesResult.error, isBackendUnavailableError);
   // F152: un nivel de índice no es dinero - sin sufijo «US$». Solo las
   // series etiquetadas "usd" (Bitcoin/Oro/Plata) llevan US$; un nivel de
   // índice o una serie sin unidad conocida va como número plano, jamás
@@ -247,16 +259,41 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
             <CardTitle className="text-base">Índices y macro</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {validIndices.map((i) => (
-                <div key={i.symbol} className="flex min-w-0 items-center justify-between gap-3">
-                  <span className="min-w-0 flex-1 truncate text-gray-300">{i.name}</span>
-                  <span className="shrink-0 font-semibold text-gray-100">{formatIndexValue(i)}</span>
+            {indicesState === 'unavailable' ? (
+              /* Mismo tratamiento que la tabla de arriba, en línea: la página
+               * sigue teniendo contenido útil (filtros, motor) y sustituir la
+               * tarjeta por un error a pantalla completa tiraría el resto.
+               * Solo cuando el servidor NO ha podido completar la consulta: con
+               * el servidor operativo y la lista vacía, «Sin datos de índices»
+               * es la lectura honesta. */
+              <div className="py-6 text-center">
+                <span className="inline-block rounded-full border border-amber-900/60 bg-amber-950/40 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
+                  Motor de análisis desconectado
+                </span>
+                <p className="mt-4 text-xs text-gray-500">
+                  El servidor de CavaAI no ha podido completar la consulta. Reintenta en unos segundos.
+                </p>
+                <Button asChild variant="outline" size="sm" className="mt-4 min-h-[44px]">
+                  <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>
+                    <RefreshCcw aria-hidden="true" className="h-4 w-4" />
+                    Reintentar
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {validIndices.map((i) => (
+                    <div key={i.symbol} className="flex min-w-0 items-center justify-between gap-3">
+                      <span className="min-w-0 flex-1 truncate text-gray-300">{i.name}</span>
+                      <span className="shrink-0 font-semibold text-gray-100">{formatIndexValue(i)}</span>
+                    </div>
+                  ))}
+                  {validIndices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}
                 </div>
-              ))}
-              {validIndices.length === 0 && <p className="text-sm text-gray-500">Sin datos de índices</p>}
-            </div>
-            <p className="mt-4 text-xs text-gray-500">S&amp;P 500, Nasdaq, Bitcoin, Oro, Plata — valores reales.</p>
+                <p className="mt-4 text-xs text-gray-500">S&amp;P 500, Nasdaq, Bitcoin, Oro, Plata — valores reales.</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
