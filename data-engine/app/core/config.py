@@ -157,6 +157,14 @@ class Settings(BaseSettings):
     # La SEC bloquea las IPs de datacenter; los snapshots se generan fuera
     # (PC residencial, espejo) y se despliegan con la app.
     sec_snapshot_dir: str | None = None
+    # Dataset de HuggingFace que actua como mirror resiliente de la SEC
+    # (companyfacts/submissions). Cuando esta configurado y la SEC rechaza
+    # con 401/403 (ban de IP de datacenter), la ingesta lee el mismo JSON
+    # oficial desde el mirror - solo ante esos codigos: un 404 de la SEC es
+    # un fallo de dato y nunca se desvia al mirror. El mirror se sirve solo
+    # si su manifest declara synced_at reciente (<= 48h): dato viejo nunca
+    # se sirve como fresco. Vacio = solo SEC directo.
+    sec_hf_mirror_dataset: str | None = None
     # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
     # snapshots/<LEI>.json normalizados desde filings.xbrl.org). Mismo motivo
     # que SEC: los datos viajan con la app, nunca se piden en caliente.
