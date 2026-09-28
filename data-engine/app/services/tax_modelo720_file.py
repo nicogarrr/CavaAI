@@ -327,6 +327,29 @@ class Modelo720FileService:
                     "excluded": excluded,
                     "thresholds": thresholds,
                 }
+            # Un MISMO ISIN en dos carteras puede estar en dos custodios
+            # distintos: la config por ISIN no puede representarlo y el
+            # fichero asignaría la misma entidad a ambas filas. No
+            # representable -> fail-closed.
+            isin_counts: dict[str, int] = {}
+            for pos in valores["positions"]:
+                key = (pos.get("isin") or "").upper()
+                if key:
+                    isin_counts[key] = isin_counts.get(key, 0) + 1
+            duplicated = sorted(k for k, n in isin_counts.items() if n > 1)
+            if duplicated:
+                return {
+                    "available": False,
+                    "reason": (
+                        "Configuración no representable: el mismo ISIN aparece "
+                        "en varias carteras (" + ", ".join(duplicated) + ") y "
+                        "podría estar depositado en custodios distintos; la "
+                        "declaración por ISIN no puede distinguirlos. Declarar "
+                        "manualmente con la entidad correcta por cartera."
+                    ),
+                    "excluded": excluded,
+                    "thresholds": thresholds,
+                }
             for pos in valores["positions"]:
                 isin = (pos.get("isin") or "").upper()
                 if not isin:
