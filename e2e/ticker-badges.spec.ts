@@ -94,9 +94,11 @@ test("los eventos de noticias muestran En cartera / En watchlist", async ({ page
   await expect(page.getByRole("heading", { name: "Movers", level: 1 })).toBeVisible({ timeout: 60_000 });
   await expect(async () => {
     await page.reload();
-    const costMover = page.getByRole("row", { name: /COST/ });
+    // COST y NFLX pueden aparecer en varias secciones (subidas, bajadas,
+    // volumen): acotar por seccion sembrada para no violar strict mode.
+    const costMover = page.getByLabel("Mayores subidas").getByRole("row", { name: /COST/ });
     await expect(costMover.getByText("En cartera", { exact: true })).toBeVisible();
-    const nflxMover = page.getByRole("row", { name: /NFLX/ });
+    const nflxMover = page.getByLabel("Mayores bajadas").getByRole("row", { name: /NFLX/ });
     await expect(nflxMover.getByText("En watchlist", { exact: true })).toBeVisible();
   }).toPass({ timeout: 70_000, intervals: [5_000, 10_000, 15_000] });
   await page.screenshot({ path: "test-results/ticker-badges-movers.png" });
