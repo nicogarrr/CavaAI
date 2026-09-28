@@ -165,6 +165,13 @@ class Settings(BaseSettings):
     # si su manifest declara synced_at reciente (<= 48h): dato viejo nunca
     # se sirve como fresco. Vacio = solo SEC directo.
     sec_hf_mirror_dataset: str | None = None
+    # Emision de jobs process_document para filings SEC desde el worker.
+    # La SEC bloquea las IPs de datacenter (403 permanente en OCI): esos
+    # jobs siempre fallan y envenenaron la cola default (5276 mensajes,
+    # F359). False = no emitirlos; la metadata de filings SEC sigue
+    # entrando via el mirror HF (sec_hf_mirror_dataset) sincronizado por
+    # GitHub Actions. True solo donde la SEC sea alcanzable (dev local).
+    sec_document_jobs_enabled: bool = False
     # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
     # snapshots/<LEI>.json normalizados desde filings.xbrl.org). Mismo motivo
     # que SEC: los datos viajan con la app, nunca se piden en caliente.
