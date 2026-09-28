@@ -4,6 +4,7 @@ import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchRequest } from '@/lib/research/client';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
+import { openPositionTickers } from '@/lib/ticker-badges';
 
 export type TickerContext = {
     portfolioTickers: string[];
@@ -21,13 +22,13 @@ export async function getTickerContext(): Promise<TickerContext> {
     const [positions, watchlist] = await Promise.all([
         cachedFetch(
             `portfolio:${userId}:positions`,
-            () => researchRequest<Array<{ ticker: string }>>('/api/portfolio/positions', { fast: true }),
+            () => researchRequest<Array<{ ticker: string; quantity: number | null }>>('/api/portfolio/positions', { fast: true }),
             15,
-        ).catch(() => [] as Array<{ ticker: string }>),
+        ).catch(() => [] as Array<{ ticker: string; quantity: number | null }>),
         getWatchlist().catch(() => [] as Array<{ symbol: string }>),
     ]);
     return {
-        portfolioTickers: positions.map((position) => position.ticker.toUpperCase()),
+        portfolioTickers: openPositionTickers(positions),
         watchlistTickers: watchlist.map((item) => item.symbol.toUpperCase()),
     };
 }

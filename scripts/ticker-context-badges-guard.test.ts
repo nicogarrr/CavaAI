@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { tickerBadgesFor, TICKER_BADGE_LABELS } from '../lib/ticker-badges.ts';
+import { openPositionTickers, tickerBadgesFor, TICKER_BADGE_LABELS } from '../lib/ticker-badges.ts';
 
 const news = readFileSync('app/(root)/research/news/page.tsx', 'utf8');
 const movers = readFileSync('app/(root)/movers/page.tsx', 'utf8');
@@ -23,8 +23,27 @@ test('la pertenencia se calcula por ticker normalizado', () => {
     assert.equal(TICKER_BADGE_LABELS.watchlist, 'En watchlist');
 });
 
+test('«En cartera» exige posición abierta: quantity numérica y no nula', () => {
+    // Una posición cerrada importada por IBKR (quantity 0) no lleva badge:
+    // afirmar «En cartera» sin posición sería falso. El corto (quantity < 0)
+    // es exposición abierta y sí lo lleva.
+    const positions = [
+        { ticker: 'COST', quantity: 3 },
+        { ticker: 'NFLX', quantity: 0 },
+        { ticker: 'TSLA', quantity: -2 },
+        { ticker: 'AAPL', quantity: null },
+        { ticker: ' msft ', quantity: 1 },
+    ];
+    assert.deepEqual(openPositionTickers(positions), ['COST', 'TSLA', 'MSFT']);
+});
+
+test('la acción filtra por posición abierta, no por mera presencia', () => {
+    assert.match(action, /openPositionTickers\(positions\)/);
+    assert.match(action, /quantity: number \| null/);
+});
+
 test('la lectura degrada a conjuntos vacíos, nunca a badges fabricados', () => {
-    assert.match(action, /\.catch\(\(\) => \[\] as Array<\{ ticker: string \}>\)/);
+    assert.match(action, /\.catch\(\(\) => \[\] as Array<\{ ticker: string; quantity: number \| null \}>\)/);
     assert.match(action, /\.catch\(\(\) => \[\] as Array<\{ symbol: string \}>\)/);
 });
 

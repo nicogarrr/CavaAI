@@ -9,16 +9,20 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import Company, MarketPrice
+from app.services.company_enrichment_service import ensure_company_stub
 from app.services.provenance import SourceKind, coverage_for_age, provenance
 
 router = APIRouter()
@@ -408,3 +412,61 @@ def market_movers(
         "losers": losers,
         "most_active": most_active,
     }
+
+class MarketPriceSeedItem(BaseModel):
+    ticker: str
+    date: date
+    close: Decimal
+    volume: int | None = None
+
+
+class MarketPriceSeedRequest(BaseModel):
+    items: list[MarketPriceSeedItem]
+
+
+@router.post("/prices/seed")
+def market_prices_seed(
+    payload: MarketPriceSeedRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Siembra determinista de cierres locales SOLO fuera de produccion.
+
+    Los movers se calculan desde market_prices local y no existe otra via
+    firmada de ingesta: sin este endpoint un test e2e no puede poblar el
+    universo. En produccion no existe (404): un cierre escrito a mano en
+    prod seria un dato fabricado servido como real. Barra plana (open=high=
+    low=close) y adj_close NULL: el seed no afirma ajuste por splits.
+    """
+    if get_settings().is_production:
+        raise HTTPException(status_code=404, detail="Not found")
+    seeded = 0
+    for item in payload.items:
+        company = ensure_company_stub(db, item.ticker)
+        existing = db.scalar(
+            select(MarketPrice).where(
+                MarketPrice.company_id == company.id,
+                MarketPrice.date == item.date,
+            )
+        )
+        if existing is None:
+            db.add(MarketPrice(
+                company_id=company.id,
+                date=item.date,
+                open=item.close,
+                high=item.close,
+                low=item.close,
+                close=item.close,
+                volume=item.volume,
+                source="e2e-seed",
+            ))
+        else:
+            existing.open = item.close
+            existing.high = item.close
+            existing.low = item.close
+            existing.close = item.close
+            existing.volume = item.volume
+            existing.source = "e2e-seed"
+        seeded += 1
+    db.commit()
+    return {"seeded": seeded}
+
