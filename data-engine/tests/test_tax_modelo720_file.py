@@ -83,7 +83,12 @@ DECLARANT = {
     "apellidos_nombre": "FICTICIO FISCAL, TEST",
     "telefono": "600111222",
     "numero_declaracion": "7202025000001",
-    "custody_country": "IE",
+    "custody": {"US0378331005": "IE"},
+    "custody_entity": {
+        "name": "BROKER FICTICIO DE PRUEBAS",
+        "nif": "IE-FICTICIO-0",
+        "address": "CALLE FICTICIA 1, DUBLIN",
+    },
     "first_acquisition_dates": {"US0378331005": "20230115"},
 }
 
@@ -143,10 +148,12 @@ def test_generates_spec_layout_records(db):
     assert detail[0] == "2"
     assert detail[101] == "V"                        # 102: clave bien
     assert detail[102] == "1"                        # 103: subclave participación
-    assert detail[128:130] == "IE"                   # 129-130: país de DEPÓSITO declarado (no el prefijo del ISIN)
+    assert detail[128:130] == "IE"                   # 129-130: país de DEPÓSITO declarado por partida (no el prefijo del ISIN)
     assert detail[130] == "1"                        # 131: identificación por ISIN
     assert detail[131:143].rstrip() == "US0378331005"  # 132-143: ISIN
-    assert detail[189:230].rstrip() == "APPLE INC"   # 190-230: entidad
+    assert detail[189:230].rstrip() == "BROKER FICTICIO DE PRUEBAS"  # 190-230: entidad depositaria REAL
+    assert detail[230:250].rstrip() == "IE-FICTICIO-0"               # 231-250: NIF de la entidad
+    assert detail[250:414].rstrip() == "CALLE FICTICIA 1, DUBLIN"    # 251-414: domicilio de la entidad
     assert detail[414:422] == "20230115"             # 415-422: fecha incorporación
     assert detail[422] == "A"                        # 423: origen (primera vez)
     assert detail[431] == " "                        # 432: signo valoración 1
@@ -182,12 +189,32 @@ def test_unavailable_with_malformed_numero_declaracion(db):
     assert "720" in result["reason"]
 
 
-def test_unavailable_without_custody_country(db):
-    d = {k: v for k, v in DECLARANT.items() if k != "custody_country"}
+def test_unavailable_without_custody_map(db):
+    d = {k: v for k, v in DECLARANT.items() if k != "custody"}
     _seed(db, declarant=d)
     result = Modelo720FileService().generate(db, 2025)
     assert result["available"] is False
-    assert "custody_country" in result["reason"]
+    assert "custody" in result["reason"]
+
+
+def test_unavailable_without_custody_entity(db):
+    d = {k: v for k, v in DECLARANT.items() if k != "custody_entity"}
+    _seed(db, declarant=d)
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "custody_entity" in result["reason"]
+
+
+def test_unavailable_with_multi_date_lots(db):
+    # Lotes con fechas distintas exigen un registro por fecha y no tenemos
+    # cantidades por lote: no se genera un registro comprimido.
+    _seed(db, declarant={
+        **DECLARANT,
+        "first_acquisition_dates": {"US0378331005": ["20230115", "20240610"]},
+    })
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "lotes" in result["reason"]
 
 
 def test_unavailable_without_first_acquisition_date(db):
@@ -209,11 +236,13 @@ def test_previous_year_isin_sold_goes_to_manual_review_not_baja(db):
     )
 
 
-def test_previous_year_isin_held_flags_origin_m_review(db):
-    # Origen siempre "A": un ISIN ya declarado genera aviso de posible "M".
+def test_previous_year_isin_held_is_excluded_not_faked_as_a(db):
+    # Un ISIN ya declarado NO puede salir con origen "A" (campo falso):
+    # se EXCLUYE del fichero hasta aclarar si procede "M" (>20.000 €).
     _seed(db, declarant={**DECLARANT, "previous_year_isins": ["US0378331005"]})
     result = Modelo720FileService().generate(db, 2025)
-    assert result["available"] is True
-    detail = result["content"].rstrip("\n").split("\n")[1]
-    assert detail[422] == "A"
-    assert any("20.000" in m["reason"] for m in result["manual_review"])
+    assert result["available"] is False  # el único registro quedó excluido
+    assert any(
+        m.get("isin") == "US0378331005" and "20.000" in m["reason"]
+        for m in result["manual_review"]
+    )
