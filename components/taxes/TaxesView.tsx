@@ -12,6 +12,7 @@ import {
     type DataRecord,
 } from '@/components/data/RecordViews';
 import { getTaxHoldings, getTaxReport, regenerateTaxReport } from '@/lib/actions/taxes.actions';
+import { FilingSection, Modelo720Section } from '@/components/taxes/FilingSections';
 import { recordDetailKey } from '@/components/taxes/record-detail-key';
 import { reportForYear, type ReportOverride } from '@/lib/taxes/report-state';
 import { formatUserDateTime, formatMoney, NA } from '@/lib/format';
@@ -24,6 +25,8 @@ import { TAX_HOLDING_MONEY_COLUMNS, formatHoldingMoney } from '@/lib/taxes/holdi
 interface TaxesViewProps {
     initialHoldings: DataRecord[];
     initialReport: DataRecord | null;
+    initialThresholds720: DataRecord | null;
+    initialFile720: DataRecord | null;
     year: number;
 }
 
@@ -184,7 +187,7 @@ function downloadTaxSummary(holdings: DataRecord[], report: DataRecord | null, y
     URL.revokeObjectURL(url);
 }
 
-export default function TaxesView({ initialHoldings, initialReport, year }: TaxesViewProps) {
+export default function TaxesView({ initialHoldings, initialReport, initialThresholds720, initialFile720, year }: TaxesViewProps) {
     const router = useRouter();
     const [regenerating, setRegenerating] = useState(false);
     // F260: el informe mostrado se DERIVA del año pedido (reportForYear), no
@@ -277,6 +280,10 @@ export default function TaxesView({ initialHoldings, initialReport, year }: Taxe
                     </Button>
                 }
             />
+
+            <FilingSection filing={(report?.filing as DataRecord | undefined) ?? null} />
+
+            <Modelo720Section thresholds={initialThresholds720} file720={initialFile720} year={year} />
 
             <RecordList
                 title="Posiciones Fiscales"

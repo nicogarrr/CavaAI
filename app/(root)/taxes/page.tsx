@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Receipt } from 'lucide-react';
 import TaxesView from '@/components/taxes/TaxesView';
 import BackendOffline from '@/components/system/BackendOffline';
-import { getTaxHoldings, getTaxReport, type TaxRecord } from '@/lib/actions/taxes.actions';
+import { getModelo720File, getModelo720Thresholds, getTaxHoldings, getTaxReport, type TaxRecord } from '@/lib/actions/taxes.actions';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import { isAppError } from '@/lib/types/errors';
 
@@ -49,12 +49,19 @@ function asFiscalYear(raw: string | undefined): number {
 
 export default async function TaxesPage({ searchParams }: PageProps) {
     const fiscalYear = asFiscalYear((await searchParams)?.year);
-    const [holdingsRead, reportRead] = await Promise.all([
+    const [holdingsRead, reportRead, thresholdsRead, fileRead] = await Promise.all([
         read(getTaxHoldings(), [] as TaxRecord[]),
         read(getTaxReport(fiscalYear), null as TaxRecord | null),
+        read(getModelo720Thresholds(fiscalYear), null as TaxRecord | null),
+        read(getModelo720File(fiscalYear), null as TaxRecord | null),
     ]);
     const { error: holdingsError } = holdingsRead;
     const { error: reportError } = reportRead;
+    // Los bloques del 720 son accesorios: su 4xx/5xx no tumba la página,
+    // la sección simplemente no se pinta (los estados sin datos viven en
+    // la propia respuesta del backend).
+    const thresholds720 = thresholdsRead.error ? null : thresholdsRead.value;
+    const file720 = fileRead.error ? null : fileRead.value;
 
     if (
         (holdingsError && isBackendUnavailableError(holdingsError)) ||
@@ -86,7 +93,7 @@ export default async function TaxesPage({ searchParams }: PageProps) {
                 </div>
             </header>
 
-            <TaxesView initialHoldings={holdings} initialReport={report} year={fiscalYear} />
+            <TaxesView initialHoldings={holdings} initialReport={report} initialThresholds720={thresholds720} initialFile720={file720} year={fiscalYear} />
         </main>
     );
 }
