@@ -46,9 +46,9 @@ EXCHANGE_COUNTRY = {
 }
 
 
-# Tolerancia de frescura de la pata final del retorno FX del periodo:
+# Tolerancia de frescura de las patas del retorno FX del periodo:
 # cubre fin de semana y festivo corto; un dato mas viejo no se reutiliza.
-_FX_END_LEG_TOLERANCE = timedelta(days=7)
+_FX_LEG_TOLERANCE = timedelta(days=7)
 
 
 def _fx_rate_with_date(
@@ -865,7 +865,7 @@ class PortfolioIntelligenceService:
         fx_table: dict[tuple[str, str], list[tuple[date, Decimal]]],
         position: Position,
         base_currency: str,
-        cutoff: date,
+        period_start: date,
         period_end: date,
     ) -> float | None:
         """Retorno FX del periodo de la divisa de cotizacion, no su nivel.
@@ -876,15 +876,18 @@ class PortfolioIntelligenceService:
         cifra inventada se restaba del residuo ``multiple``. El componente
         correcto es el retorno del periodo ``fx_fin / fx_en_corte - 1``.
 
-        Ambas patas se anclan al periodo real: el inicio al ``cutoff`` y el
-        fin al ``period_end`` (ultima barra de la serie de precios). El spot
-        de ``Position.fx_rate`` solo sirve como pata final si su ``as_of``
-        no es ANTERIOR al corte: un spot viejo contra el corte invertia el
-        signo del retorno y lo publicaba como medido.
+        Ambas patas se anclan al periodo REAL de la serie de precios:
+        inicio en ``period_start`` (primera barra, no un cutoff generico que
+        puede quedar meses antes) y fin en ``period_end`` (ultima barra).
+        Anclar el inicio al cutoff cuando la primera barra es posterior
+        mediria un tramo de FX fuera del periodo atribuido. El spot de
+        ``Position.fx_rate`` solo sirve como pata final si su ``as_of`` no
+        es anterior al inicio del periodo.
 
-        Si cualquiera de las dos patas no existe o la pata final es anterior
-        al corte, el componente se queda en None (desconocido): nunca se
-        degrada a un nivel ni a un retorno con las fechas cambiadas.
+        Frescura exigida en AMBAS patas (tolerancia de fin de semana /
+        festivo corto): una tasa demasiado vieja respecto a su ancla deja
+        el componente en None; nunca se publica un retorno medido con
+        fechas cambiadas ni un cero fabricado reutilizando una sola tasa.
         """
         currency = position.currency or ""
         if not currency:
@@ -893,7 +896,7 @@ class PortfolioIntelligenceService:
             fx_table,
             quote_currency=currency,
             base_currency=base_currency,
-            as_of=cutoff,
+            as_of=period_start,
         )
         end = _fx_rate_with_date(
             fx_table,
@@ -902,19 +905,23 @@ class PortfolioIntelligenceService:
             as_of=period_end,
         )
         if end is None and position.fx_rate is not None and position.as_of is not None:
-            if position.as_of >= cutoff:
+            if position.as_of >= period_start:
                 end = (position.as_of, Decimal(str(position.fx_rate)))
         if start is None or end is None:
             return None
         (start_date, start_rate), (end_date, end_rate) = start, end
-        # Tolerancia explicita de la pata FINAL respecto al fin de periodo:
-        # sin ella, con una sola tasa del 1/ene y barra final en junio la
-        # MISMA fila servia de pata inicial y final y publicaba 0,0% medido
-        # (cero fabricado con fx_known=True). Un hueco mayor que la tolerancia
-        # (fin de semana / festivo corto) deja el componente en None.
-        if end_date < period_end - _FX_END_LEG_TOLERANCE:
+        # Tolerancia explicita de frescura en AMBAS patas respecto a su
+        # ancla del periodo: sin ella, con una sola tasa del 1/ene y barra
+        # final en junio la MISMA fila servia de pata inicial y final y
+        # publicaba 0,0% medido (cero fabricado con fx_known=True), y un FX
+        # inicial de 2020 con cutoff 2026 publicaba la variacion de anos
+        # como retorno del periodo. Un hueco mayor que la tolerancia (fin
+        # de semana / festivo corto) deja el componente en None.
+        if end_date < period_end - _FX_LEG_TOLERANCE:
             return None
-        if end_date < cutoff or end_date < start_date or not start_rate or not end_rate:
+        if start_date < period_start - _FX_LEG_TOLERANCE:
+            return None
+        if end_date < period_start or end_date < start_date or not start_rate or not end_rate:
             return None
         return float(end_rate / start_rate - 1)
 
@@ -992,9 +999,10 @@ class PortfolioIntelligenceService:
                 if position.cost_basis_native and position.cost_basis_native > 0
                 else 0
             )
+            period_start = prices[0].date if prices else cutoff
             period_end = prices[-1].date if prices else cutoff
             fx_component = self._period_fx_return(
-                fx_table, position, base_currency, cutoff, period_end
+                fx_table, position, base_currency, period_start, period_end
             )
             # El residuo se queda en None cuando el retorno total o el de FX
             # son desconocidos: restar un componente no medido (o medir uno

@@ -197,3 +197,40 @@ def test_single_initial_rate_never_serves_as_both_legs(db):
     assert out["positions"][0]["fx_known"] is False
     assert out["portfolio_components"]["fx"] is None
     assert "fx" in out["incomplete_components"]
+
+
+def test_old_initial_fx_rate_is_not_a_period_return(db):
+    """FX inicial de 2020 con periodo 2026: sin frescura en la pata inicial
+    publicaba la variacion de anos como retorno del periodo. Ahora None."""
+    _eur_portfolio(db)
+    c = _company(db, "FXD")
+    position = _position(db, c, as_of=date(2026, 6, 1), fx_rate=None)
+    prices = _prices(db, c, [(date(2026, 1, 2), 100), (date(2026, 6, 1), 110)])
+    _fx(db, date(2020, 6, 1), "0.80")
+    _fx(db, date(2026, 6, 1), "1.10")
+
+    from app.services.portfolio_fx_service import PortfolioFXService
+    fx_table = PortfolioFXService().fx_table(
+        db, currencies={"USD", "EUR"}, base_currency="EUR", as_of_max=date(2026, 6, 1)
+    )
+    svc = PortfolioIntelligenceService()
+    assert svc._period_fx_return(fx_table, position, "EUR", prices[0].date, prices[-1].date) is None
+
+
+def test_fx_start_anchors_to_first_price_bar_not_generic_cutoff(db):
+    """Repro del auditor: FX 0.80 ene / 0.90 mar / 1.10 jun, serie de
+    precios mar-jun. El FX atribuible al periodo es mar-jun (+22,22%),
+    no ene-jun (+37,5%)."""
+    _eur_portfolio(db)
+    c = _company(db, "FXE")
+    position = _position(db, c, as_of=date(2026, 6, 1), fx_rate=None)
+    prices = _prices(db, c, [(date(2026, 3, 2), 100), (date(2026, 6, 1), 110)])
+    _fx(db, date(2026, 1, 5), "0.80")
+    _fx(db, date(2026, 3, 1), "0.90")
+    _fx(db, date(2026, 6, 1), "1.10")
+
+    svc = PortfolioIntelligenceService()
+    out = svc._attribution(db, [(position, c)], {c.id: 1.0}, {c.id: prices}, date(2026, 1, 1))
+    fx = out["positions"][0]["components"]["fx"]
+    assert fx == pytest.approx(1.10 / 0.90 - 1)
+    assert fx != pytest.approx(1.10 / 0.80 - 1)
