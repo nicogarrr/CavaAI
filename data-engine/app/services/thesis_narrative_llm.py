@@ -74,10 +74,71 @@ def _llm_payload(
     }
 
 
-def _allowed_numbers(payload: dict) -> set[str]:
-    """Toda cifra del payload (JSON completo, hipotesis incluida) es admisible."""
-    text = json.dumps(payload, ensure_ascii=False, default=str)
-    return set(_NUMBER_RE.findall(text))
+def _percent_forms(value: float) -> set[str]:
+    pct = abs(value) * 100
+    return {f"{pct:g}", f"{pct:.1f}".rstrip("0").rstrip("."), f"{pct:.2f}".rstrip("0").rstrip(".")}
+
+
+def _allowed_finance_numbers(valuation: dict, hypothesis: str) -> set[str]:
+    """Solo cifras FINANCIERAS: campos de valoracion y la hipotesis determinista.
+
+    Las fechas y el resto del payload NO blanquean digitos: que una noticia
+    sea de 2026-09-25 no autoriza a afirmar un precio de 25 USD.
+    """
+    allowed = set(_NUMBER_RE.findall(hypothesis))
+    for key in ("current_price", "base_value", "margin_of_safety"):
+        value = valuation.get(key)
+        if isinstance(value, (int, float)):
+            allowed.add(f"{value}")
+            allowed.update(_percent_forms(value))
+    growth = (valuation.get("reverse_dcf") or {}).get("required_revenue_growth")
+    if isinstance(growth, (int, float)):
+        allowed.add(f"{growth}")
+        allowed.update(_percent_forms(growth))
+    return allowed
+
+
+def _news_date_strings(payload: dict) -> list[str]:
+    return [
+        str(item.get("date"))[:10]
+        for item in (payload.get("news") or [])
+        if item.get("date")
+    ]
+
+
+def _status_caveat_ok(summary: str, valuation: dict) -> bool:
+    """La narrativa no puede maquillar el estado: la salvedad es obligatoria."""
+    status = valuation.get("status")
+    missing = [str(m).lower() for m in (valuation.get("missing_inputs") or [])]
+    lower = summary.lower()
+    if status == "insufficient_data":
+        has_caveat = any(
+            w in lower for w in ("insuficiente", "no publicable", "faltan", "falta")
+        )
+        return has_caveat and (not missing or any(m in lower for m in missing))
+    if status == "partial":
+        has_caveat = any(
+            w in lower for w in ("parcial", "indicativa", "faltan", "falta")
+        )
+        return has_caveat and (not missing or any(m in lower for m in missing))
+    return True
+
+
+def _source_attribution_ok(summary: str, payload: dict) -> bool:
+    """Un medio solo puede aparecer junto a su titular original verbatim.
+
+    Mencionar el medio parafraseando la noticia, o atribuirle hechos, es
+    exactamente la atribucion fabricada que esta capa no puede permitir.
+    """
+    lower = summary.lower()
+    for item in (payload.get("news") or []):
+        source = str(item.get("source") or "").strip()
+        if not source or source.lower() not in lower:
+            continue
+        headline = str(item.get("source_headline") or "").strip()
+        if not headline or headline not in summary:
+            return False
+    return True
 
 
 def _verified(summary: str, payload: dict) -> bool:
@@ -86,9 +147,19 @@ def _verified(summary: str, payload: dict) -> bool:
         return False
     if _ADVICE_RE.search(summary):
         return False
-    # Cifras: ninguna que no aparezca literalmente en los datos de entrada.
-    allowed = _allowed_numbers(payload)
-    if any(num not in allowed for num in _NUMBER_RE.findall(summary)):
+    valuation = payload.get("valuation") or {}
+    if not _status_caveat_ok(summary, valuation):
+        return False
+    if not _source_attribution_ok(summary, payload):
+        return False
+    # Cifras financieras: se retiran primero las fechas COMPLETAS citadas
+    # (una fecha de publicacion no blanquea sus digitos sueltos) y luego cada
+    # numero restante debe existir en los campos financieros o la hipotesis.
+    remainder = summary
+    for date_str in _news_date_strings(payload):
+        remainder = remainder.replace(date_str, " ")
+    allowed = _allowed_finance_numbers(valuation, payload.get("hypothesis_deterministica") or "")
+    if any(num not in allowed for num in _NUMBER_RE.findall(remainder)):
         return False
     # Citas: cualquier texto entre comillas debe ser un titular original
     # verbatim de los proporcionados.
@@ -166,7 +237,13 @@ def maybe_narrative(
         summary = str(parsed.get("summary") or "").strip() if isinstance(parsed, dict) else ""
     except Exception:  # noqa: BLE001 - el fallo del proveedor no degrada la capa 1
         return baseline
+    if not _verified(summary, payload):
+        # Salida descartada: no se cobra presupuesto por ella.
+        return baseline
     try:
+        # commit=False: estamos dentro del savepoint de generate(); confirmar
+        # aqui romperia la atomicidad de la generacion. El commit lo hace el
+        # flujo de tesis al persistir la version.
         budget.record(
             db,
             response.model,
@@ -175,9 +252,8 @@ def maybe_narrative(
                 response.model, response.usage.input_tokens, response.usage.output_tokens
             ),
             response.usage.total_tokens,
+            commit=False,
         )
     except Exception:  # noqa: BLE001 - el registro contable no decide el contenido
         pass
-    if not _verified(summary, payload):
-        return baseline
     return summary

@@ -160,3 +160,105 @@ def test_short_or_empty_summary_falls_back(db, monkeypatch):
         db, _company(), VALUATION, HYPOTHESIS, NEWS, "base",
         provider=_FakeProvider("corto"))
     assert result == "base"
+
+
+def _budget_spy(monkeypatch):
+    calls = {"can_spend": 0, "record": []}
+
+    class _SpyBudget:
+        def __init__(self):
+            pass
+
+        def can_spend(self, db, amount):
+            calls["can_spend"] += 1
+            return True
+
+        def record(self, db, model, workflow, cost, tokens, *, commit=True):
+            calls["record"].append({"workflow": workflow, "commit": commit})
+
+        @staticmethod
+        def estimate_cost_eur(model, input_tokens, output_tokens):
+            return 0.01
+
+    monkeypatch.setattr(narrative, "BudgetController", _SpyBudget)
+    return calls
+
+
+def test_budget_recorded_only_after_verified_with_commit_false(db, monkeypatch):
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    calls = _budget_spy(monkeypatch)
+    result = narrative.maybe_narrative(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, "base",
+        provider=_FakeProvider(GOOD_SUMMARY))
+    assert result == GOOD_SUMMARY
+    assert calls["record"] == [{"workflow": "thesis_narrative", "commit": False}]
+
+
+def test_budget_not_recorded_when_output_discarded(db, monkeypatch):
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    calls = _budget_spy(monkeypatch)
+    bad = GOOD_SUMMARY.replace("336.56 USD", "999.99 USD")
+    result = narrative.maybe_narrative(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, "base",
+        provider=_FakeProvider(bad))
+    assert result == "base"
+    assert calls["record"] == []
+
+
+def test_date_digits_do_not_whitelist_numbers(db, monkeypatch):
+    # Que la noticia sea de 2026-09-25 no autoriza a afirmar un precio de 25.
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    bad = (
+        'Meta cotiza a 336.56 USD. TechCrunch publicó el 2026-09-25 '
+        '"Meta presenta Muse, su nuevo modelo" y el valor justo es 25 USD según el mercado.'
+    )
+    result = narrative.maybe_narrative(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, "base",
+        provider=_FakeProvider(bad))
+    assert result == "base"
+
+
+def test_source_mentioned_without_verbatim_headline_falls_back(db, monkeypatch):
+    # Parafrasear la noticia atribuyendola al medio sin citarla verbatim.
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    bad = (
+        "Meta cotiza a 336.56 USD, un 68% por encima del escenario base de 106.85 USD. "
+        "Según TechCrunch, la compañía presentó un nuevo modelo llamado Muse esta semana."
+    )
+    result = narrative.maybe_narrative(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, "base",
+        provider=_FakeProvider(bad))
+    assert result == "base"
+
+
+def test_insufficient_data_requires_caveat(db, monkeypatch):
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    valuation = {"status": "insufficient_data", "missing_inputs": ["revenue"],
+                 "current_price": None, "base_value": None}
+    hypothesis = "Hipotesis en formacion: faltan datos."
+    embellishing = (
+        "Meta tiene un valor justo confiable gracias a sus fundamentos actuales "
+        "y la tesis puede considerarse completa para el inversor."
+    )
+    result = narrative.maybe_narrative(
+        db, _company(), valuation, hypothesis, [], "base",
+        provider=_FakeProvider(embellishing))
+    assert result == "base"
+    honest = (
+        "La tesis de Meta no publicable todavia: faltan revenue y otros datos "
+        "financieros basicos, asi que ningun valor justo debe considerarse fiable."
+    )
+    result = narrative.maybe_narrative(
+        db, _company(), valuation, hypothesis, [], "base",
+        provider=_FakeProvider(honest))
+    assert result == honest
+
+
+def test_partial_requires_indicative_caveat(db, monkeypatch):
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    valuation = dict(VALUATION, status="partial", missing_inputs=["beta"])
+    bad = GOOD_SUMMARY  # no menciona la parcialidad ni beta
+    result = narrative.maybe_narrative(
+        db, _company(), valuation, HYPOTHESIS, NEWS, "base",
+        provider=_FakeProvider(bad))
+    assert result == "base"
