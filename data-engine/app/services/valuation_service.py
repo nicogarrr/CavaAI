@@ -138,8 +138,10 @@ def _position_price_as_of(db: Session, company_id: int) -> str | None:
     precio del modelo con su fecha, nunca como precio actual."""
     position = db.scalar(select(Position).where(Position.company_id == company_id).limit(1))
     if position and position.market_price and float(position.market_price) > 0:
-        ts = getattr(position, "updated_at", None)
-        return ts.date().isoformat() if ts else None
+        # Sin procedencia real del mark: updated_at es la ultima modificacion
+        # de la fila (una reconstruccion mueve la fecha SIN refrescar el
+        # precio), nunca la fecha del precio. None honesto.
+        return None
     market_price = db.scalar(
         select(MarketPrice)
         .where(MarketPrice.company_id == company_id)

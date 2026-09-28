@@ -166,17 +166,23 @@ def test_price_as_of_from_latest_close(db):
     assert _position_price_as_of(db, company.id) == "2026-09-22"
 
 
-def test_price_as_of_prefers_position_timestamp(db):
-    """F348: si el precio viene de la posicion, la fecha es la de la posicion."""
+def test_price_as_of_nunca_es_el_updated_at_de_la_posicion(db):
+    """F348: el mark de la posicion no tiene fecha propia; updated_at es la
+    ultima modificacion de la fila (una reconstruccion por transaccion nueva
+    conserva el precio viejo pero mueve updated_at). Jamas se rotula el
+    precio con esa fecha: None honesto aunque la fila se acabe de tocar."""
     from app.services.valuation_service import _position_price_as_of
     company = _company(db)
-    pos = Position(company_id=company.id, quantity=Decimal("1"), market_price=Decimal("150"))
+    pos = Position(company_id=company.id, quantity=Decimal("1"), market_price=Decimal("100"))
     db.add(pos)
     db.commit()
+    # Simula la reconstruccion del auditor: nueva transaccion dias despues,
+    # precio conservado, fila modificada -> updated_at se mueve.
+    pos.quantity = Decimal("5")
+    db.commit()
     db.refresh(pos)
-    as_of = _position_price_as_of(db, company.id)
-    assert as_of is not None
-    assert as_of == pos.updated_at.date().isoformat()
+    assert float(pos.market_price) == 100.0
+    assert _position_price_as_of(db, company.id) is None
 
 
 def test_price_as_of_none_without_price(db):
