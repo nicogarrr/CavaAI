@@ -3,14 +3,38 @@
 import { useState } from 'react';
 import { Building2, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { RecordList, researchHrefFor, type DataRecord } from '@/components/data/RecordViews';
+import { RecordList, researchHrefFor, type DataRecord, type ReplaceRecord } from '@/components/data/RecordViews';
 import { applyCorporateAction, getCorporateActions } from '@/lib/actions/corporate-actions.actions';
 import { showErrorToast } from '@/lib/toast';
+import { formatNumber } from '@/lib/format';
+import { t } from '@/lib/i18n/t';
 import { toast } from 'sonner';
 
 interface CorporateActionsViewProps {
     initialActions: DataRecord[];
 }
+
+/** Etiquetas visibles de esas columnas. Sin este mapa el usuario leía
+ *  `ticker · action_type · description · effective_date · ratio` en crudo. */
+const CORPORATE_ACTION_LABELS: Record<string, string> = {
+    ticker: t('common.labels.ticker'),
+    action_type: 'Tipo de acción',
+    description: 'Descripción',
+    effective_date: 'Fecha de efecto',
+    ratio: 'Ratio',
+    applied: 'Aplicada',
+    applied_at: 'Aplicada el',
+};
+
+/** action_type del backend (CorporateActionInput: split|reverse_split|
+ *  ticker_change|merger|spin_off). Desconocido -> tal cual, nunca inventado. */
+const CORPORATE_ACTION_TYPE_LABELS: Record<string, string> = {
+    split: 'Split',
+    reverse_split: 'Split inversa',
+    ticker_change: 'Cambio de ticker',
+    merger: 'Fusión',
+    spin_off: 'Spin-off',
+};
 
 function recordActionId(record: DataRecord): number {
     const value = record.id ?? record.action_id;
@@ -18,16 +42,17 @@ function recordActionId(record: DataRecord): number {
     return Number.isFinite(parsed) ? parsed : NaN;
 }
 
+/** El backend no manda `status`: el estado vive en `applied` / `applied_at`. */
 function isApplied(record: DataRecord): boolean {
-    return record.applied === true
-        || record.status === 'applied'
-        || record.applied_at !== undefined && record.applied_at !== null;
+    if (record.applied === true) return true;
+    if (record.applied === false) return false;
+    return typeof record.applied_at === 'string' && record.applied_at !== '';
 }
 
 export default function CorporateActionsView({ initialActions }: CorporateActionsViewProps) {
     const [applyingId, setApplyingId] = useState<number | null>(null);
 
-    const handleApply = async (record: DataRecord) => {
+    const handleApply = async (record: DataRecord, replace: ReplaceRecord) => {
         const actionId = recordActionId(record);
         if (!Number.isFinite(actionId)) {
             toast.error('La acción corporativa no tiene un identificador válido');
@@ -35,10 +60,15 @@ export default function CorporateActionsView({ initialActions }: CorporateAction
         }
         setApplyingId(actionId);
         try {
-            await applyCorporateAction(actionId);
+            // El registro aplicado lo devuelve el backend (applied/applied_at):
+            // la fila se pinta con ESA respuesta. Antes solo se mostraba un
+            // toast y la fila seguía con el botón «Aplicar» habilitado hasta
+            // un refresco manual.
+            const appliedRecord = await applyCorporateAction(actionId);
+            replace(appliedRecord);
             toast.success('Acción corporativa aplicada a la cartera');
         } catch (error) {
-            showErrorToast(error);
+            showErrorToast(error, { onRetry: () => handleApply(record, replace) });
         } finally {
             setApplyingId(null);
         }
@@ -51,10 +81,21 @@ export default function CorporateActionsView({ initialActions }: CorporateAction
             icon={<Building2 className="h-5 w-5 text-teal-400" />}
             records={initialActions}
             fetchRecords={getCorporateActions}
-            columns={['ticker', 'action_type', 'description', 'effective_date', 'ratio', 'status']}
+            // Columnas que sí sirve GET /api/corporate-actions
+            // (corporate_actions._payload). `status` no está en ese payload:
+            // la columna se pintaba siempre a «—».
+            columns={['ticker', 'action_type', 'description', 'effective_date', 'ratio', 'applied']}
+            columnLabels={CORPORATE_ACTION_LABELS}
+            formatColumns={{
+                action_type: (value) =>
+                    typeof value === 'string'
+                        ? CORPORATE_ACTION_TYPE_LABELS[value] ?? value
+                        : String(value ?? '—'),
+                ratio: (value) => formatNumber(value as number | string | null, { maximumFractionDigits: 4 }),
+            }}
             emptyMessage="No hay acciones corporativas pendientes. ¡Todo al día!"
             linkColumns={{ ticker: (record) => researchHrefFor(record) }}
-            rowActions={(record) => {
+            rowActions={(record, _index, replace) => {
                 const actionId = recordActionId(record);
                 if (isApplied(record)) {
                     return (
@@ -69,7 +110,7 @@ export default function CorporateActionsView({ initialActions }: CorporateAction
                         size="sm"
                         variant="outline"
                         disabled={!Number.isFinite(actionId) || applyingId === actionId}
-                        onClick={() => handleApply(record)}
+                        onClick={() => handleApply(record, replace)}
                         className="gap-1.5 border-teal-800 text-teal-300 hover:bg-teal-900/20 hover:text-teal-200"
                     >
                         {applyingId === actionId ? (
@@ -77,7 +118,7 @@ export default function CorporateActionsView({ initialActions }: CorporateAction
                         ) : (
                             <CheckCircle2 className="h-3.5 w-3.5" />
                         )}
-                        Aplicar
+                        {t('common.actions.apply')}
                     </Button>
                 );
             }}

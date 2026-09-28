@@ -24,6 +24,13 @@ type Props = {
   baseCurrency?: string;
 };
 
+/** Lista corta de símbolos para un toast: como mucho 5 en crudo y el resto contado. */
+function describeSymbols(symbols: string[]): string {
+  const shown = symbols.slice(0, 5);
+  const rest = symbols.length - shown.length;
+  return `${shown.join(', ')}${rest > 0 ? ` y ${rest} más` : ''}`;
+}
+
 export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency }: Props) {
   const router = useRouter();
   const [currentHoldings, setCurrentHoldings] = useState<PortfolioHolding[]>(holdings);
@@ -56,11 +63,46 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const updated = await refreshPortfolioHoldings(currentHoldings);
-      setCurrentHoldings(updated);
-      toast.success('Precios actualizados');
+      const result = await refreshPortfolioHoldings(currentHoldings);
+      if (!result.ok) {
+        // La acción NO ha escrito ningún precio (p. ej. sin FINNHUB_API_KEY):
+        // un toast verde sería falso. Se distingue "sin cotización" de
+        // "escritura fallida".
+        const parts: string[] = [];
+        if (result.skipped.length > 0) parts.push(`sin cotización: ${describeSymbols(result.skipped)}`);
+        if (result.failed.length > 0) parts.push(`escritura fallida: ${describeSymbols(result.failed)}`);
+        toast.error(`Ningún precio escrito (${parts.join('; ') || 'sin detalle'})`);
+        return;
+      }
+      setCurrentHoldings(result.holdings);
+      router.refresh();
+      const attempted = result.updated.length + result.skipped.length + result.failed.length;
+      if (result.failed.length > 0) {
+        // Parcial con escrituras fallidas: se dice qué se guardó y qué falló,
+        // y si además la relectura falló se declara en el mismo aviso (la
+        // vista no refleja lo que SÍ se escribió).
+        toast.error(
+          `${result.updated.length} de ${attempted} precios guardados; escritura fallida: ${describeSymbols(result.failed)}`
+            + (result.holdingsStale ? '; y no se pudo releer la cartera (recarga la página)' : ''),
+        );
+        return;
+      }
+      if (result.holdingsStale) {
+        // Los precios SÍ se grabaron; lo que falló fue releer el servidor.
+        toast.info('Precios guardados; no se pudo releer la cartera (recarga la página para verlos)');
+        return;
+      }
+      if (result.skipped.length > 0) {
+        // Parcial: se actualizó, pero no todo. El recuento lo declara.
+        toast.info(
+          `${result.updated.length} de ${attempted} precios actualizados; sin cotización: ${describeSymbols(result.skipped)}`,
+        );
+        return;
+      }
+      const total = result.updated.length;
+      toast.success(`${total} ${total === 1 ? 'precio actualizado' : 'precios actualizados'}`);
     } catch (error) {
-      showErrorToast(error);
+      showErrorToast(error, { onRetry: handleRefresh });
     } finally {
       setRefreshing(false);
     }

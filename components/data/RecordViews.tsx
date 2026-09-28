@@ -11,16 +11,54 @@ import { showErrorToast } from '@/lib/toast';
 
 export type DataRecord = Record<string, unknown>;
 
+/** Máximos de legibilidad para un valor compuesto dentro de una celda. */
+const MAX_VALUE_ITEMS = 6;
+const MAX_VALUE_CHARS = 400;
+
+/** `target_pct` -> `target pct`: la clave interna no se muestra como snake_case. */
+function humanizeKey(key: string): string {
+    return key.replaceAll('_', ' ').trim();
+}
+
+/**
+ * Resumen legible de un array u objeto.
+ *
+ * Antes caía en `JSON.stringify` y se volcaba dentro de una celda con
+ * `line-clamp`: un bloque de código truncado, con claves internas en crudo y
+ * sin nada que se pudiera leer. Ahora se declara como lista de
+ * «clave: valor», y lo que no cabe se cuenta («+N más») en vez de desaparecer
+ * sin aviso. La profundidad está acotada: un anidamiento más profundo que
+ * `depth` se marca como tal, no se serializa.
+ */
+function describeValue(value: unknown, depth: number): string {
+    if (value === null || value === undefined) return '—';
+    if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'string') return value;
+    if (value instanceof Date) return value.toISOString();
+    if (depth <= 0) return Array.isArray(value) ? `[${value.length}]` : '{…}';
+    if (Array.isArray(value)) {
+        if (value.length === 0) return '—';
+        const shown = value.slice(0, MAX_VALUE_ITEMS).map((item) => describeValue(item, depth - 1));
+        const rest = value.length - shown.length;
+        return `${shown.join(' · ')}${rest > 0 ? ` · +${rest} más` : ''}`;
+    }
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return '—';
+    const shown = entries
+        .slice(0, MAX_VALUE_ITEMS)
+        .map(([key, item]) => `${humanizeKey(key)}: ${describeValue(item, depth - 1)}`);
+    const rest = entries.length - shown.length;
+    return `${shown.join(' · ')}${rest > 0 ? ` · +${rest} más` : ''}`;
+}
+
 /** Convierte cualquier valor a texto plano legible en tabla/cards */
 export function formatRecordValue(value: unknown): string {
     if (value === null || value === undefined) return '—';
     if (typeof value === 'boolean') return value ? 'Sí' : 'No';
     if (typeof value === 'object') {
-        try {
-            return JSON.stringify(value);
-        } catch {
-            return String(value);
-        }
+        const text = describeValue(value, 2);
+        return text.length > MAX_VALUE_CHARS ? `${text.slice(0, MAX_VALUE_CHARS - 1)}…` : text;
     }
     return String(value);
 }
@@ -70,6 +108,14 @@ export function researchHrefFor(record: DataRecord, key = 'ticker'): string | nu
     return `/research/${encodeURIComponent(value.trim().toUpperCase())}`;
 }
 
+/**
+ * Sustituye campos de una fila ya pintada. Se entrega a `rowActions` para que
+ * una mutación (Aplicar, archivar...) se refleje en la fila sin esperar a un
+ * refresco manual: el parche debe traer la respuesta del backend, nunca un
+ * estado local inventado.
+ */
+export type ReplaceRecord = (patch: DataRecord) => void;
+
 export interface RecordListProps {
     title: string;
     description?: string;
@@ -83,8 +129,12 @@ export interface RecordListProps {
     emptyMessage?: string;
     /** CTA del estado vacío (primer paso: crear, importar, ir a...) */
     emptyAction?: ReactNode;
-    /** Acciones por fila (botón Aplicar, eliminar, etc.) */
-    rowActions?: (record: DataRecord, index: number) => ReactNode;
+    /**
+     * Acciones por fila (botón Aplicar, eliminar, etc.). El tercer argumento
+     * sustituye campos de esa fila en el estado del listado, para que la acción
+     * se vea aplicada sin un refresco manual.
+     */
+    rowActions?: (record: DataRecord, index: number, replace: ReplaceRecord) => ReactNode;
     /** Columnas cuyo valor se renderiza como enlace (p.ej. ticker -> /research/[ticker]) */
     linkColumns?: Record<string, (record: DataRecord, index: number) => string | null | undefined>;
     /** Formateadores por columna (p. ej. importes con la divisa de la fila). */
@@ -131,6 +181,10 @@ export function RecordList({
     };
     const cellHref = (record: DataRecord, index: number, column: string) =>
         linkColumns?.[column]?.(record, index) ?? null;
+    // El parche se aplica sobre la fila por posición: la lista solo cambia
+    // aquí (mutación) o en `refresh` (recarga completa), nunca por props.
+    const replaceRecord = (index: number): ReplaceRecord => (patch) =>
+        setRecords((current) => current.map((row, position) => (position === index ? { ...row, ...patch } : row)));
 
     return (
         <Card className="rounded-lg border border-gray-700">
@@ -206,7 +260,7 @@ export function RecordList({
                                             })}
                                             {rowActions && (
                                                 <TableCell className="text-right">
-                                                    {rowActions(record, index)}
+                                                    {rowActions(record, index, replaceRecord(index))}
                                                 </TableCell>
                                             )}
                                         </TableRow>
@@ -242,7 +296,7 @@ export function RecordList({
                                     </dl>
                                     {rowActions ? (
                                         <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-gray-700/50 pt-3">
-                                            {rowActions(record, index)}
+                                            {rowActions(record, index, replaceRecord(index))}
                                         </div>
                                     ) : null}
                                 </li>
@@ -271,6 +325,12 @@ export interface RecordDetailProps {
     maxKeys?: number;
     /** Claves internas/debug que no se muestran (p.ej. trace del backend). */
     hiddenKeys?: string[];
+    /**
+     * Etiquetas de campo por clave; las no mapeadas muestran la clave cruda
+     * (nunca se ocultan), igual que `columnLabels` en RecordList. Sin este mapa
+     * la tarjeta pintaba la clave del backend en mayúsculas («PLAN_EXISTS»).
+     */
+    columnLabels?: Record<string, string>;
 }
 
 /** Tarjeta clave/valor para respuestas de objeto único (plan, drift, risk dashboard, reporte fiscal...) */
@@ -285,6 +345,7 @@ export function RecordDetail({
     actions,
     maxKeys = 24,
     hiddenKeys,
+    columnLabels,
 }: RecordDetailProps) {
     const [data, setData] = useState<DataRecord | null>(record);
 
@@ -342,7 +403,7 @@ export function RecordDetail({
                     <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-gray-700/50 bg-gray-700/40 sm:grid-cols-2">
                         {entries.map(([key, value]) => (
                             <div key={key} className="flex flex-col gap-1 bg-surface-0/60 p-3">
-                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{key}</span>
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{columnLabels?.[key] ?? key}</span>
                                 <span className="break-words text-sm text-gray-200">
                                     <span className="line-clamp-4">{formatRecordValue(value)}</span>
                                 </span>
