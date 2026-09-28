@@ -445,13 +445,17 @@ def backfill_document_kpis() -> dict[str, Any]:
             # el lease haya expirado (un backlog largo retiene mensajes mas
             # que el lease). Los nunca enviados (queued_at NULL) siempre son
             # elegibles.
+            # OJO: queued_raw.is_(None) NO es portable - en sqlite SQLAlchemy
+            # envuelve la extraccion en JSON_QUOTE y 'null' (texto) no es NULL.
+            # .as_string() (JSON_EXTRACT / ->>) devuelve NULL real en ambos.
+            never_sent = queued_raw.as_string().is_(None)
             if depth == 0:
                 lease_filter = or_(
-                    queued_raw.is_(None),
+                    never_sent,
                     func.coalesce(queued_expr, 0) < now - kpi_defer_lease_seconds(),
                 )
             else:
-                lease_filter = queued_raw.is_(None)
+                lease_filter = never_sent
             pending = db.scalars(
                 select(Document)
                 .where(
@@ -478,11 +482,26 @@ def backfill_document_kpis() -> dict[str, Any]:
                 deferred["queued_at"] = now
                 meta[KPI_DEFERRED_KEY] = deferred
                 document.metadata_ = meta
-                extract_document_kpis.send(
-                    document.id, tenant_id=tenant_id, user_id=user_id
-                )
+                # Reserva persistida ANTES de enviar (auditor, bounce 4): un
+                # commit unico al final del lote revertia las reservas ya
+                # enviadas si un send posterior fallaba, y la pasada
+                # siguiente las duplicaba. Commit por doc; si el send falla
+                # se limpia queued_at (nada entro en Redis) y se reintenta
+                # como nunca enviado con el attempts ya consumido.
+                db.commit()
+                try:
+                    extract_document_kpis.send(
+                        document.id, tenant_id=tenant_id, user_id=user_id
+                    )
+                except Exception:  # noqa: BLE001 - un send roto no frena el lote
+                    meta = dict(document.metadata_ or {})
+                    deferred = dict(meta.get(KPI_DEFERRED_KEY) or {})
+                    deferred.pop("queued_at", None)
+                    meta[KPI_DEFERRED_KEY] = deferred
+                    document.metadata_ = meta
+                    db.commit()
+                    continue
                 queued += 1
-            db.commit()
         finally:
             db.close()
     return {

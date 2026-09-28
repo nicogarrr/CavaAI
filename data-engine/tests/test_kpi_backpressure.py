@@ -168,3 +168,39 @@ class TestBackfillFunctional:
         result2, send2 = self._run_backfill(db, depth=0)
         assert result2["queued"] == 1
         assert send2.call_count == 1
+
+
+    def test_reservation_survives_later_send_failure(self) -> None:
+        """Send 1 OK, send 2 explota: la reserva del 1 NO se revierte.
+
+        Pasada siguiente con depth>0: el primero no se reencola; el
+        segundo (nada entro en Redis) vuelve como nunca enviado.
+        """
+        import datetime as dt
+
+        db = self._db()
+        self._doc(db, "first", {"attempts": 0}, dt.datetime(2026, 1, 1))
+        second = self._doc(db, "second", {"attempts": 0}, dt.datetime(2026, 1, 2))
+        second_id = second.id
+        calls = []
+
+        def flaky_send(doc_id, **kwargs):
+            calls.append(doc_id)
+            if doc_id == second_id:
+                raise ConnectionError("redis caido")
+
+        with (
+            patch.object(workers, "tenant_contexts", return_value=[(1, "u")]),
+            patch.object(workers, "_session", return_value=db),
+            patch.object(workers, "_redis_client", return_value=None),
+            patch.object(workers, "kpi_queue_depth", return_value=0),
+            patch.object(workers, "kpi_queue_max_pending", return_value=10),
+            patch.object(workers.extract_document_kpis, "send", side_effect=flaky_send),
+        ):
+            workers.backfill_document_kpis()
+        assert len(calls) == 2
+
+        # Segunda pasada: hay un mensaje en vuelo (el primero) -> depth>0.
+        result2, send2 = self._run_backfill(db, depth=1)
+        assert result2["queued"] == 1
+        send2.assert_called_once_with(second_id, tenant_id=1, user_id="u")
