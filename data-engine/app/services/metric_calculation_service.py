@@ -5,8 +5,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
-from app.services.moat_profile import NONCOMPARABLE_PROFILES, PROFILE_LABELS, financial_quality_profile
 from app.models import CalculatedMetric, Company, FinancialFact
+from app.services.moat_profile import NONCOMPARABLE_PROFILES, PROFILE_LABELS, financial_quality_profile
 
 MetricFormula = tuple[str, str, tuple[str, ...], str]
 
