@@ -468,11 +468,13 @@ class Modelo720Service:
         # Cobertura: una posición/saldo ACTUAL sin ningún snapshot a cierre
         # es invisible para el chequeo si solo miramos snapshots. Listarla
         # como sin valorar: el total nunca la silencia.
-        covered_companies = {p.company_id for p in positions}
+        # Cobertura POR CARTERA: un snapshot de AAPL en la cartera A no
+        # cubre la posición de AAPL de la cartera B (falso negativo).
+        covered_companies = {(p.portfolio_id, p.company_id) for p in positions}
         for position in db.scalars(
             select(Position).where(Position.portfolio_id.in_(portfolio_ids))
         ):
-            if position.company_id in covered_companies:
+            if (position.portfolio_id, position.company_id) in covered_companies:
                 continue
             if not position.quantity or Decimal(str(position.quantity)) == 0:
                 continue

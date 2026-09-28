@@ -582,3 +582,21 @@ def test_legacy_snapshot_without_provenance_is_unknown(db):
     valores = result["categories"]["valores"]
     assert valores["status"] == "desconocido"
     assert any("provenance" in s["reason"] for s in result["stale_snapshots"])
+
+
+def test_coverage_is_per_portfolio_not_global(db):
+    # A tiene snapshot de AAPL (20k); B tiene AAPL actual (40k) SIN
+    # snapshot: la posición de B no la cubre el snapshot de A.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
+    other = Portfolio(tenant_id=tenant.id, name="Other", base_currency="EUR")
+    db.add(other)
+    db.flush()
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 20000)
+    _position_row(db, tenant, other, c)  # sin snapshot en B
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    assert any(u["ticker"] == "AAPL" for u in result["unvalued"])
+    assert result["categories"]["valores"]["status"] == "desconocido"
