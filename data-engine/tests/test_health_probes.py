@@ -152,3 +152,26 @@ def test_ops_endpoints_stay_reachable(path):
 
     client = TestClient(main_module.app)
     assert client.get(path).status_code in (200, 503)
+
+
+def test_health_reports_degraded_with_schema_migration_issues(monkeypatch):
+    """SELECT 1 responde pero el esquema esta a medio migrar: /api/health
+    debe decir degraded y exponer las incidencias (clase, nunca mensaje)."""
+    monkeypatch.setattr(health_module, "_probe_database", lambda: "ok")
+    issues = [{"statement": "ALTER TABLE positions ADD COLUMN fx", "error": "OperationalError"}]
+    monkeypatch.setattr(health_module, "schema_migration_issues", lambda: issues)
+
+    result = asyncio.run(health_module.health())
+
+    assert result["status"] == "degraded"
+    assert result["schema"] == issues
+
+
+def test_health_ok_when_schema_clean(monkeypatch):
+    monkeypatch.setattr(health_module, "_probe_database", lambda: "ok")
+    monkeypatch.setattr(health_module, "schema_migration_issues", lambda: [])
+
+    result = asyncio.run(health_module.health())
+
+    assert result["status"] == "ok"
+    assert result["schema"] == []
