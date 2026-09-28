@@ -27,7 +27,7 @@ from app.services.long_term_model_service import LongTermModelService
 from app.services.number_format import format_compact_es
 from app.services.source_auditor import SourceAuditor
 from app.services.source_hierarchy_service import classify_source
-from app.services.thesis_narrative_llm import maybe_narrative
+from app.services.thesis_narrative_llm import maybe_narrative, maybe_narrative_sections
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import MODEL_VERSION
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
@@ -327,6 +327,11 @@ class ThesisService:
         summary = maybe_narrative(
             db, company, valuation, hypothesis, news_items, summary
         )
+        # Analisis narrativo por secciones (misma capa y mismas garantias;
+        # None = sin seccion, nunca bloquea la publicacion).
+        narrative_sections = maybe_narrative_sections(
+            db, company, valuation, hypothesis, news_items
+        )
         thesis_markdown = self._render_markdown(
             company,
             valuation,
@@ -371,6 +376,7 @@ class ThesisService:
             catalysts=catalysts,
             invalidation_criteria=invalidation,
             scenario_probabilities=scenario_probabilities,
+            narrative_sections=narrative_sections,
         )
         db.add(thesis)
         db.flush()
