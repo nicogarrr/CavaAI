@@ -26,6 +26,8 @@ import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
 import { missingLayerAction, missingLayerLabel } from '@/lib/research/missing-layer-guidance';
 import { metricLabel } from '@/lib/research/metric-labels';
 import { MoatPanel } from '@/components/research/MoatPanel';
+import { AstOrbitPanel } from '@/components/research/AstOrbitPanel';
+import { getAstOrbitOverview } from '@/lib/actions/asts-orbits.actions';
 import {
   DecisionAndRealityPanel,
   LongTermModelPanel,
@@ -113,6 +115,7 @@ const GROUPS = [
 const MODULES = [
   { key: 'overview', label: 'Vista general', group: 'resumen' },
   { key: 'moat', label: 'Foso', group: 'resumen' },
+  { key: 'satellites', label: 'Satélites AST', group: 'seguimiento' },
   { key: 'thesis', label: 'Tesis', group: 'tesis' },
   { key: 'financials', label: 'Financieros', group: 'financieros' },
   { key: 'terminal', label: 'Terminal financiero', group: 'financieros', path: 'financial-terminal' },
@@ -797,6 +800,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             ))}
           </div>
         </Panel>
+        {ticker === 'ASTS' ? <Panel title="Satélites AST"><p className="text-sm text-gray-400">Elementos orbitales de CelesTrak y evolución del semieje mayor.</p><Link className="mt-2 inline-block text-sm text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=satellites`}>Ver señal orbital exploratoria</Link></Panel> : null}
         <CompanyMarketPanel snapshot={market} />
       </div>
     );
@@ -1003,6 +1007,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         </div>
       </div>
     );
+  } else if (activeView === 'satellites') {
+    let orbits: Awaited<ReturnType<typeof getAstOrbitOverview>> | null = null;
+    if (ticker === 'ASTS') { try { orbits = await getAstOrbitOverview(); } catch { /* Degradación explícita en el panel. */ } }
+    content = ticker === 'ASTS' ? <AstOrbitPanel data={orbits} /> : <EmptyState title="Esta vista orbital solo está disponible para ASTS." />;
   } else if (activeView === 'peers') {
     const peers = await getResearchPeersWorkspace(ticker);
     content = (
@@ -1086,7 +1094,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
 
   const activeModule = MODULES.find((module) => module.key === activeView) ?? MODULES[0];
   const activeGroupLabel = GROUPS.find((group) => group.key === activeModule.group)?.label ?? '';
-  const groupModules = MODULES.filter((module) => module.group === activeModule.group);
+  const groupModules = MODULES.filter((module) => module.group === activeModule.group && (module.key !== 'satellites' || ticker === 'ASTS'));
   const recentChangeCount = snapshot.recent_changes?.length ?? 0;
   // F143: el distintivo de tenencia sale de la posicion viva del tenant
   // (snapshot.in_portfolio), no de companies.company_type, que es una
