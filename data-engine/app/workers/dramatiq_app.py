@@ -433,29 +433,82 @@ def evaluate_alert_rules(
 @dramatiq.actor(max_retries=1, min_backoff=30_000)
 def refresh_asts_catalog() -> dict[str, Any]:
     """One global network fetch, explicit tenant-scoped persisted copies."""
-    from app.services.asts_catalog_service import persist_catalog
+    from app.services.asts_catalog_service import (
+        latest_download_at, MIN_FETCH_INTERVAL, record_download_attempt, persist_catalog,
+    )
     from app.services.connectors.celestrak_ast import fetch_catalog
+    from app.services.connectors.celestrak_ast_supgp import fetch_supgp
 
     contexts = tenant_contexts()
     if not contexts:
         return {"actor": "refresh_asts_catalog", "status": "skipped", "reason": "no_tenants"}
+    # Lease first, then check the persisted last attempt while holding it.
+    # This avoids a second worker racing between the timestamp read and the
+    # outbound HTTP request. The 2h TTL is a fallback; the durable timestamp
+    # remains authoritative across restarts and failed network attempts.
+    lease = acquire_job_lease("celestrak_ast_2h", ttl_seconds=7200,
+                              redis_url=_lease_redis_url())
+    if lease is None:
+        return {"actor": "refresh_asts_catalog", "status": "skipped", "reason": "celestrak_2h_minimum"}
     fetched_at = datetime.now(UTC)
+    attempts_recorded = False
+    try:
+        recent = []
+        for tenant_id, user_id in contexts:
+            db = _session(tenant_id, user_id)
+            try:
+                last = latest_download_at(db)
+                if last is not None:
+                    recent.append(last.replace(tzinfo=UTC) if last.tzinfo is None else last)
+            finally:
+                db.close()
+        if recent and fetched_at - max(recent) < MIN_FETCH_INTERVAL:
+            return {"actor": "refresh_asts_catalog", "status": "skipped",
+                    "reason": "celestrak_2h_minimum"}
+        # All context writes must succeed before the first network call.
+        for tenant_id, user_id in contexts:
+            db = _session(tenant_id, user_id)
+            try:
+                record_download_attempt(db, fetched_at)
+            finally:
+                db.close()
+        attempts_recorded = True
+    finally:
+        # If validation failed or the actor skipped, release the lease. Once
+        # outbound I/O starts, keep the full 2h TTL as an extra rate guard.
+        if not attempts_recorded:
+            release_job_lease("celestrak_ast_2h", lease, redis_url=_lease_redis_url())
+    catalog = None
+    gp_error = None
     try:
         catalog = _run(fetch_catalog(fetched_at=fetched_at))
     except Exception as exc:
-        return _handle_actor_error("refresh_asts_catalog", exc)
+        gp_error = type(exc).__name__
+    # Each source is attempted independently; one failed endpoint does not
+    # relabel the other source or renew the failed source's freshness.
+    supgp = None
+    supgp_error = None
+    try:
+        supgp = _run(fetch_supgp(catalog, fetched_at=fetched_at))
+    except Exception as exc:
+        supgp_error = type(exc).__name__
+    if catalog is None and supgp is None:
+        return {"actor": "refresh_asts_catalog", "status": "error",
+                "gp_error": gp_error, "supgp_error": supgp_error}
     errors = []
     for tenant_id, user_id in contexts:
         db = _session(tenant_id, user_id)
         try:
-            persist_catalog(db, catalog, fetched_at)
+            persist_catalog(db, catalog or [], fetched_at, supgp=supgp)
         except Exception as exc:
             _rollback(db)
             errors.append({"tenant_id": tenant_id, "type": type(exc).__name__})
         finally:
             db.close()
-    return {"actor": "refresh_asts_catalog", "status": "partial" if errors else "ok",
-            "count": len(catalog), "tenant_count": len(contexts), "errors": errors}
+    return {"actor": "refresh_asts_catalog", "status": "partial" if errors or gp_error or supgp_error else "ok",
+            "gp_error": gp_error, "count": len(catalog) if catalog is not None else 0,
+            "supgp_count": len(supgp) if supgp is not None else 0,
+            "supgp_error": supgp_error, "tenant_count": len(contexts), "errors": errors}
 
 
 @dramatiq.actor(max_retries=1, min_backoff=30_000)

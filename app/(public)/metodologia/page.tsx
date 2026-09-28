@@ -254,8 +254,11 @@ export default function MetodologiaPage() {
           no prueba despliegue, maniobra ni causa: la resistencia atmosférica, ajustes orbitales y revisiones
           de elementos también pueden producir cambios. BSTAR y las derivadas del movimiento medio son
           parámetros de ajuste, no telemetría independiente. La señal es exploratoria y no sustituye
-          una confirmación primaria. El catálogo se descarga cada seis horas, nunca se consulta en la vista;
-          después de 30 horas sin descarga válida se ocultan señal e historial hasta recuperar datos.</p>
+          una confirmación primaria. El grupo AST se consulta cada dos horas como máximo. GP (catálogo general) y SupGP (elementos
+          suplementarios AST-E) se guardan y representan en series independientes: no se comparan entre sí.
+          Una fuente puede faltar sin invalidar la otra. Nunca se consulta CelesTrak al abrir la vista;
+          después de 30 horas sin descarga válida se ocultan señal e historial caducados de cada fuente.
+          La época orbital y la fecha de descarga son distintas.</p>
       </section>
 
       <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
