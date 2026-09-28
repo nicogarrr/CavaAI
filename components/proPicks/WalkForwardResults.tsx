@@ -1,7 +1,8 @@
 'use client';
 
 import { Card } from '@/components/ui/card';
-import { BarChart3, Target } from 'lucide-react';
+import { MethodologyDisclosure } from '@/components/ui/methodology-disclosure';
+import { BarChart3 } from 'lucide-react';
 import { formatNumber, formatPercent, formatUserDate } from '@/lib/format';
 import type { WalkForwardBacktestResult } from '@/lib/actions/propicks-backtest.actions';
 
@@ -106,11 +107,7 @@ export default function WalkForwardResults({ result }: WalkForwardResultsProps) 
                 </div>
             </div>
 
-            <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
-                <div className="mb-3 flex items-center gap-2">
-                    <Target aria-hidden="true" className="h-4 w-4 text-teal-400" />
-                    <h4 className="text-sm font-semibold text-gray-300">Metodología</h4>
-                </div>
+            <MethodologyDisclosure title="Metodología del backtest">
                 <ul className="list-disc space-y-1 pl-5 text-xs leading-5 text-gray-400">
                     <li>Walk-forward mensual: cada corte usa únicamente precios de cierre anteriores a ese corte (sin datos futuros).</li>
                     <li>Señal: momentum 12-1M (se excluye el último mes) sobre un universo líquido de 30 valores; {formatNumber(result.picksPorMes, { maximumFractionDigits: 0 })} picks equiponderados.</li>
@@ -118,7 +115,7 @@ export default function WalkForwardResults({ result }: WalkForwardResultsProps) 
                     <li>Benchmark: SPY buy & hold en el mismo periodo.</li>
                     <li>Resultados pasados simulados no garantizan rendimientos futuros. Esto no es asesoramiento financiero.</li>
                 </ul>
-            </div>
+            </MethodologyDisclosure>
         </Card>
     );
 }
