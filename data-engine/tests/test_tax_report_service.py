@@ -400,3 +400,38 @@ def test_regenerate_report_persists(db):
     again = service.get_report(db, 2025)
     assert again["persisted"] is True
     assert again["summary"] == data["summary"]
+
+
+def test_unattributed_dividend_without_fx_is_not_summed_as_zero(db):
+    # Un dividendo no atribuido y SIN tipo de cambio: el subtotal de
+    # dividendos no atribuidos no puede publicarse como 0.00 (sumaría la
+    # fila ambigua como si no existiera). None, nunca un parcial.
+    _eur_portfolio(db)
+    db.add(Transaction(
+        company_id=None, trade_date=date(2026, 3, 10), action="dividend",
+        quantity=Decimal("0"), price=Decimal("25"),
+        fees=Decimal("0"), currency="USD",
+        raw_payload={"symbol": "MYST"},
+    ))
+    db.commit()
+    report = TaxReportService().compute_report(db, 2026)
+    assert report["summary"]["unattributed_dividends_base"] is None
+    assert any(t.startswith("UNATTRIBUTED:MYST") for t in report["summary"]["unattributed_tickers"])
+
+
+def test_unattributed_dividend_with_fx_is_summed(db):
+    # Control: con FX real el subtotal sí se publica (25 USD x 0.9).
+    _eur_portfolio(db)
+    db.add(Transaction(
+        company_id=None, trade_date=date(2026, 3, 10), action="dividend",
+        quantity=Decimal("0"), price=Decimal("25"),
+        fees=Decimal("0"), currency="USD",
+        raw_payload={"symbol": "MYST"},
+    ))
+    db.add(FXRate(
+        base_currency="EUR", quote_currency="USD",
+        rate_date=date(2026, 3, 10), rate=Decimal("0.9"),
+    ))
+    db.commit()
+    report = TaxReportService().compute_report(db, 2026)
+    assert report["summary"]["unattributed_dividends_base"] == 22.5
