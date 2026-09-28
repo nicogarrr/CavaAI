@@ -1121,6 +1121,8 @@ type ResearchNewsEvent = {
   date_source?: string | null;
   /** 'macro' = evento macro GDELT sin ticker (#564); null/ausente = evento de empresa. */
   news_lane?: string | null;
+  /** false = título de display generado por CavaAI (la UI omite el prefijo de ticker). */
+  headline_from_source?: boolean;
   macro_theme?: string | null;
   source_tier?: string;
   source_trust_score?: number;

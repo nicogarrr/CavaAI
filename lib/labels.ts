@@ -127,3 +127,26 @@ const TEMAS_MACRO: Record<string, string> = {
 export function etiquetaTemaMacro(value: string): string {
   return TEMAS_MACRO[value] ?? value;
 }
+
+/** F106: el master guarda la cadena 'Unknown' en sector/industry cuando no
+ * tiene clasificación (300 de 2115 empresas, p.ej. ALM, A3M). Mostrarla
+ * cruda en la UI española es un placeholder en inglés que parece dato.
+ * 'Unknown' se trata como ausencia: se omiten las partes sin dato y, si no
+ * hay ninguna, la línea lo declara. */
+const cleanSectorPart = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed && trimmed.toLowerCase() !== 'unknown' ? trimmed : null;
+};
+
+/** Línea «Sector · Industria» de la ficha y las tarjetas de research.
+ * Quick win UX 4: se traduce lo conocido (etiquetaSector deja lo
+ * desconocido tal cual, nunca inventa) y se colapsa cuando sector e
+ * industria traducen lo mismo («Tecnología · Tecnología» -> «Tecnología»). */
+export function sectorIndustryLine(sector: unknown, industry: unknown): string {
+    const parts = [cleanSectorPart(sector), cleanSectorPart(industry)]
+        .filter((p): p is string => p !== null)
+        .map(etiquetaSector);
+    const unique = parts.filter((part, index) => parts.indexOf(part) === index);
+    return unique.length ? unique.join(' · ') : 'Sector sin dato';
+}
