@@ -297,3 +297,38 @@ def test_unavailable_on_entity_country_mismatch(db):
     result = Modelo720FileService().generate(db, 2025)
     assert result["available"] is False
     assert "Incoherencia" in result["reason"]
+
+
+def test_unavailable_same_isin_in_two_portfolios(db):
+    # El mismo ISIN en dos carteras puede estar en custodios distintos:
+    # no representable por ISIN -> fail-closed.
+    tenant = _seed(db, declarant=DECLARANT)
+    other = Portfolio(tenant_id=tenant.id, name="Other", base_currency="EUR")
+    db.add(other)
+    db.flush()
+    company = db.query(Company).one()
+    db.add(Position(
+        tenant_id=tenant.id, company_id=company.id, portfolio_id=other.id,
+        quantity=Decimal("5"), average_cost=Decimal("150"),
+        market_value=Decimal("900"), base_currency="EUR", source="ibkr_flex",
+    ))
+    snap = PortfolioDailySnapshot(
+        tenant_id=tenant.id, portfolio_id=other.id,
+        snapshot_date=date(2025, 12, 31), base_currency="EUR",
+        positions_value_base=Decimal("20000"), cash_value_base=Decimal("0"),
+        total_value_base=Decimal("20000"), metadata_={"missing_pricing": []},
+    )
+    db.add(snap)
+    db.flush()
+    db.add(PositionDailySnapshot(
+        tenant_id=tenant.id, portfolio_snapshot_id=snap.id,
+        portfolio_id=other.id, company_id=company.id,
+        snapshot_date=date(2025, 12, 31), quantity=Decimal("5"),
+        market_price_native=Decimal("180"), currency="USD",
+        fx_rate=Decimal("1"), market_value_native=Decimal("20000"),
+        market_value_base=Decimal("20000"),
+    ))
+    db.commit()
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "no representable" in result["reason"]
