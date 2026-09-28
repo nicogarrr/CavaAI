@@ -104,8 +104,8 @@ def test_failed_fetch_attempt_is_persisted_for_two_hour_guard():
 
 
 def test_actor_skips_network_within_two_hours(monkeypatch):
-    from app.workers import dramatiq_app
     from app.services.asts_catalog_service import record_download_attempt
+    from app.workers import dramatiq_app
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with sessionmaker(engine)() as db:
@@ -123,8 +123,8 @@ def test_actor_skips_network_within_two_hours(monkeypatch):
 
 
 def test_actor_fetches_sources_independently_after_failed_gp(monkeypatch):
-    from app.workers import dramatiq_app
     from app.services.asts_catalog_service import read_orbit_overview as read
+    from app.workers import dramatiq_app
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with sessionmaker(engine)() as db:

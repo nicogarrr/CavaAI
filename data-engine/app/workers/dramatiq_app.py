@@ -434,7 +434,10 @@ def evaluate_alert_rules(
 def refresh_asts_catalog() -> dict[str, Any]:
     """One global network fetch, explicit tenant-scoped persisted copies."""
     from app.services.asts_catalog_service import (
-        latest_download_at, MIN_FETCH_INTERVAL, record_download_attempt, persist_catalog,
+        MIN_FETCH_INTERVAL,
+        latest_download_at,
+        persist_catalog,
+        record_download_attempt,
     )
     from app.services.connectors.celestrak_ast import fetch_catalog
     from app.services.connectors.celestrak_ast_supgp import fetch_supgp
