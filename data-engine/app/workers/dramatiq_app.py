@@ -319,7 +319,7 @@ def reset_local_leases() -> None:
     _local_leases.clear()
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000)
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name="kpis")
 def extract_document_kpis(
     document_id: int,
     *,
