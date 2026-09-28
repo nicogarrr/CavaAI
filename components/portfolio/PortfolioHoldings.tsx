@@ -78,9 +78,12 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
       router.refresh();
       const attempted = result.updated.length + result.skipped.length + result.failed.length;
       if (result.failed.length > 0) {
-        // Parcial con escrituras fallidas: se dice qué se guardó y qué falló.
+        // Parcial con escrituras fallidas: se dice qué se guardó y qué falló,
+        // y si además la relectura falló se declara en el mismo aviso (la
+        // vista no refleja lo que SÍ se escribió).
         toast.error(
-          `${result.updated.length} de ${attempted} precios guardados; escritura fallida: ${describeSymbols(result.failed)}`,
+          `${result.updated.length} de ${attempted} precios guardados; escritura fallida: ${describeSymbols(result.failed)}`
+            + (result.holdingsStale ? '; y no se pudo releer la cartera (recarga la página)' : ''),
         );
         return;
       }
