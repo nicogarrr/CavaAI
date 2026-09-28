@@ -197,6 +197,7 @@ export type ResearchThesis = {
   status: string;
   thesis_markdown: string;
   executive_summary: string;
+  narrative_sections?: { titulo: string; parrafos: string[] }[] | null;
   rating: string;
   current_price: string | null;
   bear_value: string | null;

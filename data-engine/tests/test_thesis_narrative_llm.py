@@ -295,3 +295,148 @@ def test_provider_factory_error_falls_back(db, monkeypatch):
     result = narrative.maybe_narrative(
         db, _company(), VALUATION, HYPOTHESIS, NEWS, "base")
     assert result == "base"
+
+
+# ---------------------------------------------------------------------------
+# Analisis narrativo por secciones
+# ---------------------------------------------------------------------------
+
+
+class _FakeSectionsProvider:
+    name = "fake"
+
+    def __init__(self, section_ids=None, raw_text: str | None = None):
+        self._ids = section_ids
+        self._raw = raw_text
+        self.calls = 0
+
+    async def complete(self, request):
+        self.calls += 1
+        if self._raw is not None:
+            return _FakeResponse(self._raw)
+        return _FakeResponse(json.dumps({"section_ids": self._ids}))
+
+
+NEWS_WITH_GAPS = [
+    *NEWS,
+    {"source_headline": "Meta retrasa su capex de IA", "title": "resumen interno",
+     "source": "Reuters", "date": "2026-09-27T09:00:00",
+     "date_source": "ingested_at_fallback", "requires_update": True},
+]
+VALUATION_PARTIAL = {
+    "status": "partial", "current_price": 336.56, "base_value": 106.85,
+    "margin_of_safety": -0.68, "missing_inputs": ["ebitda"],
+    "reverse_dcf": {"required_revenue_growth": 0.35},
+}
+
+
+def _sections(valuation=VALUATION, news=NEWS):
+    return narrative._section_templates(_company(), valuation, HYPOTHESIS, list(news))
+
+
+def test_section_templates_titles_and_slots():
+    sections = _sections(VALUATION_PARTIAL, NEWS_WITH_GAPS)
+    assert set(sections) == {
+        "lo_que_sabemos", "lo_que_cambio", "lo_que_descuenta", "no_sabemos",
+    }
+    assert sections["lo_que_sabemos"]["titulo"] == "Lo que sabemos"
+    assert sections["lo_que_cambio"]["titulo"] == "Lo que cambio"
+    assert sections["lo_que_descuenta"]["titulo"] == "Lo que descuenta el mercado"
+    assert sections["no_sabemos"]["titulo"] == "Lo que aun no sabemos"
+    # Los parrafos salen de los mismos slots verificados de la capa resumen.
+    assert sections["lo_que_sabemos"]["parrafos"][0] == FRAGMENTS["valoracion_posicion"]
+    # El caveat de titulares cierra siempre la seccion de noticias.
+    assert sections["lo_que_cambio"]["parrafos"][-1] == FRAGMENTS["caveat_titulares"]
+    # Hechos vs interpretacion con el numero como slot.
+    assert any(
+        "margen de seguridad del -68% no es una prediccion" in p
+        for p in sections["lo_que_descuenta"]["parrafos"]
+    )
+
+
+def test_unknown_section_questions_are_ticker_specific():
+    sections = _sections(VALUATION_PARTIAL, NEWS_WITH_GAPS)
+    preguntas = sections["no_sabemos"]["parrafos"]
+    assert any("ebitda" in p and "META" in p for p in preguntas)
+    assert any("parcial-indicativa" in p and "META" in p for p in preguntas)
+    assert any("fecha registrada es la de ingesta" in p for p in preguntas)
+    assert any("pendiente de actualizacion" in p for p in preguntas)
+    # Sin huecos reales no hay seccion de preguntas (nunca genericas).
+    sections_full = _sections(VALUATION, NEWS)
+    assert "no_sabemos" not in sections_full
+
+
+def test_section_selection_fail_closed():
+    sections = _sections(VALUATION_PARTIAL, NEWS_WITH_GAPS)
+    # Id desconocido, duplicados, no-lista.
+    assert narrative._validated_section_selection(["lo_que_sabemos", "x"], sections) is None
+    assert narrative._validated_section_selection(
+        ["lo_que_sabemos", "lo_que_sabemos"], sections) is None
+    assert narrative._validated_section_selection("lo_que_sabemos", sections) is None
+    assert narrative._validated_section_selection([], sections) is None
+    # Obligatorias: hechos y preguntas no se pueden omitir.
+    assert narrative._validated_section_selection(["lo_que_cambio"], sections) is None
+    assert narrative._validated_section_selection(["lo_que_sabemos"], sections) is None
+    # Orden: los hechos abren, las preguntas cierran.
+    assert narrative._validated_section_selection(
+        ["no_sabemos", "lo_que_sabemos"], sections) is None
+    assert narrative._validated_section_selection(
+        ["lo_que_sabemos", "no_sabemos", "lo_que_cambio"], sections) is None
+
+
+def test_section_selection_appends_fixed_disclaimer():
+    sections = _sections(VALUATION_PARTIAL, NEWS_WITH_GAPS)
+    result = narrative._validated_section_selection(
+        ["lo_que_sabemos", "lo_que_cambio", "lo_que_descuenta", "no_sabemos"],
+        sections,
+    )
+    assert result is not None
+    assert result[-1]["titulo"] == "Salvedad"
+    assert "no es recomendacion de inversion" in result[-1]["parrafos"][0]
+    assert result[0]["titulo"] == "Lo que sabemos"
+    assert result[-2]["titulo"] == "Lo que aun no sabemos"
+
+
+def test_sections_flag_off_returns_none(db, monkeypatch):
+    monkeypatch.delenv("THESIS_NARRATIVE_LLM_ENABLED", raising=False)
+    provider = _FakeSectionsProvider(["lo_que_sabemos"])
+    result = narrative.maybe_narrative_sections(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, provider=provider)
+    assert result is None
+    assert provider.calls == 0
+
+
+def test_sections_valid_selection(db, monkeypatch):
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    _spy_budget(monkeypatch)
+    sections = _sections()
+    provider = _FakeSectionsProvider(list(sections))
+    result = narrative.maybe_narrative_sections(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, provider=provider)
+    assert result is not None
+    assert provider.calls == 1
+    assert result[-1]["titulo"] == "Salvedad"
+
+
+def test_sections_invalid_selection_returns_none(db, monkeypatch):
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    _spy_budget(monkeypatch)
+    provider = _FakeSectionsProvider(["inventada"])
+    result = narrative.maybe_narrative_sections(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, provider=provider)
+    assert result is None
+    # JSON roto del proveedor: mismo fail-closed.
+    provider = _FakeSectionsProvider(raw_text="no json")
+    assert narrative.maybe_narrative_sections(
+        db, _company(), VALUATION, HYPOTHESIS, NEWS, provider=provider) is None
+
+
+def test_sections_without_facts_core_return_none(db, monkeypatch):
+    monkeypatch.setenv("THESIS_NARRATIVE_LLM_ENABLED", "1")
+    _spy_budget(monkeypatch)
+    valuation = {"status": "ok"}  # sin precio/base: sin "lo_que_sabemos"
+    provider = _FakeSectionsProvider(["lo_que_cambio"])
+    result = narrative.maybe_narrative_sections(
+        db, _company(), valuation, HYPOTHESIS, NEWS, provider=provider)
+    assert result is None
+    assert provider.calls == 0

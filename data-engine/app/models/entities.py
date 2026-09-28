@@ -873,6 +873,10 @@ class ThesisVersion(TenantOwnedMixin, Base, TimestampMixin):
     catalysts: Mapped[list | None] = mapped_column(JSON, nullable=True)
     invalidation_criteria: Mapped[list | None] = mapped_column(JSON, nullable=True)
     scenario_probabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Analisis narrativo (capa LLM opcional): secciones compuestas por
+    # seleccion de plantillas con slots deterministicos. Null en versiones
+    # anteriores a la capa o cuando la capa no produjo seleccion valida.
+    narrative_sections: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="thesis_versions")
 

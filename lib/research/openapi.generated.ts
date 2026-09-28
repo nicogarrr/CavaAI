@@ -4792,6 +4792,13 @@ export interface components {
              */
             updated_at: string;
         };
+        /** NarrativeSectionOut */
+        NarrativeSectionOut: {
+            /** Parrafos */
+            parrafos: string[];
+            /** Titulo */
+            titulo: string;
+        };
         /** NewsFeedItem */
         NewsFeedItem: {
             /** Published At */
@@ -5644,6 +5651,8 @@ export interface components {
             latest_data_at?: string | null;
             /** Margin Of Safety */
             margin_of_safety: string | null;
+            /** Narrative Sections */
+            narrative_sections?: components["schemas"]["NarrativeSectionOut"][] | null;
             /** Rating */
             rating: string;
             /** Red Team Score */
