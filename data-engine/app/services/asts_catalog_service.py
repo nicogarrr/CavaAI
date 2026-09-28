@@ -109,7 +109,7 @@ def read_orbit_history(db: Session, norad_cat_id: int, *, as_of: datetime | None
     if not isinstance(history, list):
         history = []
     return {**base, "status": "disponible", "object_name": satellite["object_name"],
-            "epoch": satellite["epoch"], "history": history, "signal": orbit_signal(history)}
+            "epoch": satellite["epoch"], "history": history, "signal": orbit_signal(history, as_of=as_of)}
 
 
 def read_orbit_overview(db: Session, *, as_of: datetime | None = None) -> dict:
@@ -128,5 +128,5 @@ def read_orbit_overview(db: Session, *, as_of: datetime | None = None) -> dict:
             samples = []
         objects.append({"norad_cat_id": item["norad_cat_id"], "object_name": item["object_name"],
                         "epoch": item["epoch"], "sma_km": samples[-1]["sma_km"] if samples else None,
-                        "signal": orbit_signal(samples), "history": samples})
+                        "signal": orbit_signal(samples, as_of=as_of), "history": samples})
     return {**base, "objects": objects}

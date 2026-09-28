@@ -39,18 +39,63 @@ def test_drop_requires_three_separated_epochs_and_is_not_telemetry():
                     "mean_motion": motion, "bstar": 0.001, "mean_motion_dot": 0.01}]
         history = append_history(history, catalog)
     assert len(history["53807"]) == 3
-    signal = orbit_signal(history["53807"])
+    signal = orbit_signal(history["53807"], as_of=start + timedelta(hours=31))
     assert signal["delta_sma_km"] < -2
     assert signal["status"] == "firma compatible con variación orbital; revisar fuentes"
     assert len(append_history(history, catalog)["53807"]) == 3
-    assert orbit_signal(history["53807"][:2])["delta_sma_km"] is None
+    assert orbit_signal(history["53807"][:2], as_of=start + timedelta(hours=13))["delta_sma_km"] is None
+
+
+def test_catalog_rotation_prunes_absent_ids_and_does_not_join_old_series():
+    start = datetime(2026, 9, 24, tzinfo=UTC)
+    old = {str(cat_id): [{"epoch": start.isoformat(), "sma_km": 6800.0}]
+           for cat_id in range(1, 6)}
+    new = [{"norad_cat_id": 99, "epoch": (start + timedelta(hours=6)).isoformat(),
+            "mean_motion": 15.4}]
+    rotated = append_history(old, new)
+    assert set(rotated) == {"99"}
+    assert len(rotated["99"]) == 1
+    # Reappearing after a gap starts from the current orbital element.
+    reappeared = append_history(rotated, [{"norad_cat_id": 1,
+        "epoch": (start + timedelta(days=2)).isoformat(), "mean_motion": 15.4}])
+    assert set(reappeared) == {"1"}
+    assert len(reappeared["1"]) == 1
 
 
 def test_no_false_trend_from_identical_epoch_or_long_gap():
     start = datetime(2026, 9, 20, tzinfo=UTC)
     history = [{"epoch": (start + timedelta(hours=h)).isoformat(), "sma_km": sma}
                for h, sma in [(0, 6900), (12, 6890), (240, 6800)]]
-    assert orbit_signal(history)["delta_sma_km"] is None
+    assert orbit_signal(history, as_of=start + timedelta(hours=241))["delta_sma_km"] is None
+
+
+def test_fresh_fetch_with_old_gp_epoch_has_no_current_signal():
+    start = datetime(2026, 9, 4, tzinfo=UTC)
+    history = [{"epoch": (start + timedelta(hours=hours)).isoformat(), "sma_km": sma}
+               for hours, sma in [(0, 6800), (12, 6798), (36, 6797)]]
+    assert orbit_signal(history, as_of=start + timedelta(days=20))["status"] == "sin señal vigente"
+    assert orbit_signal(history, as_of=start + timedelta(days=20))["delta_sma_km"] is None
+    assert orbit_signal(history, as_of=start + timedelta(hours=37))["delta_sma_km"] == -3
+
+
+def test_fresh_catalog_with_old_epochs_keeps_history_but_suppresses_signal():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(engine)
+    with factory() as db:
+        db.add(Tenant(id=1, external_id="old-epoch"))
+        db.commit()
+        db.info["tenant_id"] = 1
+        for hours, motion in [(0, 15.39), (12, 15.392), (36, 15.41)]:
+            epoch = NOW - timedelta(days=20) + timedelta(hours=hours)
+            catalog = normalize_catalog([dict(sample(), EPOCH=epoch.isoformat(), MEAN_MOTION=motion)], fetched_at=NOW)
+            persist_catalog(db, catalog, NOW)
+        result = read_orbit_overview(db, as_of=NOW)
+        assert result["status"] == "disponible"
+        assert len(result["objects"][0]["history"]) == 3
+        assert result["objects"][0]["signal"]["status"] == "sin señal vigente"
+        assert result["objects"][0]["signal"]["delta_sma_km"] is None
+        assert read_orbit_history(db, 53807, as_of=NOW)["signal"]["status"] == "sin señal vigente"
 
 
 def test_history_is_tenant_scoped_and_fails_closed_when_stale():

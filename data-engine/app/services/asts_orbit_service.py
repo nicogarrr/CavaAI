@@ -1,13 +1,14 @@
 """Exploratory orbital-element trends; never deployment telemetry."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from math import isfinite, pi
 
 EARTH_MU_KM3_S2 = 398600.4418
 MAX_EPOCHS_PER_OBJECT = 32
 MIN_SPACING_HOURS = 2
 MIN_TREND_HOURS = 24
+MAX_SIGNAL_EPOCH_AGE = timedelta(hours=30)
 
 
 def sma_km(mean_motion_rev_day: float) -> float:
@@ -33,17 +34,22 @@ def append_history(previous: dict | None, catalog: list[dict]) -> dict[str, list
         by_epoch = {item["epoch"]: item for item in samples}
         by_epoch[sample["epoch"]] = sample
         result[key] = [by_epoch[date] for date in sorted(by_epoch)[-MAX_EPOCHS_PER_OBJECT:]]
-    # Retain prior series for objects temporarily absent from the current feed,
-    # but never expose them in the current-object API without a fresh row.
-    for key, series in prior.items():
-        if key not in result and isinstance(series, list):
-            result[key] = series[-MAX_EPOCHS_PER_OBJECT:]
+    # Only current catalog IDs have an actionable series. An absent ID must
+    # not accumulate forever in ConnectorState metadata; if it reappears later,
+    # start a fresh comparable history rather than joining across the gap.
     return result
 
 
-def orbit_signal(history: list[dict]) -> dict:
-    """Compare separated epochs; thresholds are screening heuristics, not events."""
+def orbit_signal(history: list[dict], *, as_of: datetime | None = None) -> dict:
+    """Compare separated epochs only when the latest GP epoch itself is current."""
+    now = as_of or datetime.now(UTC)
+    if now.tzinfo is None:
+        raise ValueError("Timezone-aware as_of required")
     samples = sorted(history, key=lambda item: item["epoch"])
+    if samples:
+        latest_epoch = datetime.fromisoformat(samples[-1]["epoch"])
+        if latest_epoch.tzinfo is None or not (timedelta(0) <= now - latest_epoch <= MAX_SIGNAL_EPOCH_AGE):
+            return {"status": "sin señal vigente", "delta_sma_km": None, "hours": None}
     if len(samples) < 3:
         return {"status": "sin historial suficiente", "delta_sma_km": None, "hours": None}
     latest = samples[-1]
