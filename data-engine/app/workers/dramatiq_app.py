@@ -6,6 +6,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
@@ -62,10 +63,98 @@ def _is_transient(exc: Exception) -> bool:
         # justo lo que Dramatiq deberia reintentar. max_retries quedaba muerto
         # para los unicos fallos para los que existe.
         status = _status_from_message(str(exc))
+    if status == 403 and _is_sec_failure(exc):
+        # F359: 403 de la SEC evidencia bloqueo de IP (OCI): permanente, sin
+        # reintento - reintentar enveneno la cola default (5276 mensajes).
+        return False
+    if status == 429 and _is_sec_failure(exc):
+        # F359: 429 de la SEC es rate limit y PUEDE ser temporal (Retry-After;
+        # el backoff del actor ya espacia los reintentos). Se reintenta de
+        # forma acotada hasta que salta el circuit breaker por origen.
+        # Degradacion documentada: con la IP de OCI bloqueada, la ingesta SEC
+        # pasa a fallo permanente tras la racha en vez de reintentar en bucle
+        # eterno, y se auto-recupera tras el cooldown si la SEC levanta el
+        # bloqueo.
+        return _sec_rate_limit_allows_retry()
     return status is not None and (status == 429 or status >= 500)
 
 
+# Circuit breaker por origen para el 429 de la SEC (F359): una racha de
+# _SEC_429_STREAK_LIMIT 429s dentro de _SEC_429_WINDOW_S abre el breaker
+# durante _SEC_429_COOLDOWN_S; abierto, los 429 SEC clasifican permanentes.
+_SEC_429_WINDOW_S = 600.0
+_SEC_429_STREAK_LIMIT = 5
+_SEC_429_COOLDOWN_S = 3600.0
+# Estado del breaker en Redis (no en memoria del proceso): el contador es
+# atomico (INCR) y lo comparten TODOS los procesos que clasifican fallos SEC
+# (worker, worker-thesis, worker-kpis, backend), asi que "por origen" es un
+# freno global y no por proceso. Carrera benigna documentada: dos hilos pueden
+# cruzar el umbral a la vez; ambos hacen SET de la misma clave de apertura
+# (idempotente) y como mucho pasa un reintento extra, acotado por max_retries.
+_SEC_BREAKER_STREAK_KEY = "sec_breaker:429_streak"
+_SEC_BREAKER_OPEN_KEY = "sec_breaker:open"
+
+
+def _sec_rate_limit_allows_retry(client=None) -> bool:
+    """429 SEC acotado: reintenta salvo breaker abierto o racha que lo abre.
+
+    Si Redis no responde se fail-open (transitorio): el broker de dramatiq es
+    el propio Redis, asi que con Redis caido no se estan consumiendo mensajes
+    de todas formas, y el reintento queda acotado por max_retries del actor.
+    """
+    try:
+        r = client if client is not None else _redis_client()
+        if r is None:
+            return True
+        if r.get(_SEC_BREAKER_OPEN_KEY):
+            return False
+        streak = r.incr(_SEC_BREAKER_STREAK_KEY)
+        if streak == 1:
+            r.expire(_SEC_BREAKER_STREAK_KEY, int(_SEC_429_WINDOW_S))
+        if streak >= _SEC_429_STREAK_LIMIT:
+            r.set(_SEC_BREAKER_OPEN_KEY, "1", ex=int(_SEC_429_COOLDOWN_S))
+            r.delete(_SEC_BREAKER_STREAK_KEY)
+            return False
+        return True
+    except Exception:
+        return True
+
+
 _STATUS_IN_TEXT = re.compile(r"\b(4\d\d|5\d\d)\b")
+_FOR_URL = re.compile(r"for url '(https?://[^']+)'")
+
+
+def _is_sec_failure(exc: BaseException) -> bool:
+    """True si el fallo se atribuye estructuralmente a un host real de sec.gov.
+
+    Atribucion, en orden: (1) errores httpx: host de la request real
+    (exc.request.url o exc.response.request.url), sin parsear texto;
+    (2) cadena __cause__/__context__ (los connectors envuelven con
+    `raise RuntimeError(...) from e`); (3) fallback: el formato propio de
+    httpx "for url '<url>'" dentro del mensaje. Un error de otro proveedor
+    que solo mencione una URL de la SEC en texto libre NO alimenta el
+    breaker, y un lookalike (sec.gov.evil.com, notsec.gov) tampoco.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        request = getattr(current, "request", None)
+        if request is None:
+            response = getattr(current, "response", None)
+            request = getattr(response, "request", None) if response is not None else None
+        if request is not None:
+            try:
+                host = request.url.host or ""
+            except Exception:
+                host = ""
+            return host == "sec.gov" or host.endswith(".sec.gov")
+        match = _FOR_URL.search(str(current))
+        if match:
+            host = urlparse(match.group(1)).hostname or ""
+            return host == "sec.gov" or host.endswith(".sec.gov")
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _status_from_message(text: str) -> int | None:
@@ -1897,7 +1986,11 @@ if __name__ == "__main__":
     print("Dramatiq actors registered. Run with: dramatiq app.workers.dramatiq_app")
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000)
+# Cola dedicada (F359): los jobs de tesis los dispara el USUARIO y son
+# interactivos; en "default" quedaban hambreados detras de la ingesta por
+# lotes (7476 mensajes acumulados, 5276 de ellos veneno SEC imposible desde
+# OCI). El worker los escucha con -Q default prices thesis.
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name="thesis")
 def generate_thesis_job(run_id: int) -> None:
     """Execute one queued async thesis generation job (durable envelope)."""
     from app.services.thesis_job_service import run_thesis_job
