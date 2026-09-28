@@ -212,7 +212,7 @@ export default async function WatchlistPage() {
                                     <TableRow key={stock.symbol} className="border-gray-800 transition-colors hover:bg-gray-800/30">
                                         <TableCell>
                                             <Link href={`/research/${stock.symbol}`} prefetch className="group flex items-center gap-3">
-                                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-800 font-bold text-gray-300 transition-colors group-hover:bg-gray-700">
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-800 font-bold text-gray-300 transition-colors group-hover:bg-gray-700" aria-hidden="true">
                                                     {stock.symbol.slice(0, 2)}
                                                 </div>
                                                 <div>
