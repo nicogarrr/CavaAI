@@ -266,7 +266,8 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             <CommandDialog
                 open={open}
                 onOpenChange={setOpen}
-                className="search-dialog"
+                className="search-dialog z-[70]"
+                overlayClassName="z-[70]"
                 title="Buscar acciones"
                 description="Busca por símbolo o empresa, o salta a una sección de CavaAI"
             >
