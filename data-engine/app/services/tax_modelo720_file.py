@@ -13,19 +13,32 @@ de 12+2, subclave vacía, valor de adquisición en valoración 1 para clave V,
 ID de cuenta en posiciones de ISIN); aquí se implementa el layout OFICIAL,
 sin copia de código.
 
-Honestidad (sin verde falso):
-- Sin NIF del declarante (input manual) no se genera fichero:
-  ``available=false``. El fichero es una ayuda de cómputo, nunca una
-  declaración lista para presentar sin revisión.
+Honestidad (sin verde falso), dictamen del auditor incorporado:
+- Sin NIF, apellidos y nombre, número de declaración (13 dígitos que
+  comienzan por 720) o país de depósito de los valores no se genera
+  fichero: ``available=false``. Ningún dato material se inventa.
+- El país del registro de valores (posiciones 129-130) es donde los
+  valores están DEPOSITADOS O GESTIONADOS, no el emisor del ISIN: se toma
+  de ``tax_declarant.custody_country``, nunca del prefijo del ISIN.
+- La fecha de incorporación (415-422) es obligatoria por ISIN
+  (``first_acquisition_dates``); sin ella, available=false. Un ISIN
+  comprado en lotes con fechas distintas requiere registros separados:
+  se genera UN registro con la fecha aportada y se avisa en ``notas``.
+- Origen: siempre "A" (nueva declaración). El origen "M" exige verificar
+  un incremento conjunto >20.000 € contra la última declaración, dato que
+  no tenemos: los ISINs ya declarados van a ``manual_review``.
+- Bajas: sin fecha EFECTIVA de extinción no se genera registro de baja
+  (inventar 31/12 sería un dato falso); los ISINs de la declaración
+  anterior ya no poseídos van a ``manual_review``.
+- Cuentas (clave C) NO se generan: exigen identificador de cuenta
+  asignado por la entidad, identidad real de la entidad y saldo medio del
+  4.º trimestre, datos que no tenemos. Si la categoría supera el umbral,
+  se lista para declaración manual.
 - Una posición sin valoración en EUR a 31/12 NO entra en el fichero: se
   lista en ``excluded`` para valoración y declaración manual.
 - Un valor sin ISIN no puede declararse con clave de identificación 1: se
   excluye y se lista (la clave 2 exige "Z"+país emisor, dato que no
   tenemos de forma fiable).
-- País de la cuenta de efectivo: sin dato fiable de ubicación de la cuenta
-  (no confundir con la divisa), la cuenta se excluye y se lista.
-- La regla de redeclaración por incremento >20.000 € (origen M) solo se
-  aplica con los ISINs de la declaración anterior aportados manualmente.
 """
 
 from __future__ import annotations
@@ -101,11 +114,12 @@ class Modelo720FileService:
 
             {
               "nif": "12345678A",                 # obligatorio
-              "apellidos_nombre": "GARCIA, NICO", # obligatorio
+              "apellidos_nombre": "APELLIDOS, NOMBRE",  # obligatorio
+              "numero_declaracion": "7202025000001",    # obligatorio: 13 dígitos, empieza por 720
+              "custody_country": "IE",                  # obligatorio: país donde se depositan/gestionan los valores
+              "first_acquisition_dates": {"US0378331005": "20230115"},  # obligatorio por ISIN
               "telefono": "600000000",
-              "cash_country": "IE",               # país de la cuenta (EHA/3496/2011)
-              "previous_year_isins": ["US0378331005"],
-              "numero_declaracion": "7202024000001",
+              "previous_year_isins": ["US0378331005"],  # alimenta manual_review (origen M / bajas)
               "declaracion_anterior": "7202024000001",
               "complementaria": false,
               "sustitutiva": false
@@ -129,9 +143,9 @@ class Modelo720FileService:
                     "Faltan datos identificativos del declarante: el registro "
                     "de tipo 1 exige NIF y apellidos y nombre, y no se "
                     "inventan. Guárdalos en la metadata del tenant bajo la "
-                    "clave 'tax_declarant' (nif, apellidos_nombre, y "
-                    "opcionalmente telefono, cash_country, "
-                    "previous_year_isins...)."
+                    "clave 'tax_declarant' (nif, apellidos_nombre, "
+                    "numero_declaracion, custody_country, "
+                    "first_acquisition_dates...)."
                 ),
                 "thresholds": thresholds,
             }
@@ -139,29 +153,84 @@ class Modelo720FileService:
         apellidos_nombre = str(declarant["apellidos_nombre"])
         telefono = declarant.get("telefono")
         contacto = declarant.get("contacto")
-        numero_declaracion = declarant.get("numero_declaracion")
         complementaria = bool(declarant.get("complementaria"))
         sustitutiva = bool(declarant.get("sustitutiva"))
         declaracion_anterior = declarant.get("declaracion_anterior")
         previous_year_isins = declarant.get("previous_year_isins") or []
-        cash_country = declarant.get("cash_country")
         first_dates = {
             str(k).upper(): str(v).replace("-", "")
             for k, v in (declarant.get("first_acquisition_dates") or {}).items()
         }
         previous_isins = {str(i).upper() for i in previous_year_isins}
 
+        # Número de declaración: la spec exige 13 dígitos que comiencen
+        # por 720; rellenarlo con ceros sería un dato materialmente falso.
+        numero_declaracion = str(declarant.get("numero_declaracion") or "")
+        if not (
+            len(numero_declaracion) == 13
+            and numero_declaracion.isdigit()
+            and numero_declaracion.startswith("720")
+        ):
+            return {
+                "available": False,
+                "reason": (
+                    "Falta 'numero_declaracion' válido en tax_declarant: la "
+                    "spec exige 13 dígitos que comiencen por 720 (número "
+                    "secuencial de la declaración). No se genera un fichero "
+                    "con ese campo inventado."
+                ),
+                "thresholds": thresholds,
+            }
+        # País de depósito/gestión de los valores (posiciones 129-130): la
+        # norma no lo deja inferir del prefijo del ISIN (un valor US puede
+        # estar depositado en Irlanda); debe declararse.
+        custody_country = str(declarant.get("custody_country") or "").strip().upper()
+        if not (len(custody_country) == 2 and custody_country.isalpha()):
+            return {
+                "available": False,
+                "reason": (
+                    "Falta 'custody_country' en tax_declarant: el país del "
+                    "registro (posiciones 129-130) es donde los valores están "
+                    "depositados o gestionados y NO se infiere del ISIN. "
+                    "Decláralo (p. ej. 'IE' si custodian en Irlanda)."
+                ),
+                "thresholds": thresholds,
+            }
+
         detail_records: list[str] = []
+        manual_review: list[dict] = []
         excluded: list[dict] = (
             list(thresholds.get("unvalued") or [])
             + list(thresholds.get("foreign_unverified") or [])
             + list(thresholds.get("short_positions") or [])
+            + list(thresholds.get("stale_snapshots") or [])
         )
         sum_val1 = Decimal("0")
         sum_val2 = Decimal("0")
 
         valores = thresholds["categories"]["valores"]
         if valores["exceeds"] is True:
+            # Fecha de incorporación: campo numérico EXIGIDO (415-422).
+            # Sin fecha real por ISIN no se genera el fichero (un campo
+            # en blanco invalida el registro y no se inventa).
+            missing_dates = sorted({
+                pos["ticker"]
+                for pos in valores["positions"]
+                if (pos.get("isin") or "").upper()
+                and not first_dates.get((pos.get("isin") or "").upper())
+            })
+            if missing_dates:
+                return {
+                    "available": False,
+                    "reason": (
+                        "Falta la fecha de primera adquisición (obligatoria, "
+                        "posiciones 415-422) para: " + ", ".join(missing_dates) +
+                        ". Aporta tax_declarant.first_acquisition_dates "
+                        "(ISIN → fecha YYYYMMDD)."
+                    ),
+                    "excluded": excluded,
+                    "thresholds": thresholds,
+                }
             for pos in valores["positions"]:
                 isin = (pos.get("isin") or "").upper()
                 if not isin:
@@ -171,54 +240,83 @@ class Modelo720FileService:
                     })
                     continue
                 value = Decimal(str(pos["value_base"]))
-                origin = "M" if isin in previous_isins else "A"
-                first_date = first_dates.get(isin, "")
+                first_date = first_dates[isin]
+                if not (len(first_date) == 8 and first_date.isdigit()):
+                    return {
+                        "available": False,
+                        "reason": (
+                            f"La fecha de primera adquisición de {pos['ticker']} "
+                            f"('{first_date}') no es YYYYMMDD: corrígela en "
+                            "tax_declarant.first_acquisition_dates."
+                        ),
+                        "excluded": excluded,
+                        "thresholds": thresholds,
+                    }
+                # Origen siempre "A": el origen "M" exige verificar un
+                # incremento conjunto >20.000 € contra la última declaración,
+                # dato que no tenemos; no se presume.
+                if isin in previous_isins:
+                    manual_review.append({
+                        "ticker": pos["ticker"],
+                        "isin": isin,
+                        "reason": (
+                            "ISIN ya declarado en ejercicios anteriores: si el "
+                            "incremento conjunto de la categoría supera 20.000 € "
+                            "el origen sería 'M', no 'A'. Verificar contra la "
+                            "última declaración antes de presentar."
+                        ),
+                    })
                 detail_records.append(
                     self._detail_valores(
                         fiscal_year, nif, apellidos_nombre, pos, isin,
-                        value, origin, first_date,
+                        value, "A", first_date, custody_country,
                     )
                 )
                 sum_val1 += value
-            # Bajas: ISINs declarados el año anterior que ya no se poseen.
+            # Bajas: sin fecha EFECTIVA de extinción no se genera registro
+            # (inventar 31/12 sería un dato falso); se listan para que el
+            # declarante las presente manualmente con su fecha real.
             held = {
                 (p.get("isin") or "").upper()
                 for p in valores["positions"]
             }
             held.discard("")
             for isin in sorted(previous_isins - held):
-                detail_records.append(
-                    self._detail_baja(fiscal_year, nif, apellidos_nombre, isin)
-                )
+                manual_review.append({
+                    "ticker": isin,
+                    "isin": isin,
+                    "reason": (
+                        "ISIN declarado el año anterior y ya no poseído: posible "
+                        "BAJA. Requiere la fecha efectiva de extinción; declarar "
+                        "manualmente."
+                    ),
+                })
 
         cuentas = thresholds["categories"]["cuentas"]
         if cuentas["exceeds"] is True:
-            if not cash_country:
-                excluded.append({
-                    "ticker": "cash",
-                    "reason": "Falta el país donde está situada la cuenta (obligatorio, posiciones 129-130): aporta 'cash_country'. Cuentas excluidas del fichero.",
-                })
-            else:
-                for bal in cuentas["balances"]:
-                    value = Decimal(str(bal["value_base"]))
-                    detail_records.append(
-                        self._detail_cuenta(
-                            fiscal_year, nif, apellidos_nombre, bal,
-                            value, cash_country,
-                        )
-                    )
-                    sum_val1 += value
+            # Clave C NO se genera: exige identificador de cuenta asignado
+            # por la entidad, identidad real de la entidad y saldo medio del
+            # 4.º trimestre — datos que no tenemos y no se inventan.
+            manual_review.append({
+                "ticker": "cuentas",
+                "reason": (
+                    "La categoría CUENTAS supera el umbral, pero el registro C "
+                    "exige identificador de cuenta, identidad de la entidad y "
+                    "saldo medio del 4.º trimestre: no se genera fichero para "
+                    "cuentas. Declarar manualmente."
+                ),
+            })
 
         if not detail_records:
             return {
                 "available": False,
                 "reason": (
-                    "Ninguna categoría supera los 50.000 € o todos los "
-                    "registros quedaron excluidos por datos incompletos. "
-                    "Sin obligación de fichero (o pendiente de valoración "
-                    "manual; ver 'excluded')."
+                    "Ninguna categoría generable supera los 50.000 € o todos "
+                    "los registros quedaron excluidos por datos incompletos. "
+                    "Sin fichero generado (revisa 'excluded' y 'manual_review')."
                 ),
                 "excluded": excluded,
+                "manual_review": manual_review,
                 "thresholds": thresholds,
             }
 
@@ -239,17 +337,20 @@ class Modelo720FileService:
             "detail_records": len(detail_records),
             "content": content,
             "excluded": excluded,
+            "manual_review": manual_review,
             "thresholds": thresholds,
             "notas": [
                 "Fichero conforme al diseño de registro oficial AEAT "
                 "(500 bytes, ISO-8859-1): AYUDA DE CÓMPUTO — revisar antes "
                 "de presentar por TGVI Online.",
-                "Origen A/M determinado con los ISINs de la declaración "
-                "anterior aportados manualmente; la regla del incremento "
-                ">20.000 € requiere contrastar los importes de la última "
-                "declaración.",
-                "Cuentas: saldo medio del 4.º trimestre no disponible; "
-                "valoración 2 de cuentas va a ceros (completar a mano).",
+                "Origen siempre 'A': si la categoría ya se declaró y el "
+                "incremento conjunto supera 20.000 € corresponde 'M' "
+                "(ver 'manual_review').",
+                "Un ISIN comprado en lotes con fechas distintas exige un "
+                "registro por lote: aquí se genera uno con la fecha "
+                "aportada; si hubo varias fechas, revisar manualmente.",
+                "Cuentas (clave C) y bajas no se generan: requieren datos "
+                "que no tenemos (ver 'manual_review').",
             ],
         }
 
@@ -317,10 +418,11 @@ class Modelo720FileService:
 
     def _detail_valores(
         self, fiscal_year, nif, apellidos_nombre, pos, isin,
-        value, origin, first_date,
+        value, origin, first_date, custody_country,
     ) -> str:
-        pais = isin[:2] if len(isin) >= 2 else "  "
-        r = self._detail_head(fiscal_year, nif, apellidos_nombre, "V", "1", pais)
+        # 129-130: país donde los valores están DEPOSITADOS O GESTIONADOS
+        # (spec, pág. 23): dato declarado, nunca el prefijo del ISIN.
+        r = self._detail_head(fiscal_year, nif, apellidos_nombre, "V", "1", custody_country)
         r += "1"                                   # 131: identificación por ISIN
         r += _text(isin, 12)                       # 132-143: ISIN
         r += " "                                   # 144: clave ID cuenta (no C)
@@ -335,22 +437,6 @@ class Modelo720FileService:
             Decimal(str(pos.get("quantity") or 0)),
         )
         assert len(r) == RECORD_LEN, f"detalle V: {len(r)} bytes"
-        return r
-
-    def _detail_baja(self, fiscal_year, nif, apellidos_nombre, isin) -> str:
-        pais = isin[:2] if len(isin) >= 2 else "  "
-        r = self._detail_head(fiscal_year, nif, apellidos_nombre, "V", "1", pais)
-        r += "1"                                   # 131: ISIN
-        r += _text(isin, 12)                       # 132-143
-        r += " " * (1 + 11 + 34)                   # 144-189
-        r += " " * 41                              # 190-230: entidad (desconocida)
-        r += " " * 20                              # 231-250
-        r += " " * 164                             # 251-414
-        r += self._detail_tail(
-            "", "C", f"{fiscal_year}1231",
-            Decimal("0"), Decimal("0"), "A", Decimal("0"),
-        )
-        assert len(r) == RECORD_LEN, f"baja V: {len(r)} bytes"
         return r
 
     def _detail_cuenta(
@@ -372,3 +458,4 @@ class Modelo720FileService:
         )
         assert len(r) == RECORD_LEN, f"detalle C: {len(r)} bytes"
         return r
+

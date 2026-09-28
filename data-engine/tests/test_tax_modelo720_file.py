@@ -80,8 +80,10 @@ def _seed(db, declarant=None, value="60000"):
 
 DECLARANT = {
     "nif": "12345678Z",
-    "apellidos_nombre": "GARCIA IGLESIAS, NICO",
+    "apellidos_nombre": "FICTICIO FISCAL, TEST",
     "telefono": "600111222",
+    "numero_declaracion": "7202025000001",
+    "custody_country": "IE",
     "first_acquisition_dates": {"US0378331005": "20230115"},
 }
 
@@ -129,9 +131,10 @@ def test_generates_spec_layout_records(db):
     assert summary[1:4] == "720"
     assert summary[4:8] == "2025"
     assert summary[8:17] == "12345678Z"             # 9-17: NIF (9 posiciones exactas)
-    assert summary[17:57].rstrip() == "GARCIA IGLESIAS, NICO"
+    assert summary[17:57].rstrip() == "FICTICIO FISCAL, TEST"
     assert summary[57] == "T"
     assert summary[58:67] == "600111222"
+    assert summary[107:120] == "7202025000001"      # 108-120: nº declaración
     assert summary[135:144] == "000000001"          # 1 registro de detalle
     # Suma valoración 1 = 60.000,00 → signo espacio + 15+2 dígitos.
     assert summary[144] == " "
@@ -140,7 +143,7 @@ def test_generates_spec_layout_records(db):
     assert detail[0] == "2"
     assert detail[101] == "V"                        # 102: clave bien
     assert detail[102] == "1"                        # 103: subclave participación
-    assert detail[128:130] == "US"                   # 129-130: país (prefijo ISIN)
+    assert detail[128:130] == "IE"                   # 129-130: país de DEPÓSITO declarado (no el prefijo del ISIN)
     assert detail[130] == "1"                        # 131: identificación por ISIN
     assert detail[131:143].rstrip() == "US0378331005"  # 132-143: ISIN
     assert detail[189:230].rstrip() == "APPLE INC"   # 190-230: entidad
@@ -162,3 +165,55 @@ def test_missing_isin_excluded_with_reason(db):
     result = Modelo720FileService().generate(db, 2025)
     assert result["available"] is False
     assert any("ISIN" in e["reason"] for e in result["excluded"])
+
+
+def test_unavailable_without_numero_declaracion(db):
+    d = {k: v for k, v in DECLARANT.items() if k != "numero_declaracion"}
+    _seed(db, declarant=d)
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "numero_declaracion" in result["reason"]
+
+
+def test_unavailable_with_malformed_numero_declaracion(db):
+    _seed(db, declarant={**DECLARANT, "numero_declaracion": "0000000000000"})
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "720" in result["reason"]
+
+
+def test_unavailable_without_custody_country(db):
+    d = {k: v for k, v in DECLARANT.items() if k != "custody_country"}
+    _seed(db, declarant=d)
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "custody_country" in result["reason"]
+
+
+def test_unavailable_without_first_acquisition_date(db):
+    _seed(db, declarant={**DECLARANT, "first_acquisition_dates": {}})
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "AAPL" in result["reason"]
+
+
+def test_previous_year_isin_sold_goes_to_manual_review_not_baja(db):
+    # Sin fecha EFECTIVA de extinción no se genera registro de baja:
+    # va a manual_review para declaración manual.
+    _seed(db, declarant={**DECLARANT, "previous_year_isins": ["IE00B4L5Y983"]})
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is True
+    assert result["detail_records"] == 1  # solo el valor poseído
+    assert any(
+        "BAJA" in m["reason"] for m in result["manual_review"]
+    )
+
+
+def test_previous_year_isin_held_flags_origin_m_review(db):
+    # Origen siempre "A": un ISIN ya declarado genera aviso de posible "M".
+    _seed(db, declarant={**DECLARANT, "previous_year_isins": ["US0378331005"]})
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is True
+    detail = result["content"].rstrip("\n").split("\n")[1]
+    assert detail[422] == "A"
+    assert any("20.000" in m["reason"] for m in result["manual_review"])
