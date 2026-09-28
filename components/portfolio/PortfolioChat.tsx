@@ -53,6 +53,72 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
         return () => document.removeEventListener('keydown', onKeyDown);
     }, [isOpen]);
 
+    /**
+     * F339: a <md la burbuja fija (bottom-right) tapa la columna de porcentajes
+     * de la leyenda del donut de Distribución EN REPOSO: el solape importa con
+     * el scroll parado, no solo en movimiento. La burbuja se oculta (a) durante
+     * el scroll, reapareciendo ~600 ms tras parar, y (b) siempre que la leyenda
+     * intersecte su zona — incluido el reposo — hasta que deje de intersectarla.
+     * En desktop (md+) las clases md:* la mantienen siempre visible.
+     *
+     * La zona se mide desde el computed style del propio botón (bottom/right
+     * resuelven el env(safe-area-inset-*) de iPhone a px, y width/height dan el
+     * tamaño real) y no desde getBoundingClientRect: al ocultarse con
+     * translate-y-24 el rect saldría de la zona y la burbuja oscilaría. El
+     * chequeo corre al montar, en scroll, en resize y ante un MutationObserver
+     * acotado: las tabs de la cartera montan y desmontan la leyenda sin scroll
+     * ni resize, y el estado no puede quedar obsoleto tras un cambio de tab.
+     * La leyenda se re-consulta por id en cada chequeo y todo se limpia al
+     * desmontar.
+     */
+    const [fabScrollHidden, setFabScrollHidden] = useState(false);
+    const [fabLegendBlocked, setFabLegendBlocked] = useState(false);
+    const fabRef = useRef<HTMLButtonElement>(null);
+    useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const checkLegendOverlap = () => {
+            const legend = document.getElementById('portfolio-allocation-legend');
+            const fab = fabRef.current;
+            if (!legend || !fab) {
+                setFabLegendBlocked(false);
+                return;
+            }
+            const styles = getComputedStyle(fab);
+            const bottom = parseFloat(styles.bottom) || 0;
+            const right = parseFloat(styles.right) || 0;
+            const width = parseFloat(styles.width) || 0;
+            const height = parseFloat(styles.height) || 0;
+            const zoneLeft = window.innerWidth - right - width - 8;
+            const zoneTop = window.innerHeight - bottom - height - 8;
+            const rect = legend.getBoundingClientRect();
+            setFabLegendBlocked(
+                rect.right > zoneLeft && rect.left < window.innerWidth - right + 8 &&
+                rect.bottom > zoneTop && rect.top < window.innerHeight - bottom + 8
+            );
+        };
+        const onScroll = () => {
+            setFabScrollHidden(true);
+            if (timer !== undefined) clearTimeout(timer);
+            timer = setTimeout(() => {
+                setFabScrollHidden(false);
+                checkLegendOverlap();
+            }, 600);
+            checkLegendOverlap();
+        };
+        checkLegendOverlap();
+        const observer = new MutationObserver(checkLegendOverlap);
+        observer.observe(document.body, { childList: true, subtree: true });
+        window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+        window.addEventListener('resize', checkLegendOverlap, { passive: true });
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('scroll', onScroll, { capture: true });
+            window.removeEventListener('resize', checkLegendOverlap);
+            if (timer !== undefined) clearTimeout(timer);
+        };
+    }, []);
+    const fabHidden = fabScrollHidden || fabLegendBlocked;
+
     async function handleSend() {
         if (!input.trim() || loading) return;
 
@@ -79,11 +145,12 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
     if (!isOpen) {
         return (
             <Button
+                ref={fabRef}
                 onClick={() => setIsOpen(true)}
                 aria-label="Abrir asistente de cartera"
                 // `viewportFit: "cover"` + barra de inicio de iOS: sin el inset la
                 // burbuja queda bajo la barra en modo standalone.
-                className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-14 w-14 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 text-white z-50 animate-in zoom-in duration-300"
+                className={`fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-14 w-14 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 text-white z-50 animate-in zoom-in duration-300 transition-all ${fabHidden ? 'translate-y-24 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto' : ''}`}
             >
                 <Brain aria-hidden="true" className="h-8 w-8" />
             </Button>
