@@ -145,32 +145,61 @@ def test_rating_matrix():
     assert service._rating(0.0, True, "ok") == "watch"
 
 
-# -- executive summary ----------------------------------------------------------------
+# -- card summary (executive_summary de la tarjeta) ------------------------------------
 
-def test_executive_summary_never_publishes_unsourced_value():
+def test_card_summary_insufficient_data_es_honesto():
     service = ThesisService()
     valuation = {
         "status": "insufficient_data",
         "missing_inputs": ["revenue", "shares"],
         "trace": {"engine": "dcf_v2"},
     }
-    text = service._executive_summary(_company(), valuation)
-    assert "NOT PUBLISHABLE" in text
+    text = service._card_summary(_company(), valuation, "hipotesis")
+    assert "no publicable todavia" in text
     assert "revenue, shares" in text
-    assert "dcf_v2" in text
+    assert "NOT PUBLISHABLE" not in text
 
 
-def test_executive_summary_partial_is_indicative_not_final():
+def test_card_summary_partial_es_indicativo():
     service = ThesisService()
-    valuation = {
-        "status": "partial",
-        "missing_inputs": ["beta"],
-        "trace": {"engine": "dcf_v2"},
-    }
-    text = service._executive_summary(_company(), valuation)
-    assert "PARTIAL-INDICATIVE" in text
-    assert "Not a final fair value" in text
+    valuation = {"status": "partial", "missing_inputs": ["beta"], "trace": {"engine": "dcf_v2"}}
+    text = service._card_summary(_company(), valuation, "hipotesis")
+    assert text.startswith("hipotesis Valoracion parcial-indicativa")
     assert "beta" in text
+
+
+def test_card_summary_anade_titulares_con_atribucion():
+    # Un titular demuestra que el medio lo publico, no que sea cierto: la
+    # tarjeta lo cita verbatim con medio y fecha, sin interpretarlo.
+    service = ThesisService()
+    valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
+    news = [
+        {"title": "Meta presenta Muse, su nuevo modelo", "source": "TechCrunch", "date": "2026-09-25"},
+        {"title": "RKLB retrasa su lanzamiento", "source": "SpaceNews", "date": "2026-09-24"},
+        {"title": "Tercero fuera del top-2", "source": "X", "date": "2026-09-23"},
+    ]
+    text = service._card_summary(_company(), valuation, "hipotesis", news)
+    assert text.startswith("hipotesis Titulares recientes: ")
+    assert '"Meta presenta Muse, su nuevo modelo" (TechCrunch, 2026-09-25)' in text
+    assert '"RKLB retrasa su lanzamiento" (SpaceNews, 2026-09-24)' in text
+    assert "Tercero" not in text
+
+
+def test_card_summary_sin_noticias_no_inventa():
+    service = ThesisService()
+    valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
+    assert service._card_summary(_company(), valuation, "hipotesis") == "hipotesis"
+    assert service._card_summary(_company(), valuation, "hipotesis", []) == "hipotesis"
+
+
+def test_card_summary_titular_largo_se_trunca_y_sin_fecha_no_fabrica():
+    service = ThesisService()
+    valuation = {"status": "ok", "trace": {"engine": "dcf_v2"}}
+    news = [{"title": "A" * 200, "source": "", "date": None}]
+    text = service._card_summary(_company(), valuation, "hipotesis", news)
+    assert '...' in text
+    assert "A" * 141 not in text
+    assert "(" not in text.split("Titulares recientes: ")[1]
 
 
 # -- card summary (tarjeta "Ultima tesis") ---------------------------------------

@@ -305,7 +305,8 @@ class ThesisService:
         invalidation = self._invalidation_criteria(company, valuation)
         scenario_probabilities = self._scenario_probabilities(long_term_model)
 
-        summary = self._card_summary(company, valuation, hypothesis)
+        news_items = ((evidence.get("sources") or {}).get("news") or {}).get("items") or []
+        summary = self._card_summary(company, valuation, hypothesis, news_items)
         thesis_markdown = self._render_markdown(
             company,
             valuation,
@@ -558,49 +559,55 @@ class ThesisService:
             return "expensive"
         return "watch"
 
-    def _card_summary(self, company: Company, valuation: dict, hypothesis: str) -> str:
+    def _card_summary(
+        self,
+        company: Company,
+        valuation: dict,
+        hypothesis: str,
+        news_items: list[dict] | None = None,
+    ) -> str:
         """Resumen de la tarjeta "Ultima tesis": legible y en el idioma de la UI.
 
         La hipotesis ya se deriva solo de datos del modelo (nunca inventada);
         los estados incompletos anaden su salvedad honesta en castellano.
         El detalle de motor (bucket/engine) vive en el memo completo, no en
         la tarjeta.
+
+        Las noticias entran como TITULARES citados con medio y fecha (la
+        evidencia ya viene ordenada por materialidad y recencia): un titular
+        demuestra que el medio lo publico, no que sea cierto, y la tarjeta lo
+        presenta exactamente asi. Sin noticias ingeridas no se anade nada.
         """
+        base: str
         if valuation.get("status") == "insufficient_data":
             missing = ", ".join(valuation.get("missing_inputs") or []) or "datos financieros basicos"
-            return (
+            base = (
                 f"Tesis de {company.ticker} no publicable todavia: faltan {missing}. "
                 "Ningun valor justo debe considerarse fiable hasta completar las fuentes."
             )
-        if valuation.get("status") == "partial":
+        elif valuation.get("status") == "partial":
             missing = ", ".join(valuation.get("missing_inputs") or []) or "algunos inputs"
-            return (
+            base = (
                 f"{hypothesis} Valoracion parcial-indicativa: "
                 f"faltan {missing} (ver seccion 13 del memo)."
             )
-        return hypothesis
+        else:
+            base = hypothesis
 
-    def _executive_summary(self, company: Company, valuation: dict) -> str:
-        source = (valuation.get("trace") or {}).get("input_source", "unknown")
-        engine = (valuation.get("trace") or {}).get("engine", "unknown")
-        if valuation.get("status") == "insufficient_data":
-            missing = ", ".join(valuation.get("missing_inputs") or []) or "required financial inputs"
-            return (
-                f"{company.ticker} valuation is NOT PUBLISHABLE ({engine}). "
-                f"Missing: {missing}. No fair value should be trusted until inputs are sourced."
-            )
-        if valuation.get("status") == "partial":
-            missing = ", ".join(valuation.get("missing_inputs") or []) or "remaining inputs"
-            return (
-                f"{company.ticker} valuation is PARTIAL-INDICATIVE ({engine}): "
-                f"bear/base/bull range and reverse DCF computed from documented fallback "
-                f"assumptions (see section 13). Still missing: {missing}. Not a final fair value."
-            )
-        return (
-            f"{company.ticker} is in the {company.company_type} bucket (engine={engine}). "
-            f"Valuation input source: {source}. "
-            "This version uses deterministic valuation traces and source-audited claims."
-        )
+        headlines: list[str] = []
+        for item in (news_items or [])[:2]:
+            title = str(item.get("title") or "").strip()
+            if not title:
+                continue
+            if len(title) > 140:
+                title = title[:137].rstrip() + "..."
+            source = str(item.get("source") or "").strip()
+            date = str(item.get("date") or "").strip()
+            attribution = ", ".join(part for part in (source, date) if part)
+            headlines.append(f'"{title}" ({attribution})' if attribution else f'"{title}"')
+        if headlines:
+            base = f"{base} Titulares recientes: {'; '.join(headlines)}."
+        return base
 
     def _build_claims(
         self,
