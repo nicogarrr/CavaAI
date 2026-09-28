@@ -122,12 +122,23 @@ function humanizeTaxReport(summary: DataRecord): DataRecord {
         'unattributed_dividends_base',
     ]);
     const listKeys = new Set(['wash_sale_window_open', 'over_sell', 'missing_fx', 'unattributed_tickers']);
+    // La causa del null importa: con FX presente pero una fila de caja
+    // ambigua sin resolver, decir "faltan tipos de cambio" miente. Se
+    // declaran ambas causas si coexisten.
+    const missingFx = Array.isArray(summary.missing_fx) && summary.missing_fx.length > 0;
+    const ambiguousCash = summary.manual_review === true
+        || (Array.isArray(summary.ambiguous_cash) && summary.ambiguous_cash.length > 0);
+    const nullReason = [
+        ambiguousCash ? 'revisión manual: fila de caja ambigua' : null,
+        missingFx ? 'faltan tipos de cambio' : null,
+    ].filter(Boolean).join(' y ');
+    const nullLabel = nullReason ? `${NA} (${nullReason})` : NA;
     const display: DataRecord = {};
     for (const [key, value] of Object.entries(summary)) {
         const label = humanizeKey(key);
         if (moneyKeys.has(key)) {
             display[label] = value === null || value === undefined
-                ? `${NA} (faltan tipos de cambio)`
+                ? nullLabel
                 : formatMoney(value as number | string, currency);
         } else if (listKeys.has(key)) {
             display[label] = Array.isArray(value) && value.length > 0

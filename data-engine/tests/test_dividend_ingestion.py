@@ -75,6 +75,10 @@ def _position(db: Session, company: Company, price: float = 200.0, currency: str
         average_cost=Decimal("150"),
         market_price=Decimal(str(price)),
         market_value=Decimal(str(10 * price)),
+        # El peso de la cartera se calcula SIEMPRE sobre el valor en moneda
+        # base. Sin market_value_base la posicion queda fuera del agregado
+        # (yield honesto None) en vez de mezclarse con la moneda nativa.
+        market_value_base=Decimal(str(10 * price)),
         unrealized_pnl=Decimal("500"),
         realized_pnl=Decimal("0"),
         as_of=date.today(),
@@ -179,7 +183,10 @@ def test_currency_mismatch_excluded_from_yield(db):
     result = DividendIngestionService(fmp=FakeFMP(), yahoo=_YAHOO_DOWN).portfolio_yields(db)
     position = result["positions"][0]
     assert position["skipped_currency_mismatch"] == 1
-    assert position["dividend_yield"] == pytest.approx(0.0)  # USD record not mixed into EUR price
+    # El registro en USD no se mezcla con un precio en EUR. Un 0.0% seria un
+    # yield fabricado: la posicion no tiene dividendo en su propia divisa, asi
+    # que el estado honesto es "sin dato", no "cero".
+    assert position["dividend_yield"] is None
 
 
 YAHOO_PAYLOAD = [

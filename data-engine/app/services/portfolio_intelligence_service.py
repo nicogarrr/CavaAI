@@ -16,6 +16,11 @@ from app.models import CashBalance, Company, FinancialFact, MarketPrice, Positio
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.portfolio_ledger_service import BUY_ACTIONS, SELL_ACTIONS
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
+from app.services.tax_report_service import (
+    cash_amount,
+    cash_quantity_is_canonical,
+    is_cash_action,
+)
 
 # Exchange -> listing-market country. Best-effort fallback only: the owning
 # fact is issuer domicile, and positions without a known exchange are grouped
@@ -43,6 +48,43 @@ EXCHANGE_COUNTRY = {
     "NSE": "India",
     "KRX": "South Korea",
 }
+
+
+# Tolerancia de frescura de las patas del retorno FX del periodo:
+# cubre fin de semana y festivo corto; un dato mas viejo no se reutiliza.
+_FX_LEG_TOLERANCE = timedelta(days=7)
+
+
+def _fx_rate_with_date(
+    fx_table: dict[tuple[str, str], list[tuple[date, Decimal]]],
+    *,
+    quote_currency: str,
+    base_currency: str,
+    as_of: date,
+) -> tuple[date, Decimal] | None:
+    """Ultimo tipo <= as_of CON su fecha: la frescura se exige, no se asume.
+
+    Misma resolucion que ``PortfolioFXService.rate_from_table`` (directa o
+    inversa) pero devolviendo la fecha del dato usado, imprescindible para
+    no comparar un spot historico contra un corte posterior.
+    """
+    from bisect import bisect_right
+
+    quote = quote_currency.upper()
+    base = base_currency.upper()
+    if quote == base:
+        return (as_of, Decimal("1"))
+    series = fx_table.get((base, quote))
+    if series:
+        idx = bisect_right(series, (as_of, Decimal("Infinity"))) - 1
+        if idx >= 0:
+            return series[idx]
+    inverse = fx_table.get((quote, base))
+    if inverse:
+        idx = bisect_right(inverse, (as_of, Decimal("Infinity"))) - 1
+        if idx >= 0 and inverse[idx][1]:
+            return (inverse[idx][0], Decimal("1") / inverse[idx][1])
+    return None
 
 
 class PortfolioIntelligenceService:
@@ -173,7 +215,7 @@ class PortfolioIntelligenceService:
         beta, beta_trace = self._beta(db, portfolio_returns, cutoff)
         benchmark = self._benchmark_comparison(db, portfolio_returns, cutoff)
         exposures = self._exposures(rows, total_value, base_values)
-        attribution = self._attribution(db, rows, weights, price_series)
+        attribution = self._attribution(db, rows, weights, price_series, cutoff)
         ledger_contribution = self._ledger_contribution(db, rows, cutoff)
         complete_price_series = sum(len(series) >= 2 for series in price_series.values())
         return {
@@ -385,6 +427,7 @@ class PortfolioIntelligenceService:
         fx = PortfolioFXService()
         base = fx.base_currency(db)
         cashflows: list[tuple[date, float]] = []
+        ambiguous_cash_excluded = 0
         all_transactions = list(db.scalars(select(Transaction).order_by(Transaction.trade_date)).all())
         # Lote FX: 1 query para todos los flujos (anti N+1 por transacción).
         flow_table = fx.fx_table(
@@ -409,7 +452,26 @@ class PortfolioIntelligenceService:
             # turned a 20,00% money-weighted return into 25,00% with status
             # "calculated". Costs must reduce the return they are charged on.
             action = (transaction.action or "").lower()
-            gross = float(transaction.quantity) * float(transaction.price)
+            # Buy/sell are share-denominated (quantity x price); cash rows
+            # carry the amount in `price` with quantity 0 or 1, so they go
+            # through the shared helper: multiplying them by a 0/1 quantity
+            # made every quantity-0 dividend invisible to XIRR while the tax
+            # report declared it.
+            # cash_amount devuelve Decimal: sin float() el net*float(rate) de
+            # mas abajo era Decimal*float -> TypeError y GET /intelligence
+            # entera caia con cualquier fila cash con FX.
+            # Fila cash historica no canonica (quantity distinta de 0/1):
+            # cash_amount daria price*quantity como dato cierto mientras el
+            # informe fiscal la bloquea. Se excluye del XIRR y se declara la
+            # cobertura; incluirla mediría una cifra inventada.
+            if is_cash_action(action) and not cash_quantity_is_canonical(transaction):
+                ambiguous_cash_excluded += 1
+                continue
+            gross = (
+                float(cash_amount(transaction))
+                if is_cash_action(action)
+                else float(transaction.quantity) * float(transaction.price)
+            )
             fees = float(transaction.fees or 0)
             if action in BUY_ACTIONS:
                 net, sign = gross + fees, -1
@@ -423,6 +485,15 @@ class PortfolioIntelligenceService:
                 net, sign = gross, 1
             amount = net * float(rate)
             cashflows.append((transaction.trade_date, sign * amount))
+        if ambiguous_cash_excluded:
+            # Un XIRR que excluye un flujo de importe desconocido NO es la
+            # rentabilidad completa: publicarlo como "calculated" mediria con
+            # una cifra que el informe fiscal bloquea. None + estado explicito.
+            return None, {
+                "status": "incomplete_ambiguous_cash",
+                "cashflows": len(cashflows),
+                "ambiguous_cash_excluded": ambiguous_cash_excluded,
+            }
         ending_value = sum(float(position.market_value_base or 0) for position, _ in positions)
         cash_rows = list(db.scalars(select(CashBalance)).all())
         # Lote FX: 1 query para todas las cajas (anti N+1).
@@ -439,7 +510,11 @@ class PortfolioIntelligenceService:
         if ending_value:
             cashflows.append((date.today(), ending_value))
         if len(cashflows) < 2 or not any(value < 0 for _, value in cashflows):
-            return None, {"status": "insufficient_cashflows", "cashflows": len(cashflows)}
+            return None, {
+                "status": "insufficient_cashflows",
+                "cashflows": len(cashflows),
+                "ambiguous_cash_excluded": ambiguous_cash_excluded,
+            }
         origin = min(day for day, _ in cashflows)
 
         def npv(rate: float) -> float:
@@ -450,7 +525,11 @@ class PortfolioIntelligenceService:
 
         low, high = -0.9999, 10.0
         if npv(low) * npv(high) > 0:
-            return None, {"status": "no_xirr_root", "cashflows": len(cashflows)}
+            return None, {
+                "status": "no_xirr_root",
+                "cashflows": len(cashflows),
+                "ambiguous_cash_excluded": ambiguous_cash_excluded,
+            }
         for _ in range(200):
             middle = (low + high) / 2
             if abs(npv(middle)) < 1e-8:
@@ -463,6 +542,7 @@ class PortfolioIntelligenceService:
             "status": "calculated",
             "method": "bisection_xirr",
             "cashflows": len(cashflows),
+            "ambiguous_cash_excluded": ambiguous_cash_excluded,
         }
 
     @staticmethod
@@ -810,16 +890,100 @@ class PortfolioIntelligenceService:
                 exposures["factors"][factor] += weight
         return {key: dict(value) for key, value in exposures.items()}
 
+    @staticmethod
+    def _period_fx_return(
+        fx_table: dict[tuple[str, str], list[tuple[date, Decimal]]],
+        position: Position,
+        base_currency: str,
+        period_start: date,
+        period_end: date,
+    ) -> float | None:
+        """Retorno FX del periodo de la divisa de cotizacion, no su nivel.
+
+        ``Position.fx_rate`` es el tipo de cambio SPOT a fecha ``as_of``: un
+        nivel, nunca una variacion. Restarle 1 fabricaba una contribucion
+        permanente (fx_rate 0,92 -> -8% de FX para siempre) y esa misma
+        cifra inventada se restaba del residuo ``multiple``. El componente
+        correcto es el retorno del periodo ``fx_fin / fx_en_corte - 1``.
+
+        Ambas patas se anclan al periodo REAL de la serie de precios:
+        inicio en ``period_start`` (primera barra, no un cutoff generico que
+        puede quedar meses antes) y fin en ``period_end`` (ultima barra).
+        Anclar el inicio al cutoff cuando la primera barra es posterior
+        mediria un tramo de FX fuera del periodo atribuido. El spot de
+        ``Position.fx_rate`` solo sirve como pata final si su ``as_of`` no
+        es anterior al inicio del periodo.
+
+        Frescura exigida en AMBAS patas (tolerancia de fin de semana /
+        festivo corto): una tasa demasiado vieja respecto a su ancla deja
+        el componente en None; nunca se publica un retorno medido con
+        fechas cambiadas ni un cero fabricado reutilizando una sola tasa.
+        """
+        currency = position.currency or ""
+        if not currency:
+            return None
+        start = _fx_rate_with_date(
+            fx_table,
+            quote_currency=currency,
+            base_currency=base_currency,
+            as_of=period_start,
+        )
+        end = _fx_rate_with_date(
+            fx_table,
+            quote_currency=currency,
+            base_currency=base_currency,
+            as_of=period_end,
+        )
+        if end is None and position.fx_rate is not None and position.as_of is not None:
+            if position.as_of >= period_start:
+                end = (position.as_of, Decimal(str(position.fx_rate)))
+        if start is None or end is None:
+            return None
+        (start_date, start_rate), (end_date, end_rate) = start, end
+        # Tolerancia explicita de frescura en AMBAS patas respecto a su
+        # ancla del periodo: sin ella, con una sola tasa del 1/ene y barra
+        # final en junio la MISMA fila servia de pata inicial y final y
+        # publicaba 0,0% medido (cero fabricado con fx_known=True), y un FX
+        # inicial de 2020 con cutoff 2026 publicaba la variacion de anos
+        # como retorno del periodo. Un hueco mayor que la tolerancia (fin
+        # de semana / festivo corto) deja el componente en None.
+        if end_date < period_end - _FX_LEG_TOLERANCE:
+            return None
+        if start_date < period_start - _FX_LEG_TOLERANCE:
+            return None
+        if end_date < period_start or end_date < start_date or not start_rate or not end_rate:
+            return None
+        return float(end_rate / start_rate - 1)
+
     def _attribution(
         self,
         db: Session,
         rows: list[tuple[Position, Company]],
         weights: dict[int, float],
         price_series: dict[int, list[MarketPrice]],
+        cutoff: date,
     ) -> dict[str, Any]:
         positions = []
-        totals = defaultdict(float)
+        # Totales null-propagantes: un componente desconocido en cualquier
+        # posicion deja el agregado en None (incompletitud declarada); sumar
+        # None como 0 publicaba parciales con pinta de totales.
+        totals: dict[str, float | None] = {}
         company_ids = [company.id for _, company in rows]
+        fx = PortfolioFXService()
+        base_currency = fx.base_currency(db)
+        # Lote FX: una tabla para todo el horizonte (anti N+1), resuelta en
+        # memoria igual que _ledger_contribution.
+        fx_table = (
+            fx.fx_table(
+                db,
+                currencies={position.currency for position, _ in rows if position.currency}
+                | {base_currency},
+                base_currency=base_currency,
+                as_of_max=date.today(),
+            )
+            if rows
+            else {}
+        )
         # Lote: 1 query de facts + 1 de dividendos para todas las posiciones
         # (anti N+1 por compañía en attribution).
         all_facts: dict[int, dict[str, list[FinancialFact]]] = defaultdict(lambda: defaultdict(list))
@@ -834,6 +998,7 @@ class PortfolioIntelligenceService:
             ).all():
                 all_facts[fact.company_id][fact.metric].append(fact)
         all_dividends: dict[int, float] = defaultdict(float)
+        ambiguous_dividends: set[int] = set()
         if company_ids:
             for dividend in db.scalars(
                 select(Transaction).where(
@@ -841,10 +1006,16 @@ class PortfolioIntelligenceService:
                     Transaction.action == "dividend",
                 )
             ).all():
-                if dividend.company_id is not None:
-                    all_dividends[dividend.company_id] += float(
-                        dividend.quantity * dividend.price
-                    )
+                if dividend.company_id is None:
+                    continue
+                if not cash_quantity_is_canonical(dividend):
+                    # Fila historica no canonica: el importe derivado de
+                    # price es candidato (revision fiscal), no dato cierto.
+                    # El componente de dividendos de la compania queda
+                    # desconocido y la incompletitud se propaga al total.
+                    ambiguous_dividends.add(dividend.company_id)
+                    continue
+                all_dividends[dividend.company_id] += float(cash_amount(dividend))
         for position, company in rows:
             prices = price_series.get(company.id, [])
             # El ratio exige AMBOS extremos ajustados: con historica ajustada
@@ -861,15 +1032,23 @@ class PortfolioIntelligenceService:
             share_change = self._series_change(by_metric.get("shares_diluted", []))
             dilution = max(share_change or 0, 0)
             buybacks = max(-(share_change or 0), 0)
+            dividends_known = company.id not in ambiguous_dividends
             dividends = all_dividends.get(company.id, 0.0)
             dividend_return = (
-                dividends / float(position.cost_basis_native)
-                if position.cost_basis_native and position.cost_basis_native > 0
-                else 0
+                (dividends / float(position.cost_basis_native))
+                if dividends_known
+                and position.cost_basis_native
+                and position.cost_basis_native > 0
+                else (0.0 if dividends_known else None)
             )
-            fx_component = (
-                float(position.fx_rate) - 1 if position.fx_rate is not None else 0
+            period_start = prices[0].date if prices else cutoff
+            period_end = prices[-1].date if prices else cutoff
+            fx_component = self._period_fx_return(
+                fx_table, position, base_currency, period_start, period_end
             )
+            # El residuo se queda en None cuando el retorno total o el de FX
+            # son desconocidos: restar un componente no medido (o medir uno
+            # con un nivel) daria una cifra con apariencia de cierre.
             multiple = (
                 total_return
                 - (fundamental_growth or 0)
@@ -878,6 +1057,8 @@ class PortfolioIntelligenceService:
                 + dilution
                 - fx_component
                 if total_return is not None
+                and fx_component is not None
+                and dividend_return is not None
                 else None
             )
             components = {
@@ -887,19 +1068,36 @@ class PortfolioIntelligenceService:
                 "buybacks": buybacks,
                 "dilution": -dilution,
                 "fx": fx_component,
-                "sizing": (total_return or 0) * weights.get(company.id, 0),
+                "sizing": (
+                    total_return * weights.get(company.id, 0)
+                    if total_return is not None
+                    else None
+                ),
             }
             for key, value in components.items():
-                totals[key] += value or 0
+                if key not in totals:
+                    totals[key] = value
+                elif totals[key] is not None and value is not None:
+                    totals[key] += value
+                else:
+                    totals[key] = None
             positions.append(
                 {
                     "ticker": company.ticker,
                     "weight": weights.get(company.id, 0),
                     "total_return": total_return,
+                    "fx_known": fx_component is not None,
+                    "dividends_known": dividends_known,
                     "components": components,
                 }
             )
-        return {"portfolio_components": dict(totals), "positions": positions}
+        return {
+            "portfolio_components": dict(totals),
+            "incomplete_components": sorted(
+                key for key, value in totals.items() if value is None
+            ),
+            "positions": positions,
+        }
 
     @staticmethod
     def _series_change(series: list[FinancialFact]) -> float | None:

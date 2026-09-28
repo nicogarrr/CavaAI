@@ -190,7 +190,15 @@ class DividendIngestionService:
         Yield = TTM declared dividends per share / current market price, both in
         the position's native currency. Positions whose dividend currency does
         not match the price currency are excluded from yield math and counted
-        honestly in coverage instead of being silently converted.
+        honestly in coverage instead of being silently converted: with every
+        record skipped there is no dividend in the position's currency, so the
+        yield is None (unknown), never 0.0% - a fabricated zero reads as "this
+        position pays nothing" and drags the portfolio yield down.
+
+        The portfolio aggregate weights by ``market_value_base`` only. A
+        position without a base-currency value has no honest weight (its native
+        value is in another currency and summing the two would mix EUR and USD
+        into a meaningless total), so it is excluded and reported in coverage.
         """
         cutoff = date.today().replace(year=date.today().year - 1)
         rows = list(
@@ -201,7 +209,9 @@ class DividendIngestionService:
         positions = []
         with_data = 0
         weighted_yield = 0.0
+        weighted_positions = 0
         total_value = 0.0
+        missing_base_value: list[str] = []
         for position, company in rows:
             records = list(
                 db.scalars(
@@ -212,24 +222,35 @@ class DividendIngestionService:
                 ).all()
             )
             price = float(position.market_price or 0)
-            value = float(position.market_value_base or position.market_value or 0)
-            total_value += value
+            # Peso solo en divisa base: `market_value` esta en la divisa nativa
+            # y sumarlo mezclaria monedas distintas en el mismo total.
+            if position.market_value_base is None:
+                missing_base_value.append(company.ticker)
+                value = None
+            else:
+                value = float(position.market_value_base)
+                total_value += value
             matching_currency = [r for r in records if r.currency == position.currency]
             ttm = sum(float(r.amount) for r in matching_currency)
             skipped_currency = len(records) - len(matching_currency)
-            dividend_yield = (ttm / price) if price > 0 and records else None
-            if records:
+            # Gate on the records actually USED, not on every record: with all
+            # of them skipped for currency mismatch ttm is 0 and the old guard
+            # published a 0.0% yield that looks like a verified fact.
+            dividend_yield = (ttm / price) if price > 0 and matching_currency else None
+            if matching_currency:
                 with_data += 1
-                if dividend_yield is not None and value > 0:
+                if dividend_yield is not None and value is not None and value > 0:
                     weighted_yield += dividend_yield * value
+                    weighted_positions += 1
             positions.append(
                 {
                     "ticker": company.ticker,
-                    "ttm_dividend_per_share": ttm if records else None,
+                    "ttm_dividend_per_share": ttm if matching_currency else None,
                     "currency": position.currency,
                     "price": price or None,
                     "dividend_yield": dividend_yield,
                     "records_12m": len(records),
+                    "matching_currency_records_12m": len(matching_currency),
                     "skipped_currency_mismatch": skipped_currency,
                     "last_fetched_at": (
                         max(r.fetched_at for r in records).isoformat()
@@ -242,11 +263,20 @@ class DividendIngestionService:
         return {
             "as_of": date.today().isoformat(),
             "positions": positions,
-            "portfolio_yield": (weighted_yield / total_value) if total_value > 0 else None,
+            # The aggregate is published only when at least one position with a
+            # real yield and a real base-currency weight contributed: 0.0%
+            # computed from an empty numerator is the same fabrication as the
+            # per-position one, one level up.
+            "portfolio_yield": (
+                (weighted_yield / total_value)
+                if weighted_positions and total_value > 0
+                else None
+            ),
             "coverage": {
                 "positions": len(rows),
                 "positions_with_dividend_data": with_data,
                 "percent": round(100 * coverage_ratio, 1),
+                "positions_missing_base_value": sorted(missing_base_value),
             },
             "provenance": provenance(
                 "Yahoo Finance/FMP dividends via CavaAI Postgres",
@@ -256,6 +286,11 @@ class DividendIngestionService:
                     if coverage_ratio >= 1.0
                     else Coverage.PARTIAL if with_data else Coverage.UNAVAILABLE
                 ),
-                note="Trailing-12-month declared dividends per share over current price; run POST /portfolio/dividends/sync to refresh.",
+                note=(
+                    "Trailing-12-month declared dividends per share over current price; "
+                    "run POST /portfolio/dividends/sync to refresh. Positions without a "
+                    "base-currency value are excluded from the portfolio yield instead of "
+                    "being weighted with a native-currency amount."
+                ),
             ),
         }
