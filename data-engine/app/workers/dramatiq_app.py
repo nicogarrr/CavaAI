@@ -62,6 +62,12 @@ def _is_transient(exc: Exception) -> bool:
         # justo lo que Dramatiq deberia reintentar. max_retries quedaba muerto
         # para los unicos fallos para los que existe.
         status = _status_from_message(str(exc))
+    if status in (403, 429) and "sec.gov" in str(exc):
+        # F359: la SEC bloquea las IPs de OCI de forma permanente (403/429).
+        # Reintentar desde el worker del VM no tiene exito jamas y enveneno
+        # la cola default (5276 process_document acumulados, jobs de usuario
+        # hambreados). Fallo permanente -> resultado estructurado, sin retry.
+        return False
     return status is not None and (status == 429 or status >= 500)
 
 
@@ -1888,7 +1894,11 @@ if __name__ == "__main__":
     print("Dramatiq actors registered. Run with: dramatiq app.workers.dramatiq_app")
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000)
+# Cola dedicada (F359): los jobs de tesis los dispara el USUARIO y son
+# interactivos; en "default" quedaban hambreados detras de la ingesta por
+# lotes (7476 mensajes acumulados, 5276 de ellos veneno SEC imposible desde
+# OCI). El worker los escucha con -Q default prices thesis.
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name="thesis")
 def generate_thesis_job(run_id: int) -> None:
     """Execute one queued async thesis generation job (durable envelope)."""
     from app.services.thesis_job_service import run_thesis_job
