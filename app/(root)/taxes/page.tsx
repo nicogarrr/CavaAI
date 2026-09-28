@@ -57,11 +57,19 @@ export default async function TaxesPage({ searchParams }: PageProps) {
     ]);
     const { error: holdingsError } = holdingsRead;
     const { error: reportError } = reportRead;
-    // Los bloques del 720 son accesorios: su 4xx/5xx no tumba la página,
-    // la sección simplemente no se pinta (los estados sin datos viven en
-    // la propia respuesta del backend).
+    // Los bloques del 720 son accesorios y no tumban la página, pero un
+    // 4xx ("sin datos para este ejercicio") no es lo mismo que un 5xx o un
+    // fallo de red ("indisponible"): el segundo se muestra como tal para no
+    // aparentar que el 720 no aplica.
     const thresholds720 = thresholdsRead.error ? null : thresholdsRead.value;
     const file720 = fileRead.error ? null : fileRead.value;
+    const thresholds720Unavailable = Boolean(
+        thresholdsRead.error &&
+        !isNotGeneratedYet(thresholdsRead.error) &&
+        isBackendUnavailableError(thresholdsRead.error)
+    ) || Boolean(
+        thresholdsRead.error && !isNotGeneratedYet(thresholdsRead.error)
+    );
 
     if (
         (holdingsError && isBackendUnavailableError(holdingsError)) ||
@@ -93,7 +101,7 @@ export default async function TaxesPage({ searchParams }: PageProps) {
                 </div>
             </header>
 
-            <TaxesView initialHoldings={holdings} initialReport={report} initialThresholds720={thresholds720} initialFile720={file720} year={fiscalYear} />
+            <TaxesView initialHoldings={holdings} initialReport={report} initialThresholds720={thresholds720} initialFile720={file720} initialThresholds720Unavailable={thresholds720Unavailable} year={fiscalYear} />
         </main>
     );
 }

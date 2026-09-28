@@ -3,7 +3,6 @@
 import { Landmark, FileDown, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatMoney, NA } from '@/lib/format';
-import { toast } from 'sonner';
 
 /**
  * Secciones de declaración de la página Impuestos (Modelo 100 + Modelo 720).
@@ -37,23 +36,6 @@ function money(value: unknown): string {
 
 /** Descarga el fichero 720 en ISO-8859-1 (la spec AEAT; el backend ya
  *  sanea el contenido a caracteres latin-1). */
-function downloadModelo720(content: string, year: number) {
-    const bytes = new Uint8Array(
-        Array.from(content, (ch) => {
-            const code = ch.codePointAt(0) ?? 0;
-            return code <= 0xff ? code : 0x3f; // '?' (no debería ocurrir: backend sanea)
-        }),
-    );
-    const blob = new Blob([bytes], { type: 'text/plain;charset=iso-8859-1' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `modelo720_${year}.txt`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-}
 
 function Section({ title, description, icon, children }: {
     title: string;
@@ -121,6 +103,19 @@ export function FilingSection({ filing }: { filing: DataRecord | null }) {
         );
     }
     const casillas = (filing.casillas ?? {}) as DataRecord;
+    if (casillas.available === false) {
+        return (
+            <Section
+                title="Declaración (Modelo 100)"
+                description="Casillas orientativas del IRPF calculadas desde tu cartera."
+                icon={<Landmark className="h-5 w-5 text-teal-400" />}
+            >
+                <p className="text-sm text-gray-400">
+                    Casillas no disponibles: {String(casillas.unavailable_reason ?? 'mapeo no verificado para este ejercicio')}.
+                </p>
+            </Section>
+        );
+    }
     const acciones = (casillas.acciones_negociadas ?? {}) as DataRecord;
     const dividendos = (casillas.dividendos ?? {}) as DataRecord;
     const dt = (filing.double_taxation ?? {}) as DataRecord;
@@ -171,12 +166,25 @@ export function FilingSection({ filing }: { filing: DataRecord | null }) {
     );
 }
 
-export function Modelo720Section({ thresholds, file720, year }: {
+export function Modelo720Section({ thresholds, file720, unavailable }: {
     thresholds: DataRecord | null;
     file720: DataRecord | null;
-    year: number;
+    unavailable?: boolean;
 }) {
-    if (!thresholds) return null;
+    if (!thresholds) {
+        if (!unavailable) return null;
+        return (
+            <Section
+                title="Modelo 720 (bienes en el extranjero)"
+                description="Chequeo orientativo del umbral de 50.000 € por categoría."
+                icon={<Landmark className="h-5 w-5 text-teal-400" />}
+            >
+                <p className="text-sm text-amber-200/80">
+                    El chequeo 720 no está disponible ahora mismo (error del motor). No significa que no te aplique: inténtalo de nuevo más tarde.
+                </p>
+            </Section>
+        );
+    }
     const categories = (thresholds.categories ?? {}) as DataRecord;
     const missingIsin = ((categories.valores as DataRecord | undefined)?.missing_isin ?? []) as string[];
     const foreignUnverified = (thresholds.foreign_unverified ?? []) as DataRecord[];
@@ -199,12 +207,21 @@ export function Modelo720Section({ thresholds, file720, year }: {
                     const category = categories[key] as DataRecord | undefined;
                     if (!category) return null;
                     return (
-                        <div key={key} className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/60 py-2 text-sm last:border-0">
-                            <span className="text-gray-400">{CATEGORY_LABELS[key]}</span>
-                            <span className="flex items-center gap-3">
-                                <span className="text-gray-200">{money(category.total_base)}</span>
-                                <Chip status={String(category.status ?? 'desconocido')} />
-                            </span>
+                        <div key={key} className="border-b border-gray-800/60 py-2 text-sm last:border-0">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-gray-400">{CATEGORY_LABELS[key]}</span>
+                                <span className="flex items-center gap-3">
+                                    <span className="text-gray-200">{money(category.total_base)}</span>
+                                    <Chip status={String(category.status ?? 'desconocido')} />
+                                </span>
+                            </div>
+                            {Array.isArray(category.reasons) && (category.reasons as string[]).length > 0 && (
+                                <ul className="mt-1 space-y-0.5 text-xs leading-5 text-gray-500">
+                                    {(category.reasons as string[]).map((reason) => (
+                                        <li key={reason}>{reason}</li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                     );
                 })}
@@ -212,22 +229,44 @@ export function Modelo720Section({ thresholds, file720, year }: {
             {file720 && (
                 <div className="mt-4 border-t border-gray-800 pt-4">
                     {file720.available === true ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="space-y-3">
                             <p className="text-sm text-gray-400">
-                                Fichero generado ({String(file720.detail_records)} registros de detalle, formato oficial AEAT). Revísalo antes de presentarlo por TGVI Online: es una ayuda de cómputo.
+                                Borrador de fichero generado ({String(file720.detail_records)} registros de detalle). Es una ayuda de cómputo, NO un fichero oficial listo: la descarga se habilitará cuando el generador supere la revisión de veracidad.
                             </p>
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {
-                                    downloadModelo720(String(file720.content ?? ''), year);
-                                    toast.success(`Fichero Modelo 720 ${year} descargado`);
-                                }}
-                                className="gap-2 border-gray-600 text-gray-300 hover:text-teal-400"
+                                disabled
+                                title="Deshabilitado hasta que el generador pase la revisión de veracidad"
+                                className="gap-2 border-gray-700 text-gray-500"
                             >
                                 <FileDown className="h-4 w-4" />
-                                Descargar fichero 720
+                                Descarga pendiente de validación
                             </Button>
+                            {Array.isArray(file720.excluded) && (file720.excluded as DataRecord[]).length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold uppercase text-gray-500">Registros excluidos del fichero</p>
+                                    <ul className="mt-1 space-y-1 text-xs leading-5 text-amber-200/80">
+                                        {(file720.excluded as DataRecord[]).map((item, i) => (
+                                            <li key={`${String(item.ticker ?? 'item')}-${i}`}>
+                                                {String(item.ticker ?? '')}: {String(item.reason ?? '')}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            {Array.isArray(file720.manual_review) && (file720.manual_review as DataRecord[]).length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold uppercase text-gray-500">Revisión manual necesaria</p>
+                                    <ul className="mt-1 space-y-1 text-xs leading-5 text-amber-200/80">
+                                        {(file720.manual_review as DataRecord[]).map((item, i) => (
+                                            <li key={`${String(item.ticker ?? 'item')}-${i}`}>
+                                                {String(item.ticker ?? '')}: {String(item.reason ?? '')}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <p className="text-sm text-gray-400">

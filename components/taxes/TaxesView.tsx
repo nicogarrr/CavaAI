@@ -27,6 +27,7 @@ interface TaxesViewProps {
     initialReport: DataRecord | null;
     initialThresholds720: DataRecord | null;
     initialFile720: DataRecord | null;
+    initialThresholds720Unavailable?: boolean;
     year: number;
 }
 
@@ -187,7 +188,7 @@ function downloadTaxSummary(holdings: DataRecord[], report: DataRecord | null, y
     URL.revokeObjectURL(url);
 }
 
-export default function TaxesView({ initialHoldings, initialReport, initialThresholds720, initialFile720, year }: TaxesViewProps) {
+export default function TaxesView({ initialHoldings, initialReport, initialThresholds720, initialFile720, initialThresholds720Unavailable, year }: TaxesViewProps) {
     const router = useRouter();
     const [regenerating, setRegenerating] = useState(false);
     // F260: el informe mostrado se DERIVA del año pedido (reportForYear), no
@@ -283,7 +284,7 @@ export default function TaxesView({ initialHoldings, initialReport, initialThres
 
             <FilingSection filing={(report?.filing as DataRecord | undefined) ?? null} />
 
-            <Modelo720Section thresholds={initialThresholds720} file720={initialFile720} year={year} />
+            <Modelo720Section thresholds={initialThresholds720} file720={initialFile720} unavailable={initialThresholds720Unavailable} />
 
             <RecordList
                 title="Posiciones Fiscales"
