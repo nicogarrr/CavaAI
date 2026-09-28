@@ -415,7 +415,7 @@ def build_loss_compensation(
     con el resultado neto COMPUTABLE de cada ejercicio previo según el libro.
     ``declared_pending``: saldos pendientes a 1 de enero por ejercicio de
     origen, copiados del ANEXO C.3 de la última declaración presentada
-    (fuente manual autoritativa).
+    (fuente manual autoritativa, almacenada por tenant).
 
     Mecánica (anexo del Modelo 100, Orden HAC/277/2026, pág. 19):
       1. El saldo neto negativo del PROPIO ejercicio (0425) cruza primero
@@ -533,8 +533,8 @@ def build_loss_compensation(
             "Saldos derivados SOLO del libro: no reflejan compensaciones ya "
             "aplicadas en declaraciones presentadas ni orígenes fuera del "
             "libro. NO trasladable a casillas. Introduce los saldos del "
-            "anexo C.3 de tu última declaración (setting "
-            "TAX_PRIOR_LOSSES_PENDING_JSON) para publicar casillas."
+            "anexo C.3 de tu última declaración en la metadata del tenant "
+            "(clave 'tax_prior_losses_pending') para publicar casillas."
             if estimativo else None
         ),
         "prior_losses": [

@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, FXRate, Portfolio, Transaction
+from app.models.entities import Base, Company, FXRate, Portfolio, Tenant, Transaction
 from app.services.tax_irpf_filing import (
     CASILLAS_BASIS,
     build_casillas,
@@ -502,3 +502,58 @@ def test_loss_compensation_joint_25_limit_reserves_current_year():
     assert result["applied_to_gains_total_base"] == 0.0
     assert result["applied_to_income_total_base"] == 0.0
     assert result["remaining_to_carry_base"] == 500.0
+
+
+def _seed_loss_then_gain(db, portfolio_kwargs=None):
+    """Pérdida computable en 2024 (-400) y ganancia en 2025 (+500)."""
+    if portfolio_kwargs is None:
+        _eur_portfolio(db)
+    else:
+        db.add(Portfolio(name="Main", base_currency="EUR", is_default=True, **portfolio_kwargs))
+        db.commit()
+    c = _company(db, "OLD", country="ES")
+    _tx(db, c, date(2024, 2, 10), "buy", 10, 100, currency="EUR")
+    _tx(db, c, date(2024, 6, 1), "sell", 10, 60, currency="EUR")
+    _tx(db, c, date(2025, 3, 10), "buy", 10, 100, currency="EUR")
+    _tx(db, c, date(2025, 9, 1), "sell", 10, 150, currency="EUR")
+
+
+def test_declared_pending_from_tenant_metadata_publishes_casillas(db):
+    # Los saldos declarados (anexo C.3) viven en la metadata del TENANT:
+    # son datos fiscales personales, nunca configuración global del proceso.
+    tenant = Tenant(external_id="t-fiscal", name="Fiscal")
+    db.add(tenant)
+    db.flush()
+    db.info["tenant_id"] = tenant.id  # contexto de escritura del tenant
+    _seed_loss_then_gain(db, portfolio_kwargs={"tenant_id": tenant.id})
+    tenant.metadata_ = {"tax_prior_losses_pending": {"2024": "250"}}
+    db.commit()
+
+    report = TaxReportService().compute_report(db, 2025)
+    comp = report["filing"]["loss_compensation"]
+    assert comp["estimativo"] is False
+    prior = comp["prior_losses"][0]
+    assert prior["source"] == "anexo-c3-manual"
+    assert prior["pending_start_base"] == 250.0
+    assert prior["applied_to_gains_base"] == 250.0
+    assert prior["casilla_integracion"] == "0442"
+
+
+def test_declared_pending_from_other_tenant_does_not_leak(db):
+    # Otro tenant con saldos declarados NO contamina la declaración del
+    # tenant activo (aislamiento multiusuario).
+    other = Tenant(
+        external_id="t-otro",
+        name="Otro",
+        metadata_={"tax_prior_losses_pending": {"2024": "999"}},
+    )
+    db.add(other)
+    db.commit()
+    _seed_loss_then_gain(db)  # portfolio del tenant activo, sin metadata
+
+    report = TaxReportService().compute_report(db, 2025)
+    comp = report["filing"]["loss_compensation"]
+    assert comp["estimativo"] is True
+    assert comp["prior_losses"][0]["casilla_integracion"] is None
+    # El saldo es el del libro (-400), no los 999 declarados por otro tenant.
+    assert comp["prior_losses"][0]["pending_start_base"] == 400.0

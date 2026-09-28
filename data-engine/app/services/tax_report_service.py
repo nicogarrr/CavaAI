@@ -43,7 +43,6 @@ The report follows Spanish IRPF conventions:
 
 from __future__ import annotations
 
-import json
 from collections import deque
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -57,6 +56,7 @@ from app.models import (
     Company,
     Position,
     TaxReport,
+    Tenant,
     Transaction,
 )
 from app.services.portfolio_fx_service import PortfolioFXService
@@ -712,17 +712,27 @@ class TaxReportService:
                 "incomplete": prior_summary.get("incomplete_fx", False),
             })
         # Saldos pendientes declarados (anexo C.3 de la última declaración):
-        # fuente autoritativa para los saldos de ejercicios anteriores. Sin
-        # este input los saldos se derivan del libro y se etiquetan como
-        # estimación NO trasladable a casillas (ver build_loss_compensation).
+        # fuente autoritativa para los saldos de ejercicios anteriores. Son
+        # datos fiscales PERSONALES: se leen del tenant del portfolio activo
+        # (Tenant.metadata["tax_prior_losses_pending"], JSON {"2022": 300.0}),
+        # NUNCA de configuración global del proceso — en un despliegue
+        # multiusuario una variable global filtraría los saldos de una
+        # persona a las declaraciones de otra. Sin dato del tenant, los
+        # saldos se derivan del libro y se etiquetan como estimación NO
+        # trasladable a casillas (ver build_loss_compensation).
         declared_pending = None
-        raw_declared = (self.settings.tax_prior_losses_pending_json or "").strip()
-        if raw_declared:
+        portfolio = self.fx.portfolio(db)
+        tenant = (
+            db.get(Tenant, portfolio.tenant_id)
+            if portfolio is not None and portfolio.tenant_id is not None
+            else None
+        )
+        raw_declared = (tenant.metadata_ or {}).get("tax_prior_losses_pending") if tenant else None
+        if isinstance(raw_declared, dict):
             try:
-                parsed = json.loads(raw_declared)
                 declared_pending = {
                     int(year): Decimal(str(amount))
-                    for year, amount in parsed.items()
+                    for year, amount in raw_declared.items()
                     if Decimal(str(amount)) > 0
                 }
             except (ValueError, TypeError, ArithmeticError):
