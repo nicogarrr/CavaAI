@@ -994,10 +994,13 @@ class FinancialIngestionService:
                 "documents": len(mirror_serves),
                 "synced_at": mirror_serves[-1].get("synced_at"),
             }
+        # "mirror" se escribe SIEMPRE (null cuando esta corrida fue SEC
+        # directo): una clave vieja de una corrida con fallback no puede
+        # sobrevivir y atribuir al mirror una ingesta directa.
         document.metadata_ = {
             **(document.metadata_ or {}),
             "fy_periods": fy_periods,
-            **({"mirror": mirror_info} if mirror_info else {}),
+            "mirror": mirror_info,
         }
         sync_company_fact_chunks(db, company)
         db.commit()
@@ -1013,7 +1016,8 @@ class FinancialIngestionService:
             "free_data": free_data,
             "fy_periods": fy_periods,
             "annual_anchored_filings": len(annual_anchors),
-            **({"mirror": mirror_info} if mirror_info else {}),
+            # None cuando no hubo fallback: el consumidor ve la fuente real.
+            "mirror": mirror_info,
         }
 
     async def refresh_from_esef(self, db: Session, company: Company) -> dict[str, Any]:

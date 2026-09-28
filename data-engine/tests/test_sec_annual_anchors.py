@@ -420,3 +420,117 @@ def test_mirror_sirve_solo_si_hash_casa(monkeypatch):
     assert serves[0]["url"].endswith(doc)
     assert serves[0]["synced_at"] == manifest["synced_at"]
     get_settings.cache_clear()
+
+
+# --- Regresion de procedencia: la clave mirror no sobrevive a una corrida directa ---
+
+def test_mirror_metadata_no_sobrevive_a_corrida_directa(monkeypatch):
+    """Secuencia en el mismo documento: corrida 1 con SEC bloqueada (403 ->
+    mirror HF, metadata declara mirror), corrida 2 con SEC directo OK ->
+    metadata_['mirror'] y resultado['mirror'] quedan en None (la API nunca
+    atribuye al mirror una ingesta directa)."""
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.config import get_settings
+    from app.models.entities import Base, Company, Document
+    from app.services import financial_ingestion_service as ingestion
+    from app.services.connectors import sec_edgar
+    from app.services.connectors.sec import SECClient
+    from app.services.financial_ingestion_service import FinancialIngestionService
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.delenv("SEC_SNAPSHOT_DIR", raising=False)
+    get_settings.cache_clear()
+    monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    db = factory()
+    db.info["tenant_id"] = "tenant-test"
+    company = Company(
+        ticker="ACME", name="ACME", exchange="NASDAQ", currency="USD",
+        sector="S", industry="I", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[],
+        factor_tags=[])
+    db.add(company)
+    db.commit()
+
+    tickers_payload = {"0": {"cik_str": 1, "ticker": "ACME", "title": "ACME Corp"}}
+    facts_payload = {"cik": 1, "facts": {"us-gaap": {}}}
+    subs_payload = {"filings": {"recent": {}}}
+    bodies = {
+        "company_tickers.json": json.dumps(tickers_payload).encode(),
+        "companyfacts/CIK0000000001.json": json.dumps(facts_payload).encode(),
+        "submissions/CIK0000000001.json": json.dumps(subs_payload).encode(),
+    }
+    files = {p: hashlib.sha1(c).hexdigest() for p, c in bodies.items()}
+
+    class _Resp:
+        def __init__(self, data, content):
+            self._data = data
+            self.status_code = 200
+            self.headers = {}
+            self.content = content
+        def raise_for_status(self): pass
+        def json(self): return self._data
+
+    class _MirrorHTTP:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, headers=None):
+            if url.endswith("/manifest.json"):
+                from datetime import UTC, datetime
+                return _Resp(
+                    {"tickers": {}, "synced_at": datetime.now(UTC).isoformat(),
+                     "files": files}, b"{}")
+            for path, content in bodies.items():
+                if url.endswith(f"/{path}"):
+                    return _Resp(json.loads(content), content)
+            raise AssertionError(f"URL inesperada: {url}")
+
+    monkeypatch.setattr(sec_edgar.httpx, "AsyncClient", _MirrorHTTP)
+
+    client = SECClient()
+    import httpx as _httpx
+
+    async def _get_403(url):
+        req = _httpx.Request("GET", url)
+        _httpx.Response(403, request=req).raise_for_status()
+    client._get = _get_403
+    monkeypatch.setattr(ingestion, "SECClient", lambda *a, **k: client)
+
+    service = FinancialIngestionService()
+    res1 = asyncio.run(service.refresh_from_sec(db=db, company=company))
+    assert res1["mirror"] is not None
+    assert res1["mirror"]["documents"] == 3  # tickers + facts + submissions
+    doc = db.scalar(select(Document).where(
+        Document.company_id == company.id, Document.source_type == "SEC"))
+    assert doc.metadata_["mirror"]["documents"] == 3
+    assert doc.metadata_["mirror"]["synced_at"]
+
+    # Corrida 2: SEC directo vuelve (200). El mirror no se consulta.
+    class _DirectResp:
+        def __init__(self, data): self._d = data
+        def json(self): return self._d
+
+    async def _get_200(url):
+        if "company_tickers" in url:
+            return _DirectResp(tickers_payload)
+        if "companyfacts" in url:
+            return _DirectResp(facts_payload)
+        if "submissions" in url:
+            return _DirectResp(subs_payload)
+        raise AssertionError(f"URL inesperada: {url}")
+    client._get = _get_200
+    res2 = asyncio.run(service.refresh_from_sec(db=db, company=company))
+    assert res2["mirror"] is None
+    db.expire_all()
+    doc = db.scalar(select(Document).where(
+        Document.company_id == company.id, Document.source_type == "SEC"))
+    assert doc.metadata_["mirror"] is None
+    get_settings.cache_clear()
