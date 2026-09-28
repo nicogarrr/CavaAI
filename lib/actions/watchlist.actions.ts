@@ -9,6 +9,7 @@ import { classifyError, getFriendlyErrorMessage, type ErrorCause } from '@/lib/t
 import { getStockQuote, getStockFinancialDataLight } from '@/lib/actions/finnhub.actions';
 import { getResearchCompanyBasics } from '@/lib/actions/market-workspace.actions';
 import { quoteSymbolFor } from '@/lib/market/quote-symbol';
+import { sessionDateEt } from '@/lib/market/quote-freshness';
 
 // Helper para obtener userId (researchRequest añade la identidad firmada
 // vía researchIdentityHeaders usando el usuario autenticado).
@@ -122,6 +123,11 @@ export type WatchlistEntryData = {
     changePercent: number | null;
     marketCap: number | null;
     peRatio: number | null;
+    // F358: frescura del precio: 'live' = sesión en curso; 'close' = último
+    // cierre fechado (con fecha en priceAsOf si se conoce). Un cierre NUNCA
+    // se pinta como cotización actual.
+    priceKind: 'live' | 'close' | null;
+    priceAsOf: string | null;
 };
 
 export async function getWatchlistEntryData(symbol: string): Promise<WatchlistEntryData> {
@@ -138,6 +144,8 @@ export async function getWatchlistEntryData(symbol: string): Promise<WatchlistEn
         changePercent: null,
         marketCap: null,
         peRatio: null,
+        priceKind: null,
+        priceAsOf: null,
     };
     if (!quoteSymbol) return base;
 
@@ -149,10 +157,14 @@ export async function getWatchlistEntryData(symbol: string): Promise<WatchlistEn
         usListing ? getStockFinancialDataLight(normalized) : Promise.resolve(null),
     ]);
 
+    // F358: la cotización llega con frescura validada en origen; solo se
+    // muestra precio si hay kind ('live' o 'close' etiquetado), nunca stale.
     const price =
         quote && typeof quote.c === 'number' && Number.isFinite(quote.c) && quote.c > 0
             ? quote.c
             : null;
+    const priceKind = price !== null ? quote?.kind ?? null : null;
+    const priceAsOf = priceKind === 'close' && quote?.t ? sessionDateEt(quote.t) : null;
     const metrics = light?.metrics?.metric ?? {};
     const marketCapM = typeof metrics.marketCapitalization === 'number' ? metrics.marketCapitalization : null;
     const peRatio = typeof metrics.peTTM === 'number' && Number.isFinite(metrics.peTTM) ? metrics.peTTM : null;
@@ -179,5 +191,7 @@ export async function getWatchlistEntryData(symbol: string): Promise<WatchlistEn
                   : null,
         marketCap: marketCapM !== null ? marketCapM * 1e6 : null, // Finnhub devuelve M USD
         peRatio,
+        priceKind,
+        priceAsOf,
     };
 }
