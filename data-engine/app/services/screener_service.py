@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import ast
+import logging
 import operator
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -22,6 +24,8 @@ from app.models import (
     SavedScreenMatch,
 )
 from app.services.review_alert_service import ReviewAlertService
+
+logger = logging.getLogger(__name__)
 
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,159}$")
 COMPARATORS = {
@@ -286,6 +290,15 @@ class ScreenerService:
         normalized = [self._criterion(item) for item in criteria]
         ranking = SafeFormula(ranking_formula) if ranking_formula else None
         definitions = CustomMetricService.active(db)
+        # Parse every formula ONCE, outside the company loop: the set of names a
+        # screen references is what decides which financial_facts rows are read.
+        parsed_criteria = [
+            (criterion, SafeFormula(criterion["left"]), SafeFormula(criterion["right"]))
+            for criterion in normalized
+        ]
+        used_names: set[str] = set(ranking.names) if ranking else set()
+        for _criterion_item, left, right in parsed_criteria:
+            used_names.update(left.names | right.names)
         results = []
         companies = list(db.scalars(select(Company).order_by(Company.ticker)).all())
         # Batch-fetch observations once: two queries per table instead of two
@@ -300,22 +313,14 @@ class ScreenerService:
             .order_by(
                 CalculatedMetric.company_id,
                 CalculatedMetric.metric,
-                desc(CalculatedMetric.fiscal_year),
+                CalculatedMetric.fiscal_year.desc().nullslast(),
                 desc(CalculatedMetric.id),
             )
         ).all():
             calculated_by_company.setdefault(row.company_id, []).append(row)
-        facts_by_company: dict[int, list[FinancialFact]] = {}
-        for row in db.scalars(
-            select(FinancialFact)
-            .order_by(
-                FinancialFact.company_id,
-                FinancialFact.metric,
-                desc(FinancialFact.fiscal_year),
-                desc(FinancialFact.id),
-            )
-        ).all():
-            facts_by_company.setdefault(row.company_id, []).append(row)
+        facts_by_company = self._facts_by_company(
+            db, self._required_fact_metrics(used_names, definitions)
+        )
         for company in companies:
             observations = self._observations_from_rows(
                 calculated_by_company.get(company.id, []),
@@ -323,15 +328,18 @@ class ScreenerService:
             )
             self._custom_metrics(observations, definitions)
             values = {key: item.value for key, item in observations.items()}
-            criterion_results = []
-            missing: set[str] = set()
-            used_names: set[str] = set()
-            if ranking:
-                used_names.update(ranking.names)
-            for criterion in normalized:
-                left = SafeFormula(criterion["left"])
-                right = SafeFormula(criterion["right"])
-                used_names.update(left.names | right.names)
+            criterion_results: list[dict[str, Any]] = []
+            # Criteria and ranking are tracked separately ON PURPOSE. A ranking
+            # formula is a tiebreaker: it orders the result set, it never decides
+            # membership. Sharing one `missing` set let a company that satisfies
+            # every criterion but lacks the ranking metric be reported
+            # `matched: false`, be dropped from `match_count`, never become a
+            # SavedScreenMatch and DEACTIVATE an existing match - silently
+            # stopping its alerts.
+            criteria_missing: set[str] = set()
+            ranking_missing: set[str] = set()
+            unevaluable_criteria: set[str] = set()
+            for criterion, left, right in parsed_criteria:
                 try:
                     left_value = left.evaluate(values)
                     right_value = right.evaluate(values)
@@ -346,37 +354,78 @@ class ScreenerService:
                     )
                 except MissingVariables as exc:
                     expanded = self._expand_missing(exc.names, definitions, values)
-                    missing.update(expanded)
+                    criteria_missing.update(expanded)
                     criterion_results.append(
                         {**criterion, "passed": False, "missing_fields": sorted(expanded)}
                     )
+                except ValueError as exc:
+                    # SafeFormula re-raises division-by-zero / non-finite results
+                    # as ValueError. This company's data is unusable for THIS
+                    # criterion; the rest of the universe is fine. Without this
+                    # branch a single revenue == 0 under `fcf_margin > 0.1` took
+                    # down the whole run (and, in the refresh path, the whole
+                    # POST /api/portfolio/refresh-market after prices, FX,
+                    # revaluation and the snapshot had already been committed).
+                    unevaluable_criteria.add(criterion["left"])
+                    criterion_results.append(
+                        {
+                            **criterion,
+                            "passed": False,
+                            "status": "unevaluable",
+                            "error": str(exc),
+                        }
+                    )
             rank_value = None
+            ranking_unevaluable: str | None = None
             if ranking:
                 try:
                     rank_value = ranking.evaluate(values)
                 except MissingVariables as exc:
-                    missing.update(self._expand_missing(exc.names, definitions, values))
+                    ranking_missing.update(
+                        self._expand_missing(exc.names, definitions, values)
+                    )
+                except ValueError as exc:
+                    # Same isolation as the criteria: an unrankable company keeps
+                    # its result row and simply sorts on the `rank_value is None`
+                    # key. Its ranking fields are present but unusable, so they
+                    # are NOT reported as missing data - that would be a false
+                    # claim about the coverage of the screen.
+                    ranking_unevaluable = str(exc)
+                    logger.warning(
+                        "screener ranking formula unevaluable for company_id=%s: %s",
+                        company.id,
+                        exc,
+                    )
+            # The union is only for RESULT QUALITY (which fields are missing,
+            # coverage and confidence). Membership reads `criteria_missing` alone.
+            missing = criteria_missing | ranking_missing
             available = {name for name in used_names - missing if name in observations}
             confidence_values = [observations[name].confidence for name in available]
             dates = [observations[name].as_of for name in available if observations[name].as_of]
-            results.append(
-                {
-                    "company_id": company.id,
-                    "ticker": company.ticker,
-                    "name": company.name,
-                    "matched": not missing and all(item["passed"] for item in criterion_results),
-                    "rank_value": str(rank_value) if rank_value is not None else None,
-                    "coverage_percent": round(100 * len(available) / len(used_names), 1)
-                    if used_names
-                    else 100.0,
-                    "confidence": str(sum(confidence_values, Decimal("0")) / len(confidence_values))
-                    if confidence_values
-                    else "0",
-                    "latest_data_at": max(dates).isoformat() if dates else None,
-                    "missing_fields": sorted(missing),
-                    "criteria": criterion_results,
-                }
-            )
+            # `entry`, not `row`: an annotated `row` here re-types the whole
+            # function-scope name that the ORM batch loops above already bound
+            # to CalculatedMetric / FinancialFact.
+            entry: dict[str, Any] = {
+                "company_id": company.id,
+                "ticker": company.ticker,
+                "name": company.name,
+                "matched": not criteria_missing and all(item["passed"] for item in criterion_results),
+                "rank_value": str(rank_value) if rank_value is not None else None,
+                "coverage_percent": round(100 * len(available) / len(used_names), 1)
+                if used_names
+                else 100.0,
+                "confidence": str(sum(confidence_values, Decimal("0")) / len(confidence_values))
+                if confidence_values
+                else "0",
+                "latest_data_at": max(dates).isoformat() if dates else None,
+                "missing_fields": sorted(missing),
+                "criteria": criterion_results,
+            }
+            if unevaluable_criteria:
+                entry["unevaluable_criteria"] = sorted(unevaluable_criteria)
+            if ranking_unevaluable is not None:
+                entry["ranking_status"] = "unevaluable"
+            results.append(entry)
 
         def result_order(row: dict[str, Any]) -> tuple[Any, ...]:
             missing_rank = row["rank_value"] is None
@@ -393,6 +442,97 @@ class ScreenerService:
             "match_count": sum(1 for row in results if row["matched"]),
             "results": results,
         }
+
+    # Per-company cap on the financial_facts rows read for ONE metric. A screen
+    # only reads the latest value and the CAGR endpoints, so a few dozen periods
+    # per metric is plenty of history while still bounding the read.
+    MAX_FACTS_PER_METRIC = 60
+
+    def _facts_by_company(
+        self, db: Session, metrics: set[str]
+    ) -> dict[int, list[FinancialFact]]:
+        """Financial facts for the metrics this screen references, bounded.
+
+        Unfiltered, this read the WHOLE `financial_facts` table (every metric of
+        every company, full history) once per saved screen on every market
+        refresh. It is now filtered to the referenced metric names and capped at
+        `MAX_FACTS_PER_METRIC` rows per (company, metric) with a
+        `row_number()` window, which both SQLite and Postgres support.
+
+        Ordering is `(fiscal_year DESC NULLS LAST, id DESC)`: the newest
+        fiscal year first, and within a year the newest ingested row first.
+        `NULLS LAST` is explicit because SQLite sorts NULLs first on ASC while
+        Postgres sorts them last, and a NULL-year fact must never outrank a real
+        annual one.
+        """
+        if not metrics:
+            return {}
+        ranked = (
+            select(
+                FinancialFact.id.label("id"),
+                func.row_number().over(
+                    partition_by=(FinancialFact.company_id, FinancialFact.metric),
+                    order_by=(
+                        FinancialFact.fiscal_year.desc().nullslast(),
+                        desc(FinancialFact.id),
+                    ),
+                ).label("rn"),
+            )
+            .where(FinancialFact.metric.in_(sorted(metrics)))
+            .subquery("bounded_financial_facts")
+        )
+        facts_by_company: dict[int, list[FinancialFact]] = {}
+        for fact in db.scalars(
+            select(FinancialFact)
+            .join(ranked, ranked.c.id == FinancialFact.id)
+            .where(ranked.c.rn <= self.MAX_FACTS_PER_METRIC)
+            .order_by(
+                FinancialFact.company_id,
+                FinancialFact.metric,
+                FinancialFact.fiscal_year.desc().nullslast(),
+                desc(FinancialFact.id),
+            )
+        ).all():
+            facts_by_company.setdefault(fact.company_id, []).append(fact)
+        return facts_by_company
+
+    def _required_fact_metrics(
+        self, names: set[str], definitions: list[CustomMetricDefinition]
+    ) -> set[str]:
+        """Fact metrics behind the names a screen references.
+
+        Walks the same graph the observations do: a `*_cagr` name needs its base
+        fact metric, `shares_cagr` needs `shares_diluted`, `fcf_per_share_cagr`
+        needs `free_cash_flow` and `shares_diluted`, and a custom metric key
+        needs every dependency of its formula (transitively).
+        """
+        by_key = {definition.metric_key: definition for definition in definitions}
+        required: set[str] = set()
+        pending = list(names)
+        seen: set[str] = set()
+        while pending:
+            name = pending.pop()
+            if name in seen:
+                continue
+            seen.add(name)
+            required.add(name)
+            for base in self._derived_fact_metrics(name):
+                pending.append(base)
+            definition = by_key.get(name)
+            if definition is not None:
+                pending.extend(SafeFormula(definition.formula).names)
+        return required
+
+    @staticmethod
+    def _derived_fact_metrics(name: str) -> list[str]:
+        """Fact metrics that back a derived screener observation."""
+        if name == "shares_cagr":
+            return ["shares_diluted"]
+        if name == "fcf_per_share_cagr":
+            return ["free_cash_flow", "shares_diluted"]
+        if name.endswith("_cagr"):
+            return [name[: -len("_cagr")]]
+        return []
 
     @staticmethod
     def _expand_missing(
@@ -434,13 +574,21 @@ class ScreenerService:
                 CalculatedMetric.value.is_not(None),
                 CalculatedMetric.status == "ok",
             )
-            .order_by(CalculatedMetric.metric, desc(CalculatedMetric.fiscal_year), desc(CalculatedMetric.id))
+            .order_by(
+                CalculatedMetric.metric,
+                CalculatedMetric.fiscal_year.desc().nullslast(),
+                desc(CalculatedMetric.id),
+            )
         ).all()
         facts = list(
             db.scalars(
                 select(FinancialFact)
                 .where(FinancialFact.company_id == company.id)
-                .order_by(FinancialFact.metric, desc(FinancialFact.fiscal_year), desc(FinancialFact.id))
+                .order_by(
+                    FinancialFact.metric,
+                    FinancialFact.fiscal_year.desc().nullslast(),
+                    desc(FinancialFact.id),
+                )
             ).all()
         )
         return self._observations_from_rows(calculated, facts)
@@ -464,6 +612,12 @@ class ScreenerService:
         by_metric: dict[str, list[FinancialFact]] = {}
         for fact in facts:
             by_metric.setdefault(fact.metric, []).append(fact)
+            # DEDUP RULE: facts arrive ordered (fiscal_year DESC NULLS LAST,
+            # id DESC), so `setdefault` keeps the newest fiscal year and, within
+            # a year, the newest ingested row. `_cagr` applies the SAME rule
+            # (see `_newest_per_year`); the two must never diverge or a
+            # restated issuer is screened on the new value with a CAGR derived
+            # from the old one.
             result.setdefault(
                 fact.metric,
                 Observation(
@@ -491,11 +645,17 @@ class ScreenerService:
 
     @staticmethod
     def _cagr(series: list[FinancialFact]) -> Observation | None:
-        annual = {
-            fact.fiscal_year: fact
-            for fact in series
-            if fact.fiscal_year is not None and not (fact.fiscal_quarter or "").upper().startswith("Q")
-        }
+        # DEDUP RULE, identical to the point observation in
+        # `_observations_from_rows`: within one fiscal_year the NEWEST ingested
+        # row wins, i.e. the FIRST one seen, because the series arrives ordered
+        # (fiscal_year DESC NULLS LAST, id DESC) and a higher id is a later
+        # insert. `financial_facts` has no unique constraint on
+        # (tenant_id, company_id, metric, fiscal_year) and several documents
+        # legitimately author the same year, so a restated issuer has two rows
+        # per year. Building this dict by comprehension kept the LAST write and
+        # therefore the LOWEST id: the CAGR base was the OLD restatement while
+        # the point value was the NEW one, and growth was systematically wrong.
+        annual = ScreenerService._newest_per_year(series, annual_only=True)
         years = sorted(annual)
         if len(years) < 2:
             return None
@@ -512,11 +672,27 @@ class ScreenerService:
             [first.id, last.id],
         )
 
+    @staticmethod
+    def _newest_per_year(
+        rows: Iterable[FinancialFact], *, annual_only: bool = False
+    ) -> dict[int, FinancialFact]:
+        """Newest-ingested row per fiscal_year; first row wins (see `_cagr`)."""
+        by_year: dict[int, FinancialFact] = {}
+        for row in rows:
+            if row.fiscal_year is None:
+                continue
+            if annual_only and (row.fiscal_quarter or "").upper().startswith("Q"):
+                continue
+            by_year.setdefault(row.fiscal_year, row)
+        return by_year
+
     def _ratio_cagr(
         self, numerators: list[FinancialFact], denominators: list[FinancialFact]
     ) -> Observation | None:
-        numerator_by_year = {row.fiscal_year: row for row in numerators if row.fiscal_year}
-        denominator_by_year = {row.fiscal_year: row for row in denominators if row.fiscal_year}
+        # Same dedup rule as `_cagr`: newest row per fiscal_year, not the last
+        # write of a comprehension over an unsorted series.
+        numerator_by_year = self._newest_per_year(numerators)
+        denominator_by_year = self._newest_per_year(denominators)
         years = sorted(numerator_by_year.keys() & denominator_by_year.keys())
         if len(years) < 2:
             return None
@@ -565,6 +741,15 @@ class ScreenerService:
                 try:
                     value = formula.evaluate(values)
                 except MissingVariables:
+                    continue
+                except ValueError as exc:
+                    # A custom metric that cannot be computed on THIS company's
+                    # data (division by zero, non-finite) is left unobserved, so
+                    # the screen reports it as missing instead of the whole run
+                    # raising out of here.
+                    logger.warning(
+                        "custom metric %s unevaluable: %s", definition.metric_key, exc
+                    )
                     continue
                 dependencies = [observations[name] for name in formula.names]
                 observations[definition.metric_key] = Observation(

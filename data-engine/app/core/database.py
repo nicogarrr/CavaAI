@@ -1,12 +1,69 @@
+import logging
 from collections.abc import Generator
 
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, with_loader_criteria
 
 from app.core.auth import ResearchPrincipal, get_research_principal
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# Forward-compat migration failures recorded by init_db(). Empty means the
+# schema is fully migrated. A non-empty list means at least one optional
+# ALTER / back-fill did NOT run: the schema is half-migrated and every query
+# touching the missing column will 500 with no hint that startup was the
+# cause. Surfaced by `schema_migration_issues()` for the health payload.
+_SCHEMA_MIGRATION_ERRORS: list[dict[str, str]] = []
+
+
+def schema_migration_issues() -> list[dict[str, str]]:
+    """Forward-compat migration failures recorded by the last `init_db()`.
+
+    Each entry is `{"statement": <sql or label>, "error": "<ExceptionClass>"}`.
+    Never raises, never blocks: a failed optional alter is a degraded schema,
+    not a dead process.
+    """
+    return [dict(item) for item in _SCHEMA_MIGRATION_ERRORS]
+
+
+def _record_schema_migration_error(statement: str, exc: BaseException) -> None:
+    """Log an optional migration failure at ERROR and keep it for /api/health.
+
+    Only the exception TYPE is recorded, never its message: an init failure
+    can carry SQL fragments and host paths, and this is surfaced by a public
+    endpoint.
+    """
+    _SCHEMA_MIGRATION_ERRORS.append(
+        {"statement": statement, "error": type(exc).__name__}
+    )
+    logger.error(
+        "Optional schema migration failed (statement=%r, error=%s). "
+        "The schema is degraded: queries touching the missing column will fail.",
+        statement,
+        type(exc).__name__,
+        exc_info=exc,
+    )
+
+
+def _execute_optional(statement: str, sql: str) -> bool:
+    """Run ONE optional forward-compat statement, isolated from its siblings.
+
+    The previous shape wrapped all 30+ ALTERs and the tenant_id back-fill in a
+    single `except Exception: pass`: one failure (locked DB, read-only volume)
+    left a half-migrated schema with no log, no metric and no startup failure.
+    Each statement is now attempted on its own so a failure is reported with
+    the statement that caused it and the remaining migrations still run.
+    """
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(sql))
+    except Exception as exc:  # noqa: BLE001 — never block startup on optional alter
+        _record_schema_migration_error(statement, exc)
+        return False
+    return True
 
 
 class Base(DeclarativeBase):
@@ -153,13 +210,21 @@ def get_db(
 def init_db() -> None:
     import re
 
-    from sqlalchemy import inspect, text
+    from sqlalchemy import inspect
 
     from app import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 
+    # The record describes THIS run: a previous degraded startup must not keep
+    # a stale entry forever, and a healthy re-run must clear it.
+    _SCHEMA_MIGRATION_ERRORS.clear()
+
     # Lightweight forward-compat for SQLite/dev DBs created before new columns.
+    # Every statement is attempted independently through `_execute_optional`
+    # (or `_record_schema_migration_error` for the structural rebuild), so one
+    # failure is logged at ERROR with the offending statement and the rest of
+    # the forward-compat still runs. Nothing here ever blocks startup.
     try:
         inspector = inspect(engine)
         if settings.database_url.startswith("sqlite") and "investment_principles" in (
@@ -176,34 +241,34 @@ def init_db() -> None:
                 "version": "INTEGER NOT NULL DEFAULT 1",
                 "superseded_by_id": "INTEGER",
             }
-            with engine.begin() as conn:
-                for column, definition in principle_additions.items():
-                    if column not in principle_columns:
-                        conn.execute(
-                            text(
-                                "ALTER TABLE investment_principles "
-                                f"ADD COLUMN {column} {definition}"
-                            )
-                        )
-                conn.execute(
-                    text(
-                        "UPDATE investment_principles "
-                        "SET principle_fingerprint = lower(hex(randomblob(32))) "
-                        "WHERE principle_fingerprint IS NULL"
-                    )
+            for column, definition in principle_additions.items():
+                if column in principle_columns:
+                    continue
+                _execute_optional(
+                    f"ALTER TABLE investment_principles ADD COLUMN {column}",
+                    "ALTER TABLE investment_principles "
+                    f"ADD COLUMN {column} {definition}",
                 )
+            _execute_optional(
+                "UPDATE investment_principles SET principle_fingerprint",
+                "UPDATE investment_principles "
+                "SET principle_fingerprint = lower(hex(randomblob(32))) "
+                "WHERE principle_fingerprint IS NULL",
+            )
         if "thesis_versions" in inspector.get_table_names():
             columns = {col["name"] for col in inspector.get_columns("thesis_versions")}
             if "input_fingerprint" not in columns:
-                with engine.begin() as conn:
-                    conn.execute(
-                        text("ALTER TABLE thesis_versions ADD COLUMN input_fingerprint VARCHAR(64)")
-                    )
+                _execute_optional(
+                    "ALTER TABLE thesis_versions ADD COLUMN input_fingerprint",
+                    "ALTER TABLE thesis_versions ADD COLUMN input_fingerprint VARCHAR(64)",
+                )
         if "news_events" in inspector.get_table_names():
             columns = {col["name"] for col in inspector.get_columns("news_events")}
             if "metadata" not in columns:
-                with engine.begin() as conn:
-                    conn.execute(text("ALTER TABLE news_events ADD COLUMN metadata JSON"))
+                _execute_optional(
+                    "ALTER TABLE news_events ADD COLUMN metadata",
+                    "ALTER TABLE news_events ADD COLUMN metadata JSON",
+                )
         if settings.database_url.startswith("sqlite"):
             thesis_columns = {
                 column["name"]: column
@@ -224,63 +289,72 @@ def init_db() -> None:
             ):
                 # SQLite cannot drop NOT NULL in place. Rebuild only this table,
                 # preserving its constraints, data and explicit indexes.
-                with engine.connect() as conn:
-                    create_sql = conn.execute(
-                        text(
-                            "SELECT sql FROM sqlite_master "
-                            "WHERE type='table' AND name='thesis_versions'"
-                        )
-                    ).scalar_one()
-                    index_sql = [
-                        row[0]
-                        for row in conn.execute(
+                try:
+                    with engine.connect() as conn:
+                        create_sql = conn.execute(
                             text(
-                                "SELECT sql FROM sqlite_master WHERE type='index' "
-                                "AND tbl_name='thesis_versions' AND sql IS NOT NULL"
+                                "SELECT sql FROM sqlite_master "
+                                "WHERE type='table' AND name='thesis_versions'"
                             )
-                        ).all()
-                    ]
-                    conn.commit()
-                    conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-                    conn.commit()
-                    try:
-                        with conn.begin():
-                            rebuilt = create_sql.replace(
-                                "CREATE TABLE thesis_versions",
-                                "CREATE TABLE thesis_versions__nullable",
-                                1,
-                            )
-                            for column in nullable_thesis_values:
-                                rebuilt = re.sub(
-                                    rf"(\b{column}\b\s+NUMERIC\([^)]+\))\s+NOT NULL",
-                                    r"\1",
-                                    rebuilt,
-                                    count=1,
-                                    flags=re.IGNORECASE,
+                        ).scalar_one()
+                        index_sql = [
+                            row[0]
+                            for row in conn.execute(
+                                text(
+                                    "SELECT sql FROM sqlite_master WHERE type='index' "
+                                    "AND tbl_name='thesis_versions' AND sql IS NOT NULL"
                                 )
-                            conn.exec_driver_sql(rebuilt)
-                            names = [
-                                row[1]
-                                for row in conn.exec_driver_sql(
-                                    "PRAGMA table_info(thesis_versions)"
-                                ).all()
-                            ]
-                            quoted = ", ".join(f'"{name}"' for name in names)
-                            conn.exec_driver_sql(
-                                f"INSERT INTO thesis_versions__nullable ({quoted}) "
-                                f"SELECT {quoted} FROM thesis_versions"
-                            )
-                            conn.exec_driver_sql("DROP TABLE thesis_versions")
-                            conn.exec_driver_sql(
-                                "ALTER TABLE thesis_versions__nullable "
-                                "RENAME TO thesis_versions"
-                            )
-                            for statement in index_sql:
-                                conn.exec_driver_sql(statement)
-                    finally:
-                        conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+                            ).all()
+                        ]
                         conn.commit()
-                inspector = inspect(engine)
+                        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+                        conn.commit()
+                        try:
+                            with conn.begin():
+                                rebuilt = create_sql.replace(
+                                    "CREATE TABLE thesis_versions",
+                                    "CREATE TABLE thesis_versions__nullable",
+                                    1,
+                                )
+                                for column in nullable_thesis_values:
+                                    rebuilt = re.sub(
+                                        rf"(\b{column}\b\s+NUMERIC\([^)]+\))\s+NOT NULL",
+                                        r"\1",
+                                        rebuilt,
+                                        count=1,
+                                        flags=re.IGNORECASE,
+                                    )
+                                conn.exec_driver_sql(rebuilt)
+                                names = [
+                                    row[1]
+                                    for row in conn.exec_driver_sql(
+                                        "PRAGMA table_info(thesis_versions)"
+                                    ).all()
+                                ]
+                                quoted = ", ".join(f'"{name}"' for name in names)
+                                conn.exec_driver_sql(
+                                    f"INSERT INTO thesis_versions__nullable ({quoted}) "
+                                    f"SELECT {quoted} FROM thesis_versions"
+                                )
+                                conn.exec_driver_sql("DROP TABLE thesis_versions")
+                                conn.exec_driver_sql(
+                                    "ALTER TABLE thesis_versions__nullable "
+                                    "RENAME TO thesis_versions"
+                                )
+                                for statement in index_sql:
+                                    conn.exec_driver_sql(statement)
+                        finally:
+                            conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+                            conn.commit()
+                except Exception as exc:  # noqa: BLE001 — one table, keep migrating
+                    _record_schema_migration_error(
+                        "REBUILD thesis_versions (drop NOT NULL on "
+                        + ", ".join(nullable_thesis_values)
+                        + ")",
+                        exc,
+                    )
+                else:
+                    inspector = inspect(engine)
             sqlite_forward_columns = {
                 "positions": {
                     "portfolio_id": "INTEGER",
@@ -325,13 +399,11 @@ def init_db() -> None:
                 for column_name, definition in definitions.items():
                     if column_name in existing:
                         continue
-                    with engine.begin() as conn:
-                        conn.execute(
-                            text(
-                                f'ALTER TABLE "{table_name}" ADD COLUMN '
-                                f'"{column_name}" {definition}'
-                            )
-                        )
+                    _execute_optional(
+                        f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}"',
+                        f'ALTER TABLE "{table_name}" ADD COLUMN '
+                        f'"{column_name}" {definition}',
+                    )
                 inspector = inspect(engine)
             tenant_tables = [
                 table.name
@@ -345,16 +417,17 @@ def init_db() -> None:
                     for col in inspector.get_columns(table_name)
                 }
                 if "tenant_id" not in columns:
-                    with engine.begin() as conn:
-                        conn.execute(
-                            text(
-                                f'ALTER TABLE "{table_name}" '
-                                "ADD COLUMN tenant_id INTEGER"
-                            )
-                        )
+                    _execute_optional(
+                        f'ALTER TABLE "{table_name}" ADD COLUMN tenant_id',
+                        f'ALTER TABLE "{table_name}" ADD COLUMN tenant_id INTEGER',
+                    )
                     inspector = inspect(engine)
-    except Exception:  # noqa: BLE001 — never block startup on optional alter
-        pass
+    except Exception as exc:  # noqa: BLE001 — never block startup on optional alter
+        # A structural failure (inspection itself, driver refusal) is still not
+        # a reason to kill the process, but it is NEVER silent: an unlogged
+        # half-migrated schema is how a missing column turns into an unexplained
+        # 500 in every query that touches it.
+        _record_schema_migration_error("init_db forward-compat block", exc)
 
 
 def batch_refresh(db: Session, objects: list) -> None:

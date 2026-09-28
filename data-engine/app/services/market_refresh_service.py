@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Protocol
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -26,6 +27,8 @@ from app.services.risk_service import RiskService
 from app.services.screener_service import ScreenerService
 
 _US_EXCHANGE_TOKENS = ("NYSE", "NEW YORK", "NASDAQ", "AMEX", "OTC", "BATS", "ARCA")
+
+logger = logging.getLogger(__name__)
 
 
 def _us_listed(company: Company) -> bool:
@@ -394,14 +397,35 @@ class MarketRefreshService:
         ledger = PortfolioLedgerService()
         revalued = 0
         stale_prices: list[dict] = []
-        # Batch: latest price per position company in one ordered query.
+        # Batch: latest price per position company in one bounded query.
+        # The previous form (`order_by(company_id, desc(date))` + `setdefault`)
+        # had no LIMIT and no date bound, so it materialised EVERY daily bar
+        # ever stored for every held company just to read the newest one. A
+        # `row_number() = 1` window per company keeps one row per company on
+        # both SQLite and Postgres; ordering is (date DESC NULLS LAST, id DESC)
+        # which resolves to the same row as before because
+        # (company_id, date) is unique.
         position_company_ids = list({company.id for _, company in rows})
         latest_prices: dict[int, MarketPrice] = {}
         if position_company_ids:
+            latest = (
+                select(
+                    MarketPrice.id.label("id"),
+                    func.row_number().over(
+                        partition_by=MarketPrice.company_id,
+                        order_by=(
+                            MarketPrice.date.desc().nullslast(),
+                            desc(MarketPrice.id),
+                        ),
+                    ).label("rn"),
+                )
+                .where(MarketPrice.company_id.in_(position_company_ids))
+                .subquery("latest_market_price")
+            )
             for price in db.scalars(
                 select(MarketPrice)
-                .where(MarketPrice.company_id.in_(position_company_ids))
-                .order_by(MarketPrice.company_id, desc(MarketPrice.date))
+                .join(latest, latest.c.id == MarketPrice.id)
+                .where(latest.c.rn == 1)
             ).all():
                 latest_prices.setdefault(price.company_id, price)
         # One FX table for every revaluation (point-in-time per row, no N+1).
@@ -480,10 +504,27 @@ class MarketRefreshService:
 
         alert_results = AlertRuleService().evaluate_all(db)
         screen_results = []
+        screen_errors: list[dict] = []
         for screen in db.scalars(
             select(SavedScreen).where(SavedScreen.active.is_(True)).order_by(SavedScreen.id)
         ).all():
-            result = ScreenerService().run_saved(db, screen)
+            # A screen is the LAST stage: prices, FX, revaluation and the
+            # snapshot are already committed. An unevaluable formula or a
+            # malformed screen used to propagate out of here and turned the
+            # whole refresh into a 500 AFTER a partial commit. One bad screen
+            # fails soft and is reported; the rest still run.
+            try:
+                result = ScreenerService().run_saved(db, screen)
+            except Exception as exc:  # noqa: BLE001 — isolate one screen, report it
+                db.rollback()
+                logger.exception("saved screen %s failed during market refresh", screen.id)
+                screen_errors.append(
+                    {
+                        "saved_screen_id": screen.id,
+                        "reason": redact_secrets(f"{type(exc).__name__}:{exc}"),
+                    }
+                )
+                continue
             screen_results.append(
                 {
                     "saved_screen_id": screen.id,
@@ -495,13 +536,18 @@ class MarketRefreshService:
             {
                 "step": 5,
                 "name": "evaluate_alerts",
-                "status": "ok",
+                "status": "ok" if not screen_errors else "partial",
                 "alert_rules": len(alert_results),
                 "saved_screens": len(screen_results),
+                "errors": screen_errors,
             }
         )
         return {
-            "status": ("ok" if not price_errors and not fx_errors and not stale_prices else "partial"),
+            "status": (
+                "ok"
+                if not price_errors and not fx_errors and not stale_prices and not screen_errors
+                else "partial"
+            ),
             "as_of": as_of,
             "started_at": started,
             "completed_at": datetime.now(UTC),
