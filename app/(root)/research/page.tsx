@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { ArrowRight, BookOpen, FileSearch, Library, Newspaper, Settings, Workflow } from 'lucide-react';
 
 import { getResearchCompanySnapshots, getResearchDashboard } from '@/lib/actions/research.actions';
+import { getPortfolioSummary } from '@/lib/actions/portfolio.actions';
+import { getWatchlist } from '@/lib/actions/watchlist.actions';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import WorkProductButton from '@/components/work-products/WorkProductButton';
@@ -13,12 +16,13 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Panel } from '@/components/ui/panel';
 import { Stat } from '@/components/ui/stat';
 import { sectorIndustryLine } from '@/lib/sector-display';
+import { sortCompaniesByRelevance } from '@/lib/research/relevance';
+import { fetchInBatches } from '@/lib/research/snapshots';
 import {
     filterResearchIndex,
     firstSearchParam,
     paginateResearchIndex,
     parseIndexPage,
-    RESEARCH_INDEX_PAGE_SIZE,
     researchIndexHref,
 } from '@/lib/research/index-filter';
 
@@ -34,11 +38,13 @@ export const metadata: Metadata = {
 /**
  * El registro de empresas (`/api/companies`) solo trae la ficha de la empresa,
  * así que el rating y la fecha de la última tesis salen de su snapshot. Se
- * piden en UNA llamada batch (`/api/companies/snapshots?tickers=...`, queries
- * agregadas por IN en el backend) para la página visible: el tamaño de página
- * del índice casa con este tope, así toda tarjeta visible lleva su detalle.
+ * piden en llamadas batch (`/api/companies/snapshots?tickers=...`, queries
+ * agregadas por IN en el backend). Quick win UX 6: el orden por relevancia
+ * (tesis > cartera > watchlist > resto) exige saber qué empresas tienen
+ * tesis, así que se piden TODAS en lotes del tope del endpoint (50) y se
+ * reutilizan para las tarjetas de la página visible (sin segunda llamada).
  */
-const THESIS_DETAIL_LIMIT = RESEARCH_INDEX_PAGE_SIZE;
+const SNAPSHOT_BATCH_SIZE = 50;
 
 /** Ratings persistidos por el backend, en español (mismo mapa que la ficha). */
 const RATING_LABELS: Record<string, string> = {
@@ -203,36 +209,84 @@ export default async function ResearchPage({
         }
         throw error;
     }
-    const { companies, portfolio } = dashboard;
+    const { companies, portfolio, thesisTickers } = dashboard;
+
+    // Contexto del usuario para el orden por relevancia. Degradación
+    // honesta: una lectura fallida degrada su bucket a «resto», nunca
+    // fabrica pertenencia a cartera o watchlist.
+    const userId = (await requireAuthenticatedUser()).id;
+    const [portfolioSummary, watchlist] = await Promise.all([
+        getPortfolioSummary(userId).catch(() => null),
+        getWatchlist().catch(() => [] as Array<{ symbol: string }>),
+    ]);
+    const portfolioTickers = new Set(
+        (portfolioSummary?.holdings ?? [])
+            .filter((holding) => holding.quantity !== 0)
+            .map((holding) => holding.symbol?.trim().toUpperCase())
+            .filter((symbol): symbol is string => Boolean(symbol)),
+    );
+    const watchlistTickers = new Set(watchlist.map((item) => item.symbol.trim().toUpperCase()));
+
+    // Quick win UX 6: tesis > cartera > watchlist > resto; empate por
+    // ticker. Estable entre renders (los buckets son deterministas). La
+    // pertenencia al bucket «tesis» sale de UNA query DISTINCT del backend
+    // (/api/companies/thesis-tickers, misma semántica que latest_thesis del
+    // snapshot), no de un snapshot por empresa: con el universo completo
+    // eso eran decenas de llamadas batch en paralelo antes de paginar.
+    // thesisTickers null = lectura fallida: el bucket degrada sin afirmar
+    // tesis inexistentes.
+    const thesisSet = new Set(thesisTickers ?? []);
+    const ordered = sortCompaniesByRelevance(
+        companies,
+        (company) => thesisSet.has(company.ticker.trim().toUpperCase()),
+        portfolioTickers,
+        watchlistTickers,
+    );
 
     const params = (await searchParams) ?? {};
     // Claves repetidas (?q=A&q=B) llegan como array: sin normalizar rompen la página.
     const query = firstSearchParam(params.q).trim();
     const requestedPage = parseIndexPage(firstSearchParam(params.page));
 
-    // Orden estable por ticker: el índice no debe reordenar solo entre renders.
-    const ordered = [...companies].sort((left, right) => left.ticker.localeCompare(right.ticker, 'es'));
     // F308: filtro y paginación en servidor. Solo la página visible se
-    // materializa en el HTML y solo ella pide detalle de tesis al motor.
+    // materializa en el HTML.
     const filtered = filterResearchIndex(ordered, query);
     const slice = paginateResearchIndex(filtered, requestedPage);
-    const detailed = slice.rows.slice(0, THESIS_DETAIL_LIMIT);
-    let snapshots: Awaited<ReturnType<typeof getResearchCompanySnapshots>> | null = null;
-    try {
-        if (detailed.length) {
-            snapshots = await getResearchCompanySnapshots(detailed.map((company) => company.ticker));
+
+    // Snapshots SOLO de la página visible (rating/fecha de las tarjetas),
+    // en lotes con fallo aislado: un lote caído marca solo sus tarjetas
+    // como no leídas y conserva las demás (fetchInBatches, guard node).
+    const sliceTickers = slice.rows.map((company) => company.ticker);
+    const snapshotBatches = await fetchInBatches(
+        sliceTickers,
+        SNAPSHOT_BATCH_SIZE,
+        (batch) => getResearchCompanySnapshots(batch),
+    );
+    const snapshotsByTicker: Record<string, CompanySnapshot> = {};
+    const unreadableTickers = new Set<string>();
+    snapshotBatches.forEach((part, index) => {
+        const batchTickers = sliceTickers.slice(
+            index * SNAPSHOT_BATCH_SIZE,
+            (index + 1) * SNAPSHOT_BATCH_SIZE,
+        );
+        if (part === null) {
+            // Lote fallido: sus tarjetas se marcan no leídas, nunca se
+            // fabrican snapshots vacíos.
+            batchTickers.forEach((ticker) => unreadableTickers.add(ticker));
+            return;
         }
-    } catch {
-        // La llamada batch que falla no puede tirar el índice entero: las
-        // empresas se listan igual y sus tarjetas se marcan como no leídas.
-        snapshots = null;
-    }
-    const missing = new Set(snapshots?.missing ?? []);
+        for (const [ticker, snapshot] of Object.entries(part.snapshots)) {
+            snapshotsByTicker[ticker] = snapshot;
+        }
+        (part.missing ?? [])
+            .filter((ticker): ticker is string => Boolean(ticker))
+            .forEach((ticker) => unreadableTickers.add(ticker));
+    });
     const rows: CompanyRow[] = slice.rows.map((company): CompanyRow => {
-        if (snapshots === null || missing.has(company.ticker)) {
+        if (unreadableTickers.has(company.ticker)) {
             return { company, snapshot: null, unreadable: true };
         }
-        return { company, snapshot: snapshots.snapshots[company.ticker] ?? null, unreadable: false };
+        return { company, snapshot: snapshotsByTicker[company.ticker] ?? null, unreadable: false };
     });
 
     return (
