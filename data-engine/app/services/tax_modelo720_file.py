@@ -117,14 +117,17 @@ class Modelo720FileService:
               "apellidos_nombre": "APELLIDOS, NOMBRE",  # obligatorio
               "numero_declaracion": "7202025000001",    # obligatorio: 13 dígitos, empieza por 720
               "custody": {"US0378331005": "IE", "cash:USD": "IE"},  # obligatorio: custodia POR PARTIDA
-              "custody_entity": {                       # obligatorio: entidad depositaria REAL
+              "custody_entities": {"IE": {             # obligatorio POR PAÍS de custodia
                 "name": "BROKER FICTICIO SA",
-                "nif": "FICTICIO123",                   # NIF de la entidad en su país
-                "address": "CALLE FICTICIA 1, DUBLIN"   # domicilio completo
-              },
+                "nif": "FICTICIO123",                  # NIF de la entidad en su país
+                "street": "CALLE FICTICIA 1",          # domicilio ESTRUCTURADO (subcampos)
+                "city": "DUBLIN", "zip": "D01", "country": "IE",
+                "complement": "", "region": ""
+              }},
+              "filed_720_before": false,               # obligatorio: ¿presentó 720 en ejercicios anteriores?
               "first_acquisition_dates": {"US0378331005": "20230115"},  # obligatorio por ISIN
               "telefono": "600000000",
-              "previous_year_isins": ["US0378331005"],  # esos ISINs se EXCLUYEN (origen M por aclarar)
+              "previous_year_isins": [],               # informativo (bajas a manual_review)
               "declaracion_anterior": "7202024000001",
               "complementaria": false,
               "sustitutiva": false
@@ -206,28 +209,71 @@ class Modelo720FileService:
                 ),
                 "thresholds": thresholds,
             }
-        # Entidad depositaria REAL (190-230, 231-250, 251-414): la spec no
-        # los deja en blanco para clave V; sin identidad y domicilio reales
-        # no se genera un fichero "conforme".
-        entity = declarant.get("custody_entity")
-        if (
-            not isinstance(entity, dict)
-            or not entity.get("name")
-            or not entity.get("nif")
-            or not entity.get("address")
-        ):
+        # Entidad depositaria REAL y ESTRUCTURADA por país de custodia
+        # (190-230, 231-250, 251-414): la spec no los deja en blanco para
+        # clave V y el domicilio va por subcampos (251-302 vía, 303-342
+        # complemento, 343-372 ciudad, 373-402 región, 403-412 ZIP,
+        # 413-414 país). Una entidad global replicada a custodios distintos
+        # sería un dato falso.
+        raw_entities = declarant.get("custody_entities")
+        custody_entities: dict[str, dict] = {}
+        if isinstance(raw_entities, dict):
+            for k, v in raw_entities.items():
+                if isinstance(v, dict):
+                    custody_entities[str(k).strip().upper()] = v
+        for country in set(custody_map.values()):
+            ent = custody_entities.get(country)
+            if not ent or not all(
+                ent.get(f) for f in ("name", "nif", "street", "city", "zip", "country")
+            ):
+                return {
+                    "available": False,
+                    "reason": (
+                        f"Falta 'custody_entities.{country}' en tax_declarant "
+                        "(name, nif, street, city, zip, country de la entidad "
+                        "depositaria REAL de ese país): los campos 190-414 del "
+                        "registro V exigen entidad y domicilio estructurado."
+                    ),
+                    "thresholds": thresholds,
+                }
+
+        # Historial de presentación: la AUSENCIA de previous_year_isins no
+        # confirma primera declaración. Sin filed_720_before explícito no se
+        # puede asignar origen A/M: fail-closed.
+        filed_before = declarant.get("filed_720_before")
+        if filed_before is None:
             return {
                 "available": False,
                 "reason": (
-                    "Falta 'custody_entity' en tax_declarant (name, nif, "
-                    "address de la entidad depositaria): los campos 190-414 "
-                    "del registro V exigen la entidad real y no van en blanco."
+                    "Falta 'filed_720_before' (true/false) en tax_declarant: "
+                    "sin historial de presentación no se puede asignar el "
+                    "origen (A primera declaración / M modificación) sin "
+                    "inventarlo."
                 ),
                 "thresholds": thresholds,
             }
-        entity_name = str(entity["name"])
-        entity_nif = str(entity["nif"])
-        entity_address = str(entity["address"])
+        if filed_before is True:
+            return {
+                "available": False,
+                "reason": (
+                    "Ya se presentó el 720 en ejercicios anteriores: el origen "
+                    "(A/M) exige los importes de la última declaración para "
+                    "evaluar el incremento conjunto >20.000 € por categoría, "
+                    "dato que no tenemos. Declarar manualmente o aportar esos "
+                    "importes."
+                ),
+                "thresholds": thresholds,
+            }
+        if previous_isins:
+            return {
+                "available": False,
+                "reason": (
+                    "Contradicción: filed_720_before=false pero hay "
+                    "previous_year_isins declarados. Reconcilia el historial "
+                    "en tax_declarant antes de generar."
+                ),
+                "thresholds": thresholds,
+            }
 
         detail_records: list[str] = []
         manual_review: list[dict] = []
@@ -315,27 +361,14 @@ class Modelo720FileService:
                         "reason": "Custodia declarada en España: no es bien en el extranjero, no va en el 720.",
                     })
                     continue
-                # Un ISIN ya declarado NO puede salir con origen "A" (sería
-                # un campo conscientemente falso): se EXCLUYE del fichero
-                # hasta aclarar si procede 'M' por incremento >20.000 €.
-                if isin in previous_isins:
-                    manual_review.append({
-                        "ticker": pos["ticker"],
-                        "isin": isin,
-                        "reason": (
-                            "ISIN ya declarado en ejercicios anteriores: NO se "
-                            "genera registro (origen 'A' sería falso). Si el "
-                            "incremento conjunto de la categoría supera 20.000 € "
-                            "corresponde origen 'M': verificar contra la última "
-                            "declaración y declarar manualmente."
-                        ),
-                    })
-                    continue
+                # previous_year_isins ya no puede coexistir con
+                # filed_720_before=false (gate anterior): origen "A"
+                # legítimo de primera declaración.
+                ent = custody_entities[custody]
                 detail_records.append(
                     self._detail_valores(
                         fiscal_year, nif, apellidos_nombre, pos, isin,
-                        value, "A", first_date, custody,
-                        entity_name, entity_nif, entity_address,
+                        value, "A", first_date, custody, ent,
                     )
                 )
                 sum_val1 += value
@@ -484,8 +517,7 @@ class Modelo720FileService:
 
     def _detail_valores(
         self, fiscal_year, nif, apellidos_nombre, pos, isin,
-        value, origin, first_date, custody_country,
-        entity_name, entity_nif, entity_address,
+        value, origin, first_date, custody_country, entity,
     ) -> str:
         # 129-130: país donde los valores están DEPOSITADOS O GESTIONADOS
         # (spec, pág. 23): dato declarado por partida, nunca el prefijo del ISIN.
@@ -495,10 +527,17 @@ class Modelo720FileService:
         r += " "                                   # 144: clave ID cuenta (no C)
         r += " " * 11                              # 145-155: BIC
         r += " " * 34                              # 156-189: código cuenta
-        # 190-414: entidad depositaria REAL (la spec no los deja en blanco).
-        r += _text(entity_name, 41)                # 190-230: entidad
-        r += _text(entity_nif, 20)                 # 231-250: NIF de la entidad en su país
-        r += _text(entity_address, 164)            # 251-414: domicilio de la entidad
+        # 190-414: entidad depositaria REAL con domicilio ESTRUCTURADO por
+        # subcampos (spec, pág. 26): la entidad es la del país de custodia
+        # de ESTA partida, no una global replicada.
+        r += _text(entity["name"], 41)             # 190-230: entidad
+        r += _text(entity["nif"], 20)              # 231-250: NIF de la entidad en su país
+        r += _text(entity["street"], 52)           # 251-302: tipo/nombre vía y número
+        r += _text(entity.get("complement") or "", 40)  # 303-342: complemento
+        r += _text(entity["city"], 30)             # 343-372: ciudad
+        r += _text(entity.get("region") or "", 30) # 373-402: región/provincia
+        r += _text(entity["zip"], 10)              # 403-412: código postal
+        r += _text(entity["country"], 2)           # 413-414: país de la entidad
         r += self._detail_tail(
             first_date, origin, "",
             value, Decimal("0"), "A",

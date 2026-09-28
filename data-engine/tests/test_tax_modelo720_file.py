@@ -84,11 +84,17 @@ DECLARANT = {
     "telefono": "600111222",
     "numero_declaracion": "7202025000001",
     "custody": {"US0378331005": "IE"},
-    "custody_entity": {
-        "name": "BROKER FICTICIO DE PRUEBAS",
-        "nif": "IE-FICTICIO-0",
-        "address": "CALLE FICTICIA 1, DUBLIN",
+    "custody_entities": {
+        "IE": {
+            "name": "BROKER FICTICIO DE PRUEBAS",
+            "nif": "IE-FICTICIO-0",
+            "street": "CALLE FICTICIA 1",
+            "city": "DUBLIN",
+            "zip": "D01 FAKE",
+            "country": "IE",
+        },
     },
+    "filed_720_before": False,
     "first_acquisition_dates": {"US0378331005": "20230115"},
 }
 
@@ -153,7 +159,12 @@ def test_generates_spec_layout_records(db):
     assert detail[131:143].rstrip() == "US0378331005"  # 132-143: ISIN
     assert detail[189:230].rstrip() == "BROKER FICTICIO DE PRUEBAS"  # 190-230: entidad depositaria REAL
     assert detail[230:250].rstrip() == "IE-FICTICIO-0"               # 231-250: NIF de la entidad
-    assert detail[250:414].rstrip() == "CALLE FICTICIA 1, DUBLIN"    # 251-414: domicilio de la entidad
+    # Domicilio ESTRUCTURADO por subcampos (spec pág. 26):
+    assert detail[250:302].rstrip() == "CALLE FICTICIA 1"            # 251-302: vía y número
+    assert detail[302:342].rstrip() == ""                            # 303-342: complemento (opcional)
+    assert detail[342:372].rstrip() == "DUBLIN"                      # 343-372: ciudad
+    assert detail[402:412].rstrip() == "D01 FAKE"                    # 403-412: código postal
+    assert detail[412:414] == "IE"                                   # 413-414: país de la entidad
     assert detail[414:422] == "20230115"             # 415-422: fecha incorporación
     assert detail[422] == "A"                        # 423: origen (primera vez)
     assert detail[431] == " "                        # 432: signo valoración 1
@@ -198,11 +209,41 @@ def test_unavailable_without_custody_map(db):
 
 
 def test_unavailable_without_custody_entity(db):
-    d = {k: v for k, v in DECLARANT.items() if k != "custody_entity"}
+    d = {k: v for k, v in DECLARANT.items() if k != "custody_entities"}
     _seed(db, declarant=d)
     result = Modelo720FileService().generate(db, 2025)
     assert result["available"] is False
-    assert "custody_entity" in result["reason"]
+    assert "custody_entities" in result["reason"]
+
+
+def test_unavailable_without_filed_720_before(db):
+    # Ausencia de historial NO confirma primera declaración: fail-closed.
+    d = {k: v for k, v in DECLARANT.items() if k != "filed_720_before"}
+    _seed(db, declarant=d)
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "filed_720_before" in result["reason"]
+
+
+def test_unavailable_when_filed_720_before_true(db):
+    # Con declaraciones previas, el origen A/M exige los importes de la
+    # última declaración (incremento conjunto >20.000 €): no se decide
+    # sin ellos.
+    _seed(db, declarant={**DECLARANT, "filed_720_before": True})
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "20.000" in result["reason"]
+
+
+def test_unavailable_on_contradictory_filing_history(db):
+    _seed(db, declarant={
+        **DECLARANT,
+        "filed_720_before": False,
+        "previous_year_isins": ["IE00B4L5Y983"],
+    })
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "Contradicción" in result["reason"]
 
 
 def test_unavailable_with_multi_date_lots(db):
@@ -224,25 +265,10 @@ def test_unavailable_without_first_acquisition_date(db):
     assert "AAPL" in result["reason"]
 
 
-def test_previous_year_isin_sold_goes_to_manual_review_not_baja(db):
-    # Sin fecha EFECTIVA de extinción no se genera registro de baja:
-    # va a manual_review para declaración manual.
-    _seed(db, declarant={**DECLARANT, "previous_year_isins": ["IE00B4L5Y983"]})
+def test_origin_a_is_legitimate_first_declaration(db):
+    # filed_720_before=false: origen "A" legítimo (primera declaración).
+    _seed(db, declarant=DECLARANT)
     result = Modelo720FileService().generate(db, 2025)
     assert result["available"] is True
-    assert result["detail_records"] == 1  # solo el valor poseído
-    assert any(
-        "BAJA" in m["reason"] for m in result["manual_review"]
-    )
-
-
-def test_previous_year_isin_held_is_excluded_not_faked_as_a(db):
-    # Un ISIN ya declarado NO puede salir con origen "A" (campo falso):
-    # se EXCLUYE del fichero hasta aclarar si procede "M" (>20.000 €).
-    _seed(db, declarant={**DECLARANT, "previous_year_isins": ["US0378331005"]})
-    result = Modelo720FileService().generate(db, 2025)
-    assert result["available"] is False  # el único registro quedó excluido
-    assert any(
-        m.get("isin") == "US0378331005" and "20.000" in m["reason"]
-        for m in result["manual_review"]
-    )
+    detail = result["content"].rstrip("\n").split("\n")[1]
+    assert detail[422] == "A"
