@@ -216,6 +216,40 @@ def test_fila_historica_deja_de_alimentar_al_lector_de_titulares(db_rows, tmp_pa
     assert db.get(NewsEvent, row.id).metadata_["headline_from_source"] is False
 
 
+def test_colision_multiple_mezcla_admisible_e_inadmisible_se_salta(db_rows, tmp_path, capsys):
+    """Con dos filas coexistiendo en el destino —una SEC distinta admisible
+    y otra de origen no verificable— el skip NO depende del orden de la
+    consulta: se exigen TODAS admisibles."""
+    db, company = db_rows
+    _add_sec_row(db, company, "SEEDC 8-K presentado ante la SEC", "8-K presentado ante la SEC",
+                 url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000002/y.htm")
+    _add_sec_row(db, company, "SEEDC 8-K presentado ante la SEC", "8-K presentado ante la SEC",
+                 url="https://no-verificable.example/Archives/edgar/data/1000000/z.htm")
+    vieja = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
+    plan = tmp_path / "plan.json"
+    main(["--plan", str(plan)])
+    assert "COLISIÓN" in capsys.readouterr().out
+    assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
+    db.expire_all()
+    assert db.get(NewsEvent, vieja.id).title == "SEEDC 8-K (2026-09-24)"  # intacta
+
+
+def test_variantes_de_url_del_mismo_accession_se_saltan(db_rows, tmp_path, capsys):
+    """Dos variantes de URL del MISMO accession EDGAR son el mismo filing:
+    no cuentan como filings distintos y la colisión se salta."""
+    db, company = db_rows
+    _add_sec_row(db, company, "SEEDC 8-K presentado ante la SEC", "8-K presentado ante la SEC",
+                 url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/0000950000-00-000001-index.htm")
+    vieja = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)",
+                         url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/x.htm")
+    plan = tmp_path / "plan.json"
+    main(["--plan", str(plan)])
+    assert "COLISIÓN" in capsys.readouterr().out
+    assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
+    db.expire_all()
+    assert db.get(NewsEvent, vieja.id).title == "SEEDC 8-K (2026-09-24)"  # intacta
+
+
 def test_apply_salta_filas_cambiadas_desde_el_plan(db_rows, tmp_path, capsys):
     db, company = db_rows
     row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
@@ -285,7 +319,7 @@ def test_colision_intraplan_entre_filings_distintos_se_lista(db_rows, tmp_path, 
     _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)",
                  url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/a.htm")
     _add_sec_row(db, company, "SEEDC SEEDC 8-K (2026-09-24)", "SEEDC SEEDC 8-K (2026-09-24)",
-                 url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/b.htm")
+                 url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000002/b.htm")
     plan = tmp_path / "plan.json"
     assert main(["--plan", str(plan)]) == 0
     out = capsys.readouterr().out
@@ -401,7 +435,7 @@ def test_apply_plan_intraplan_mismo_destino_aplica_filings_distintos(db_rows):
     a = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)",
                      url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/a.htm")
     b = _add_sec_row(db, company, "SEEDC SEEDC 8-K (2026-09-24)", "SEEDC SEEDC 8-K (2026-09-24)",
-                     url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/b.htm")
+                     url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000002/b.htm")
 
     def _entry(r):
         return {

@@ -29,10 +29,13 @@ Seguridad (requisitos de revisión):
   doble prefijo de ticker F175) y form por allowlist explícita de
   formularios SEC («filing» si es irreconocible, nunca un form inventado).
 - Colisiones por tenant+compañía+título destino: se RELAJAN solo entre
-  filas SEC estrictas con URLs EDGAR canónicas distintas y no vacías (dos
-  8-K distintos comparten título de display por diseño; el dry-run las
-  lista explícitamente para revisión). URL igual, no verificable u origen
-  dudoso: se salta y se reporta. La comprobación se repite al aplicar.
+  filas SEC estrictas con accession EDGAR DISTINTO y determinable (dos
+  filings distintos comparten título de display por diseño; el dry-run las
+  lista explícitamente para revisión). Se exige respecto de TODAS las
+  filas que coexisten con ese destino (en BD y en el plan): URL igual,
+  mismo accession, accession indeterminable u origen no verificable en
+  cualquiera de ellas → se salta y se reporta. La comprobación se repite
+  al aplicar.
 - Backup exclusivo y durable ANTES de tocar la BD: se crea con modo 'x'
   (nunca sobrescribe), se fsync-ea y se renombra atómicamente.
 - --apply requiere --plan ruta.json: el dry-run escribe el plan revisado y
@@ -206,9 +209,30 @@ def _write_backup_durable(path: str, payload: list[dict]) -> None:
         os.close(dir_fd)
 
 
+_ACCESSION_DIR = re.compile(r"^/Archives/edgar/data/\d+/(\d{10,24})(?:/|$)")
+_ACCESSION_DASHED = re.compile(r"(\d{10}-\d{2}-\d{3})")
+
+
+def _edgar_accession(url: str | None) -> str | None:
+    """Número de accession EDGAR (solo dígitos) de una URL, o None si no es
+    determinable. Identifica el filing: dos variantes de URL del mismo
+    accession son el MISMO filing."""
+    if not url:
+        return None
+    path = urlparse(url).path
+    match = _ACCESSION_DIR.match(path)
+    if match:
+        return match.group(1)
+    match = _ACCESSION_DASHED.search(path)
+    if match:
+        return match.group(1).replace("-", "")
+    return None
+
+
 def _distinct_sec_filing(a: NewsEvent, b: NewsEvent) -> bool:
-    """True solo si ambas filas son SEC estrictas con URLs EDGAR canónicas
-    distintas y no vacías: dos filings distintos, no un duplicado."""
+    """True solo si ambas filas son SEC estrictas con accession EDGAR
+    distinto y determinable: dos filings distintos, no un duplicado ni dos
+    variantes de URL del mismo filing."""
     if not a.url or not b.url or a.url == b.url:
         return False
     for row in (a, b):
@@ -216,7 +240,9 @@ def _distinct_sec_filing(a: NewsEvent, b: NewsEvent) -> bool:
             return False
         if not _is_sec_url(row.url):
             return False
-    return True
+    accession_a = _edgar_accession(a.url)
+    accession_b = _edgar_accession(b.url)
+    return accession_a is not None and accession_b is not None and accession_a != accession_b
 
 
 def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
@@ -230,7 +256,7 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
     """
     applied = 0
     skipped: list[int] = []
-    seen_destinations: dict[tuple, int] = {}
+    seen_destinations: dict[tuple, list[int]] = {}
     for item in planned:
         row = db.get(NewsEvent, item["id"])
         if (
@@ -267,24 +293,29 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
         # mismo form comparten título de display por diseño. URL igual, no
         # verificable u origen dudoso: se salta en lugar de duplicar.
         new_title = item["new"]["title"]
-        clash = db.scalars(
+        clashes = db.scalars(
             select(NewsEvent).where(
                 NewsEvent.tenant_id == row.tenant_id,
                 NewsEvent.company_id == row.company_id,
                 NewsEvent.title == new_title,
                 NewsEvent.id != row.id,
             )
-        ).first()
-        if clash is not None and not _distinct_sec_filing(row, clash):
+        ).all()
+        # TODAS las colisiones del destino deben ser admisibles: una sola
+        # fila con URL igual, mismo accession u origen no verificable
+        # bloquea el retitle (fail-closed, sin depender del orden).
+        if any(not _distinct_sec_filing(row, clash) for clash in clashes):
             skipped.append(item["id"])
             continue
         destination = (row.tenant_id, row.company_id, new_title)
-        if destination in seen_destinations:
-            other = db.get(NewsEvent, seen_destinations[destination])
-            if other is None or not _distinct_sec_filing(row, other):
-                skipped.append(item["id"])
-                continue
-        seen_destinations[destination] = row.id
+        if any(
+            (other := db.get(NewsEvent, other_id)) is None
+            or not _distinct_sec_filing(row, other)
+            for other_id in seen_destinations.get(destination, [])
+        ):
+            skipped.append(item["id"])
+            continue
+        seen_destinations.setdefault(destination, []).append(row.id)
         row.title = new_title
         row.summary = item["new"]["summary"]
         # Procedencia: se retira el titular sintético atribuido a la SEC y
@@ -367,7 +398,7 @@ def main(argv: list[str] | None = None) -> int:
         collisions: list[dict] = []
         undetermined: list[int] = []
         shared: list[tuple[int, int, str]] = []
-        planned_titles: dict[tuple, int] = {}
+        planned_titles: dict[tuple, list[int]] = {}
         for row, ticker in candidates:
             plan = _plan_row(row, ticker)
             if plan is None:
@@ -378,30 +409,33 @@ def main(argv: list[str] | None = None) -> int:
             # SOLO entre filings SEC distintos (URLs EDGAR canónicas
             # distintas y no vacías): el dry-run las lista para revisión.
             plan_key = (row.tenant_id, row.company_id, plan["new"]["title"])
-            if plan_key in planned_titles:
-                other = db.get(NewsEvent, planned_titles[plan_key])
-                if other is not None and _distinct_sec_filing(row, other):
-                    shared.append((planned_titles[plan_key], row.id, plan["new"]["title"]))
-                else:
+            inadmissible = False
+            for other_id in planned_titles.get(plan_key, []):
+                other = db.get(NewsEvent, other_id)
+                if other is None or not _distinct_sec_filing(row, other):
                     collisions.append({"id": row.id, "title": plan["new"]["title"],
-                                       "clash_with": planned_titles[plan_key]})
-                    continue
-            else:
-                clash = db.scalars(
-                    select(NewsEvent).where(
-                        NewsEvent.tenant_id == row.tenant_id,
-                        NewsEvent.company_id == row.company_id,
-                        NewsEvent.title == plan["new"]["title"],
-                        NewsEvent.id != row.id,
-                    ).limit(1)
-                ).first()
-                if clash is not None:
-                    if _distinct_sec_filing(row, clash):
-                        shared.append((clash.id, row.id, plan["new"]["title"]))
-                    else:
-                        collisions.append({"id": row.id, "title": plan["new"]["title"], "clash_with": clash.id})
-                        continue
-            planned_titles[plan_key] = row.id
+                                       "clash_with": other_id})
+                    inadmissible = True
+                    break
+                shared.append((other_id, row.id, plan["new"]["title"]))
+            if inadmissible:
+                continue
+            clashes = db.scalars(
+                select(NewsEvent).where(
+                    NewsEvent.tenant_id == row.tenant_id,
+                    NewsEvent.company_id == row.company_id,
+                    NewsEvent.title == plan["new"]["title"],
+                    NewsEvent.id != row.id,
+                )
+            ).all()
+            # TODAS las colisiones del destino deben ser admisibles.
+            blocked = next((c for c in clashes if not _distinct_sec_filing(row, c)), None)
+            if blocked is not None:
+                collisions.append({"id": row.id, "title": plan["new"]["title"], "clash_with": blocked.id})
+                continue
+            for clash in clashes:
+                shared.append((clash.id, row.id, plan["new"]["title"]))
+            planned_titles.setdefault(plan_key, []).append(row.id)
             planned.append(plan)
 
         mode = "APPLY" if args.apply else "DRY-RUN"
