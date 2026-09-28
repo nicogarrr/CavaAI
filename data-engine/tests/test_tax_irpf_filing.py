@@ -155,40 +155,78 @@ def test_casillas_dividends_box_0029():
 # --- Doble imposición (art. 80 LIRPF, casilla 0588) --------------------------
 
 def test_double_taxation_us_treaty_cap_15pct():
-    # Retenido 30% (sin W-8BEN): solo se acredita hasta el 15% del convenio.
+    # Retenido 30% (sin W-8BEN): tope de convenio 15%, exceso reclamable en
+    # origen. Sin TME de la declaración completa la deducción NO se publica.
     dividends = [{
         "ticker": "AAPL", "dividends_base": 100.0, "withholding_base": 30.0,
-        "missing_fx": False,
+        "missing_fx": False, "payments": [],
     }]
     result = build_double_taxation(dividends, {"AAPL": "US"}, 2025)
     us = result["countries"][0]
-    assert us["creditable_base"] == 15.0            # tope convenio
+    assert us["treaty_cap_base"] == 15.0            # tope convenio
     assert us["excess_reclaimable_base"] == 15.0    # a reclamar en origen
+    assert us["deduction_base"] is None
+    assert us["status"] == "pendiente_tme"
+    assert us["treaty_rate_source"].startswith("BOE-A-1990-30940")
     assert result["excess_withholding_reclaimable"] is True
-    # Cuota española sobre 100 EUR al 19% = 19 > 15 → deducción = 15
-    assert us["deduction_base"] == 15.0
-    assert result["total_deduction_base"] == 15.0
+    assert result["total_deduction_base"] is None
+    assert result["status"] == "pendiente_tme"
 
 
-def test_double_taxation_spanish_tax_is_the_binding_limit():
-    # Retenido 15% sobre dividendo pequeño: la cuota española (19%) supera
-    # lo retenido, así que la deducción es TODO lo retenido.
+def test_double_taxation_with_manual_tme_computes_deduction():
+    # Con TME del borrador (entrada manual): deducción = min(tope, bruto×TME).
     dividends = [{
         "ticker": "MSFT", "dividends_base": 100.0, "withholding_base": 15.0,
-        "missing_fx": False,
+        "missing_fx": False, "payments": [],
     }]
-    result = build_double_taxation(dividends, {"MSFT": "US"}, 2025)
+    # TME 19%: cuota española 19 > tope 15 → deducción = 15
+    result = build_double_taxation(dividends, {"MSFT": "US"}, 2025, tme=Decimal("0.19"))
     assert result["countries"][0]["deduction_base"] == 15.0
+    assert result["total_deduction_base"] == 15.0
+    assert result["status"] == "calculada_con_tme_manual"
+    assert result["partial"] is False
+    # TME 10%: cuota española 10 < tope 15 → deducción = 10
+    result = build_double_taxation(dividends, {"MSFT": "US"}, 2025, tme=Decimal("0.10"))
+    assert result["countries"][0]["deduction_base"] == 10.0
+
+
+def test_double_taxation_country_without_verified_treaty_is_manual_review():
+    dividends = [{
+        "ticker": "ASML", "dividends_base": 100.0, "withholding_base": 15.0,
+        "missing_fx": False, "payments": [],
+    }]
+    result = build_double_taxation(dividends, {"ASML": "NL"}, 2025)
+    assert result["countries"] == []
+    assert result["manual_review"][0]["ticker"] == "ASML"
+    assert "convenio" in result["manual_review"][0]["reason"]
+    assert result["partial"] is True
+    assert result["total_deduction_base"] is None
+
+
+def test_double_taxation_special_payment_types_are_manual_review():
+    dividends = [{
+        "ticker": "XYZ", "dividends_base": 50.0, "withholding_base": 7.5,
+        "missing_fx": False,
+        "payments": [
+            {"type": "dividend", "raw_action": "Payment In Lieu Of Dividends",
+             "date": "2025-03-01", "amount_native": 50.0, "amount_base": 50.0},
+        ],
+    }]
+    result = build_double_taxation(dividends, {"XYZ": "US"}, 2025)
+    assert result["countries"] == []
+    assert result["manual_review"][0]["ticker"] == "XYZ"
+    assert "especial" in result["manual_review"][0]["reason"]
+    assert result["partial"] is True
 
 
 def test_double_taxation_spanish_withholding_goes_to_0597_not_0588():
     dividends = [{
         "ticker": "IBE", "dividends_base": 100.0, "withholding_base": 19.0,
-        "missing_fx": False,
+        "missing_fx": False, "payments": [],
     }]
     result = build_double_taxation(dividends, {"IBE": "ES"}, 2025)
     assert result["countries"] == []                 # ES nunca es crédito 0588
-    assert result["total_deduction_base"] == 0.0
+    assert result["total_deduction_base"] is None    # sin TME no hay total
     assert result["spanish_withholding_base"]["casilla"] == "0597"
     assert result["spanish_withholding_base"]["amount"] == 19.0
 
@@ -196,22 +234,24 @@ def test_double_taxation_spanish_withholding_goes_to_0597_not_0588():
 def test_double_taxation_unknown_country_is_manual_review():
     dividends = [{
         "ticker": "XYZ", "dividends_base": 50.0, "withholding_base": 7.5,
-        "missing_fx": False,
+        "missing_fx": False, "payments": [],
     }]
     result = build_double_taxation(dividends, {}, 2025)   # sin domicilio
-    assert result["total_deduction_base"] == 0.0
+    assert result["total_deduction_base"] is None
     assert result["manual_review"][0]["ticker"] == "XYZ"
     assert "desconocido" in result["manual_review"][0]["reason"]
+    assert result["partial"] is True
 
 
 def test_double_taxation_missing_fx_is_manual_review():
     dividends = [{
         "ticker": "NOFX", "dividends_base": None, "withholding_base": None,
-        "missing_fx": True,
+        "missing_fx": True, "payments": [],
     }]
     result = build_double_taxation(dividends, {"NOFX": "US"}, 2025)
     assert result["manual_review"][0]["ticker"] == "NOFX"
-    assert result["total_deduction_base"] == 0.0
+    assert result["total_deduction_base"] is None
+    assert result["partial"] is True
 
 
 # --- Integración con el informe ---------------------------------------------
@@ -241,6 +281,26 @@ def test_compute_report_attaches_filing_layer(db):
     dt = filing["double_taxation"]
     assert dt["casilla"] == "0588"
     assert dt["countries"][0]["country"] == "US"
-    # Retenido 13,5 EUR; cuota española sobre 90 EUR al 19% = 17,1 → deducción 13,5
-    assert dt["countries"][0]["deduction_base"] == pytest.approx(13.5)
-    assert dt["total_deduction_base"] == pytest.approx(13.5)
+    # Sin TME del borrador no hay deducción publicada: solo el tope de
+    # convenio (13,5 retenidos < 15% de 90 = 13,5 → tope = retenido).
+    assert dt["countries"][0]["treaty_cap_base"] == pytest.approx(13.5)
+    assert dt["countries"][0]["deduction_base"] is None
+    assert dt["status"] == "pendiente_tme"
+    assert dt["total_deduction_base"] is None
+    assert filing["available"] is True
+
+
+def test_filing_unavailable_when_portfolio_base_is_not_eur(db):
+    # Las casillas del Modelo 100 son importes en EUR: con cartera en USD no
+    # se publican cifras bajo rótulos IRPF.
+    db.add(Portfolio(name="Main", base_currency="USD", is_default=True))
+    db.commit()
+    c = _company(db, "AAPL", country="US")
+    _tx(db, c, date(2025, 1, 10), "buy", 10, 100, currency="USD")
+    _tx(db, c, date(2025, 6, 1), "sell", 10, 150, currency="USD")
+
+    report = TaxReportService().compute_report(db, 2025)
+    assert report["summary"]["base_currency"] == "USD"
+    filing = report["filing"]
+    assert filing["available"] is False
+    assert "EUR" in filing["reason"]

@@ -70,12 +70,33 @@ CASILLA_DOBLE_IMPOSICION = "0588"
 
 # Tope de convenio: España solo acredita la retención extranjera hasta el
 # tipo del convenio de doble imposición; el exceso se reclama en origen.
-# La mayoría de convenios de España limitan dividendos al 15 %: valor por
-# defecto conservador, con entradas explícitas donde consta.
-DEFAULT_TREATY_RATE = Decimal("0.15")
-TREATY_DIVIDEND_RATES = {"US": Decimal("0.15")}
+# SOLO tipos verificados contra el texto del convenio (BOE). Sin tipo por
+# defecto: un país sin convenio/tasa documentados va a revisión manual —
+# aplicar un 15% genérico podría acreditar impuesto no permitido o recortar
+# de más.
+TREATY_DIVIDEND_RATES = {
+    # España-EE.UU. (BOE-A-1990-30940, art. 10.2.b): 15% para persona física
+    # minorista (el 5% del art. 10.2.a exige sociedad con >=10% del capital).
+    "US": Decimal("0.15"),
+}
+TREATY_RATE_SOURCES = {
+    "US": "BOE-A-1990-30940 art. 10.2.b (convenio España-EE.UU.)",
+}
 
 UNKNOWN_COUNTRY = "??"
+
+# Tipos de pago especiales (en la acción cruda del bróker) que NO son un
+# dividendo ordinario: su tratamiento fiscal difiere (payment in lieu,
+# retorno de capital, ingresos por préstamo de valores). Nunca entran en la
+# deducción 0588 automática: revisión manual.
+SPECIAL_PAYMENT_TOKENS = (
+    "lieu",               # payment in lieu of dividends
+    "return of capital",
+    "capital return",
+    "lending",            # stock lending income
+    "loan",
+    "substitute payment",
+)
 
 
 def savings_bands(year: int) -> tuple:
@@ -204,20 +225,29 @@ def build_double_taxation(
     dividends: list[dict],
     country_by_ticker: dict[str, str | None],
     fiscal_year: int,
-    total_savings_base: Decimal | None = None,
+    tme: Decimal | None = None,
 ) -> dict:
     """Deducción por doble imposición internacional (art. 80 LIRPF, casilla 0588).
 
-    Por país: la deducción es el MENOR de (a) la retención extranjera
-    soportada con tope en el tipo de convenio sobre el íntegro, y (b) la
-    cuota española sobre esos rendimientos (tipo medio efectivo de la base
-    del ahorro si se conoce; escala progresiva sobre el propio rendimiento
-    en caso contrario).
+    La deducción es el MENOR de:
+      (a) la retención extranjera soportada, con tope en el tipo del convenio
+          sobre el íntegro (solo países con tipo verificado en el BOE), y
+      (b) la cuota que correspondería en España, calculada con el TIPO MEDIO
+          EFECTIVO DE GRAVAMEN (TME) de la declaración COMPLETA: cuota
+          íntegra estatal y autonómica ×100 / base liquidable del ahorro,
+          expresado con dos decimales (Manual Renta 2025, cap. 18).
+
+    El TME exige la declaración entera (bases general y del ahorro, cuotas),
+    que CavaAI no tiene: sin ``tme`` la deducción queda
+    ``status="pendiente_tme"`` con ``deduction_base=None`` y se muestra solo
+    el TOPE POR CONVENIO (límite superior), nunca una deducción final
+    aparentemente verificada. Con ``tme`` (introducido por el usuario desde
+    su borrador) se calcula la deducción como min(tope convenio, bruto×TME).
 
     La retención de emisores españoles NO es deducible aquí: es un pago a
     cuenta doméstico (casilla 0597) y se devuelve aparte.
-    País desconocido (sin domicile_country): bloque marcado
-    ``manual_review``, sin deducción calculada.
+    País desconocido o sin tipo de convenio verificado: ``manual_review``,
+    sin deducción calculada.
     """
     by_country: dict[str, dict] = {}
     manual_review = []
@@ -232,6 +262,22 @@ def build_double_taxation(
             continue
         if not gross and not withheld:
             continue
+        special = sorted({
+            token
+            for payment in (bucket.get("payments") or [])
+            for token in SPECIAL_PAYMENT_TOKENS
+            if token in str(payment.get("raw_action") or "").lower()
+        })
+        if special:
+            manual_review.append({
+                "ticker": bucket["ticker"],
+                "reason": (
+                    "Tipo de pago especial (" + ", ".join(special) + "): no es "
+                    "un dividendo ordinario y su tratamiento fiscal difiere; "
+                    "no entra en la deducción automática."
+                ),
+            })
+            continue
         country = (country_by_ticker.get(bucket["ticker"]) or "").strip().upper()
         if country in {"", UNKNOWN_COUNTRY}:
             manual_review.append({
@@ -239,18 +285,24 @@ def build_double_taxation(
                 "reason": "País de retención desconocido (sin domicilio del emisor); no se calcula deducción para este bloque.",
             })
             continue
+        if country != "ES" and country not in TREATY_DIVIDEND_RATES:
+            manual_review.append({
+                "ticker": bucket["ticker"],
+                "reason": (
+                    f"Sin tipo de convenio verificado para {country}: la "
+                    "retención se revisa a mano contra el convenio aplicable "
+                    "(un tipo genérico podría acreditar de más o de menos)."
+                ),
+            })
+            continue
         entry = by_country.setdefault(country, {"gross": Decimal("0"), "withheld": Decimal("0")})
         entry["gross"] += Decimal(str(gross or 0))
         entry["withheld"] += Decimal(str(withheld or 0))
 
-    effective_rate = None
-    if total_savings_base is not None and total_savings_base > 0:
-        effective_rate = calculate_savings_tax(total_savings_base, fiscal_year) / total_savings_base
-
     countries = []
     total_deduction = Decimal("0")
     spanish_withholding = Decimal("0")
-    incomplete = False
+    any_excess = False
     for country in sorted(by_country):
         data = by_country[country]
         if country == "ES":
@@ -259,46 +311,57 @@ def build_double_taxation(
             continue
         if data["withheld"] <= 0:
             continue
-        treaty_rate = TREATY_DIVIDEND_RATES.get(country, DEFAULT_TREATY_RATE)
-        treaty_source = "convenio" if country in TREATY_DIVIDEND_RATES else "defecto-15%"
-        spanish_tax = (
-            data["gross"] * effective_rate
-            if effective_rate is not None
-            else calculate_savings_tax(data["gross"], fiscal_year)
-        )
+        treaty_rate = TREATY_DIVIDEND_RATES[country]
         creditable = min(data["withheld"], data["gross"] * treaty_rate)
-        deduction = min(creditable, spanish_tax)
         if data["withheld"] > creditable:
-            incomplete = True  # hay exceso reclamable en origen: se señala
+            any_excess = True  # hay exceso reclamable en origen: se señala
+        if tme is not None:
+            deduction = min(creditable, data["gross"] * tme)
+            status = "calculada_con_tme_manual"
+        else:
+            deduction = None
+            status = "pendiente_tme"
         countries.append({
             "country": country,
+            "country_basis": "domicilio_emisor_aproximado",
             "gross_base": _money(data["gross"]),
             "withheld_base": _money(data["withheld"]),
             "treaty_rate": float(treaty_rate),
-            "treaty_rate_source": treaty_source,
-            "creditable_base": _money(creditable),
-            "spanish_tax_base": _money(spanish_tax),
-            "deduction_base": _money(deduction),
+            "treaty_rate_source": TREATY_RATE_SOURCES[country],
+            "treaty_cap_base": _money(creditable),
+            "deduction_base": _money(deduction) if deduction is not None else None,
+            "status": status,
             "excess_reclaimable_base": _money(data["withheld"] - creditable),
         })
-        total_deduction += deduction
+        if deduction is not None:
+            total_deduction += deduction
 
+    # Total solo cuando es COMPLETO y computable: con revisión manual
+    # pendiente (país desconocido, FX ausente, tipo de pago especial o sin
+    # convenio verificado) un total parcial parecería definitivo.
+    partial = bool(manual_review)
+    publish_total = tme is not None and not partial
     return {
         "casilla": CASILLA_DOBLE_IMPOSICION,
         "basis": "art-80-lirpf",
-        "method": (
-            "tipo-medio-efectivo" if effective_rate is not None
-            else "escala-progresiva-por-pais"
-        ),
+        "status": "calculada_con_tme_manual" if tme is not None else "pendiente_tme",
+        "partial": partial,
         "countries": countries,
-        "total_deduction_base": _money(total_deduction),
+        "total_deduction_base": _money(total_deduction) if publish_total else None,
         "spanish_withholding_base": {
             "casilla": CASILLA_RETENCIONES_ES,
             "amount": _money(spanish_withholding),
         },
-        "excess_withholding_reclaimable": incomplete,
+        "excess_withholding_reclaimable": any_excess,
         "manual_review": manual_review,
         "notas": [
+            "La deducción final (0588) es el menor entre el tope de convenio "
+            "y la cuota española calculada con el TIPO MEDIO EFECTIVO de tu "
+            "declaración completa (Manual Renta 2025, cap. 18): ese tipo "
+            "necesita bases y cuotas de toda la declaración, que no están en "
+            "este informe. Introduce tu TME del borrador de Renta Web para "
+            "calcularla; hasta entonces el importe mostrado es solo el tope "
+            "por convenio (límite superior).",
             "El exceso de retención sobre el tipo de convenio no lo devuelve "
             "Hacienda: se reclama al fisco del país de origen (devolución del "
             "exceso de retención en origen).",

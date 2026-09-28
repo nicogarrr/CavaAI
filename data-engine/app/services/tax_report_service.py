@@ -204,6 +204,7 @@ class TaxReportService:
                         {
                             "date": transaction.trade_date.isoformat(),
                             "type": "withholding",
+                            "raw_action": transaction.action,
                             "amount_native": _money(withheld),
                             "amount_base": _money(abs(amount_base)) if amount_base is not None else None,
                         }
@@ -218,6 +219,7 @@ class TaxReportService:
                         {
                             "date": transaction.trade_date.isoformat(),
                             "type": "dividend",
+                            "raw_action": transaction.action,
                             "amount_native": _money(amount_native),
                             "amount_base": _money(amount_base),
                         }
@@ -631,6 +633,20 @@ class TaxReportService:
         ``Company.domicile_country`` (limitacion documentada en
         ``tax_irpf_filing``).
         """
+        summary0 = data.get("summary") or {}
+        if (summary0.get("base_currency") or "EUR") != "EUR":
+            # Las casillas del Modelo 100 son importes en EUR: con la cartera
+            # en otra divisa base no se publican cifras bajo rótulos IRPF.
+            return {
+                "available": False,
+                "reason": (
+                    "La cartera no usa EUR como divisa base: las casillas del "
+                    "Modelo 100 y la deducción 0588 son importes en euros y "
+                    "no se publican cifras en otra divisa. Cambia la divisa "
+                    "base de la cartera a EUR para obtener la capa de "
+                    "declaración."
+                ),
+            }
         tickers = {
             b["ticker"]
             for b in (data.get("dividends") or []) + (data.get("realized") or [])
@@ -642,12 +658,8 @@ class TaxReportService:
                 select(Company).where(Company.ticker.in_(sorted(tickers)))
             ):
                 country_by_ticker[company.ticker] = company.domicile_country
-        summary = data.get("summary") or {}
-        net_base = summary.get("net_taxable_base")
-        total_savings_base = (
-            Decimal(str(net_base)) if net_base is not None and net_base > 0 else None
-        )
         return {
+            "available": True,
             "casillas": build_casillas(
                 data.get("dividends") or [], data.get("realized") or [], fiscal_year
             ),
@@ -655,7 +667,6 @@ class TaxReportService:
                 data.get("dividends") or [],
                 country_by_ticker,
                 fiscal_year,
-                total_savings_base=total_savings_base,
             ),
         }
 
