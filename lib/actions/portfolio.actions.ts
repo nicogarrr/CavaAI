@@ -34,7 +34,9 @@ async function getQuote(symbol: string): Promise<{ c: number } | null> {
         if (!response.ok) return null;
         return await response.json();
     } catch (error) {
-        console.error(`Error fetching quote for ${symbol}:`, error);
+        // El simbolo llega del cliente: se pasa como argumento separado, nunca
+        // dentro de la cadena de formato (CodeQL js/format-string).
+        console.error('Error fetching quote for', symbol, error);
         return null;
     }
 }
@@ -520,8 +522,15 @@ export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Pr
         // salta. Decirlo (ok: false) es lo único honesto: devolver las
         // posiciones de entrada hacía que el toast afirmara una actualización
         // que no ocurrió.
+        // Los simbolos vienen de las posiciones del cliente: argumentos
+        // separados y acotados, nunca interpolados en la cadena de formato
+        // (CodeQL js/format-string). El log no necesita la lista entera.
         console.error(
-            `refreshPortfolioHoldings: 0 de ${skipped.length} precios escritos (FINNHUB_API_KEY ${FINNHUB_API_KEY ? 'configurada' : 'sin configurar'}): ${skipped.join(', ')}`,
+            'refreshPortfolioHoldings: precios escritos 0 de',
+            skipped.length,
+            `(FINNHUB_API_KEY ${FINNHUB_API_KEY ? 'configurada' : 'sin configurar'})`,
+            'sin cotizacion:',
+            skipped.slice(0, 20),
         );
         return { ok: false, updated: [], skipped };
     }
