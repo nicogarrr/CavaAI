@@ -71,8 +71,8 @@ def _sec_error(status_code: int) -> httpx.HTTPStatusError:
     url = "https://www.sec.gov/Archives/edgar/data/320193/x.htm"
     request = httpx.Request("GET", url)
     response = httpx.Response(status_code, request=request)
-    # Mensaje con el formato real de httpx: incluye la URL (la heuristica de
-    # clasificacion mira "sec.gov" en el texto de la excepcion).
+    # Mensaje con el formato real de httpx (incluye la URL); la atribucion
+    # usa el host de la request, no el texto.
     kind = "Client" if status_code < 500 else "Server"
     return httpx.HTTPStatusError(f"{kind} error '{status_code}' for url '{url}'", request=request, response=response)
 
@@ -171,22 +171,62 @@ def test_sec_429_fail_open_when_redis_unavailable():
     assert _is_transient_with(_sec_error(429), None) is True
 
 
+def _http_error_for_url(status_code: int, url: str) -> httpx.HTTPStatusError:
+    """Error httpx real: mensaje con el formato nativo (incluye la URL) y
+    atributos request/response, como el que lanza response.raise_for_status()."""
+    request = httpx.Request("GET", url)
+    response = httpx.Response(status_code, request=request)
+    kind = "Client" if status_code < 500 else "Server"
+    reason = "Too Many Requests" if status_code == 429 else "Forbidden"
+    return httpx.HTTPStatusError(
+        f"{kind} error '{status_code} {reason}' for url '{url}'",
+        request=request,
+        response=response,
+    )
+
+
 def test_sec_substring_lookalike_domain_is_not_sec():
-    """sec.gov.evil.com o notsec.gov NO cuentan como SEC (CodeQL
-    py/incomplete-url-substring-sanitization): sin host real de sec.gov,
-    un 429 sigue la via generica (transitorio, sin breaker) y un 403 la
-    generica (permanente, pero no por politica SEC)."""
-    import httpx as _httpx
-
-    def _evil_error(status_code: int) -> _httpx.HTTPStatusError:
-        url = f"https://sec.gov.evil.example/{status_code}"
-        request = _httpx.Request("GET", url)
-        response = _httpx.Response(status_code, request=request)
-        return _httpx.HTTPStatusError("error", request=request, response=response)
-
+    """sec.gov.evil.com o notsec.gov NO cuentan como SEC: el host se toma de
+    la request real, no de un substring. Un 429 lookalike sigue la via
+    generica (transitorio, sin breaker); un 403 lookalike, generico
+    permanente (no por politica SEC)."""
+    evil_429 = _http_error_for_url(429, "https://sec.gov.evil.example/x")
+    assert "sec.gov" in str(evil_429)  # el substring inseguro lo hubiera marcado SEC
     client = _FakeRedis()
-    # 429 de dominio falso: generico transitorio y NO alimenta la racha SEC.
-    assert _is_transient_with(_evil_error(429), client) is True
+    assert _is_transient_with(evil_429, client) is True
     assert client.get(workers_module._SEC_BREAKER_STREAK_KEY) is None
-    # 403 de dominio falso: permanente por la regla generica, no por SEC.
-    assert _is_transient_with(_evil_error(403), client) is False
+    evil_403 = _http_error_for_url(403, "https://sec.gov.evil.example/x")
+    assert _is_transient_with(evil_403, client) is False
+    assert client.get(workers_module._SEC_BREAKER_STREAK_KEY) is None
+
+
+def test_sec_attribution_via_cause_chain():
+    """El connector envuelve con `raise RuntimeError(...) from e`: la
+    atribucion recorre __cause__ hasta la request httpx real."""
+    cause = _http_error_for_url(429, "https://www.sec.gov/Archives/edgar/data/320193/x.htm")
+    try:
+        try:
+            raise cause
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(f"SEC fetch failed: {e}") from e
+    except RuntimeError as wrapped:
+        client = _FakeRedis()
+        assert _is_transient_with(wrapped, client) is True
+        # Si alimento la racha del breaker: es via SEC, no generica.
+        assert client.get(workers_module._SEC_BREAKER_STREAK_KEY) == "1"
+
+
+def test_other_provider_error_mentioning_sec_url_is_not_sec():
+    """Un 429 de otro proveedor cuya request NO es sec.gov no alimenta el
+    breaker aunque el texto mencione una URL de la SEC."""
+    request = httpx.Request("GET", "https://finnhub.io/api/v1/quote")
+    response = httpx.Response(429, request=request)
+    exc = httpx.HTTPStatusError(
+        "Client error '429 Too Many Requests' for url 'https://finnhub.io/api/v1/quote'; "
+        "see https://www.sec.gov/Archives for reference",
+        request=request,
+        response=response,
+    )
+    client = _FakeRedis()
+    assert _is_transient_with(exc, client) is True
+    assert client.get(workers_module._SEC_BREAKER_STREAK_KEY) is None

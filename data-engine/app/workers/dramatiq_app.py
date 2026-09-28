@@ -6,6 +6,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
@@ -62,11 +63,11 @@ def _is_transient(exc: Exception) -> bool:
         # justo lo que Dramatiq deberia reintentar. max_retries quedaba muerto
         # para los unicos fallos para los que existe.
         status = _status_from_message(str(exc))
-    if status == 403 and _mentions_sec_host(str(exc)):
+    if status == 403 and _is_sec_failure(exc):
         # F359: 403 de la SEC evidencia bloqueo de IP (OCI): permanente, sin
         # reintento - reintentar enveneno la cola default (5276 mensajes).
         return False
-    if status == 429 and _mentions_sec_host(str(exc)):
+    if status == 429 and _is_sec_failure(exc):
         # F359: 429 de la SEC es rate limit y PUEDE ser temporal (Retry-After;
         # el backoff del actor ya espacia los reintentos). Se reintenta de
         # forma acotada hasta que salta el circuit breaker por origen.
@@ -120,21 +121,40 @@ def _sec_rate_limit_allows_retry(client=None) -> bool:
 
 
 _STATUS_IN_TEXT = re.compile(r"\b(4\d\d|5\d\d)\b")
-_URL_HOST = re.compile(r"https?://([A-Za-z0-9.-]+)")
+_FOR_URL = re.compile(r"for url '(https?://[^']+)'")
 
 
-def _mentions_sec_host(text: str) -> bool:
-    """True si el texto referencia un host REAL de sec.gov.
+def _is_sec_failure(exc: BaseException) -> bool:
+    """True si el fallo se atribuye estructuralmente a un host real de sec.gov.
 
-    Substring plano ("sec.gov" in text) da falsos positivos con dominios
-    como sec.gov.evil.com o notsec.gov (CodeQL
-    py/incomplete-url-substring-sanitization): se compara el host exacto
-    o un subdominio legitimo (.sec.gov).
+    Atribucion, en orden: (1) errores httpx: host de la request real
+    (exc.request.url o exc.response.request.url), sin parsear texto;
+    (2) cadena __cause__/__context__ (los connectors envuelven con
+    `raise RuntimeError(...) from e`); (3) fallback: el formato propio de
+    httpx "for url '<url>'" dentro del mensaje. Un error de otro proveedor
+    que solo mencione una URL de la SEC en texto libre NO alimenta el
+    breaker, y un lookalike (sec.gov.evil.com, notsec.gov) tampoco.
     """
-    return any(
-        host == "sec.gov" or host.endswith(".sec.gov")
-        for host in _URL_HOST.findall(text)
-    )
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        request = getattr(current, "request", None)
+        if request is None:
+            response = getattr(current, "response", None)
+            request = getattr(response, "request", None) if response is not None else None
+        if request is not None:
+            try:
+                host = request.url.host or ""
+            except Exception:
+                host = ""
+            return host == "sec.gov" or host.endswith(".sec.gov")
+        match = _FOR_URL.search(str(current))
+        if match:
+            host = urlparse(match.group(1)).hostname or ""
+            return host == "sec.gov" or host.endswith(".sec.gov")
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _status_from_message(text: str) -> int | None:
