@@ -117,7 +117,7 @@ class Modelo720FileService:
               "apellidos_nombre": "APELLIDOS, NOMBRE",  # obligatorio
               "numero_declaracion": "7202025000001",    # obligatorio: 13 dígitos, empieza por 720
               "custody": {"US0378331005": "IE", "cash:USD": "IE"},  # obligatorio: custodia POR PARTIDA
-              "custody_entities": {"IE": {             # obligatorio POR PAÍS de custodia
+              "custody_entities": {"US0378331005": {   # obligatorio POR PARTIDA (misma clave que custody)
                 "name": "BROKER FICTICIO SA",
                 "nif": "FICTICIO123",                  # NIF de la entidad en su país
                 "street": "CALLE FICTICIA 1",          # domicilio ESTRUCTURADO (subcampos)
@@ -209,30 +209,46 @@ class Modelo720FileService:
                 ),
                 "thresholds": thresholds,
             }
-        # Entidad depositaria REAL y ESTRUCTURADA por país de custodia
-        # (190-230, 231-250, 251-414): la spec no los deja en blanco para
-        # clave V y el domicilio va por subcampos (251-302 vía, 303-342
-        # complemento, 343-372 ciudad, 373-402 región, 403-412 ZIP,
-        # 413-414 país). Una entidad global replicada a custodios distintos
-        # sería un dato falso.
+        # Entidad depositaria REAL y ESTRUCTURADA POR PARTIDA (190-230,
+        # 231-250, 251-414): la spec no los deja en blanco para clave V y el
+        # domicilio va por subcampos (251-302 vía, 303-342 complemento,
+        # 343-372 ciudad, 373-402 región, 403-412 ZIP, 413-414 país). La
+        # clave es el MISMO espacio que 'custody' (ISIN/ticker): dos
+        # depositarios distintos en un mismo país no pueden recibir una
+        # entidad común por ambigüedad.
         raw_entities = declarant.get("custody_entities")
         custody_entities: dict[str, dict] = {}
         if isinstance(raw_entities, dict):
             for k, v in raw_entities.items():
                 if isinstance(v, dict):
                     custody_entities[str(k).strip().upper()] = v
-        for country in set(custody_map.values()):
-            ent = custody_entities.get(country)
+        for partida, country in custody_map.items():
+            ent = custody_entities.get(partida)
             if not ent or not all(
                 ent.get(f) for f in ("name", "nif", "street", "city", "zip", "country")
             ):
                 return {
                     "available": False,
                     "reason": (
-                        f"Falta 'custody_entities.{country}' en tax_declarant "
-                        "(name, nif, street, city, zip, country de la entidad "
-                        "depositaria REAL de ese país): los campos 190-414 del "
-                        "registro V exigen entidad y domicilio estructurado."
+                        f"Falta 'custody_entities' para '{partida}' en "
+                        "tax_declarant (name, nif, street, city, zip, country "
+                        "de la entidad depositaria REAL de ESA partida): la "
+                        "entidad se liga a cada ISIN/cuenta, no se agrupa por "
+                        "país."
+                    ),
+                    "thresholds": thresholds,
+                }
+            # Coherencia: el país del domicilio de la entidad debe ser el
+            # país de custodia declarado para su partida (ni ES en un
+            # custodio IE ni al revés).
+            if str(ent.get("country") or "").strip().upper() != country:
+                return {
+                    "available": False,
+                    "reason": (
+                        f"Incoherencia en '{partida}': la entidad declara "
+                        f"país de domicilio '{ent.get('country')}' pero la "
+                        f"custodia de la partida es '{country}'. Corrige "
+                        "custody / custody_entities."
                     ),
                     "thresholds": thresholds,
                 }
@@ -241,14 +257,16 @@ class Modelo720FileService:
         # confirma primera declaración. Sin filed_720_before explícito no se
         # puede asignar origen A/M: fail-closed.
         filed_before = declarant.get("filed_720_before")
-        if filed_before is None:
+        if type(filed_before) is not bool:
+            # Solo booleano JSON real: "false", 0 o {} no valen — pasarían
+            # por primera declaración y emitirían un origen A falso.
             return {
                 "available": False,
                 "reason": (
-                    "Falta 'filed_720_before' (true/false) en tax_declarant: "
-                    "sin historial de presentación no se puede asignar el "
-                    "origen (A primera declaración / M modificación) sin "
-                    "inventarlo."
+                    "Falta 'filed_720_before' (booleano true/false) en "
+                    "tax_declarant: sin historial de presentación no se puede "
+                    "asignar el origen (A primera declaración / M "
+                    "modificación) sin inventarlo."
                 ),
                 "thresholds": thresholds,
             }
@@ -364,7 +382,7 @@ class Modelo720FileService:
                 # previous_year_isins ya no puede coexistir con
                 # filed_720_before=false (gate anterior): origen "A"
                 # legítimo de primera declaración.
-                ent = custody_entities[custody]
+                ent = custody_entities[isin]
                 detail_records.append(
                     self._detail_valores(
                         fiscal_year, nif, apellidos_nombre, pos, isin,
