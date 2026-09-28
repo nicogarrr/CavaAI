@@ -46,6 +46,11 @@ EXCHANGE_COUNTRY = {
 }
 
 
+# Tolerancia de frescura de la pata final del retorno FX del periodo:
+# cubre fin de semana y festivo corto; un dato mas viejo no se reutiliza.
+_FX_END_LEG_TOLERANCE = timedelta(days=7)
+
+
 def _fx_rate_with_date(
     fx_table: dict[tuple[str, str], list[tuple[date, Decimal]]],
     *,
@@ -902,6 +907,13 @@ class PortfolioIntelligenceService:
         if start is None or end is None:
             return None
         (start_date, start_rate), (end_date, end_rate) = start, end
+        # Tolerancia explicita de la pata FINAL respecto al fin de periodo:
+        # sin ella, con una sola tasa del 1/ene y barra final en junio la
+        # MISMA fila servia de pata inicial y final y publicaba 0,0% medido
+        # (cero fabricado con fx_known=True). Un hueco mayor que la tolerancia
+        # (fin de semana / festivo corto) deja el componente en None.
+        if end_date < period_end - _FX_END_LEG_TOLERANCE:
+            return None
         if end_date < cutoff or end_date < start_date or not start_rate or not end_rate:
             return None
         return float(end_rate / start_rate - 1)

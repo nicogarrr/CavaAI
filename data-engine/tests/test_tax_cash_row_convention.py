@@ -69,6 +69,22 @@ def _tx(db: Session, company: Company, day: date, action: str, qty, price, curre
     return row
 
 
+def None_company(db: Session):
+    """Marcador: transacciones sin company_id (cash no atribuido)."""
+    return None
+
+
+def _tx_unattached(db: Session, day: date, action: str, qty, price, currency="EUR") -> Transaction:
+    row = Transaction(
+        company_id=None, trade_date=day, action=action,
+        quantity=Decimal(str(qty)), price=Decimal(str(price)),
+        fees=Decimal("0"), currency=currency, raw_payload={},
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
 def test_intelligence_uses_the_tax_report_cash_helper(db: Session):
     """One helper, imported by both: the fiscal report and the attribution
     cannot drift apart on the same row again."""
@@ -235,3 +251,16 @@ def test_unambiguous_rows_still_aggregate(db: Session):
     assert row["dividends_base"] == 10.0
     assert report["summary"]["total_dividends_base"] == 10.0
     assert report["summary"]["manual_review"] is False
+
+
+def test_unattributed_subtotal_none_with_ambiguous_unattributed_bucket(db: Session):
+    """Unattributed bucket carrying an ambiguous cash row: the diagnostic
+    subtotal must be None, never an exact-looking partial 0."""
+    _eur_portfolio(db)
+    _tx_unattached(db, date(2026, 4, 1), "dividend", 100, "0.25")
+
+    report = TaxReportService().compute_report(db, YEAR)
+    row = next(d for d in report["dividends"] if d["ticker"].startswith("UNATTRIBUTED:"))
+    assert row["ambiguous_cash"] is True
+    assert row["dividends_base"] is None
+    assert report["summary"]["unattributed_dividends_base"] is None

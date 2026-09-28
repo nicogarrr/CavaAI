@@ -176,3 +176,24 @@ def test_xirr_with_cash_dividend_row_and_fx_does_not_raise(db):
     value, meta = PortfolioIntelligenceService()._xirr(db, [(position, c)])
     assert value is not None
     assert meta.get("status") in (None, "calculated")
+
+
+def test_single_initial_rate_never_serves_as_both_legs(db):
+    """Tabla con SOLO la tasa del corte: sin tolerancia la misma fila era
+    pata inicial y final y publicaba 0,0% medido. Ahora None."""
+    _eur_portfolio(db)
+    c = _company(db, "FXC")
+    position = _position(db, c, as_of=date(2025, 6, 1), fx_rate=None)
+    prices = _prices(db, c, [(date(2026, 1, 2), 100), (date(2026, 6, 1), 110)])
+    _fx(db, date(2026, 1, 1), "0.90")
+
+    svc = PortfolioIntelligenceService()
+    from app.services.portfolio_fx_service import PortfolioFXService
+    fx_table = PortfolioFXService().fx_table(
+        db, currencies={"USD", "EUR"}, base_currency="EUR", as_of_max=date(2026, 6, 1)
+    )
+    assert svc._period_fx_return(fx_table, position, "EUR", CUTOFF, prices[-1].date) is None
+    out = svc._attribution(db, [(position, c)], {c.id: 1.0}, {c.id: prices}, CUTOFF)
+    assert out["positions"][0]["fx_known"] is False
+    assert out["portfolio_components"]["fx"] is None
+    assert "fx" in out["incomplete_components"]

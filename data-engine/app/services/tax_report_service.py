@@ -731,14 +731,25 @@ class TaxReportService:
             "unattributed_tickers": sorted(
                 b["ticker"] for b in dividends if b.get("unattributed")
             ),
-            "unattributed_dividends_base": _money(
-                sum(
-                    (
-                        Decimal(str(b["dividends_base"] or 0))
-                        for b in dividends
-                        if b.get("unattributed")
-                    ),
-                    Decimal("0"),
+            # Subtotal diagnóstico: si un bloque no atribuido carece de FX o
+            # lleva cash ambiguo sin resolver, la suma quedaria por debajo
+            # sin avisar. None, nunca un parcial con pinta de exacto (misma
+            # regla que los totales).
+            "unattributed_dividends_base": (
+                None
+                if any(
+                    b.get("unattributed") and (b["missing_fx"] or b["ambiguous_cash"])
+                    for b in dividends
+                )
+                else _money(
+                    sum(
+                        (
+                            Decimal(str(b["dividends_base"] or 0))
+                            for b in dividends
+                            if b.get("unattributed")
+                        ),
+                        Decimal("0"),
+                    )
                 )
             ),
             "sell_count": sum(b["sale_count"] for b in realized),
