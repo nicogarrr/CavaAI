@@ -1,10 +1,39 @@
 import { expect, test } from "@playwright/test";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 
 // Quick win UX 4: la ficha y las tarjetas de research leen sector/industria
 // en español (nunca «Information Technology» cruda). Capturas para el OK
 // visual; el titular SEC español lo cubre test_sec_connector_title_es.py
 // (el conector no es alcanzable desde el stack de navegador).
 test.skip(!process.env.E2E_UI_RUN, "Set E2E_UI_RUN=1 to run browser tests.");
+
+// La ingesta vive SOLO en el backend FastAPI: en modo UI el baseURL de
+// Playwright es el frontend y un POST relativo a /api/news/ingest cae en
+// Next (404). Semilla firmada contra el backend e2e (patron
+// research-relevance / f339).
+const apiSecret = process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
+const apiUser = "e2e-browser-user";
+const apiBase = "http://127.0.0.1:8100";
+
+function signedHeaders(method: string, path: string, body: Buffer) {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = randomUUID().replaceAll("-", "");
+  const bodyHash = createHash("sha256").update(body).digest("hex");
+  const signature = createHmac("sha256", apiSecret)
+    .update(`${apiUser}:${apiUser}:${timestamp}:${nonce}:${method}:${path}:${bodyHash}`)
+    .digest("hex");
+  return {
+    "X-CavaAI-Tenant": apiUser,
+    "X-CavaAI-User": apiUser,
+    "X-CavaAI-Timestamp": timestamp,
+    "X-CavaAI-Nonce": nonce,
+    "X-CavaAI-Method": method,
+    "X-CavaAI-Path": path,
+    "X-CavaAI-Body-Hash": bodyHash,
+    "X-CavaAI-Signature": signature,
+    "Content-Type": "application/json",
+  };
+}
 
 test("cabecera de la ficha sin sector en inglés", async ({ page }) => {
   await page.goto("/research/MSFT");
@@ -27,21 +56,24 @@ test("tarjetas de /research sin sector en inglés", async ({ page }) => {
 // API expone el flag que lo gobierna.
 test("titular sintético SEC sin prefijo de ticker duplicado", async ({ page, request }) => {
   const url = `https://www.sec.gov/Archives/edgar/data/320193/e2e-strip-${Date.now()}.htm`;
-  const ingestion = await request.post("/api/news/ingest", {
-    data: {
-      source: "sec_filing",
-      items: [
-        {
-          ticker: "E2ESEC",
-          title: "E2ESEC 8-K presentado ante la SEC (strip e2e)",
-          summary: "E2ESEC 8-K presentado ante la SEC (strip e2e)",
-          url,
-          headline_from_source: false,
-        },
-      ],
-    },
+  const payload = {
+    source: "sec_filing",
+    items: [
+      {
+        ticker: "E2ESEC",
+        title: "E2ESEC 8-K presentado ante la SEC (strip e2e)",
+        summary: "E2ESEC 8-K presentado ante la SEC (strip e2e)",
+        url,
+        headline_from_source: false,
+      },
+    ],
+  };
+  const body = Buffer.from(JSON.stringify(payload));
+  const ingestion = await request.post(`${apiBase}/api/news/ingest`, {
+    data: body,
+    headers: signedHeaders("POST", "/api/news/ingest", body),
   });
-  expect(ingestion.ok()).toBeTruthy();
+  expect(ingestion.status(), await ingestion.text()).toBeLessThan(300);
 
   await page.goto("/research/news");
   // La caché del feed puede servir la lista previa unos segundos: reintentar
