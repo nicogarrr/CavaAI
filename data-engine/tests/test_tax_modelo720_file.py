@@ -63,6 +63,8 @@ def _seed(db, declarant=None, value="60000"):
         snapshot_date=date(2025, 12, 31), base_currency="EUR",
         positions_value_base=Decimal(value), cash_value_base=Decimal("0"),
         total_value_base=Decimal(value),
+        # El servicio de snapshots siempre escribe la clave: provenance probada.
+        metadata_={"missing_pricing": []},
     )
     db.add(snap)
     db.flush()
@@ -85,7 +87,7 @@ DECLARANT = {
     "numero_declaracion": "7202025000001",
     "custody": {"US0378331005": "IE"},
     "custody_entities": {
-        "IE": {
+        "US0378331005": {
             "name": "BROKER FICTICIO DE PRUEBAS",
             "nif": "IE-FICTICIO-0",
             "street": "CALLE FICTICIA 1",
@@ -272,3 +274,26 @@ def test_origin_a_is_legitimate_first_declaration(db):
     assert result["available"] is True
     detail = result["content"].rstrip("\n").split("\n")[1]
     assert detail[422] == "A"
+
+
+def test_unavailable_with_non_boolean_filed_720_before(db):
+    # "false" (string), 0 o {} pasarían por primera declaración: fail-closed.
+    _seed(db, declarant={**DECLARANT, "filed_720_before": "false"})
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "booleano" in result["reason"]
+
+
+def test_unavailable_on_entity_country_mismatch(db):
+    # El país del domicilio de la entidad debe ser el de la custodia de su
+    # partida: una entidad "ES" para custodia "IE" es incoherente.
+    bad = {
+        "US0378331005": {
+            **DECLARANT["custody_entities"]["US0378331005"],
+            "country": "ES",
+        },
+    }
+    _seed(db, declarant={**DECLARANT, "custody_entities": bad})
+    result = Modelo720FileService().generate(db, 2025)
+    assert result["available"] is False
+    assert "Incoherencia" in result["reason"]
