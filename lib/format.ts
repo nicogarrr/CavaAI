@@ -87,6 +87,20 @@ export function formatNumber(
 }
 
 /**
+ * Código de divisa aceptado por Intl (ISO 4217). Una divisa ausente o rara
+ * NUNCA se sustituye por USD: el dato que la necesita se omite.
+ */
+export function isValidCurrencyCode(currency: string | null | undefined): currency is string {
+    if (!currency || !/^[A-Z]{3}$/.test(currency)) return false;
+    try {
+        new Intl.NumberFormat(FORMAT_LOCALE, { style: 'currency', currency });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Importe monetario con locale es-ES (1.234,56 US$ / 1.234,56 €).
  */
 export function formatMoney(
