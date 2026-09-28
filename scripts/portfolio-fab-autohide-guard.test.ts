@@ -14,26 +14,32 @@ test('F339: la burbuja se auto-oculta durante el scroll y reaparece ~600 ms desp
 test('F339: en reposo la burbuja queda oculta mientras la leyenda intersecta su zona', () => {
     // El solape de F339 ocurre con el scroll parado: solo auto-ocultar durante
     // el scroll devuelve la burbuja 600 ms después, justo cuando el usuario se
-    // detiene a leer el donut. La burbuja también se oculta siempre que la
-    // leyenda (por id) cruce la banda de 96px abajo-derecha del viewport.
+    // detiene a leer el donut.
     assert.match(chat, /getElementById\('portfolio-allocation-legend'\)/);
-    assert.match(chat, /window\.innerWidth - 96/);
-    assert.match(chat, /window\.innerHeight - 96/);
     assert.match(chat, /setFabLegendBlocked\(/);
     assert.match(chat, /fabScrollHidden \|\| fabLegendBlocked/);
     assert.match(allocation, /id="portfolio-allocation-legend"/);
 });
 
-test('F339: la zona se calcula desde el viewport, no del rect del botón (sin oscilación)', () => {
-    // Con translate-y-24 el rect del propio FAB saldría de la zona al ocultarse
-    // y la burbuja parpadearía; la zona deriva de innerWidth/innerHeight.
-    assert.doesNotMatch(chat, /fabRef/);
-    assert.match(chat, /addEventListener\('resize', checkLegendOverlap/);
+test('F339: la zona se mide por computed style (safe-area iPhone incluida, sin oscilación)', () => {
+    // bottom/right del computed style resuelven env(safe-area-inset-*) a px y no
+    // dependen del transform: con translate-y-24 el rect saldría de la zona y la
+    // burbuja parpadearía. La banda no es una constante: cubre el inset real.
+    assert.match(chat, /getComputedStyle\(fab\)/);
+    assert.match(chat, /parseFloat\(styles\.bottom\)/);
+    assert.match(chat, /parseFloat\(styles\.right\)/);
+    assert.doesNotMatch(chat, /innerWidth - 96/);
+    assert.doesNotMatch(chat, /innerHeight - 96/);
 });
 
-test('F339: la leyenda se re-consulta por id (las tabs la montan y desmontan)', () => {
-    // Si la leyenda no existe en el DOM (otra tab activa), no hay bloqueo.
-    assert.match(chat, /if \(!legend\) \{\s*setFabLegendBlocked\(false\);\s*return;\s*\}/);
+test('F339: un cambio de tab re-ejecuta el chequeo aunque no haya scroll ni resize', () => {
+    // Las tabs montan/desmontan la leyenda sin scroll: sin MutationObserver el
+    // estado queda obsoleto (FAB tapando la leyenda recién montada u oculto
+    // para siempre tras desmontarla).
+    assert.match(chat, /new MutationObserver\(checkLegendOverlap\)/);
+    assert.match(chat, /observer\.observe\(document\.body, \{ childList: true, subtree: true \}\)/);
+    assert.match(chat, /observer\.disconnect\(\)/);
+    assert.match(chat, /if \(!legend \|\| !fab\) \{\s*setFabLegendBlocked\(false\);\s*return;\s*\}/);
 });
 
 test('F339: la burbuja oculta no intercepta toques, md+ la mantiene visible y todo se limpia', () => {
