@@ -166,3 +166,24 @@ def test_sec_429_fail_open_when_redis_unavailable():
 
     assert _is_transient_with(_sec_error(429), _DownRedis()) is True
     assert _is_transient_with(_sec_error(429), None) is True
+
+
+def test_sec_substring_lookalike_domain_is_not_sec():
+    """sec.gov.evil.com o notsec.gov NO cuentan como SEC (CodeQL
+    py/incomplete-url-substring-sanitization): sin host real de sec.gov,
+    un 429 sigue la via generica (transitorio, sin breaker) y un 403 la
+    generica (permanente, pero no por politica SEC)."""
+    import httpx as _httpx
+
+    def _evil_error(status_code: int) -> _httpx.HTTPStatusError:
+        url = f"https://sec.gov.evil.example/{status_code}"
+        request = _httpx.Request("GET", url)
+        response = _httpx.Response(status_code, request=request)
+        return _httpx.HTTPStatusError("error", request=request, response=response)
+
+    client = _FakeRedis()
+    # 429 de dominio falso: generico transitorio y NO alimenta la racha SEC.
+    assert _is_transient_with(_evil_error(429), client) is True
+    assert client.get(workers_module._SEC_BREAKER_STREAK_KEY) is None
+    # 403 de dominio falso: permanente por la regla generica, no por SEC.
+    assert _is_transient_with(_evil_error(403), client) is False

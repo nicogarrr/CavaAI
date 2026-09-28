@@ -62,11 +62,11 @@ def _is_transient(exc: Exception) -> bool:
         # justo lo que Dramatiq deberia reintentar. max_retries quedaba muerto
         # para los unicos fallos para los que existe.
         status = _status_from_message(str(exc))
-    if status == 403 and "sec.gov" in str(exc):
+    if status == 403 and _mentions_sec_host(str(exc)):
         # F359: 403 de la SEC evidencia bloqueo de IP (OCI): permanente, sin
         # reintento - reintentar enveneno la cola default (5276 mensajes).
         return False
-    if status == 429 and "sec.gov" in str(exc):
+    if status == 429 and _mentions_sec_host(str(exc)):
         # F359: 429 de la SEC es rate limit y PUEDE ser temporal (Retry-After;
         # el backoff del actor ya espacia los reintentos). Se reintenta de
         # forma acotada hasta que salta el circuit breaker por origen.
@@ -120,6 +120,21 @@ def _sec_rate_limit_allows_retry(client=None) -> bool:
 
 
 _STATUS_IN_TEXT = re.compile(r"\b(4\d\d|5\d\d)\b")
+_URL_HOST = re.compile(r"https?://([A-Za-z0-9.-]+)")
+
+
+def _mentions_sec_host(text: str) -> bool:
+    """True si el texto referencia un host REAL de sec.gov.
+
+    Substring plano ("sec.gov" in text) da falsos positivos con dominios
+    como sec.gov.evil.com o notsec.gov (CodeQL
+    py/incomplete-url-substring-sanitization): se compara el host exacto
+    o un subdominio legitimo (.sec.gov).
+    """
+    return any(
+        host == "sec.gov" or host.endswith(".sec.gov")
+        for host in _URL_HOST.findall(text)
+    )
 
 
 def _status_from_message(text: str) -> int | None:

@@ -24,8 +24,8 @@ test('F359: la tesis va en cola dedicada consumida por un worker DEDICADO', () =
 });
 
 test('F359: SEC 403 es permanente; 429 SEC se reintenta acotado con circuit breaker por origen', () => {
-    assert.match(workers, /if status == 403 and "sec\.gov" in str\(exc\)/, '403 SEC = permanente');
-    assert.match(workers, /if status == 429 and "sec\.gov" in str\(exc\)[\s\S]{0,600}_sec_rate_limit_allows_retry\(\)/, '429 SEC = breaker');
+    assert.match(workers, /if status == 403 and _mentions_sec_host\(str\(exc\)\)/, '403 SEC = permanente');
+    assert.match(workers, /if status == 429 and _mentions_sec_host\(str\(exc\)\)[\s\S]{0,600}_sec_rate_limit_allows_retry\(\)/, '429 SEC = breaker');
     assert.match(workers, /_SEC_429_STREAK_LIMIT = 5/);
     // Estado en Redis (compartido entre procesos, INCR atomico), no en memoria.
     assert.match(workers, /_SEC_BREAKER_OPEN_KEY = "sec_breaker:open"/, 'breaker abierto en Redis con TTL');
