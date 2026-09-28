@@ -20,12 +20,19 @@ export default function RefreshPortfolioButton({ userId }: RefreshPortfolioButto
         try {
             setIsRefreshing(true);
 
-            // 1. Update all stock prices in holdings
+            // Invalida las lecturas cacheadas (15 s) y las relee del backend.
+            // NO dispara POST /api/portfolio/refresh-market: ese endpoint
+            // refresca el universo completo de empresas del tenant y tarda
+            // minutos, así que aquí solo se releen los datos que el servidor
+            // tiene guardados.
             await updateAllPortfolioPrices(userId);
 
-            // 2. Force a full page refresh to recalculate all KPIs
+            // Vuelve a renderizar los KPIs del servidor con lo releído.
             router.refresh();
-            toast.success('Cartera actualizada');
+            // El toast dice lo que pasó: lecturas rehechas contra el servidor.
+            // «Cartera actualizada» afirmaba precios nuevos que este botón no
+            // puede pedir.
+            toast.success('Lecturas de cartera actualizadas');
 
         } catch (error) {
             showErrorToast(error, { onRetry: handleFullRefresh });
@@ -42,6 +49,7 @@ export default function RefreshPortfolioButton({ userId }: RefreshPortfolioButto
             onClick={handleFullRefresh}
             disabled={isRefreshing}
             aria-busy={isRefreshing}
+            title="Vuelve a leer posiciones y KPIs del servidor, sin caché. No fuerza cotizaciones nuevas: los precios son los últimos que guardó el servidor."
             className="border-gray-600 hover:bg-gray-700 text-gray-200"
         >
             {isRefreshing ? (

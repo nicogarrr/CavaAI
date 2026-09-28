@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { RecordDetail, RecordList, type DataRecord } from '@/components/data/RecordViews';
 import { getPlan, getPlanContributions, getPlanDrift } from '@/lib/actions/plan.actions';
 import PlanSetupDialog from '@/components/plan/PlanSetupDialog';
+import { formatMoney } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 
 interface PlanViewProps {
@@ -13,6 +14,46 @@ interface PlanViewProps {
     initialContributions: DataRecord[];
     initialDrift: DataRecord | null;
 }
+
+/** Etiquetas de las claves que devuelve GET /api/plan
+ *  (investment_plan_service.plan_metrics). Sin ellas la tarjeta pintaba la
+ *  clave cruda en mayúsculas: «PLAN_EXISTS», «MONTHLY_CONTRIBUTION»... */
+const PLAN_LABELS: Record<string, string> = {
+    plan_exists: 'Plan configurado',
+    id: 'Identificador',
+    monthly_contribution: 'Aportación mensual',
+    start_date: 'Fecha de inicio',
+    horizon_years: 'Horizonte (años)',
+    months_elapsed: 'Meses transcurridos',
+    expected_contributions_base: 'Aportaciones previstas',
+    actual_contributions_base: 'Aportaciones reales',
+    gap_base: 'Desviación',
+    on_track: 'En camino',
+    target_allocations: 'Asignación objetivo',
+};
+
+/** Claves de GET /api/plan/drift (investment_plan_service.drift_analysis). */
+const DRIFT_LABELS: Record<string, string> = {
+    plan_exists: 'Plan configurado',
+    status: t('common.labels.status'),
+    portfolio_value_base: 'Valor de la cartera',
+    cash_base: 'Caja',
+    missing_fx: 'Sin tipo de cambio para',
+    current_weights: 'Pesos actuales',
+    deviations: 'Desviaciones',
+    suggestions: 'Sugerencias',
+    next_contribution: 'Próxima aportación',
+};
+
+/** Etiquetas de GET /api/plan/contributions. `external_id` no se declara en la
+ *  respuesta (plan.list_contributions), así que salía siempre a «—». */
+const CONTRIBUTION_LABELS: Record<string, string> = {
+    id: 'Identificador',
+    date: t('common.labels.date'),
+    amount: 'Importe',
+    currency: 'Divisa',
+    note: 'Nota',
+};
 
 /** Extrae tickers del drift (current_weights "ticker:XXX", deviations kind ticker) y del plan (targets kind ticker) */
 function extractPlanTickers(drift: DataRecord | null, plan: DataRecord | null): string[] {
@@ -54,6 +95,7 @@ export default function PlanView({ initialPlan, initialContributions, initialDri
                 icon={<Target className="h-5 w-5 text-teal-400" />}
                 record={initialPlan}
                 fetchRecord={getPlan}
+                columnLabels={PLAN_LABELS}
                 maxKeys={20}
                 emptyMessage={t('plan.empty')}
                 emptyAction={<PlanSetupDialog />}
@@ -101,6 +143,7 @@ export default function PlanView({ initialPlan, initialContributions, initialDri
                 icon={<PiggyBank className="h-5 w-5 text-teal-400" />}
                 record={initialDrift}
                 fetchRecord={getPlanDrift}
+                columnLabels={DRIFT_LABELS}
                 maxKeys={24}
                 emptyMessage="Sin análisis de drift disponible."
             />
@@ -111,7 +154,12 @@ export default function PlanView({ initialPlan, initialContributions, initialDri
                 icon={<Landmark className="h-5 w-5 text-teal-400" />}
                 records={initialContributions}
                 fetchRecords={getPlanContributions}
-                columns={['date', 'amount', 'currency', 'note', 'external_id']}
+                columns={['date', 'amount', 'currency', 'note']}
+                columnLabels={CONTRIBUTION_LABELS}
+                formatColumns={{
+                    amount: (value, record) =>
+                        formatMoney(value as number | string | null, typeof record.currency === 'string' ? record.currency : 'EUR'),
+                }}
                 emptyMessage="Todavía no has registrado aportaciones a tu plan."
             />
         </div>

@@ -24,6 +24,13 @@ type Props = {
   baseCurrency?: string;
 };
 
+/** Lista corta de símbolos para un toast: como mucho 5 en crudo y el resto contado. */
+function describeSymbols(symbols: string[]): string {
+  const shown = symbols.slice(0, 5);
+  const rest = symbols.length - shown.length;
+  return `${shown.join(', ')}${rest > 0 ? ` y ${rest} más` : ''}`;
+}
+
 export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency }: Props) {
   const router = useRouter();
   const [currentHoldings, setCurrentHoldings] = useState<PortfolioHolding[]>(holdings);
@@ -56,11 +63,26 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const updated = await refreshPortfolioHoldings(currentHoldings);
-      setCurrentHoldings(updated);
-      toast.success('Precios actualizados');
+      const result = await refreshPortfolioHoldings(currentHoldings);
+      if (!result.ok) {
+        // La acción NO ha escrito ningún precio (p. ej. sin FINNHUB_API_KEY):
+        // un toast verde sería falso. Se dice qué símbolos no tienen cotización.
+        toast.error(`Ningún precio escrito: el proveedor no devolvió cotización para ${describeSymbols(result.skipped)}`);
+        return;
+      }
+      setCurrentHoldings(result.holdings);
+      router.refresh();
+      if (result.skipped.length > 0) {
+        // Parcial: se actualizó, pero no todo. El recuento lo declara.
+        toast.info(
+          `${result.updated.length} de ${result.updated.length + result.skipped.length} precios actualizados; sin cotización: ${describeSymbols(result.skipped)}`,
+        );
+        return;
+      }
+      const total = result.updated.length;
+      toast.success(`${total} ${total === 1 ? 'precio actualizado' : 'precios actualizados'}`);
     } catch (error) {
-      showErrorToast(error);
+      showErrorToast(error, { onRetry: handleRefresh });
     } finally {
       setRefreshing(false);
     }

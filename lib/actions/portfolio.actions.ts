@@ -461,36 +461,104 @@ export async function getPortfolioWithWeights(userId: string) {
     }));
 }
 
-// Actualizar precios de holdings existentes (para refresco cliente)
-export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Promise<PortfolioHolding[]> {
+/**
+ * Resultado de `refreshPortfolioHoldings`: lo que SE ESCRIBIÓ, no lo que se
+ * pidió. Antes la acción devolvía el array de entrada con la forma del éxito
+ * ante cualquier fallo y el componente pintaba «Precios actualizados» verde sin
+ * haber escrito nada (con FINNHUB_API_KEY sin configurar no se escribía ni una
+ * sola fila, porque `getQuote` devolvía null y el bucle hacía `return`).
+ */
+export type PortfolioPriceRefreshResult =
+    | {
+        /** Algún precio llegó al backend. `holdings` viene releído del servidor. */
+        ok: true;
+        /** Símbolos cuyo precio se escribió. */
+        updated: string[];
+        /** Símbolos sin cotización del proveedor (sin clave, error o respuesta vacía). */
+        skipped: string[];
+        holdings: PortfolioHolding[];
+    }
+    | {
+        /** No se escribió ningún precio: no hay nada que actualizar. */
+        ok: false;
+        updated: [];
+        /** Todos los símbolos pedidos, todos sin cotización utilizable. */
+        skipped: string[];
+    };
+
+/**
+ * Actualiza los precios de las posiciones existentes contra el proveedor de
+ * cotizaciones (PATCH /api/portfolio/prices) y relee el resumen.
+ *
+ * Los errores del backend YA NO se tragan: un 5xx o un fallo de red suben al
+ * `showErrorToast` del componente en vez de devolver las posiciones intactas con
+ * la apariencia del éxito.
+ */
+export async function refreshPortfolioHoldings(holdings: PortfolioHolding[]): Promise<PortfolioPriceRefreshResult> {
     const user = await requireAuthenticatedUser();
-    try {
-        await Promise.all(holdings.map(async (h) => {
-            const quote = await getQuote(h.symbol);
-            if (!quote?.c) return;
+    const symbols = holdings.map((holding) => holding.symbol);
+    if (symbols.length === 0) {
+        throw new ValidationError('No hay posiciones que actualizar');
+    }
+
+    const results = await Promise.all(
+        symbols.map(async (symbol) => {
+            const quote = await getQuote(symbol);
+            if (!quote?.c) return { symbol, written: false };
             await researchRequest('/api/portfolio/prices', {
                 method: 'PATCH',
-                body: jsonBody({ ticker: h.symbol, price: quote.c }),
+                body: jsonBody({ ticker: symbol, price: quote.c }),
             });
-        }));
-        invalidatePortfolioReads(user.id);
-        return (await getPortfolioSummary(user.id)).holdings;
-    } catch (error) {
-        console.error('Error refreshing portfolio holdings:', error);
-        return holdings;
+            return { symbol, written: true };
+        }),
+    );
+    const updated = results.filter((result) => result.written).map((result) => result.symbol);
+    const skipped = results.filter((result) => !result.written).map((result) => result.symbol);
+
+    if (updated.length === 0) {
+        // Sin clave de proveedor, o con el proveedor caído, el bucle entero se
+        // salta. Decirlo (ok: false) es lo único honesto: devolver las
+        // posiciones de entrada hacía que el toast afirmara una actualización
+        // que no ocurrió.
+        console.error(
+            `refreshPortfolioHoldings: 0 de ${skipped.length} precios escritos (FINNHUB_API_KEY ${FINNHUB_API_KEY ? 'configurada' : 'sin configurar'}): ${skipped.join(', ')}`,
+        );
+        return { ok: false, updated: [], skipped };
     }
+
+    invalidatePortfolioReads(user.id);
+    return {
+        ok: true,
+        updated,
+        skipped,
+        holdings: (await getPortfolioSummary(user.id)).holdings,
+    };
 }
 
-// Actualizar TODO el portfolio: posiciones + KPIs (para botón de refresco completo)
+/**
+ * «Actualizar todo»: invalida las lecturas cacheadas del usuario y las vuelve a
+ * pedir al backend.
+ *
+ * NO fuerza cotizaciones nuevas. Los precios que devuelve el backend son los
+ * últimos que grabó su propio pipeline; provocarlos es
+ * `POST /api/portfolio/refresh-market`, que refresca el universo COMPLETO de
+ * empresas del tenant (miles de símbolos, 6 en vuelo, 20 s por ticker) y tarda
+ * minutos en una petición HTTP síncrona: cablearlo a un botón dejaría al
+ * usuario mirando un spinner sin feedback y con el riesgo de que el proxy corte
+ * la respuesta a los 15 s de `RESEARCH_TIMEOUTS.GLOBAL_MS`. Lo honesto aquí es
+ * invalidar y releer, y decirlo.
+ */
 export async function updateAllPortfolioPrices(userId: string): Promise<{
     summary: PortfolioSummary;
     scores: PortfolioScores;
 }> {
-    await resolveUserId(userId);
-    // Force fresh fetch of everything - no cache
+    const canonicalUserId = await resolveUserId(userId);
+    // Sin esto, getPortfolioSummary/getPortfolioScores re-servían la caché de 15 s
+    // y el botón pintaba exactamente los mismos números de siempre.
+    invalidatePortfolioReads(canonicalUserId);
     const [summary, scores] = await Promise.all([
-        getPortfolioSummary(userId),
-        getPortfolioScores(userId)
+        getPortfolioSummary(canonicalUserId),
+        getPortfolioScores(canonicalUserId),
     ]);
 
     return { summary, scores };
