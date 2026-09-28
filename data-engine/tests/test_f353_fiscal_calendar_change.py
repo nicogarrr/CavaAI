@@ -6,9 +6,14 @@ Casos reales (28/09/2026, backfill tenant 2): BRT Sep->Dec, ZWS Mar->Dec,
 CSR Abr->Dec, JEF Dic->Nov, CMP/FOR Dic->Sep, EYPT/MYGN/LHX Jun->Dic,
 VFC Dic->Mar/Abr (52/53 semanas).
 
-Fix: moda sobre la ventana reciente (~5 anos) con mes normalizado (cierres
-en los primeros 7 dias del mes = mes anterior), historia solo como desempate.
-La proteccion anti-TTM de F28 sigue vigente (regresion AA/AAL incluida).
+Fix final (tras dos rondas de auditoria): filtro de ERA UNICA - solo el
+calendario vigente (moda de la ventana reciente, ~5 anos) con mes
+normalizado (cierres en los primeros 7 dias del mes = mes anterior, drift
+52/53 semanas). La historia pre-cambio queda fuera en re-imports: trade-off
+aceptado, porque toda variante dual-era (segunda moda, eras contiguas con
+diversidad de concepts) es reabrible por ruido TTM adversarial. Lo no
+negociable: AA/AAL y sus variantes multi-concept siguen rechazandose por
+construccion (el TTM nunca cierra en el mes del calendario vigente).
 """
 
 import asyncio
@@ -109,8 +114,10 @@ def test_zws_cambio_marzo_a_diciembre(db):
     company = _ingest(db, "ZWS", {"facts": {"us-gaap": {"Revenues": rev, "OperatingIncomeLoss": op}}})
     periods = _fy_revenues(db, company)
     assert periods["2023-12-31:FY"] == Decimal(str(1_200_000_000 + 2023))
-    assert periods["2020-03-31:FY"] == Decimal(str(1_800_000_000 + 2020))
     assert max(periods) == "2023-12-31:FY"
+    # Trade-off aceptado: la historia del calendario anterior (Mar) queda
+    # fuera en re-imports; solo el calendario vigente entra.
+    assert "2020-03-31:FY" not in periods
 
 
 def test_csr_cambio_abril_a_diciembre(db):
@@ -220,13 +227,23 @@ def test_adversarial_ttm_dominante_no_reabre_f28(db):
     assert not any(p.endswith("-03-31:FY") for p in periods), periods
 
 
-def test_era_anterior_exige_dos_concepts(db):
-    """Un calendario anterior visible en UN solo concept no basta: la
-    diversidad de concepts es la senal de cierres reales de ejercicio."""
-    rev = {"units": {"USD":
-        _years(2015, 2018, "04-01", "03-31", 50)
-        + _years_cal(2019, 2023, 60)}}
-    company = _ingest(db, "ONE", {"facts": {"us-gaap": {"Revenues": rev}}})
+def test_adversarial_ttm_multiconcept_no_reabre_f28(db):
+    """Segunda ronda del auditor: el mismo ruido TTM en DOS concepts
+    (Revenues + OperatingIncomeLoss) tampoco abre la puerta: el mes modal
+    vigente es Dic y los acumulados Mar nunca son el calendario vigente."""
+    real_rev = _years_cal(2012, 2025, 100)
+    real_op = _years_cal(2012, 2025, 40)
+    ttm_rev, ttm_op = [], []
+    for y in range(2012, 2020):
+        ttm_rev.append(_fy(f"{y - 1}-04-01", f"{y}-03-31", 999, f"{y + 1}-02-01"))
+        ttm_rev.append(_fy(f"{y - 1}-04-01", f"{y}-03-31", 998, f"{y + 1}-03-01"))
+        ttm_op.append(_fy(f"{y - 1}-04-01", f"{y}-03-31", 888, f"{y + 1}-02-01"))
+        ttm_op.append(_fy(f"{y - 1}-04-01", f"{y}-03-31", 887, f"{y + 1}-03-01"))
+    facts = {"facts": {"us-gaap": {
+        "Revenues": {"units": {"USD": real_rev + ttm_rev}},
+        "OperatingIncomeLoss": {"units": {"USD": real_op + ttm_op}},
+    }}}
+    company = _ingest(db, "ADV2", facts)
     periods = _fy_revenues(db, company)
-    assert periods["2023-12-31:FY"] == Decimal(str(60 + 2023))
-    assert "2018-03-31:FY" not in periods
+    assert periods["2025-12-31:FY"] == Decimal(str(100 + 2025))
+    assert not any(p.endswith("-03-31:FY") for p in periods), periods

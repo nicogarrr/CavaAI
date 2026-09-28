@@ -299,7 +299,7 @@ def _collect_by_concept(
     periods: set[str],
     min_span: int | None,
     max_span: int | None,
-    accepted_months: set[str] | None = None,
+    modal_month: str | None = None,
 ) -> dict[str, dict[str, dict[str, Any]]]:
     """Newest ``filed`` fact per concept and period, before any merging.
 
@@ -330,9 +330,9 @@ def _collect_by_concept(
                     continue
                 # The duration check alone is not enough: the ~365-day TTM
                 # rows that close on a quarter end pass it. Only the issuer's
-                # accepted fiscal close months enter an annual fact (current
-                # calendar + previous one after a calendar change, F353).
-                if accepted_months and _normalized_fiscal_month(entry.get("end") or "") not in accepted_months:
+                # current fiscal close month enters an annual fact (recent
+                # era, F353; TTM rows never close on it, F28).
+                if modal_month and _normalized_fiscal_month(entry.get("end") or "") != modal_month:
                     continue
             end = str(entry.get("end") or "")
             if not end:
@@ -609,91 +609,6 @@ def _recent_fiscal_mode(pairs: list[tuple[str, str]]) -> str:
     return max(pool, key=lambda m: (pool[m], latest_end.get(m, "")))
 
 
-def _accepted_fiscal_months(us_gaap: dict[str, Any]) -> set[str] | None:
-    """Meses de cierre aceptados para hechos anuales: el calendario vigente
-    (moda reciente) y, solo si hay evidencia real de cambio de calendario,
-    el inmediatamente anterior (F353). La historia pre-cambio es legitima y
-    no debe perderse al re-importar.
-
-    El calendario anterior se deriva de una ERA temporal contigua de
-    cierres, nunca de una segunda moda global: el ruido TTM (acumulados de
-    ~365 dias etiquetados fp=FY que F28 excluye) puede superar en numero a
-    los cierres reales en la historia agregada y ganaria esa segunda moda,
-    reabriendo el hueco de F28. Una era legitima exige tres condiciones:
-    (1) >= 3 anos contiguos en los que el mes es pluralidad anual; (2) la
-    era termina antes de que empiece la era vigente (un calendario anterior
-    no se solapa en el tiempo con el actual; el ruido TTM si); (3) >= 2
-    concepts XBRL distintos cierran ese mes en la era (los cierres reales
-    de ejercicio tocan muchas partidas; las anomalias TTM son localizadas).
-    None si no hay candidatos (sin filtro)."""
-    triples: list[tuple[str, int, str]] = []
-    for _metric, concepts, unit in SEC_METRIC_MAP:
-        xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
-        for concept in concepts:
-            entries = us_gaap.get(concept, {}).get("units", {}).get(xbrl_unit_key, [])
-            for e in entries:
-                if e.get("fp") != "FY" or e.get("form") not in {"10-K", "20-F"}:
-                    continue
-                start = e.get("start")
-                if not start:
-                    continue
-                try:
-                    span = (date.fromisoformat(str(e["end"])) - date.fromisoformat(str(start))).days
-                except (TypeError, ValueError):
-                    continue
-                if not 300 <= span <= 380:
-                    continue
-                end = str(e.get("end") or "")
-                if len(end) < 7:
-                    continue
-                month = _normalized_fiscal_month(end)
-                if month is not None:
-                    triples.append((month, int(end[:4]), concept))
-    if not triples:
-        return None
-
-    pairs = [(month, f"{year:04d}-01-01") for month, year, _c in triples]
-    current = _recent_fiscal_mode(pairs)
-    accepted = {current}
-
-    # Pluralidad por ano (a empate, el mes con mas cierres ese ano; luego
-    # cualquiera - el desempate fino no cambia las eras en la practica).
-    by_year: dict[int, Counter[str]] = {}
-    concepts_by_month_year: dict[tuple[str, int], set[str]] = {}
-    for month, year, concept in triples:
-        by_year.setdefault(year, Counter())[month] += 1
-        concepts_by_month_year.setdefault((month, year), set()).add(concept)
-    plurality = {y: c.most_common(1)[0][0] for y, c in by_year.items()}
-    years = sorted(plurality)
-    max_year = years[-1]
-
-    # Eras: tramos contiguos de anos con la misma pluralidad.
-    eras: list[tuple[str, int, int]] = []  # (mes, ano_inicio, ano_fin)
-    start = years[0]
-    prev = years[0]
-    cur_month = plurality[years[0]]
-    for y in years[1:]:
-        if y != prev + 1 or plurality[y] != cur_month:
-            eras.append((cur_month, start, prev))
-            start = y
-            cur_month = plurality[y]
-        prev = y
-    eras.append((cur_month, start, prev))
-
-    current_start = next(s for m, s, e in eras if e == max_year)
-    previous = [
-        (m, s, e) for m, s, e in eras
-        if e < current_start and e - s + 1 >= 3 and m != current
-    ]
-    if previous:
-        month, era_start, era_end = previous[-1]
-        era_concepts: set[str] = set()
-        for y in range(era_start, era_end + 1):
-            era_concepts |= concepts_by_month_year.get((month, y), set())
-        if len(era_concepts) >= 2:
-            accepted.add(month)
-    return accepted
-
 
 class FinancialIngestionService:
     """Normalize provider data into auditable financial facts."""
@@ -872,7 +787,7 @@ class FinancialIngestionService:
                     periods={"FY"},
                     min_span=300,
                     max_span=380,
-                    accepted_months=_accepted_fiscal_months(us_gaap),
+                    modal_month=modal_fy_month,
                 ),
                 metric,
             )
