@@ -84,12 +84,30 @@ Separacion ANTES de la migracion:
 1. Lectura dual: el scope de financial_facts admite NULL compartido; las
    escrituras siguen por tenant. Sin cambio de datos. Tests de aislamiento:
    un tenant nunca ve datos privados de otro ni puede escribir en NULL.
-2. Escritura compartida para SEC: la ingesta SEC escribe con tenant_id NULL y
-   deduplica contra la clave global (tenga el fact el tenant que tenga).
+2. Escritura compartida para SEC: la ingesta SEC escribe con tenant_id
+   NULL y deduplica SOLO contra observaciones SEC con provenance publica
+   verificada (accession + concepto + unidad + periodo + fecha de filing,
+   ver Diseño). Una fila historica por tenant NO se usa como referencia de
+   dedup salvo que su provenance publica este completa; si no lo esta, la
+   observacion nueva se escribe en NULL sin tocarla y quedan como dos
+   filas hasta la fase 3. En ningun caso un fact NULL referencia un
+   Document privado: su source_id es NULL y la provenance vive en sus
+   columnas publicas.
 3. Migracion de historico: backfill que consolida duplicados cross-tenant
-   (misma clave natural): se queda la fila mas completa (con source_id), se
-   mueve a NULL y se borran las copias por tenant. Con snapshot de respaldo
-   previo y conteo verificado (misma disciplina que la limpieza F350).
+   SOLO entre filas con provenance publica completa y coincidente (mismo
+   accession/concepto/unidad/periodo/valor). Criterio de supervivencia:
+   la fila con provenance publica completa y valor identico al filing;
+   NUNCA se elige una fila "por tener source_id" (ese criterio premiaba
+   el FK a Document privado). La fila consolidada se mueve a NULL con
+   source_id NULL: el source_id privado de cada copia NO se referencia
+   globalmente; si un tenant quiere conservar ese enlace interno se
+   preserva en una tabla de mapeo privada del tenant
+   (fact_consolidation_map: tenant_id, fact_id_compartido, document_id,
+   visible solo para ese tenant) antes de borrar la copia. Las copias por
+   tenant se borran tras verificar conteos; filas sin provenance publica
+   completa NO se consolidan (quedan por tenant). Con snapshot de
+   respaldo previo y conteo verificado (misma disciplina que la limpieza
+   F350).
 4. Limpieza: retirar la escritura por tenant de facts SEC y los backfills
    por tenant redundantes.
 
