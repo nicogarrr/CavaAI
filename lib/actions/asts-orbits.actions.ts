@@ -29,6 +29,13 @@ export type AstOrbitOverview = {
   fetched_at: string | null;
   objects: AstOrbitObject[];
   usage_note: string;
+  supgp: {
+    status: 'disponible' | 'sin datos';
+    source: string;
+    source_url: string;
+    fetched_at: string | null;
+    objects: AstOrbitObject[];
+  };
 };
 
 export async function getAstOrbitOverview(): Promise<AstOrbitOverview> {
