@@ -140,8 +140,12 @@ def export_obsidian_vault(db: Session = Depends(get_db)) -> Response:
     de watchlist sin empresa en el universo se listan como "sin datos de
     empresa" en vez de inventarse una ficha.
     """
+    # Solo tenencias vivas: una posición cerrada (quantity=0 tras vender) es
+    # historial del ledger, no cartera; el resto de la app la trata igual.
     positions = list(db.scalars(select(Position)).all())
-    company_ids = sorted({position.company_id for position in positions})
+    company_ids = sorted(
+        {position.company_id for position in positions if position.quantity > 0}
+    )
     companies: dict[str, Company] = {}
     if company_ids:
         companies = {

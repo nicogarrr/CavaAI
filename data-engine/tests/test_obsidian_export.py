@@ -333,3 +333,74 @@ def test_vault_endpoint_no_mezcla_tenants(vault_clients):
         assert not any("ACME" in name for name in names)
         index = archive.read("CavaAI/Índice.md").decode()
         assert "ZULU" in index and "ACME" not in index
+
+
+@pytest.fixture
+def vault_client_positions():
+    """Un tenant con posición viva, posición cerrada en watchlist y cerrada sin watchlist."""
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    tenant = Tenant(external_id="obs-tenant-pos", name="Test posiciones")
+    session.add(tenant)
+    session.flush()
+    companies = {}
+    for ticker, name in [("VIVA", "Viva Co"), ("CERRADA", "Cerrada Co"), ("HIST", "Historia Co")]:
+        company = Company(
+            ticker=ticker,
+            name=name,
+            exchange="NYSE",
+            currency="USD",
+            sector="Unknown",
+            industry="Unknown",
+            company_type="standard",
+            valuation_model="standard_dcf",
+            special_sources=[],
+            special_risks=[],
+            factor_tags=[],
+        )
+        session.add(company)
+        session.flush()
+        companies[ticker] = company
+    session.add(Position(company_id=companies["VIVA"].id, quantity=3, average_cost=10, tenant_id=tenant.id))
+    session.add(Position(company_id=companies["CERRADA"].id, quantity=0, average_cost=10, tenant_id=tenant.id))
+    session.add(Position(company_id=companies["HIST"].id, quantity=0, average_cost=10, tenant_id=tenant.id))
+    session.add(WatchItem(symbol="CERRADA", company="Cerrada Co", tenant_id=tenant.id))
+    session.commit()
+    tenant_id = tenant.id
+    session.close()
+
+    scoped = Session(engine)
+    scoped.info["tenant_id"] = tenant_id
+
+    def _override():
+        yield scoped
+
+    main.app.dependency_overrides[get_db] = _override
+    try:
+        yield TestClient(main.app)
+    finally:
+        main.app.dependency_overrides.clear()
+        scoped.close()
+        engine.dispose()
+
+
+def test_vault_posicion_cerrada_no_es_cartera(vault_client_positions):
+    response = vault_client_positions.get("/api/obsidian/vault.zip")
+    assert response.status_code == 200, response.text[:300]
+    with ZipFile(io.BytesIO(response.content)) as archive:
+        names = set(archive.namelist())
+        assert "CavaAI/VIVA/VIVA.md" in names
+        assert "CavaAI/CERRADA/CERRADA.md" in names  # sigue por watchlist
+        assert not any("HIST" in name for name in names)  # cerrada sin watchlist: fuera
+        index = archive.read("CavaAI/Índice.md").decode()
+        cartera = index.split("## Cartera", 1)[1].split("## Watchlist", 1)[0]
+        assert "VIVA" in cartera and "CERRADA" not in cartera
+        watchlist = index.split("## Watchlist", 1)[1]
+        assert "CERRADA" in watchlist
+        cerrada = archive.read("CavaAI/CERRADA/CERRADA.md").decode()
+        assert '"cartera"' not in cerrada
+        assert '- "watchlist"' in cerrada
+        assert "- Rol: En watchlist" in cerrada
