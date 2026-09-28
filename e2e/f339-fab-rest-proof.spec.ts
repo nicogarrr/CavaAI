@@ -7,10 +7,9 @@ test.use({
   viewport: { width: 390, height: 844 },
   hasTouch: true,
   isMobile: true,
-  channel: "chrome",
 });
 
-const apiSecret = "cavaai-e2e-research-secret-at-least-32-characters";
+const apiSecret = process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
 const apiUser = "e2e-browser-user"; // el bypass E2E firma tenant=user.id
 const apiBase = "http://127.0.0.1:8100";
 
@@ -46,7 +45,7 @@ test("F339: el FAB queda oculto en reposo mientras la leyenda cruza su zona", as
   ];
   for (const s of seeds) {
     const body = Buffer.from(JSON.stringify({
-      ticker: s.ticker, action: "BUY", quantity: s.quantity, price: s.price,
+      ticker: s.ticker, action: "buy", quantity: s.quantity, price: s.price,
       trade_date: "2026-01-15", currency: "USD", fees: 0,
     }));
     const res = await request.post(`${apiBase}/api/portfolio/transactions`, {
@@ -76,7 +75,7 @@ test("F339: el FAB queda oculto en reposo mientras la leyenda cruza su zona", as
   });
   expect(overlap, "la leyenda debe quedar en la zona del FAB para la prueba").toBe(true);
   await expect.poll(async () => fab.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
-  await page.screenshot({ path: "/downloads/f339-rest-fab-hidden.png" });
+  await page.screenshot({ path: "test-results/f339-rest-fab-hidden.png" });
 
   // Saca la leyenda de la zona: el FAB reaparece en reposo.
   await page.evaluate(() => {
@@ -86,5 +85,39 @@ test("F339: el FAB queda oculto en reposo mientras la leyenda cruza su zona", as
   });
   await page.waitForTimeout(1200);
   await expect.poll(async () => fab.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
-  await page.screenshot({ path: "/downloads/f339-rest-fab-visible.png" });
+  await page.screenshot({ path: "test-results/f339-rest-fab-visible.png" });
+
+  // Cambio de tab sin scroll ni resize: al desmontar la leyenda el FAB no
+  // puede quedar oculto para siempre; al volver y remontarla en la zona, el
+  // MutationObserver re-ejecuta el chequeo y vuelve a ocultarlo.
+  await page.getByRole("tab", { name: "Posiciones" }).click();
+  await page.waitForTimeout(800);
+  await expect.poll(async () => fab.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+  await page.screenshot({ path: "test-results/f339-tab-switch-unblocked.png" });
+  await page.getByRole("tab", { name: "Resumen" }).click();
+  await expect(legend).toBeVisible();
+  await page.evaluate(() => {
+    const el = document.getElementById("portfolio-allocation-legend")!;
+    const rect = el.getBoundingClientRect();
+    window.scrollTo(0, Math.max(0, window.scrollY + rect.top - (window.innerHeight - 140)));
+  });
+  await page.waitForTimeout(1200);
+  await expect.poll(async () => fab.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+  await page.screenshot({ path: "test-results/f339-tab-switch-reblocked.png" });
+
+  // Safe-area: simula inset inferior de iPhone (34px) subiendo el FAB a
+  // bottom=58px; la zona medida por computed style debe cubrir la franja
+  // H-114..H-96 que una constante de 96px no vería.
+  await fab.evaluate((el) => { el.style.bottom = "58px"; });
+  await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+  await page.evaluate(() => {
+    const el = document.getElementById("portfolio-allocation-legend")!;
+    const rect = el.getBoundingClientRect();
+    // Leyenda a ~104px del borde inferior: fuera de una banda de 96, dentro
+    // de la zona real (58+56=114px).
+    window.scrollTo(0, window.scrollY + rect.bottom - (window.innerHeight - 104));
+  });
+  await page.waitForTimeout(1200);
+  await expect.poll(async () => fab.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+  await page.screenshot({ path: "test-results/f339-safe-area-hidden.png" });
 });
