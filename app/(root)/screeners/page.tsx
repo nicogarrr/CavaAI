@@ -6,6 +6,7 @@ import { MutationForm } from '@/components/forms/MutationForm';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CriterionFields, CustomMetricFields, FormulaField, RankingFields } from '@/components/screeners/FilterFields';
 import {
   createCustomMetric,
   createSavedScreen,
@@ -97,10 +98,9 @@ export default async function ScreenersPage({ searchParams }: PageProps) {
 
       <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
         <div className="mb-4 flex items-center gap-2"><Filter aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Ejecutar un filtro ad-hoc</h2></div>
-        <form method="get">
-          <div className="grid gap-3 md:grid-cols-[1fr_110px_1fr]"><Input defaultValue={query.left} name="left" placeholder="roic - wacc" required /><select className="h-9 rounded-md border border-gray-800 bg-black px-3 text-sm text-gray-200" defaultValue={operator} name="operator">{operators.map((item) => <option key={item}>{item}</option>)}</select><Input defaultValue={query.right} name="right" placeholder="0" required /></div>
-          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_180px_auto]"><Input defaultValue={query.ranking} name="ranking" placeholder="Fórmula de ranking (opcional)" /><select className="h-9 rounded-md border border-gray-800 bg-black px-3 text-sm text-gray-200" defaultValue={query.direction ?? 'desc'} name="direction"><option value="desc">Mayor primero</option><option value="asc">Menor primero</option></select><SubmitButton /></div>
-                    <p className="mt-3 text-xs text-gray-500">Permitidos: números, nombres de métricas, aritmética, min, max y abs. No se ejecuta código arbitrario.</p>
+        <form className="space-y-4" method="get">
+          <CriterionFields initialLeft={query.left ?? ''} initialOperator={operator} initialRight={query.right ?? ''} required />
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"><RankingFields initialDirection={query.direction} initialFormula={query.ranking} /><SubmitButton /></div>
         </form>
       </section>
 
@@ -112,9 +112,12 @@ export default async function ScreenersPage({ searchParams }: PageProps) {
         <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 font-semibold text-gray-100"><Save aria-hidden="true" className="h-5 w-5 text-teal-300" />Constructor visual de filtros<ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 text-gray-500" /></summary>
         <div className="mt-4">
           <MutationForm action={createSavedScreen} resetOnSuccess successMessage="Filtro guardado">
-            <div className="grid gap-3 sm:grid-cols-2"><Input name="name" placeholder="Calidad a precio razonable" required /><Input name="description" placeholder="Propósito y universo" /></div>
-            {([['', true], ['_2', false], ['_3', false]] as const).map(([suffix, required]) => <div className="mt-3 grid gap-3 md:grid-cols-[1fr_110px_1fr]" key={suffix || 'one'}><Input name={`left${suffix}`} placeholder={suffix ? 'Fórmula opcional' : 'roic'} required={required} /><select className="h-9 rounded-md border border-gray-800 bg-black px-3 text-sm text-gray-200" name={`operator${suffix}`} defaultValue={'>='}>{operators.map((item) => <option key={item}>{item}</option>)}</select><Input name={`right${suffix}`} placeholder={suffix ? 'Umbral opcional' : 'wacc'} required={required} /></div>)}
-            <div className="mt-3 grid gap-3 sm:grid-cols-2"><Input name="ranking_formula" placeholder="free_cash_flow / market_cap" /><select className="h-9 rounded-md border border-gray-800 bg-black px-3 text-sm text-gray-200" name="ranking_direction" defaultValue="desc"><option value="desc">Mayor primero</option><option value="asc">Menor primero</option></select></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div><label className="mb-1.5 block text-sm font-medium text-gray-200" htmlFor="screen-name">Nombre del filtro *</label><Input className="min-h-11" id="screen-name" name="name" placeholder="Calidad a precio razonable" required /></div>
+              <div><label className="mb-1.5 block text-sm font-medium text-gray-200" htmlFor="screen-desc">Qué buscas (opcional)</label><Input className="min-h-11" id="screen-desc" name="description" placeholder="Empresas rentables con retorno superior al coste de capital" /></div>
+            </div>
+            <div className="mt-4 space-y-4">{([['', true], ['_2', false], ['_3', false]] as const).map(([suffix, required], index) => <CriterionFields key={suffix || 'one'} number={index + 1} required={required} suffix={suffix} />)}</div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(150px,190px)]"><FormulaField hint="Opcional: ordenarás las coincidencias por esta expresión." name="ranking_formula" title="Métrica para ordenar" /><div><label className="mb-1.5 block text-sm font-medium text-gray-200" htmlFor="saved-order">Dirección del orden</label><select className="min-h-11 w-full rounded-md border border-gray-700 bg-black px-3 text-sm text-gray-200" id="saved-order" name="ranking_direction" defaultValue="desc"><option value="desc">Mayor primero</option><option value="asc">Menor primero</option></select></div></div>
             <label className="mt-4 flex items-center gap-2 text-sm text-gray-300"><input name="alerts_enabled" type="checkbox" />Avisar de nuevas coincidencias</label>
             <Button className="mt-4" type="submit"><Save aria-hidden="true" className="h-4 w-4" />Guardar filtro</Button>
           </MutationForm>
@@ -125,7 +128,8 @@ export default async function ScreenersPage({ searchParams }: PageProps) {
         <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 font-semibold text-gray-100"><Calculator aria-hidden="true" className="h-5 w-5 text-teal-300" />Métrica personalizada<ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 text-gray-500" /></summary>
         <div className="mt-4">
           <MutationForm action={createCustomMetric} resetOnSuccess successMessage="Métrica personalizada guardada">
-            <div className="grid gap-3 sm:grid-cols-2"><Input name="metric_key" placeholder="roic_spread" required /><Input name="name" placeholder="Diferencial ROIC" required /><Input className="sm:col-span-2" name="formula" placeholder="roic - wacc" required /><Input name="unit" defaultValue="decimal" /><Input name="description" placeholder="Definición" /><Button className="w-fit" type="submit">Guardar métrica</Button></div>
+            <CustomMetricFields />
+            <Button className="mt-4" type="submit">Guardar métrica</Button>
           </MutationForm>
         </div>
       </details>
