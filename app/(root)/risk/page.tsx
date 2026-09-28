@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Gauge } from 'lucide-react';
 import RiskDashboardView from '@/components/risk/RiskDashboardView';
 import BackendOffline from '@/components/system/BackendOffline';
+import { MethodologyDisclosure } from '@/components/ui/methodology-disclosure';
 import { getRiskDashboard, type RiskDashboardRecord } from '@/lib/actions/risk.actions';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 
@@ -32,7 +33,7 @@ export default async function RiskPage() {
         <main id="content" tabIndex={-1} className="mx-auto flex max-w-6xl flex-col gap-6">
             <header className="flex flex-col gap-3 border-b border-gray-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <p className="text-sm font-semibold uppercase text-teal-300">Cartera · Exposiciones</p>
+                    <p className="text-sm font-semibold uppercase text-teal-300">Cartera</p>
                     <h1 className="mt-1 text-3xl font-bold text-gray-100">Exposiciones de cartera</h1>
                     {/*
                         El triángulo portfolio / intelligence / risk tenía tres
@@ -44,13 +45,18 @@ export default async function RiskPage() {
                     */}
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
                         Pesos, concentración (top 1 y top 5) y exposición por sector y posición, con las
-                        alertas y el umbral que las dispara. Esta página no calcula volatilidad, drawdown
-                        ni VaR: esas medidas están en Inteligencia de cartera.
+                        alertas y el umbral que las dispara.
                     </p>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
-                        Para el detalle por posición, ver la cartera. Para volatilidad, drawdown, VaR y
-                        rendimiento medidos, <Link className="text-teal-300 hover:text-teal-200" href="/portfolio/intelligence">Inteligencia de cartera</Link>.
-                    </p>
+                    <MethodologyDisclosure title="Alcance y límites">
+                        <p>
+                            Esta página no calcula volatilidad, drawdown ni VaR:
+                            esas medidas están en Inteligencia de cartera.
+                        </p>
+                        <p>
+                            Para el detalle por posición, ver la cartera. Para volatilidad, drawdown, VaR y
+                            rendimiento medidos, <Link className="text-teal-300 hover:text-teal-200" href="/portfolio/intelligence">Inteligencia de cartera</Link>.
+                        </p>
+                    </MethodologyDisclosure>
                 </div>
                 <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
                     <Gauge className="h-4 w-4 text-teal-300" />
