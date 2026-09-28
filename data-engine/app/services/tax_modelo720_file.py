@@ -116,10 +116,15 @@ class Modelo720FileService:
               "nif": "12345678A",                 # obligatorio
               "apellidos_nombre": "APELLIDOS, NOMBRE",  # obligatorio
               "numero_declaracion": "7202025000001",    # obligatorio: 13 dígitos, empieza por 720
-              "custody_country": "IE",                  # obligatorio: país donde se depositan/gestionan los valores
+              "custody": {"US0378331005": "IE", "cash:USD": "IE"},  # obligatorio: custodia POR PARTIDA
+              "custody_entity": {                       # obligatorio: entidad depositaria REAL
+                "name": "BROKER FICTICIO SA",
+                "nif": "FICTICIO123",                   # NIF de la entidad en su país
+                "address": "CALLE FICTICIA 1, DUBLIN"   # domicilio completo
+              },
               "first_acquisition_dates": {"US0378331005": "20230115"},  # obligatorio por ISIN
               "telefono": "600000000",
-              "previous_year_isins": ["US0378331005"],  # alimenta manual_review (origen M / bajas)
+              "previous_year_isins": ["US0378331005"],  # esos ISINs se EXCLUYEN (origen M por aclarar)
               "declaracion_anterior": "7202024000001",
               "complementaria": false,
               "sustitutiva": false
@@ -181,21 +186,48 @@ class Modelo720FileService:
                 ),
                 "thresholds": thresholds,
             }
-        # País de depósito/gestión de los valores (posiciones 129-130): la
-        # norma no lo deja inferir del prefijo del ISIN (un valor US puede
-        # estar depositado en Irlanda); debe declararse.
-        custody_country = str(declarant.get("custody_country") or "").strip().upper()
-        if not (len(custody_country) == 2 and custody_country.isalpha()):
+        # Custodia POR PARTIDA (129-130): el país es donde cada valor está
+        # depositado/gestionado, nunca el prefijo del ISIN ni un país único
+        # para toda la cartera (carteras mixtas). Mismo mapa que el chequeo.
+        raw_custody = declarant.get("custody")
+        custody_map = {
+            str(k).upper(): str(v).strip().upper()
+            for k, v in (raw_custody.items() if isinstance(raw_custody, dict) else [])
+            if isinstance(v, str) and len(str(v).strip()) == 2
+        }
+        if not custody_map:
             return {
                 "available": False,
                 "reason": (
-                    "Falta 'custody_country' en tax_declarant: el país del "
-                    "registro (posiciones 129-130) es donde los valores están "
-                    "depositados o gestionados y NO se infiere del ISIN. "
-                    "Decláralo (p. ej. 'IE' si custodian en Irlanda)."
+                    "Falta 'custody' en tax_declarant: mapa por partida "
+                    "(ISIN/ticker → país ISO2 de depósito/gestión, "
+                    "'cash:<DIVISA>' para cuentas). El país no se infiere del "
+                    "ISIN ni se declara uno único para toda la cartera."
                 ),
                 "thresholds": thresholds,
             }
+        # Entidad depositaria REAL (190-230, 231-250, 251-414): la spec no
+        # los deja en blanco para clave V; sin identidad y domicilio reales
+        # no se genera un fichero "conforme".
+        entity = declarant.get("custody_entity")
+        if (
+            not isinstance(entity, dict)
+            or not entity.get("name")
+            or not entity.get("nif")
+            or not entity.get("address")
+        ):
+            return {
+                "available": False,
+                "reason": (
+                    "Falta 'custody_entity' en tax_declarant (name, nif, "
+                    "address de la entidad depositaria): los campos 190-414 "
+                    "del registro V exigen la entidad real y no van en blanco."
+                ),
+                "thresholds": thresholds,
+            }
+        entity_name = str(entity["name"])
+        entity_nif = str(entity["nif"])
+        entity_address = str(entity["address"])
 
         detail_records: list[str] = []
         manual_review: list[dict] = []
@@ -239,6 +271,24 @@ class Modelo720FileService:
                         "reason": "Sin ISIN: la clave 2 (valores sin ISIN) exige 'Z'+país emisor, dato no disponible. Declarar manualmente.",
                     })
                     continue
+                # Lotes: la norma exige un registro POR FECHA de adquisición.
+                # Sin cantidades por lote no se puede partir el registro:
+                # varias fechas -> no se genera (available=false).
+                raw_dates = (declarant.get("first_acquisition_dates") or {}).get(isin)
+                if isinstance(raw_dates, (list, tuple)):
+                    distinct = {str(d).replace("-", "") for d in raw_dates}
+                    if len(distinct) > 1:
+                        return {
+                            "available": False,
+                            "reason": (
+                                f"{pos['ticker']} ({isin}) tiene lotes con "
+                                "fechas de adquisición distintas: la norma "
+                                "exige un registro por fecha y no tenemos las "
+                                "cantidades por lote. Declarar manualmente."
+                            ),
+                            "excluded": excluded,
+                            "thresholds": thresholds,
+                        }
                 value = Decimal(str(pos["value_base"]))
                 first_date = first_dates[isin]
                 if not (len(first_date) == 8 and first_date.isdigit()):
@@ -252,24 +302,40 @@ class Modelo720FileService:
                         "excluded": excluded,
                         "thresholds": thresholds,
                     }
-                # Origen siempre "A": el origen "M" exige verificar un
-                # incremento conjunto >20.000 € contra la última declaración,
-                # dato que no tenemos; no se presume.
+                custody = custody_map.get(isin)
+                if custody is None:
+                    excluded.append({
+                        "ticker": pos["ticker"],
+                        "reason": "Sin país de custodia declarado para este ISIN en tax_declarant.custody: el campo 129-130 no se infiere. Declarar manualmente.",
+                    })
+                    continue
+                if custody == "ES":
+                    excluded.append({
+                        "ticker": pos["ticker"],
+                        "reason": "Custodia declarada en España: no es bien en el extranjero, no va en el 720.",
+                    })
+                    continue
+                # Un ISIN ya declarado NO puede salir con origen "A" (sería
+                # un campo conscientemente falso): se EXCLUYE del fichero
+                # hasta aclarar si procede 'M' por incremento >20.000 €.
                 if isin in previous_isins:
                     manual_review.append({
                         "ticker": pos["ticker"],
                         "isin": isin,
                         "reason": (
-                            "ISIN ya declarado en ejercicios anteriores: si el "
+                            "ISIN ya declarado en ejercicios anteriores: NO se "
+                            "genera registro (origen 'A' sería falso). Si el "
                             "incremento conjunto de la categoría supera 20.000 € "
-                            "el origen sería 'M', no 'A'. Verificar contra la "
-                            "última declaración antes de presentar."
+                            "corresponde origen 'M': verificar contra la última "
+                            "declaración y declarar manualmente."
                         ),
                     })
+                    continue
                 detail_records.append(
                     self._detail_valores(
                         fiscal_year, nif, apellidos_nombre, pos, isin,
-                        value, "A", first_date, custody_country,
+                        value, "A", first_date, custody,
+                        entity_name, entity_nif, entity_address,
                     )
                 )
                 sum_val1 += value
@@ -419,18 +485,20 @@ class Modelo720FileService:
     def _detail_valores(
         self, fiscal_year, nif, apellidos_nombre, pos, isin,
         value, origin, first_date, custody_country,
+        entity_name, entity_nif, entity_address,
     ) -> str:
         # 129-130: país donde los valores están DEPOSITADOS O GESTIONADOS
-        # (spec, pág. 23): dato declarado, nunca el prefijo del ISIN.
+        # (spec, pág. 23): dato declarado por partida, nunca el prefijo del ISIN.
         r = self._detail_head(fiscal_year, nif, apellidos_nombre, "V", "1", custody_country)
         r += "1"                                   # 131: identificación por ISIN
         r += _text(isin, 12)                       # 132-143: ISIN
         r += " "                                   # 144: clave ID cuenta (no C)
         r += " " * 11                              # 145-155: BIC
         r += " " * 34                              # 156-189: código cuenta
-        r += _text(pos.get("name") or pos["ticker"], 41)  # 190-230: entidad
-        r += " " * 20                              # 231-250: NIF entidad
-        r += " " * 164                             # 251-414: domicilio entidad
+        # 190-414: entidad depositaria REAL (la spec no los deja en blanco).
+        r += _text(entity_name, 41)                # 190-230: entidad
+        r += _text(entity_nif, 20)                 # 231-250: NIF de la entidad en su país
+        r += _text(entity_address, 164)            # 251-414: domicilio de la entidad
         r += self._detail_tail(
             first_date, origin, "",
             value, Decimal("0"), "A",
