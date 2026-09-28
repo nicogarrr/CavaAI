@@ -87,7 +87,7 @@ RATIO_METRICS: list[MetricSpec] = [
 ]
 
 SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
-    ("revenue",           ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"],  "USD"),
+    ("revenue",           ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet", "RevenueFromContractWithCustomerIncludingAssessedTax", "RegulatedAndUnregulatedOperatingRevenue"],  "USD"),
     ("gross_profit",      ["GrossProfit"],                                                                          "USD"),
     ("operating_income",  ["OperatingIncomeLoss"],                                                                  "USD"),
     ("income_before_tax", ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"], "USD"),
