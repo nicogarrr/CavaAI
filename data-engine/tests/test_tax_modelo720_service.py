@@ -354,9 +354,9 @@ def test_stale_partida_not_certified_by_recent_one(db):
     assert any("partida" in r.lower() or "snapshot" in r.lower() for r in valores["reasons"])
 
 
-def test_multiportfolio_snapshots_do_not_mix(db):
-    # Sin filtro por portfolio, el snapshot reciente de OTRO portfolio
-    # eclipsaba las partidas del activo (dictamen auditor).
+def test_multiportfolio_aggregates_at_declarant_level(db):
+    # La obligación del 720 es por DECLARANTE: 30k + 60k en dos carteras del
+    # mismo tenant suman 90k (una sola cartera diría "por_debajo": falso verde).
     tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
     other = Portfolio(tenant_id=tenant.id, name="Other", base_currency="EUR")
     db.add(other)
@@ -364,14 +364,13 @@ def test_multiportfolio_snapshots_do_not_mix(db):
     c = _company(db, tenant, "AAPL", isin="US0378331005")
     _position_row(db, tenant, portfolio, c)
     _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 30000)
-    # Mismo company, OTRO portfolio, 60k: no debe sumar al portfolio activo.
     _position_row(db, tenant, other, c)
     _position_snapshot(db, tenant, other, c, date(2025, 12, 31), 60000)
 
     result = Modelo720Service().check_thresholds(db, 2025)
 
-    assert result["categories"]["valores"]["total_base"] == 30000.0
-    assert result["categories"]["valores"]["exceeds"] is False
+    assert result["categories"]["valores"]["total_base"] == 90000.0
+    assert result["categories"]["valores"]["exceeds"] is True
 
 
 def test_no_snapshots_at_all_is_unknown(db):
@@ -408,14 +407,25 @@ def test_negative_cash_balances_net_against_positive(db):
     assert result["categories"]["cuentas"]["total_base"] == 40000.0
 
 
-def test_stale_price_as_of_not_certified_by_fresh_snapshot(db):
+def test_stale_price_at_capture_not_certified_by_fresh_snapshot(db):
     # Un precio de junio arrastrado a un snapshot del 31/12 no afirma el
-    # valor a 31/12: manda el as_of del precio, no la fecha de captura.
+    # valor a 31/12: la provenance HISTÓRICA (missing_pricing del snapshot
+    # padre) manda sobre la fecha de captura. El as_of de las filas vivas no
+    # autentica el histórico.
     tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
     c = _company(db, tenant, "AAPL", isin="US0378331005")
     _position_row(db, tenant, portfolio, c)
-    db.query(Position).one().as_of = date(2025, 6, 1)
     _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 60000)
+    # En la captura, el precio era de junio (así lo registró el snapshot).
+    parent = db.query(PortfolioDailySnapshot).one()
+    parent.metadata_ = {
+        "missing_pricing": [{
+            "company_id": c.id,
+            "currency": "USD",
+            "valuation_date": "2025-06-01",
+        }]
+    }
+    db.commit()
 
     result = Modelo720Service().check_thresholds(db, 2025)
 
@@ -423,6 +433,28 @@ def test_stale_price_as_of_not_certified_by_fresh_snapshot(db):
     assert valores["exceeds"] is None
     assert valores["status"] == "desconocido"
     assert any(s["ticker"] == "AAPL" and s.get("price_as_of") for s in result["stale_snapshots"])
+
+
+def test_live_as_of_refresh_does_not_authenticate_historical_snapshot(db):
+    # Tras un refresh posterior, el as_of VIVO es reciente: no puede
+    # certificar una valoración que en la captura era de junio.
+    tenant, portfolio = _seed(db, custody={"US0378331005": "IE"})
+    c = _company(db, tenant, "AAPL", isin="US0378331005")
+    _position_row(db, tenant, portfolio, c)
+    _position_snapshot(db, tenant, portfolio, c, date(2025, 12, 31), 60000)
+    parent = db.query(PortfolioDailySnapshot).one()
+    parent.metadata_ = {
+        "missing_pricing": [{
+            "company_id": c.id,
+            "currency": "USD",
+            "valuation_date": "2027-01-15",  # incluso FUTURA al cierre: no afirma
+        }]
+    }
+    db.commit()
+
+    result = Modelo720Service().check_thresholds(db, 2025)
+
+    assert result["categories"]["valores"]["status"] == "desconocido"
 
 
 def test_spanish_custody_is_not_foreign(db):

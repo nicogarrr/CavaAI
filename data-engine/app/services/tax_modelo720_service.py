@@ -42,6 +42,8 @@ from app.models import (
     CashBalance,
     CashDailySnapshot,
     Company,
+    Portfolio,
+    PortfolioDailySnapshot,
     Position,
     PositionDailySnapshot,
     Tenant,
@@ -62,24 +64,25 @@ def _money(value: Decimal | None) -> float | None:
 
 
 def _latest_snapshots_before(
-    db: Session, model, partition_col, year_end: date, portfolio_id
+    db: Session, model, partition_col, year_end: date, portfolio_ids: list
 ) -> list:
-    """Último snapshot por partición (empresa/divisa) DENTRO del portfolio.
+    """Último snapshot por partición (empresa/divisa) en las carteras del DECLARANTE.
 
-    Sin el filtro por portfolio, en multiportfolio el snapshot más reciente
-    de un portfolio eclipsa las filas de otro y se mezclan carteras.
+    La obligación del 720 es por declarante, no por cartera: se agregan
+    TODAS las carteras del tenant. La partición por empresa/divisa evita que
+    el snapshot más reciente de una cartera eclipse las filas de otra.
     """
     latest_dates = (
         select(partition_col, func.max(model.snapshot_date).label("max_date"))
         .where(model.snapshot_date <= year_end)
-        .where(model.portfolio_id == portfolio_id)
+        .where(model.portfolio_id.in_(portfolio_ids))
         .group_by(partition_col)
         .subquery()
     )
     return list(
         db.scalars(
             select(model)
-            .where(model.portfolio_id == portfolio_id)
+            .where(model.portfolio_id.in_(portfolio_ids))
             .join(
                 latest_dates,
                 (partition_col == latest_dates.c[0])
@@ -201,49 +204,78 @@ class Modelo720Service:
         stale_snapshots: list[dict] = []
         domestic_assets: list[dict] = []
 
-        # Fecha del PRECIO/SALDO (Position.as_of / CashBalance.as_of), no de
-        # captura del snapshot: un precio de junio arrastrado a un snapshot
-        # del 31/12 no afirma el valor a 31/12 (dictamen auditor).
-        position_as_of = {
-            (p.portfolio_id, p.company_id): p.as_of
-            for p in db.scalars(select(Position))
-        }
-        cash_as_of = {c.currency: c.as_of for c in db.scalars(select(CashBalance))}
+        # Carteras del DECLARANTE (la obligación del 720 es por declarante,
+        # no por cartera): se agregan todas las del tenant.
+        portfolio_ids = [
+            p.id for p in db.scalars(
+                select(Portfolio).where(Portfolio.tenant_id == portfolio.tenant_id)
+            )
+        ]
 
-        def _stale(ticker: str, snap_date: date, price_date: date | None) -> bool:
-            lag = (year_end - snap_date).days
+        # Provenance de valoración HISTÓRICA, ligada al snapshot original
+        # (metadata_.missing_pricing del PortfolioDailySnapshot): las filas
+        # listadas llevan la fecha del precio/saldo EN LA CAPTURA; las no
+        # listadas tenían as_of == fecha del snapshot. El as_of de las filas
+        # VIVAS no autentica el histórico (un refresh posterior lo reescribe).
+        def _historical_price_dates(rows, id_field: str) -> dict:
+            snap_ids = {r.portfolio_snapshot_id for r in rows}
+            result: dict = {}
+            for parent in db.scalars(
+                select(PortfolioDailySnapshot).where(PortfolioDailySnapshot.id.in_(snap_ids))
+            ) if snap_ids else []:
+                for entry in (parent.metadata_ or {}).get("missing_pricing") or []:
+                    key = entry.get(id_field)
+                    val = entry.get("valuation_date")
+                    if key is not None and val:
+                        result[(parent.id, key)] = val
+            return result
+
+        def _price_date_ok(
+            ticker: str, snap: date, historical: str | None
+        ) -> bool:
+            """True si la valoración afirma el cierre con fecha propia."""
+            lag = (year_end - snap).days
             if lag > SNAPSHOT_MAX_LAG_DAYS:
                 stale_snapshots.append({
                     "ticker": ticker,
-                    "snapshot_date": snap_date.isoformat(),
+                    "snapshot_date": snap.isoformat(),
                     "lag_days": lag,
                     "reason": (
-                        f"Snapshot de {snap_date.isoformat()} ({lag} días antes "
+                        f"Snapshot de {snap.isoformat()} ({lag} días antes "
                         "del cierre): demasiado antiguo para afirmar el valor a "
                         "31/12 de ESTA partida; fuera del total."
                     ),
                 })
-                return True
-            if price_date is None or (year_end - price_date).days > SNAPSHOT_MAX_LAG_DAYS:
-                stale_snapshots.append({
-                    "ticker": ticker,
-                    "snapshot_date": snap_date.isoformat(),
-                    "price_as_of": price_date.isoformat() if price_date else None,
-                    "reason": (
-                        "El precio/saldo que sustenta la valoración no está "
-                        f"fechado cerca del cierre (as_of={price_date.isoformat() if price_date else 'sin dato'}): "
-                        "la fecha de captura del snapshot no es la fecha del "
-                        "precio. Fuera del total."
-                    ),
-                })
-                return True
-            return False
+                return False
+            if historical is not None:
+                try:
+                    price_date = date.fromisoformat(historical)
+                except ValueError:
+                    price_date = None
+                if (
+                    price_date is None
+                    or price_date > year_end
+                    or (year_end - price_date).days > SNAPSHOT_MAX_LAG_DAYS
+                ):
+                    stale_snapshots.append({
+                        "ticker": ticker,
+                        "snapshot_date": snap.isoformat(),
+                        "price_as_of": historical,
+                        "reason": (
+                            "La valoración de la captura está fechada "
+                            f"{historical}: no afirma el valor a 31/12 "
+                            "(provenance histórica del snapshot). Fuera del total."
+                        ),
+                    })
+                    return False
+            return True
 
         # --- Valores (categoría V) ---
         positions = _latest_snapshots_before(
             db, PositionDailySnapshot, PositionDailySnapshot.company_id,
-            year_end, portfolio.id,
+            year_end, portfolio_ids,
         )
+        position_price_dates = _historical_price_dates(positions, "company_id")
         company_ids = [p.company_id for p in positions]
         companies = {
             c.id: c
@@ -259,10 +291,12 @@ class Modelo720Service:
             ticker = company.ticker if company else f"company-{position.company_id}"
             if valores_max_date is None or position.snapshot_date > valores_max_date:
                 valores_max_date = position.snapshot_date
-            if _stale(
+            if not _price_date_ok(
                 ticker,
                 position.snapshot_date,
-                position_as_of.get((position.portfolio_id, position.company_id)),
+                position_price_dates.get(
+                    (position.portfolio_snapshot_id, position.company_id)
+                ),
             ):
                 continue
             value_base = position.market_value_base
@@ -324,8 +358,9 @@ class Modelo720Service:
         # --- Cuentas (categoría C) ---
         cash_rows = _latest_snapshots_before(
             db, CashDailySnapshot, CashDailySnapshot.currency,
-            year_end, portfolio.id,
+            year_end, portfolio_ids,
         )
+        cash_price_dates = _historical_price_dates(cash_rows, "cash_currency")
         cuentas_total = Decimal("0")
         cuentas_detail = []
         cuentas_max_date: date | None = None
@@ -337,7 +372,11 @@ class Modelo720Service:
                 continue
             if cuentas_max_date is None or cash.snapshot_date > cuentas_max_date:
                 cuentas_max_date = cash.snapshot_date
-            if _stale(ticker, cash.snapshot_date, cash_as_of.get(cash.currency)):
+            if not _price_date_ok(
+                ticker,
+                cash.snapshot_date,
+                cash_price_dates.get((cash.portfolio_snapshot_id, cash.currency)),
+            ):
                 continue
             if cash.fx_rate is None:
                 unvalued.append({
@@ -382,7 +421,7 @@ class Modelo720Service:
         # como sin valorar: el total nunca la silencia.
         covered_companies = {p.company_id for p in positions}
         for position in db.scalars(
-            select(Position).where(Position.portfolio_id == portfolio.id)
+            select(Position).where(Position.portfolio_id.in_(portfolio_ids))
         ):
             if position.company_id in covered_companies:
                 continue
@@ -547,8 +586,11 @@ def _notas() -> list[str]:
         "exactos no activan el modelo.",
         "Los saldos negativos de cuentas se netean con los positivos al "
         "evaluar el umbral.",
-        "La fecha que afirma una valoración es la del precio/saldo "
-        "(as_of), no la de captura del snapshot.",
+        "La fecha que afirma una valoración es la del precio/saldo EN LA "
+        "CAPTURA (provenance del snapshot), no la de las filas vivas ni la "
+        "de captura del snapshot.",
+        "La obligación es por declarante: se agregan todas las carteras "
+        "del tenant.",
         "El umbral se evalúa en EUR: con divisa base distinta de EUR la "
         "categoría queda 'desconocido' (sin conversión oficial a 31/12).",
         "Cuentas: falta el saldo medio del 4.º trimestre, así que el "
