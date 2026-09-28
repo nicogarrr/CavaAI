@@ -62,6 +62,21 @@ function countText(value: unknown): string {
     return typeof value === 'number' ? formatNumber(value, { maximumFractionDigits: 0 }) : formatRecordValue(value);
 }
 
+/** Identidad de la señal: el backend no manda id, así que se compone con los
+ *  campos que la definen. `cluster_buy` agrupa a varios insiders en una
+ *  ventana; `big_buy`/`c_suite_buy` son compras sueltas de una persona en una
+ *  fecha y un formulario. El monitor reordena la lista en cada lectura, así que
+ *  `key={index}` hacía que React reutilizara el nodo de otra compra. */
+function signalKey(signal: DataRecord): string {
+    const type = String(signal.signal ?? 'senal');
+    const date = String(signal.date ?? signal.window_start ?? '');
+    const form = String(signal.form ?? '');
+    const subject = Array.isArray(signal.insiders)
+        ? `${String(signal.ticker ?? '')}:${signal.insiders.join('|')}`
+        : `${String(signal.insider ?? '')}:${String(signal.source_url ?? '')}`;
+    return `${type}|${subject}|${date}|${form}|${formatRecordValue(signal.detail)}`;
+}
+
 export default function InsiderSignalsView({ initialTicker, initialResult, initialFilings }: InsiderSignalsViewProps) {
     const router = useRouter();
     const [ticker, setTicker] = useState(initialTicker);
@@ -264,8 +279,8 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {signals.map((signal, index) => (
-                                    <TableRow key={index} className="border-gray-700/50">
+                                {signals.map((signal) => (
+                                    <TableRow key={signalKey(signal)} className="border-gray-700/50">
                                         <TableCell>
                                             <Badge variant={signalTone(signal.signal)}>
                                                 {formatRecordValue(signal.signal)}
@@ -312,8 +327,8 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                         </Table>
                         </div>
                         <div className="grid grid-cols-1 gap-3 md:hidden">
-                            {signals.map((signal, index) => (
-                                <article className="min-w-0 rounded-lg border border-gray-700/50 bg-gray-900/50 p-4 break-words" key={index}>
+                            {signals.map((signal) => (
+                                <article className="min-w-0 rounded-lg border border-gray-700/50 bg-gray-900/50 p-4 break-words" key={signalKey(signal)}>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <Badge variant={signalTone(signal.signal)}>{formatRecordValue(signal.signal)}</Badge>
                                         <span className="ml-auto text-sm font-semibold text-gray-100">{moneyText(signal.value ?? signal.total_value)}</span>
