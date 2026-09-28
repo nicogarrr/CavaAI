@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.database import SessionLocal, init_db
 from app.models import Company, NewsEvent
 from scripts.retitle_sec_news_es import (
+    _apply_plan,
     _english_pattern,
     _form_from,
     _is_sec_url,
@@ -175,7 +176,7 @@ def test_apply_salta_filas_cambiadas_desde_el_plan(db_rows, tmp_path, capsys):
     row = db.get(NewsEvent, row.id)
     assert row.title == "SEEDC 8-K (2026-09-24)"
     assert row.summary == "Resumen editado por otra persona"
-    assert "saltadas por cambio de estado" in capsys.readouterr().out
+    assert "saltadas al aplicar por revalidación" in capsys.readouterr().out
 
 
 def test_apply_revalida_origen_al_aplicar(db_rows, tmp_path, capsys):
@@ -190,7 +191,7 @@ def test_apply_revalida_origen_al_aplicar(db_rows, tmp_path, capsys):
     assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
     db.expire_all()
     assert db.get(NewsEvent, row.id).title == "SEEDC 8-K (2026-09-24)"
-    assert "saltadas por cambio de estado" in capsys.readouterr().out
+    assert "saltadas al aplicar por revalidación" in capsys.readouterr().out
 
 
 def test_colision_en_bd_se_salta(db_rows, tmp_path, capsys):
@@ -244,3 +245,68 @@ def test_rollback_con_precondicion_en_ambos_campos(db_rows, tmp_path, capsys):
     db.expire_all()
     assert db.get(NewsEvent, row.id).summary == "editado después"
     assert "saltadas" in capsys.readouterr().out
+
+
+def test_apply_salta_si_company_cambia_tras_el_plan(db_rows, tmp_path, capsys):
+    db, company = db_rows
+    row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
+    plan = tmp_path / "plan.json"
+    main(["--plan", str(plan)])
+    otra = db.scalar(select(Company).where(Company.ticker == "SEED2"))
+    if otra is None:
+        otra = Company(
+            ticker="SEED2", name="Seed Two", exchange="NASDAQ", currency="USD",
+            sector="Technology", industry="Software", company_type="tech",
+            valuation_model="standard_dcf", special_sources=[], special_risks=[], factor_tags=[],
+        )
+        db.add(otra)
+        db.commit()
+    stale = db.get(NewsEvent, row.id)
+    stale.company_id = otra.id
+    db.commit()
+    assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
+    db.expire_all()
+    row = db.get(NewsEvent, row.id)
+    # Identidad ambigua: no se toca la fila.
+    assert row.title == "SEEDC 8-K (2026-09-24)"
+    assert row.company_id == otra.id
+    assert "saltadas al aplicar por revalidación" in capsys.readouterr().out
+
+
+def test_colision_aparecida_tras_el_plan_se_salta(db_rows, tmp_path, capsys):
+    db, company = db_rows
+    row = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)")
+    plan = tmp_path / "plan.json"
+    main(["--plan", str(plan)])
+    # Entre la revisión del plan y el apply llega una fila nueva con el
+    # título destino (sin UNIQUE constraint, el duplicado entraría mudo).
+    _add_sec_row(db, company, "SEEDC 8-K presentado ante la SEC", "8-K presentado ante la SEC",
+                 url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000003/z.htm")
+    assert main(["--apply", "--plan", str(plan), "--backup", str(tmp_path / "b.json")]) == 0
+    db.expire_all()
+    assert db.get(NewsEvent, row.id).title == "SEEDC 8-K (2026-09-24)"  # intacta
+    assert "saltadas al aplicar por revalidación" in capsys.readouterr().out
+
+
+def test_apply_plan_intraplan_mismo_destino_salta_la_segunda(db_rows):
+    db, company = db_rows
+    a = _add_sec_row(db, company, "SEEDC 8-K (2026-09-24)", "SEEDC 8-K (2026-09-24)",
+                     url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/a.htm")
+    b = _add_sec_row(db, company, "SEEDC SEEDC 8-K (2026-09-24)", "SEEDC SEEDC 8-K (2026-09-24)",
+                     url="https://www.sec.gov/Archives/edgar/data/1000000/0000950000000001/b.htm")
+
+    def _entry(r):
+        return {
+            "id": r.id, "tenant_id": r.tenant_id, "company_id": r.company_id,
+            "expected": {"title": r.title, "summary": r.summary},
+            "new": {"title": "SEEDC 8-K presentado ante la SEC",
+                    "summary": "SEEDC 8-K presentado ante la SEC"},
+        }
+
+    applied, skipped = _apply_plan(db, [_entry(a), _entry(b)])
+    db.commit()
+    assert applied == 1
+    assert skipped == [b.id]
+    db.expire_all()
+    assert db.get(NewsEvent, a.id).title == "SEEDC 8-K presentado ante la SEC"
+    assert db.get(NewsEvent, b.id).title == "SEEDC SEEDC 8-K (2026-09-24)"

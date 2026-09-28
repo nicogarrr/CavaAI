@@ -181,12 +181,24 @@ def _write_backup_durable(path: str, payload: list[dict]) -> None:
 
 
 def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
-    """Aplica el plan re-verificando cada fila; devuelve (aplicadas, saltadas)."""
+    """Aplica el plan re-verificando cada fila; devuelve (aplicadas, saltadas).
+
+    El plan se revisa en dry-run, pero no es un chequeo permanente: al aplicar
+    se re-verifica identidad (tenant/company), origen SEC estricto, estado
+    esperado y colisiones de título en el momento del apply. Sin restricción
+    UNIQUE sobre título, un duplicado entraría en silencio; por eso la
+    colisión se vuelve a comprobar aquí, no solo al planificar.
+    """
     applied = 0
     skipped: list[int] = []
+    seen_destinations: set[tuple] = set()
     for item in planned:
         row = db.get(NewsEvent, item["id"])
-        if row is None or row.tenant_id != item["tenant_id"]:
+        if (
+            row is None
+            or row.tenant_id != item["tenant_id"]
+            or row.company_id != item.get("company_id")
+        ):
             skipped.append(item["id"])
             continue
         # Revalida el origen al aplicar: el plan revisado no es un chequeo
@@ -204,7 +216,27 @@ def _apply_plan(db, planned: list[dict]) -> tuple[int, list[int]]:
             # La fila cambió desde el plan revisado: no se pisa.
             skipped.append(item["id"])
             continue
-        row.title = item["new"]["title"]
+        # Colisión en el momento del apply: otra fila del mismo tenant+company
+        # ya tiene el título destino (o es otra fila de este mismo plan con el
+        # mismo destino). Sin UNIQUE constraint, saltar en lugar de duplicar.
+        new_title = item["new"]["title"]
+        clash = db.scalars(
+            select(NewsEvent.id).where(
+                NewsEvent.tenant_id == row.tenant_id,
+                NewsEvent.company_id == row.company_id,
+                NewsEvent.title == new_title,
+                NewsEvent.id != row.id,
+            )
+        ).first()
+        if clash is not None:
+            skipped.append(item["id"])
+            continue
+        destination = (row.tenant_id, row.company_id, new_title)
+        if destination in seen_destinations:
+            skipped.append(item["id"])
+            continue
+        seen_destinations.add(destination)
+        row.title = new_title
         row.summary = item["new"]["summary"]
         applied += 1
     return applied, skipped
@@ -320,7 +352,8 @@ def main(argv: list[str] | None = None) -> int:
 
         applied, skipped = _apply_plan(db, reviewed_plan)
         if skipped:
-            print(f"saltadas por cambio de estado desde el plan: {skipped}")
+            print("saltadas al aplicar por revalidación "
+                  f"(identidad/origen/estado/colisión desde el plan): {skipped}")
         db.commit()
         print(f"aplicado: {applied} filas saneadas en UNA transacción")
         return 0

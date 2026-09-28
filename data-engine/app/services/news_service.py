@@ -358,7 +358,9 @@ class NewsService:
                     published_at=item.published_at,
                     connector=connector,
                     date_source_label=date_source_label,
-                    source_headline=item.title[:500] if item.title else None,
+                    source_headline=(
+                        item.title[:500] if item.title and item.headline_from_source else None
+                    ),
                     news_lane=news_lane,
                     macro_theme=macro_theme,
                     detect_company=detect_company,
