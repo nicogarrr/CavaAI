@@ -56,6 +56,7 @@ from app.models import (
     Company,
     Position,
     TaxReport,
+    Tenant,
     Transaction,
 )
 from app.services.portfolio_fx_service import PortfolioFXService
@@ -63,6 +64,7 @@ from app.services.tax_irpf_filing import (
     SPECIAL_PAYMENT_TOKENS,
     build_casillas,
     build_double_taxation,
+    build_loss_compensation,
 )
 
 FIFO_METHOD = "fifo"
@@ -151,7 +153,7 @@ class TaxReportService:
         self.fx = PortfolioFXService()
         self.settings = get_settings()
 
-    def compute_report(self, db: Session, fiscal_year: int) -> dict:
+    def compute_report(self, db: Session, fiscal_year: int, include_filing: bool = True) -> dict:
         # SOLO lectura: sin portfolio persistido se usa la divisa por defecto;
         # crearlo aqui convertia cualquier GET del informe en una escritura.
         portfolio = self.fx.portfolio(db)
@@ -658,7 +660,8 @@ class TaxReportService:
             "realized": sorted(realized, key=lambda d: d["ticker"]),
             "misc": sorted(misc_rows, key=lambda d: d["date"]),
         }
-        data["filing"] = self._build_filing(db, fiscal_year, data)
+        if include_filing:
+            data["filing"] = self._build_filing(db, fiscal_year, data)
         return data
 
     def _build_filing(self, db: Session, fiscal_year: int, data: dict) -> dict:
@@ -695,6 +698,45 @@ class TaxReportService:
                 select(Company).where(Company.ticker.in_(sorted(tickers)))
             ):
                 country_by_ticker[company.ticker] = company.domicile_country
+        summary = data.get("summary") or {}
+        # Saldos netos de los 4 ejercicios anteriores, recalculados en
+        # memoria sin la capa filing (evita recursion y dobles calculos).
+        prior_year_nets = []
+        for prior_year in range(fiscal_year - 4, fiscal_year):
+            prior_summary = self.compute_report(
+                db, prior_year, include_filing=False
+            )["summary"]
+            prior_year_nets.append({
+                "year": prior_year,
+                "net_gyp_base": prior_summary.get("total_realized_gain_base"),
+                "incomplete": prior_summary.get("incomplete_fx", False),
+            })
+        # Saldos pendientes declarados (anexo C.3 de la última declaración):
+        # fuente autoritativa para los saldos de ejercicios anteriores. Son
+        # datos fiscales PERSONALES: se leen del tenant del portfolio activo
+        # (Tenant.metadata["tax_prior_losses_pending"], JSON {"2022": 300.0}),
+        # NUNCA de configuración global del proceso — en un despliegue
+        # multiusuario una variable global filtraría los saldos de una
+        # persona a las declaraciones de otra. Sin dato del tenant, los
+        # saldos se derivan del libro y se etiquetan como estimación NO
+        # trasladable a casillas (ver build_loss_compensation).
+        declared_pending = None
+        portfolio = self.fx.portfolio(db)
+        tenant = (
+            db.get(Tenant, portfolio.tenant_id)
+            if portfolio is not None and portfolio.tenant_id is not None
+            else None
+        )
+        raw_declared = (tenant.metadata_ or {}).get("tax_prior_losses_pending") if tenant else None
+        if isinstance(raw_declared, dict):
+            try:
+                declared_pending = {
+                    int(year): Decimal(str(amount))
+                    for year, amount in raw_declared.items()
+                    if Decimal(str(amount)) > 0
+                }
+            except (ValueError, TypeError, ArithmeticError):
+                declared_pending = None
         return {
             "available": True,
             "casillas": build_casillas(
@@ -704,6 +746,15 @@ class TaxReportService:
                 data.get("dividends") or [],
                 country_by_ticker,
                 fiscal_year,
+            ),
+            "loss_compensation": build_loss_compensation(
+                prior_year_nets,
+                None if summary.get("total_realized_gain_base") is None
+                else Decimal(str(summary["total_realized_gain_base"])),
+                None if summary.get("total_dividends_base") is None
+                else Decimal(str(summary["total_dividends_base"])),
+                fiscal_year,
+                declared_pending=declared_pending,
             ),
         }
 
