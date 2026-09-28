@@ -26,6 +26,20 @@ SEVERITY_PENALTY = {
 }
 
 
+def _finding_types(finding: dict) -> set[str]:
+    """Tipos que cubre un hallazgo: el dominante más los fusionados.
+
+    Los derivados por categoría (broken_assumptions, missing_risks) deben
+    mirar todos los motivos fusionados, no solo ``finding["type"]``: si un
+    claim stale+unsupported fusiona bajo ``unsupported_material_claim``, el
+    motivo ``claim_stale`` sigue contando como supuesto roto.
+    """
+    types = {finding["type"]}
+    trace = finding.get("trace") or {}
+    merged = trace.get("merged_types") or []
+    return types | set(merged)
+
+
 class RedTeamService:
     prompt_version = "red-team-v1"
 
@@ -56,14 +70,15 @@ class RedTeamService:
         claims = live_claims(db, company, thesis=thesis)
         findings: list[dict] = []
         for claim in claims:
+            # Un claim, un hallazgo: si varias reglas disparan sobre la misma
+            # afirmación se fusionan en un solo hallazgo, para que el cuerpo
+            # de la alerta no repita el statement por cada motivo (bug visto
+            # con RKLB: "revenue" y "shares_diluted" duplicados). El tipo es
+            # el de mayor severidad y el rastro conserva todos los motivos.
+            reasons: list[tuple[str, str, str]] = []
             if claim.materiality_score >= 7 and not claim.evidence:
-                findings.append(
-                    self._finding(
-                        "high",
-                        "unsupported_material_claim",
-                        f"Afirmación material sin evidencia vinculada: {claim.statement}",
-                        claim_id=claim.id,
-                    )
+                reasons.append(
+                    ("high", "unsupported_material_claim", "material sin evidencia vinculada")
                 )
             if claim.status in {
                 "contradicted",
@@ -71,26 +86,34 @@ class RedTeamService:
                 "stale",
                 "uncertain",
             }:
-                findings.append(
-                    self._finding(
+                reasons.append(
+                    (
                         "critical"
                         if claim.status == "contradicted"
                         and claim.materiality_score >= 8
                         else "high",
                         f"claim_{claim.status}",
-                        f"Afirmación {claim_status_label(claim.status)}: {claim.statement}",
-                        claim_id=claim.id,
+                        f"clasificada como {claim_status_label(claim.status)}",
                     )
                 )
             if claim.materiality_score >= 7 and not (
                 claim.metadata_ or {}
             ).get("invalidation_conditions"):
+                reasons.append(
+                    ("medium", "missing_falsification_test", "sin condición de invalidación explícita")
+                )
+            if reasons:
+                severity, finding_type, _ = max(
+                    reasons, key=lambda item: SEVERITY_PENALTY[item[0]]
+                )
+                detail = "; ".join(reason for _, _, reason in reasons)
                 findings.append(
                     self._finding(
-                        "medium",
-                        "missing_falsification_test",
-                        f"Sin condición de invalidación explícita: {claim.statement}",
+                        severity,
+                        finding_type,
+                        f"Afirmación {detail}: {claim.statement}",
                         claim_id=claim.id,
+                        merged_types=[item[1] for item in reasons] if len(reasons) > 1 else None,
                     )
                 )
 
@@ -219,8 +242,8 @@ class RedTeamService:
         run.broken_assumptions = [
             finding["message"]
             for finding in findings
-            if finding["type"]
-            in {
+            if _finding_types(finding)
+            & {
                 "claim_contradicted",
                 "claim_superseded",
                 "returns_below_cost_of_capital",
@@ -229,8 +252,8 @@ class RedTeamService:
         run.missing_risks = [
             finding["message"]
             for finding in findings
-            if finding["type"]
-            in {
+            if _finding_types(finding)
+            & {
                 "unsupported_material_claim",
                 "moat_unproven",
                 "peer_disadvantage",
