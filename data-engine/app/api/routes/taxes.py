@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.services.tax_modelo720_service import Modelo720Service
 from app.services.tax_report_service import TaxReportService, build_tax_summary_rows
 
 router = APIRouter()
@@ -51,3 +52,13 @@ def regenerate_tax_report(fiscal_year: int, db: Session = Depends(get_db)) -> di
         return TaxReportService().regenerate_report(db, fiscal_year)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+@router.get("/modelo720/{fiscal_year}/thresholds")
+def modelo720_thresholds(fiscal_year: int, db: Session = Depends(get_db)) -> dict:
+    """Chequeo de umbrales del Modelo 720 (50.000 EUR por categoria).
+
+    Solo lectura. Chequeo orientativo con estados sin-datos honestos; no es
+    la declaracion ni prueba la obligacion por si solo.
+    """
+    _validate_year(fiscal_year)
+    return Modelo720Service().check_thresholds(db, fiscal_year)

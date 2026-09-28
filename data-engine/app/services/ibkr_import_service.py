@@ -354,6 +354,7 @@ class IBKRImportService:
                     rows_skipped += 1
                     continue
                 company = self._company(db, companies, symbol)
+                self._capture_isin(company, element)
                 quantity = _decimal(_attr(element, "position", "quantity"))
                 market_price = _decimal(_attr(element, "markPrice", "marketPrice", "price"))
                 market_value = _decimal(_attr(element, "positionValue", "marketValue"))
@@ -438,6 +439,7 @@ class IBKRImportService:
                 if external_id and external_id in existing_ids:
                     continue
                 company = self._company(db, companies, symbol)
+                self._capture_isin(company, element)
                 action = self._action(_attr(element, "buySell", "transactionType", "tradeType"))
                 quantity = abs(_decimal(_attr(element, "quantity", "shares")))
                 transaction = Transaction(
@@ -702,6 +704,18 @@ class IBKRImportService:
         except Exception:  # noqa: BLE001 — nunca bloquear el import por el enriquecimiento
             pass
         return company
+
+    @staticmethod
+    def _capture_isin(company: Company, element: ElementTree.Element) -> None:
+        """Rellena ``Company.isin`` desde el Flex XML (atributo ``isin``).
+
+        Solo se escribe cuando el valor está vacío: un ISIN nunca se pisa con
+        otro distinto (un conflicto indicaría símbolo reutilizado y se deja
+        para revisión manual en vez de mezclar valores).
+        """
+        isin = (_attr(element, "isin") or "").strip().upper()
+        if isin and len(isin) == 12 and not company.isin:
+            company.isin = isin
 
     def _action(self, value: str | None) -> str:
         normalized = (value or "").strip().lower()
