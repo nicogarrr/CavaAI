@@ -196,6 +196,8 @@ def detect_signals(transactions: list[dict]) -> list[dict]:
                     "shares": tx.get("shares"),
                     "price": tx.get("price"),
                     "value": amount,
+                    "accession_number": tx.get("accession_number"),
+                    "tx_line": tx.get("tx_line"),
                     "source_url": tx.get("source_url"),
                     "form": tx.get("form"),
                     "multi_reporter": tx.get("multi_reporter", False),
@@ -218,6 +220,8 @@ def detect_signals(transactions: list[dict]) -> list[dict]:
                     "shares": tx.get("shares"),
                     "price": tx.get("price"),
                     "value": amount,
+                    "accession_number": tx.get("accession_number"),
+                    "tx_line": tx.get("tx_line"),
                     "source_url": tx.get("source_url"),
                     "form": tx.get("form"),
                     "multi_reporter": tx.get("multi_reporter", False),
@@ -318,9 +322,13 @@ def get_signals_for_ticker(
                         errors.append(
                             f"{filing.get('accession_number')}: persist {type(persist_exc).__name__}"
                         )
-                for tx in parsed.get("transactions", []):
+                for line_index, tx in enumerate(parsed.get("transactions", [])):
                     tx.setdefault("ticker", wanted)
                     tx["accession_number"] = filing.get("accession_number")
+                    # Ordinal de fila dentro del filing: dos lotes del mismo
+                    # insider en la misma fecha y el mismo fichero son dos
+                    # transacciones distintas y su identidad debe distinguirlas.
+                    tx["tx_line"] = line_index
                     tx["filing_date"] = filing.get("filing_date")
                     tx["source_url"] = filing.get("document_url")
                     tx["form"] = filing.get("form")

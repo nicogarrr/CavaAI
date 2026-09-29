@@ -6,6 +6,12 @@
  * sin unit se normalizan por símbolo conocido (marketIndexUnit), nunca
  * asumiendo USD - ese fallback volvía a pintar «US$» en el S&P 500.
  *
+ * Dónde vive hoy el contrato: /inicio ya NO pinta índices (duplicaba
+ * «Índices y macro» de /screener con la MISMA llamada getMarketIndices y
+ * una fuente de datos menos en el landing). El único front que los pinta es
+ * /screener, así que el formatting por unidad se exige ahí, y la ausencia de
+ * la copia en el inicio se exige en el propio inicio.
+ *
  * Ejecucion: node --experimental-strip-types --test scripts/market-index-units-guard.test.ts
  */
 import { describe, it } from 'node:test';
@@ -40,14 +46,31 @@ describe('market index units guard (F152)', () => {
     assert.equal(marketIndexUnit('NUEVO', 'index'), 'index', 'serie nueva con unit explícita');
   });
 
-  it('getMarketIndices normaliza en la frontera', () => {
+  it('getMarketIndices normaliza en la frontera y declara el tipo unidad', () => {
     assert.match(actions, /marketIndexUnit\(item\.symbol, item\.unit\)/, 'normalización en la frontera');
+    // Tipo único de la unidad para el front (vivía además duplicado como
+    // interface local en el inicio, que ya no pinta índices).
+    assert.match(actions, /unit\?: 'index' \| 'usd'/, 'el tipo de la unidad se declara una sola vez');
   });
 
   it('los fronts solo ponen US$ cuando unit === "usd"', () => {
     assert.equal(screener.includes("formatPrice(i.price, 'USD')}"), false, 'sin formato US$ incondicional en screener');
     assert.match(screener, /i\.unit === 'usd'/, 'screener ramifica por usd explícito');
-    assert.match(overview, /index\.unit === 'usd'/, 'inicio ramifica por usd explícito');
-    assert.match(overview, /unit: data\.unit/, 'unit llega al estado');
+    assert.match(screener, /formatPrice\(i\.price, 'USD'\)/, 'el US$ vive solo en la rama usd');
+    assert.match(
+      screener,
+      /i\.unit === 'usd'\s*\?\s*formatPrice\(i\.price, 'USD'\)\s*:\s*formatNumber\(i\.price/,
+      'la rama no-usd va como número plano, nunca como dinero',
+    );
+  });
+
+  it('el inicio no vuelve a pintar los índices que ya da /screener', () => {
+    // Densidad: mismo getMarketIndices, misma tarjeta, una fuente de datos
+    // menos en el landing. Si vuelve, el índice vuelve a estar en la home.
+    assert.equal(overview.includes('getMarketIndices'), false, '/inicio no debe pedir índices: los pinta /screener');
+    assert.equal(overview.includes('unit === \'usd\''), false, 'sin ramificación por unidad en el inicio');
+    assert.ok(!overview.includes('Contexto de mercado'), 'la sección duplicada desaparece del inicio');
+    // Y /screener sigue siendo la casa de los índices.
+    assert.ok(screener.includes('Índices y macro'), '/screener es la casa de los índices');
   });
 });

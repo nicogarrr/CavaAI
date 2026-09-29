@@ -432,3 +432,34 @@ def test_sec_user_agent_wraps_product_style(monkeypatch):
 def test_sec_user_agent_respects_custom_browser_ua(monkeypatch):
     monkeypatch.setenv("SEC_USER_AGENT", "Mozilla/5.0 (X11; Linux) custom/1.0 mailto:a@b.c")
     assert form4_connector.resolve_user_agent().startswith("Mozilla/5.0 (X11; Linux)")
+
+
+def test_two_buys_same_insider_date_form_file_have_distinct_identity():
+    """Dos lotes codigo P del mismo insider en la misma fecha, formulario y
+    fichero: la identidad por transaccion (accession + linea) los distingue;
+    una clave compartida hacia que React reutilizara la fila equivocada."""
+    first = _buy("DOE JANE", "0001111111", "Chief Executive Officer", 10, value=100_000.0, shares=400.0)
+    second = _buy("DOE JANE", "0001111111", "Chief Executive Officer", 10, value=250_000.0, shares=1_000.0)
+    for tx in (first, second):
+        tx["accession_number"] = "0001234567-24-000042"
+    first["tx_line"] = 0
+    second["tx_line"] = 1
+
+    signals = [s for s in insider_service.detect_signals([first, second]) if s["signal"] == "c_suite_buy"]
+    assert len(signals) == 2
+    identities = {(s["accession_number"], s["tx_line"]) for s in signals}
+    assert identities == {("0001234567-24-000042", 0), ("0001234567-24-000042", 1)}
+    # Campos de ejecucion presentes para respuestas que distingan por lote.
+    assert all("shares" in s and "price" in s for s in signals)
+
+
+def test_signals_propagate_execution_identity_fields():
+    """big_buy y c_suite_buy llevan accession_number/tx_line/shares/price:
+    sin ellos el frontend no puede componer una clave por transaccion."""
+    tx = _buy("DOE JANE", "0001111111", "Chief Executive Officer", 10, value=1_250_000.0)
+    tx["accession_number"] = "0001234567-24-000043"
+    tx["tx_line"] = 2
+    signals = insider_service.detect_signals([tx])
+    for signal in signals:
+        assert signal["accession_number"] == "0001234567-24-000043"
+        assert signal["tx_line"] == 2
