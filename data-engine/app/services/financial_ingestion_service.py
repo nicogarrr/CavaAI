@@ -343,6 +343,21 @@ def _compose_bank_revenue(
     return composed
 
 
+def _is_bank_like(company: Any) -> bool:
+    """Gate verificable de la composicion de revenue bancario.
+
+    InterestIncomeExpenseNet + NoninterestIncome ES la definicion de
+    ingresos ("total net revenue") solo para bancos/financieras; en un
+    industrial esos tags serian un subtotal enganoso publicado como
+    revenue. Se decide con el sector/industry del maestro de companias.
+    """
+    sector = str(getattr(company, "sector", "") or "").strip().lower()
+    industry = str(getattr(company, "industry", "") or "").strip().lower()
+    if "bank" in industry or "thrift" in industry or "capital markets" in industry:
+        return True
+    return sector in {"financials", "financial services", "financial"}
+
+
 def _collect_by_concept(
     us_gaap: dict[str, Any],
     concepts: list[str],
@@ -810,6 +825,7 @@ class FinancialIngestionService:
         modal_fy_month = _current_fiscal_month_from_anchors(
             annual_anchors
         ) or _modal_fiscal_end_month(us_gaap)
+        bank_like = _is_bank_like(company)
 
         # Pre-computo anual (funciones puras sobre companyfacts), ANTES del
         # replace, para que el borrado sea selectivo por (metric, period):
@@ -834,7 +850,7 @@ class FinancialIngestionService:
                 ),
                 metric,
             )
-            if metric == "revenue":
+            if metric == "revenue" and bank_like:
                 # Bancos: rellena solo los periodos sin tag agregado.
                 for end, entry in _compose_bank_revenue(
                     us_gaap,
@@ -886,7 +902,7 @@ class FinancialIngestionService:
                 ),
                 metric,
             )
-            if metric == "revenue":
+            if metric == "revenue" and bank_like:
                 for end, entry in _compose_bank_revenue(
                     us_gaap,
                     forms={"10-Q"},
@@ -923,6 +939,11 @@ class FinancialIngestionService:
                             confidence=Decimal("0.9"),
                         )
                     )
+                    # Misma proveniencia por periodo que el bucle anual:
+                    # clave "<end>:<fp>" para no colisionar con el FY.
+                    concept_usage.setdefault(metric, {})[
+                        f"{entry['end']}:{fp}"
+                    ] = entry.get("_concept")
                     facts_imported += 1
             # Los alias se FUSIONAN, no "gana el primero que informe": muchos
             # filers migraron de tag (Revenues -> SalesRevenueNet ->

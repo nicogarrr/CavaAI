@@ -164,6 +164,7 @@ def test_bank_revenue_composed_from_components(db, monkeypatch):
     assert usage["revenue"]["2022-12-31"] == "Revenues"
     assert usage["revenue"]["2023-12-31"] == BANK_REVENUE_CONCEPT
     assert usage["revenue"]["2024-12-31"] == BANK_REVENUE_CONCEPT
+    assert usage["revenue"]["2025-03-31:Q1"] == BANK_REVENUE_CONCEPT
 
 
 def test_bank_revenue_fail_closed_without_both_components(db, monkeypatch):
@@ -171,3 +172,20 @@ def test_bank_revenue_fail_closed_without_both_components(db, monkeypatch):
     company = _company(db, ticker="HALF")
     asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
     assert _revenue_facts(db, company.id) == []
+
+
+def test_bank_revenue_not_composed_for_non_banks(db, monkeypatch):
+    """Un industrial con ambos tags NO recibe el subtotal como revenue."""
+    monkeypatch.setattr(ingestion, "SECClient", _FakeBankSEC)
+    company = Company(
+        ticker="IND", name="IND", exchange="NYSE", currency="USD",
+        sector="Industrials", industry="Machinery", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.commit()
+    asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+
+    facts = _revenue_facts(db, company.id)
+    # solo el alias real de 2022; nada compuesto en 2023/2024/Q1
+    assert [(f.fiscal_year, f.fiscal_quarter) for f in facts] == [(2022, "FY")]
