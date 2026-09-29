@@ -22,6 +22,14 @@ import httpx
 TICKERS_FILE = Path(__file__).with_name("sec_mirror_tickers.txt")
 RPS_DELAY = 0.15  # ~6-7 req/s, bajo el limite de la SEC (10/s)
 
+# Alias de entrada SEC: la app (y el manifest) conserva la identidad local
+# del ticker (BRK.B, convencion Finnhub/master), pero EDGAR nombra las
+# clases con guion (BRK-B, CIK 1067983) y el lookup contra
+# company_tickers.json es exacto. El alias SOLO resuelve el CIK en el
+# sync; la clave del manifest sigue siendo el ticker local, que es el que
+# consulta _manifest_cik en la ingesta.
+SEC_TICKER_ALIASES = {"BRK.B": "BRK-B"}
+
 # La SEC pide un User-Agent con contacto REAL y banea placeholders con 403.
 # El valor llega por env (SEC_USER_AGENT); fail closed si falta o es
 # placeholder: mejor un sync que no corre que un ban por UA inventado.
@@ -79,7 +87,9 @@ def main() -> int:
         cik_by_ticker = {v["ticker"].upper(): v["cik_str"] for v in mapping.values()}
         manifest = {}
         for ticker in tickers:
-            cik = cik_by_ticker.get(ticker)
+            cik = cik_by_ticker.get(ticker) or cik_by_ticker.get(
+                SEC_TICKER_ALIASES.get(ticker, "")
+            )
             if not cik:
                 print(f"{ticker}: sin CIK, se omite")
                 continue
