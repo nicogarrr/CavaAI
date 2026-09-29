@@ -314,6 +314,34 @@ def _companies(db, ticker: str | None = None):
     return list(db.scalars(statement.order_by(Company.ticker)).all())
 
 
+def _price_tracked_companies(db):
+    """Carril rapido de PRECIOS: cartera + watchlist + tickers con reglas
+    de alerta activas del tenant.
+
+    Las reglas se evaluan cada hora contra market_prices local; si su
+    precio solo llegara con el barrido de universo (6 h), dispararian
+    tarde o mostrarian un valor antiguo como fresco. Su SLA sigue siendo
+    1 h, asi que entran en el tracked de precios. Solo precios: el carril
+    tracked de news (_tracked_companies) no cambia.
+    """
+    from sqlalchemy import select
+
+    from app.models import AlertRule, Company
+
+    tracked = {company.id: company for company in _tracked_companies(db)}
+    alert_company_ids = [
+        row[0]
+        for row in db.execute(
+            select(AlertRule.company_id).where(AlertRule.active.is_(True)).distinct()
+        ).all()
+    ]
+    missing = [company_id for company_id in alert_company_ids if company_id not in tracked]
+    if missing:
+        for company in db.scalars(select(Company).where(Company.id.in_(missing))).all():
+            tracked[company.id] = company
+    return sorted(tracked.values(), key=lambda company: company.ticker)
+
+
 def _tracked_companies(db):
     """Carril rápido de noticias: cartera + watchlist/seguidas del tenant.
 
@@ -802,9 +830,12 @@ def refresh_macro_context() -> dict[str, Any]:
 def refresh_market_pipeline(
     tenant_id: int | None = None,
     user_id: str | None = None,
+    scope: str = "tracked",
 ) -> dict[str, Any]:
     from app.services.market_refresh_service import MarketRefreshService
 
+    if scope not in ("tracked", "universe"):
+        raise ValueError(f"scope de refresh_market_pipeline desconocido: {scope!r}")
     db = _session(tenant_id, user_id)
         # La sesion se abre ANTES de tomar el lease: _session() lanza
         # ValueError si el tenant no esta activo, y esa excepcion entre la
@@ -829,8 +860,14 @@ def refresh_market_pipeline(
             "reason": "lease_held",
         }
     try:
-        result = _run(MarketRefreshService().refresh(db))
-        return {"actor": "refresh_market_pipeline", **result}
+        # Dos velocidades: cartera+watchlist+reglas de alerta activas cada
+        # ciclo horario; el universo completo va en el job scope="universe"
+        # de menor cadencia (scheduler). El screener sirve quotes en vivo
+        # por su propia via de vendors, asi que su frescura no depende del
+        # barrido de universo.
+        companies = None if scope == "universe" else _price_tracked_companies(db)
+        result = _run(MarketRefreshService().refresh(db, companies=companies))
+        return {"actor": "refresh_market_pipeline", "scope": scope, **result}
     except Exception as exc:
         _rollback(db)
         return _handle_actor_error("refresh_market_pipeline", exc, tenant_id=tenant_id)

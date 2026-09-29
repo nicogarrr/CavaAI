@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
 
 import { getMarketMovers, type MarketMover } from '@/lib/actions/market.actions';
-import { NA, formatCompact, formatPercent, formatPrice } from '@/lib/format';
+import { NA, formatCompact, formatPercent, formatPrice, formatUserDateTime } from '@/lib/format';
 import BackendOffline from '@/components/system/BackendOffline';
 import { getTickerContext } from '@/lib/actions/ticker-context.actions';
 import { TickerContextBadges } from '@/components/common/TickerContextBadges';
@@ -63,7 +63,15 @@ function MoversTable({ rows, caption, tickerSets, showVolume = false }: { rows: 
                   watchlistTickers={tickerSets.watchlistTickers}
                 />
               </th>
-              <td className="py-3 px-2 text-right whitespace-nowrap text-gray-300">{formatPrice(row.price, safeCurrency(row.currency))}</td>
+              <td className="py-3 px-2 text-right whitespace-nowrap text-gray-300">
+                {formatPrice(row.price, safeCurrency(row.currency))}
+                {row.date ? (
+                  <div className="text-xs text-gray-500">
+                    del {row.date}
+                    {row.registered_at ? ` · ${formatUserDateTime(row.registered_at, { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  </div>
+                ) : null}
+              </td>
               <td className={`py-3 px-2 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
               </td>
@@ -100,7 +108,9 @@ export default async function MoversPage() {
         <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
           Subidas, bajadas y más activas calculadas con los precios registrados en tu base de datos
           (último cierre frente al anterior).
-          {movers.as_of ? ` Datos del ${movers.as_of}.` : ' Aún no hay precios registrados.'}
+          {movers.as_of
+            ? ` El precio más reciente registrado es del ${movers.as_of}; cada fila declara la fecha de su precio y la hora en que se registró.`
+            : ' Aún no hay precios registrados.'}
         </p>
       </header>
 
