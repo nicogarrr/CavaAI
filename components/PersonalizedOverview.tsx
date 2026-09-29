@@ -9,7 +9,7 @@ import {
     summarizeDcfProbe,
     type DcfScope,
 } from '@/lib/overview/dcf-candidates';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Activity, ArrowRight, BellRing, Eye, Gem, Minus, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { getPortfolioSummary, type PortfolioHolding, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
-import { getMarketIndices } from '@/lib/actions/market.actions';
 import { sectionError } from '@/lib/section-error';
 import { getStockQuote } from '@/lib/actions/finnhub.actions';
 import { getScreenerStocksReal, getFairValue } from '@/lib/actions/screener.actions';
@@ -45,16 +44,6 @@ interface WatchlistItem {
     changePercent: number | null;
 }
 
-interface MarketIndex {
-    symbol: string;
-    name: string;
-    price: number;
-    change: number;
-    changePercent: number;
-    // F152: "index" = nivel de índice (no es dinero), "usd" = precio en dólares.
-    unit?: 'index' | 'usd';
-}
-
 interface UndervaluedStock {
     symbol: string;
     name: string;
@@ -70,33 +59,30 @@ interface UndervaluedStock {
  *  (duplicaba /screener?sector=Technology sin decirlo). */
 const MIN_MARKET_CAP = 10_000_000_000;
 
-// Tarjeta memorizada: la parrilla de índices re-renderiza con cada
-// actualización del dashboard; memo evita reconciliar tarjetas sin cambios.
-const MarketIndexCard = memo(function MarketIndexCard({ index }: { index: MarketIndex }) {
-    return (
-        <Card className="bg-gray-800/40 border-gray-700/50 hover:bg-gray-800/60 transition-colors">
-            <CardContent className="p-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                    <p className="text-sm text-gray-400 font-medium truncate">{index.name}</p>
-                    {/* F152: un nivel de índice no es dinero. Solo «usd» lleva símbolo
-                        monetario; índice o unidad desconocida va como número plano. */}
-                    <p className="text-xl font-bold text-white mt-1">
-                        {index.unit === 'usd'
-                            ? formatMoney(index.price)
-                            : formatNumber(index.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                </div>
-                <div className={`shrink-0 text-right ${index.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    <div className="flex items-center justify-end gap-1">
-                        {index.changePercent >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                        <span className="font-bold">{formatPercent(index.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}</span>
-                    </div>
-                    <p className="text-xs mt-1">{formatNumber(index.change, { signDisplay: 'always' })}</p>
-                </div>
-            </CardContent>
-        </Card>
-    );
-});
+/** La watchlist del inicio es una MIRADA: 3 filas y el resto vive en
+ *  /watchlist, que es la página de la lista completa. Antes pintaba 5 filas
+ *  sin decir cuántas quedaban fuera. */
+const WATCHLIST_PREVIEW_LIMIT = 3;
+
+/** Fichas de oportunidad que caben en la mirada del inicio. El bloque es el
+ *  más caro (2 server actions por candidata) y la lista completa, con filtros,
+ *  es /screener: 3 reachan para decidir por dónde mirar. Cuando se recorta se
+ *  declara cuántas se dejan fuera. */
+const OPPORTUNITY_TILE_LIMIT = 3;
+
+/**
+ * Secciones de reintento independientes: pulsar «Reintentar» en la tarjeta de
+ * alertas ya no vuelve a pedir cartera, watchlist y los DCF (antes bastaba un
+ * fallo de índices para relanzar las ~23 llamadas del inicio).
+ */
+type SectionKey = 'portfolio' | 'alerts' | 'watchlist' | 'opportunities';
+
+const EMPTY_RETRY_TOKENS: Record<SectionKey, number> = {
+    portfolio: 0,
+    alerts: 0,
+    watchlist: 0,
+    opportunities: 0,
+};
 
 /**
  * Estado de carga por sección con el patrón de components/LoadingState.tsx: el
@@ -163,82 +149,142 @@ function settle<T>(promise: Promise<T>, fallback: T): Promise<{ data: T; error: 
 }
 
 export default function PersonalizedOverview({ userId }: PersonalizedOverviewProps) {
-    const [reloadToken, setReloadToken] = useState(0);
+    const [retryTokens, setRetryTokens] = useState<Record<SectionKey, number>>(EMPTY_RETRY_TOKENS);
     const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+    const [watchlistTotal, setWatchlistTotal] = useState(0);
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [triggeredAlerts, setTriggeredAlerts] = useState<TriggeredAlertDelivery[]>([]);
-    const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([]);
     const [opportunities, setOpportunities] = useState<UndervaluedStock[]>([]);
     const [dcfScope, setDcfScope] = useState<DcfScope | null>(null);
-    const [indicesLoading, setIndicesLoading] = useState(true);
     const [portfolioLoading, setPortfolioLoading] = useState(true);
     const [watchlistLoading, setWatchlistLoading] = useState(true);
     const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
     const [alertsLoading, setAlertsLoading] = useState(true);
-    const [indicesError, setIndicesError] = useState<string | null>(null);
     const [portfolioError, setPortfolioError] = useState<string | null>(null);
     const [watchlistError, setWatchlistError] = useState<string | null>(null);
     const [opportunitiesError, setOpportunitiesError] = useState<string | null>(null);
     const [alertsError, setAlertsError] = useState<string | null>(null);
 
+    const retrySection = (section: SectionKey) =>
+        setRetryTokens((tokens) => ({ ...tokens, [section]: tokens[section] + 1 }));
+
+    // Una sección, un disparador: cada «Reintentar» vuelve a pedir solo su
+    // lectura (antes los cuatro reintentos relanzaban el loadData completo).
     useEffect(() => {
         let active = true;
 
-        const loadData = async () => {
-            setIndicesLoading(true);
+        const load = async () => {
             setPortfolioLoading(true);
-            setWatchlistLoading(true);
-            setOpportunitiesLoading(true);
-            setAlertsLoading(true);
-            setIndicesError(null);
             setPortfolioError(null);
-            setWatchlistError(null);
-            setOpportunitiesError(null);
-            setAlertsError(null);
-
-            // Las lecturas base no dependen entre sí. Lanzarlas juntas elimina el
-            // waterfall de índices, cartera, watchlist, alertas y screener.
-            const [indicesResult, summaryResult, watchlistResult, screenerResult, alertsResult] = await Promise.all([
-                settle(getMarketIndices(), [] as Awaited<ReturnType<typeof getMarketIndices>>),
-                settle(getPortfolioSummary(userId), null as PortfolioSummary | null),
-                settle(getWatchlist(), [] as Awaited<ReturnType<typeof getWatchlist>>),
-                settle(getScreenerStocksReal({ marketCapMoreThan: MIN_MARKET_CAP, limit: 10 }), [] as Awaited<ReturnType<typeof getScreenerStocksReal>>),
-                settle(
-                    Promise.all([getUserAlerts(), getRecentTriggeredAlerts(3)]).then(([rules, triggered]) => ({ rules, triggered })),
-                    { rules: [] as Alert[], triggered: [] as TriggeredAlertDelivery[] },
-                ),
-            ]);
+            const result = await settle(getPortfolioSummary(userId), null as PortfolioSummary | null);
             if (!active) return;
-
-            setMarketIndices(indicesResult.data
-                .map((data) => ({
-                    symbol: data.symbol,
-                    name: data.name,
-                    price: data.price || 0,
-                    change: data.change || 0,
-                    changePercent: data.changePercent || 0,
-                    unit: data.unit,
-                }))
-                .filter((i) => i.price > 0));
-            setIndicesLoading(false);
-            setIndicesError(indicesResult.error);
-
-            setPortfolioSummary(summaryResult.data);
+            setPortfolioSummary(result.data);
             setPortfolioLoading(false);
-            setPortfolioError(summaryResult.error);
+            setPortfolioError(result.error);
+        };
 
-            setAlerts(alertsResult.data.rules);
-            setTriggeredAlerts(alertsResult.data.triggered);
+        void load();
+        return () => {
+            active = false;
+        };
+    }, [userId, retryTokens.portfolio]);
+
+    useEffect(() => {
+        let active = true;
+
+        const load = async () => {
+            setAlertsLoading(true);
+            setAlertsError(null);
+            const result = await settle(
+                Promise.all([getUserAlerts(), getRecentTriggeredAlerts(3)]).then(([rules, triggered]) => ({ rules, triggered })),
+                { rules: [] as Alert[], triggered: [] as TriggeredAlertDelivery[] },
+            );
+            if (!active) return;
+            setAlerts(result.data.rules);
+            setTriggeredAlerts(result.data.triggered);
             setAlertsLoading(false);
-            setAlertsError(alertsResult.error);
+            setAlertsError(result.error);
+        };
 
+        void load();
+        return () => {
+            active = false;
+        };
+    }, [retryTokens.alerts]);
+
+    // Solo se cotizan las primeras WATCHLIST_PREVIEW_LIMIT entradas: el resto
+    // son un contador y un enlace a /watchlist, no filas anónimas.
+    useEffect(() => {
+        let active = true;
+
+        const load = async () => {
+            setWatchlistLoading(true);
+            setWatchlistError(null);
+            const result = await settle(getWatchlist(), [] as Awaited<ReturnType<typeof getWatchlist>>);
+            if (!active) return;
+            if (result.error) {
+                setWatchlistTotal(0);
+                setWatchlist([]);
+                setWatchlistLoading(false);
+                setWatchlistError(result.error);
+                return;
+            }
+            setWatchlistTotal(result.data.length);
+            const items = await Promise.all(
+                result.data.slice(0, WATCHLIST_PREVIEW_LIMIT).map(async (item): Promise<WatchlistItem> => {
+                    try {
+                        // Precio y divisa del LISTADO REAL (master), nunca del
+                        // ticker desnudo: Finnhub free lo resuelve en la línea US
+                        // (ADR en USD u otro emisor) y contradecía research (F253/F254).
+                        const data = await getWatchlistEntryData(item.symbol);
+                        return {
+                            symbol: data.symbol,
+                            name: data.name,
+                            price: data.price,
+                            currency: data.currency,
+                            changePercent: data.changePercent,
+                        };
+                    } catch {
+                        return { symbol: item.symbol, name: item.symbol, price: null, currency: null, changePercent: null };
+                    }
+                }),
+            );
+            if (!active) return;
+            setWatchlist(items);
+            setWatchlistLoading(false);
+        };
+
+        void load();
+        return () => {
+            active = false;
+        };
+    }, [retryTokens.watchlist]);
+
+    useEffect(() => {
+        let active = true;
+
+        const load = async () => {
+            setOpportunitiesLoading(true);
+            setOpportunitiesError(null);
+            const screenerResult = await settle(
+                getScreenerStocksReal({ marketCapMoreThan: MIN_MARKET_CAP, limit: 10 }),
+                [] as Awaited<ReturnType<typeof getScreenerStocksReal>>,
+            );
+            if (!active) return;
+            if (screenerResult.error) {
+                setOpportunities([]);
+                setDcfScope(null);
+                setOpportunitiesLoading(false);
+                setOpportunitiesError(screenerResult.error);
+                return;
+            }
             // Los candidatos sólo dependen del screener; sus cálculos de DCF y
             // quote sí se lanzan en paralelo por símbolo.
             // F65: se prueban solo las primeras candidatas y se cuenta cuántas
             // se pudieron evaluar; un DCF fallido no equivale a «sin potencial».
             const candidates = (screenerResult.data?.map((s) => s.symbol) ?? []).slice(0, DCF_CANDIDATE_LIMIT);
-            const opportunitiesPromise = Promise.all(candidates.map(async (sym: string) => {
+            const results = await Promise.all(candidates.map(async (sym: string) => {
                 try {
                     const [fairValue, quote] = await Promise.all([getFairValue(sym), getStockQuote(sym)]);
                     const currentPrice = quote?.c || 0;
@@ -255,60 +301,23 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 } catch {
                     return { evaluated: false, opportunity: null };
                 }
-            })).then((results) => ({
-                opportunities: results
-                    .map((result) => result.opportunity)
-                    .filter((op): op is UndervaluedStock => op !== null)
-                    .sort((a, b) => b.upside - a.upside)
-                    .slice(0, 4),
-                scope: summarizeDcfProbe(results),
             }));
-
-            const watchlistItems = watchlistResult.data;
-            const watchlistPromise = Promise.all(watchlistItems.slice(0, 5).map(async (item): Promise<WatchlistItem> => {
-                try {
-                    // Precio y divisa del LISTADO REAL (master), nunca del
-                    // ticker desnudo: Finnhub free lo resuelve en la línea US
-                    // (ADR en USD u otro emisor) y contradecía research (F253/F254).
-                    const data = await getWatchlistEntryData(item.symbol);
-                    return {
-                        symbol: data.symbol,
-                        name: data.name,
-                        price: data.price,
-                        currency: data.currency,
-                        changePercent: data.changePercent,
-                    };
-                } catch {
-                    return { symbol: item.symbol, name: item.symbol, price: null, currency: null, changePercent: null };
-                }
-            }));
-
-            const [opportunitiesResult, watchlistWithPrices] = await Promise.all([
-                opportunitiesPromise
-                    .then((data) => ({ data, error: null as string | null }))
-                    .catch((error) => ({ data: null, error: sectionError(error) })),
-                watchlistPromise.then((data) => ({ data, error: null as string | null })).catch((error) => ({ data: [] as WatchlistItem[], error: sectionError(error) })),
-            ]);
             if (!active) return;
-
-            setOpportunities(opportunitiesResult.data?.opportunities ?? []);
-            setDcfScope(opportunitiesResult.data?.scope ?? null);
+            // La lista completa se conserva en el estado para poder DECLARAR
+            // cuántas fichas se recorta por el tope de la mirada.
+            setOpportunities(results
+                .map((result) => result.opportunity)
+                .filter((op): op is UndervaluedStock => op !== null)
+                .sort((a, b) => b.upside - a.upside));
+            setDcfScope(summarizeDcfProbe(results));
             setOpportunitiesLoading(false);
-            setOpportunitiesError(opportunitiesResult.error ?? screenerResult.error);
-            setWatchlist(watchlistWithPrices.data);
-            setWatchlistLoading(false);
-            setWatchlistError(watchlistWithPrices.error ?? watchlistResult.error);
-
         };
 
-        void loadData();
+        void load();
         return () => {
             active = false;
         };
-        // reloadToken es un disparador explícito del botón Reintentar.
-    }, [userId, reloadToken]);
-
-    const retry = () => setReloadToken((value) => value + 1);
+    }, [retryTokens.opportunities]);
 
     // Derivados memorizados: evita reordenar el estado en cada render
     // (.sort() mutaba el array del estado) y recalcula solo si cambian los datos.
@@ -324,12 +333,14 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     const insight = useMemo(() => buildPortfolioInsight(portfolioSummary), [portfolioSummary]);
 
     /** Posición que más se mueve desde la compra: el destino del enlace
-     *  "¿qué ha cambiado?" del encabezado. Sin base de coste no hay dato. */
+     *  "¿qué ha cambiado?" de la tarjeta. Sin base de coste no hay dato. */
     const topMover = useMemo<PortfolioHolding | null>(() => {
         const conCoste = (portfolioSummary?.holdings ?? []).filter((h) => h.cost > 0 && !h.fxMissing);
         if (!conCoste.length) return null;
         return conCoste.reduce((a, b) => Math.abs(b.gainPercent) > Math.abs(a.gainPercent) ? b : a);
     }, [portfolioSummary]);
+
+    const visibleOpportunities = opportunities.slice(0, OPPORTUNITY_TILE_LIMIT);
 
     return (
         <div className="space-y-6">
@@ -343,46 +354,11 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 </p>
             </div>
 
-            {/* 1 · Insight de cartera: qué ha cambiado y dónde leerlo. Si la
-                lectura de cartera falla no se muestra: el error y su reintento
-                los pone la tarjeta siguiente, que es la dueña del dato. */}
-            {!portfolioError && (
-            <Card className="border-teal-800/50 bg-teal-950/20">
-                <CardContent className="p-4 flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-4">
-                    <div className="p-3 bg-teal-500/10 rounded-full shrink-0">
-                        <Activity aria-hidden="true" className="h-6 w-6 text-teal-400" />
-                    </div>
-                    <div className="min-w-0">
-                        <h2 className="text-sm font-semibold text-teal-300 mb-1">Tu cartera en una línea</h2>
-                        {portfolioLoading ? (
-                            <SectionSkeleton className="max-w-md" rows={1} />
-                        ) : (
-                            <>
-                                <p className="text-gray-200 text-sm leading-relaxed">
-                                    {insight.kind === 'empty' &&
-                                        'Todavía no tienes posiciones. Añade tu primera inversión para ver aquí qué ha cambiado desde la compra.'}
-                                    {insight.kind === 'no-cost-basis' &&
-                                        'Todavía no tenemos la base de coste de tus posiciones. Cuando esté cargada, aquí verás cómo va tu cartera desde la compra.'}
-                                    {insight.kind === 'movement' &&
-                                        `${insight.partial ? 'Entre las posiciones con base de coste, tu' : 'Tu'} cartera acumula ${insight.direction === 'up' ? 'una subida' : 'una caída'} del ${formatPercent(insight.totalPercent, { fromRatio: false, digits: 2, signDisplay: 'never' })} desde la compra. ${insight.topSymbol} es la posición que más se mueve (${formatPercent(insight.topGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}).`}
-                                </p>
-                                <Link
-                                    href={topMover ? `/research/${topMover.symbol}?view=changes` : '/portfolio'}
-                                    className="mt-3 inline-flex min-h-[44px] items-center gap-1 text-sm text-teal-300 hover:text-teal-200"
-                                >
-                                    <span className="whitespace-nowrap">
-                                        {topMover ? `Ver qué ha cambiado en ${topMover.symbol}` : 'Revisar tu cartera'}
-                                    </span>
-                                    <ArrowRight aria-hidden="true" className="w-4 h-4 shrink-0" />
-                                </Link>
-                            </>
-                        )}
-                    </div>
-                </CardContent>
-            </Card>
-            )}
-
-            {/* 2 · Cartera hoy. */}
+            {/* 1 · Cartera hoy. La frase «tu cartera en una línea» vive DENTRO de
+                esta tarjeta (antes era una tarjeta suelta con el mismo
+                portfolioSummary detrás): leer valor y frase juntos es una decisión,
+                no dos. Si la lectura de cartera falla, la tarjeta es la que muestra
+                el error y su reintento, porque es la dueña del dato. */}
             <Card className="bg-gray-800/50 border-gray-700">
                 <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
                     <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
@@ -397,9 +373,34 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     {portfolioLoading ? (
                         <SectionSkeleton rows={2} />
                     ) : portfolioError ? (
-                        <InlineSectionError message={portfolioError} onRetry={retry} />
+                        <InlineSectionError message={portfolioError} onRetry={() => retrySection('portfolio')} />
                     ) : portfolioSummary && portfolioSummary.holdings.length > 0 ? (
                         <div className="space-y-5">
+                            <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-3 rounded-xl border border-teal-800/50 bg-teal-950/20 p-3">
+                                <div className="p-2 bg-teal-500/10 rounded-full shrink-0">
+                                    <Activity aria-hidden="true" className="h-5 w-5 text-teal-400" />
+                                </div>
+                                <div className="min-w-0">
+                                    <h3 className="text-sm font-semibold text-teal-300">Tu cartera en una línea</h3>
+                                    <p className="text-gray-200 text-sm leading-relaxed">
+                                        {insight.kind === 'empty' &&
+                                            'Todavía no tienes posiciones. Añade tu primera inversión para ver aquí qué ha cambiado desde la compra.'}
+                                        {insight.kind === 'no-cost-basis' &&
+                                            'Todavía no tenemos la base de coste de tus posiciones. Cuando esté cargada, aquí verás cómo va tu cartera desde la compra.'}
+                                        {insight.kind === 'movement' &&
+                                            `${insight.partial ? 'Entre las posiciones con base de coste, tu' : 'Tu'} cartera acumula ${insight.direction === 'up' ? 'una subida' : 'una caída'} del ${formatPercent(insight.totalPercent, { fromRatio: false, digits: 2, signDisplay: 'never' })} desde la compra. ${insight.topSymbol} es la posición que más se mueve (${formatPercent(insight.topGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}).`}
+                                    </p>
+                                    <Link
+                                        href={topMover ? `/research/${topMover.symbol}?view=changes` : '/portfolio'}
+                                        className="mt-2 inline-flex min-h-[44px] items-center gap-1 text-sm text-teal-300 hover:text-teal-200"
+                                    >
+                                        <span className="whitespace-nowrap">
+                                            {topMover ? `Ver qué ha cambiado en ${topMover.symbol}` : 'Revisar tu cartera'}
+                                        </span>
+                                        <ArrowRight aria-hidden="true" className="w-4 h-4 shrink-0" />
+                                    </Link>
+                                </div>
+                            </div>
                             <div className="flex flex-col min-[420px]:flex-row min-[420px]:flex-wrap min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
                                 <div className="min-w-0">
                                     <p className="text-sm text-gray-400">Valor Total Estimado</p>
@@ -444,7 +445,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 </CardContent>
             </Card>
 
-            {/* 3 · Alertas: la sección que faltaba en el inicio pese a existir /alerts. */}
+            {/* 2 · Alertas: la sección que faltaba en el inicio pese a existir /alerts. */}
             <Card className="bg-gray-800/50 border-gray-700">
                 <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
                     <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
@@ -459,7 +460,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     {alertsLoading ? (
                         <SectionSkeleton rows={2} />
                     ) : alertsError ? (
-                        <InlineSectionError message={alertsError} onRetry={retry} />
+                        <InlineSectionError message={alertsError} onRetry={() => retrySection('alerts')} />
                     ) : triggeredAlerts.length > 0 ? (
                         <div className="space-y-3">
                             {triggeredAlerts.map((item) => {
@@ -535,7 +536,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 </CardContent>
             </Card>
 
-            {/* 4 · Watchlist. */}
+            {/* 3 · Watchlist: mirada de 3 filas. La lista completa es /watchlist. */}
             <Card className="bg-gray-800/50 border-gray-700">
                 <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-700/50">
                     <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
@@ -550,44 +551,52 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     {watchlistLoading ? (
                         <SectionSkeleton rows={3} />
                     ) : watchlistError ? (
-                        <InlineSectionError message={watchlistError} onRetry={retry} />
+                        <InlineSectionError message={watchlistError} onRetry={() => retrySection('watchlist')} />
                     ) : watchlist.length > 0 ? (
-                        <div className="space-y-1">
-                            {watchlist.map((stock) => (
-                                <Link
-                                    key={stock.symbol}
-                                    href={`/research/${stock.symbol}`}
-                                    prefetch
-                                    className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-900/30 rounded-lg hover:bg-gray-800/80 transition-colors group"
-                                >
-                                    <div className="flex min-w-0 items-center gap-3">
-                                        <div className={`shrink-0 p-2 rounded-full ${stock.changePercent == null ? 'bg-gray-500/10 text-gray-500' : stock.changePercent >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                                            {stock.changePercent == null ? <Minus aria-hidden="true" className="h-4 w-4" /> : stock.changePercent >= 0 ? <TrendingUp aria-hidden="true" className="h-4 w-4" /> : <TrendingDown aria-hidden="true" className="h-4 w-4" />}
+                        <div className="space-y-3">
+                            <div className="space-y-1">
+                                {watchlist.map((stock) => (
+                                    <Link
+                                        key={stock.symbol}
+                                        href={`/research/${stock.symbol}`}
+                                        prefetch
+                                        className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-900/30 rounded-lg hover:bg-gray-800/80 transition-colors group"
+                                    >
+                                        <div className="flex min-w-0 items-center gap-3">
+                                            <div className={`shrink-0 p-2 rounded-full ${stock.changePercent == null ? 'bg-gray-500/10 text-gray-500' : stock.changePercent >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                                {stock.changePercent == null ? <Minus aria-hidden="true" className="h-4 w-4" /> : stock.changePercent >= 0 ? <TrendingUp aria-hidden="true" className="h-4 w-4" /> : <TrendingDown aria-hidden="true" className="h-4 w-4" />}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <span className="block truncate text-white font-medium group-hover:text-yellow-400 transition-colors">{stock.symbol}</span>
+                                                <p className="block truncate max-w-[140px] sm:max-w-none text-xs text-gray-500" title={stock.name}>{stock.name}</p>
+                                            </div>
                                         </div>
-                                        <div className="min-w-0">
-                                            <span className="block truncate text-white font-medium group-hover:text-yellow-400 transition-colors">{stock.symbol}</span>
-                                            <p className="block truncate max-w-[140px] sm:max-w-none text-xs text-gray-500" title={stock.name}>{stock.name}</p>
+                                        <div className="shrink-0 text-right">
+                                            {stock.price != null ? (
+                                                <>
+                                                    <div className="text-white font-mono">{stock.currency ? formatMoney(stock.price, stock.currency) : formatNumber(stock.price)}</div>
+                                                    {stock.changePercent != null && (
+                                                        <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                            {formatPercent(stock.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="font-mono text-gray-500" title="No hay cotización disponible">&mdash;</div>
+                                                    <div className="text-[10px] uppercase tracking-wide text-gray-500">sin datos</div>
+                                                </>
+                                            )}
                                         </div>
-                                    </div>
-                                    <div className="shrink-0 text-right">
-                                        {stock.price != null ? (
-                                            <>
-                                                <div className="text-white font-mono">{stock.currency ? formatMoney(stock.price, stock.currency) : formatNumber(stock.price)}</div>
-                                                {stock.changePercent != null && (
-                                                    <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                        {formatPercent(stock.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
-                                                    </div>
-                                                )}
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div className="font-mono text-gray-500" title="No hay cotización disponible">&mdash;</div>
-                                                <div className="text-[10px] uppercase tracking-wide text-gray-500">sin datos</div>
-                                            </>
-                                        )}
-                                    </div>
+                                    </Link>
+                                ))}
+                            </div>
+                            <p className="text-xs text-gray-500">
+                                {watchlistTotal} en total ·{' '}
+                                <Link href="/watchlist" className="inline-flex min-h-[44px] items-center text-yellow-400 hover:underline">
+                                    ver la lista completa
                                 </Link>
-                            ))}
+                            </p>
                         </div>
                     ) : (
                         <div className="text-center py-8">
@@ -603,7 +612,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                 </CardContent>
             </Card>
 
-            {/* 5 · Oportunidades por valor intrínseco. */}
+            {/* 4 · Oportunidades por valor intrínseco. */}
             <Card className="bg-gray-800/50 border-gray-700">
                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-x-2 pb-2 border-b border-gray-700/50">
                     <CardTitle className="text-lg text-gray-100 flex items-center gap-2">
@@ -618,7 +627,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     {opportunitiesLoading ? (
                         <SectionSkeleton rows={2} />
                     ) : opportunitiesError ? (
-                        <InlineSectionError message={opportunitiesError} onRetry={retry} />
+                        <InlineSectionError message={opportunitiesError} onRetry={() => retrySection('opportunities')} />
                     ) : opportunities.length > 0 ? (
                         <>
                             <p className="mb-4 text-xs text-gray-500">
@@ -628,7 +637,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 )}
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {opportunities.map((op) => (
+                                {visibleOpportunities.map((op) => (
                                     <Link key={op.symbol} href={`/research/${op.symbol}`} prefetch>
                                         <div className="p-4 bg-gray-900/40 rounded-xl border border-gray-700/30 hover:border-purple-500/50 hover:bg-gray-800 transition-all group">
                                             <div className="flex justify-between items-start mb-2">
@@ -651,6 +660,12 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                     </Link>
                                 ))}
                             </div>
+                            {/* Recortar la parrilla no puede callar lo que queda fuera. */}
+                            {opportunities.length > OPPORTUNITY_TILE_LIMIT && (
+                                <p className="mt-4 text-xs text-gray-500">
+                                    Las {OPPORTUNITY_TILE_LIMIT} con más potencial de {opportunities.length}; las demás se afinan en «Afinar con el Screener».
+                                </p>
+                            )}
                         </>
                     ) : (
                         <p className="text-sm text-gray-500">
@@ -659,32 +674,6 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                     )}
                 </CardContent>
             </Card>
-
-            {/* 6 · Índices: contexto de mercado, no prioridad. Van al final y
-                lo dicen, porque /screener los vuelve a pintar en "Índices y macro". */}
-            <section>
-                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                    <h2 className="text-lg font-semibold text-gray-100">Contexto de mercado</h2>
-                    <p className="text-xs text-gray-500">Referencia del día, no una sección de decisión.</p>
-                </div>
-                {indicesLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
-                        {[1, 2, 3, 4].map((i) => (
-                            <SectionSkeleton className="rounded-lg border border-gray-700 p-4" key={i} rows={1} />
-                        ))}
-                    </div>
-                ) : indicesError ? (
-                    <InlineSectionError message={indicesError} onRetry={retry} />
-                ) : marketIndices.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
-                        {marketIndices.map((index) => (
-                            <MarketIndexCard key={index.symbol} index={index} />
-                        ))}
-                    </div>
-                ) : (
-                    <p className="text-sm text-gray-500">Sin datos de índices ahora mismo.</p>
-                )}
-            </section>
         </div>
     );
 }

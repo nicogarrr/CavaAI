@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SUPPORT_EMAIL } from '@/lib/config/brand';
 
 const modules = [
@@ -86,8 +86,6 @@ const faqs = [
 ];
 
 export default function HelpTabs() {
-  const [activeTab, setActiveTab] = useState<'faq' | 'api' | 'community'>('faq');
-
   return (
     <main id="content" tabIndex={-1} className="mx-auto w-full max-w-4xl px-4 py-12">
       <div className="text-center mb-12">
@@ -117,42 +115,34 @@ export default function HelpTabs() {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-8 border-b border-gray-700">
-        <button
-          onClick={() => setActiveTab('faq')}
-          className={`px-4 py-3 font-medium transition-colors sm:px-6 ${
-            activeTab === 'faq'
-              ? 'text-teal-400 border-b-2 border-teal-400'
-              : 'text-gray-400 hover:text-gray-300'
-          }`}
+      <Tabs defaultValue="faq" className="w-full">
+        <TabsList
+          tabIndex={0}
+          aria-label="Secciones de la ayuda"
+          className="mb-8 flex h-auto w-max min-w-full snap-x gap-1 overflow-x-auto border border-gray-700 bg-gray-800 pb-2 text-gray-400 sm:inline-flex sm:h-9 sm:w-auto sm:overflow-visible sm:pb-[3px]"
         >
-          FAQs
-        </button>
-        <button
-          onClick={() => setActiveTab('api')}
-          className={`px-4 py-3 font-medium transition-colors sm:px-6 ${
-            activeTab === 'api'
-              ? 'text-teal-400 border-b-2 border-teal-400'
-              : 'text-gray-400 hover:text-gray-300'
-          }`}
-        >
-          Documentación
-        </button>
-        <button
-          onClick={() => setActiveTab('community')}
-          className={`px-4 py-3 font-medium transition-colors sm:px-6 ${
-            activeTab === 'community'
-              ? 'text-teal-400 border-b-2 border-teal-400'
-              : 'text-gray-400 hover:text-gray-300'
-          }`}
-        >
-          Contacto
-        </button>
-      </div>
+          <TabsTrigger
+            value="faq"
+            className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300"
+          >
+            FAQs
+          </TabsTrigger>
+          <TabsTrigger
+            value="api"
+            className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300"
+          >
+            Documentación
+          </TabsTrigger>
+          <TabsTrigger
+            value="community"
+            className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300"
+          >
+            Contacto
+          </TabsTrigger>
+        </TabsList>
 
-      {/* FAQ Tab */}
-      {activeTab === 'faq' && (
-        <>
+        {/* FAQ Tab */}
+        <TabsContent value="faq">
           {/* Help Philosophy */}
           <div className="grid md:grid-cols-3 gap-6 mb-12">
             <div className="bg-gray-800 rounded-lg shadow-sm p-6 border hover:shadow-md transition-shadow">
@@ -181,104 +171,104 @@ export default function HelpTabs() {
           <section className="mb-12">
             <h2 className="text-3xl font-bold text-gray-100 mb-8 text-center">Preguntas Frecuentes</h2>
             <div className="space-y-4">
-              {faqs.map((faq, index) => (
-                <div key={index} className="bg-gray-800 rounded-lg shadow-sm p-6 border">
+              {faqs.map((faq) => (
+                <div key={faq.question} className="bg-gray-800 rounded-lg shadow-sm p-6 border">
                   <h3 className="text-lg font-semibold text-gray-100 mb-2">{faq.question}</h3>
                   <p className="text-gray-200">{faq.answer}</p>
                 </div>
               ))}
             </div>
           </section>
-        </>
-      )}
+        </TabsContent>
 
-      {/* Documentation Tab */}
-      {activeTab === 'api' && (
-        <div className="space-y-8">
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-100 mb-4">Documentación</h2>
-            <p className="text-xl text-gray-200 mb-4">
-              Guía práctica por módulo: lo que la app hace hoy y cómo usarla.
-            </p>
+        {/* Documentation Tab */}
+        <TabsContent value="api" className="mt-0">
+          <div className="space-y-8">
+            <div className="mb-8">
+              <h2 className="text-3xl font-bold text-gray-100 mb-4">Documentación</h2>
+              <p className="text-xl text-gray-200 mb-4">
+                Guía práctica por módulo: lo que la app hace hoy y cómo usarla.
+              </p>
+            </div>
+
+            {/* Primeros pasos */}
+            <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
+              <h2 className="text-2xl font-semibold text-gray-100 mb-4">Primeros pasos: modelo → tesis → decisión</h2>
+              <ol className="space-y-4 text-gray-200">
+                <li>
+                  <strong className="text-teal-400">1. Modelo.</strong>{' '}
+                  En <Link href="/research" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">Research</Link> elige
+                  la compañía y abre la pestaña «Modelo» y pulsa «Generar modelo». Revisa los supuestos (crecimiento, margen
+                  FCF, WACC) y los escenarios Bear/Base/Bull con sus spreads antes de fiarte del número.
+                </li>
+                <li>
+                  <strong className="text-teal-400">2. Tesis.</strong>{' '}
+                  Genera la tesis desde la misma ficha: hipótesis, escenarios con probabilidades, catalizadores con
+                  fecha y qué la invalidaría. El memo y el EPUB se exportan desde la propia vista de tesis
+                  («Exportar memo» y «Exportar EPUB»);{' '}
+                  <Link href="/export" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">/export</Link>{' '}
+                  es la exportación anual del journal.
+                </li>
+                <li>
+                  <strong className="text-teal-400">3. Decisión.</strong>{' '}
+                  Registra la decisión en el Diario de decisiones (Comprar / Mantener / Reducir / Vender / Vigilar / Evitar) con la
+                  evidencia que la justifica y las condiciones verificables («Qué debe cumplirse»). Más adelante,
+                  «Expectativa vs realidad» compara tu previsión con los hechos publicados.
+                </li>
+              </ol>
+            </section>
+
+            {/* Guía por módulo */}
+            <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
+              <h2 className="text-2xl font-semibold text-gray-100 mb-4">Guía por módulo</h2>
+              <div className="grid md:grid-cols-2 gap-4">
+                {modules.map((module) => (
+                  <div className="bg-gray-900/40 p-4 rounded-lg" key={module.title}>
+                    <h3 className="font-semibold text-teal-400 mb-2">
+                      <Link href={module.href} className="underline underline-offset-4 hover:text-teal-300">
+                        {module.title}
+                      </Link>
+                    </h3>
+                    <p className="text-gray-300 text-sm">{module.text}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Glosario y metodología */}
+            <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
+              <h2 className="text-2xl font-semibold text-gray-100 mb-4">Glosario y metodología</h2>
+              <p className="text-gray-200 mb-4">
+                Los términos técnicos (DCF, WACC, reverse DCF, moat, margen de seguridad, look-ahead, owner earnings,
+                TAM/SAM/SOM, ROIC, VaR, drawdown, Sharpe) llevan un tooltip con su definición dondequiera que aparecen.
+                Los motores de valoración con sus supuestos, las fuentes de datos (Finnhub, Yahoo Finance, SEC EDGAR),
+                los límites y los costes están documentados en{' '}
+                <Link href="/metodologia" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">
+                  /metodologia
+                </Link>.
+              </p>
+            </section>
           </div>
+        </TabsContent>
 
-          {/* Primeros pasos */}
-          <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
-            <h2 className="text-2xl font-semibold text-gray-100 mb-4">Primeros pasos: modelo → tesis → decisión</h2>
-            <ol className="space-y-4 text-gray-200">
-              <li>
-                <strong className="text-teal-400">1. Modelo.</strong>{' '}
-                En <Link href="/research" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">Research</Link> elige
-                la compañía y abre la pestaña «Modelo» y pulsa «Generar modelo». Revisa los supuestos (crecimiento, margen
-                FCF, WACC) y los escenarios Bear/Base/Bull con sus spreads antes de fiarte del número.
-              </li>
-              <li>
-                <strong className="text-teal-400">2. Tesis.</strong>{' '}
-                Genera la tesis desde la misma ficha: hipótesis, escenarios con probabilidades, catalizadores con
-                fecha y qué la invalidaría. El memo y el EPUB se exportan desde la propia vista de tesis
-                («Exportar memo» y «Exportar EPUB»);{' '}
-                <Link href="/export" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">/export</Link>{' '}
-                es la exportación anual del journal.
-              </li>
-              <li>
-                <strong className="text-teal-400">3. Decisión.</strong>{' '}
-                Registra la decisión en el Diario de decisiones (Comprar / Mantener / Reducir / Vender / Vigilar / Evitar) con la
-                evidencia que la justifica y las condiciones verificables («Qué debe cumplirse»). Más adelante,
-                «Expectativa vs realidad» compara tu previsión con los hechos publicados.
-              </li>
-            </ol>
-          </section>
-
-          {/* Guía por módulo */}
-          <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
-            <h2 className="text-2xl font-semibold text-gray-100 mb-4">Guía por módulo</h2>
-            <div className="grid md:grid-cols-2 gap-4">
-              {modules.map((module) => (
-                <div className="bg-gray-900/40 p-4 rounded-lg" key={module.title}>
-                  <h3 className="font-semibold text-teal-400 mb-2">
-                    <Link href={module.href} className="underline underline-offset-4 hover:text-teal-300">
-                      {module.title}
-                    </Link>
-                  </h3>
-                  <p className="text-gray-300 text-sm">{module.text}</p>
-                </div>
-              ))}
+        {/* Community Tab */}
+        <TabsContent value="community" className="mt-0">
+          <section className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg p-8 text-center">
+            <h2 className="text-2xl font-bold text-gray-100 mb-4">Contacto</h2>
+            <p className="text-gray-300 mb-6">
+              ¿Tienes preguntas o sugerencias? Estamos aquí para ayudarte.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <a
+                    href={`mailto:${SUPPORT_EMAIL}`}
+                    className="bg-gray-800 text-gray-200 px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors text-center inline-block"
+                >
+                    Enviar email a {SUPPORT_EMAIL}
+                </a>
             </div>
           </section>
-
-          {/* Glosario y metodología */}
-          <section className="bg-gray-800 rounded-lg shadow-sm p-6 border">
-            <h2 className="text-2xl font-semibold text-gray-100 mb-4">Glosario y metodología</h2>
-            <p className="text-gray-200 mb-4">
-              Los términos técnicos (DCF, WACC, reverse DCF, moat, margen de seguridad, look-ahead, owner earnings,
-              TAM/SAM/SOM, ROIC, VaR, drawdown, Sharpe) llevan un tooltip con su definición dondequiera que aparecen.
-              Los motores de valoración con sus supuestos, las fuentes de datos (Finnhub, Yahoo Finance, SEC EDGAR),
-              los límites y los costes están documentados en{' '}
-              <Link href="/metodologia" className="text-teal-400 underline underline-offset-4 hover:text-teal-300">
-                /metodologia
-              </Link>.
-            </p>
-          </section>
-        </div>
-      )}
-
-      {/* Community Tab */}
-      {activeTab === 'community' && (
-        <section className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg p-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-100 mb-4">Contacto</h2>
-          <p className="text-gray-300 mb-6">
-            ¿Tienes preguntas o sugerencias? Estamos aquí para ayudarte.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a
-                  href={`mailto:${SUPPORT_EMAIL}`}
-                  className="bg-gray-800 text-gray-200 px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors text-center inline-block"
-              >
-                  Enviar email a {SUPPORT_EMAIL}
-              </a>
-          </div>
-        </section>
-      )}
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }

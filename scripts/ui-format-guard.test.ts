@@ -37,11 +37,29 @@ describe('guardas de UI', () => {
       assert.ok(tabs.includes(token), `ProPicksTabs debe contener ${token}`);
     }
     const triggers = tabs.slice(tabs.indexOf('<TabsList'), tabs.indexOf('</TabsList>'));
-    assert.equal((triggers.match(/min-w-fit/g) ?? []).length, 4);
-    assert.equal((triggers.match(/whitespace-nowrap/g) ?? []).length, 4);
-    // Con viewport de 390 px, los cuatro triggers conservan su ancho natural;
-    // el contenedor, no cada tab, es quien desborda horizontalmente.
+    // «Estrategias» y «Rebalanceo» son la misma estrategia con dos lecturas
+    // (el mismo currentStrategy): viven en una sola pestaña.
+    const triggerBlocks = [...triggers.matchAll(/<TabsTrigger[\s\S]*?>/g)].map((match) => match[0]);
+    assert.equal(triggerBlocks.length, 3, 'la lista de pestañas de ProPicks tiene 3 pestañas');
+    // El contrato original, por trigger y no con un número suelto: cada uno
+    // conserva su ANCHO NATURAL y nunca parte su etiqueta, para que a 390px
+    // sea el contenedor, no cada tab, quien desborda horizontalmente. Una
+    // pestaña nueva no puede colarse sin estas dos clases.
+    for (const block of triggerBlocks) {
+      assert.ok(block.includes('min-w-fit'), 'cada trigger debe conservar su ancho natural');
+      assert.ok(block.includes('whitespace-nowrap'), 'cada trigger no debe partir su etiqueta');
+    }
     for (const token of ['w-max', 'min-w-full', 'overflow-x-auto']) assert.ok(tabs.includes(token), `ProPicksTabs debe contener ${token}`);
+  });
+
+  it('ninguna pestaña queda huérfana: cada trigger tiene su TabsContent', () => {
+    // El merge de Estrategias+Rebalanceo no puede dejar un trigger sin panel
+    // (pestaña que al pulsarla no pintaría nada) ni un panel sin trigger.
+    const tabs = source('components/proPicks/ProPicksTabs.tsx');
+    const triggerValues = [...tabs.matchAll(/<TabsTrigger value="([^"]+)"/g)].map((match) => match[1]);
+    const contentValues = [...tabs.matchAll(/<TabsContent value="([^"]+)"/g)].map((match) => match[1]);
+    assert.ok(triggerValues.length > 0, 'no se encontraron TabsTrigger');
+    assert.deepEqual([...triggerValues].sort(), [...contentValues].sort(), 'trigger y panel deben parearse uno a uno');
   });
 
   it('los formateadores UI de los módulos asignados no usan toFixed', () => {
