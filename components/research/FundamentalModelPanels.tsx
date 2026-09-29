@@ -152,16 +152,16 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
         <span className="font-semibold text-gray-300">KPIs:</span> {model.framework.kpis.join(' · ')}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <ModelStat label={`Ingresos ${year5?.year ?? 'año 5'}`} value={compactNumber(year5?.revenue)} />
         <ModelStat label={`FCF ${year5?.year ?? 'año 5'}`} value={compactNumber(year5?.free_cash_flow)} positive />
         <ModelStat label="Margen FCF" value={percentage(year5?.fcf_margin)} />
         <ModelStat label="FCF / acción" value={compactNumber(year5?.fcf_per_share)} positive />
       </div>
 
-      <div className="mt-5 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         {/* F319: min-w-0 en las pistas del grid: sin él, el min-content de
-            la tabla de escenarios (min-w-[640px]) expandía la pista por
+            la tabla de escenarios (min-w-[540px]) expandía la pista por
             encima del contenedor a 768-1279px en vez de dejar que el
             wrapper overflow-x-auto recortara con scroll interno. */}
         <div className="min-w-0">
@@ -184,7 +184,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             })}
           </div>
           <div aria-label="Escenarios del modelo" className="hidden overflow-x-auto md:block" role="region" tabIndex={0}>
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[540px] text-left text-sm">
               <caption className="sr-only">Escenarios bajista, base y alcista del modelo, con ingresos, FCF, margen FCF y valor por acción</caption>
               <thead className="text-xs uppercase text-gray-500">
                 <tr>
@@ -315,7 +315,7 @@ export function DecisionAndRealityPanel({
   reviews: ResearchExpectationReview[];
 }) {
   return (
-    <section className="grid gap-6 lg:grid-cols-2">
+    <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
         <div className="mb-4 flex items-center gap-2">
           <GitBranch aria-hidden="true" className="h-5 w-5 text-teal-300" />
@@ -323,7 +323,7 @@ export function DecisionAndRealityPanel({
         </div>
         <MutationForm
           action={createResearchDecision.bind(null, ticker)}
-          className="grid gap-3"
+          className="grid grid-cols-1 gap-3"
           resetOnSuccess
           successMessage="Decisión registrada contra la tesis vigente"
         >
