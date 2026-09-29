@@ -389,6 +389,7 @@ services:
     command: ["dramatiq", "app.workers.dramatiq_app", "--processes", "1", "--threads", "2", "-Q", "alerts"]
     environment:
       - PYTHONUNBUFFERED=1
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
       - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
