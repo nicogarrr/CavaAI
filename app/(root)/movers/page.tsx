@@ -31,7 +31,7 @@ function safeCurrency(currency: string | null | undefined): string {
 
 type TickerSets = { portfolioTickers: ReadonlySet<string>; watchlistTickers: ReadonlySet<string> };
 
-function MoversTable({ rows, caption, tickerSets, showVolume = false }: { rows: MarketMover[]; caption: string; tickerSets: TickerSets; showVolume?: boolean }) {
+function MoversTable({ rows, caption, tickerSets, showVolume = false, asOf }: { rows: MarketMover[]; caption: string; tickerSets: TickerSets; showVolume?: boolean; asOf: string | null }) {
   if (!rows.length) {
     return <p className="text-sm text-gray-500">Sin datos todavía — en cuanto haya precios registrados aparecerán aquí.</p>;
   }
@@ -63,7 +63,12 @@ function MoversTable({ rows, caption, tickerSets, showVolume = false }: { rows: 
                   watchlistTickers={tickerSets.watchlistTickers}
                 />
               </th>
-              <td className="py-3 px-2 text-right whitespace-nowrap text-gray-300">{formatPrice(row.price, safeCurrency(row.currency))}</td>
+              <td className="py-3 px-2 text-right whitespace-nowrap text-gray-300">
+                {formatPrice(row.price, safeCurrency(row.currency))}
+                {row.date && row.date !== asOf ? (
+                  <div className="text-xs text-gray-500">del {row.date}</div>
+                ) : null}
+              </td>
               <td className={`py-3 px-2 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
               </td>
@@ -100,7 +105,9 @@ export default async function MoversPage() {
         <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
           Subidas, bajadas y más activas calculadas con los precios registrados en tu base de datos
           (último cierre frente al anterior).
-          {movers.as_of ? ` Datos del ${movers.as_of}.` : ' Aún no hay precios registrados.'}
+          {movers.as_of
+            ? ` El precio más reciente registrado es del ${movers.as_of}; si una fila es de una fecha anterior, su fecha aparece junto al precio.`
+            : ' Aún no hay precios registrados.'}
         </p>
       </header>
 
@@ -120,7 +127,7 @@ export default async function MoversPage() {
               <TrendingUp aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Subidas</h2>
             </div>
-            <MoversTable rows={movers.gainers} caption="Mayores subidas" tickerSets={tickerSets} />
+            <MoversTable rows={movers.gainers} caption="Mayores subidas" tickerSets={tickerSets} asOf={movers.as_of} />
           </section>
 
           <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
@@ -128,7 +135,7 @@ export default async function MoversPage() {
               <TrendingDown aria-hidden="true" className="h-5 w-5 text-red-400" />
               <h2 className="font-semibold text-gray-100">Bajadas</h2>
             </div>
-            <MoversTable rows={movers.losers} caption="Mayores bajadas" tickerSets={tickerSets} />
+            <MoversTable rows={movers.losers} caption="Mayores bajadas" tickerSets={tickerSets} asOf={movers.as_of} />
           </section>
 
           <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
@@ -136,7 +143,7 @@ export default async function MoversPage() {
               <Activity aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Más activas</h2>
             </div>
-            <MoversTable rows={movers.most_active} caption="Mayor volumen" tickerSets={tickerSets} showVolume />
+            <MoversTable rows={movers.most_active} caption="Mayor volumen" tickerSets={tickerSets} showVolume asOf={movers.as_of} />
           </section>
         </div>
       )}

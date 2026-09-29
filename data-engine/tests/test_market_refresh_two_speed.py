@@ -105,3 +105,18 @@ def test_scheduler_registers_both_cadences():
     jobs = {job.id: job for job in scheduler.get_jobs()}
     assert jobs["market_refresh"].trigger.interval == timedelta(hours=1)
     assert jobs["market_refresh_universe"].trigger.interval == timedelta(hours=6)
+
+
+def test_tracked_includes_active_alert_rule_tickers(db, patched):
+    from app.models.entities import AlertRule
+
+    aapl = _company(db, "AAPL")
+    alert_co = _company(db, "TSLA")
+    off_co = _company(db, "NVDA")
+    _company(db, "MSFT")
+    db.add(Position(company_id=aapl.id, tenant_id="tenant-test"))
+    db.add(AlertRule(company_id=alert_co.id, name="cae 5%", rule_type="price_drop", active=True, tenant_id="tenant-test"))
+    db.add(AlertRule(company_id=off_co.id, name="vieja", rule_type="price_drop", active=False, tenant_id="tenant-test"))
+    db.commit()
+    dramatiq_app.refresh_market_pipeline.fn(tenant_id=1, user_id="u", scope="tracked")
+    assert patched == [["AAPL", "TSLA"]]  # regla activa entra; inactiva y MSFT fuera
