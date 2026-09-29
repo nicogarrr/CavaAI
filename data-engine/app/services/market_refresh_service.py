@@ -17,6 +17,7 @@ from app.core.config import get_settings
 from app.core.errors import redact_secrets
 from app.models import Company, MarketPrice, Position, SavedScreen
 from app.services.alert_rule_service import AlertRuleService
+from app.services.connectors.base import UpstreamRateLimited
 from app.services.connectors.ecb import ECBClient, ECBRates
 from app.services.connectors.finnhub import FinnhubClient
 from app.services.connectors.fmp import FMPClient
@@ -27,6 +28,61 @@ from app.services.risk_service import RiskService
 from app.services.screener_service import ScreenerService
 
 _US_EXCHANGE_TOKENS = ("NYSE", "NEW YORK", "NASDAQ", "AMEX", "OTC", "BATS", "ARCA")
+
+# Circuit breaker por proveedor de mercado (FMP/Finnhub), mismo patron que el
+# sec_breaker de F359: una racha de 429s dentro de la ventana abre el breaker
+# durante el cooldown; abierto, el proveedor se salta entero en cada corrida.
+# El estado vive en Redis (compartido por worker, worker-kpis y backend), no
+# en memoria del proceso. Fail-open si Redis no responde: el broker de
+# dramatiq es el propio Redis, asi que sin Redis no hay consumo de mensajes
+# de todas formas, y el reintento queda acotado por max_retries del actor.
+_MARKETDATA_BREAKER_WINDOW_S = 600.0
+_MARKETDATA_BREAKER_STREAK_LIMIT = 3
+_MARKETDATA_BREAKER_COOLDOWN_S = 900.0
+
+
+def _marketdata_breaker_client():
+    """Cliente redis corto para el breaker; None si no hay URL o falla."""
+    try:
+        import redis as _redis
+
+        url = get_settings().redis_url
+        if not url:
+            return None
+        return _redis.from_url(url, socket_connect_timeout=2, socket_timeout=2)
+    except Exception:
+        return None
+
+
+def _marketdata_breaker_open(client, provider: str) -> bool:
+    """True si el breaker del proveedor esta abierto (saltar toda la corrida)."""
+    if client is None:
+        return False
+    try:
+        return bool(client.get(f"marketdata_breaker:{provider}:open"))
+    except Exception:
+        return False
+
+
+def _marketdata_breaker_record_429(client, provider: str) -> None:
+    """Cuenta un 429 del proveedor; a la racha limite abre el breaker."""
+    if client is None:
+        return
+    try:
+        streak_key = f"marketdata_breaker:{provider}:429_streak"
+        streak = client.incr(streak_key)
+        if streak == 1:
+            client.expire(streak_key, int(_MARKETDATA_BREAKER_WINDOW_S))
+        if streak >= _MARKETDATA_BREAKER_STREAK_LIMIT:
+            client.set(
+                f"marketdata_breaker:{provider}:open",
+                "1",
+                ex=int(_MARKETDATA_BREAKER_COOLDOWN_S),
+            )
+            client.delete(streak_key)
+    except Exception:
+        return
+
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +102,7 @@ def _us_listed(company: Company) -> bool:
     if any(token in exchange for token in _US_EXCHANGE_TOKENS):
         return True
     return exchange in ("", "UNKNOWN")
+
 
 @dataclass(frozen=True)
 class PriceObservation:
@@ -79,17 +136,27 @@ class PublicPriceProvider:
     MAX_IN_FLIGHT = 6
     PER_TICKER_TIMEOUT_SECONDS = 20.0
 
-    def __init__(self) -> None:
+    def __init__(self, breaker_client=None) -> None:
         self.fmp = FMPClient()
         self.finnhub = FinnhubClient()
+        # Proveedores marcados caidos en ESTA corrida (primer 429 de cada
+        # uno): el resto de tickers no los llama - null honesto por ticker
+        # con reason provider_unavailable en vez de otro intento a la cuota.
+        self._provider_down: set[str] = set()
+        self._breaker_client = breaker_client if breaker_client is not None else _marketdata_breaker_client()
 
     async def fetch(
         self, companies: list[Company], *, as_of: date
     ) -> tuple[dict[str, PriceObservation], list[dict]]:
+        down = getattr(self, "_provider_down", None)
+        if down is None:
+            down = self._provider_down = set()
+        client = getattr(self, "_breaker_client", None)
+        for provider_name in ("fmp", "finnhub"):
+            if _marketdata_breaker_open(client, provider_name):
+                down.add(provider_name)
         semaphore = asyncio.Semaphore(self.MAX_IN_FLIGHT)
-        rows = await asyncio.gather(
-            *(self._bounded(company, as_of, semaphore) for company in companies)
-        )
+        rows = await asyncio.gather(*(self._bounded(company, as_of, semaphore) for company in companies))
         observations: dict[str, PriceObservation] = {}
         errors: list[dict] = []
         for company, observation, error in rows:
@@ -109,10 +176,14 @@ class PublicPriceProvider:
                     timeout=self.PER_TICKER_TIMEOUT_SECONDS,
                 )
             except TimeoutError:
-                return company, None, {
-                    "ticker": company.ticker,
-                    "reason": "per_ticker_timeout",
-                }
+                return (
+                    company,
+                    None,
+                    {
+                        "ticker": company.ticker,
+                        "reason": "per_ticker_timeout",
+                    },
+                )
 
     async def _one(
         self, company: Company, as_of: date
@@ -120,12 +191,22 @@ class PublicPriceProvider:
         if not _us_listed(company):
             # Sin precio antes que el precio del gemelo americano: la ruta
             # Yahoo (simbolo con sufijo de bolsa) cubre los mercados no-US.
-            return company, None, {
-                "ticker": company.ticker,
-                "reason": "non_us_listing",
-            }
+            return (
+                company,
+                None,
+                {
+                    "ticker": company.ticker,
+                    "reason": "non_us_listing",
+                },
+            )
         errors = []
-        if self.fmp.configured():
+        down = getattr(self, "_provider_down", None)
+        if down is None:
+            down = self._provider_down = set()
+        client = getattr(self, "_breaker_client", None)
+        if "fmp" in down:
+            errors.append("FMP:provider_unavailable")
+        elif self.fmp.configured():
             try:
                 payload = await self.fmp.quote(company.ticker)
                 item = payload[0] if isinstance(payload, list) and payload else None
@@ -153,9 +234,17 @@ class PublicPriceProvider:
                                 PriceObservation(company.ticker, value, quote_date, "FMP", volume=volume),
                                 None,
                             )
+            except UpstreamRateLimited:
+                # Primer 429 del proveedor en la corrida: se marca caido y
+                # el resto de tickers no gasta ni una llamada mas en el.
+                down.add("fmp")
+                _marketdata_breaker_record_429(client, "fmp")
+                errors.append("FMP:provider_unavailable")
             except Exception as exc:
                 errors.append(f"FMP:{type(exc).__name__}")
-        if self.finnhub.configured():
+        if "finnhub" in down:
+            errors.append("Finnhub:provider_unavailable")
+        elif self.finnhub.configured():
             try:
                 payload = await self.finnhub.quote(company.ticker)
                 value = Decimal(str(payload.get("c") or 0))
@@ -167,7 +256,15 @@ class PublicPriceProvider:
                         errors.append("Finnhub:quote_missing_timestamp")
                     else:
                         observed_date = datetime.fromtimestamp(timestamp, tz=UTC).date()
-                        return company, PriceObservation(company.ticker, value, observed_date, "Finnhub"), None
+                        return (
+                            company,
+                            PriceObservation(company.ticker, value, observed_date, "Finnhub"),
+                            None,
+                        )
+            except UpstreamRateLimited:
+                down.add("finnhub")
+                _marketdata_breaker_record_429(client, "finnhub")
+                errors.append("Finnhub:provider_unavailable")
             except Exception as exc:
                 errors.append(f"Finnhub:{type(exc).__name__}")
         reason = ",".join(errors) if errors else "no_price_provider_configured"
@@ -229,9 +326,7 @@ class YahooIntradayPriceProvider:
         self, companies: list[Company], *, as_of: date
     ) -> tuple[dict[str, PriceObservation], list[dict]]:
         yahoo_by_ticker = {
-            company.ticker: symbol
-            for company in companies
-            if (symbol := yahoo_symbol(company)) is not None
+            company.ticker: symbol for company in companies if (symbol := yahoo_symbol(company)) is not None
         }
         ticker_by_yahoo = {symbol: ticker for ticker, symbol in yahoo_by_ticker.items()}
         try:
@@ -298,9 +393,7 @@ class MarketRefreshService:
         observations, price_errors = await self.price_provider.fetch(companies, as_of=as_of)
         # Batch: one query for every (company, price_date) row we may update.
         observed = [
-            (company, observations[company.ticker])
-            for company in companies
-            if company.ticker in observations
+            (company, observations[company.ticker]) for company in companies if company.ticker in observations
         ]
         existing_prices = {}
         if observed:
@@ -411,29 +504,25 @@ class MarketRefreshService:
             latest = (
                 select(
                     MarketPrice.id.label("id"),
-                    func.row_number().over(
+                    func.row_number()
+                    .over(
                         partition_by=MarketPrice.company_id,
                         order_by=(
                             MarketPrice.date.desc().nullslast(),
                             desc(MarketPrice.id),
                         ),
-                    ).label("rn"),
+                    )
+                    .label("rn"),
                 )
                 .where(MarketPrice.company_id.in_(position_company_ids))
                 .subquery("latest_market_price")
             )
             for price in db.scalars(
-                select(MarketPrice)
-                .join(latest, latest.c.id == MarketPrice.id)
-                .where(latest.c.rn == 1)
+                select(MarketPrice).join(latest, latest.c.id == MarketPrice.id).where(latest.c.rn == 1)
             ).all():
                 latest_prices.setdefault(price.company_id, price)
         # One FX table for every revaluation (point-in-time per row, no N+1).
-        refresh_dates = [
-            latest_prices[company.id].date
-            for _, company in rows
-            if company.id in latest_prices
-        ]
+        refresh_dates = [latest_prices[company.id].date for _, company in rows if company.id in latest_prices]
         fx_table = fx.fx_table(
             db,
             currencies={position.currency for position, _ in rows},
