@@ -53,8 +53,11 @@ def load_screener_ratios(
     currency; negative EPS or equity yields a null ratio, not a fake number.
 
     live_prices: cotizacion en vivo por ticker ({"price": float, "source":
-    str, "as_of": str|None}) usada SOLO cuando no hay MarketPrice fresco en
-    BD; la procedencia del ratio lo refleja (price.source = vendor en vivo).
+    str, "as_of": str|None}). Gana sobre el MarketPrice local cuando su
+    fecha es al menos tan reciente (con refrescos de universo a menor
+    cadencia, un spot local de hace horas no compone ratios habiendo quote
+    de hoy); sin fecha comparable gana el local fechado. La procedencia del
+    ratio refleja la fuente usada.
     """
     if not symbols:
         return {}
@@ -102,8 +105,9 @@ def load_screener_ratios(
     for company in companies:
         price = latest_price.get(company.id)
         metrics: dict = {"pe": None, "pb": None, "roe": None}
-        live = live_prices.get(company.ticker.upper()) if not price else None
+        live = live_prices.get(company.ticker.upper())
         live_close: Decimal | None = None
+        live_date: date | None = None
         if live is not None:
             try:
                 live_close = Decimal(str(live.get("price") or ""))
@@ -111,14 +115,26 @@ def load_screener_ratios(
                 live_close = None
             if live_close is not None and live_close <= 0:
                 live_close = None
-        if not price and live_close is None:
+            live_as_of = live.get("as_of")
+            if live_as_of:
+                try:
+                    live_date = date.fromisoformat(str(live_as_of)[:10])
+                except ValueError:
+                    live_date = None
+        # La quote en vivo gana cuando es al menos tan reciente que el
+        # MarketPrice local; sin fecha en vivo comparable, gana el local
+        # fechado. Sin fila local, la live sirve como antes (fallback).
+        use_live = live_close is not None and (
+            price is None or (live_date is not None and live_date >= price.date)
+        )
+        if price is None and not use_live:
             output[company.ticker.upper()] = metrics
             continue
-        close = price.close if price else live_close
+        close = live_close if use_live else price.close
         price_provenance = (
-            {"source": price.source, "date": price.date.isoformat(), "id": price.id}
-            if price
-            else {"source": live.get("source") or "live", "date": live.get("as_of"), "id": None}
+            {"source": live.get("source") or "live", "date": live.get("as_of"), "id": None}
+            if use_live
+            else {"source": price.source, "date": price.date.isoformat(), "id": price.id}
         )
         currency = (company.currency or "").upper()
         facts_for_company = by_company.get(company.id, {})

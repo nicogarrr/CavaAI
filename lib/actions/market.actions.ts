@@ -28,6 +28,8 @@ export type MarketMover = {
   change_pct: number | null;
   volume: number | null;
   date: string | null;
+  /** ISO tz-aware: cuándo se registró/observó el precio de la fila (updated_at del backend) */
+  registered_at?: string | null;
 };
 
 export type MarketMovers = {
