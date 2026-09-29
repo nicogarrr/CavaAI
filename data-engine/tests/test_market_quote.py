@@ -66,6 +66,8 @@ def test_fetch_yahoo_quote_builds_finnhub_shape():
         "l": 101.0,
         "o": 101.0,
         "pc": 101.0,
+        "ct": None,  # sin timestamps en el payload: null honesto, no inventado
+        "cd": None,
     }
 
 
@@ -144,3 +146,44 @@ def test_quote_requests_dashed_symbol_for_share_class():
     out = market._fetch_yahoo_quote(client, "BRK.B")
     assert out is not None
     assert client.urls == [f"{market._YAHOO_CHART_URL}/BRK-B"]
+
+
+def _payload_con_velas(closes, timestamps, tz="Europe/Madrid"):
+    payload = _payload(closes=closes)
+    result = payload["chart"]["result"][0]
+    result["timestamp"] = list(timestamps)
+    result["meta"]["exchangeTimezoneName"] = tz
+    return payload
+
+
+def test_fetch_yahoo_quote_devuelve_fecha_de_la_vela_del_cierre():
+    # 2026-09-28 09:00 UTC y 2026-09-29 09:00 UTC: la fecha publicada es la
+    # de la vela del ultimo cierre NO NULO, no la del ultimo timestamp.
+    payload = _payload_con_velas(
+        closes=(100.0, 102.5, None),
+        timestamps=(1790586000, 1790672400, 1790758800),
+    )
+    out = market._fetch_yahoo_quote(_Client(resp=_Resp(200, payload)), "SAN.MC")
+    assert out["c"] == 102.5
+    assert out["ct"] == 1790672400
+    assert out["cd"] == "2026-09-29"  # Europe/Madrid
+
+
+def test_fetch_yahoo_quote_fecha_en_zona_del_mercado():
+    # 2026-09-29 22:30 UTC = 2026-09-30 00:30 en Europe/Madrid, pero
+    # 2026-09-29 en America/New_York: la fecha sigue al mercado.
+    payload = _payload_con_velas(
+        closes=(200.0,),
+        timestamps=(1790721000,),
+        tz="America/New_York",
+    )
+    out = market._fetch_yahoo_quote(_Client(resp=_Resp(200, payload)), "AAPL")
+    assert out["cd"] == "2026-09-29"
+
+
+def test_fetch_yahoo_quote_timestamps_cortos_no_rompen():
+    payload = _payload_con_velas(closes=(100.0, 102.5), timestamps=(1790586000,))
+    out = market._fetch_yahoo_quote(_Client(resp=_Resp(200, payload)), "SAN.MC")
+    assert out["c"] == 102.5
+    assert out["ct"] is None
+    assert out["cd"] is None
