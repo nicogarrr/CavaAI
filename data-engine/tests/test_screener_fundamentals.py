@@ -222,3 +222,53 @@ def test_invalid_or_missing_live_price_stays_null(db):
     ):
         out = load_screener_ratios(db, {"CRM"}, today=TODAY, live_prices=live)
         assert out["CRM"]["pe"] is None
+
+
+def test_live_price_wins_when_newer_than_local(db):
+    company = _company(db, "AAPL")
+    _price(db, company, "100", day=TODAY - timedelta(days=1), source="finnhub")
+    _fact(db, company, "eps_diluted", "5", "USD/share")
+    out = load_screener_ratios(
+        db, {"AAPL"}, today=TODAY,
+        live_prices={"AAPL": {"price": 160.0, "source": "yahoo_finance", "as_of": f"{TODAY.isoformat()}T15:00:00Z"}},
+    )
+    assert out["AAPL"]["pe"] == 32.0
+    assert out["AAPL"]["ratioProvenance"]["price"] == {
+        "source": "yahoo_finance", "date": f"{TODAY.isoformat()}T15:00:00Z", "id": None,
+    }
+
+
+def test_live_price_wins_on_same_date_as_local(db):
+    company = _company(db, "AAPL")
+    _price(db, company, "100", day=TODAY, source="finnhub")
+    _fact(db, company, "eps_diluted", "5", "USD/share")
+    out = load_screener_ratios(
+        db, {"AAPL"}, today=TODAY,
+        live_prices={"AAPL": {"price": 160.0, "source": "yahoo_finance", "as_of": f"{TODAY.isoformat()}T15:00:00Z"}},
+    )
+    assert out["AAPL"]["pe"] == 32.0
+    assert out["AAPL"]["ratioProvenance"]["price"]["source"] == "yahoo_finance"
+
+
+def test_older_live_price_loses_to_fresher_local(db):
+    company = _company(db, "AAPL")
+    _price(db, company, "100", day=TODAY, source="finnhub")
+    _fact(db, company, "eps_diluted", "5", "USD/share")
+    out = load_screener_ratios(
+        db, {"AAPL"}, today=TODAY,
+        live_prices={"AAPL": {"price": 300.0, "source": "yahoo_finance", "as_of": f"{(TODAY - timedelta(days=1)).isoformat()}T20:00:00Z"}},
+    )
+    assert out["AAPL"]["pe"] == 20.0
+    assert out["AAPL"]["ratioProvenance"]["price"]["source"] == "finnhub"
+
+
+def test_live_without_comparable_date_loses_to_local(db):
+    company = _company(db, "AAPL")
+    _price(db, company, "100", day=TODAY, source="finnhub")
+    _fact(db, company, "eps_diluted", "5", "USD/share")
+    out = load_screener_ratios(
+        db, {"AAPL"}, today=TODAY,
+        live_prices={"AAPL": {"price": 300.0, "source": "yahoo_finance", "as_of": "no-es-fecha"}},
+    )
+    assert out["AAPL"]["pe"] == 20.0
+    assert out["AAPL"]["ratioProvenance"]["price"]["source"] == "finnhub"

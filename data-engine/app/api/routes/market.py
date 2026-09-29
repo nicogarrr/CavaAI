@@ -381,6 +381,7 @@ def market_movers(
                     MarketPrice.date,
                     MarketPrice.close,
                     MarketPrice.volume,
+                    MarketPrice.updated_at,
                     Company.ticker,
                     Company.name,
                     Company.sector,
@@ -397,7 +398,7 @@ def market_movers(
             ).all()
         )
 
-    def _entry(day, close, volume, ticker, name, sector, currency) -> dict:
+    def _entry(day, close, volume, registered, ticker, name, sector, currency) -> dict:
         return {
             "ticker": ticker,
             "name": name,
@@ -408,18 +409,22 @@ def market_movers(
             # fabricado que corona al ticker como el menos activo.
             "volume": int(volume) if volume is not None else None,
             "date": day.isoformat() if day else None,
+            # Hora de observacion/registro (updated_at, tz-aware): dentro de
+            # la misma sesion conviven filas refrescadas a distinta hora y la
+            # fecha diaria sola no las distingue en el ranking.
+            "registered_at": registered.isoformat() if registered else None,
         }
 
     latest: dict[int, dict] = {}
-    for company_id, day, close, volume, ticker, name, sector, currency in _rows_at(
+    for company_id, day, close, volume, registered, ticker, name, sector, currency in _rows_at(
         latest_pairs, latest_pairs.c.last_date
     ):
-        latest[company_id] = _entry(day, close, volume, ticker, name, sector, currency)
+        latest[company_id] = _entry(day, close, volume, registered, ticker, name, sector, currency)
     previous: dict[int, dict] = {}
-    for company_id, day, close, volume, ticker, name, sector, currency in _rows_at(
+    for company_id, day, close, volume, registered, ticker, name, sector, currency in _rows_at(
         previous_pairs, previous_pairs.c.prev_date
     ):
-        previous[company_id] = _entry(day, close, volume, ticker, name, sector, currency)
+        previous[company_id] = _entry(day, close, volume, registered, ticker, name, sector, currency)
     movers = []
     for company_id, last in latest.items():
         prev = previous.get(company_id)
