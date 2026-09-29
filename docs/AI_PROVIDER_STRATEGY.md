@@ -28,7 +28,16 @@ for the account (403 "Model access is disabled").
 OPENCODE_GO_API_KEY=replace_with_an_opencode_go_key
 OPENCODE_GO_BASE_URL=https://opencode.ai/zen/v1
 OPENCODE_GO_MODEL=space-bunny-free
+OPENCODE_GO_FALLBACK_MODEL=muse-spark-1.3-contributor-free
 ```
+
+If the resolved model fails at the LLM layer (after its own retries), the
+call is retried once with `OPENCODE_GO_FALLBACK_MODEL`
+(`muse-spark-1.3-contributor-free`, the free Muse Spark tier on Zen) before
+the error propagates. The fallback span is traced with the model and error
+class it recovers from. Note: the free Muse Spark plan lets OpenCode use
+prompts for training; it is a resilience fallback only, not the default.
+An empty `OPENCODE_GO_FALLBACK_MODEL` disables the fallback.
 
 The API key is a secret and must live only in local `.env` files or deployment
 secret stores. It must never be committed, placed in `config.yaml`, or exposed

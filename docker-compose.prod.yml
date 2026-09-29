@@ -154,6 +154,7 @@ services:
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-muse-spark-1.3-contributor-free}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
@@ -224,6 +225,7 @@ services:
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-muse-spark-1.3-contributor-free}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
@@ -276,6 +278,7 @@ services:
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-muse-spark-1.3-contributor-free}
       - THESIS_NARRATIVE_LLM_ENABLED=${THESIS_NARRATIVE_LLM_ENABLED:-0}
       - CAVAAI_ENABLE_VECTOR_INGEST=${CAVAAI_ENABLE_VECTOR_INGEST:-0}
       - CAVAAI_ENABLE_VECTOR_SEARCH=${CAVAAI_ENABLE_VECTOR_SEARCH:-0}
@@ -344,6 +347,7 @@ services:
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-muse-spark-1.3-contributor-free}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333

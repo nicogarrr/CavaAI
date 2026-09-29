@@ -213,6 +213,13 @@ class Settings(BaseSettings):
     # OPENCODE_GO_MODEL (e.g. OPENCODE_GO_MODEL=qwen3.7-plus). Ver también
     # default_model_from_env() en app/llm/model_aliases.py.
     opencode_go_model: str = "space-bunny-free"
+    # Fallback automatico: si el modelo resuelto falla (cualquier error de
+    # capa LLM tras sus reintentos internos), la llamada se reintenta UNA
+    # vez con este modelo antes de propagar el error. Cadena vacia = sin
+    # fallback. Env: OPENCODE_GO_FALLBACK_MODEL. Decision de Nico (30/9):
+    # muse-spark-1.3-contributor-free (gratis en Zen) como respaldo de
+    # space-bunny-free, con conocimiento de la cesion de prompts del plan.
+    opencode_go_fallback_model: str = "muse-spark-1.3-contributor-free"
     # OpenCode Go exige cabecera x-opencode-session en todas las llamadas
     # (sin ella: MissingSessionID). ID estable por despliegue, mejora el
     # enrutado/cacheo del proveedor. Env: OPENCODE_GO_SESSION.

@@ -56,6 +56,7 @@ class OpenAICompatibleProvider(LLMProvider):
         provider_name: str = "openai",
         extra_headers: Mapping[str, str] | None = None,
         model_overrides: Mapping[str, str] | None = None,
+        fallback_model: str | None = None,
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 30.0,
         max_retries: int = 2,
@@ -72,6 +73,10 @@ class OpenAICompatibleProvider(LLMProvider):
         self._base_url = base_url.rstrip("/")
         self._max_output_tokens = max_output_tokens
         self._extra_headers = dict(extra_headers or {})
+        # Cadena de fallback: si el modelo resuelto falla en la capa LLM, se
+        # reintenta una vez con este modelo (p.ej. el primario deja de
+        # existir en el catalogo del proveedor). None = sin fallback.
+        self._fallback_model = (fallback_model or "").strip() or None
         super().__init__(
             model_router=TaskModelRouter(default_model, model_overrides or {}, provider_name),
             client=client,
@@ -81,6 +86,31 @@ class OpenAICompatibleProvider(LLMProvider):
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         model = self.model_router.resolve(request)
+        try:
+            return await self._complete_traced(request, model)
+        except Exception as primary_exc:
+            fallback = self._fallback_model
+            if not fallback or fallback == model:
+                raise
+            # El modelo resuelto fallo tras sus reintentos: una unica
+            # oportunidad con el modelo de respaldo (con sus propios
+            # reintentos). La traza del respaldo registra de que modelo y
+            # de que clase de error se viene.
+            return await self._complete_traced(
+                request,
+                fallback,
+                extra_metadata={
+                    "fallback_from": model,
+                    "primary_error": type(primary_exc).__name__,
+                },
+            )
+
+    async def _complete_traced(
+        self,
+        request: LLMRequest,
+        model: str,
+        extra_metadata: Mapping[str, str] | None = None,
+    ) -> LLMResponse:
         # Stage 3: generation span sobre la traza activa (si la hay). Solo
         # metadatos y contadores; prompts y completaciones jamas salen.
         import time as _time
@@ -99,6 +129,7 @@ class OpenAICompatibleProvider(LLMProvider):
                     "task": request.task,
                     "route": model,
                     "duration_ms": int((_time.monotonic() - _started) * 1000),
+                    **dict(extra_metadata or {}),
                     **dict(request.metadata or {}),
                 },
                 error_class=type(exc).__name__,
@@ -112,6 +143,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 "task": request.task,
                 "route": model,
                 "duration_ms": int((_time.monotonic() - _started) * 1000),
+                **dict(extra_metadata or {}),
                 **dict(request.metadata or {}),
             },
             usage={
