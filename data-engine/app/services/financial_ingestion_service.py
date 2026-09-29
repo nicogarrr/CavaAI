@@ -290,6 +290,81 @@ def _merge_for_metric(
     return _collapse_aliases(by_concept)
 
 
+BANK_REVENUE_COMPONENTS = ("InterestIncomeExpenseNet", "NoninterestIncome")
+BANK_REVENUE_CONCEPT = "InterestIncomeExpenseNet+NoninterestIncome"
+# Emisores verificados de la decision de bancos (29/9) cuyo industry en el
+# maestro no contiene "bank": MS = "Financial Services" (dato de prod).
+BANK_REVENUE_TICKERS = {"BPOP", "MS", "WFC"}
+
+
+def _compose_bank_revenue(
+    us_gaap: dict[str, Any],
+    *,
+    forms: set[str],
+    periods: set[str],
+    min_span: int | None,
+    max_span: int | None,
+    annual_anchors: dict[str, str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Revenue compuesto para bancos: intereses netos + ingresos no financieros.
+
+    Los bancos (WFC, MS, BPOP...) no reportan un tag de revenue agregado: sus
+    ingresos son la suma de ambos componentes (el "total net revenue" de sus
+    10-K). Solo entra un periodo con AMBOS componentes presentes (fail
+    closed: un componente ausente NO se imputa a cero - un subtotal parcial
+    nunca se publica como revenue). El caller solo rellena periodos donde el
+    merge de aliases no encontro nada: un tag agregado real siempre gana.
+    La proveniencia viaja en `_concept` (se registra en
+    xbrl_concept_by_metric_period como el resto de conceptos).
+    """
+    parts = _collect_by_concept(
+        us_gaap,
+        list(BANK_REVENUE_COMPONENTS),
+        "USD",
+        forms=forms,
+        periods=periods,
+        min_span=min_span,
+        max_span=max_span,
+        annual_anchors=annual_anchors,
+    )
+    interest = parts.get("InterestIncomeExpenseNet", {})
+    noninterest = parts.get("NoninterestIncome", {})
+    composed: dict[str, dict[str, Any]] = {}
+    for end, interest_entry in interest.items():
+        noninterest_entry = noninterest.get(end)
+        if noninterest_entry is None:
+            continue
+        interest_val = _decimal(interest_entry.get("val"))
+        noninterest_val = _decimal(noninterest_entry.get("val"))
+        if interest_val is None or noninterest_val is None:
+            continue
+        composed[end] = {
+            **interest_entry,
+            "val": float(interest_val + noninterest_val),
+            "_concept": BANK_REVENUE_CONCEPT,
+        }
+    return composed
+
+
+def _is_bank_like(company: Any) -> bool:
+    """Gate verificable de la composicion de revenue bancario.
+
+    InterestIncomeExpenseNet + NoninterestIncome ES la definicion de
+    ingresos ("total net revenue") solo para bancos/financieras; en un
+    industrial esos tags serian un subtotal enganoso publicado como
+    revenue. Se decide con el sector/industry del maestro de companias.
+    """
+    industry = str(getattr(company, "industry", "") or "").strip().lower()
+    if any(k in industry for k in ("bank", "thrift", "savings", "capital markets")):
+        return True
+    # Lista verificada: los 3 bancos de la decision cuyo maestro no dice
+    # "bank" en industry (MS figura como "Financial Services" en prod).
+    return (
+        str(getattr(company, "ticker", "") or "").strip().upper()
+        in BANK_REVENUE_TICKERS
+    )
+
+
 def _collect_by_concept(
     us_gaap: dict[str, Any],
     concepts: list[str],
@@ -757,6 +832,7 @@ class FinancialIngestionService:
         modal_fy_month = _current_fiscal_month_from_anchors(
             annual_anchors
         ) or _modal_fiscal_end_month(us_gaap)
+        bank_like = _is_bank_like(company)
 
         # Pre-computo anual (funciones puras sobre companyfacts), ANTES del
         # replace, para que el borrado sea selectivo por (metric, period):
@@ -781,6 +857,17 @@ class FinancialIngestionService:
                 ),
                 metric,
             )
+            if metric == "revenue" and bank_like:
+                # Bancos: rellena solo los periodos sin tag agregado.
+                for end, entry in _compose_bank_revenue(
+                    us_gaap,
+                    forms=ANNUAL_REPORT_FORMS,
+                    periods={"FY"},
+                    min_span=300,
+                    max_span=380,
+                    annual_anchors=annual_anchors,
+                ).items():
+                    by_end.setdefault(end, entry)
             if by_end:
                 # El cap se aplica AQUI, no en la insercion: las claves del
                 # replace y el reporte de cobertura reflejan EXACTAMENTE lo
@@ -822,6 +909,15 @@ class FinancialIngestionService:
                 ),
                 metric,
             )
+            if metric == "revenue" and bank_like:
+                for end, entry in _compose_bank_revenue(
+                    us_gaap,
+                    forms={"10-Q"},
+                    periods={"Q1", "Q2", "Q3", "Q4"},
+                    min_span=70,
+                    max_span=110,
+                ).items():
+                    by_end_q.setdefault(end, entry)
             if by_end_q:
                 q_sorted = sorted(
                     by_end_q.values(), key=lambda e: str(e["end"]), reverse=True
@@ -850,6 +946,11 @@ class FinancialIngestionService:
                             confidence=Decimal("0.9"),
                         )
                     )
+                    # Misma proveniencia por periodo que el bucle anual:
+                    # clave "<end>:<fp>" para no colisionar con el FY.
+                    concept_usage.setdefault(metric, {})[
+                        f"{entry['end']}:{fp}"
+                    ] = entry.get("_concept")
                     facts_imported += 1
             # Los alias se FUSIONAN, no "gana el primero que informe": muchos
             # filers migraron de tag (Revenues -> SalesRevenueNet ->
