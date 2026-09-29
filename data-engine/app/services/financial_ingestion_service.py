@@ -346,6 +346,28 @@ def _compose_bank_revenue(
     return composed
 
 
+# Tags de revenue por contrato que en un banco son un SUBTOTAL de comisiones
+# (una parte de NoninterestIncome), nunca el total.
+BANK_REVENUE_SUBTOTAL_TAGS = frozenset({
+    "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "RevenueFromContractWithCustomerIncludingAssessedTax",
+})
+
+
+def _revenue_concepts_for(concepts: list[str], bank_like: bool) -> list[str]:
+    """Candidatos a revenue de un emisor.
+
+    En bancos los subtotales de comisiones salen ANTES de la recoleccion y
+    el colapso de aliases: si se filtraran despues, un subtotal presentado
+    mas tarde que un agregado real del mismo periodo ganaria el colapso por
+    `filed` y el agregado se perderia. Fuera de bancos el tag de contrato
+    ES el revenue total y no se toca nada.
+    """
+    if not bank_like:
+        return concepts
+    return [c for c in concepts if c not in BANK_REVENUE_SUBTOTAL_TAGS]
+
+
 def _is_bank_like(company: Any) -> bool:
     """Gate verificable de la composicion de revenue bancario.
 
@@ -844,10 +866,15 @@ class FinancialIngestionService:
         restated_fy_keys: list[tuple[str, str]] = []
         for metric, concepts, unit in SEC_METRIC_MAP:
             xbrl_unit_key = "USD/shares" if unit == "USD/share" else unit
+            metric_concepts = (
+                _revenue_concepts_for(concepts, bank_like)
+                if metric == "revenue"
+                else concepts
+            )
             by_end = _merge_for_metric(
                 _collect_by_concept(
                     us_gaap,
-                    concepts,
+                    metric_concepts,
                     xbrl_unit_key,
                     forms=ANNUAL_REPORT_FORMS,
                     periods={"FY"},
@@ -897,10 +924,15 @@ class FinancialIngestionService:
             # de ejercicio: el fp de companyfacts es el periodo fiscal DE LA
             # PRESENTACION (las comparativas heredan el fp del 10-Q que las
             # trae), no el del dato. Fallback a fp sin ancla modal.
+            metric_concepts_q = (
+                _revenue_concepts_for(concepts, bank_like)
+                if metric == "revenue"
+                else concepts
+            )
             by_end_q = _merge_for_metric(
                 _collect_by_concept(
                     us_gaap,
-                    concepts,
+                    metric_concepts_q,
                     xbrl_unit_key,
                     forms={"10-Q"},
                     periods={"Q1", "Q2", "Q3", "Q4"},
