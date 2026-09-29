@@ -199,7 +199,7 @@ services:
     image: cavaai-backend:prod
     container_name: cavaai-worker
     restart: unless-stopped
-    command: ["dramatiq", "app.workers.dramatiq_app", "--processes", "1", "--threads", "2", "-Q", "default", "prices"]
+    command: ["dramatiq", "app.workers.dramatiq_app", "--processes", "1", "--threads", "6", "-Q", "default", "prices"]
     environment:
       - PYTHONUNBUFFERED=1
       # Solo adiciones de mapeo: el worker ejecuta los actores (refresh de
@@ -419,6 +419,63 @@ services:
       resources:
         limits:
           memory: 1G
+
+  worker-gdelt:
+    image: cavaai-backend:prod
+    container_name: cavaai-worker-gdelt
+    restart: unless-stopped
+    # Worker DEDICADO al carril GDELT (refresh_news / refresh_macro_news).
+    # GDELT limita por IP (~1 req / 5 s) y el pacing del cliente es un
+    # threading.Lock in-process: EXACTAMENTE UN proceso (--processes 1) para
+    # que el pacing sea global al carril; con 2 procesos cada uno paceria
+    # por su cuenta y la tasa combinada provocaria 429 en tormenta.
+    command: ["dramatiq", "app.workers.dramatiq_app", "--processes", "1", "--threads", "2", "-Q", "gdelt"]
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FMP_API_KEY=${FMP_API_KEY:-}
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY:-}
+      - FRED_API_KEY=${FRED_API_KEY:-}
+      - SCREENER_QUOTE_VENDOR=${SCREENER_QUOTE_VENDOR:-finnhub}
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - TELEGRAM_APPROVAL_ENABLED=${TELEGRAM_APPROVAL_ENABLED:-false}
+      - INSIDER_ALERTS_ENABLED=${INSIDER_ALERTS_ENABLED:-false}
+      - SECOND_ORDER_LLM_ENABLED=${SECOND_ORDER_LLM_ENABLED:-0}
+      - THESIS_NARRATIVE_LLM_ENABLED=${THESIS_NARRATIVE_LLM_ENABLED:-0}
+      - CAVAAI_ENABLE_VECTOR_INGEST=${CAVAAI_ENABLE_VECTOR_INGEST:-0}
+      - CAVAAI_ENABLE_VECTOR_SEARCH=${CAVAAI_ENABLE_VECTOR_SEARCH:-0}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - VECTOR_STORE=qdrant
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=research
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
+      - SEC_HF_MIRROR_DATASET=${SEC_HF_MIRROR_DATASET:-}
+    volumes:
+      - duckdb_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import os,sys,redis; sys.exit(0 if 'dramatiq' in open('/proc/1/cmdline','rb').read().decode(errors='ignore') and redis.from_url(os.environ['REDIS_URL'], socket_connect_timeout=3).ping() else 1)"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   scheduler:
     image: cavaai-backend:prod

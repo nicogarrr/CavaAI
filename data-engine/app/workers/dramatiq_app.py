@@ -203,6 +203,61 @@ def _batch_status(processed: int, errors: list[dict]) -> str:
     return "ok"
 
 
+def _coalesce_on_success(job: str, window_seconds, key_parts: tuple[str, ...] = ()):
+    """Suprime re-encolados periodicos redundantes del backlog de ingesta.
+
+    La cadencia del scheduler re-encola cada job aunque el anterior siga en
+    cola (p.ej. 125 refresh_rss_feeds = 31 h de cadencia de 15 min): ejecutar
+    uno deja obsoletos los demas. Si este job devolvio "ok" dentro de su
+    ventana, las ejecuciones extra devuelven skipped sin tocar nada. La marca
+    se pone SOLO tras un exito: un fallo (status error/partial) nunca
+    suprime reintentos, y un Redis caido es fail-open (ejecuta siempre).
+    window_seconds puede ser callable(**kwargs_del_actor) -> int.
+    """
+    import functools
+    import inspect
+
+    def decorator(fn):
+        sig = inspect.signature(fn)
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind_partial(*args, **kwargs)
+            values = bound.arguments
+            parts = tuple(str(values.get(part)) for part in key_parts)
+            window = int(
+                window_seconds(**values) if callable(window_seconds) else window_seconds
+            )
+            key = "coalesce:" + ":".join((job, *parts))
+            try:
+                client = _redis_client()
+                fresh = bool(client and client.get(key))
+            except Exception:  # noqa: BLE001 - sonda best-effort, fail-open
+                client, fresh = None, False
+            if fresh:
+                return {
+                    "status": "skipped",
+                    "actor": job,
+                    "reason": "fresh_within_window",
+                    "window_seconds": window,
+                }
+            result = fn(*args, **kwargs)
+            if (
+                client is not None
+                and isinstance(result, dict)
+                and result.get("status") == "ok"
+            ):
+                try:
+                    client.set(key, "1", ex=max(window, 1))
+                except Exception:  # noqa: BLE001 - perder la marca solo repite trabajo
+                    pass
+            return result
+
+        return wrapper
+
+    return decorator
+
+
 def _run(coroutine):
     """Ejecuta la corrutina del actor, venga de donde venga el loop.
 
@@ -235,6 +290,14 @@ KPI_QUEUE_NAME = "kpis"
 # cada 5 min y las entregas no compiten con la ingesta larga (GDELT ~3 h)
 # en la cola default.
 ALERT_QUEUE_NAME = "alerts"
+# Carril GDELT aislado: news/macro_news consumen GDELT DOC 2.0, cuyo tier
+# gratuito limita POR IP (~1 req / 5 s) y devuelve 429 bajo paralelismo. El
+# pacing del cliente es un threading.Lock in-process, asi que el carril lo
+# consume exactamente UN proceso (--processes 1): con dos procesos cada uno
+# paceria por su cuenta y la tasa combinada romperia el limite. El resto de
+# la ingesta (rss, insider, ir, sec-mirror, backfill) no pisa GDELT y se
+# queda en default con mas hilos.
+GDELT_QUEUE_NAME = "gdelt"
 KPI_DEFERRED_KEY = "kpi_deferred"
 KPI_DEFER_MAX_ATTEMPTS = 5
 
@@ -526,6 +589,7 @@ def extract_document_kpis(
 
 
 @dramatiq.actor(max_retries=1, min_backoff=30_000)
+@_coalesce_on_success("backfill_document_kpis", 4 * 60)
 def backfill_document_kpis() -> dict[str, Any]:
     """Re-encola extracciones KPI diferidas por backpressure, mas antiguas primero.
 
@@ -1123,6 +1187,7 @@ def refresh_sec_filings(
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
+@_coalesce_on_success("refresh_ir_pages", 50 * 60, ("tenant_id", "ticker"))
 def refresh_ir_pages(
     tenant_id: int | None = None,
     user_id: str | None = None,
@@ -1200,6 +1265,7 @@ def refresh_ir_pages(
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
+@_coalesce_on_success("refresh_rss_feeds", 12 * 60, ("tenant_id", "feed_url", "ticker"))
 def refresh_rss_feeds(
     tenant_id: int | None = None,
     user_id: str | None = None,
@@ -1347,7 +1413,12 @@ def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | No
         db.close()
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000)
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=GDELT_QUEUE_NAME)
+@_coalesce_on_success(
+    "refresh_news",
+    lambda scope="all", **_: 25 * 60 if scope == "tracked" else 5 * 3600,
+    ("tenant_id", "ticker", "scope"),
+)
 def refresh_news(
     tenant_id: int | None = None,
     user_id: str | None = None,
@@ -1459,7 +1530,8 @@ def reconcile_alert_analyses(tenant_id: int | None = None, user_id: str | None =
         db.close()
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000)
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=GDELT_QUEUE_NAME)
+@_coalesce_on_success("refresh_macro_news", 50 * 60, ("tenant_id",))
 def refresh_macro_news(
     tenant_id: int | None = None,
     user_id: str | None = None,
@@ -1855,6 +1927,9 @@ def run_daily_research() -> dict[str, Any]:
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000)
+@_coalesce_on_success(
+    "scan_insider_watchlist", 12 * 60, ("tenant_id", "lookback", "max_new_fetches")
+)
 def scan_insider_watchlist(
     tenant_id: int | None = None,
     user_id: str | None = None,
