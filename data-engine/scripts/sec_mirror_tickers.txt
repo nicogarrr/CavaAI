@@ -1,35 +1,60 @@
-# El sync resuelve CIK via company_tickers.json y sube companyfacts +
 # Tickers vigilados por el mirror SEC->HF (universo CavaAI que lee SEC).
-# submissions + historicos. Mantener al dia con el universo de tenants.
+# Incluye cartera + watchlist del tenant principal (AENA/KRKNF/SPCX pueden
+# no resolver en SEC - el sync los salta con honestidad) + universo previo.
+# Mantener al dia con el universo de tenants.
 AA
 AAL
+AAPL
+ADI
+AENA
 AKAM
+AMZN
+ASML
+ASTS
+BABA
 BALL
 BN
 BPOP
+BRK.B
 BRT
 CBOE
 CMP
+COST
 CPRT
 CSR
 DTE
 DUK
 EYPT
 FOR
+GOOGL
 HAL
 HRL
+HYMC
 J
 JBHT
 JEF
+JPM
+KO
+KRKNF
 LHX
+MA
+META
 MS
+MSFT
 MYGN
 NCLH
 NEE
+NVDA
 OMER
+ONDS
 PACB
+RKLB
+SPCX
 TJX
 TLYS
+TSLA
+UBER
+V
 VFC
 VMRK
 WFC
