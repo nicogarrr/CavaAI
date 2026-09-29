@@ -3,15 +3,20 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const page = readFileSync('app/(root)/movers/page.tsx', 'utf8');
+const market = readFileSync('data-engine/app/api/routes/market.py', 'utf8');
+const actions = readFileSync('lib/actions/market.actions.ts', 'utf8');
 
-test('la pagina de movers muestra la frescura por fila y no vende una fecha global', () => {
+test('movers declara frescura por fila: fecha del precio + hora de registro, sin fecha global enganosa', () => {
     // Con el refresco a dos velocidades (tracked 1 h, universo 6 h) el
-    // ranking mezcla series de distinta frescura. La cabecera no puede
-    // decir "Datos del {as_of}" como si TODAS las filas fueran de ese dia:
-    // as_of es el maximo y cada fila declara su propia fecha cuando difiere.
+    // ranking mezcla cohortes incluso DENTRO del mismo dia: row.date es
+    // YYYY-MM-DD y no las distingue. Cada fila expone registered_at
+    // (updated_at de MarketPrice, hora de observacion/registro) y la UI la
+    // muestra junto a la fecha, siempre - no solo cuando la fecha difiere.
     assert.doesNotMatch(page, /Datos del \$\{movers\.as_of\}\./);
-    assert.match(page, /row\.date && row\.date !== asOf/);
     assert.match(page, /del \{row\.date\}/);
-    assert.match(page, /asOf=\{movers\.as_of\}/);
-    assert.match(page, /su fecha aparece junto al precio/);
+    assert.match(page, /formatUserDateTime\(row\.registered_at/);
+    assert.match(page, /la hora en que se registró/);
+    assert.match(market, /MarketPrice\.updated_at/);
+    assert.match(market, /"registered_at": registered\.isoformat\(\) if registered else None/);
+    assert.match(actions, /registered_at\?: string \| null/);
 });

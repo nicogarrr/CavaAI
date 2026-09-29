@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
 
 import { getMarketMovers, type MarketMover } from '@/lib/actions/market.actions';
-import { NA, formatCompact, formatPercent, formatPrice } from '@/lib/format';
+import { NA, formatCompact, formatPercent, formatPrice, formatUserDateTime } from '@/lib/format';
 import BackendOffline from '@/components/system/BackendOffline';
 import { getTickerContext } from '@/lib/actions/ticker-context.actions';
 import { TickerContextBadges } from '@/components/common/TickerContextBadges';
@@ -31,7 +31,7 @@ function safeCurrency(currency: string | null | undefined): string {
 
 type TickerSets = { portfolioTickers: ReadonlySet<string>; watchlistTickers: ReadonlySet<string> };
 
-function MoversTable({ rows, caption, tickerSets, showVolume = false, asOf }: { rows: MarketMover[]; caption: string; tickerSets: TickerSets; showVolume?: boolean; asOf: string | null }) {
+function MoversTable({ rows, caption, tickerSets, showVolume = false }: { rows: MarketMover[]; caption: string; tickerSets: TickerSets; showVolume?: boolean }) {
   if (!rows.length) {
     return <p className="text-sm text-gray-500">Sin datos todavía — en cuanto haya precios registrados aparecerán aquí.</p>;
   }
@@ -65,8 +65,11 @@ function MoversTable({ rows, caption, tickerSets, showVolume = false, asOf }: { 
               </th>
               <td className="py-3 px-2 text-right whitespace-nowrap text-gray-300">
                 {formatPrice(row.price, safeCurrency(row.currency))}
-                {row.date && row.date !== asOf ? (
-                  <div className="text-xs text-gray-500">del {row.date}</div>
+                {row.date ? (
+                  <div className="text-xs text-gray-500">
+                    del {row.date}
+                    {row.registered_at ? ` · ${formatUserDateTime(row.registered_at, { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  </div>
                 ) : null}
               </td>
               <td className={`py-3 px-2 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
@@ -106,7 +109,7 @@ export default async function MoversPage() {
           Subidas, bajadas y más activas calculadas con los precios registrados en tu base de datos
           (último cierre frente al anterior).
           {movers.as_of
-            ? ` El precio más reciente registrado es del ${movers.as_of}; si una fila es de una fecha anterior, su fecha aparece junto al precio.`
+            ? ` El precio más reciente registrado es del ${movers.as_of}; cada fila declara la fecha de su precio y la hora en que se registró.`
             : ' Aún no hay precios registrados.'}
         </p>
       </header>
@@ -127,7 +130,7 @@ export default async function MoversPage() {
               <TrendingUp aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Subidas</h2>
             </div>
-            <MoversTable rows={movers.gainers} caption="Mayores subidas" tickerSets={tickerSets} asOf={movers.as_of} />
+            <MoversTable rows={movers.gainers} caption="Mayores subidas" tickerSets={tickerSets} />
           </section>
 
           <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
@@ -135,7 +138,7 @@ export default async function MoversPage() {
               <TrendingDown aria-hidden="true" className="h-5 w-5 text-red-400" />
               <h2 className="font-semibold text-gray-100">Bajadas</h2>
             </div>
-            <MoversTable rows={movers.losers} caption="Mayores bajadas" tickerSets={tickerSets} asOf={movers.as_of} />
+            <MoversTable rows={movers.losers} caption="Mayores bajadas" tickerSets={tickerSets} />
           </section>
 
           <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
@@ -143,7 +146,7 @@ export default async function MoversPage() {
               <Activity aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Más activas</h2>
             </div>
-            <MoversTable rows={movers.most_active} caption="Mayor volumen" tickerSets={tickerSets} showVolume asOf={movers.as_of} />
+            <MoversTable rows={movers.most_active} caption="Mayor volumen" tickerSets={tickerSets} showVolume />
           </section>
         </div>
       )}
