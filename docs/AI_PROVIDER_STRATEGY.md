@@ -19,8 +19,8 @@ changed through `OPENCODE_GO_MODEL` without adding another provider.
 
 ```env
 OPENCODE_GO_API_KEY=replace_with_an_opencode_go_key
-OPENCODE_GO_BASE_URL=https://opencode.ai/zen/go/v1
-OPENCODE_GO_MODEL=deepseek-v4-flash
+OPENCODE_GO_BASE_URL=https://opencode.ai/zen/v1
+OPENCODE_GO_MODEL=space-bunny-free
 ```
 
 The API key is a secret and must live only in local `.env` files or deployment

@@ -155,8 +155,8 @@ services:
       - CAVAAI_ENABLE_VECTOR_CHAT=${CAVAAI_ENABLE_VECTOR_CHAT:-0}
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY}
-      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
-      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
+      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
@@ -227,8 +227,8 @@ services:
       - CAVAAI_ENABLE_VECTOR_SEARCH=${CAVAAI_ENABLE_VECTOR_SEARCH:-0}
       - CAVAAI_ENABLE_VECTOR_CHAT=${CAVAAI_ENABLE_VECTOR_CHAT:-0}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY}
-      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
-      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
+      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
@@ -272,8 +272,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY}
-      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
-      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
+      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD:-portfolio}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
       - TZ=UTC
@@ -314,8 +314,8 @@ services:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - FMP_API_KEY=${FMP_API_KEY}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY}
-      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
-      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
+      - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - RESEARCH_AUTH_REQUIRED=true
       - RESEARCH_AUTH_SECRET=${RESEARCH_AUTH_SECRET:?Set RESEARCH_AUTH_SECRET in .env}
