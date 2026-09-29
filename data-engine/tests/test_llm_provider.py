@@ -242,6 +242,119 @@ def test_openai_compatible_provider_caps_requested_max_tokens():
     assert run(scenario()).text == "ok"
 
 
+
+
+def test_fallback_model_recovers_when_primary_model_fails():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        calls.append(payload["model"])
+        if payload["model"] == "space-bunny-free":
+            return httpx.Response(403, json={"error": "Model access is disabled"})
+        return httpx.Response(
+            200,
+            json={
+                "id": "fallback-request",
+                "model": payload["model"],
+                "choices": [
+                    {"message": {"content": "ok"}, "finish_reason": "stop"}
+                ],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            },
+        )
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = OpenAICompatibleProvider(
+                api_key="test-secret",
+                base_url="https://opencode.test/zen/v1",
+                default_model="space-bunny-free",
+                fallback_model="muse-spark-1.3-contributor-free",
+                provider_name="opencode-go",
+                client=client,
+                max_retries=0,
+            )
+            return await provider.complete(
+                LLMRequest(messages=[Message("user", "Extract")])
+            )
+
+    assert run(scenario()).text == "ok"
+    assert calls == ["space-bunny-free", "muse-spark-1.3-contributor-free"]
+
+
+def test_fallback_is_skipped_when_it_matches_the_resolved_model():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(json.loads(request.content)["model"])
+        return httpx.Response(403, json={"error": "Model access is disabled"})
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = OpenAICompatibleProvider(
+                api_key="test-secret",
+                base_url="https://opencode.test/zen/v1",
+                default_model="space-bunny-free",
+                fallback_model="space-bunny-free",
+                provider_name="opencode-go",
+                client=client,
+                max_retries=0,
+            )
+            return await provider.complete(
+                LLMRequest(messages=[Message("user", "Extract")])
+            )
+
+    with pytest.raises(ProviderHTTPError):
+        run(scenario())
+    assert calls == ["space-bunny-free"]
+
+
+def test_fallback_error_propagates_when_fallback_also_fails():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "Model access is disabled"})
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = OpenAICompatibleProvider(
+                api_key="test-secret",
+                base_url="https://opencode.test/zen/v1",
+                default_model="space-bunny-free",
+                fallback_model="muse-spark-1.3-contributor-free",
+                provider_name="opencode-go",
+                client=client,
+                max_retries=0,
+            )
+            return await provider.complete(
+                LLMRequest(messages=[Message("user", "Extract")])
+            )
+
+    with pytest.raises(ProviderHTTPError):
+        run(scenario())
+
+
+def test_factory_wires_fallback_model_from_settings():
+    provider = create_llm_provider(
+        Settings(_env_file=None, opencode_go_api_key="test-secret")
+    )
+    assert isinstance(provider, OpenAICompatibleProvider)
+    assert provider._fallback_model == "muse-spark-1.3-contributor-free"
+
+    provider = create_llm_provider(
+        Settings(
+            _env_file=None,
+            opencode_go_api_key="test-secret",
+            opencode_go_fallback_model="",
+        )
+    )
+    assert isinstance(provider, OpenAICompatibleProvider)
+    assert provider._fallback_model is None
+
+
 def test_structured_output_uses_openai_compatible_contract():
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
