@@ -84,6 +84,35 @@ class _FakeHalfBankSEC:
         }}}
 
 
+class _FakeFeeSubtotalBankSEC:
+    """Banco tipo BPOP: taguea el subtotal de comisiones
+    (RevenueFromContractWithCustomerExcludingAssessedTax) solo en Q1.
+
+    2024 Q1: ademas hay un agregado Revenues real presentado ANTES que el
+    subtotal - el caso de precedencia: si el subtotal se filtrara despues
+    del colapso de aliases, ganaria por `filed` y el agregado se perderia.
+    2026 Q1: taguea SOLO el subtotal (sin componentes ni agregado).
+    """
+
+    async def cik_for_ticker(self, ticker):
+        return "0000763931"
+
+    async def company_facts(self, cik):
+        return {"facts": {"us-gaap": {
+            "Revenues": {"units": {"USD": [
+                {"fy": 2024, "fp": "Q1", "form": "10-Q", "start": "2024-01-01",
+                 "end": "2024-03-31", "val": 100, "filed": "2024-05-01"},
+            ]}},
+            "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+                {"fy": 2024, "fp": "Q1", "form": "10-Q", "start": "2024-01-01",
+                 "end": "2024-03-31", "val": 3, "filed": "2024-05-12"},
+                _q1(2025, 3), _q1(2026, 4),
+            ]}},
+            "InterestIncomeExpenseNet": {"units": {"USD": [_q1(2024, 20), _q1(2025, 22)]}},
+            "NoninterestIncome": {"units": {"USD": [_q1(2024, 5), _q1(2025, 6)]}},
+        }}}
+
+
 def _with_anchors(payload, close_month):
     anchors = {}
     for concept in payload["facts"]["us-gaap"].values():
@@ -218,3 +247,45 @@ def test_bank_revenue_composed_for_allowlisted_ms_profile(db, monkeypatch):
     annual = {f.fiscal_year: f for f in _revenue_facts(db, company.id) if f.fiscal_quarter == "FY"}
     assert annual[2023].value == Decimal("100")
     assert annual[2024].value == Decimal("100")
+
+
+def test_bank_contract_revenue_subtotal_never_wins(db, monkeypatch):
+    """El subtotal de comisiones de un banco NO es su revenue: gana la
+    composicion y un periodo con SOLO subtotal queda sin revenue (null
+    honesto, nunca un parcial)."""
+    monkeypatch.setattr(ingestion, "SECClient", _FakeFeeSubtotalBankSEC)
+    company = _company(db, ticker="BPOP")
+    asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+
+    quarterly = {f.period: f for f in _revenue_facts(db, company.id)}
+    # 2024: el agregado real gana aunque el subtotal se presento despues;
+    # los componentes (20 + 5) no tapan un Revenues real.
+    assert quarterly["2024-03-31:Q1"].value == Decimal("100")
+    # 2025: sin agregado, la composicion gana al subtotal (22 + 6, no 3).
+    assert quarterly["2025-03-31:Q1"].value == Decimal("28")
+    # 2026: solo subtotal - null honesto, nunca un parcial como revenue.
+    assert "2026-03-31:Q1" not in quarterly
+
+    document = db.scalar(select(Document).where(
+        Document.company_id == company.id, Document.source_type == "SEC"))
+    usage = (document.metadata_ or {}).get("xbrl_concept_by_metric_period", {})
+    assert usage["revenue"]["2024-03-31:Q1"] == "Revenues"
+    assert usage["revenue"]["2025-03-31:Q1"] == BANK_REVENUE_CONCEPT
+
+
+def test_contract_revenue_subtotal_kept_for_non_banks(db, monkeypatch):
+    """Fuera de bancos, el tag de revenue por contrato SI es el total y se
+    conserva (el filtro es exclusivo del gate bank-like)."""
+    monkeypatch.setattr(ingestion, "SECClient", _FakeFeeSubtotalBankSEC)
+    company = Company(
+        ticker="IND2", name="IND2", exchange="NYSE", currency="USD",
+        sector="Industrials", industry="Machinery", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(company)
+    db.commit()
+    asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+
+    quarterly = {f.period: f for f in _revenue_facts(db, company.id)}
+    assert quarterly["2024-03-31:Q1"].value == Decimal("3")
+    assert quarterly["2026-03-31:Q1"].value == Decimal("4")
