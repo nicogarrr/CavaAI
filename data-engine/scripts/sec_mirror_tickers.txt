@@ -1,5 +1,5 @@
 # Tickers vigilados por el mirror SEC->HF (universo CavaAI que lee SEC).
-# Incluye cartera + watchlist del tenant principal (AENA/KRKNF/SPCX pueden
+# Incluye cartera + watchlist del tenant principal (AENA/KRKNF pueden
 # no resolver en SEC - el sync los salta con honestidad) + universo previo.
 # Mantener al dia con el universo de tenants.
 AA
