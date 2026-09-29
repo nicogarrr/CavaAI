@@ -119,5 +119,6 @@ def test_price_actors_on_prices_queue():
 
     assert dramatiq_app.refresh_market_pipeline.queue_name == "prices"
     assert dramatiq_app.refresh_portfolio_prices_intraday.queue_name == "prices"
-    # los demás actores siguen en default
-    assert dramatiq_app.refresh_news.queue_name == "default"
+    # los actores GDELT van en su carril dedicado (pacing por IP, un proceso)
+    assert dramatiq_app.refresh_news.queue_name == "gdelt"
+    assert dramatiq_app.refresh_macro_news.queue_name == "gdelt"
