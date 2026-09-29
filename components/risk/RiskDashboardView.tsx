@@ -212,6 +212,25 @@ function positionLink(position: DataRecord) {
     return <span className="font-mono text-gray-300">{label}</span>;
 }
 
+/** Identidad de la fila: el ticker es la clave real del holding (viene del
+ *  join Position->Company de risk_service.py). El backend entrega las
+ *  posiciones ordenadas por peso, así que el orden cambia en cada refresco:
+ *  con `key={index}` React reutilizaba el nodo de otra fila. */
+function positionKey(position: DataRecord): string {
+    const ticker = typeof position.ticker === 'string' ? position.ticker.trim().toUpperCase() : '';
+    if (ticker) return ticker;
+    const name = typeof position.name === 'string' ? position.name.trim() : '';
+    return name || `sin-ticker:${String(position.as_of ?? '')}`;
+}
+
+/** Identidad de la alerta: la regla (umbral) más el sujeto al que se aplica
+ *  (ticker, o el mensaje cuando la alerta es de caja y no hay ticker). */
+function alertKey(alert: DataRecord): string {
+    const ticker = typeof alert.ticker === 'string' ? alert.ticker.trim().toUpperCase() : '';
+    const subject = ticker || formatRecordValue(alert.message);
+    return `${subject}#${String(alert.threshold ?? '')}`;
+}
+
 export default function RiskDashboardView({ initialDashboard }: RiskDashboardViewProps) {
     const positions = extractPositions(initialDashboard);
     const alerts = extractAlerts(initialDashboard);
@@ -255,8 +274,8 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                         </p>
                     ) : (
                         <div className="space-y-3">
-                            {alerts.map((alert, index) => (
-                                <div className="rounded-md border border-gray-700/60 bg-black/20 p-3" key={index}>
+                            {alerts.map((alert) => (
+                                <div className="rounded-md border border-gray-700/60 bg-black/20 p-3" key={alertKey(alert)}>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <Badge variant="outline">{formatRecordValue(alert.severity)}</Badge>
                                         <span className="text-sm text-gray-200">{formatRecordValue(alert.message)}</span>
@@ -310,8 +329,8 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {positions.map((position, index) => (
-                                            <TableRow key={index} className="border-gray-700/50">
+                                        {positions.map((position) => (
+                                            <TableRow key={positionKey(position)} className="border-gray-700/50">
                                                 <TableCell>{positionLink(position)}</TableCell>
                                                 <TableCell className="text-sm text-gray-300">
                                                     {formatRecordValue(position.name)}
@@ -332,8 +351,8 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                             </div>
                             {/* Móvil: cards equivalentes, sin scroll horizontal */}
                             <ul className="space-y-3 md:hidden">
-                                {positions.map((position, index) => (
-                                    <li className="min-w-0 rounded-xl border border-gray-700/50 bg-gray-800/40 p-4" key={index}>
+                                {positions.map((position) => (
+                                    <li className="min-w-0 rounded-xl border border-gray-700/50 bg-gray-800/40 p-4" key={positionKey(position)}>
                                         {positionLink(position)}
                                         <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
                                             <div className="min-w-0">

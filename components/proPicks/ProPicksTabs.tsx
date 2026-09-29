@@ -23,10 +23,15 @@ interface ProPicksTabsProps {
 
 export default function ProPicksTabs({ strategies, initialPicks, generatedAt, passedCount = null }: ProPicksTabsProps) {
     const merged = mergeStrategies(strategies);
+    const [activeTab, setActiveTab] = useState('picks');
     const [currentStrategy, setCurrentStrategy] = useState<string>(merged[0]?.id ?? 'adaptive');
     const [walkForward, setWalkForward] = useState<WalkForwardBacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // El motor walk-forward NO se dispara al montar: se lanza la primera vez
+    // que se abre la pestaña de Backtesting (o con «Ejecutar backtest»).
+    // Antes costaba una corrida completa a quien solo quería ver los Picks.
+    const [backtestStarted, setBacktestStarted] = useState(false);
 
     const availableIds = new Set(strategies.map((s) => s.id));
     const currentMerged = merged.find((s) => s.id === currentStrategy) ?? merged[0];
@@ -55,17 +60,21 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
         }
     };
 
-    // Backtest walk-forward inicial al abrir la página
     useEffect(() => {
-        void runBacktest();
-    }, []);
+        if (activeTab === 'backtest' && !backtestStarted) {
+            setBacktestStarted(true);
+            void runBacktest();
+        }
+    }, [activeTab, backtestStarted]);
+
+    const handleTabChange = (tab: string) => setActiveTab(tab);
 
     const handleStrategyChange = (strategyId: string) => {
         setCurrentStrategy(strategyId);
     };
 
     return (
-        <Tabs defaultValue="picks" className="mt-6 w-full min-w-0">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6 w-full min-w-0">
             {/* `overflow-x-auto` en movil: con teclado no hay barra de scroll, asi que
                 el list scrollea necesita ser alcanzable (WCAG 2.1.1). No se le pone
                 `role="region"` porque sobrescribiria el `tablist` de Radix y la
@@ -78,11 +87,8 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
                 <TabsTrigger value="picks" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Picks IA
                 </TabsTrigger>
-                <TabsTrigger value="estrategias" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
-                    Estrategias
-                </TabsTrigger>
-                <TabsTrigger value="rebalanceo" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
-                    Rebalanceo
+                <TabsTrigger value="estrategia" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
+                    Estrategia y rebalanceo
                 </TabsTrigger>
                 <TabsTrigger value="backtest" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Backtesting
@@ -93,7 +99,12 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
                 <EnhancedProPicksContent initialPicks={initialPicks} generatedAt={generatedAt} initialPassedCount={passedCount} />
             </TabsContent>
 
-            <TabsContent value="estrategias" className="mt-6 space-y-4">
+            {/* Selector + ficha + rebalanceo son la MISMA estrategia con dos
+                lecturas: el `currentStrategy` que elige el selector es el que
+                gobierna el rebalanceo mensual de abajo. Partirlos en dos
+                pestañas obligaba a saltar para ver si el rebalanceo que se
+                leía era el de la estrategia elegida. */}
+            <TabsContent value="estrategia" className="mt-6 space-y-4">
                 <Card className="flex min-w-0 flex-col gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4 md:flex-row md:items-center md:justify-between">
                     <StrategySelector
                         strategies={strategies}
@@ -111,9 +122,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
                         available={currentAvailable}
                     />
                 )}
-            </TabsContent>
 
-            <TabsContent value="rebalanceo" className="mt-6">
                 <MonthlyRebalanceView
                     currentPicks={initialPicks}
                     strategyId={currentStrategy}
@@ -126,7 +135,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
                     <p className="max-w-xl text-sm leading-6 text-gray-400">
                         Baseline walk-forward point-in-time (momentum 12-1M,
                         universo líquido de 30 valores, costes 15 pb por pata,
-                        SPY como benchmark). No valida los Picks IA de arriba:
+                        SPY como benchmark). No valida los Picks IA:
                         valida que el motor no mira el futuro. El backtest por
                         estrategia con fundamentales point-in-time llegará
                         cuando haya TTM persistido.
