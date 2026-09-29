@@ -802,9 +802,12 @@ def refresh_macro_context() -> dict[str, Any]:
 def refresh_market_pipeline(
     tenant_id: int | None = None,
     user_id: str | None = None,
+    scope: str = "tracked",
 ) -> dict[str, Any]:
     from app.services.market_refresh_service import MarketRefreshService
 
+    if scope not in ("tracked", "universe"):
+        raise ValueError(f"scope de refresh_market_pipeline desconocido: {scope!r}")
     db = _session(tenant_id, user_id)
         # La sesion se abre ANTES de tomar el lease: _session() lanza
         # ValueError si el tenant no esta activo, y esa excepcion entre la
@@ -829,8 +832,13 @@ def refresh_market_pipeline(
             "reason": "lease_held",
         }
     try:
-        result = _run(MarketRefreshService().refresh(db))
-        return {"actor": "refresh_market_pipeline", **result}
+        # Dos velocidades: cartera+watchlist cada ciclo horario; el universo
+        # completo va en el job scope="universe" de menor cadencia (scheduler).
+        # El screener sirve quotes en vivo por su propia via de vendors, asi
+        # que su frescura no depende del barrido de universo.
+        companies = None if scope == "universe" else _tracked_companies(db)
+        result = _run(MarketRefreshService().refresh(db, companies=companies))
+        return {"actor": "refresh_market_pipeline", "scope": scope, **result}
     except Exception as exc:
         _rollback(db)
         return _handle_actor_error("refresh_market_pipeline", exc, tenant_id=tenant_id)

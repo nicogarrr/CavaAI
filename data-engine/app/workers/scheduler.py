@@ -88,12 +88,25 @@ def enqueue_for_all_tenants(actor, **kwargs) -> dict:
 def build_scheduler(*, background: bool = False) -> BlockingScheduler | BackgroundScheduler:
     scheduler_cls = BackgroundScheduler if background else BlockingScheduler
     scheduler = scheduler_cls(timezone="UTC")
+    # Precios a dos velocidades, mismo criterio que news (decision de Nico
+    # 2026-09-25): cartera+watchlist cada hora; universo completo cada 6 h en
+    # background. El screener sirve quotes en vivo por su propia via de
+    # vendors (screeners.py), asi que su frescura no depende del barrido de
+    # universo; lo que lee market_prices local (movers, alertas fuera de
+    # cartera+watchlist) pasa a cadencia de 6 h.
     _register(
         scheduler,
-        partial(enqueue_for_all_tenants, refresh_market_pipeline),
+        partial(enqueue_for_all_tenants, refresh_market_pipeline, scope="tracked"),
         "interval",
         job_id="market_refresh",
         hours=1,
+    )
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, refresh_market_pipeline, scope="universe"),
+        "interval",
+        job_id="market_refresh_universe",
+        hours=6,
     )
     _register(scheduler, refresh_macro_context.send, "cron", job_id="macro_context_refresh", hour=23, minute=10)
     # One global GP + SupGP fetch every 2 h, never per tenant or more often.
