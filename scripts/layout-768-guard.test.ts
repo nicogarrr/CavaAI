@@ -24,7 +24,7 @@ const modelPanels = readFileSync('components/research/FundamentalModelPanels.tsx
 const researchPage = readFileSync('app/(root)/research/[ticker]/page.tsx', 'utf8');
 
 test('F319: la pista del grid de escenarios puede encoger para que la tabla haga scroll interno', () => {
-    // Sin min-w-0 en la pista, el min-content de la tabla (min-w-[640px])
+    // Sin min-w-0 en la pista, el min-content de la tabla (min-w-[540px])
     // expandía el grid por encima del contenedor entre 768 y 1279px en vez
     // de dejar que el wrapper overflow-x-auto recortara.
     assert.match(modelPanels, /lg:grid-cols-\[1\.2fr_0\.8fr\]">[\s\S]{0,500}<div className="min-w-0">/);
