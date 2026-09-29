@@ -4,16 +4,23 @@ Date: 2026-08-16
 
 ## Decision
 
-CavaAI uses **OpenCode Go as its only LLM provider**. All backend research
-workflows use the same OpenAI-compatible API:
+CavaAI uses **OpenCode (Zen API) as its only LLM provider**. All backend
+research workflows use the same OpenAI-compatible API:
 
 ```text
-https://opencode.ai/zen/go/v1/chat/completions
+https://opencode.ai/zen/v1/chat/completions
 ```
 
-The default model is `deepseek-v4-flash`, which is listed by the official
-OpenCode Go documentation as a chat-completions model. The model can be
-changed through `OPENCODE_GO_MODEL` without adding another provider.
+The default model is `space-bunny-free` (free tier per the official OpenCode
+Zen documentation). The model can be changed through `OPENCODE_GO_MODEL`
+without adding another provider.
+
+The Go endpoint (`/zen/go/v1`) is documented by OpenCode for code-agent
+traffic only (it requires `x-opencode-session` and routing aimed at coding
+agents); the general API is Zen (`/zen/v1`). Verified live with the
+production key (2026-09-30): `space-bunny-free` answers 200 on Zen with
+correct structured extraction; `deepseek-v4-flash` is NOT enabled on Zen
+for the account (403 "Model access is disabled").
 
 ## Configuration
 
@@ -43,7 +50,7 @@ settings in the application configuration.
 
 ## Task routing
 
-All task routes default to `deepseek-v4-flash`:
+All task routes default to `space-bunny-free`:
 
 - Extraction
 - Classification and news materiality
@@ -67,4 +74,4 @@ LLM errors and do not create unsupported financial facts.
 
 See the official model/endpoint list at:
 
-https://opencode.ai/docs/es/go/
+https://opencode.ai/docs/zen/
