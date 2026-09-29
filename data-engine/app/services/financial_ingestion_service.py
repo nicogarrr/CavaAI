@@ -292,6 +292,9 @@ def _merge_for_metric(
 
 BANK_REVENUE_COMPONENTS = ("InterestIncomeExpenseNet", "NoninterestIncome")
 BANK_REVENUE_CONCEPT = "InterestIncomeExpenseNet+NoninterestIncome"
+# Emisores verificados de la decision de bancos (29/9) cuyo industry en el
+# maestro no contiene "bank": MS = "Financial Services" (dato de prod).
+BANK_REVENUE_TICKERS = {"BPOP", "MS", "WFC"}
 
 
 def _compose_bank_revenue(
@@ -351,11 +354,15 @@ def _is_bank_like(company: Any) -> bool:
     industrial esos tags serian un subtotal enganoso publicado como
     revenue. Se decide con el sector/industry del maestro de companias.
     """
-    sector = str(getattr(company, "sector", "") or "").strip().lower()
     industry = str(getattr(company, "industry", "") or "").strip().lower()
-    if "bank" in industry or "thrift" in industry or "capital markets" in industry:
+    if any(k in industry for k in ("bank", "thrift", "savings", "capital markets")):
         return True
-    return sector in {"financials", "financial services", "financial"}
+    # Lista verificada: los 3 bancos de la decision cuyo maestro no dice
+    # "bank" en industry (MS figura como "Financial Services" en prod).
+    return (
+        str(getattr(company, "ticker", "") or "").strip().upper()
+        in BANK_REVENUE_TICKERS
+    )
 
 
 def _collect_by_concept(

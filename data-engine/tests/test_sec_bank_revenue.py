@@ -189,3 +189,32 @@ def test_bank_revenue_not_composed_for_non_banks(db, monkeypatch):
     facts = _revenue_facts(db, company.id)
     # solo el alias real de 2022; nada compuesto en 2023/2024/Q1
     assert [(f.fiscal_year, f.fiscal_quarter) for f in facts] == [(2022, "FY")]
+
+
+def test_bank_revenue_not_composed_for_insurance_or_asset_management(db, monkeypatch):
+    """Financials no bancarios (Insurance, Asset management) NO componen."""
+    monkeypatch.setattr(ingestion, "SECClient", _FakeBankSEC)
+    for ticker, industry in (("INS", "Insurance - Life"), ("AMG", "Asset management and holdings")):
+        company = Company(
+            ticker=ticker, name=ticker, exchange="NYSE", currency="USD",
+            sector="Financials", industry=industry, company_type="holding",
+            valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+        )
+        db.add(company)
+        db.commit()
+        asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+        facts = _revenue_facts(db, company.id)
+        assert [(f.fiscal_year, f.fiscal_quarter) for f in facts] == [(2022, "FY")]
+
+
+def test_bank_revenue_composed_for_allowlisted_ms_profile(db, monkeypatch):
+    """MS (Financials / Financial Services en el maestro) SI compone."""
+    monkeypatch.setattr(ingestion, "SECClient", _FakeBankSEC)
+    company = _company(db, ticker="MS")
+    company.sector = "Financials"
+    company.industry = "Financial Services"
+    db.commit()
+    asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+    annual = {f.fiscal_year: f for f in _revenue_facts(db, company.id) if f.fiscal_quarter == "FY"}
+    assert annual[2023].value == Decimal("100")
+    assert annual[2024].value == Decimal("100")

@@ -120,18 +120,8 @@ def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
     try:
         result = resp.json()["chart"]["result"][0]
         quote = result["indicators"]["quote"][0]
-        closes_raw = quote["close"]
-        # Indice de la ultima vela con cierre no nulo: al filtrar el array se
-        # pierde la alineacion con result["timestamp"], y la fecha honesta de
-        # "c" es la de SU vela (desbloquea el etiquetado de ultimo cierre,
-        # F358). Velas colgantes en None (dia en curso sin cierre) no mueven
-        # la fecha al futuro.
-        last_idx = next(
-            (i for i in range(len(closes_raw) - 1, -1, -1) if closes_raw[i] is not None),
-            None,
-        )
-        closes = [value for value in closes_raw if value is not None]
-        if last_idx is None or not closes or closes[-1] <= 0:
+        closes = [value for value in quote["close"] if value is not None]
+        if not closes or closes[-1] <= 0:
             return None
         meta = result.get("meta") or {}
         last = float(closes[-1])
@@ -144,19 +134,6 @@ def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
         highs = [value for value in (quote.get("high") or []) if value is not None]
         lows = [value for value in (quote.get("low") or []) if value is not None]
         change = last - previous
-        timestamps = result.get("timestamp") or []
-        candle_ts = timestamps[last_idx] if last_idx < len(timestamps) else None
-        candle_date = None
-        if isinstance(candle_ts, (int, float)):
-            from datetime import datetime, timezone
-            from zoneinfo import ZoneInfo
-
-            tz_name = meta.get("exchangeTimezoneName")
-            try:
-                tz = ZoneInfo(tz_name) if tz_name else timezone.utc
-            except (KeyError, ValueError):
-                tz = timezone.utc
-            candle_date = datetime.fromtimestamp(candle_ts, tz).date().isoformat()
         return {
             "c": last,
             "d": change,
@@ -165,11 +142,6 @@ def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
             "l": float(lows[-1]) if lows else last,
             "o": float(opens[-1]) if opens else last,
             "pc": previous,
-            # Fecha real de la vela que publica "c" (epoch y fecha ISO en la
-            # zona del mercado); None si Yahoo no sirvio timestamps - nunca
-            # se inventa.
-            "ct": int(candle_ts) if isinstance(candle_ts, (int, float)) else None,
-            "cd": candle_date,
         }
     except (KeyError, IndexError, TypeError, ValueError):
         return None
