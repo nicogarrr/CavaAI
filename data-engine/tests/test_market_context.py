@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -75,7 +75,11 @@ def test_all_six_series_ingest_and_actor(monkeypatch):
     class StubFRED:
         async def series_csv(self, series_id, limit=20):
             seen.append((series_id, limit))
-            return {"observations": [{"date": "2026-09-23", "value": "3.5"}]}
+            # Fecha dinamica: una fecha fija queda fuera de la tolerancia de
+            # frescura de build_snapshot (max_age de cada serie) al avanzar el
+            # calendario real y rompe el test con el tiempo.
+            ayer = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
+            return {"observations": [{"date": ayer, "value": "3.5"}]}
 
     async def stub_refresh(db):
         return await refresh_fred(db, StubFRED())
@@ -95,6 +99,7 @@ def test_market_migration_upgrade_and_downgrade():
     from pathlib import Path
 
     from sqlalchemy import inspect
+
     path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0037_market_observations.py"
     spec = spec_from_file_location("market_migration_0037", path)
     migration = module_from_spec(spec)
@@ -102,6 +107,7 @@ def test_market_migration_upgrade_and_downgrade():
     scratch = create_engine("sqlite:///:memory:")
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
+
     with scratch.begin() as conn:
         proxy = Operations(MigrationContext.configure(conn))
         original = migration.op
