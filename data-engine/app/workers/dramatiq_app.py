@@ -231,6 +231,10 @@ def _session(tenant_id: int | None, user_id: str | None):
 
 
 KPI_QUEUE_NAME = "kpis"
+# Carril de alertas aislado (patron thesis/kpis): la evaluacion de reglas
+# cada 5 min y las entregas no compiten con la ingesta larga (GDELT ~3 h)
+# en la cola default.
+ALERT_QUEUE_NAME = "alerts"
 KPI_DEFERRED_KEY = "kpi_deferred"
 KPI_DEFER_MAX_ATTEMPTS = 5
 
@@ -667,7 +671,7 @@ def extract_knowledge_principles(
         db.close()
 
 
-@dramatiq.actor(max_retries=1)
+@dramatiq.actor(max_retries=1, queue_name=ALERT_QUEUE_NAME)
 def evaluate_alert_rules(
     tenant_id: int | None = None,
     user_id: str | None = None,
@@ -1261,7 +1265,7 @@ def analyze_tracked_news_alert(alert_id: int, *, tenant_id: int | None = None,
         db.close()
 
 
-@dramatiq.actor(max_retries=1, min_backoff=30_000)
+@dramatiq.actor(max_retries=1, min_backoff=30_000, queue_name=ALERT_QUEUE_NAME)
 def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
     """Evaluate persisted, cited news for one tenant; no upstream request."""
     from app.services.tracked_news_alerts import evaluate
@@ -1382,7 +1386,7 @@ def refresh_news(
         )
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000)
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=ALERT_QUEUE_NAME)
 def reconcile_alert_analyses(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
     """Queue AlertAnalysis rows for tracked_news alerts that never got one.
 
@@ -1872,7 +1876,7 @@ def scan_insider_watchlist(
         return _handle_actor_error(actor_name, exc, tenant_id=tenant_id)
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000)
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=ALERT_QUEUE_NAME)
 def dispatch_insider_alerts(
     tenant_id: int | None = None,
     user_id: str | None = None,
@@ -1924,7 +1928,7 @@ def dispatch_insider_alerts(
         return _handle_actor_error(actor_name, exc, tenant_id=tenant_id)
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000)
+@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=ALERT_QUEUE_NAME)
 def reconcile_alert_deliveries(
     tenant_id: int | None = None,
     user_id: str | None = None,
