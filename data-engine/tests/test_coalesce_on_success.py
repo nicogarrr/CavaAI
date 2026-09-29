@@ -50,6 +50,17 @@ class FakeRedis:
         with self.lock:
             self.store.pop(key, None)
 
+    def eval(self, script, numkeys, *args):
+        """Compare-and-delete: borra solo si el valor sigue siendo el token."""
+        if self.raises:
+            raise ConnectionError("redis caido")
+        key, token = args
+        with self.lock:
+            if self.store.get(key) == token:
+                self.store.pop(key)
+                return 1
+            return 0
+
 
 def _patch_client(monkeypatch, client):
     monkeypatch.setattr(dramatiq_app, "_redis_client", lambda: client)
@@ -96,8 +107,13 @@ def test_ok_result_marks_fresh_and_next_run_skips(monkeypatch):
     assert job(tenant_id=7)["status"] == "ok"
     assert job(tenant_id=7)["status"] == "skipped"
     assert len(calls) == 1
-    marks = [c for c in client.set_calls if c[1] == "done"]
-    assert marks == [("coalesce:job:7", "done", False, 120)]
+    # Regresion de cadencia: el exito NO re-escribe la key - la marca es el
+    # propio claim con TTL anclado al INICIO, asi una corrida normal nunca
+    # descarta el siguiente tick del scheduler (hallazgo del auditor).
+    claims = [c for c in client.set_calls if c[0] == "coalesce:job:7"]
+    assert len(claims) == 1
+    assert claims[0][2:] == (True, 120)  # nx=True, ex=ventana
+    assert "coalesce:job:7" in client.store
 
 
 def test_error_result_releases_claim_for_retry(monkeypatch):
@@ -135,6 +151,22 @@ def test_exception_releases_claim_and_reraises(monkeypatch):
     assert len(calls) == 1
 
 
+def test_release_never_deletes_another_owners_claim(monkeypatch):
+    """Si el claim expira y otro dueno reclama, un fallo del viejo no lo borra."""
+    client = FakeRedis()
+    _patch_client(monkeypatch, client)
+
+    @_coalesce_on_success("job", 60)
+    def job():
+        # Otro dueno reclama la key mientras esta corrida sigue viva
+        # (p.ej. el claim original expiro por TTL).
+        client.store["coalesce:job"] = "token-de-otro"
+        return {"status": "error"}
+
+    assert job()["status"] == "error"
+    assert client.store["coalesce:job"] == "token-de-otro"
+
+
 def test_redis_down_is_fail_open(monkeypatch):
     _patch_client(monkeypatch, FakeRedis(raises=True))
     calls = []
@@ -164,8 +196,6 @@ def test_window_callable_and_key_parts(monkeypatch):
     news(scope="tracked")
     news(scope="all")
     assert news(scope="tracked")["status"] == "skipped"
-    marks = [c for c in client.set_calls if c[1] == "done"]
-    assert marks == [
-        ("coalesce:news:tracked", "done", False, 25),
-        ("coalesce:news:all", "done", False, 500),
-    ]
+    claims = {c[0]: c for c in client.set_calls}
+    assert claims["coalesce:news:tracked"][2:] == (True, 25)
+    assert claims["coalesce:news:all"][2:] == (True, 500)

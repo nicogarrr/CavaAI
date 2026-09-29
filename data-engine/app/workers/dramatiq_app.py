@@ -215,16 +215,22 @@ def _coalesce_on_success(job: str, window_seconds, key_parts: tuple[str, ...] = 
       lo tiene, la ejecucion devuelve skipped sin trabajar. Dos copias
       encoladas del mismo job no entran a la vez aunque no haya marca de
       exito previa.
-    - MARCA FRESCA al terminar con status "ok": la key se sobrescribe con la
-      ventana completa y las ejecuciones encoladas de mas se saltan.
+    - MARCA FRESCA: el propio claim, cuya ventana cuenta desde el INICIO de
+      la corrida, nunca desde el fin. Todas las ventanas son menores que la
+      cadencia de su scheduler (tracked 25 < 30 min, universo 5 < 6 h, rss/
+      insider 12 < 15, backfill 4 < 5, ir/macro 50 < 60), asi una corrida
+      normal NUNCA descarta el siguiente tick: el claim expira antes de que
+      llegue. Si se extendiera al terminar, un barrido universo de 3 h con
+      marca de 5 h se saltaria el tick de las 6 h y la cadencia pasaria a
+      12 h (hallazgo del auditor).
 
     Manejo de fallo: si el job devuelve error/partial o lanza, el claim se
     LIBERA (solo si seguimos siendo el dueno del token), asi un reintento o
     el siguiente tick del scheduler vuelven a correr el trabajo. Redis
     caido es fail-open (ejecuta siempre). Limite operativo declarado: si un
-    job dura mas que su ventana (p.ej. universo > 5 h), el claim expira y
-    una copia encolada puede entrar en paralelo; las ventanas estan por
-    encima de las duraciones medidas.
+    job dura mas que su ventana, el claim expira y una copia encolada puede
+    entrar en paralelo; las ventanas estan por encima de las duraciones
+    medidas.
     window_seconds puede ser callable(**kwargs_del_actor) -> int.
     """
     import functools
@@ -263,9 +269,17 @@ def _coalesce_on_success(job: str, window_seconds, key_parts: tuple[str, ...] = 
                 if client is None:
                     return
                 try:
-                    current = client.get(key)
-                    if current is not None and current.decode() == token:
-                        client.delete(key)
+                    # Compare-and-delete atomico (Lua): un GET+DELETE a mano
+                    # dejaba una ventana en la que, si el claim expiraba y
+                    # otro dueno reclamaba, el viejo borraba el claim nuevo.
+                    client.eval(
+                        "if redis.call('get', KEYS[1]) == ARGV[1] then"
+                        " return redis.call('del', KEYS[1])"
+                        " else return 0 end",
+                        1,
+                        key,
+                        token,
+                    )
                 except Exception:  # noqa: BLE001 - expira por TTL solo
                     pass
 
@@ -274,14 +288,13 @@ def _coalesce_on_success(job: str, window_seconds, key_parts: tuple[str, ...] = 
             except BaseException:
                 _release()  # el reintento de dramatiq debe poder reclamar
                 raise
-            if client is not None:
-                if isinstance(result, dict) and result.get("status") == "ok":
-                    try:
-                        client.set(key, "done", ex=max(window, 1))
-                    except Exception:  # noqa: BLE001 - perder la marca solo repite trabajo
-                        pass
-                else:
-                    _release()
+            # Exito: el claim queda como marca fresca con su TTL original
+            # (anclado al INICIO) - extenderlo aqui descuadraria la cadencia.
+            # Fallo: liberar para que el reintento o el siguiente tick corran.
+            if client is not None and not (
+                isinstance(result, dict) and result.get("status") == "ok"
+            ):
+                _release()
             return result
 
         return wrapper
