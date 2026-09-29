@@ -29,7 +29,7 @@ test('F325: el copy de precios distingue FMP, Finnhub y Yahoo según ruta real',
     const propicks = readFileSync('data-engine/app/services/propicks_price_service.py', 'utf8');
     const workers = readFileSync('data-engine/app/workers/dramatiq_app.py', 'utf8');
     assert.match(backend, /if self\.fmp\.configured\(\)/);
-    assert.match(backend, /self\.fmp\.quote\(company\.ticker\)/);
+    assert.match(backend, /self\.fmp\.quote\(company\.ticker, max_retries=0\)/);
     assert.match(backend, /if timestamp <= 0:/);
     assert.match(backend, /if self\.finnhub\.configured\(\)/);
     assert.match(backend, /if not _us_listed\(company\):/);
