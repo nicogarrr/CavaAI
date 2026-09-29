@@ -208,7 +208,9 @@ class PublicPriceProvider:
             errors.append("FMP:provider_unavailable")
         elif self.fmp.configured():
             try:
-                payload = await self.fmp.quote(company.ticker)
+                # Ruta bulk: sin reintentos inline (un 429 aqui es cuota
+                # agotada; el siguiente ciclo del scheduler lo cubre).
+                payload = await self.fmp.quote(company.ticker, max_retries=0)
                 item = payload[0] if isinstance(payload, list) and payload else None
                 value = Decimal(str(item.get("price"))) if isinstance(item, dict) else None
                 timestamp = int(item.get("timestamp") or 0) if isinstance(item, dict) else 0
@@ -236,9 +238,13 @@ class PublicPriceProvider:
                             )
             except UpstreamRateLimited:
                 # Primer 429 del proveedor en la corrida: se marca caido y
-                # el resto de tickers no gasta ni una llamada mas en el.
-                down.add("fmp")
-                _marketdata_breaker_record_429(client, "fmp")
+                # el resto de tickers no gasta ni una llamada mas en el. La
+                # racha del breaker cuenta UNA vez por corrida (guard de
+                # transicion): los 429 concurrentes ya en vuelo no inflan
+                # el contador - el breaker abre tras N corridas, no N respuestas.
+                if "fmp" not in down:
+                    down.add("fmp")
+                    _marketdata_breaker_record_429(client, "fmp")
                 errors.append("FMP:provider_unavailable")
             except Exception as exc:
                 errors.append(f"FMP:{type(exc).__name__}")
@@ -246,7 +252,7 @@ class PublicPriceProvider:
             errors.append("Finnhub:provider_unavailable")
         elif self.finnhub.configured():
             try:
-                payload = await self.finnhub.quote(company.ticker)
+                payload = await self.finnhub.quote(company.ticker, max_retries=0)
                 value = Decimal(str(payload.get("c") or 0))
                 timestamp = int(payload.get("t") or 0)
                 if value > 0:
@@ -262,8 +268,9 @@ class PublicPriceProvider:
                             None,
                         )
             except UpstreamRateLimited:
-                down.add("finnhub")
-                _marketdata_breaker_record_429(client, "finnhub")
+                if "finnhub" not in down:
+                    down.add("finnhub")
+                    _marketdata_breaker_record_429(client, "finnhub")
                 errors.append("Finnhub:provider_unavailable")
             except Exception as exc:
                 errors.append(f"Finnhub:{type(exc).__name__}")

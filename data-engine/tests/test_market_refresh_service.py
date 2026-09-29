@@ -165,7 +165,7 @@ def test_finnhub_quote_without_timestamp_is_not_dated_today():
     provider = PublicPriceProvider.__new__(PublicPriceProvider)
     provider.fmp = SimpleNamespace(configured=lambda: False)
 
-    async def quote(_ticker):
+    async def quote(_ticker, **_kwargs):
         return {"c": 210.5, "t": 0}
 
     provider.finnhub = SimpleNamespace(configured=lambda: True, quote=quote)
@@ -184,7 +184,7 @@ def test_finnhub_quote_uses_provider_timestamp_date():
     provider.fmp = SimpleNamespace(configured=lambda: False)
     provider_ts = 1_758_220_800  # 2025-09-18, claramente distinto del as_of
 
-    async def quote(_ticker):
+    async def quote(_ticker, **_kwargs):
         return {"c": 210.5, "t": provider_ts}
 
     provider.finnhub = SimpleNamespace(configured=lambda: True, quote=quote)
@@ -204,7 +204,7 @@ def test_fmp_quote_without_timestamp_is_not_dated():
     """Quote de FMP sin timestamp: se salta, nunca se fecha con metadatos."""
     provider = PublicPriceProvider.__new__(PublicPriceProvider)
 
-    async def quote(_ticker):
+    async def quote(_ticker, **_kwargs):
         return [{"price": 210.5}]
 
     provider.fmp = SimpleNamespace(configured=lambda: True, quote=quote)
@@ -227,7 +227,7 @@ def test_fmp_quote_uses_provider_timestamp_and_real_volume():
     provider = PublicPriceProvider.__new__(PublicPriceProvider)
     friday_ts = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
 
-    async def quote(_ticker):
+    async def quote(_ticker, **_kwargs):
         return [{"price": 210.5, "timestamp": friday_ts, "volume": 48_123_456}]
 
     provider.fmp = SimpleNamespace(configured=lambda: True, quote=quote)
@@ -248,7 +248,7 @@ def test_fmp_future_quote_date_is_rejected():
     provider = PublicPriceProvider.__new__(PublicPriceProvider)
     future_ts = int(datetime(2026, 9, 28, 20, 0, tzinfo=UTC).timestamp())
 
-    async def quote(_ticker):
+    async def quote(_ticker, **_kwargs):
         return [{"price": 210.5, "timestamp": future_ts}]
 
     provider.fmp = SimpleNamespace(configured=lambda: True, quote=quote)
@@ -268,7 +268,7 @@ def test_fmp_profile_is_never_used_for_prices():
     async def forbidden_profile(_ticker):
         raise AssertionError("company_profile no debe usarse para precios")
 
-    async def quote(_ticker):
+    async def quote(_ticker, **_kwargs):
         friday_ts = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
         return [{"price": 210.5, "timestamp": friday_ts, "volume": 1000}]
 
@@ -289,10 +289,10 @@ def test_non_us_company_never_gets_a_bare_ticker_us_quote():
     Almonty (ALM en Nasdaq). Ese precio NUNCA puede guardarse bajo Almirall."""
     provider = PublicPriceProvider.__new__(PublicPriceProvider)
 
-    async def fmp_quote(_ticker):
+    async def fmp_quote(_ticker, **_kwargs):
         return [{"price": 13.72, "timestamp": 1_800_000_000}]
 
-    async def finnhub_quote(_ticker):
+    async def finnhub_quote(_ticker, **_kwargs):
         return {"c": 13.72, "t": 1_800_000_000}
 
     provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
@@ -311,7 +311,7 @@ def test_adr_is_not_the_amsterdam_listing():
     Nasdaq en USD. La bolsa contiene «NYSE» pero la divisa manda: fuera."""
     provider = PublicPriceProvider.__new__(PublicPriceProvider)
 
-    async def fmp_quote(_ticker):
+    async def fmp_quote(_ticker, **_kwargs):
         return [{"price": 1743.94, "timestamp": 1_800_000_000}]
 
     provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
@@ -330,7 +330,7 @@ def test_us_and_unknown_usd_companies_keep_us_quotes():
     provider = PublicPriceProvider.__new__(PublicPriceProvider)
     ts = int(datetime(2026, 9, 25, 20, 0, tzinfo=UTC).timestamp())
 
-    async def fmp_quote(_ticker):
+    async def fmp_quote(_ticker, **_kwargs):
         return [{"price": 210.5, "timestamp": ts}]
 
     provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
@@ -353,7 +353,7 @@ def test_unknown_exchange_with_eur_is_not_a_us_listing():
     """UNKNOWN+EUR: sin evidencia de listado US, no arriesgar el gemelo."""
     provider = PublicPriceProvider.__new__(PublicPriceProvider)
 
-    async def fmp_quote(_ticker):
+    async def fmp_quote(_ticker, **_kwargs):
         return [{"price": 10.0, "timestamp": 1_800_000_000}]
 
     provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
@@ -399,7 +399,7 @@ def test_first_finnhub_429_marks_provider_down_for_the_run():
     provider.fmp = SimpleNamespace(configured=lambda: False)
     calls = {"finnhub": 0}
 
-    async def quote(_ticker):
+    async def quote(_ticker, **_kwargs):
         calls["finnhub"] += 1
         raise UpstreamRateLimited("429")
 
@@ -421,10 +421,10 @@ def test_fmp_429_marks_only_fmp_down_finnhub_still_serves():
 
     provider = PublicPriceProvider.__new__(PublicPriceProvider)
 
-    async def fmp_quote(_ticker):
+    async def fmp_quote(_ticker, **_kwargs):
         raise UpstreamRateLimited("429")
 
-    async def finnhub_quote(_ticker):
+    async def finnhub_quote(_ticker, **_kwargs):
         return {"c": 210.5, "t": 1_758_220_800}
 
     provider.fmp = SimpleNamespace(configured=lambda: True, quote=fmp_quote)
@@ -448,7 +448,7 @@ def test_breaker_opens_after_streak_and_skips_next_run():
     redis_fake = _FakeRedis()
     calls = {"finnhub": 0}
 
-    async def quote(_ticker):
+    async def quote(_ticker, **_kwargs):
         calls["finnhub"] += 1
         raise UpstreamRateLimited("429")
 
@@ -476,3 +476,47 @@ def test_breaker_opens_after_streak_and_skips_next_run():
     assert calls["finnhub"] == before
     assert observations == {}
     assert "Finnhub:provider_unavailable" in errors[0]["reason"]
+
+
+def test_concurrent_429s_count_once_per_run_and_breaker_opens_after_3_runs():
+    """Carrera real: 8 tickers, semaforo de 6, proveedor lento que siempre
+    429. En UNA corrida la racha crece exactamente 1 (guard de transicion),
+    no 6/8; el breaker abre solo tras 3 corridas reales, no tras 3 respuestas."""
+    from app.services.connectors.base import UpstreamRateLimited
+    from app.services.market_refresh_service import _MARKETDATA_BREAKER_STREAK_LIMIT
+
+    redis_fake = _FakeRedis()
+    calls = {"finnhub": 0}
+
+    async def quote(_ticker, **_kwargs):
+        calls["finnhub"] += 1
+        await asyncio.sleep(0.015)  # solapa las 6 primeras en vuelo (raza real)
+        raise UpstreamRateLimited("429")
+
+    def fresh_provider():
+        provider = PublicPriceProvider.__new__(PublicPriceProvider)
+        provider.fmp = SimpleNamespace(configured=lambda: False)
+        provider.finnhub = SimpleNamespace(configured=lambda: True, quote=quote)
+        provider._provider_down = set()
+        provider._breaker_client = redis_fake
+        return provider
+
+    companies = [SimpleNamespace(ticker=f"T{i}") for i in range(8)]
+
+    # Corrida 1: varios 429 concurrentes, racha = 1, breaker CERRADO
+    asyncio.run(fresh_provider().fetch(companies, as_of=date(2026, 9, 26)))
+    assert redis_fake.store.get("marketdata_breaker:finnhub:429_streak") == 1
+    assert redis_fake.get("marketdata_breaker:finnhub:open") is None
+
+    # Corridas 2 y 3: la tercera abre el breaker
+    for _ in range(_MARKETDATA_BREAKER_STREAK_LIMIT - 1):
+        asyncio.run(fresh_provider().fetch(companies, as_of=date(2026, 9, 26)))
+    assert redis_fake.get("marketdata_breaker:finnhub:open") == "1"
+
+    # Corrida 4 con breaker abierto: ni una llamada
+    before = calls["finnhub"]
+    observations, errors = asyncio.run(fresh_provider().fetch(companies, as_of=date(2026, 9, 26)))
+    assert calls["finnhub"] == before
+    assert observations == {}
+    assert len(errors) == 8
+    assert all("Finnhub:provider_unavailable" in e["reason"] for e in errors)

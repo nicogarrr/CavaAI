@@ -31,26 +31,29 @@ class FMPClient:
     def configured(self) -> bool:
         return bool(self.settings.fmp_api_key)
 
-    async def _get(self, path: str, params: dict | None = None) -> list | dict:
+    async def _get(
+        self, path: str, params: dict | None = None, *, max_retries: int | None = None
+    ) -> list | dict:
         if not self.configured():
             raise RuntimeError("FMP no está configurado en este despliegue (FMP_API_KEY vacía)")
         merged = {**(params or {}), "apikey": self.settings.fmp_api_key}
         url = f"{self.base_url}{path}"
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await get_with_retry(lambda: client.get(url, params=merged))
+            retry_kwargs = {} if max_retries is None else {"max_retries": max_retries}
+            response = await get_with_retry(lambda: client.get(url, params=merged), **retry_kwargs)
             return response.json()
 
     async def company_profile(self, ticker: str) -> list | dict:
         return await self._get("/profile", {"symbol": ticker.upper()})
 
-    async def quote(self, ticker: str) -> list | dict:
+    async def quote(self, ticker: str, *, max_retries: int | None = None) -> list | dict:
         """Cotizacion puntual: price, volume y timestamp REAL de la quote.
 
         El profile no trae timestamp de cotizacion (sus campos de fecha son
         metadatos como ipoDate), asi que fechar precios con el escribia barras
         en dias sin mercado con el ultimo cierre conocido.
         """
-        return await self._get("/quote", {"symbol": ticker.upper()})
+        return await self._get("/quote", {"symbol": ticker.upper()}, max_retries=max_retries)
 
     async def dividends(self, ticker: str) -> list | dict:
         """Declared dividend records for a symbol (FMP stable/dividends).

@@ -29,17 +29,18 @@ class FinnhubClient:
     def configured(self) -> bool:
         return bool(self.settings.finnhub_api_key)
 
-    async def _get(self, path: str, params: dict[str, Any]) -> Any:
+    async def _get(self, path: str, params: dict[str, Any], *, max_retries: int | None = None) -> Any:
         if not self.configured():
             raise RuntimeError("FINNHUB_API_KEY is not configured")
         url = f"{self.base_url}{path}"
         query = {**params, "token": self.settings.finnhub_api_key}
+        retry_kwargs = {} if max_retries is None else {"max_retries": max_retries}
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await get_with_retry(lambda: client.get(url, params=query))
+            response = await get_with_retry(lambda: client.get(url, params=query), **retry_kwargs)
             return response.json()
 
-    async def quote(self, ticker: str) -> dict[str, Any]:
-        payload = await self._get("/quote", {"symbol": ticker.upper()})
+    async def quote(self, ticker: str, *, max_retries: int | None = None) -> dict[str, Any]:
+        payload = await self._get("/quote", {"symbol": ticker.upper()}, max_retries=max_retries)
         if not isinstance(payload, dict):
             raise RuntimeError("Finnhub returned an invalid quote")
         return payload
@@ -71,11 +72,7 @@ class FinnhubClient:
         per-share, valoracion. Devuelve el dict "metric" tal cual (sin
         normalizar); el caller decide que hechos deriva y como los etiqueta.
         """
-        payload = await self._get(
-            "/stock/metric", {"symbol": ticker.upper(), "metric": "all"}
-        )
-        if not isinstance(payload, dict) or not isinstance(
-            payload.get("metric"), dict
-        ):
+        payload = await self._get("/stock/metric", {"symbol": ticker.upper(), "metric": "all"})
+        if not isinstance(payload, dict) or not isinstance(payload.get("metric"), dict):
             raise RuntimeError("Finnhub returned invalid metrics")
         return payload["metric"]
