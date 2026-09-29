@@ -148,15 +148,22 @@ def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
         candle_ts = timestamps[last_idx] if last_idx < len(timestamps) else None
         candle_date = None
         if isinstance(candle_ts, (int, float)):
-            from datetime import datetime, timezone
+            from datetime import datetime
             from zoneinfo import ZoneInfo
 
+            # cd exige zona de mercado VALIDA: sin ella, una fecha UTC podria
+            # ser el dia equivocado cerca de medianoche local, y una fecha
+            # mal zonificada es peor que ninguna (fail closed: ct sigue
+            # viajando, cd queda None).
             tz_name = meta.get("exchangeTimezoneName")
-            try:
-                tz = ZoneInfo(tz_name) if tz_name else timezone.utc
-            except (KeyError, ValueError):
-                tz = timezone.utc
-            candle_date = datetime.fromtimestamp(candle_ts, tz).date().isoformat()
+            tz = None
+            if isinstance(tz_name, str) and tz_name:
+                try:
+                    tz = ZoneInfo(tz_name)
+                except (KeyError, ValueError):
+                    tz = None
+            if tz is not None:
+                candle_date = datetime.fromtimestamp(candle_ts, tz).date().isoformat()
         return {
             "c": last,
             "d": change,

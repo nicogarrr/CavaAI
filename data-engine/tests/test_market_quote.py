@@ -187,3 +187,18 @@ def test_fetch_yahoo_quote_timestamps_cortos_no_rompen():
     assert out["c"] == 102.5
     assert out["ct"] is None
     assert out["cd"] is None
+
+
+def test_fetch_yahoo_quote_cd_fail_closed_sin_zona_valida():
+    # 2026-09-29 23:30 UTC: en America/New_York seria 29, en Asia/Tokyo 30.
+    # Sin zona valida NO se publica fecha (ct si, cd None): mejor sin fecha
+    # que con la fecha del dia equivocado.
+    for tz in (None, "Zona/Inventada"):
+        payload = _payload_con_velas(closes=(200.0,), timestamps=(1790724600,), tz=tz)
+        result = payload["chart"]["result"][0]
+        if tz is None:
+            result["meta"].pop("exchangeTimezoneName", None)
+        out = market._fetch_yahoo_quote(_Client(resp=_Resp(200, payload)), "AAPL")
+        assert out["c"] == 200.0
+        assert out["ct"] == 1790724600
+        assert out["cd"] is None
