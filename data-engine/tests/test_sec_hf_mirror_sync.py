@@ -173,3 +173,42 @@ def test_sync_ua_placeholder_falla_cerrado(tmp_path, monkeypatch, fake_hf):
         monkeypatch.setenv("SEC_USER_AGENT", ua_malo)
         assert sync.main() == 2
     assert not fake_hf.uploads  # no llego a subir nada
+
+
+class _FakeSECClientBRK:
+    """EDGAR nombra Berkshire BRK-B; la lista local usa BRK.B. El alias del
+    sync resuelve el CIK y el manifest conserva la identidad local."""
+
+    def __init__(self, *a, **k):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def get(self, url):
+        if url.endswith("company_tickers.json"):
+            return _Resp({"0": {"cik_str": 1067983, "ticker": "BRK-B", "title": "Berkshire Hathaway"}})
+        if "companyfacts" in url:
+            return _Resp({"cik": 1067983, "facts": {"us-gaap": {}}})
+        if "submissions" in url:
+            return _Resp({"filings": {
+                "recent": {"accessionNumber": ["A1"], "form": ["10-K"], "reportDate": ["2025-12-31"]},
+                "files": [],
+            }})
+        raise AssertionError(f"URL inesperada: {url}")
+
+
+def test_sync_alias_brk_punto_resuelve_cik_de_brk_guion(tmp_path, monkeypatch, fake_hf):
+    _tickers_file(tmp_path, monkeypatch, text="BRK.B\n")
+    monkeypatch.setattr(sync.httpx, "Client", _FakeSECClientBRK)
+    monkeypatch.setenv("HF_TOKEN", "t")
+    monkeypatch.setenv("HF_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_USER_AGENT", "CavaAI research nicoiglesiasgarcia10@gmail.com")
+    assert sync.main() == 0
+    manifest = json.loads(fake_hf.uploads["manifest.json"])
+    # identidad local conservada; CIK de BRK-B
+    assert manifest["tickers"] == {"BRK.B": "0001067983"}
+    assert "companyfacts/CIK0001067983.json" in fake_hf.uploads
