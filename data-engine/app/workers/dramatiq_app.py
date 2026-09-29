@@ -208,14 +208,28 @@ def _coalesce_on_success(job: str, window_seconds, key_parts: tuple[str, ...] = 
 
     La cadencia del scheduler re-encola cada job aunque el anterior siga en
     cola (p.ej. 125 refresh_rss_feeds = 31 h de cadencia de 15 min): ejecutar
-    uno deja obsoletos los demas. Si este job devolvio "ok" dentro de su
-    ventana, las ejecuciones extra devuelven skipped sin tocar nada. La marca
-    se pone SOLO tras un exito: un fallo (status error/partial) nunca
-    suprime reintentos, y un Redis caido es fail-open (ejecuta siempre).
+    uno deja obsoletos los demas. Semaforo por clave con DOS estados en la
+    misma key de Redis:
+
+    - CLAIM al inicio (SET NX EX ventana, atomico): si otro hilo/proceso ya
+      lo tiene, la ejecucion devuelve skipped sin trabajar. Dos copias
+      encoladas del mismo job no entran a la vez aunque no haya marca de
+      exito previa.
+    - MARCA FRESCA al terminar con status "ok": la key se sobrescribe con la
+      ventana completa y las ejecuciones encoladas de mas se saltan.
+
+    Manejo de fallo: si el job devuelve error/partial o lanza, el claim se
+    LIBERA (solo si seguimos siendo el dueno del token), asi un reintento o
+    el siguiente tick del scheduler vuelven a correr el trabajo. Redis
+    caido es fail-open (ejecuta siempre). Limite operativo declarado: si un
+    job dura mas que su ventana (p.ej. universo > 5 h), el claim expira y
+    una copia encolada puede entrar en paralelo; las ventanas estan por
+    encima de las duraciones medidas.
     window_seconds puede ser callable(**kwargs_del_actor) -> int.
     """
     import functools
     import inspect
+    import uuid
 
     def decorator(fn):
         sig = inspect.signature(fn)
@@ -229,28 +243,45 @@ def _coalesce_on_success(job: str, window_seconds, key_parts: tuple[str, ...] = 
                 window_seconds(**values) if callable(window_seconds) else window_seconds
             )
             key = "coalesce:" + ":".join((job, *parts))
+            token = uuid.uuid4().hex
             try:
                 client = _redis_client()
-                fresh = bool(client and client.get(key))
+                claimed = True
+                if client is not None:
+                    claimed = bool(client.set(key, token, nx=True, ex=max(window, 1)))
             except Exception:  # noqa: BLE001 - sonda best-effort, fail-open
-                client, fresh = None, False
-            if fresh:
+                client, claimed = None, True
+            if client is not None and not claimed:
                 return {
                     "status": "skipped",
                     "actor": job,
-                    "reason": "fresh_within_window",
+                    "reason": "fresh_or_running",
                     "window_seconds": window,
                 }
-            result = fn(*args, **kwargs)
-            if (
-                client is not None
-                and isinstance(result, dict)
-                and result.get("status") == "ok"
-            ):
+
+            def _release() -> None:
+                if client is None:
+                    return
                 try:
-                    client.set(key, "1", ex=max(window, 1))
-                except Exception:  # noqa: BLE001 - perder la marca solo repite trabajo
+                    current = client.get(key)
+                    if current is not None and current.decode() == token:
+                        client.delete(key)
+                except Exception:  # noqa: BLE001 - expira por TTL solo
                     pass
+
+            try:
+                result = fn(*args, **kwargs)
+            except BaseException:
+                _release()  # el reintento de dramatiq debe poder reclamar
+                raise
+            if client is not None:
+                if isinstance(result, dict) and result.get("status") == "ok":
+                    try:
+                        client.set(key, "done", ex=max(window, 1))
+                    except Exception:  # noqa: BLE001 - perder la marca solo repite trabajo
+                        pass
+                else:
+                    _release()
             return result
 
         return wrapper
