@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 from typing import Literal
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ from app.core.database import get_db
 from app.models import Claim, ClaimEvidence, ThesisDiff, ThesisSection, ThesisVersion
 from app.schemas import ThesisGenerateRequest, ThesisGraphOut, ThesisOut
 from app.services.company_resolver import resolve_company
+from app.services.driver_assumption_service import DriverAssumptionService, driver_assumption_payload
 from app.services.provenance import Coverage, SourceKind, provenance
 from app.services.thesis_approval_service import (
     DECISION_APPROVE,
@@ -68,6 +70,51 @@ def generate_thesis(payload: ThesisGenerateRequest, db: Session = Depends(get_db
     out["inputs_provenance"] = latest_inputs_provenance(db, thesis.company_id)
     return out
 
+
+
+class ThesisHumanInput(BaseModel):
+    """Explicit human assumptions, never promoted to sourced financial facts."""
+
+    driver_key: str = Field(min_length=1, max_length=160)
+    fiscal_year: int = Field(ge=1900, le=2200)
+    scenario: Literal["bear", "base", "bull"] = "base"
+    value: Decimal = Field(allow_inf_nan=False)
+    source: str = Field(min_length=1, max_length=240)
+    confidence: Decimal = Field(default=Decimal("1"), ge=0, le=1)
+    rationale: str = Field(min_length=1, max_length=5000)
+
+
+class ThesisInputsRequest(BaseModel):
+    inputs: list[ThesisHumanInput] = Field(min_length=1, max_length=30)
+
+
+@router.post("/{ticker}/inputs", status_code=201)
+def submit_thesis_inputs(
+    ticker: str, payload: ThesisInputsRequest, db: Session = Depends(get_db)
+) -> dict:
+    company = resolve_company(db, ticker)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if db.info.get("tenant_id") is None:
+        raise HTTPException(status_code=403, detail="Tenant context required")
+    rows = []
+    # A bad later input must not leave earlier assumptions committed.
+    try:
+        with db.begin_nested():
+            for item in payload.inputs:
+                version = DriverAssumptionService().create(
+                    db, company, **item.model_dump(), user_override=True, commit=False
+                )
+                rows.append(driver_assumption_payload(version, driver_key=item.driver_key))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="Unknown driver; build the company model first") from exc
+    db.commit()
+    return {
+        "ticker": company.ticker,
+        "inputs": rows,
+        "provenance_label": "supuesto",
+        "requires_regeneration": True,
+    }
 
 def _epub_citations(db: Session, claims: list[Claim]) -> list[str]:
     """Citas del EPUB con provenance real (source_id + locator).
