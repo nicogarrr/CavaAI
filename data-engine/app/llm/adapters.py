@@ -57,6 +57,8 @@ class OpenAICompatibleProvider(LLMProvider):
         extra_headers: Mapping[str, str] | None = None,
         model_overrides: Mapping[str, str] | None = None,
         fallback_model: str | None = None,
+        reasoning_effort: str | None = None,
+        reasoning_effort_models: frozenset[str] | set[str] | None = None,
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 30.0,
         max_retries: int = 2,
@@ -77,6 +79,19 @@ class OpenAICompatibleProvider(LLMProvider):
         # reintenta una vez con este modelo (p.ej. el primario deja de
         # existir en el catalogo del proveedor). None = sin fallback.
         self._fallback_model = (fallback_model or "").strip() or None
+        # Nivel de razonamiento (sobre OpenAI-compatible: campo
+        # `reasoning_effort`). Solo se envia a los modelos de
+        # reasoning_effort_models (None = a todos); un modelo que no
+        # admita el nivel configurado (p.ej. el fallback con effort=max)
+        # no debe recibirlo.
+        self._reasoning_effort = (reasoning_effort or "").strip() or None
+        self._reasoning_effort_models = (
+            frozenset(
+                model.strip() for model in reasoning_effort_models if model.strip()
+            )
+            if reasoning_effort_models is not None
+            else None
+        )
         super().__init__(
             model_router=TaskModelRouter(default_model, model_overrides or {}, provider_name),
             client=client,
@@ -163,6 +178,11 @@ class OpenAICompatibleProvider(LLMProvider):
                 for message in request.messages
             ],
         }
+        if self._reasoning_effort and (
+            self._reasoning_effort_models is None
+            or model in self._reasoning_effort_models
+        ):
+            payload["reasoning_effort"] = self._reasoning_effort
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.max_tokens is not None:

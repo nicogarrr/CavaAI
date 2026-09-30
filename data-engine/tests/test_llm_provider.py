@@ -287,6 +287,108 @@ def test_fallback_model_recovers_when_primary_model_fails():
     assert calls == ["space-bunny-free", "muse-spark-1.3-contributor-free"]
 
 
+def _ok_response(model: str) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "id": "opencode-request",
+            "model": model,
+            "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+            "usage": {
+                "prompt_tokens": 1,
+                "completion_tokens": 1,
+                "total_tokens": 2,
+            },
+        },
+    )
+
+
+def test_reasoning_effort_goes_to_allowlisted_model_only():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        seen.append(payload)
+        if payload["model"] == "space-bunny-free":
+            return httpx.Response(500, json={"error": "boom"})
+        return _ok_response(payload["model"])
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = create_llm_provider(
+                Settings(
+                    _env_file=None,
+                    opencode_go_api_key="test-secret",
+                    opencode_go_base_url="https://opencode.test/zen/go/v1",
+                ),
+                client=client,
+            )
+            return await provider.complete(
+                LLMRequest(messages=[Message("user", "Extract")], task="chat")
+            )
+
+    assert run(scenario()).text == "ok"
+    assert seen[0]["model"] == "space-bunny-free"
+    assert seen[0]["reasoning_effort"] == "max"
+    # El fallback (muse-spark) no esta en la lista por defecto: su
+    # catalogo no admite max y no debe recibir el parametro.
+    assert seen[-1]["model"] == "muse-spark-1.3-contributor-free"
+    assert "reasoning_effort" not in seen[-1]
+
+
+def test_reasoning_effort_is_omitted_when_disabled():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return _ok_response("space-bunny-free")
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = create_llm_provider(
+                Settings(
+                    _env_file=None,
+                    opencode_go_api_key="test-secret",
+                    opencode_go_base_url="https://opencode.test/zen/go/v1",
+                    opencode_go_reasoning_effort="",
+                ),
+                client=client,
+            )
+            return await provider.complete(
+                LLMRequest(messages=[Message("user", "Extract")], task="chat")
+            )
+
+    assert run(scenario()).text == "ok"
+    assert "reasoning_effort" not in seen[0]
+
+
+def test_reasoning_effort_models_list_is_configurable():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return _ok_response(seen[-1]["model"])
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = create_llm_provider(
+                Settings(
+                    _env_file=None,
+                    opencode_go_api_key="test-secret",
+                    opencode_go_base_url="https://opencode.test/zen/go/v1",
+                    opencode_go_reasoning_effort="high",
+                    opencode_go_reasoning_effort_models="otro-modelo, space-bunny-free ",
+                ),
+                client=client,
+            )
+            return await provider.complete(
+                LLMRequest(messages=[Message("user", "Extract")], task="chat")
+            )
+
+    assert run(scenario()).text == "ok"
+    assert seen[0]["reasoning_effort"] == "high"
+
+
 def test_fallback_is_skipped_when_it_matches_the_resolved_model():
     calls: list[str] = []
 

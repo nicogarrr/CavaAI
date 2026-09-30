@@ -224,6 +224,18 @@ class Settings(BaseSettings):
     # (sin ella: MissingSessionID). ID estable por despliegue, mejora el
     # enrutado/cacheo del proveedor. Env: OPENCODE_GO_SESSION.
     opencode_go_session: str = "cavaai-prod"
+    # Nivel de razonamiento para los modelos de OpenCode Go que lo soportan.
+    # space-bunny-free acepta effort low|medium|high|xhigh|max (catalogo
+    # models.dev, verificado 2026-09-30); se envia como `reasoning_effort`
+    # en el sobre OpenAI-compatible de Zen. Cadena vacia = no enviar el
+    # parametro. Env: OPENCODE_GO_REASONING_EFFORT.
+    opencode_go_reasoning_effort: str | None = "max"
+    # Modelos a los que se aplica reasoning_effort (lista separada por
+    # comas). El fallback muse-spark-1.3-contributor-free SI es modelo de
+    # razonamiento, pero su catalogo llega solo hasta xhigh (sin max):
+    # la lista por defecto lo excluye para que el respaldo nunca reciba
+    # un nivel que rechazaria. Env: OPENCODE_GO_REASONING_EFFORT_MODELS.
+    opencode_go_reasoning_effort_models: str = "space-bunny-free"
 
     # TypeSafe Jev (capa de micro-decisiones, SystemOne API). Env: TYPESAFE_API_KEY.
     # Factura por uso ($0.042/MTok in); sin key el cliente no se construye.
