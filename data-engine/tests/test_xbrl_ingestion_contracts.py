@@ -445,3 +445,32 @@ def test_vendor_profile_data_outranks_nothing_regulatory_but_loses_to_financials
 def test_unlisted_sources_are_lowest_priority():
     assert SOURCE_PRIORITY.get("manual", 50) > SOURCE_PRIORITY["FMP"]
     assert SOURCE_PRIORITY.get("", 50) > SOURCE_PRIORITY["FMP"]
+
+
+def test_total_debt_prefers_widest_scope_over_newer_narrower_tag():
+    """F408: a later LongTermDebt filing must not replace the combined total."""
+    us_gaap = _us_gaap(
+        DebtLongtermAndShorttermCombinedAmount=[_annual("2024-12-31", "900", "2025-02-01")],
+        LongTermDebt=[_annual("2024-12-31", "700", "2025-03-01")],
+    )
+    concepts = ["DebtLongtermAndShorttermCombinedAmount", "LongTermDebt", "LongTermDebtNoncurrent"]
+    merged = _merge_for_metric(
+        _collect_by_concept(
+            us_gaap, concepts, "USD",
+            forms={"10-K", "20-F"}, periods={"FY"}, min_span=None, max_span=None,
+        ),
+        "total_debt",
+    )
+    assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(900.0)
+
+
+def test_total_debt_falls_back_to_narrower_tag_when_combined_is_absent():
+    us_gaap = _us_gaap(LongTermDebt=[_annual("2024-12-31", "700", "2025-03-01")])
+    merged = _merge_for_metric(
+        _collect_by_concept(
+            us_gaap, ["DebtLongtermAndShorttermCombinedAmount", "LongTermDebt"], "USD",
+            forms={"10-K", "20-F"}, periods={"FY"}, min_span=None, max_span=None,
+        ),
+        "total_debt",
+    )
+    assert _decimal(merged["2024-12-31"]["val"]) == pytest.approx(700.0)
