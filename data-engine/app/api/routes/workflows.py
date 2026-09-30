@@ -114,9 +114,13 @@ async def run_workflow(
         ticker = payload.ticker.upper()
         if not db.scalar(select(Company).where(Company.ticker == ticker)):
             raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
+        tenant_id = db.info.get("tenant_id")
+        if tenant_id is None:
+            raise HTTPException(status_code=403, detail="Tenant context required")
         result = ThesisGraphApprovalService().start(
             db,
             ticker=ticker,
+            tenant_external_id=str(tenant_id),
             idempotency_key=key,
         )
         run_id = db.scalar(
@@ -371,9 +375,13 @@ def decide_workflow(
             status_code=422,
             detail=f"decision must be one of {sorted(DECISIONS)}",
         )
+    tenant_id = db.info.get("tenant_id")
+    if tenant_id is None:
+        raise HTTPException(status_code=403, detail="Tenant context required")
     result = ThesisGraphApprovalService().decide(
         db,
         thread_id=payload.thread_id,
+        tenant_external_id=str(tenant_id),
         decision=payload.decision,
         notes=payload.notes,
         actor="api",
