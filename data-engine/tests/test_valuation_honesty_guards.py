@@ -128,3 +128,25 @@ def test_reverse_dcf_solves_with_net_debt_present():
     )
     assert result["status"] == "ok"
     assert "required_revenue_growth" in result
+
+
+def test_dcf_skipped_when_terminal_fcf_not_positive():
+    payload = LongTermModelService()._scenario_payload(
+        name="bear",
+        spec=_spec(wacc=0.09, terminal=0.02),
+        forecast=[_forecast_point(2026, 1000, -100)],
+        assumptions=ASSUMPTIONS,
+        fact_cache=FACT_CACHE,
+        latest_year=2025,
+    )
+    assert payload["valuation"] is None
+    assert "terminal free cash flow is not positive" in payload["valuation_note"]
+
+
+def test_bear_margin_keeps_sign_and_is_below_base_for_negative_margin():
+    service = LongTermModelService()
+    assumptions = dict(ASSUMPTIONS, fcf_margin=_assumption(-0.10))
+    fake = type("F", (), {"key": "x", "revenue_drivers": ["a", "b", "c"]})()
+    specs = dict(service._scenario_specs(assumptions, framework=fake, missing_mandatory_drivers=[]))
+    assert specs["bear"]["fcf_margin"] < specs["base"]["fcf_margin"] < specs["bull"]["fcf_margin"]
+    assert specs["bear"]["fcf_margin"] < 0
