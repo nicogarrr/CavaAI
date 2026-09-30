@@ -992,7 +992,7 @@ class PortfolioIntelligenceService:
                 select(FinancialFact)
                 .where(
                     FinancialFact.company_id.in_(company_ids),
-                    FinancialFact.metric.in_(["eps", "shares_diluted"]),
+                    FinancialFact.metric.in_(["eps_diluted", "eps", "shares_diluted"]),
                 )
                 .order_by(FinancialFact.company_id, FinancialFact.fiscal_year)
             ).all():
@@ -1028,7 +1028,8 @@ class PortfolioIntelligenceService:
                 else None
             )
             by_metric = all_facts.get(company.id, {})
-            fundamental_growth = self._series_change(by_metric.get("eps", []))
+            # eps_diluted is the ingested key; eps is a legacy alias (F376).
+            fundamental_growth = self._series_change(by_metric.get("eps_diluted") or by_metric.get("eps", []))
             share_change = self._series_change(by_metric.get("shares_diluted", []))
             dilution = max(share_change or 0, 0)
             buybacks = max(-(share_change or 0), 0)
