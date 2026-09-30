@@ -237,7 +237,13 @@ class BankValuationEngine(ValuationEngine):
         specs = {
             "bear": (roe.value - 0.03, cost_equity.value + 0.015, growth_value - 0.01),
             "base": (roe.value, cost_equity.value, growth_value),
-            "bull": (roe.value + 0.025, max(cost_equity.value - 0.01, growth_value + 0.005), growth_value + 0.005),
+            "bull": (roe.value + 0.025, cost_equity.value - 0.01, growth_value + 0.005),
+        }
+        # Every scenario needs cost of equity strictly above its own growth;
+        # the bull growth bump alone used to make them equal (division by zero).
+        specs = {
+            name: (scenario_roe, max(scenario_cost, scenario_growth + 0.005), scenario_growth)
+            for name, (scenario_roe, scenario_cost, scenario_growth) in specs.items()
         }
         values = {
             name: book_per_share * max(0.25, min(3.0, (scenario_roe - scenario_growth) / (scenario_cost - scenario_growth)))
