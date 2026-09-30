@@ -1026,7 +1026,7 @@ class LongTermModelService:
         }
         framework_drivers = list(framework.revenue_drivers[:3])
         return [
-            ("bear", {"probability": bear_probability, "probability_basis": probability_basis, "growth": max(growth - growth_spread, -0.25), "fcf_margin": max(margin - margin_spread, 0.0), "wacc": wacc + 0.02, "terminal_growth": max(terminal - 0.005, 0.0), "drivers": framework_drivers + ["execution_downside", "margin_compression", "higher_cost_of_capital"]}),
+            ("bear", {"probability": bear_probability, "probability_basis": probability_basis, "growth": max(growth - growth_spread, -0.25), "fcf_margin": margin - margin_spread, "wacc": wacc + 0.02, "terminal_growth": max(terminal - 0.005, 0.0), "drivers": framework_drivers + ["execution_downside", "margin_compression", "higher_cost_of_capital"]}),
             ("base", {"probability": base_probability, "probability_basis": probability_basis, "growth": growth, "fcf_margin": margin, "wacc": wacc, "terminal_growth": terminal, "drivers": framework_drivers + ["historical_revenue_cagr", "normalized_fcf_margin"]}),
             ("bull", {"probability": bull_probability, "probability_basis": probability_basis, "growth": min(growth + growth_spread, 0.50), "fcf_margin": min(margin + margin_spread, 0.60), "wacc": max(wacc - 0.01, terminal + 0.01), "terminal_growth": terminal, "drivers": framework_drivers + ["execution_upside", "margin_expansion", "lower_cost_of_capital"]}),
         ]
@@ -1373,6 +1373,14 @@ class LongTermModelService:
                 valuation_note = (
                     "DCF skipped: WACC must exceed terminal growth "
                     f"(wacc={spec['wacc']}, terminal_growth={spec['terminal_growth']})."
+                )
+            elif forecast[-1]["free_cash_flow"] <= 0:
+                # A perpetuity on non-positive terminal FCFF is not a valuation;
+                # never present it (or a floored 0% margin) as one.
+                valuation_note = (
+                    "DCF skipped: terminal free cash flow is not positive "
+                    f"(fcf_margin={spec['fcf_margin']}); a profitability "
+                    "transition must be modelled explicitly."
                 )
             else:
                 pv_explicit = sum(
