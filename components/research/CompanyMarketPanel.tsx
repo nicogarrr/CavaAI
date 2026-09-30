@@ -15,16 +15,11 @@ const CompanyMarketChart = dynamic(() => import('./CompanyMarketChart'), {
     ),
 });
 
-// Intl solo acepta códigos ISO 4217; un valor raro del backend no debe
-// romper el panel (fallback USD, la moneda mayoritaria del universo).
-function safeCurrency(currency: string | null): string {
-    return currency && /^[A-Z]{3}$/.test(currency) ? currency : 'USD';
-}
-
+// Sin divisa ISO 4217 válida el número se muestra sin símbolo: nunca se asume
+// USD (mismo criterio que CompanyHeaderQuote).
 function money(value: number | null, currency: string | null) {
-    return value == null
-        ? NA
-        : formatMoney(value, safeCurrency(currency));
+    if (value == null) return NA;
+    return isValidCurrencyCode(currency) ? formatMoney(value, currency) : formatNumber(value);
 }
 
 export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapshot }) {
