@@ -29,6 +29,7 @@ from app.services.number_format import format_compact_es
 from app.services.source_auditor import SourceAuditor
 from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_narrative_llm import maybe_narrative, maybe_narrative_sections
+from app.services.thesis_provenance import build_inputs_provenance, inputs_provenance_from_snapshot
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import MODEL_VERSION
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
@@ -63,6 +64,20 @@ def latest_missing_inputs(db: Session, company_id: int) -> list[str] | None:
             + (snapshot.get("missing_mandatory_drivers") or [])
         )
     )
+
+
+def latest_inputs_provenance(db: Session, company_id: int) -> list[dict] | None:
+    """Inputs etiquetados (dato/derivado/estimacion_llm/supuesto) del modelo
+    fundamental persistido mas reciente. None si no hay modelo persistido."""
+    model = db.scalar(
+        select(FundamentalModelVersion)
+        .where(FundamentalModelVersion.company_id == company_id)
+        .order_by(desc(FundamentalModelVersion.version))
+        .limit(1)
+    )
+    if model is None:
+        return None
+    return inputs_provenance_from_snapshot(model.model_snapshot or {})
 
 # Etiquetas es-ES de las métricas que alimentan claims visibles. El fallback
 # humaniza el código (guiones bajos a espacios) sin exponerlo tal cual.
@@ -1049,6 +1064,29 @@ class ThesisService:
             return f"{len(block.get('items') or [])} tesis pegadas"
         return str(block.get("source") or "ok")
 
+    @staticmethod
+    def _provenance_markdown(items: list[dict]) -> str:
+        if not items:
+            return "Sin inputs etiquetables: el modelo no tiene aun datos con procedencia."
+        lines = [
+            "Cada input del modelo lleva su etiqueta: **dato** (linea reportada "
+            "con cita), **derivado** (formula documentada + inputs), "
+            "**estimacion_llm** (metodo + confianza) o **supuesto** (rationale).",
+            "",
+            "| input | etiqueta | valor | metodo | cita |",
+            "|---|---|---|---|---|",
+        ]
+        for item in items:
+            value = item.get("value")
+            value_txt = "n/a" if value is None else f"{float(value):.4g}"
+            facts = item.get("source_fact_ids") or []
+            citation = f"facts: {', '.join(str(f) for f in facts)}" if facts else "-"
+            method = (item.get("method") or "-").replace("|", "/")
+            lines.append(
+                f"| {item.get('key')} | {item.get('label')} | {value_txt} | {method} | {citation} |"
+            )
+        return "\n".join(lines)
+
     # Human-in-the-loop (spec 2026-09-30): la tesis sale SIEMPRE con lo que
     # hay; lo que falta se declara pendiente y se pide, nunca se inventa.
     _PENDING_INPUT_HINTS = {
@@ -1164,6 +1202,9 @@ class ThesisService:
             else "Probabilities: pendiente (el modelo no las ha persistido)."
         )
         pendings_section = self._pendings_markdown(valuation, long_term_model, sources)
+        provenance_section = self._provenance_markdown(
+            build_inputs_provenance(long_term_model)
+        )
         catalysts_lines = "\n".join(
             f"- {item.get('label')}: {item.get('date')}"
             + (f" {item.get('time')}" if item.get('time') else "")
@@ -1249,5 +1290,8 @@ Unsupported claims: {audit["unsupported_claims"]}
 
 ## 21. Datos Pendientes
 {pendings_section}
+
+## 22. Procedencia de los Inputs
+{provenance_section}
 Fingerprint: evidence-set hash drives versioning.
 """

@@ -303,6 +303,9 @@ class ThesisOut(BaseModel):
     # tesis. None = sin informacion (empresa sin modelo fundamental
     # persistido); lista vacia = sin pendientes conocidos.
     missing_inputs: list[str] | None = None
+    # Procedencia de cada input del modelo: key + label
+    # (dato/derivado/estimacion_llm/supuesto) + metodo + cita + confianza.
+    inputs_provenance: list[dict] | None = None
     # Null en versiones anteriores a la capa narrativa o sin seleccion valida.
     narrative_sections: list[NarrativeSectionOut] | None = None
     stale: bool = False
