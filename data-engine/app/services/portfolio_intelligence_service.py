@@ -992,7 +992,7 @@ class PortfolioIntelligenceService:
                 select(FinancialFact)
                 .where(
                     FinancialFact.company_id.in_(company_ids),
-                    FinancialFact.metric.in_(["eps", "shares_diluted"]),
+                    FinancialFact.metric.in_(["eps_diluted", "eps", "shares_diluted"]),
                 )
                 .order_by(FinancialFact.company_id, FinancialFact.fiscal_year)
             ).all():
@@ -1028,7 +1028,8 @@ class PortfolioIntelligenceService:
                 else None
             )
             by_metric = all_facts.get(company.id, {})
-            fundamental_growth = self._series_change(by_metric.get("eps", []))
+            # eps_diluted is the ingested key; eps is a legacy alias (F376).
+            fundamental_growth = self._series_change(by_metric.get("eps_diluted") or by_metric.get("eps", []))
             share_change = self._series_change(by_metric.get("shares_diluted", []))
             dilution = max(share_change or 0, 0)
             buybacks = max(-(share_change or 0), 0)
@@ -1101,7 +1102,14 @@ class PortfolioIntelligenceService:
 
     @staticmethod
     def _series_change(series: list[FinancialFact]) -> float | None:
-        annual = [row for row in series if row.fiscal_year is not None]
+        # Homogeneous annual series only (F376 audit): quarterly rows (Q1-Q4)
+        # must not be compared with full-year values; one value per fiscal year.
+        by_year: dict[int, FinancialFact] = {}
+        for row in sorted(series, key=lambda r: (r.fiscal_year if r.fiscal_year is not None else 0)):
+            if row.fiscal_year is None or (row.fiscal_quarter or "").upper().startswith("Q"):
+                continue
+            by_year.setdefault(row.fiscal_year, row)
+        annual = [by_year[y] for y in sorted(by_year)]
         if len(annual) < 2 or not annual[0].value:
             return None
         return float(annual[-1].value / annual[0].value - 1)
