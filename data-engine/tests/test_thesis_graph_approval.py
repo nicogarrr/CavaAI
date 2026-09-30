@@ -113,3 +113,28 @@ def test_decide_unknown_thread(db, service):
 def test_decide_rejects_invalid_decision(db, service):
     with pytest.raises(ValueError):
         service.decide(db, thread_id="thesis:none:0:fp", decision="maybe")
+
+
+def test_same_ticker_different_tenants_get_separate_threads(db, service):
+    _company(db)
+    a = service.start(db, ticker="AAPL", tenant_external_id="1")
+    b = service.start(db, ticker="AAPL", tenant_external_id="2")
+    assert a["thread_id"] != b["thread_id"]
+    assert a["thread_id"].startswith("thesis:1:")
+    assert b["thread_id"].startswith("thesis:2:")
+
+
+def test_decide_rejects_thread_of_another_tenant(db, service):
+    _company(db)
+    a = service.start(db, ticker="AAPL", tenant_external_id="1")
+    crossed = service.decide(
+        db, thread_id=a["thread_id"], decision="approve", tenant_external_id="2"
+    )
+    assert crossed["status"] == "unknown_thread"
+    # Tenant 1's approval state is untouched and still pending.
+    again = service.start(db, ticker="AAPL", tenant_external_id="1")
+    assert again["status"] == "awaiting_approval"
+    own = service.decide(
+        db, thread_id=a["thread_id"], decision="request_changes", tenant_external_id="1"
+    )
+    assert own["status"] == "changes_requested"
