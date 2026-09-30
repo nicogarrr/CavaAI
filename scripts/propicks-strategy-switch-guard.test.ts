@@ -16,6 +16,13 @@ describe('cambio de estrategia ProPicks (F383)', () => {
         assert.doesNotMatch(tabs, /currentPicks=\{initialPicks\}/);
         assert.match(tabs, /currentPicks=\{strategyPicks \?\? \[\]\}/);
     });
+    it('la estrategia inicial tampoco reutiliza initialPicks', () => {
+        assert.doesNotMatch(tabs, /\[initialStrategyId\]: initialPicks/);
+        assert.match(tabs, /useState<Record<string, ProPick\[\]>>\(\{\}\)/);
+    });
+    it('el snapshot anterior se descarta al cambiar de estrategia (key)', () => {
+        assert.match(tabs, /<MonthlyRebalanceView\s+key=\{currentStrategy\}/);
+    });
     it('el export se bloquea mientras los picks no estén listos', () => {
         assert.match(view, /disabled=\{picksStatus !== 'ready'\}/);
         assert.match(view, /if \(picksStatus !== 'ready'\) return;/);

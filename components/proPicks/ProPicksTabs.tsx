@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BarChart3, Loader2, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -32,12 +32,10 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
     // que se abre la pestaña de Backtesting (o con «Ejecutar backtest»).
     // Antes costaba una corrida completa a quien solo quería ver los Picks.
     const [backtestStarted, setBacktestStarted] = useState(false);
-    // F383: los picks iniciales pertenecen a la estrategia inicial; las demás
-    // cargan los suyos. Nunca se muestran ni exportan picks de otra estrategia.
-    const initialStrategyId = useRef(currentStrategy).current;
-    const [picksByStrategy, setPicksByStrategy] = useState<Record<string, ProPick[]>>({
-        [initialStrategyId]: initialPicks,
-    });
+    // F383: los picks iniciales (ranking global del embudo) NO se asocian a
+    // ninguna estrategia; cada estrategia, también la inicial, carga los suyos
+    // por la ruta strategy-aware. Nunca se exportan picks de otra estrategia.
+    const [picksByStrategy, setPicksByStrategy] = useState<Record<string, ProPick[]>>({});
     const [strategyPicksError, setStrategyPicksError] = useState<string | null>(null);
 
     const availableIds = new Set(strategies.map((s) => s.id));
@@ -148,6 +146,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
                 )}
 
                 <MonthlyRebalanceView
+                    key={currentStrategy}
                     currentPicks={strategyPicks ?? []}
                     picksStatus={strategyPicks !== undefined ? 'ready' : strategyPicksError ? 'error' : 'loading'}
                     picksError={strategyPicksError}
