@@ -535,7 +535,7 @@ def test_ibkr_xml_import_endpoint_ingests_positions_cash_and_trades():
     xml = """
     <FlexQueryResponse>
       <OpenPositions>
-        <OpenPosition symbol="AAPL" position="2" markPrice="200" positionValue="400" costBasisPrice="150" currency="USD" fifoPnlUnrealized="100" />
+        <OpenPosition symbol="AAPL" position="2" markPrice="200" positionValue="400" costBasisPrice="150" currency="USD" reportDate="2026-01-02" fifoPnlUnrealized="100" />
       </OpenPositions>
       <CashReports>
         <CashReport currency="USD" endingCash="1234.56" settledCash="1200" />
