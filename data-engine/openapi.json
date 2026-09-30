@@ -6362,6 +6362,20 @@
             ],
             "title": "Margin Of Safety"
           },
+          "missing_inputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Inputs"
+          },
           "narrative_sections": {
             "anyOf": [
               {
