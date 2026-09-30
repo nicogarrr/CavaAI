@@ -233,6 +233,7 @@ class LongTermModelService:
             | market_metrics
             | driver_metrics
             | {
+                "depreciation_amortization",
                 "depreciation_and_amortization",
                 "maintenance_capex",
                 "change_in_working_capital",
@@ -1625,7 +1626,11 @@ class LongTermModelService:
 
     def _owner_earnings(self, fact_cache: dict[str, list[FinancialFact]], year: int | None) -> dict[str, Any]:
         net_income = self._fact_for_year(fact_cache["net_income"], year)
-        dna = self._fact_for_year(fact_cache["depreciation_and_amortization"], year)
+        # Ingestion writes the canonical key depreciation_amortization; the legacy
+        # depreciation_and_amortization key is only a fallback (F410).
+        dna = self._fact_for_year(fact_cache["depreciation_amortization"], year) or self._fact_for_year(
+            fact_cache["depreciation_and_amortization"], year
+        )
         maintenance = self._fact_for_year(fact_cache["maintenance_capex"], year)
         wc = self._fact_for_year(fact_cache["normalized_change_in_working_capital"], year) or self._fact_for_year(fact_cache["change_in_working_capital"], year)
         missing = [label for label, fact in (("net_income", net_income), ("depreciation_and_amortization", dna), ("maintenance_capex", maintenance), ("normalized_working_capital", wc)) if fact is None]
