@@ -73,7 +73,7 @@ import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
 import ThesisMemo from '@/components/research/ThesisMemo';
-import { adrRatioFromTrace, scenarioBasisLabel, toListedShareValue } from '@/lib/research/listed-share-values';
+import { valuationScenarioDisplay } from '@/lib/research/listed-share-values';
 import ThesisExportButtons from '@/components/research/ThesisExportButtons';
 import ThesisApproveButton from '@/components/research/ThesisApproveButton';
 import CitationsList from '@/components/chat/CitationsList';
@@ -430,8 +430,16 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
   // F348: el precio del modelo es un snapshot persistido; el precio canónico
   // (en vivo) es el de la cabecera. El del modelo se rotula con su fecha,
   // nunca como precio actual.
-  const adrRatio = adrRatioFromTrace(valuation.trace);
-  const basisLabel = scenarioBasisLabel(adrRatio);
+  const scenarios = valuationScenarioDisplay(
+    {
+      bear: valuation.bear_value,
+      base: valuation.base_value,
+      bull: valuation.bull_value,
+      expected: valuation.expected_value,
+    },
+    valuation,
+  );
+  const basisLabel = scenarios.label;
   const priceAsOf = typeof valuation.trace?.price_as_of === 'string' ? valuation.trace.price_as_of : null;
   const modelPriceLabel = priceAsOf
     ? `Precio del modelo al ${formatMarketDate(priceAsOf, { day: 'numeric', month: 'short' })}`
@@ -453,9 +461,9 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
           {engineNotice ? <p className="mt-2 text-xs text-amber-200/70">Nota del motor: {engineNotice}</p> : null}
         </div>
         <div className="grid grid-cols-1 gap-4 opacity-60 sm:grid-cols-3">
-          <Stat label={`Bear (orientación)${basisLabel}`} value={formatMoney(toListedShareValue(valuation.bear_value, adrRatio) as number | null, currency)} />
-          <Stat label={`Base (orientación)${basisLabel}`} value={formatMoney(toListedShareValue(valuation.base_value, adrRatio) as number | null, currency)} />
-          <Stat label={`Bull (orientación)${basisLabel}`} value={formatMoney(toListedShareValue(valuation.bull_value, adrRatio) as number | null, currency)} />
+          <Stat label={`Bear (orientación)${basisLabel}`} value={formatMoney(scenarios.values.bear as number | null, currency)} />
+          <Stat label={`Base (orientación)${basisLabel}`} value={formatMoney(scenarios.values.base as number | null, currency)} />
+          <Stat label={`Bull (orientación)${basisLabel}`} value={formatMoney(scenarios.values.bull as number | null, currency)} />
         </div>
         <p className="text-xs leading-5 text-gray-500">
           Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
@@ -469,9 +477,9 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label={modelPriceLabel} value={formatMoney(valuation.current_price, currency)} />
-        <Stat label={`Bear${basisLabel}`} value={formatMoney(toListedShareValue(valuation.bear_value, adrRatio) as number | null, currency)} />
-        <Stat label={`Base${basisLabel}`} value={formatMoney(toListedShareValue(valuation.base_value, adrRatio) as number | null, currency)} />
-        <Stat label={`Bull${basisLabel}`} value={formatMoney(toListedShareValue(valuation.bull_value, adrRatio) as number | null, currency)} />
+        <Stat label={`Bear${basisLabel}`} value={formatMoney(scenarios.values.bear as number | null, currency)} />
+        <Stat label={`Base${basisLabel}`} value={formatMoney(scenarios.values.base as number | null, currency)} />
+        <Stat label={`Bull${basisLabel}`} value={formatMoney(scenarios.values.bull as number | null, currency)} />
       </div>
       <p className="text-xs leading-5 text-gray-500">
         Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
@@ -816,8 +824,6 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     );
   } else if (activeView === 'thesis') {
     const data = await getResearchThesisWorkspace(ticker);
-    const thesisValuation = data.thesis ? await getResearchValuationWorkspace(ticker) : null;
-    const thesisAdrRatio = adrRatioFromTrace(thesisValuation?.trace);
     content = (
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
@@ -877,7 +883,6 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <ThesisMemo
               thesis={data.thesis}
               ticker={ticker}
-              adrRatio={thesisAdrRatio}
               debateBody={
                 data.sections.find((section) => section.section_key === 'thesis_debate')?.body ?? null
               }

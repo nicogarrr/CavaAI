@@ -1,4 +1,4 @@
-import { scenarioBasisLabel, toListedShareValue } from '@/lib/research/listed-share-values';
+import { thesisScenarioDisplay } from '@/lib/research/listed-share-values';
 import { formatGeneratedDate, formatMoney, formatPercent, NA } from '@/lib/format';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
@@ -133,19 +133,26 @@ function ScenarioCell({
  */
 export default function ThesisMemo({
   thesis,
-  adrRatio = null,
   ticker,
   debateBody,
 }: {
   thesis: ResearchThesis;
-  /** Ordinarias por ADR (del motor): convierte los escenarios a la base del precio cotizado (F394). */
-  adrRatio?: number | null;
   /** Ticker para el debate bull/bear (bloque interactivo de abajo). */
   ticker?: string;
   /** Cuerpo persistido de la seccion thesis_debate (veredicto previo). */
   debateBody?: string | null;
 }) {
   const probabilities = thesis.scenario_probabilities ?? {};
+  // F394: cada tesis se muestra con SU base persistida; sin evidencia no se escala.
+  const scenarios = thesisScenarioDisplay(
+    {
+      bear: thesis.bear_value,
+      base: thesis.base_value,
+      bull: thesis.bull_value,
+      expected: thesis.expected_value,
+    },
+    thesis.valuation_basis,
+  );
   const generatedLabel = formatGeneratedDate(thesis.created_at);
 
   return (
@@ -260,10 +267,10 @@ export default function ThesisMemo({
         </h3>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           <ScenarioCell label="Precio" value={thesis.current_price} />
-          <ScenarioCell label={`Bear${scenarioBasisLabel(adrRatio)}`} value={toListedShareValue(thesis.bear_value, adrRatio)} probability={probabilities['bear']} glossaryKey="bear" />
-          <ScenarioCell label={`Base${scenarioBasisLabel(adrRatio)}`} value={toListedShareValue(thesis.base_value, adrRatio)} probability={probabilities['base']} highlight glossaryKey="base" />
-          <ScenarioCell label={`Bull${scenarioBasisLabel(adrRatio)}`} value={toListedShareValue(thesis.bull_value, adrRatio)} probability={probabilities['bull']} glossaryKey="bull" />
-          <ScenarioCell label={`Valor esperado${scenarioBasisLabel(adrRatio)}`} value={toListedShareValue(thesis.expected_value, adrRatio)} />
+          <ScenarioCell label={`Bear${scenarios.label}`} value={scenarios.values.bear} probability={probabilities['bear']} glossaryKey="bear" />
+          <ScenarioCell label={`Base${scenarios.label}`} value={scenarios.values.base} probability={probabilities['base']} highlight glossaryKey="base" />
+          <ScenarioCell label={`Bull${scenarios.label}`} value={scenarios.values.bull} probability={probabilities['bull']} glossaryKey="bull" />
+          <ScenarioCell label={`Valor esperado${scenarios.label}`} value={scenarios.values.expected} />
           <div className="rounded-lg border border-gray-800 bg-black/20 p-3">
             <div className="text-xs uppercase text-gray-500">
               <GlossaryTerm k="margen_seguridad" icon={false}>

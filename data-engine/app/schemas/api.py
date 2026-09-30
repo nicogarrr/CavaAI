@@ -308,6 +308,8 @@ class ThesisOut(BaseModel):
     inputs_provenance: list[dict] | None = None
     # Null en versiones anteriores a la capa narrativa o sin seleccion valida.
     narrative_sections: list[NarrativeSectionOut] | None = None
+    # Base por accion de los escenarios al generar la tesis; None = sin evidencia.
+    valuation_basis: dict | None = None
     stale: bool = False
     latest_data_at: datetime | None = None
     created_at: datetime
@@ -780,6 +782,11 @@ class ValuationResponse(BaseModel):
     margin_of_safety: float | None = None
     missing_inputs: list[str] = []
     publication_blockers: list[str] = []
+    # F394: escenarios por accion ordinaria; listed_share_values ya convertidos a
+    # la base del precio cotizado (ADR) cuando hay adr_ratio.
+    adr_ratio: float | None = None
+    value_per_share_basis: str | None = None
+    listed_share_values: dict[str, float] | None = None
     reverse_dcf: dict = {}
     sensitivity: dict = {}
     moat: dict = {}
