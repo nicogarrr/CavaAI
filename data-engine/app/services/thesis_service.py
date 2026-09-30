@@ -17,6 +17,7 @@ from app.models import (
     Company,
     Document,
     FinancialFact,
+    FundamentalModelVersion,
     MarketPrice,
     SourceAudit,
     ThesisVersion,
@@ -36,6 +37,32 @@ from app.valuation.moat_framework import empty_moat_framework
 logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "thesis-render-v3"
+
+
+def latest_missing_inputs(db: Session, company_id: int) -> list[str] | None:
+    """Inputs pendientes del modelo fundamental persistido mas reciente.
+
+    Lee el snapshot completo que LongTermModelService persiste en
+    FundamentalModelVersion.model_snapshot (missing_core + drivers
+    obligatorios + blockers), sin tocar el esquema. None si la empresa
+    no tiene modelo fundamental persistido: la UI distingue "sin
+    pendientes conocidos" (lista vacia) de "sin informacion" (None).
+    """
+    model = db.scalar(
+        select(FundamentalModelVersion)
+        .where(FundamentalModelVersion.company_id == company_id)
+        .order_by(desc(FundamentalModelVersion.version))
+        .limit(1)
+    )
+    if model is None:
+        return None
+    snapshot = model.model_snapshot or {}
+    return sorted(
+        set(
+            (snapshot.get("missing_inputs") or [])
+            + (snapshot.get("missing_mandatory_drivers") or [])
+        )
+    )
 
 # Etiquetas es-ES de las métricas que alimentan claims visibles. El fallback
 # humaniza el código (guiones bajos a espacios) sin exponerlo tal cual.
@@ -1022,6 +1049,74 @@ class ThesisService:
             return f"{len(block.get('items') or [])} tesis pegadas"
         return str(block.get("source") or "ok")
 
+    # Human-in-the-loop (spec 2026-09-30): la tesis sale SIEMPRE con lo que
+    # hay; lo que falta se declara pendiente y se pide, nunca se inventa.
+    _PENDING_INPUT_HINTS = {
+        "revenue_history_two_periods": (
+            "faltan al menos dos periodos de ingresos reportados; llegan con el "
+            "10-K/10-Q mas reciente (SEC) o la presentacion de resultados."
+        ),
+        "normalized_fcf_margin": (
+            "falta el margen FCF normalizado; se deriva de cash-flows reportados "
+            "o se aporta como supuesto etiquetado (metodo + fecha)."
+        ),
+        "shares_diluted": (
+            "faltan las acciones diluidas; constan en el ultimo 10-K/10-Q o en "
+            "la presentacion de resultados."
+        ),
+        "traceable_wacc": (
+            "el WACC no es trazable a una metrica calculada; se aporta como "
+            "supuesto documentado (metodo + fecha + inputs)."
+        ),
+        "fiscal_year": (
+            "falta el ejercicio fiscal de anclaje; llega con los filings anuales."
+        ),
+    }
+
+    @classmethod
+    def _pending_input_hint(cls, key: str) -> str:
+        if key in cls._PENDING_INPUT_HINTS:
+            return cls._PENDING_INPUT_HINTS[key]
+        return (
+            "dato pendiente: se aporta con fuente verificable (filing, KPI "
+            "aprobado o supuesto etiquetado) y la tesis se regenera al "
+            "incorporarlo."
+        )
+
+    def _pendings_markdown(
+        self, valuation: dict, long_term_model: dict, sources: dict
+    ) -> str:
+        missing = sorted(
+            set(
+                (valuation.get("missing_inputs") or [])
+                + (long_term_model.get("missing_inputs") or [])
+            )
+        )
+        lines: list[str] = []
+        if missing:
+            lines.append(
+                "Inputs que faltan para completar la tesis. La tesis se publica "
+                "con lo que hay; estos datos se piden al usuario y nunca se "
+                "inventan:"
+            )
+            for key in missing:
+                lines.append(f"- **{key}**: {self._pending_input_hint(key)}")
+        pending_sources = [
+            (name, block.get("source"), block.get("detail"))
+            for name, block in sorted((sources or {}).items())
+            if isinstance(block, dict) and block.get("status") == "pending"
+        ]
+        if pending_sources:
+            if lines:
+                lines.append("")
+            lines.append("Fuentes de evidencia pendientes de captura:")
+            for name, source, detail in pending_sources:
+                suffix = f" ({detail})" if detail else ""
+                lines.append(f"- {name}: {source or 'fuente no disponible'}{suffix}")
+        if not lines:
+            return "Sin datos pendientes: la tesis se apoya en la evidencia disponible."
+        return "\n".join(lines)
+
     def _render_markdown(
         self,
         company: Company,
@@ -1068,6 +1163,7 @@ class ThesisService:
             if scenario_probabilities
             else "Probabilities: pendiente (el modelo no las ha persistido)."
         )
+        pendings_section = self._pendings_markdown(valuation, long_term_model, sources)
         catalysts_lines = "\n".join(
             f"- {item.get('label')}: {item.get('date')}"
             + (f" {item.get('time')}" if item.get('time') else "")
@@ -1150,5 +1246,8 @@ Unsupported claims: {audit["unsupported_claims"]}
 
 ## 20. Sources
 {self._sources_markdown(sources)}
+
+## 21. Datos Pendientes
+{pendings_section}
 Fingerprint: evidence-set hash drives versioning.
 """

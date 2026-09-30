@@ -5723,6 +5723,8 @@ export interface components {
             latest_data_at?: string | null;
             /** Margin Of Safety */
             margin_of_safety: string | null;
+            /** Missing Inputs */
+            missing_inputs?: string[] | null;
             /** Narrative Sections */
             narrative_sections?: components["schemas"]["NarrativeSectionOut"][] | null;
             /** Rating */

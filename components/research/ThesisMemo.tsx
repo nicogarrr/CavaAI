@@ -143,6 +143,36 @@ export default function ThesisMemo({
         ) : null}
       </div>
 
+      {thesis.status === 'insufficient_data' ? (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-3 text-sm text-amber-200"
+        >
+          <strong>Tesis provisional</strong>
+          <p className="mt-1">
+            Publicada con la evidencia disponible. Faltan datos para completarla: la app te los
+            pedirá y nunca los inventa.
+          </p>
+        </div>
+      ) : null}
+
+      {thesis.missing_inputs && thesis.missing_inputs.length > 0 ? (
+        <section className="rounded-lg border border-amber-800/60 p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-200">
+            Datos pendientes
+          </h3>
+          <p className="mt-1 text-xs text-gray-400">
+            La tesis se apoya en lo que hay; estos inputs se piden al usuario y, al aportarlos,
+            la tesis se regenera.
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-300">
+            {thesis.missing_inputs.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <p className="text-sm leading-6 text-gray-300">{thesis.executive_summary}</p>
 
       {thesis.narrative_sections && thesis.narrative_sections.length > 0 ? (

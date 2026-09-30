@@ -299,6 +299,10 @@ class ThesisOut(BaseModel):
     catalysts: list | None = None
     invalidation_criteria: list | None = None
     scenario_probabilities: dict | None = None
+    # Inputs pendientes (human-in-the-loop): lo que falta para completar la
+    # tesis. None = sin informacion (empresa sin modelo fundamental
+    # persistido); lista vacia = sin pendientes conocidos.
+    missing_inputs: list[str] | None = None
     # Null en versiones anteriores a la capa narrativa o sin seleccion valida.
     narrative_sections: list[NarrativeSectionOut] | None = None
     stale: bool = False
