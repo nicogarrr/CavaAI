@@ -164,6 +164,16 @@ def _parse_explicit_unit(raw_unit: str) -> Dimension | None:
     return Dimension.of(**powers)
 
 
+CURRENCY_CODES = {"usd", "eur", "gbp", "cad", "aud", "jpy"}
+DATA_UNIT_CODES = {"gb", "tb"}
+PERCENT_UNITS = {"percent", "%"}
+
+
+def _unit_tokens(raw_unit: str) -> list[str]:
+    normalized = raw_unit.strip().lower().replace("_per_", "/").replace(" per ", "/")
+    return [t.strip() for t in normalized.replace("*", "/").split("/") if t.strip()]
+
+
 class DriverDimensionValidator:
     def validate(
         self,
@@ -174,12 +184,29 @@ class DriverDimensionValidator:
         drivers: dict[str, dict[str, Any]] = {}
         terms = FORMULA_TERMS[formula_key]
         keys = {item for term in terms for item in term if isinstance(item, str)}
+        currencies: dict[str, set[str]] = {}
+        data_units: dict[str, set[str]] = {}
         for key in sorted(keys):
             expected = DRIVER_DIMENSIONS[key]
             facts = fact_cache.get(key) or []
             raw_unit = facts[-1].unit if facts else "unknown"
             explicit = _parse_explicit_unit(raw_unit)
             validation = "inferred_from_driver_semantics"
+            tokens = _unit_tokens(raw_unit)
+            for token in tokens:
+                if token in CURRENCY_CODES:
+                    currencies.setdefault(token, set()).add(key)
+                if token in DATA_UNIT_CODES:
+                    data_units.setdefault(token, set()).add(key)
+            if tokens and tokens[0] in PERCENT_UNITS:
+                # Decimal contract: 5 percent must arrive as 0.05, never as 5.
+                errors.append(
+                    {
+                        "driver": key,
+                        "unit": raw_unit,
+                        "error": "percent_unit_requires_decimal_normalization",
+                    }
+                )
             if explicit is not None:
                 validation = "explicit_unit_verified"
                 # Annual facts commonly store a currency as USD rather than
@@ -202,6 +229,23 @@ class DriverDimensionValidator:
                 "dimension": expected.render(),
                 "validation": validation,
             }
+
+        if len(currencies) > 1:
+            errors.append(
+                {
+                    "formula": formula_key,
+                    "error": "mixed_currencies_without_fx",
+                    "currencies": {code: sorted(keys_) for code, keys_ in sorted(currencies.items())},
+                }
+            )
+        if len(data_units) > 1:
+            errors.append(
+                {
+                    "formula": formula_key,
+                    "error": "mixed_data_units_without_scale",
+                    "units": {code: sorted(keys_) for code, keys_ in sorted(data_units.items())},
+                }
+            )
 
         term_dimensions: list[str] = []
         for term in terms:
