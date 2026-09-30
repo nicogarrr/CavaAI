@@ -246,11 +246,18 @@ class StandardDCFEngine(ValuationEngine):
             ]
         )
 
+        # The DCF runs in the filing's share basis (ordinary shares), so the
+        # quote has to be converted into that basis before margin of safety is
+        # compared against it.
+        ratio = adr_ratio(company)
+        comparable_price = current_price / ratio if (ratio and current_price) else current_price
+
         reverse = {}
-        if current_price is not None and current_price > 0:
+        if comparable_price is not None and comparable_price > 0:
+            # Same ordinary-share basis as the DCF value per share.
             reverse = solve_required_growth(
                 ReverseDCFInputs(
-                    market_price=current_price,
+                    market_price=comparable_price,
                     revenue=revenue,
                     fcf_margin=margin,
                     wacc=wacc,
@@ -299,11 +306,6 @@ class StandardDCFEngine(ValuationEngine):
         if terminal_share is not None and terminal_share > 0.95:
             publication_blockers.append("forecast_is_not_the_driver")
 
-        # The DCF runs in the filing's share basis (ordinary shares), so the
-        # quote has to be converted into that basis before margin of safety is
-        # compared against it.
-        ratio = adr_ratio(company)
-        comparable_price = current_price / ratio if (ratio and current_price) else current_price
 
         return apply_publication_blockers(
             {
@@ -320,6 +322,17 @@ class StandardDCFEngine(ValuationEngine):
             "missing_inputs": [],
             "publication_blockers": publication_blockers,
             "adr_ratio": ratio,
+            "value_per_share_basis": "ordinary_share",
+            "listed_share_values": (
+                {
+                    "bear": bear * ratio,
+                    "base": base * ratio,
+                    "bull": bull * ratio,
+                    "expected": expected * ratio,
+                }
+                if ratio
+                else None
+            ),
             "comparable_price_basis": "ordinary_share" if ratio else "listed_share",
             "reverse_dcf": reverse,
             "sensitivity": sensitivity,
