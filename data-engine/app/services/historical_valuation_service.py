@@ -90,11 +90,15 @@ class HistoricalValuationService:
             eps = self._value(year_facts, "eps")
             fcf = self._value(year_facts, "free_cash_flow")
             revenue = self._value(year_facts, "revenue")
-            debt = self._value(year_facts, "total_debt") or Decimal("0")
-            cash = self._value(year_facts, "cash_and_equivalents") or Decimal("0")
+            # A missing debt/cash fact is unknown, not zero: only a reported
+            # value (including a reported 0) may enter enterprise value.
+            debt = self._value(year_facts, "total_debt")
+            cash = self._value(year_facts, "cash_and_equivalents")
             market_cap = price * shares if price is not None and shares is not None else None
             enterprise_value = (
-                market_cap + debt - cash if market_cap is not None else None
+                market_cap + debt - cash
+                if market_cap is not None and debt is not None and cash is not None
+                else None
             )
             series.append(
                 {
