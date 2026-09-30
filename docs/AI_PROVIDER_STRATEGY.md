@@ -29,7 +29,18 @@ OPENCODE_GO_API_KEY=replace_with_an_opencode_go_key
 OPENCODE_GO_BASE_URL=https://opencode.ai/zen/v1
 OPENCODE_GO_MODEL=space-bunny-free
 OPENCODE_GO_FALLBACK_MODEL=muse-spark-1.3-contributor-free
+OPENCODE_GO_REASONING_EFFORT=max
 ```
+
+`space-bunny-free` is a reasoning model and accepts the effort levels
+`low|medium|high|xhigh|max` (models.dev catalog, verified 2026-09-30).
+`OPENCODE_GO_REASONING_EFFORT` (default `max`) is sent as
+`reasoning_effort` in the OpenAI-compatible envelope, only to the models
+listed in `OPENCODE_GO_REASONING_EFFORT_MODELS` (default
+`space-bunny-free`). The fallback `muse-spark-1.3-contributor-free` is
+also a reasoning model, but its catalog tops out at `xhigh` (no `max`), so
+the default list excludes it and it never receives a level it would
+reject. Empty value disables the parameter.
 
 If the resolved model fails at the LLM layer (after its own retries), the
 call is retried once with `OPENCODE_GO_FALLBACK_MODEL`
