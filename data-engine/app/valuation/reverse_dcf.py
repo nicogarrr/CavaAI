@@ -56,6 +56,26 @@ def solve_required_growth(inputs: ReverseDCFInputs, iterations: int = 60) -> dic
     crecimiento alcanzable.
     """
     _validate_inputs(inputs)
+    if inputs.fcf_margin <= 0:
+        # With non-positive FCF margin the model value does not rise with
+        # growth (more revenue means more burn), so a "required growth" is not
+        # a meaningful quantity. Withhold it instead of returning a bisection
+        # artefact with status ok.
+        return {
+            "required_revenue_growth": None,
+            "market_price": inputs.market_price,
+            "solved_value_per_share": None,
+            "out_of_bounds": True,
+            "status": "not_applicable",
+            "reason": "fcf_margin is not positive; reverse DCF on revenue growth is undefined",
+            "trace": {
+                "method": "binary_search_reverse_dcf",
+                "iterations": 0,
+                "growth_bounds": [inputs.low_growth, inputs.high_growth],
+                "fcf_margin": inputs.fcf_margin,
+                "out_of_bounds": True,
+            },
+        }
     low = inputs.low_growth
     high = inputs.high_growth
 
@@ -63,12 +83,13 @@ def solve_required_growth(inputs: ReverseDCFInputs, iterations: int = 60) -> dic
     high_value = _value_at(inputs, high)
     floor, ceiling = (low_value, high_value) if low_value <= high_value else (high_value, low_value)
     out_of_bounds = inputs.market_price < floor or inputs.market_price > ceiling
+    increasing = low_value <= high_value
 
     for _ in range(iterations):
         mid = (low + high) / 2
         value = _value_at(inputs, mid)
 
-        if value < inputs.market_price:
+        if (value < inputs.market_price) == increasing:
             low = mid
         else:
             high = mid
