@@ -19,6 +19,9 @@ import {
 
 interface MonthlyRebalanceViewProps {
     currentPicks: ProPick[];
+    /** F383: 'ready' solo cuando los picks son de `strategyId`; si no, no se exporta. */
+    picksStatus?: 'ready' | 'loading' | 'error';
+    picksError?: string | null;
     strategyId?: string;
     strategyName?: string;
     month?: string;
@@ -75,6 +78,8 @@ function MoveList({ moves, tone }: { moves: RebalanceMove[]; tone: 'in' | 'out' 
  */
 export default function MonthlyRebalanceView({
     currentPicks,
+    picksStatus = 'ready',
+    picksError = null,
     strategyId = 'adaptive',
     strategyName = 'Selección Adaptativa IA',
     month = monthKey(),
@@ -101,6 +106,7 @@ export default function MonthlyRebalanceView({
     };
 
     const downloadSnapshot = () => {
+        if (picksStatus !== 'ready') return;
         const snapshot = buildMonthlySnapshot(currentPicks, strategyId, month);
         const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -146,12 +152,23 @@ export default function MonthlyRebalanceView({
                         <Upload className="h-4 w-4" />
                         Cargar snapshot anterior
                     </Button>
-                    <Button onClick={downloadSnapshot} className="h-11 gap-2 bg-teal-600 hover:bg-teal-700">
+                    <Button onClick={downloadSnapshot} disabled={picksStatus !== 'ready'} className="h-11 gap-2 bg-teal-600 hover:bg-teal-700">
                         <ArrowDownToLine className="h-4 w-4" />
                         Descargar snapshot JSON
                     </Button>
                 </div>
             </Card>
+
+            {picksStatus === 'loading' && (
+                <Card className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
+                    <p className="text-sm text-gray-400">Cargando los picks de esta estrategia…</p>
+                </Card>
+            )}
+            {picksStatus === 'error' && (
+                <Card className="rounded-lg border border-red-700 bg-red-900/20 p-4 text-center">
+                    <p className="text-sm text-red-400">{picksError ?? 'Picks de la estrategia no disponibles.'}</p>
+                </Card>
+            )}
 
             {fileError && (
                 <Card className="rounded-lg border border-red-700 bg-red-900/20 p-4 text-center">
