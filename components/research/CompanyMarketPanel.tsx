@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 
-import { formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import { formatMoney, formatNumber, formatPercent, isValidCurrencyCode, NA } from '@/lib/format';
 import { exchangeDisplayName } from '@/lib/exchangeName';
 
 import { Badge } from '@/components/ui/badge';
