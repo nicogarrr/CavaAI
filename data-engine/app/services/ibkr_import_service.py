@@ -73,6 +73,13 @@ def validate_flex_xml(xml_text: str) -> list[str]:
                     f"Fila {index} (OpenPosition): falta el símbolo (atributo symbol). "
                     "Esa posición se omite; revisa la query en IBKR para que incluya la columna Symbol."
                 )
+            missing_fields = _missing_position_fields(element)
+            if symbol and missing_fields:
+                errors.append(
+                    f"Fila {index} (OpenPosition {symbol}): faltan {', '.join(missing_fields)}. "
+                    "Esa posicion se omite para no crear ceros ni una fecha inventada; "
+                    "incluye esas columnas en la Flex Query."
+                )
             for attr in ("position", "quantity"):
                 raw = _attr(element, attr)
                 if raw is not None and not _is_number(raw):
@@ -266,6 +273,23 @@ def _decimal(value: str | None, default: str = "0") -> Decimal:
     return parsed[0]
 
 
+def _missing_position_fields(element: ElementTree.Element) -> list[str]:
+    """Economic fields an OpenPosition needs so nothing is invented (F377).
+
+    A missing quantity, price/value or report date must not become 0 / today:
+    that would overwrite a real position with zeros and a made-up date.
+    """
+    missing: list[str] = []
+    if _attr(element, "position", "quantity") is None:
+        missing.append("cantidad (position)")
+    if _attr(element, "markPrice", "marketPrice", "price", "positionValue", "marketValue") is None:
+        missing.append("precio o valor de mercado (markPrice/positionValue)")
+    raw_date = _attr(element, "reportDate", "asOfDate")
+    if raw_date is None or not _is_date(raw_date):
+        missing.append("fecha del informe (reportDate)")
+    return missing
+
+
 def _date(value: str | None) -> date:
     if not value:
         return date.today()
@@ -341,6 +365,9 @@ class IBKRImportService:
             if tag == "OpenPosition":
                 symbol = _attr(element, "symbol", "underlyingSymbol")
                 if not symbol:
+                    rows_skipped += 1
+                    continue
+                if _missing_position_fields(element):
                     rows_skipped += 1
                     continue
                 raw_quantity = _attr(element, "position", "quantity")
