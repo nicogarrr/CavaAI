@@ -281,12 +281,32 @@ def _sum_disjoint_components(
     return totals
 
 
+# Metrics whose concepts are NOT interchangeable aliases: each tag covers a
+# different scope (combined short+long debt vs long-term only). For these the
+# declared order is the scope priority, and `filed` only breaks ties inside one
+# concept (a recast), never across concepts.
+SCOPE_PRIORITY_METRICS = {"total_debt"}
+
+
+def _collapse_by_scope(
+    by_concept: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    """Per period, take the first concept in declared (widest-scope-first) order."""
+    by_end: dict[str, dict[str, Any]] = {}
+    for entries in by_concept.values():
+        for end, entry in entries.items():
+            by_end.setdefault(end, entry)
+    return by_end
+
+
 def _merge_for_metric(
     by_concept: dict[str, dict[str, dict[str, Any]]], metric: str
 ) -> dict[str, dict[str, Any]]:
     """Merge concepts per period: summed when they are parts, else one winner."""
     if is_summed_component(metric):
         return _sum_disjoint_components(by_concept)
+    if metric in SCOPE_PRIORITY_METRICS:
+        return _collapse_by_scope(by_concept)
     return _collapse_aliases(by_concept)
 
 
