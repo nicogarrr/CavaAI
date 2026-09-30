@@ -5717,6 +5717,10 @@ export interface components {
             id: number;
             /** Input Fingerprint */
             input_fingerprint?: string | null;
+            /** Inputs Provenance */
+            inputs_provenance?: {
+                [key: string]: unknown;
+            }[] | null;
             /** Invalidation Criteria */
             invalidation_criteria?: unknown[] | null;
             /** Latest Data At */
