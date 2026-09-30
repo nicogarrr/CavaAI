@@ -80,7 +80,7 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                                 Serie parcial: {snapshot.history.length} sesiones con precio en el último año. Se muestra el tramo disponible.
                             </p>
                         )}
-                        <CompanyMarketChart history={snapshot.history} />
+                        <CompanyMarketChart history={snapshot.history} currency={snapshot.currency} />
                     </>
                 ) : (
                     <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
