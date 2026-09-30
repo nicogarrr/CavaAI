@@ -19,6 +19,7 @@ from app.valuation.point_in_time import (
 class HistoricalValuationService:
     METRICS = {
         "eps",
+        "eps_diluted",
         "free_cash_flow",
         "revenue",
         "shares_diluted",
@@ -87,7 +88,10 @@ class HistoricalValuationService:
             year_facts = annual_facts.get(year, {})
             price = price_row.close if price_row else None
             shares = self._value(year_facts, "shares_diluted")
-            eps = self._value(year_facts, "eps")
+            # Ingestion writes eps_diluted; "eps" is only a legacy alias (F376).
+            eps = self._value(year_facts, "eps_diluted")
+            if eps is None:
+                eps = self._value(year_facts, "eps")
             fcf = self._value(year_facts, "free_cash_flow")
             revenue = self._value(year_facts, "revenue")
             # A missing debt/cash fact is unknown, not zero: only a reported
