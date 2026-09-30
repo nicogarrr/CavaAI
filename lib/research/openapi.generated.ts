@@ -3243,6 +3243,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/thesis/{ticker}/inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Thesis Inputs */
+        post: operations["submit_thesis_inputs_api_thesis__ticker__inputs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/thesis/{ticker}/latest": {
         parameters: {
             query?: never;
@@ -5658,6 +5675,38 @@ export interface components {
             thesis_version_id: number;
             /** Ticker */
             ticker: string;
+        };
+        /**
+         * ThesisHumanInput
+         * @description Explicit human assumptions, never promoted to sourced financial facts.
+         */
+        ThesisHumanInput: {
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number | string;
+            /** Driver Key */
+            driver_key: string;
+            /** Fiscal Year */
+            fiscal_year: number;
+            /** Rationale */
+            rationale: string;
+            /**
+             * Scenario
+             * @default base
+             * @enum {string}
+             */
+            scenario: "bear" | "base" | "bull";
+            /** Source */
+            source: string;
+            /** Value */
+            value: number | string;
+        };
+        /** ThesisInputsRequest */
+        ThesisInputsRequest: {
+            /** Inputs */
+            inputs: components["schemas"]["ThesisHumanInput"][];
         };
         /** ThesisNodeOut */
         ThesisNodeOut: {
@@ -14115,6 +14164,52 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_thesis_inputs_api_thesis__ticker__inputs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisInputsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
