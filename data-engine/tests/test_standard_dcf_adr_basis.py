@@ -3,7 +3,6 @@
 import pytest
 
 from app.core.database import SessionLocal, init_db
-from app.models import Company
 from app.services.valuation_service import ValuationService
 from tests.test_valuation_engines_refined import (
     _add_facts,
