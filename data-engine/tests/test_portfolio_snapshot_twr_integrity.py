@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, PortfolioDailySnapshot, Position, Transaction
+from app.models.entities import Base, Company, Position, Transaction
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
@@ -77,10 +77,18 @@ def test_previous_different_currency_gives_no_return(setup):
     assert second.daily_return is None
 
 
-def test_missing_intermediate_snapshot_discounts_all_interval_flows(setup):
+def test_gap_without_intermediate_flow_gives_interval_return(setup):
     db, portfolio, position = setup
     _snap(db, D0, position, "100")  # total 1000
-    # D1 has no snapshot; deposit happened on D1, capture on D2.
+    third = _snap(db, D2, position, "110")  # total 1100, no snapshot on D1
+    assert third.daily_return == pytest.approx(Decimal("0.1"))
+    assert third.metadata_["interval_days"] == 2
+
+
+def test_gap_with_unvalued_intermediate_flow_gives_no_return(setup):
+    """Auditor case: +10%, deposit 500 without snapshot, +10%; true TWR is 21%."""
+    db, portfolio, position = setup
+    _snap(db, D0, position, "100")  # total 1000
     db.add(
         Transaction(
             portfolio_id=portfolio.id, trade_date=D1, action="deposit",
@@ -90,7 +98,8 @@ def test_missing_intermediate_snapshot_discounts_all_interval_flows(setup):
     )
     db.commit()
     position.quantity = Decimal("15")
-    third = _snap(db, D2, position, "100")  # total 1500
-    assert third.net_external_flow_base == Decimal("500")
-    assert third.daily_return == pytest.approx(Decimal("0"))
-    assert db.query(PortfolioDailySnapshot).count() == 2
+    third = _snap(db, D2, position, "117.333333")  # ~1760
+    assert third.daily_return is None
+    assert third.cumulative_twr is None
+    assert third.metadata_["twr_blocked_by_gap_flows"] is True
+    assert third.metadata_["unvalued_intermediate_flows"] == 1

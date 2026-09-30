@@ -144,6 +144,21 @@ class PortfolioSnapshotService:
         )
         daily_return: Decimal | None = None
         cumulative_twr: Decimal | None = None
+        interval_days = (snapshot_date - previous.snapshot_date).days if previous else None
+        intermediate_flows = 0
+        if previous is not None and interval_days and interval_days > 1:
+            # Flujos en dias sin foto: sin valoracion en ese punto no se puede
+            # enlazar sub-periodos; se bloquea el retorno en vez de aproximarlo.
+            intermediate_flows = len(
+                db.scalars(
+                    select(Transaction.id).where(
+                        Transaction.portfolio_id == portfolio.id,
+                        Transaction.trade_date > previous.snapshot_date,
+                        Transaction.trade_date < snapshot_date,
+                        Transaction.action.in_(["deposit", "withdrawal", "cash_misc"]),
+                    )
+                ).all()
+            )
         previous_is_base = False
         if previous is not None and previous.cumulative_twr is None:
             # Solo la primera foto de la serie es una base genuina; si hay fotos
@@ -166,6 +181,7 @@ class PortfolioSnapshotService:
             and previous.base_currency == portfolio.base_currency
             and pricing_coverage == Decimal("1")
             and not ambiguous_flows
+            and not intermediate_flows
             and (previous.cumulative_twr is not None or previous_is_base)
         ):
             daily_return = (
@@ -190,6 +206,9 @@ class PortfolioSnapshotService:
             "missing_pricing": missing_pricing,
             "ambiguous_external_flows": ambiguous_flows,
             "flow_timing": "end_of_day",
+            "interval_days": interval_days,
+            "unvalued_intermediate_flows": intermediate_flows,
+            "twr_blocked_by_gap_flows": bool(intermediate_flows),
             "flow_window": "after_previous_snapshot_through_as_of",
             "flow_fx_policy": "rate_at_as_of",
             "position_as_of_dates": sorted(
