@@ -213,6 +213,9 @@ export type ResearchThesis = {
   catalysts?: ResearchThesisCatalyst[] | null;
   invalidation_criteria?: string[] | null;
   scenario_probabilities?: Record<string, number> | null;
+  /** Human-in-the-loop: inputs que faltan para completar la tesis (nunca se
+   *  inventan; la app los pide). null = sin informacion. */
+  missing_inputs?: string[] | null;
   stale?: boolean;
   latest_data_at?: string | null;
   created_at: string;

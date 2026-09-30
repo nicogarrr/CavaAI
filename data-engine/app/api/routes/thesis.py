@@ -25,7 +25,7 @@ from app.services.thesis_epub_service import (
 )
 from app.services.thesis_graph_service import ThesisGraphService
 from app.services.thesis_memo import build_memo_markdown
-from app.services.thesis_service import ThesisService
+from app.services.thesis_service import ThesisService, latest_missing_inputs
 
 router = APIRouter()
 
@@ -58,11 +58,14 @@ def _safe_generate_error(exc: Exception) -> HTTPException:
 
 
 @router.post("/generate", response_model=ThesisOut)
-def generate_thesis(payload: ThesisGenerateRequest, db: Session = Depends(get_db)) -> ThesisVersion:
+def generate_thesis(payload: ThesisGenerateRequest, db: Session = Depends(get_db)) -> dict:
     try:
-        return ThesisService().generate(db, payload.ticker, payload.force_new_version)
+        thesis = ThesisService().generate(db, payload.ticker, payload.force_new_version)
     except Exception as exc:
         raise _safe_generate_error(exc) from exc
+    out = ThesisOut.model_validate(thesis).model_dump()
+    out["missing_inputs"] = latest_missing_inputs(db, thesis.company_id)
+    return out
 
 
 def _epub_citations(db: Session, claims: list[Claim]) -> list[str]:
@@ -166,6 +169,7 @@ def latest_thesis(ticker: str, db: Session = Depends(get_db)) -> dict:
     payload = ThesisOut.model_validate(thesis).model_dump()
     payload["stale"] = stale
     payload["latest_data_at"] = latest_data_at
+    payload["missing_inputs"] = latest_missing_inputs(db, thesis.company_id)
     return payload
 
 
