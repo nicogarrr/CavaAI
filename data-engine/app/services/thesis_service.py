@@ -28,7 +28,8 @@ from app.services.long_term_model_service import LongTermModelService
 from app.services.number_format import format_compact_es
 from app.services.source_auditor import SourceAuditor
 from app.services.source_hierarchy_service import classify_source
-from app.services.thesis_narrative_llm import maybe_narrative, maybe_narrative_sections
+from app.services.thesis_context import retrieve_thesis_context
+from app.services.thesis_narrative_llm import evidence_sections, maybe_narrative, maybe_narrative_sections
 from app.services.thesis_provenance import build_inputs_provenance, inputs_provenance_from_snapshot
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import MODEL_VERSION
@@ -37,7 +38,7 @@ from app.valuation.moat_framework import empty_moat_framework
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "thesis-render-v3"
+PROMPT_VERSION = "thesis-render-v4-cited-context"
 
 
 def latest_missing_inputs(db: Session, company_id: int) -> list[str] | None:
@@ -371,8 +372,11 @@ class ThesisService:
         )
         # Analisis narrativo por secciones (misma capa y mismas garantias;
         # None = sin seccion, nunca bloquea la publicacion).
+        filing_items = ((evidence.get("sources") or {}).get("filings") or {}).get("items") or []
+        rag_context = retrieve_thesis_context(db, company)
         narrative_sections = maybe_narrative_sections(
-            db, company, valuation, hypothesis, news_items
+            db, company, valuation, hypothesis, news_items,
+            filing_items=filing_items, rag_context=rag_context,
         )
         thesis_markdown = self._render_markdown(
             company,
@@ -387,6 +391,11 @@ class ThesisService:
             invalidation_criteria=invalidation,
             scenario_probabilities=scenario_probabilities,
         )
+
+        thesis_markdown += "\n\n## 23. Contexto y citas documentales\n"
+        for section in evidence_sections(filing_items, rag_context).values():
+            thesis_markdown += f"\n### {section['titulo']}\n"
+            thesis_markdown += "\n\n".join(section["parrafos"]) + "\n"
 
         def _dec(value) -> Decimal | None:
             return None if value is None else Decimal(str(value))

@@ -1,6 +1,7 @@
 import { formatGeneratedDate, formatMoney, formatPercent, NA } from '@/lib/format';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
+import ThesisHumanInputForm from '@/components/research/ThesisHumanInputForm';
 import ThesisDebatePanel from '@/components/research/ThesisDebatePanel';
 import { Badge } from '@/components/ui/badge';
 import type { ResearchThesis } from '@/lib/actions/research.actions';
@@ -215,6 +216,8 @@ export default function ThesisMemo({
           </div>
         </section>
       ) : null}
+
+      {ticker ? <ThesisHumanInputForm ticker={ticker} /> : null}
 
       <p className="text-sm leading-6 text-gray-300">{thesis.executive_summary}</p>
 
